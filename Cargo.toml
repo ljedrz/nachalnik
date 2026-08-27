@@ -1,0 +1,50 @@
+[package]
+name = "nachalnik"
+version = "0.1.0"
+authors = ["ljedrz <ljedrz@gmail.com>"]
+edition = "2024"
+description = "A minimal, transparent agent runtime: context, tools, permissions and execution as explicit, user-controllable state."
+license = "MIT"
+repository = "https://github.com/ljedrz/nachalnik"
+homepage = "https://github.com/ljedrz/nachalnik"
+documentation = "https://docs.rs/nachalnik"
+readme = "README.md"
+categories = ["asynchronous", "development-tools"]
+keywords = ["agent", "llm", "runtime", "context", "harness"]
+rust-version = "1.88"
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+# both features are off by default, and the documentation links into both of them; without this,
+# docs.rs would build the default configuration and publish a page whose links do not resolve
+[package.metadata.docs.rs]
+all-features = true
+
+[lib]
+crate-type = ["lib"]
+
+[features]
+# The selector language (`tool:grep:latest`, `all:tool_results`, ...) used to name context
+# items. It is a convenience for clients, not part of the runtime, so it is opt-in.
+selectors = []
+# Exposes the scripted provider, dummy tools and off-the-shelf permission policies used by
+# this crate's own tests; useful for testing an agent built on top of the kernel without
+# touching a real model provider.
+test = []
+
+[dependencies]
+async-trait = "0.1"
+parking_lot = "0.12"
+# `rc` so that `Content` can be cloned by bumping a refcount rather than copying a tool
+# output; it changes no wire format, and adds no dependency
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+# `rt` only for `JoinSet`, and only reached when `Config::parallel_tool_calls` is on
+tokio = { version = "1", features = ["rt", "sync"] }
+
+[dev-dependencies]
+nachalnik = { path = ".", features = ["selectors", "test"] } # a workaround to use these features in tests by default
+reqwest = { version = "0.13", default-features = false, features = ["charset", "default-tls", "http2", "json"] }
+# `signal` so that the `agent` example can put ctrl-c on `Kernel::interrupt`
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }

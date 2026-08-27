@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: formatting
+        run: cargo fmt --all --check
+      - name: clippy
+        run: cargo clippy --all-features --all-targets -- -D warnings
+
+      # the tests turn both features on, so nothing else exercises the default build
+      - name: default features
+        run: cargo build
+      - name: no features, all targets
+        run: cargo check --no-default-features
+
+      - name: tests
+        # the live suite skips itself without a key, which is how it should behave in CI
+        run: cargo test --all-features
+      - name: docs
+        run: cargo doc --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      - name: the examples that need no key
+        run: |
+          cargo run --example transparency --features selectors
+          cargo run --example compaction
+
+  msrv:
+    name: msrv (1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-features --all-targets

@@ -1,0 +1,696 @@
+//! Tests for the context: the state the user is supposed to be able to control.
+
+use std::sync::Arc;
+
+use nachalnik::{
+    BytesPerToken, Config, ContextId, ContextItem, ContextState, Event, Kernel, TokenCounter,
+    selectors::Selector,
+    test::{ConstTool, EchoTool},
+};
+use serde_json::json;
+
+/// Returns the events received so far.
+fn drain(events: &mut tokio::sync::broadcast::Receiver<Event>) -> Vec<Event> {
+    let mut received = Vec::new();
+    while let Ok(event) = events.try_recv() {
+        received.push(event);
+    }
+
+    received
+}
+
+fn sel(input: &str) -> Selector {
+    input.parse().unwrap()
+}
+
+fn kernel() -> Kernel {
+    Kernel::new(Config::default())
+}
+
+/// Resolves a selector the way a client would.
+fn select(kernel: &Kernel, input: &str) -> Vec<ContextId> {
+    sel(input).matches(&kernel.items())
+}
+
+#[test]
+fn items_are_identified_and_counted() {
+    let kernel = kernel();
+    let system = kernel.push(ContextItem::system("be terse"));
+    let file = kernel.push(ContextItem::file("src/parser.rs", "fn parse() {}"));
+
+    assert_eq!(system.0, 1);
+    assert_eq!(file.0, 2);
+    assert_eq!(kernel.items().len(), 2);
+    // the default counter is bytes/4, rounded up
+    assert_eq!(
+        kernel.item(file).unwrap().tokens,
+        "fn parse() {}".len().div_ceil(4)
+    );
+    assert_eq!(
+        kernel.budget().context_tokens,
+        kernel.items().iter().map(|i| i.tokens).sum::<usize>()
+    );
+}
+
+#[test]
+fn excluding_hides_items_without_destroying_them() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a".repeat(400)));
+    let b = kernel.push(ContextItem::file("src/b.rs", "b".repeat(40)));
+    let before = kernel.budget().context_tokens;
+
+    let changed = kernel.set_state([a], ContextState::Excluded, Some("too big".into()));
+    assert_eq!(changed.changed, vec![a]);
+
+    let item = kernel.item(a).unwrap();
+    assert_eq!(item.state, ContextState::Excluded);
+    assert_eq!(item.note.as_deref(), Some("too big"));
+    assert_eq!(
+        item.content.to_text().len(),
+        400,
+        "the content is still there"
+    );
+    assert_eq!(
+        kernel.budget().context_tokens,
+        kernel.item(b).unwrap().tokens
+    );
+    assert_eq!(
+        kernel.with_context(|c| c.tokens_withheld()),
+        before - kernel.budget().context_tokens
+    );
+
+    // and it comes back
+    let restored = kernel.set_state([a], ContextState::Active, None);
+    assert_eq!(restored.changed, vec![a]);
+    assert_eq!(kernel.budget().context_tokens, before);
+    assert!(
+        kernel.set_state([a], ContextState::Active, None).is_empty(),
+        "a state it is already in is not a change"
+    );
+}
+
+#[test]
+fn undo_reverts_a_whole_operation() {
+    let kernel = kernel();
+    kernel.push(ContextItem::file("src/a.rs", "a"));
+    kernel.push(ContextItem::file("src/b.rs", "b"));
+    kernel.push(ContextItem::file("src/c.rs", "c"));
+
+    let files = select(&kernel, "files");
+    assert_eq!(
+        kernel
+            .set_state(files, ContextState::Excluded, None)
+            .changed
+            .len(),
+        3
+    );
+    assert_eq!(kernel.with_context(|c| c.projected().count()), 0);
+
+    assert!(kernel.undo());
+    assert_eq!(
+        kernel.with_context(|c| c.projected().count()),
+        3,
+        "one undo puts all three back"
+    );
+
+    // undo walks back the additions, too
+    assert!(kernel.undo());
+    assert_eq!(kernel.items().len(), 2);
+}
+
+#[test]
+fn undo_depth_is_configurable() {
+    let kernel = Kernel::new(Config {
+        context_undo_depth: 0,
+        ..Default::default()
+    });
+    kernel.push(ContextItem::user("hi"));
+
+    assert!(!kernel.undo());
+}
+
+#[test]
+fn pinning_is_just_another_state() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+
+    assert_eq!(
+        kernel.set_state([a], ContextState::Pinned, None).changed,
+        vec![a]
+    );
+    assert_eq!(kernel.item(a).unwrap().state, ContextState::Pinned);
+    assert!(kernel.item(a).unwrap().is_projected());
+
+    assert_eq!(
+        kernel.set_state([a], ContextState::Active, None).changed,
+        vec![a]
+    );
+    assert_eq!(kernel.item(a).unwrap().state, ContextState::Active);
+}
+
+#[test]
+fn content_can_be_replaced_in_place() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a".repeat(100)));
+
+    kernel.replace(a, "a").unwrap();
+    assert_eq!(kernel.item(a).unwrap().tokens, 1);
+    assert_eq!(kernel.item(a).unwrap().content.to_text(), "a");
+    assert!(kernel.undo());
+    assert_eq!(kernel.item(a).unwrap().tokens, 25);
+
+    assert!(kernel.replace(ContextId(999), "x").is_err());
+}
+
+#[test]
+fn selectors_resolve_against_real_items() {
+    let kernel = kernel();
+    let system = kernel.push(ContextItem::system("be terse"));
+    let user = kernel.push(ContextItem::user("hello"));
+    let file = kernel.push(ContextItem::file("src/a.rs", "a"));
+    let memory = kernel.push(ContextItem::memory("recalled", "something"));
+    let ext = kernel.push(ContextItem::new(
+        nachalnik::ContextKind::Reference,
+        "helix",
+        "buffer",
+        "text",
+    ));
+    let first = kernel.push(ContextItem::tool_result("c1".into(), "grep", "one", false));
+    let second = kernel.push(ContextItem::tool_result("c2".into(), "grep", "two", false));
+    let other = kernel.push(ContextItem::tool_result(
+        "c3".into(),
+        "shell",
+        "three",
+        false,
+    ));
+
+    assert_eq!(select(&kernel, "1"), vec![system]);
+    assert_eq!(select(&kernel, "user"), vec![user]);
+    assert_eq!(select(&kernel, "files"), vec![file]);
+    assert_eq!(select(&kernel, "file:src/a.rs"), vec![file]);
+    assert_eq!(select(&kernel, "memories"), vec![memory]);
+    assert_eq!(select(&kernel, "source:helix"), vec![ext]);
+    assert_eq!(select(&kernel, "tool:grep"), vec![first, second]);
+    assert_eq!(select(&kernel, "tool:grep:latest"), vec![second]);
+    assert_eq!(select(&kernel, "tool:grep:first"), vec![first]);
+    assert_eq!(
+        select(&kernel, "all:tool_results"),
+        vec![first, second, other]
+    );
+    assert_eq!(select(&kernel, "kind:tool_result").len(), 3);
+    assert_eq!(select(&kernel, "all").len(), 8);
+    assert!(select(&kernel, "file:nope.rs").is_empty());
+}
+
+#[test]
+fn what_a_client_needs_to_render_a_breakdown_is_all_there() {
+    let kernel = kernel();
+    kernel.add_tool(Arc::new(EchoTool::new("echo", [])));
+    kernel.push(ContextItem::system("be terse"));
+    let big = kernel.push(ContextItem::file("src/big.rs", "x".repeat(8_000)));
+    kernel.set_state([big], ContextState::Excluded, Some("garbage".into()));
+
+    let budget = kernel.budget();
+    assert!(budget.tool_tokens > 0, "tool definitions cost tokens too");
+    assert_eq!(budget.used(), budget.context_tokens + budget.tool_tokens);
+    assert_eq!(budget.limit, None, "no provider, no limit to know");
+    assert_eq!(kernel.with_context(|c| c.tokens_withheld()), 2_000);
+
+    // ... per item: an identity, a label, a size, a state and a reason
+    let item = kernel.item(big).unwrap();
+    assert_eq!(
+        (
+            item.id,
+            item.label.as_str(),
+            item.tokens,
+            item.state,
+            item.note.as_deref()
+        ),
+        (
+            big,
+            "src/big.rs",
+            2_000,
+            ContextState::Excluded,
+            Some("garbage")
+        ),
+    );
+    assert_eq!(item.source, "file");
+    assert_eq!(item.kind.name(), "reference");
+}
+
+#[test]
+fn counting_is_replaceable() {
+    struct OneEach;
+
+    impl TokenCounter for OneEach {
+        fn count(&self, _content: &nachalnik::Content) -> usize {
+            1
+        }
+    }
+
+    let kernel = kernel();
+    kernel.push(ContextItem::file("src/a.rs", "a".repeat(400)));
+    assert_eq!(kernel.budget().context_tokens, 100);
+
+    kernel.set_counter(Arc::new(OneEach));
+    assert_eq!(kernel.budget().context_tokens, 1);
+
+    kernel.set_counter(Arc::new(BytesPerToken { bytes_per_token: 2 }));
+    assert_eq!(kernel.budget().context_tokens, 200);
+}
+
+#[tokio::test]
+async fn the_projection_says_what_is_being_sent_and_what_is_not() {
+    let kernel = kernel();
+    kernel.add_tool(Arc::new(ConstTool::new("grep", "hits")));
+    kernel.push(ContextItem::system("be terse"));
+    kernel.push(ContextItem::user("look for foo"));
+    let file = kernel.push(ContextItem::file("src/a.rs", "fn main() {}"));
+
+    let projection = kernel.project();
+    assert_eq!(projection.messages.len(), 3);
+    assert_eq!(projection.included, select(&kernel, "all"));
+    assert_eq!(
+        projection.messages[2].content.as_ref().unwrap().to_text(),
+        "src/a.rs:\nfn main() {}",
+        "references are labelled, so the model knows what it is looking at"
+    );
+
+    kernel.set_state([file], ContextState::Excluded, Some("not relevant".into()));
+    let projection = kernel.project();
+    assert_eq!(projection.messages.len(), 2);
+    assert_eq!(projection.skipped.len(), 1);
+    assert_eq!(projection.skipped[0].id, file);
+    assert_eq!(projection.skipped[0].reason, "excluded: not relevant");
+}
+
+#[test]
+fn json_content_is_counted_and_kept_structured() {
+    let kernel = kernel();
+    let id = kernel.push(ContextItem::diagnostic(
+        "src/a.rs:1",
+        json!({ "severity": "error", "message": "mismatched types" }),
+    ));
+
+    let item = kernel.item(id).unwrap();
+    assert_eq!(item.tokens, item.content.byte_len().div_ceil(4));
+    assert!(item.content.as_text().is_none());
+}
+
+#[test]
+fn metadata_is_carried_but_never_interpreted() {
+    let kernel = kernel();
+    let id = kernel.push(
+        ContextItem::file("src/a.rs", "a").with_meta(json!({ "priority": "low", "buffer": 3 })),
+    );
+
+    assert_eq!(kernel.item(id).unwrap().meta["priority"], "low");
+}
+
+#[test]
+fn a_reason_is_never_rewritten_in_silence() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+    kernel.set_state([a], ContextState::Excluded, Some("too big".into()));
+
+    let mut events = kernel.subscribe();
+
+    // the same state with a different reason is a different fact about the item, so it is a
+    // change, and it is announced like one
+    assert_eq!(
+        kernel
+            .set_state([a], ContextState::Excluded, Some("the user said so".into()))
+            .changed,
+        vec![a]
+    );
+    assert_eq!(
+        kernel.item(a).unwrap().note.as_deref(),
+        Some("the user said so")
+    );
+    assert_eq!(
+        events.try_recv().map(|e| e.name().to_owned()).ok(),
+        Some("context.changed".to_owned())
+    );
+
+    // and asking for what is already true changes nothing, and says nothing
+    assert!(
+        kernel
+            .set_state([a], ContextState::Excluded, Some("the user said so".into()))
+            .is_empty()
+    );
+    assert!(events.try_recv().is_err());
+}
+
+#[test]
+fn an_operation_that_does_nothing_does_not_spend_an_undo() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+    kernel.set_state([a], ContextState::Excluded, Some("too big".into()));
+
+    let depth = kernel.with_context(|c| c.undo_len());
+
+    // a replace of something that is not there, and a state change that is already true
+    assert!(kernel.replace(ContextId(999), "nope").is_err());
+    assert!(
+        kernel
+            .set_state([a], ContextState::Excluded, Some("too big".into()))
+            .is_empty()
+    );
+    assert!(
+        kernel
+            .set_state([ContextId(999)], ContextState::Active, None)
+            .is_empty()
+    );
+    assert_eq!(
+        kernel.with_context(|c| c.undo_len()),
+        depth,
+        "a failed operation that spends an undo makes the next one walk back somebody else's work"
+    );
+
+    // so the one undo available still reverts the exclusion, as the user would expect
+    assert!(kernel.undo());
+    assert_eq!(kernel.item(a).unwrap().state, ContextState::Active);
+}
+
+#[test]
+fn the_budget_quotes_for_the_request_that_would_actually_be_sent() {
+    let kernel = kernel();
+    kernel.push(ContextItem::user("hi"));
+
+    // a tool result with no turn asking for it is one the projector drops, so it is not part of
+    // what the next request costs - a budget that counted it would be quoting for a request that
+    // is never going to exist
+    let orphan = kernel.push(ContextItem::tool_result(
+        "nobody-asked".into(),
+        "grep",
+        "x".repeat(4_000),
+        false,
+    ));
+    assert!(kernel.item(orphan).unwrap().is_projected());
+    assert_eq!(kernel.project().skipped.len(), 1);
+
+    let budget = kernel.budget();
+    let request = kernel.preview_request().unwrap();
+    assert_eq!(request.messages.len(), 1);
+    assert_eq!(
+        budget.context_tokens,
+        kernel.item(kernel.items()[0].id).unwrap().tokens,
+        "the orphan is listed and inspectable, but it is not part of the quote"
+    );
+
+    // and once the turn that asked for it is there, it counts
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![nachalnik::ToolCall::new("nobody-asked", "grep", json!({}))],
+    ));
+    assert!(kernel.budget().context_tokens > budget.context_tokens + 900);
+}
+
+#[test]
+fn a_kernel_says_what_it_is_without_being_asked_twice() {
+    let kernel = kernel();
+    kernel.push(ContextItem::file("src/a.rs", "fn a() {}"));
+    kernel.add_tool(Arc::new(ConstTool::new("peek", "ok")));
+
+    let rendered = format!("{kernel:?}");
+    assert!(rendered.contains("state: \"idle\""), "{rendered}");
+    assert!(rendered.contains("items: 1"), "{rendered}");
+    assert!(rendered.contains("peek"), "{rendered}");
+}
+
+#[test]
+fn an_undo_says_what_it_did() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+    let b = kernel.push(ContextItem::file("src/b.rs", "b"));
+    kernel.set_state([a, b], ContextState::Excluded, Some("too big".into()));
+
+    let mut events = kernel.subscribe();
+
+    // undoing the exclusion reverts two items and removes none
+    assert!(kernel.undo());
+    let Some(Event::ContextUndone {
+        items,
+        removed,
+        changed,
+    }) = events.try_recv().ok()
+    else {
+        panic!("an undo is a context change like any other")
+    };
+    assert_eq!(items, 2);
+    assert!(removed.is_empty());
+    assert_eq!(
+        changed,
+        vec![a, b],
+        "a client can render exactly what came back"
+    );
+
+    // undoing the addition takes an item back out of existence, and says so
+    assert!(kernel.undo());
+    let Some(Event::ContextUndone {
+        items,
+        removed,
+        changed,
+    }) = events.try_recv().ok()
+    else {
+        panic!()
+    };
+    assert_eq!(items, 1);
+    assert_eq!(removed, vec![b]);
+    assert!(changed.is_empty());
+
+    // and an undo with nothing to undo is not an event
+    while kernel.undo() {
+        let _ = events.try_recv();
+    }
+    assert!(events.try_recv().is_err());
+}
+
+#[test]
+fn naming_nothing_is_not_the_same_as_changing_nothing() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+
+    let done = kernel.set_state([a, ContextId(999)], ContextState::Excluded, None);
+    assert_eq!(done.changed, vec![a]);
+    assert_eq!(done.unknown, vec![ContextId(999)], "so a client can say so");
+    assert!(done.unchanged.is_empty());
+
+    // asking again: the item is where it was asked to be, and 999 still does not exist
+    let again = kernel.set_state([a, ContextId(999)], ContextState::Excluded, None);
+    assert!(again.changed.is_empty());
+    assert_eq!(again.unchanged, vec![a]);
+    assert_eq!(again.unknown, vec![ContextId(999)]);
+}
+
+#[test]
+fn a_redo_puts_back_what_an_undo_took() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+    let b = kernel.push(ContextItem::file("src/b.rs", "b"));
+    kernel.set_state([a, b], ContextState::Excluded, Some("too big".into()));
+
+    let mut events = kernel.subscribe();
+
+    assert!(kernel.undo());
+    assert!(
+        kernel.item(a).unwrap().is_projected(),
+        "the exclusion is off"
+    );
+    let _ = events.try_recv();
+
+    assert!(
+        kernel.redo(),
+        "and losing work to a mis-click is not control"
+    );
+    let Some(Event::ContextRedone {
+        items,
+        restored,
+        changed,
+    }) = events.try_recv().ok()
+    else {
+        panic!("a redo is announced like anything else")
+    };
+    assert_eq!(items, 2);
+    assert!(restored.is_empty());
+    assert_eq!(changed, vec![a, b]);
+    assert_eq!(kernel.item(a).unwrap().state, ContextState::Excluded);
+    assert_eq!(kernel.item(a).unwrap().note.as_deref(), Some("too big"));
+
+    // undoing the addition and redoing it brings the item itself back
+    assert!(kernel.undo());
+    assert!(kernel.undo());
+    assert_eq!(kernel.items().len(), 1);
+    let _ = drain(&mut events);
+
+    assert!(kernel.redo());
+    let Some(Event::ContextRedone { restored, .. }) = events.try_recv().ok() else {
+        panic!()
+    };
+    assert_eq!(restored, vec![b]);
+    assert_eq!(kernel.items().len(), 2);
+}
+
+#[test]
+fn doing_something_new_makes_the_undone_future_unreachable() {
+    let kernel = kernel();
+    kernel.push(ContextItem::file("src/a.rs", "a"));
+    kernel.push(ContextItem::file("src/b.rs", "b"));
+
+    assert!(kernel.undo());
+    assert_eq!(kernel.with_context(|c| c.redo_len()), 1);
+
+    // a redo that reached across this would be overwriting it, not restoring anything
+    kernel.push(ContextItem::file("src/c.rs", "c"));
+    assert_eq!(kernel.with_context(|c| c.redo_len()), 0);
+    assert!(!kernel.redo());
+}
+
+#[test]
+fn a_set_of_files_is_one_thing_the_user_did() {
+    let kernel = kernel();
+    let ids = kernel.push_all([
+        ContextItem::file("src/a.rs", "a"),
+        ContextItem::file("src/b.rs", "b"),
+        ContextItem::file("src/c.rs", "c"),
+    ]);
+
+    assert_eq!(ids.len(), 3);
+    assert_eq!(
+        kernel.with_context(|c| c.undo_len()),
+        1,
+        "three pushes would have spent three of the sixteen the user has"
+    );
+    assert!(kernel.undo());
+    assert!(kernel.items().is_empty());
+
+    assert!(kernel.push_all([]).is_empty());
+}
+
+#[test]
+fn superseding_is_explicit_and_reversible() {
+    let kernel = kernel();
+    let old = kernel.push(ContextItem::file("src/a.rs", "fn a() {}"));
+
+    // the kernel does not guess that a second read replaces the first; it is told
+    let new = kernel
+        .supersede(old, ContextItem::file("src/a.rs", "fn a() -> u8 { 1 }"))
+        .unwrap();
+
+    assert_eq!(kernel.item(old).unwrap().state, ContextState::Superseded);
+    assert!(!kernel.item(old).unwrap().is_projected());
+    assert_eq!(
+        kernel.item(old).unwrap().note.as_deref(),
+        Some(&*format!("superseded by item {new}"))
+    );
+    assert_eq!(
+        kernel.item(new).unwrap().content.to_text(),
+        "fn a() -> u8 { 1 }"
+    );
+    assert_eq!(
+        kernel.item(old).unwrap().content.to_text(),
+        "fn a() {}",
+        "the old one keeps its contents and its identifier"
+    );
+
+    // and it is one operation
+    assert!(kernel.undo());
+    assert!(kernel.item(old).unwrap().is_projected());
+    assert!(kernel.item(new).is_none());
+
+    assert!(
+        kernel
+            .supersede(ContextId(999), ContextItem::user("x"))
+            .is_err()
+    );
+}
+
+#[test]
+fn a_hint_can_be_attached_after_the_fact() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+    assert!(kernel.item(a).unwrap().meta.is_null());
+
+    let mut events = kernel.subscribe();
+    kernel.annotate(a, json!({ "expendable": true })).unwrap();
+
+    assert_eq!(kernel.item(a).unwrap().meta, json!({ "expendable": true }));
+    assert_eq!(
+        events.try_recv().map(|e| e.name().to_owned()).ok(),
+        Some("context.annotated".to_owned()),
+        "a hint that decides what a compactor drops is not a quiet change"
+    );
+
+    // and setting it to what it already says is not a change
+    kernel.annotate(a, json!({ "expendable": true })).unwrap();
+    assert!(events.try_recv().is_err());
+
+    assert!(kernel.annotate(ContextId(999), json!(1)).is_err());
+}
+
+#[test]
+fn a_request_does_not_copy_the_context_to_build_itself() {
+    let kernel = kernel();
+    let id = kernel.push(ContextItem::user("x".repeat(1 << 20)));
+
+    let item = kernel.item(id).unwrap();
+    let projected = kernel.project();
+    let sent = projected.messages[0].content.clone().unwrap();
+
+    let (nachalnik::Content::Text(held), nachalnik::Content::Text(going)) = (&item.content, &sent)
+    else {
+        unreachable!()
+    };
+    assert!(
+        Arc::ptr_eq(held, going),
+        "every request re-projects the whole context; copying it each time would make a large \
+         context cost more to look at than to think about"
+    );
+
+    // the same holds across the state changes an undo snapshot pins the old version for
+    kernel.set_state([id], ContextState::Excluded, Some("too big".into()));
+    let after = kernel.item(id).unwrap();
+    let (nachalnik::Content::Text(before), nachalnik::Content::Text(after)) =
+        (&item.content, &after.content)
+    else {
+        unreachable!()
+    };
+    assert!(
+        Arc::ptr_eq(before, after),
+        "pruning moved a pointer, not a megabyte"
+    );
+}
+
+#[test]
+fn a_replacement_is_the_one_thing_that_would_otherwise_be_lost() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "fn a() -> u8 { 1 }"));
+
+    let mut events = kernel.subscribe();
+    kernel.replace(a, "fn a() -> u8 { 2 }").unwrap();
+
+    // every other event names its item and lets the context hold the contents; this one carries
+    // them, because after a replacement they are nowhere else
+    let Some(Event::ContextReplaced { was, id, .. }) = events.try_recv().ok() else {
+        panic!("a replacement is announced like anything else")
+    };
+    assert_eq!(id, a);
+    assert_eq!(was.to_text(), "fn a() -> u8 { 1 }");
+
+    // which is what keeps `model.requested` worth anything: it names the items a request was
+    // built from rather than copying them, and a name is only as good as what it points at
+    let log = serde_json::to_string(&kernel.history()).unwrap();
+    assert!(
+        log.contains("fn a() -> u8 { 1 }"),
+        "a request replayed from its item ids would reconstruct the wrong bytes"
+    );
+
+    // and it costs a pointer rather than a copy
+    let item = kernel.item(a).unwrap();
+    let (nachalnik::Content::Text(now), nachalnik::Content::Text(before)) = (&item.content, &was)
+    else {
+        unreachable!()
+    };
+    assert!(!Arc::ptr_eq(now, before));
+    assert_eq!(before.len(), 18);
+}

@@ -1,0 +1,571 @@
+# nachalnik
+
+**An agent runtime in which the context, the tools, the permissions and the requests are explicit
+state you can read, change and put back - rather than decisions taken inside a framework and
+reported to you afterwards.**
+
+> The agent is not the boss. You are.
+
+It is a library, not a program: it owns no UI, no editor, no model, no tools and no prompt. What
+it owns is the loop, the context, and the paper trail.
+
+---
+
+### ⏱️ in thirty seconds
+
+**See the exact request before it goes out** - not a trace of it afterwards:
+
+```rust
+let request = kernel.preview_request()?;   // every message, tool definition and parameter
+let payload = kernel.preview_payload()?;   // and the provider's own bytes, if it renders them
+```
+
+**Throw out what you do not want, and change your mind about it.** A tool just returned 600 lines
+of passing tests:
+
+```rust
+kernel.set_state(ids, ContextState::Excluded, Some("13k tokens of nothing".into()));
+assert_eq!(kernel.budget().used(), 126);   // it was 13,173
+kernel.undo();                             // and nothing was ever destroyed
+```
+
+**Prove two models were asked exactly the same thing**, which is the difference between a
+comparison and an anecdote:
+
+```rust
+// one set of items, pushed into two kernels; the digest is of what goes on the wire
+let a = serde_json::to_vec(&fast.preview_request()?.messages)?;
+let b = serde_json::to_vec(&smart.preview_request()?.messages)?;
+assert_eq!(a, b, "byte for byte");
+```
+
+None of that is a hook, a callback or a tracing integration bolted on afterwards. It is the state
+the loop runs on, and there is no step between it and the wire where the kernel adds something of
+its own.
+
+---
+
+### 🎯 what it is for, and what it is not
+
+Reach for it when **what was in the context is part of your answer**:
+
+* **Evaluation and model comparison.** The same items into several kernels, with a digest of the
+  projected messages showing that the only variable was the model - and the tokenizers disagreeing
+  with each other about identical bytes, which you can see rather than assume.
+  (`cargo run --example compare`, `--example panel`)
+* **Editor and IDE integration.** A `/context` view, a permission prompt and an undo that are
+  yours to render, over a loop that stops between transitions instead of acting and reporting.
+* **Anything that has to be auditable or reproducible.** An append-only log of typed events, plus
+  a snapshot that resumes the same session in another process.
+
+Reach for something else if you want **an agent today**. This crate ships no provider, no tools,
+no prompt and no UI, so a working agent is yours to assemble; the `agent` example is what that
+costs, and most of it is tools and rendering. If you want batteries included, `goose` and `codex`
+are good and also Rust. `nachalnik` is what you build a harness *out of*.
+
+---
+
+### ⚡ why?
+
+* **Nothing is hidden.** Every context item has an identity, a size, a source, a state and a
+  reason for being there, and every transition the loop makes is an event. The request you
+  previewed is the request that goes out.
+* **Nothing is sacred.** That 17,000-token tool output can be excluded, and it goes. No
+  "the agent has determined that this information is relevant".
+* **Nothing is assumed.** No system prompt, no personality, no planning ritual, no mandatory
+  subagents, no MCP, no default tools, no filesystem or network code, no permission table, no
+  `/context` renderer, no background activity. There is not one line of prompt text in this
+  crate.
+* **Everything is an event.** The whole session is an append-only log of typed events, so a
+  client is `subscribe()` + render, and changing the UI does not invalidate sessions.
+* **Small.** Five dependencies (`async-trait`, `parking_lot`, `serde`, `serde_json`, `tokio`),
+  no `unsafe`, and a codebase you can read in an afternoon.
+
+---
+
+### 🔁 the loop is a state machine
+
+```text
+  Idle ── step ──> Requesting ──(no tool calls)──> Finished
+  Ready                │
+    ▲                  ├──(calls, all decided)──> Ready ── step ──> Executing ──> Idle
+    │                  │
+    └── decide ── Deciding <──(calls, one to ask about)
+```
+
+`Kernel::step` performs exactly one of those transitions and returns the `State` it produced;
+`Kernel::turn` repeats until the model ends its turn or somebody has to decide something.
+
+* `Requesting` and `Executing` mean the loop is already being driven; a second `step` is
+  `Error::Busy`, not a second request. If the future driving a transition is dropped, the kernel
+  returns to `Idle` instead of wedging.
+* Every other state is a resting state, and whatever you change while the kernel rests is what
+  the next request will contain.
+* `Ready` exists for exactly that reason: the model has said which tools it wants, nothing has
+  run yet, and you can look first (`pending_calls`) - or refuse
+  (`cancel_pending_calls`).
+
+---
+
+### 🚀 quick start
+
+```rust
+use std::sync::Arc;
+
+use nachalnik::{Config, ContextItem, ContextState, Kernel, State};
+
+let kernel = Kernel::new(Config::default());
+kernel.set_provider(Arc::new(my_provider));  // you implement Provider
+kernel.set_policy(Arc::new(my_policy));      // ... and decide what is allowed
+kernel.add_tool(Arc::new(my_tool));          // ... and what can be done
+
+// context is added on purpose, and every item can be named afterwards
+let file = kernel.push(ContextItem::file("src/parser.rs", contents).pinned());
+kernel.push(ContextItem::user("why is this failing?"));
+
+// exactly what is about to be sent, before it is sent
+let request = kernel.preview_request()?;
+let payload = kernel.preview_payload()?;   // and the provider's own bytes, if it can show them
+
+// the loop
+match kernel.turn().await? {
+    State::Finished { .. } => println!("{:?}", kernel.last_response()),
+    State::Deciding { .. } => { /* ask a person, then kernel.decide(..) */ }
+    State::Idle => { /* the turn's request budget ran out; your call */ }
+    other => unreachable!("a turn does not end in {other:?}"),
+}
+
+// and the context remains yours
+kernel.set_state([file], ContextState::Excluded, Some("too big".into()));
+kernel.undo();
+```
+
+---
+
+### 🧩 architecture
+
+The kernel provides the loop and the bookkeeping; you provide the parts. Each of these is a
+trait object you can set, swap at runtime, and inspect:
+
+| trait | you provide | the kernel provides |
+| --- | --- | --- |
+| `Provider` | a model, however you reach it | the request, verbatim |
+| `Tool` | what the model can do | the schema, the gating, the recording |
+| `PermissionPolicy` | what is allowed | the question, and the refusal |
+| `Projector` | the shape of a request | the context it is projected from |
+| `TokenCounter` | how tokens are counted | every number it reports, and what each request really cost |
+| `Compactor` | what to drop when it fills up | the veto on pinned items, and the report |
+
+Model parameters are an opaque `serde_json` map carried to the provider verbatim, so `thinking`,
+`safety_settings` and `reasoning_effort` are exactly as first-class as `temperature` - and the
+kernel cannot send anything you did not ask for.
+
+The kernel has no wire format, so `preview_request` is as far as its own guarantee reaches. A
+provider that implements `render` closes the rest of the gap: `preview_payload` then shows the
+payload itself, and `Config::record_payloads` puts it in the log. Be precise about what that is
+worth - it is the provider's account of itself, exactly like a tool's declared capabilities, and
+the kernel has nothing to check it against. Render once and send what you rendered; a preview that
+has quietly stopped matching is worse than none.
+
+A reasoning model's own thinking is treated the same way: it is recorded on the turn that
+produced it, counted like everything else, and offered back to the provider in
+`Message::reasoning`, because some APIs verify a signed thinking block against the turn it came
+from and a runtime that dropped it could not talk to them. It is never separated from its turn,
+and `LinearProjector::send_reasoning` decides whether it goes back out.
+
+`ToolCall::extra` is the same idea at the level of a single call: whatever a provider attaches to
+a call - Google's `thought_signature`, an encrypted reasoning item - is carried back attached to
+that call, verbatim and uninterpreted. Gemini rejects the *next* request outright when it goes
+missing, which is the sort of thing you only find out by asking a real API.
+
+---
+
+### 🔍 context as a data structure
+
+Items are public data - an id, a kind, a source, a label, content, a size, a state, a note and
+whatever metadata you attach - so a client can render `/context` however it likes:
+
+```text
+INSTRUCTIONS                           9
+  └─ [1] AGENTS.md                     9
+SELECTIONS                            12
+  └─ [2] src/parser.rs:12-14          12
+USER                                   5
+  └─ [4] user                          5
+TOOL RESULTS                      13,058
+  ├─ [6] read_file                    18
+  └─ [8] shell                    13,040
+
+TOOLS                                 62
+TOTAL                             13,173
+LIMIT                            128,000
+```
+
+One method covers every state change, and each call is one undoable operation:
+
+```rust
+kernel.set_state(ids, ContextState::Excluded, Some("an enormous test output".into()));
+kernel.set_state(ids, ContextState::Pinned, None);
+kernel.replace(id, "a shorter version")?;          // new contents, same identifier
+kernel.supersede(old, ContextItem::file(path, reread))?;  // this one replaces that one
+kernel.annotate(id, json!({ "expendable": true }))?;      // a hint for your compactor
+kernel.push_all(files);                            // one operation, so one undo
+kernel.undo();
+kernel.redo();
+```
+
+`set_state` says what it did to each identifier - `changed`, `unchanged`, `unknown` - because
+"there is no item 12" and "item 12 was already pruned" are different things to tell somebody.
+
+Excluding an item removes it from the *projection*, not from the record: it keeps its identifier,
+is still listed and inspectable, and comes back with another `set_state`, an `undo`, or a `redo`.
+The default projector also drops the other half of a tool call/result pair when one side is gone,
+so pruning cannot produce a request the provider will reject - and it says so in
+`Projection::repairs` *and* in the session log, because a request the kernel quietly adjusted is
+exactly the one you want to be able to ask about afterwards.
+
+**Nothing is destroyed, including by a limit.** A tool output over its limit is recorded twice:
+the whole of it, archived, and the shortened copy the model is shown. Putting the whole thing back
+in front of the model is a `set_state` like any other, rather than a re-run of the tool. Keeping
+it costs a pointer rather than a copy: content, tool-call arguments and tool schemas are all
+shared, so pruning a four-megabyte tool result moves a pointer, projecting it into a request moves
+a pointer, and the event recording it points at the same bytes the context holds rather than a
+second copy of them. Set
+`Config::keep_truncated_output` to `false` when a tool can produce more than you are willing to go
+on holding; the truncation is still reported either way.
+
+One agent is one kernel, and a fleet of them shares nothing but whatever you hand to both, so
+running sixteen at once needs no coordination at all. Within a single turn, the tools a model
+asks for run one at a time in the order it asked - which is something you can build on, since two
+edits to the same file then apply in sequence. `Config::parallel_tool_calls` gives that up for
+speed, on purpose and never by default: nothing in the kernel can tell whether a model's calls are
+independent, so the judgement is yours. Either way the results are recorded in the order the model
+asked for them, so the context does not depend on which tool happened to be quick. Several threads on a *single* kernel are
+fine too - reading is cheap and every mutation is atomic, so a client can render, prune and
+preview while a turn is in flight. The one thing two threads cannot do is drive the loop at the
+same time, which is `Error::Busy` rather than a second request.
+
+Automatic management is allowed, invisible management is not. A `Compactor` gets the budget and
+the items and returns a plan; the kernel refuses to remove anything pinned, applies the rest,
+and broadcasts a report of exactly what it did - which the user can then disagree with.
+
+---
+
+### 🎯 a budget that corrects itself
+
+Every token figure the kernel reports comes from a `TokenCounter`, and the default one -
+`bytes / 4` - is an admitted estimate. How wrong it is depends on the shape of what you are
+sending: measured against a real API, about a third low on a short chat carrying four tool
+definitions, and a steady 7% low once the conversation is a few thousand tokens. It cannot see
+per-message framing and never sees the tokens a reasoning model spends thinking. Embedding a
+tokenizer would mean embedding a model-specific assumption, which this crate will not do.
+
+So it does the other thing. After every response, the provider has said what the request actually
+cost, and the kernel knows what it estimated for the very same bytes - so it hands both numbers to
+the counter:
+
+```rust
+kernel.set_counter(Arc::new(Calibrating::new(BytesPerToken::default())));
+```
+
+`Calibrating` converges on the first response worth learning from and settles there - measured over
+a growing conversation, it took that steady 7% error to within 1%. What it learned is a number you
+can look at (`calibration()`), not a fudge factor buried in the kernel. It ignores requests too
+small to have a systematic error in them, because a percentage drawn from a handful of tokens is
+noise, and a counter that chased it would be wrong for every request that matters. It corrects what
+is counted *from then on*: figures already recorded on items do not silently rewrite themselves,
+because that is exactly the sort of thing this crate does not do - `Kernel::recount` rewrites them
+when you ask, and says so on the event stream.
+
+The hook is `TokenCounter::observe`, whose default does nothing. As everywhere else, the kernel
+supplies the facts and your code supplies the judgement.
+
+---
+
+### 🛑 stopping
+
+`interrupt()` can be called from any thread, and stops the loop in three places, each needing a
+little more cooperation than the last:
+
+| where | what happens | who has to agree |
+| --- | --- | --- |
+| between transitions | the next `step` or `turn` spends one attempt acknowledging it and does nothing else | nobody |
+| during a request | a provider that checks `DeltaSink::is_interrupted` stops reading and hands back what it has | the provider |
+| during tool calls | the kernel does not start the serial calls that had not begun; a tool that checks `OutputSink::is_interrupted` can stop the one that had | the tool |
+
+The kernel cannot reach into a `Provider` and stop it - it does not own the socket, the runtime or
+the future - so it offers the fact and lets the provider decide. One that ignores it is not broken,
+only slower to stop.
+
+What stopping never does is discard work. A half-finished answer and a tool that returned early are
+recorded as ordinary items, because the point of a context you can see is that *you* decide what to
+do with them. The blunt instrument is still there - drop the future driving `step` and the request
+is abandoned mid-flight, the kernel returns to `Idle` rather than wedging - but it costs you
+whatever had been streamed.
+
+---
+
+### 📡 everything is an event
+
+```text
+session.started    state.changed       model.changed      tool.requested
+session.resumed    context.added       model.params       tool.unknown
+session.finished   context.changed     model.requested    tool.repaired
+turn.interrupted   context.replaced    model.delta        tool.started
+tools.changed      context.undone      model.payload      tool.output
+policy.changed     context.redone      model.finished     tool.finished
+                   context.annotated   model.failed
+                   context.recounted   step.failed        permission.requested
+                   context.compacted                      permission.decided
+```
+
+Every one of them carries what a client needs to render it without inferring anything: an undo
+names the items it took back and the ones it reverted, and a request names the items it left out
+and why.
+
+`Kernel::subscribe` is the live stream; `Kernel::history` is the complete, append-only session
+log (both written under one lock, so their order agrees). Records are plain `serde` types, so
+persisting a session is one line per event.
+
+The log stays small by *naming* things rather than copying them: `model.requested` records the
+context ids a request was projected from, not the messages, so twelve requests over one
+conversation cost twelve short lists of integers instead of twelve copies of it. The one event
+that carries content is `context.replaced`, and it follows the rule that makes the rest work - the
+log records what nothing else can recover. An added item is still in the context; overwritten text
+is nowhere. Without it, a request replayed from its item ids would reconstruct the wrong bytes.
+
+That matters in memory, where the log is a live structure. On disk it matters much less than it
+looks: a log whose entries repeat each other is the best case an ordinary compressor gets, and
+twenty-four turns come to 71 KB raw and 3.5 KB under `xz` - or 1.3 MB and 4.8 KB with
+`record_payloads` on. So keep the *log* lean for RAM, use `drain_history` to hand records off on a
+schedule, and let the filesystem worry about the rest. The log is unbounded on purpose - a capped
+append-only log is not one - and `drain_history` is how a long-running session stays affordable:
+you take the records, you write them somewhere, the kernel lets go. Nothing disappears behind
+your back.
+
+---
+
+### 💾 sessions outlive processes
+
+The log and a snapshot answer different questions, and you want both. The log says what happened;
+it stays small because an event *names* an item rather than carrying its contents - which is
+exactly why it cannot rebuild a context. A `Snapshot` can:
+
+```rust
+let snapshot = kernel.snapshot();          // items, ids, states, notes, params, used call ids
+std::fs::write("session.json", serde_json::to_vec(&snapshot)?)?;
+
+// ... a process later
+let kernel = Kernel::resume(Config::default(), snapshot);
+```
+
+Everything that is easy to lose comes back: a pin, the reason something was pruned, a turn's
+reasoning, the signature attached to a tool call, and the identifiers already handed out - so a
+resumed session cannot reuse one. A provider, a policy and the tools are yours to supply again,
+because they were never the session's to remember. Naming the config resumes under a new name,
+which is how a session gets forked rather than continued.
+
+---
+
+### 🎛️ features
+
+Both are off by default, because neither is part of the runtime:
+
+* `selectors` - a small language for naming context items (`17`, `tool:grep:latest`,
+  `all:tool_results`, `file:src/foo.rs`) that resolves to the identifiers a client then acts on.
+* `test` - a scripted provider, dummy tools, off-the-shelf permission policies and a mechanical
+  compactor, so an agent built on the kernel can be tested without a network.
+
+---
+
+### 📚 examples
+
+**[agent](examples/agent.rs)** - a CLI agent you can actually talk to. Bring an OpenRouter key:
+
+```console
+$ export OPENROUTER_API_KEY=sk-or-...
+$ cargo run --example agent -- -f src/lib.rs
+
+nachalnik · openai/gpt-4o-mini · 128000 tokens of context
+type a message and press enter · /help for the commands · /model <id> to switch models
+
+> what does this crate do?
+  + [1] src/lib.rs (file), 1,204 tokens
+  → 2 messages, 4 tools, ~1,410 tokens
+  ⟩ shell({"cmd":"cargo test"})
+
+  ┌ shell wants: shell
+  │ {"cmd":"cargo test"}
+  └ [y]es / [n]o / [a]lways / [i]nspect? y
+  · shell: allow (by the User)
+  ⟨ shell: 3,412 tokens
+It is an agent runtime; the tests cover the state machine and the context model.
+  ← EndTurn; 4,933 in / 62 out (reported)
+
+> /context
+> /prune tool:shell:latest
+> /request
+```
+
+Type at the `>` prompt to send a message; `-f FILE` puts a file in the context (pinned), and
+anything else on the command line is sent as the first message, so
+`cargo run --example agent -- -f src/lib.rs "what does this do?"` starts working immediately.
+
+It streams (server-sent events, so `DeltaSink` gets a real workout), asks before anything with a
+side effect, and remembers an "always". `NACHALNIK_BASE_URL` points it at OpenAI, llama.cpp,
+ollama or vLLM instead; `/help` lists the slash commands, each of which is a one-line call into
+the kernel:
+
+```text
+/context [selector]   /request  /payload  /raw   /state   /events [n]
+/prune <selector>     /keep      /restore /undo
+/tools  /policy  /model [id]  /params [key json]  /save <path>
+```
+
+**[compare](examples/compare.rs)** - the same prompt to several models at once, with proof that
+it *was* the same prompt:
+
+```console
+$ cargo run --example compare -- -m gemini-3.5-flash-lite -m gemini-3.5-flash \
+    -s "answer in at most 40 words" "the biggest downside of Rust's orphan rule?"
+
+INPUTS · what each model is about to be sent
+
+  MODEL                           MSGS   ~TOKENS         LIMIT   REQUEST
+  gemini-3.5-flash-lite              2        22     1,048,576   491ac859ea5e78d4
+  gemini-3.5-flash                   2        22     1,048,576   491ac859ea5e78d4
+
+  identical: every model is sent the same request, byte for byte.
+
+ANSWERS
+
+  MODEL                             TIME      EST       IN      OUT    THINK   STOP
+  gemini-3.5-flash-lite            1.06s       22       23       42        -   end_turn
+  gemini-3.5-flash                 9.77s       22       23       37        -   end_turn
+```
+
+A comparison means something only if the model was the only thing that differed, and that is
+normally taken on trust: the harness assembles a prompt somewhere inside itself, once per model,
+and hands you the answers. Here every model has a `Kernel` of its own, the same `ContextItem`s
+are pushed into each, and the fingerprint is of the serialized messages of `preview_request()` -
+the projection the request is actually built from. Ask a follow-up and it goes on comparing, but
+it stops claiming the requests are identical, because by then they are not:
+
+```text
+  diverged: each context now also holds that model's own answers. What the user
+  put there is still identical in all of them (6656ed5bd5e496ba).
+```
+
+`EST` against `IN` is the other thing worth having: the kernel's own estimate beside what the
+provider charged for. `--payload` prints the exact bytes each provider will send, `--save DIR`
+writes every session as a log and a snapshot, and each one is resumable with `agent -r`.
+
+**[panel](examples/panel.rs)** - several models arguing about one question, in rounds, ending in
+a ruling with a tally behind it:
+
+```console
+$ cargo run --example panel -- -m gemini-3.5-flash-lite -m gemini-3.5-flash \
+    "should a library expose anyhow::Error in its public API, or an error enum?"
+
+ROUND 2 · 2 peer opinions circulated, superseding the last ones
+
+  gemini-3.5-flash-lite        1.00s   Hand-written error enum (100%)
+  gemini-3.5-flash             8.32s   Hand-written error enum (100%)
+
+CONTEXTS · what each panelist actually read
+
+  gemini-3.5-flash-lite — 14 items, 1 superseded, ~1,043 tokens
+    [1]  instruction panel rules                          86
+    [2]  user        user                                 43
+    [3]  said        assistant                            98
+    [4]  panel       gemini-3.5-flash · round 1          104  (superseded by item 8)
+    [5]  user        user                                 32
+    [6]  ballot      assistant                           185
+    [7]  recorded    state_position                        5
+    [8]  panel       gemini-3.5-flash · round 2          108
+```
+
+Round one is independent - nobody has read anybody. From then on each panelist receives the
+others' opinions as context items of its own, attributed and counted, and every round
+*supersedes* the last round's rather than piling on top of it, so the context carries one item
+per peer however long the panel runs. The superseded ones are still listed, still sized, still
+restorable; they are simply not in the next request.
+
+Each panelist also states its position through a tool, so the ending is arithmetic rather than a
+vibe: who moved, who held, who never stated a position at all. Nothing is inferred on a model's
+behalf - a panelist that ignored the ballot is reported as having ignored it, and an abstention
+is never counted as agreement.
+
+Two more, offline and API-key-free:
+
+* **[transparency](examples/transparency.rs)** - the whole philosophy in one run: what will be
+  sent, a permission prompt, a tool that floods the context, and pruning it away. It also
+  contains the permission policy and the `/context` renderer the library deliberately does not:
+  `cargo run --example transparency`
+* **[compaction](examples/compaction.rs)** - a compactor that summarizes what it drops, and the
+  user putting it back anyway: `cargo run --example compaction`
+
+The three networked ones share [`examples/common`](examples/common/mod.rs) - an OpenAI-compatible
+HTTP provider and nothing else, because a server-sent-event parser is not what any of them is
+about. They talk to anything that speaks that dialect, local models included:
+
+```console
+$ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
+    cargo run --example compare -- -m llama3.2 -m granite4.2:3b "why the borrow checker?"
+```
+
+---
+
+### 🧪 tests
+
+`cargo test` runs 110 offline tests: the context model, the selectors, the state machine
+(including that a second concurrent `step` is refused and that a dropped one does not wedge the
+kernel), the loop, permissions, projection and tool-call repair, token counting and calibration,
+compaction, and the session log. A replaced `Projector` gets its own test, because a seam nothing
+has ever been swapped through is a claim rather than a seam.
+
+There is also a live suite, which is the only way to check the things a mock cannot - that the
+requests this crate builds are accepted by a real API, and that a real model's answers survive
+the round trip through the context:
+
+```console
+$ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --nocapture
+```
+
+Google AI Studio speaks the same dialect and has a free tier of its own:
+
+```console
+$ NACHALNIK_API_KEY=... \
+  NACHALNIK_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai \
+  NACHALNIK_TEST_MODEL=gemini-3.5-flash-lite \
+  cargo test --test live -- --test-threads=1 --nocapture
+```
+
+It skips itself when there is no key (and reads only `OPENROUTER_API_KEY` /
+`NACHALNIK_API_KEY`, never a stray `OPENAI_API_KEY`), defaults to a small free model, costs
+about twenty requests per run, waits out momentary upstream rate limits, and skips rather than
+fails when a free-tier key has spent its daily allowance. Fourteen tests cover: a plain turn,
+the provider's own context limit, a system instruction, a labelled reference, streamed fragments
+adding up to the answer, a tool call whose result the model reads back, a paused-and-resumed
+permission decision, a refused call the model is told about, a *pruned* tool exchange still
+producing a request the API accepts, a truncated tool result, compaction before a request, an
+opaque parameter reaching the model, a mid-session model swap, and a whole session round-tripping
+through `serde`.
+
+---
+
+### 🚧 status
+
+Early, but complete for what it claims to cover: the state machine, the context model,
+permissions, the event stream, sessions, and projection. Deliberately **not** included, and not
+planned for the core: MCP, subagents, an editor protocol, a daemon, a CLI, or a prompt library.
+Those belong on top of it - which is the point.
+
+The crate follows [semver](https://semver.org/), and API breakage is to be expected before
+`1.0`.
+
+---
+
+### 📜 license
+
+Licensed under the MIT License ([LICENSE-MIT](LICENSE-MIT)).
