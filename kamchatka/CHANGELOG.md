@@ -23,6 +23,10 @@ minor bump may break you.
 
 ### added
 
+- The permissions tab says `a shell command can do any of these` while a registered tool that
+  runs commands is not refused outright. `Capability::Shell` subsumes every other capability, so a
+  tab that listed five verdicts and said nothing about that was reporting four restrictions that
+  are not there.
 - A call the policy refuses on its own says which stance refused it - `shell: refused by
   `network`, which this command reaches for` - because the tool result records only `the call was
   not permitted`, and when the tool's own capability is `allow` that leaves a refused call with

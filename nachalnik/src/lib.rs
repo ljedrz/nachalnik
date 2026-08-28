@@ -41,6 +41,33 @@
 //! renderer, no permission table, and no automatic context management unless you install a
 //! [`Compactor`] - which then reports every single thing it did.
 //!
+//! # What it does not protect you from
+//!
+//! There is no sandbox here, and there is not going to be one in this crate. It is worth saying so
+//! plainly in a library that uses the word *permissions*.
+//!
+//! The kernel executes nothing: no filesystem code, no network code, no process spawning. Every
+//! side effect in a session happens inside a [`Tool`] you wrote and registered, so there is
+//! nothing here to contain, and containment - a jail, a namespace, `seccomp`, a container - goes
+//! inside your tool or around the whole process.
+//!
+//! What it does enforce is one thing: a call the [`PermissionPolicy`] refused is never handed to
+//! [`Tool::invoke`], and the refusal is recorded as an [`Event`] and as a tool result the model is
+//! told about. That is a decision point with a paper trail, not a boundary. Four consequences,
+//! none of them a bug:
+//!
+//! - A [`Capability`] is a tool's own declaration, not a verified property; the kernel has nothing
+//!   to check it against.
+//! - [`Capability::Shell`] subsumes every other one, so a policy that allows it has allowed all of
+//!   them whatever it answers about the rest.
+//! - A policy that reads a command's text is a heuristic. It can make a refusal real for what was
+//!   written; it cannot stop a program that reaches the network some other way.
+//! - Anything in the context is something the model reads, and it can carry instructions. What
+//!   this runtime offers against that is the policy - which nothing in a model's output reaches
+//!   except as a tool name and arguments - and a context you can see before the request goes.
+//!
+//! # The parts are yours
+//!
 //! The kernel does not own a UI, an editor, a model, or a tool. Those are your side of the
 //! interface:
 //!

@@ -405,6 +405,53 @@ whatever had been streamed.
 
 ---
 
+### 🔓 what it does not protect you from
+
+There is no sandbox here, and there is not going to be one in the core. It is worth saying that
+plainly, in a crate that uses the word *permissions*, because that word invites the assumption.
+
+**The kernel executes nothing.** It has no filesystem code, no network code and no process
+spawning; every side effect in a session happens inside a `Tool` you wrote and registered. So
+there is nothing for it to contain, and containment - a jail, a namespace, `seccomp`, a container,
+a read-only mount - belongs either inside your tool or around the whole process. That is a real
+answer rather than a dodge: it is the same reason the crate has no HTTP client.
+
+**What it does enforce is one thing:** a call the `PermissionPolicy` refused is never handed to
+`Tool::invoke`, and the refusal is recorded as an event and as a tool result the model is told
+about. That is a *decision point with a paper trail*, not a boundary. Everything past `invoke` is
+the tool's.
+
+Four things follow, and none of them is a bug:
+
+* **A `Capability` is a declaration, not a verified property.** A tool that declares `Read` and
+  opens a socket is lying, and the kernel has nothing to check it against. The defence is that you
+  chose to register it - the same defence as for a `Provider` whose `render` does not match what it
+  sends.
+* **`Capability::Shell` subsumes every other one.** A command can read, write and reach the
+  network, so a policy that allows `Shell` has allowed all of it whatever it answers about the
+  rest. A client that showed `shell: allow` beside `network: deny` without saying so would be
+  reporting a restriction that does not exist; `kamchatka` says so on the permissions tab.
+* **A policy that reads a command's text is a heuristic, not a boundary.** `kamchatka`'s judges
+  `curl` and `pip install` against its `network` stance, which makes that row mean something; it
+  does not catch a script that curls. Asked for a URL with the network refused, a live model had
+  its `curl` refused and reached the page with `python3 -c "import urllib.request"` on the very
+  next call. Nothing short of the OS wins that argument.
+* **Context can be hostile.** A fetched page, a file, an MCP server's output: anything in the
+  context is something a model reads, and it can carry instructions. What this runtime offers
+  against that is not a cleverer model but the two things it is built on - the policy, which
+  nothing in a model's output can reach except as a tool name and arguments, and a context you can
+  *see*, item by item, before the next request goes out.
+
+Third-party tools deserve their own line. `nachalnik-mcp` speaks to servers somebody else wrote,
+and the specification says a client should never make tool-use decisions on hints from a server it
+does not trust - so `Trust` believes none of them by default, and the bridge's tests include a
+server offering a `delete_everything` that claims to be read-only.
+
+And `kamchatka` is a demonstration, not a hardened agent: it runs `sh -c` with no isolation and
+its file tools take any path you give them. Run it where you would run a shell.
+
+---
+
 ### 📡 everything is an event
 
 ```text

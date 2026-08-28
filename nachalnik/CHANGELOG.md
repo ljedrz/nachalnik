@@ -20,6 +20,9 @@ minor bump may break you.
 
 ### changed
 
+- The crate documentation has a `What it does not protect you from` section: there is no sandbox,
+  the kernel executes nothing, and what it enforces is that a refused call never reaches
+  `Tool::invoke` - a decision point with a paper trail rather than a boundary.
 - `Capability`'s documentation says that `Shell` subsumes every other capability, so a policy that
   allows it has allowed all of them - and that what closes the gap is `PermissionRequest::args`,
   which a policy is handed and a capability list cannot see.

@@ -36,6 +36,15 @@ pub enum Capability {
     /// Executing commands.
     Shell,
     /// Talking to the network.
+    ///
+    /// note: this one attracts the question of whether it earns its place, since a session that
+    /// also has a shell can reach the network through it whatever this says. The answer is that
+    /// the objection is not about this variant: [`Capability::Read`] is exactly as unverifiable,
+    /// and every one of these is a label rather than a boundary. Where there is no shell - an
+    /// agent whose tools all come from MCP servers, an editor integration with `read`, `write`
+    /// and `fetch` - refusing this refuses the whole of what the registered tools can do, which
+    /// is a complete answer rather than a partial one. It is kept for that case, and the case
+    /// where it is not complete is [`Capability::Shell`]'s note, above.
     Network,
     /// Anything else, named by the tool.
     Custom(String),

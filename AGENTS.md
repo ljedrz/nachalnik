@@ -179,6 +179,23 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
 
 ---
 
+## the security position
+
+Stated once, because it is the thing most likely to be quietly assumed otherwise, and it is in the
+README and the crate docs in longer form:
+
+- **There is no sandbox, and the core will not grow one.** The kernel executes nothing - no
+  filesystem, no network, no process spawning - so it has nothing to contain. Containment belongs
+  inside a `Tool` or around the whole process.
+- **What is enforced is one thing:** a refused call is never handed to `Tool::invoke`, and the
+  refusal is an event and a tool result. A decision point with a paper trail, not a boundary.
+- **A `Capability` is a declaration, not a verified property**, and `Shell` subsumes every other
+  one. A client that shows `shell: allow` beside `network: deny` without saying so is reporting a
+  restriction that does not exist - which is why `kamchatka`'s permissions tab says so.
+- **Do not add a check that implies more than it delivers.** `reaches_the_network` is allowed to
+  exist because its documentation is exact about what it misses, and because it makes a refusal
+  real for the command actually written. Anything of that shape needs the same treatment.
+
 ## conventions
 
 - **`note:` paragraphs.** Doc comments state what something is; a paragraph beginning `note:`

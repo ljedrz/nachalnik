@@ -1012,6 +1012,21 @@ impl App {
             .collect()
     }
 
+    /// Whether a registered tool can run commands, and the policy has not refused it outright.
+    ///
+    /// note: the question the permissions tab has to answer honestly. `Capability::Shell` subsumes
+    /// every other capability - a command reads, writes and reaches the network - so while one is
+    /// on the list and not denied, every other row is what a *tool* declares rather than what can
+    /// happen. `Ask` counts as live: the answer might be yes.
+    pub fn shell_is_live(&self) -> bool {
+        self.policy.stance(&Capability::Shell) != Verdict::Deny
+            && self
+                .kernel
+                .tool_specs()
+                .iter()
+                .any(|spec| spec.capabilities.contains(&Capability::Shell))
+    }
+
     /// Keys that belong to the permissions tab.
     fn permissions_key(&mut self, key: KeyEvent) {
         let rows = self.permissions();

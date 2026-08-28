@@ -289,7 +289,15 @@ fn footer(app: &App) -> String {
         }
         // the pane keeps the last few hundred; the log keeps everything, and `/save` writes it
         Tab::Trace => format!(" {} events · /save keeps them all ", app.trace.len()),
-        Tab::Permissions => " space cycles · a allow · n never · r ask again ".to_owned(),
+        // note: the caveat comes first because it is the one thing on this tab that is not
+        // negotiable. A registered shell that is not refused can read, write and reach the
+        // network whatever the other rows answer, so a tab that listed five verdicts and said
+        // nothing about that would be reporting four restrictions that are not there
+        Tab::Permissions => match app.shell_is_live() {
+            true => " a shell command can do any of these · space cycles · a allow · n never "
+                .to_owned(),
+            false => " space cycles · a allow · n never · r ask again ".to_owned(),
+        },
     }
 }
 

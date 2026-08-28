@@ -1184,6 +1184,40 @@ async fn a_denied_network_reaches_the_shell_that_would_have_used_it() {
 }
 
 #[tokio::test]
+async fn the_permissions_tab_admits_what_a_shell_can_do() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("grep", "found it").with_capabilities([Capability::Read]),
+    ));
+    harness.tab(Tab::Permissions);
+
+    // nothing here runs commands, so the five verdicts are the whole story
+    let screen = harness.sized(120, 30);
+    assert!(
+        !screen.contains("a shell command can do any of these"),
+        "{screen}"
+    );
+
+    // ... and once something does, the tab says so, because `shell` subsumes every other row
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("sh", "output").with_capabilities([Capability::Shell]),
+    ));
+    let screen = harness.sized(120, 30);
+    assert!(
+        screen.contains("a shell command can do any of these"),
+        "{screen}"
+    );
+
+    // refusing it outright puts the other rows back in charge
+    harness.app.policy.set(Capability::Shell, Verdict::Deny);
+    let screen = harness.sized(120, 30);
+    assert!(
+        !screen.contains("a shell command can do any of these"),
+        "{screen}"
+    );
+}
+
+#[tokio::test]
 async fn a_refusal_says_which_stance_made_it() {
     let mut harness = Harness::new([
         ModelResponse::tool_calls(vec![call("c1", "shell", json!({ "cmd": "rm -rf /tmp/x" }))]),

@@ -37,6 +37,12 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
  done · gpt-4o-mini · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back · F1 for the keys
 ```
 
+> **It is a demonstration, not a hardened agent.** It runs `sh -c` with no isolation and its file
+> tools take any path you give them, and the permission policy is a decision point with a paper
+> trail rather than a boundary — `shell` subsumes every other capability, which the permissions tab
+> says out loud. Run it where you would run a shell. See
+> [what it does not protect you from](../README.md#-what-it-does-not-protect-you-from).
+
 ## 👉 four tabs, one window
 
 <kbd>ctrl+t</kbd> for the next one, or <kbd>alt+1</kbd> … <kbd>alt+4</kbd> directly. The prompt and
