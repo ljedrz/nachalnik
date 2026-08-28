@@ -8,7 +8,9 @@
 //! of ordinary values rather than something the harness keeps to itself. The third is the event
 //! stream the session log is made of, as it happens. The fourth is the permission policy, which
 //! is otherwise only ever seen one call at a time, at the moment it is least convenient to think
-//! about.
+//! about - every answer somebody has actually given, and a count of what is still a question. Not
+//! a row per undecided thing: `ask` is what this policy does when nobody has told it anything, and
+//! a screenful of it buries the one line that says what can happen without stopping.
 
 use nachalnik::{ContextKind, ContextState, Kernel, State, Verdict};
 use ratatui::{
@@ -27,10 +29,14 @@ use crate::app::{App, Focus, Overlay, Speaker, Tab};
 
 /// What the keys do, shown by F1.
 ///
+/// note: `pub` so that a test can read it rather than trying to count things on a screen it does
+/// not all fit on. That is not a hypothetical convenience: `/seams` was listed in here twice, and
+/// the test that draws this panel had no way to notice.
+///
 /// note: no `\` continuation after the opening quote: it would eat the newline *and* the two
 /// spaces indenting the first heading, leaving `THE TABS` flush against the border while every
 /// other heading sat under it.
-pub(crate) const HELP: &str = "  THE TABS
+pub const HELP: &str = "  THE TABS
     ctrl+t              the next one
     alt+1 / 2 / 3 / 4   chat / context / trace / permissions
     tab                 move between the prompt and the tab, on the last three
@@ -63,10 +69,11 @@ pub(crate) const HELP: &str = "  THE TABS
     g / G               the oldest it still holds / the newest
 
   THE PERMISSIONS TAB, when it has the focus
-    up / down, j / k    pick a capability
+    up / down, j / k    pick a capability, or one of the path rules under them
     g / G               the first / the last
     space               cycle it: ask, then allow, then deny
     a / n / r           allow it / never allow it / ask about it again
+    (the line along the bottom says what a shell command can reach)
 
   A TOOL IS WAITING TO RUN
     y / n               once / no
@@ -85,7 +92,6 @@ pub(crate) const HELP: &str = "  THE TABS
     /restore SELECTOR   put them back
     /budget             the estimate, what the last request really cost, and the
                         correction the counter has worked out from the difference
-    /seams              what is plugged into each of the runtime's six parts
     /seams              what is plugged into each of the runtime's six parts
     /tools              what the model is offered
     /tools drop ID      stop offering one of them, from now on
@@ -293,10 +299,18 @@ fn footer(app: &App) -> String {
         // negotiable. A registered shell that is not refused can read, write and reach the
         // network whatever the other rows answer, so a tab that listed five verdicts and said
         // nothing about that would be reporting four restrictions that are not there
-        Tab::Permissions => match app.confinement() {
-            Some(line) => format!(" {line} · space cycles · a allow · n never "),
-            None => " space cycles · a allow · n never · r ask again ".to_owned(),
-        },
+        // note: the count of what is *not* listed. The tab is the decisions; this is the honest
+        // footnote that they are not the whole policy
+        Tab::Permissions => {
+            let asked = match app.undecided() {
+                0 => String::new(),
+                n => format!(" · {n} more it will ask about"),
+            };
+            match app.confinement() {
+                Some(line) => format!(" {line}{asked} · space cycles · a allow · n never "),
+                None => format!(" a allow · n never · r ask again{asked} "),
+            }
+        }
     }
 }
 
@@ -533,8 +547,18 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
 fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let rows = app.permissions();
     if rows.is_empty() {
+        // note: what is *not* here is a row per thing nobody has answered about yet. The policy
+        // asks about everything by default, so listing the defaults is listing the absence of
+        // decisions - and it buried the one or two lines that say what this agent can do without
+        // stopping. What arrives here is what somebody answered `a` or `n` to
         frame.render_widget(
-            Paragraph::new("no tool has declared anything").style(quiet()),
+            Paragraph::new(
+                "nothing has been decided yet.\n\nThe policy asks about everything it has not \
+                 been told about; answer a question with `a` or `n` and it will be here, where it \
+                 can be changed.",
+            )
+            .style(quiet())
+            .wrap(ratatui::widgets::Wrap { trim: false }),
             area,
         );
         return Scrolled::default();

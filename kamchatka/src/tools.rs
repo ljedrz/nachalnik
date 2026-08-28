@@ -181,8 +181,17 @@ pub struct Shell {
     pub workdir: PathBuf,
     /// Extra paths the user asked to open up.
     pub extra: Vec<PathBuf>,
-    /// Whether to confine at all; `--no-sandbox` turns this off.
-    pub confined: bool,
+    /// The binary that knows how to confine itself and run a command; `None` runs `sh` directly.
+    ///
+    /// note: a path settled once at startup rather than `current_exe()` per call, for two
+    /// reasons. On Linux `current_exe()` reads `/proc/self/exe`, and a binary replaced while the
+    /// program is running - `cargo build` in the very repository it is working on, an upgrade -
+    /// makes that a path ending in ` (deleted)`, so every command comes back
+    /// `No such file or directory` and nothing on screen accounts for it. And this crate is a
+    /// library as well as a program: `current_exe()` in somebody else's process is somebody
+    /// else's binary, which would be handed `--confine-and-run` and would make of it whatever it
+    /// liked.
+    pub confiner: Option<PathBuf>,
 }
 
 #[async_trait]
@@ -206,11 +215,7 @@ impl Tool for Shell {
 
         // what the command may reach, which is a different question from whether it may run: the
         // kernel answered that one before this was called
-        let mut command = match self
-            .confined
-            .then(|| std::env::current_exe().ok())
-            .flatten()
-        {
+        let mut command = match &self.confiner {
             Some(me) => {
                 let sandbox = Sandbox::of(
                     &self.policy,
@@ -382,8 +387,8 @@ pub fn path_matches(pattern: &str, path: &str) -> bool {
     }
 }
 
-/// Reading is allowed, the network is refused, and everything else is a question - unless the
-/// person at the terminal has said otherwise about that capability.
+/// Reading is allowed, a handful of paths that look like credentials are a question, and so is
+/// everything else - unless the person at the terminal has said otherwise about it.
 ///
 /// note: Capabilities are the unit rather than tool names, which is what makes this work for
 /// tools this crate has never heard of. An MCP server's tools all carry a `mcp:<server>`
@@ -440,7 +445,8 @@ impl Default for Careful {
 }
 
 impl Careful {
-    /// Builds a policy that allows reads, refuses the network, and asks about the rest.
+    /// Builds a policy that allows reads and asks about everything else, including a short list of
+    /// paths that look like credentials.
     pub fn new() -> Self {
         Self {
             stances: Mutex::new(BTreeMap::from([

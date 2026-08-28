@@ -76,8 +76,8 @@ impl Tab {
     }
 }
 
-/// One row of the permissions tab: a capability, what the policy will answer about it, and the
-/// tools that would be affected.
+/// One row of the permissions tab: a capability or a path rule, what the policy will answer about
+/// it, and the tools that would be affected.
 pub struct Stance {
     /// What the row is about: a capability, or a pattern the paths are matched against.
     pub subject: Subject,
@@ -92,6 +92,13 @@ pub struct Stance {
     /// it` beside a verdict of `deny`, which is a restriction that was not there. What is there is
     /// [`crate::tools::Careful`] reading the command, and that is what this says.
     pub sometimes: Vec<String>,
+}
+
+impl Stance {
+    /// Whether somebody has actually answered about this, as opposed to it being the default.
+    pub fn is_decided(&self) -> bool {
+        self.verdict != Verdict::Ask
+    }
 }
 
 /// One line of the trace pane: an event's name, and what it says for itself.
@@ -996,6 +1003,26 @@ impl App {
     /// what the tools declare is not the whole story either: `network` is refused here and no
     /// built-in tool wants it, but a refusal you cannot see is not a policy you can trust.
     pub fn permissions(&self) -> Vec<Stance> {
+        self.all_stances()
+            .into_iter()
+            .filter(Stance::is_decided)
+            .collect()
+    }
+
+    /// How many subjects the policy will simply ask about, because nobody has told it otherwise.
+    ///
+    /// note: the tab does not list them - a row for a `.aws` rule nobody has thought about is not
+    /// information - but it does say how many there are, because a screen showing two decisions
+    /// and silently standing for sixteen answers would be a different kind of dishonest.
+    pub fn undecided(&self) -> usize {
+        self.all_stances()
+            .iter()
+            .filter(|row| !row.is_decided())
+            .count()
+    }
+
+    /// Every subject this policy holds an opinion about, decided or not.
+    fn all_stances(&self) -> Vec<Stance> {
         let mut rows: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
         let mut sometimes: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
         for (capability, _) in self.policy.stances() {
@@ -1035,7 +1062,8 @@ impl App {
             .map(|spec| spec.id.clone())
             .collect();
 
-        rows.into_iter()
+        let listed = rows
+            .into_iter()
             .map(|(capability, tools)| Stance {
                 verdict: self.policy.stance(&Subject::Capability(capability.clone())),
                 sometimes: sometimes.remove(&capability).unwrap_or_default(),
@@ -1052,8 +1080,9 @@ impl App {
                         tools: bound.clone(),
                         sometimes: Vec::new(),
                     }),
-            )
-            .collect()
+            );
+
+        listed.collect()
     }
 
     /// What the shell can reach, in one line, or `None` if nothing here runs commands.

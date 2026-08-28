@@ -18,6 +18,10 @@ minor bump may break you.
   run's own is handed over as `TMPDIR`; `/tmp` itself is not opened up.
 - `read`, `write` and `edit` are held to the same boundary by their own code, resolving `..` and
   symlinks before comparing. Weaker in kind than a ruleset, and said to be.
+- The binary that confines a command is settled once at startup rather than asked for per call.
+  `current_exe()` reads `/proc/self/exe`, so a `cargo build` in the repository being worked on
+  replaced it mid-session and every command came back `No such file or directory` with nothing on
+  screen accounting for it. If it cannot confine, the shell runs unconfined and the tab says so.
 - `--sandbox-allow PATH` opens up another path, `--no-sandbox` turns the whole thing off, and the
   permissions tab says which of `shell: confined` and `shell: a command can do any of these` is
   true here.
@@ -46,6 +50,11 @@ minor bump may break you.
   nothing on screen accounting for it.
 
 ### changed
+
+- The permissions tab lists the answers somebody has actually given, and counts the rest along the
+  bottom. `ask` is what the policy does when it has not been told anything, and a screenful of it
+  buried the one or two lines that say what this agent can do without stopping. Cycling a row back
+  to `ask` takes it off the tab, which is what taking a decision back looks like.
 
 - The `network` stance starts at `ask` rather than `deny`. Refusing outright was a decision made on
   the user's behalf about something they may perfectly well want, and now that the sandbox enforces

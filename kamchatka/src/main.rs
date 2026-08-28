@@ -135,9 +135,11 @@ async fn terminal() -> Result<()> {
             target: (args.compact - 0.2).max(0.1),
         })));
     }
+    // settled once, here, rather than asked per command: see the note on `Shell::confiner`
+    let program = std::env::current_exe()?;
     let confinement = match args.no_sandbox {
         true => sandbox::Confinement::Unsupported,
-        false => sandbox::available(&std::env::current_exe()?),
+        false => sandbox::available(&program),
     };
     let reach = sandbox::Reach {
         workdir: std::env::current_dir()?,
@@ -149,7 +151,11 @@ async fn terminal() -> Result<()> {
             policy: policy.clone(),
             workdir: reach.workdir.clone(),
             extra: reach.extra.clone(),
-            confined: reach.confined,
+            // only when it would actually confine anything. A binary that has been replaced since
+            // this one started, or a kernel with no Landlock, is a `shell` that runs unconfined
+            // and a permissions tab that says so - rather than one whose every command comes back
+            // with an error nobody can account for
+            confiner: confinement.is_confined().then(|| program.clone()),
         },
         reach,
     ) {

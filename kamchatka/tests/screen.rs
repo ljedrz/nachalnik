@@ -827,6 +827,22 @@ async fn the_help_lists_the_keys_that_exist() {
     let rest = harness.sized(110, 40);
     assert!(rest.contains("/prune"), "{rest}");
 
+    // ... and every command is listed once. `/seams` was in there twice, and a test that could
+    // only see one screenful at a time had no way to notice
+    // the whole left column, not the first word: `/tools` and `/tools drop ID` are two entries
+    // for one command and belong in here twice
+    let commands: Vec<&str> = ui::HELP
+        .lines()
+        .map(str::trim_start)
+        .filter(|line| line.starts_with('/'))
+        .map(|line| line.split("  ").next().unwrap_or(line).trim_end())
+        .collect();
+    let mut seen = commands.clone();
+    seen.sort_unstable();
+    seen.dedup();
+    assert_eq!(seen.len(), commands.len(), "listed twice: {commands:?}");
+    assert!(commands.contains(&"/seams"), "{commands:?}");
+
     // any other key closes it
     harness.press(KeyCode::Esc).await;
     assert!(harness.app.overlay.is_none());
@@ -1080,32 +1096,49 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
     ));
     harness.tab(Tab::Permissions);
 
+    // the answers somebody has, and only those. `ask` is what this policy does when nobody has
+    // told it anything, and a screenful of it buries the line that says what can happen without
+    // stopping - so the rest are counted along the bottom instead of listed
     let screen = harness.sized(110, 30);
-    // what the policy has been told about, including the answers nobody has changed - a stance
-    // you cannot see is not a policy anybody can check
     assert!(screen.contains("read"), "{screen}");
-    assert!(screen.contains("network"), "{screen}");
     assert!(screen.contains("allow"), "{screen}");
-    // and what the tools need, whether or not anybody has decided about it: `shell` is the row
-    // that will stop and ask, which is exactly the one worth seeing in advance
+    assert_eq!(
+        harness.app.permissions().len(),
+        1,
+        "`ask` is not a decision, and `read` is the only answer anybody has"
+    );
+    assert!(!screen.contains("shell "), "{screen}");
+    assert!(screen.contains("more it will ask about"), "{screen}");
+
+    // ... and deciding one puts it on the tab, naming what it covers
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::Shell), Verdict::Deny);
+    let screen = harness.sized(110, 30);
     let shell = screen
         .lines()
         .find(|line| line.contains("shell"))
-        .expect("the capability a registered tool declares is listed");
-    assert!(shell.contains("ask"), "{shell}");
+        .expect("a decided capability is listed");
+    assert!(shell.contains("deny"), "{shell}");
     assert!(
         shell.contains("rm"),
         "the row names what it covers: {shell}"
     );
 
     // no tool declares `network` - but the shell is judged against it anyway, on what the command
-    // says, so the row that used to read `nothing registered needs it` (a coverage claim that was
-    // not true) now names the tool the answer actually reaches
+    // says, so its row names the tool the answer actually reaches rather than claiming that
+    // nothing needs it
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::Network), Verdict::Deny);
+    let screen = harness.sized(110, 30);
     let network = screen
         .lines()
         .find(|line| line.contains("network"))
-        .expect("the stance is listed");
-    assert!(network.contains("ask"), "{network}");
+        .expect("the decision is listed");
+    assert!(network.contains("deny"), "{network}");
     assert!(
         network.contains("rm, when the command reaches for it"),
         "{network}"
@@ -1312,28 +1345,37 @@ async fn the_permissions_tab_draws_the_path_rules_too() {
     ));
     harness.tab(Tab::Permissions);
 
+    // nobody has decided anything about `.env*`, so it is not a row - it is one of the things the
+    // footer counts, and it arrives here the moment somebody answers a question about it
+    let screen = harness.sized(120, 40);
+    assert!(!screen.contains(".env*"), "{screen}");
+    assert!(
+        screen.contains("more it will ask about"),
+        "what is not listed is still counted: {screen}"
+    );
+
+    harness
+        .app
+        .policy
+        .set(&Subject::Path(".env*".to_owned()), Verdict::Deny);
+
     let screen = harness.sized(120, 40);
     let rule = screen
         .lines()
         .find(|line| line.contains(".env*"))
-        .expect("a rule finer than a capability is still a stance, and is still drawn");
-    assert!(rule.contains("ask"), "{rule}");
+        .expect("a decision about a path is a decision, and is drawn like any other");
+    assert!(rule.contains("deny"), "{rule}");
     assert!(rule.contains("read"), "it names the tools it binds: {rule}");
 
     // ... and it cycles like any other row
-    harness.app.chosen = harness
-        .app
-        .permissions()
-        .iter()
-        .position(|row| row.subject == Subject::Path(".env*".to_owned()))
-        .expect("the row is there");
+    pick(&mut harness, &Subject::Path(".env*".to_owned())).await;
     harness.press(KeyCode::Char(' ')).await;
     assert_eq!(
         harness
             .app
             .policy
             .stance(&Subject::Path(".env*".to_owned())),
-        Verdict::Allow
+        Verdict::Ask
     );
 }
 
@@ -1367,6 +1409,27 @@ async fn a_refusal_says_which_stance_made_it() {
     );
 }
 
+/// Puts the cursor on the row for `subject`, which has to be a decision for it to be listed.
+async fn pick(harness: &mut Harness, subject: &Subject) {
+    let at = harness
+        .app
+        .permissions()
+        .iter()
+        .position(|row| row.subject == *subject)
+        .unwrap_or_else(|| {
+            panic!(
+                "the tab lists decisions, and nobody has decided about `{subject}`: {:?}",
+                harness
+                    .app
+                    .permissions()
+                    .iter()
+                    .map(|row| row.subject.to_string())
+                    .collect::<Vec<_>>()
+            )
+        });
+    harness.app.chosen = at;
+}
+
 #[tokio::test]
 async fn changing_a_permission_changes_what_happens_next() {
     let mut harness = Harness::configured(
@@ -1393,14 +1456,24 @@ async fn changing_a_permission_changes_what_happens_next() {
     harness.press(KeyCode::Char('n')).await;
     harness.settle().await;
 
-    // decide it in advance instead, on the tab, and the same call no longer asks
+    // `n` at the prompt refuses that call and decides nothing, so the tab still has nothing to
+    // say about the shell. It lists decisions
+    assert!(
+        !harness
+            .app
+            .permissions()
+            .iter()
+            .any(|row| row.subject == Subject::Capability(Capability::Shell)),
+        "a refusal of one call is not a decision about the capability"
+    );
+
+    // deciding it *is* what puts it there, and changes what the same call does next time
+    harness.app.policy.set(
+        &Subject::Capability(Capability::Shell),
+        nachalnik::Verdict::Deny,
+    );
     harness.tab(Tab::Permissions);
-    harness.press(KeyCode::Home).await;
-    while harness.app.permissions()[harness.app.chosen].subject
-        != Subject::Capability(Capability::Shell)
-    {
-        harness.press(KeyCode::Down).await;
-    }
+    pick(&mut harness, &Subject::Capability(Capability::Shell)).await;
     harness.press(KeyCode::Char('a')).await;
 
     assert_eq!(
@@ -1434,13 +1507,14 @@ async fn a_capability_can_be_refused_outright_rather_than_asked_about() {
         ConstTool::new("rm", "gone").with_capabilities([Capability::Shell]),
     ));
 
+    // the tab lists decisions, so there is one to make first: `a` at a question is what puts a
+    // subject on it, and `n` there is what changes its mind
+    harness.app.policy.set(
+        &Subject::Capability(Capability::Shell),
+        nachalnik::Verdict::Allow,
+    );
     harness.tab(Tab::Permissions);
-    harness.press(KeyCode::Home).await;
-    while harness.app.permissions()[harness.app.chosen].subject
-        != Subject::Capability(Capability::Shell)
-    {
-        harness.press(KeyCode::Down).await;
-    }
+    pick(&mut harness, &Subject::Capability(Capability::Shell)).await;
     harness.press(KeyCode::Char('n')).await;
 
     harness.tab(Tab::Chat);
@@ -1461,22 +1535,42 @@ async fn cycling_a_permission_goes_round_rather_than_getting_stuck() {
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("rm", "gone").with_capabilities([Capability::Shell]),
     ));
+    harness.app.policy.set(
+        &Subject::Capability(Capability::Shell),
+        nachalnik::Verdict::Allow,
+    );
     harness.tab(Tab::Permissions);
-    harness.press(KeyCode::Home).await;
-    while harness.app.permissions()[harness.app.chosen].subject
-        != Subject::Capability(Capability::Shell)
-    {
-        harness.press(KeyCode::Down).await;
-    }
-
-    let mut seen = Vec::new();
-    for _ in 0..4 {
-        seen.push(harness.app.permissions()[harness.app.chosen].verdict);
-        harness.press(KeyCode::Char(' ')).await;
-    }
+    pick(&mut harness, &Subject::Capability(Capability::Shell)).await;
 
     use nachalnik::Verdict::{Allow, Ask, Deny};
-    assert_eq!(seen, vec![Ask, Allow, Deny, Ask], "space should go round");
+    let shell = Subject::Capability(Capability::Shell);
+    let mut seen = vec![harness.app.policy.stance(&shell)];
+    for _ in 0..2 {
+        harness.press(KeyCode::Char(' ')).await;
+        seen.push(harness.app.policy.stance(&shell));
+    }
+
+    assert_eq!(seen, vec![Allow, Deny, Ask], "space goes allow, deny, ask");
+
+    // ... and arriving back at `ask` takes the row off the tab, because `ask` is not a decision -
+    // it is what the policy does when nobody has made one. That is what taking a decision back
+    // looks like here, and the subject returns the next time somebody answers a question about it
+    assert!(
+        !harness
+            .app
+            .permissions()
+            .iter()
+            .any(|row| row.subject == shell),
+        "cycling back to `ask` is undeciding it"
+    );
+    harness.app.policy.set(&shell, Allow);
+    assert!(
+        harness
+            .app
+            .permissions()
+            .iter()
+            .any(|row| row.subject == shell)
+    );
 }
 
 #[tokio::test]

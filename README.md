@@ -179,9 +179,9 @@ holds, what it costs, whether it is going into the next request, and what the mo
 read of it - with the ones that are *not* going saying why, on their own row, in the projector's
 words. `space` takes an item out and puts it back, `p` pins it, `e` changes what it says, `enter`
 reads the whole of it, `u` undoes. The third is every event the runtime emits, as it happens, in
-the same names the session log is made of. The fourth is the permission policy - every capability,
-what the policy will answer about it, and which tools that covers - decided in advance and changed
-where it is read, rather than one prompt at a time at the moment it is least convenient.
+the same names the session log is made of. The fourth is the permission policy - every
+answer somebody has actually given, what it covers, and how many things are still a question -
+changed where it is read rather than one prompt at a time at the moment it is least convenient.
 
 `ctrl+p` heads that request with everything the projector left out and why - `excluded: pruned by
 \`tool:shell:latest\``, `archived: the whole output; the model was shown a shortened copy`,
