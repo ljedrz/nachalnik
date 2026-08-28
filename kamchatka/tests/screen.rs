@@ -614,6 +614,33 @@ async fn what_the_screen_shows_of_the_next_request_is_the_next_request() {
 }
 
 #[tokio::test]
+async fn a_panel_that_promises_the_bytes_does_not_reflow_the_spaces_out_of_them() {
+    let mut harness = Harness::new([]);
+    // a run of spaces on a line long enough that the panel has to fold it - which is exactly
+    // where a wrapper that split on whitespace used to collapse every run into one. `/payload`
+    // and `/raw` say they show the bytes, and a file's indentation is spaces in a row
+    let padded = format!(
+        "def f():{}return 1, and then {}",
+        " ".repeat(8),
+        "x ".repeat(40)
+    );
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("indented.py", padded));
+
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Enter).await;
+
+    let screen = harness.sized(60, 30);
+    assert!(
+        screen.contains("def f():        return 1,"),
+        "the indentation was re-flowed away: {screen}"
+    );
+}
+
+#[tokio::test]
 async fn the_status_line_says_what_the_budget_is_measured_against() {
     let mut harness = Harness::new([]);
     harness.app.kernel.push(ContextItem::user("hello"));

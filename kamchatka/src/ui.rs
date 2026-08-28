@@ -839,6 +839,12 @@ fn wrapped(text: &str, width: usize, prefix: &str) -> Vec<String> {
 }
 
 /// Breaks one paragraph into pieces no wider than `room`.
+///
+/// note: `split(' ')` rather than `split_whitespace`, because the latter collapses a run of
+/// spaces into one and this is what draws `/payload` - a panel whose whole claim is that it shows
+/// the bytes that would go out. A file's indentation inside a JSON string is spaces in a row, and
+/// re-flowing them away would be quietly answering a different question. It keeps the help's
+/// columns lined up in a narrow pane, too.
 fn fold(body: &str, room: usize) -> Vec<String> {
     if body.chars().count() <= room {
         return vec![body.to_owned()];
@@ -846,11 +852,15 @@ fn fold(body: &str, room: usize) -> Vec<String> {
 
     let mut out = Vec::new();
     let mut line = String::new();
-    for word in body.split_whitespace() {
+    // a word can now be the empty string - that is what a run of spaces is made of - so "have I
+    // put anything on this line yet" is its own question rather than `line.is_empty()`
+    let mut fresh = true;
+
+    for word in body.split(' ') {
         // a single word longer than the pane is broken rather than allowed to overflow; the last
         // piece stays open, so that whatever follows can share the line with it
         if word.chars().count() > room {
-            if !line.is_empty() {
+            if !fresh {
                 out.push(std::mem::take(&mut line));
             }
             let characters: Vec<char> = word.chars().collect();
@@ -858,17 +868,19 @@ fn fold(body: &str, room: usize) -> Vec<String> {
                 out.push(piece.iter().collect());
             }
             line = out.pop().unwrap_or_default();
+            fresh = false;
             continue;
         }
 
-        let column = line.chars().count();
-        if column != 0 && column + 1 + word.chars().count() > room {
+        if !fresh && line.chars().count() + 1 + word.chars().count() > room {
             out.push(std::mem::take(&mut line));
+            fresh = true;
         }
-        if !line.is_empty() {
+        if !fresh {
             line.push(' ');
         }
         line.push_str(word);
+        fresh = false;
     }
     out.push(line);
 
