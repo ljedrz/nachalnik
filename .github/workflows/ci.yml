@@ -23,26 +23,27 @@ jobs:
       - name: formatting
         run: cargo fmt --all --check
       - name: clippy
-        run: cargo clippy --all-features --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
       # the tests turn both features on, so nothing else exercises the default build
       - name: default features
-        run: cargo build
-      - name: no features, all targets
-        run: cargo check --no-default-features
+        run: cargo build --workspace
+      # `nachalnik` has to stand up with neither of its features; the others may need them
+      - name: no features
+        run: cargo check -p nachalnik --no-default-features
 
       - name: tests
         # the live suite skips itself without a key, which is how it should behave in CI
-        run: cargo test --all-features
+        run: cargo test --workspace --all-features
       - name: docs
-        run: cargo doc --all-features --no-deps
+        run: cargo doc --workspace --all-features --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
 
       - name: the examples that need no key
         run: |
-          cargo run --example transparency --features selectors
-          cargo run --example compaction
+          cargo run -p nachalnik --example transparency --features selectors
+          cargo run -p nachalnik --example compaction
 
   msrv:
     name: msrv (1.88)
@@ -51,4 +52,4 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.88.0
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --all-features --all-targets
+      - run: cargo check --workspace --all-features --all-targets

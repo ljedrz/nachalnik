@@ -1,0 +1,48 @@
+[package]
+name = "nachalnik"
+version = "0.1.0"
+description = "A minimal, transparent agent runtime: context, tools, permissions and execution as explicit, user-controllable state."
+documentation = "https://docs.rs/nachalnik"
+readme = "README.md"
+categories = ["asynchronous", "development-tools"]
+keywords = ["agent", "llm", "runtime", "context", "harness"]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+# both features are off by default, and the documentation links into both of them; without this,
+# docs.rs would build the default configuration and publish a page whose links do not resolve
+[package.metadata.docs.rs]
+all-features = true
+
+[lib]
+crate-type = ["lib"]
+
+[features]
+# The selector language (`tool:grep:latest`, `all:tool_results`, ...) used to name context
+# items. It is a convenience for clients, not part of the runtime, so it is opt-in.
+selectors = []
+# Exposes the scripted provider, dummy tools and off-the-shelf permission policies used by
+# this crate's own tests; useful for testing an agent built on top of the kernel without
+# touching a real model provider.
+test = []
+
+[dependencies]
+async-trait.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# `rt` only for `JoinSet`, and only reached when `Config::parallel_tool_calls` is on
+tokio = { workspace = true, features = ["rt", "sync"] }
+
+[dev-dependencies]
+nachalnik = { path = ".", features = ["selectors", "test"] } # a workaround to use these features in tests by default
+reqwest.workspace = true
+# `signal` so that the `agent` example can put ctrl-c on `Kernel::interrupt`
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }

@@ -380,7 +380,7 @@ Both are off by default, because neither is part of the runtime:
 
 ### 📚 examples
 
-**[agent](examples/agent.rs)** - a CLI agent you can actually talk to. Bring an OpenRouter key:
+**[agent](nachalnik/examples/agent.rs)** - a CLI agent you can actually talk to. Bring an OpenRouter key:
 
 ```console
 $ export OPENROUTER_API_KEY=sk-or-...
@@ -422,7 +422,7 @@ the kernel:
 /tools  /policy  /model [id]  /params [key json]  /save <path>
 ```
 
-**[compare](examples/compare.rs)** - the same prompt to several models at once, with proof that
+**[compare](nachalnik/examples/compare.rs)** - the same prompt to several models at once, with proof that
 it *was* the same prompt:
 
 ```console
@@ -460,7 +460,7 @@ it stops claiming the requests are identical, because by then they are not:
 provider charged for. `--payload` prints the exact bytes each provider will send, `--save DIR`
 writes every session as a log and a snapshot, and each one is resumable with `agent -r`.
 
-**[panel](examples/panel.rs)** - several models arguing about one question, in rounds, ending in
+**[panel](nachalnik/examples/panel.rs)** - several models arguing about one question, in rounds, ending in
 a ruling with a tally behind it:
 
 ```console
@@ -498,14 +498,14 @@ is never counted as agreement.
 
 Two more, offline and API-key-free:
 
-* **[transparency](examples/transparency.rs)** - the whole philosophy in one run: what will be
+* **[transparency](nachalnik/examples/transparency.rs)** - the whole philosophy in one run: what will be
   sent, a permission prompt, a tool that floods the context, and pruning it away. It also
   contains the permission policy and the `/context` renderer the library deliberately does not:
   `cargo run --example transparency`
-* **[compaction](examples/compaction.rs)** - a compactor that summarizes what it drops, and the
+* **[compaction](nachalnik/examples/compaction.rs)** - a compactor that summarizes what it drops, and the
   user putting it back anyway: `cargo run --example compaction`
 
-The three networked ones share [`examples/common`](examples/common/mod.rs) - an OpenAI-compatible
+The three networked ones share [`examples/common`](nachalnik/examples/common/mod.rs) - an OpenAI-compatible
 HTTP provider and nothing else, because a server-sent-event parser is not what any of them is
 about. They talk to anything that speaks that dialect, local models included:
 
@@ -554,15 +554,42 @@ through `serde`.
 
 ---
 
+### 📦 the workspace
+
+| crate | what it is |
+| --- | --- |
+| **[`nachalnik`](nachalnik/)** | the runtime. Five dependencies, no `unsafe`, no network, no prompt. This is the part that matters, and it is meant to stay boring. |
+| `nachalnik-mcp` *(planned)* | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
+| `kamchatka` *(planned)* | a small TUI agent built on the runtime - the thing you actually run. |
+
+The two planned crates are deliberately *not* in the core, and MCP is the clearer case of the two.
+Supporting it means spawning processes, speaking HTTP and reading notifications in the background,
+and the runtime promises to do none of those; it would also tie a context library's version to a
+protocol that revises faster than the library should. None of it needs anything the kernel does not
+already expose - an MCP tool is a `Tool` that forwards to a server - so it belongs beside the
+runtime rather than inside it. A seam nothing has ever been pushed through is a claim, not a seam,
+and that bridge is how this one gets tested.
+
+---
+
 ### 🚧 status
 
 Early, but complete for what it claims to cover: the state machine, the context model,
 permissions, the event stream, sessions, and projection. Deliberately **not** included, and not
 planned for the core: MCP, subagents, an editor protocol, a daemon, a CLI, or a prompt library.
-Those belong on top of it - which is the point.
+Those belong on top of it - which is the point, and which is what the rest of the workspace is
+for.
 
 The crate follows [semver](https://semver.org/), and API breakage is to be expected before
 `1.0`.
+
+---
+
+### 🎸 the name
+
+*Nachalnik Kamchatki* - "the boss of Kamchatka" - is a 1984 KINO album, named for the boiler room
+where Viktor Tsoi shovelled coal while making it. A `nachalnik` is a boss, which is the joke: the
+agent is not the boss, you are. `kamchatka` is the boiler room the work actually happens in.
 
 ---
 
