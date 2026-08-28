@@ -178,6 +178,10 @@ impl Reach {
         let mut rest = PathBuf::new();
         let resolved = loop {
             match existing.canonicalize() {
+                // note: joined only when there is something to join. `Path::join("")` appends a
+                // separator, and `/w/local.txt/` is a directory that is not there - which is how
+                // a plain `./local.txt` came back `Not a directory` the first time this ran
+                Ok(resolved) if rest.as_os_str().is_empty() => break resolved,
                 Ok(resolved) => break resolved.join(&rest),
                 Err(_) => match (existing.file_name(), existing.parent()) {
                     (Some(name), Some(parent)) => {
@@ -198,7 +202,8 @@ impl Reach {
             }) {
             true => Ok(resolved),
             false => Err(format!(
-                "{}: outside {}, which is as far as this agent reaches. Start it elsewhere, or                  pass --sandbox-allow",
+                "{}: outside {}, which is as far as this agent reaches. Start it there, or pass \
+                 --sandbox-allow",
                 path.display(),
                 self.workdir.display()
             )),

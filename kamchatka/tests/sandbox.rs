@@ -195,8 +195,11 @@ fn the_file_tools_are_held_to_the_same_boundary() {
         confined: true,
     };
 
-    // inside, by any spelling
-    assert!(reach.allows("inside.txt").is_ok());
+    // inside, by any spelling. `./` is in here because the first live run of this came back
+    // `Not a directory`: an empty remainder joined onto a resolved path appends a separator
+    assert_eq!(reach.allows("inside.txt"), Ok(dir.join("inside.txt")));
+    assert_eq!(reach.allows("./inside.txt"), Ok(dir.join("inside.txt")));
+    assert_eq!(reach.allows("."), Ok(dir.clone()));
     assert!(
         reach
             .allows(dir.join("inside.txt").to_str().unwrap())
