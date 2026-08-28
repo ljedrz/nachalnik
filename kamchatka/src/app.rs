@@ -10,12 +10,13 @@ use std::{collections::VecDeque, sync::Arc};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    ContextItem, ContextKind, ContextState, Delta, Event, Grant, Kernel, State, selectors::Selector,
+    BytesPerToken, Calibrating, ContextItem, ContextKind, ContextState, Delta, Event, Grant,
+    Kernel, State, selectors::Selector,
 };
 use ratatui_textarea::{CursorMove, TextArea};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{provider::OpenAiCompatible, tools::Careful};
+use crate::{provider::OpenAiCompatible, tools::Careful, ui::thousands};
 
 /// How many trace lines are kept; the session log is the one that keeps everything.
 const TRACE_DEPTH: usize = 400;
@@ -94,6 +95,8 @@ pub struct App {
     pub policy: Arc<Careful>,
     /// The provider, for switching models.
     pub provider: Arc<OpenAiCompatible>,
+    /// The counter, kept concrete so that what it has learned can be shown.
+    pub counter: Arc<Calibrating<BytesPerToken>>,
     /// The conversation.
     pub transcript: Vec<Entry>,
     /// Every event, one line each.
@@ -138,6 +141,11 @@ impl App {
         provider: Arc<OpenAiCompatible>,
         outcomes: UnboundedSender<Outcome>,
     ) -> Self {
+        // the counter the kernel is using, as the type it actually is: `Kernel::counter` hands
+        // back a `dyn TokenCounter`, and what it has learned is not on that trait
+        let counter = Arc::new(Calibrating::new(BytesPerToken::default()));
+        kernel.set_counter(counter.clone());
+
         let mut input = TextArea::default();
         input.set_placeholder_text("ask for something, or /help");
         input.set_cursor_line_style(ratatui::style::Style::default());
@@ -146,6 +154,7 @@ impl App {
             kernel,
             policy,
             provider,
+            counter,
             transcript: Vec::new(),
             trace: VecDeque::new(),
             input,
@@ -368,9 +377,24 @@ impl App {
             } => {
                 self.streamed = false;
                 self.close();
-                // the kernel altering what the model is told is not a detail for the trace pane
-                for repair in repairs {
-                    self.say(Speaker::Note, format!("the request was repaired: {repair}"));
+
+                // the kernel altering what the model is told is not a detail for the trace pane.
+                // One compaction pass can orphan half a dozen calls at once, though, and six
+                // notices in a row push the answer off the screen to say one thing - so the
+                // conversation gets the fact and ctrl+p gets the list
+                match repairs.len() {
+                    0 => {}
+                    1 => self.say(
+                        Speaker::Note,
+                        format!("the request was repaired: {}", repairs[0]),
+                    ),
+                    many => self.say(
+                        Speaker::Note,
+                        format!("the request was repaired in {many} places; ctrl+p says where"),
+                    ),
+                }
+                for repair in &repairs {
+                    self.trace(format!("  repaired: {repair}"));
                 }
                 for left_out in skipped {
                     self.trace(format!("  skipped [{}]: {}", left_out.id, left_out.reason));
@@ -755,6 +779,7 @@ impl App {
                     .join("\n");
                 self.preview("what the model is offered", body);
             }
+            "budget" => self.budget(),
             "policy" => {
                 let allowed = self.policy.listing().join(", ");
                 self.say(
@@ -781,7 +806,7 @@ impl App {
                             info.model,
                             info.provider,
                             info.context_limit
-                                .map(|l| l.to_string())
+                                .map(thousands)
                                 .unwrap_or_else(|| "an unknown number of".into())
                         ),
                     ),
@@ -837,6 +862,78 @@ impl App {
             Speaker::Note,
             format!("{} item(s) are now {state}", changed.len()),
         );
+    }
+
+    /// What the next request is estimated to cost, beside what the last one actually did.
+    ///
+    /// note: The status line can only afford one number, and it shows the estimate - which is
+    /// produced by a counter that does not have the model's tokenizer and is therefore wrong.
+    /// This is where the two numbers sit side by side, along with the correction the counter has
+    /// worked out for itself from the difference. A budget nobody can check is a decoration.
+    fn budget(&mut self) {
+        let budget = self.kernel.budget();
+        let withheld = self
+            .kernel
+            .with_context(|context| context.tokens_withheld());
+        let out = self
+            .kernel
+            .items()
+            .iter()
+            .filter(|item| !item.is_projected())
+            .count();
+
+        let mut lines = vec![format!(
+            "the next request: ~{} tokens, {} of context and {} of tool definitions",
+            thousands(budget.used()),
+            thousands(budget.context_tokens),
+            thousands(budget.tool_tokens),
+        )];
+        lines.push(match budget.limit {
+            Some(limit) => format!(
+                "the limit: {}, which the next request would fill {:.1}% of",
+                thousands(limit),
+                budget.fraction_used().unwrap_or_default() * 100.0
+            ),
+            None => "the limit: unknown, so there is nothing to measure against".to_owned(),
+        });
+        if withheld != 0 {
+            lines.push(format!(
+                "held back: {} tokens in {out} items the projector is not sending",
+                thousands(withheld)
+            ));
+        }
+
+        match budget.reported.and_then(|usage| usage.input_tokens) {
+            Some(reported) => lines.push(format!(
+                "the last request really cost {}, as the provider counted it",
+                thousands(reported as usize)
+            )),
+            None => lines.push("nothing has been sent yet, so there is no real figure".to_owned()),
+        }
+
+        // note: small requests teach it nothing and are not counted here, which is why this can
+        // say "2" in a session that has sent six things
+        let learned = self.counter.calibration();
+        lines.push(match learned.observations {
+            0 => "the counter has not been corrected yet: it is guessing at four bytes a token, \
+                  and no request so far has been big enough to learn anything from"
+                .to_owned(),
+            n => format!(
+                "the counter has learned from {n} request(s) and scaled itself by {:.3}: its own \
+                 guesses came to {} tokens where the provider counted {}, so it was reading {:.1}% \
+                 {}",
+                learned.scale,
+                thousands(learned.estimated as usize),
+                thousands(learned.reported as usize),
+                ((learned.scale - 1.0) * 100.0).abs(),
+                match learned.scale < 1.0 {
+                    true => "high",
+                    false => "low",
+                },
+            ),
+        });
+
+        self.preview("the budget", lines.join("\n\n"));
     }
 
     /// Writes the session log and a snapshot that can be resumed from.

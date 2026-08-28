@@ -64,7 +64,20 @@ Press <kbd>tab</kbd> to move over to it:
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
 
 And <kbd>ctrl+p</kbd> prints the request those items add up to — the kernel's own rendering of it,
-not a description. `/payload` goes one further and prints what the provider will put on the wire.
+not a description, with a header naming everything the projector left out and why:
+
+```text
+12 item(s) in, 4 out:
+  [13] left out: an assistant turn with no content and no answered calls
+  [14] left out: archived: the whole output; the model was shown a shortened copy
+  [15] left out: excluded: pruned by `tool:shell:latest`
+  repaired: dropped the call `call_301842` (shell) from item 13: its result is not
+            in the projection
+```
+
+"why is that not in there?" is the question this whole runtime is for, and the JSON on its own can
+only answer the other one. `/payload` goes one further and prints what the provider will put on
+the wire, byte for byte.
 
 ## ⌨️ the rest of the keys
 
@@ -96,6 +109,27 @@ Those arrive through [`nachalnik-mcp`](../nachalnik-mcp) carrying `mcp:files`, s
 mcp:files" is one server and not the next one. The `name=` is worth giving: it prefixes the
 server's tools and it is what the grant is *for*, and without it the name comes from the program,
 which for most of the servers people actually run is `npx`.
+
+## 📏 the number in the status line is a guess, and says so
+
+Nothing here has the model's tokenizer, so the figure the status line leads with is an estimate —
+it is written `~2,460` for that reason. Beside it is what the provider actually charged for the
+last request, and `/budget` is where the two are reconciled:
+
+```text
+the next request: ~20,125 tokens, 19,953 of context and 172 of tool definitions
+
+the limit: 1,048,576, which the next request would fill 1.9% of
+
+the last request really cost 20,063, as the provider counted it
+
+the counter has learned from 2 request(s) and scaled itself by 1.131: its own guesses
+came to 35,447 tokens where the provider counted 40,073, so it was reading 13.1% low
+```
+
+That correction is the runtime's `Calibrating` counter: every response tells it what the request
+it just estimated really cost, and it adjusts. Over a real session against Gemini it went from 13%
+low to within 0.3%. A budget nobody can check is a decoration.
 
 The compactor drops the oldest tool results once the context passes `--compact` (0.8 by default)
 of the limit and leaves a note saying which ones went. It does not summarize them — it never read

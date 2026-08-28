@@ -16,6 +16,13 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   it, `enter` reads it, `u` undoes the last change - and `ctrl+p` shows the request they add up to,
   as the kernel renders it.
 - A trace pane on `ctrl+t`: every event, as it happens, in the same names the session log uses.
+- `ctrl+p` heads the request with what the projector left out and what it repaired, because "why
+  is that not in there?" is the question somebody opens it to answer.
+- `/budget`, and a `~` on the status line's estimate beside what the provider really charged: the
+  runtime's counter corrects itself from the difference, and this is where that is visible.
+- A tool's arguments are shown as the lines they are rather than as `\n` inside a JSON string,
+  since the permission question is the moment somebody has to read them; `[i]` still shows the
+  JSON verbatim.
 - Four tools (`read`, `write`, `edit`, `shell`) and a policy that allows reading, refuses the
   network and asks about the rest. "Always" answers for a capability rather than a tool name, so
   it works for tools the program has never heard of.

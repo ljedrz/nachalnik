@@ -181,6 +181,16 @@ over to it, `space` takes an item out and puts it back, `p` pins it, `enter` rea
 it - and `ctrl+p` prints the request those items add up to, as the kernel renders it. The file
 marked `-` in that screenshot is why the status line says `1,000 held back`.
 
+`ctrl+p` heads that request with everything the projector left out and why - `excluded: pruned by
+\`tool:shell:latest\``, `archived: the whole output; the model was shown a shortened copy`,
+`dropped the call ... its result is not in the projection` - because "why is that not in there?"
+is the question this runtime exists to answer, and the JSON alone can only answer the other one.
+
+The `~` on the status line is not decoration either: that figure is an estimate from a counter
+with no tokenizer, and beside it is what the provider actually charged. `/budget` reconciles them
+and shows the correction the counter drew from the difference - over a real session it went from
+13% low to within 0.3%.
+
 It is a few hundred lines of ordinary user code on top of the crate: a provider, four tools, a
 policy, a compactor and the drawing. None of it needed anything the runtime does not already hand
 out.

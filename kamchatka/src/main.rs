@@ -18,7 +18,7 @@ use crossterm::{
     event::{DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent, EventStream},
     execute,
 };
-use nachalnik::{BytesPerToken, Calibrating, Config, ContextItem, Event, Kernel};
+use nachalnik::{Config, ContextItem, Event, Kernel};
 use ratatui::DefaultTerminal;
 use tokio::sync::{broadcast::error::RecvError, mpsc};
 use tokio_stream::StreamExt;
@@ -105,9 +105,6 @@ async fn main() -> Result<()> {
     let policy = Arc::new(tools::Careful::new());
     kernel.set_provider(provider.clone());
     kernel.set_policy(policy.clone());
-    // the default counter runs about a sixth low against a real API; this one is told what each
-    // request actually cost and corrects itself, so the figure on the status line converges
-    kernel.set_counter(Arc::new(Calibrating::new(BytesPerToken::default())));
     if args.compact < 1.0 {
         kernel.set_compactor(Some(Arc::new(tools::Trim {
             threshold: args.compact,

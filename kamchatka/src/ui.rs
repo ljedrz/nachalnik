@@ -49,6 +49,8 @@ const HELP: &str = "\
     /prune SELECTOR     take items out; e.g. all:tool_results, 12
     /keep SELECTOR      pin them
     /restore SELECTOR   put them back
+    /budget             the estimate, what the last request really cost, and the
+                        correction the counter has worked out from the difference
     /tools              what the model is offered
     /policy             what runs without being asked about
     /model [ID]         show or switch the model
@@ -280,8 +282,8 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
         match budget.fraction_used() {
             // a decimal place, because rounding a large context down to "0%" reads like a
             // measurement that is not being taken
-            Some(fraction) => format!("{used} tokens, {:.1}% of the limit", fraction * 100.0),
-            None => format!("{used} tokens, of an unknown limit"),
+            Some(fraction) => format!("~{used} tokens, {:.1}% of the limit", fraction * 100.0),
+            None => format!("~{used} tokens, of an unknown limit"),
         },
         match budget.fraction_used() {
             Some(fraction) if fraction >= 0.9 => Style::default().fg(Color::Red),
@@ -289,6 +291,13 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
             _ => dim,
         },
     );
+
+    // the `~` above is not decoration: that figure is an estimate from a counter that does not
+    // have the model's tokenizer. This one is what the provider charged for, and the two being
+    // side by side is the only reason either can be trusted. `/budget` has the whole story
+    if let Some(reported) = budget.reported.and_then(|usage| usage.input_tokens) {
+        add(format!("{} really", thousands(reported as usize)), dim);
+    }
 
     let withheld = app.kernel.with_context(|context| context.tokens_withheld());
     if withheld != 0 {
@@ -344,14 +353,12 @@ fn draw_permission(frame: &mut Frame, app: &App) {
         .iter()
         .map(|capability| capability.to_string())
         .collect();
-    let args = serde_json::to_string_pretty(&*request.args).unwrap_or_default();
-
     let body = format!(
-        "{} wants: {}\n\n{}\n\n\
-         [y] once   [a] always, for {}   [n] no   [i] look closer{}",
+        "{} wants: {}\n\n{}\n\
+         [y] once   [a] always, for {}   [n] no   [i] the exact JSON{}",
         request.tool,
         capabilities.join(", "),
-        args,
+        readable(&request.args),
         capabilities.join(" and "),
         match waiting > 1 {
             true => format!("\n\n{} more after this one", waiting - 1),
@@ -375,9 +382,48 @@ fn draw_permission(frame: &mut Frame, app: &App) {
     );
 }
 
+/// Renders a tool's arguments so that a person can read them before saying yes to them.
+///
+/// note: `to_string_pretty` turns the `new` argument of an edit into one enormous line with `\n`
+/// written out in the middle of it, which is exactly the argument somebody needs to read most
+/// carefully. Multi-line strings are put back into lines here, and `[i]` still shows the JSON
+/// verbatim - readable by default, exact on request, and neither one hiding the other.
+fn readable(args: &serde_json::Value) -> String {
+    let Some(fields) = args.as_object() else {
+        return serde_json::to_string_pretty(args).unwrap_or_default();
+    };
+    if fields.is_empty() {
+        return "(no arguments)\n\n".to_owned();
+    }
+
+    let mut out = String::new();
+    for (name, value) in fields {
+        match value {
+            serde_json::Value::String(text) if text.contains('\n') => {
+                out.push_str(&format!("{name}:\n"));
+                for line in text.lines() {
+                    out.push_str(&format!("  {line}\n"));
+                }
+            }
+            serde_json::Value::String(text) => out.push_str(&format!("{name}: {text}\n")),
+            other => out.push_str(&format!("{name}: {other}\n")),
+        }
+        out.push('\n');
+    }
+
+    out
+}
+
 /// A bordered box over the middle of the screen.
 fn panel(frame: &mut Frame, title: &str, body: &str, scroll: usize, columns: u16, percent: u16) {
-    let area = centred(frame.area(), columns, frame.area().height * percent / 100);
+    // no taller than it has anything to say: `/budget` is six lines, and a box that took nine
+    // tenths of the screen to show them would be hiding the conversation for no reason
+    let wanted = wrapped(body, columns.saturating_sub(4) as usize, "").len() as u16 + 2;
+    let area = centred(
+        frame.area(),
+        columns,
+        wanted.min(frame.area().height * percent / 100),
+    );
     frame.render_widget(Clear, area);
 
     let block = Block::bordered()
@@ -493,7 +539,7 @@ fn clip(text: &str, width: usize) -> String {
 }
 
 /// Formats a number with `,` as the thousands separator.
-fn thousands(n: usize) -> String {
+pub(crate) fn thousands(n: usize) -> String {
     let digits = n.to_string();
 
     let mut out = String::new();

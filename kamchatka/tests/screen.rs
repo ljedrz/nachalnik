@@ -20,7 +20,7 @@ use kamchatka::{
 };
 use nachalnik::{
     Capability, Config, ContextItem, ContextState, Delta, Event, Kernel, ModelInfo, ModelResponse,
-    StopReason,
+    StopReason, Usage,
     test::{ConstTool, ScriptedProvider, call},
 };
 use ratatui::{Terminal, backend::TestBackend};
@@ -326,6 +326,92 @@ async fn an_answer_from_a_provider_that_does_not_stream_still_appears() {
     });
 
     assert!(harness.screen().contains("all at once, at the end"));
+}
+
+#[tokio::test]
+async fn the_budget_puts_the_estimate_beside_what_was_really_charged() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(1_234),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }]);
+    harness.app.kernel.push(ContextItem::file(
+        "haystack.txt",
+        "a needle in it. ".repeat(200),
+    ));
+
+    harness.send("go").await;
+    harness.settle().await;
+    harness.send("/budget").await;
+
+    let screen = harness.screen();
+    // the estimate is not the truth, and the screen is not allowed to imply that it is
+    assert!(screen.contains("the next request: ~"), "{screen}");
+    assert!(
+        screen.contains("really cost 1,234"),
+        "the provider's own figure is missing: {screen}"
+    );
+    assert!(
+        screen.contains("learned from 1 request"),
+        "the correction it drew from the difference is missing: {screen}"
+    );
+}
+
+#[tokio::test]
+async fn what_a_tool_wants_to_write_is_shown_as_the_lines_it_would_write() {
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "scribble",
+        json!({ "path": "greet.py", "content": "def main():\n    print(\"hi\")\n" }),
+    )])]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("scribble", "done").with_capabilities([Capability::Write]),
+    ));
+
+    harness.send("write something").await;
+    harness.settle().await;
+
+    // this is the moment somebody decides, so the argument they have to read is put back into
+    // the lines it is, rather than left as `\n` in the middle of a JSON string. The one-line
+    // summary in the transcript is still a one-line summary, which is why this looks at how the
+    // *question* renders rather than at the whole screen
+    let screen = harness.screen();
+    assert!(screen.contains("  def main():"), "{screen}");
+    assert!(screen.contains("      print(\"hi\")"), "{screen}");
+    assert!(
+        screen.contains("path: greet.py"),
+        "a short argument should read as a plain line, not as JSON: {screen}"
+    );
+    // and nothing is hidden by making it readable
+    assert!(screen.contains("the exact JSON"), "{screen}");
+}
+
+#[tokio::test]
+async fn several_repairs_at_once_are_one_line_rather_than_a_wall_of_them() {
+    let mut harness = Harness::new([]);
+
+    // one compaction pass can orphan a handful of calls, and a notice each would push the answer
+    // off the screen to say one thing
+    harness.app.on_event(Event::ModelRequested {
+        model: ModelInfo::new("scripted", "scripted"),
+        messages: 1,
+        tools: 0,
+        tokens: 4,
+        items: Vec::new(),
+        skipped: Vec::new(),
+        repairs: vec![
+            "dropped the call `a`".to_owned(),
+            "dropped the call `b`".to_owned(),
+            "dropped the call `c`".to_owned(),
+        ],
+    });
+
+    let screen = harness.screen();
+    assert_eq!(screen.matches("dropped the call").count(), 0, "{screen}");
+    assert!(screen.contains("repaired in 3 places"), "{screen}");
+    assert!(screen.contains("ctrl+p says where"), "{screen}");
 }
 
 #[tokio::test]
