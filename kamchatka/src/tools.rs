@@ -5,7 +5,7 @@
 //! declares what it needs, a [`PermissionPolicy`] that is asked before anything happens, and a
 //! [`Compactor`] whose plan is applied in the open and can be undone.
 
-use std::{collections::HashSet, process::Stdio, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, process::Stdio, sync::Arc, time::Duration};
 
 use nachalnik::{
     BoxError, Budget, Capability, CompactionPlan, Compactor, ContextItem, ContextKind, OutputSink,
@@ -235,14 +235,20 @@ impl Tool for Shell {
 // --------------------------------------------------------------------------------- the policy
 
 /// Reading is allowed, the network is refused, and everything else is a question - unless the
-/// person at the terminal has already said "always" for that capability.
+/// person at the terminal has said otherwise about that capability.
 ///
 /// note: Capabilities are the unit rather than tool names, which is what makes this work for
 /// tools this crate has never heard of. An MCP server's tools all carry a `mcp:<server>`
 /// capability, so answering "always" to one of them is answering for that server, and only that
 /// server.
+///
+/// note: The state is a map from a capability to the [`Verdict`] this will return for it, rather
+/// than a set of the allowed ones and a hard-coded refusal for the network. Same behaviour, but
+/// every one of those answers is now a value somebody can look at and change - which is what the
+/// permissions tab is drawing. A policy whose decisions can only be observed by triggering them
+/// is not much of a demonstration of a replaceable policy.
 pub struct Careful {
-    allowed: Mutex<HashSet<Capability>>,
+    stances: Mutex<BTreeMap<Capability, Verdict>>,
 }
 
 impl Default for Careful {
@@ -252,39 +258,88 @@ impl Default for Careful {
 }
 
 impl Careful {
-    /// Builds a policy that starts out allowing only reads.
+    /// Builds a policy that allows reads, refuses the network, and asks about the rest.
     pub fn new() -> Self {
         Self {
-            allowed: Mutex::new(HashSet::from([Capability::Read])),
+            stances: Mutex::new(BTreeMap::from([
+                (Capability::Read, Verdict::Allow),
+                (Capability::Network, Verdict::Deny),
+            ])),
         }
+    }
+
+    /// What this will answer about one capability; asking is what it does about anything it has
+    /// not been told about.
+    pub fn stance(&self, capability: &Capability) -> Verdict {
+        self.stances
+            .lock()
+            .get(capability)
+            .copied()
+            .unwrap_or(Verdict::Ask)
+    }
+
+    /// Decides what to answer about one capability from now on.
+    pub fn set(&self, capability: Capability, verdict: Verdict) {
+        self.stances.lock().insert(capability, verdict);
+    }
+
+    /// Moves one capability on to the next answer: ask, then allow, then deny, then ask again.
+    pub fn cycle(&self, capability: &Capability) -> Verdict {
+        let next = match self.stance(capability) {
+            Verdict::Ask => Verdict::Allow,
+            Verdict::Allow => Verdict::Deny,
+            Verdict::Deny => Verdict::Ask,
+        };
+        self.set(capability.clone(), next);
+
+        next
     }
 
     /// Remembers that these capabilities may be used without asking again.
     pub fn always(&self, capabilities: &[Capability]) {
-        self.allowed.lock().extend(capabilities.iter().cloned());
+        let mut stances = self.stances.lock();
+        for capability in capabilities {
+            stances.insert(capability.clone(), Verdict::Allow);
+        }
+    }
+
+    /// Every capability this has been told about, and what it will answer, in a stable order.
+    pub fn stances(&self) -> Vec<(Capability, Verdict)> {
+        self.stances
+            .lock()
+            .iter()
+            .map(|(capability, verdict)| (capability.clone(), *verdict))
+            .collect()
     }
 
     /// The capabilities that no longer produce a question, in a stable order.
     pub fn listing(&self) -> Vec<String> {
-        let mut names: Vec<_> = self.allowed.lock().iter().map(|c| c.to_string()).collect();
-        names.sort();
-
-        names
+        self.stances
+            .lock()
+            .iter()
+            .filter(|(_, verdict)| **verdict == Verdict::Allow)
+            .map(|(capability, _)| capability.to_string())
+            .collect()
     }
 }
 
 #[async_trait]
 impl PermissionPolicy for Careful {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
-        if request.capabilities.contains(&Capability::Network) {
-            return Verdict::Deny;
+        let stances = self.stances.lock();
+
+        // one refusal settles it; otherwise the strictest answer among them wins, so a tool that
+        // needs both an allowed capability and an unmentioned one is still a question
+        let mut answer = Verdict::Allow;
+        for capability in &request.capabilities {
+            match stances.get(capability).copied().unwrap_or(Verdict::Ask) {
+                Verdict::Deny => return Verdict::Deny,
+                Verdict::Ask => answer = Verdict::Ask,
+                Verdict::Allow => {}
+            }
         }
 
-        let allowed = self.allowed.lock();
-        match request.capabilities.iter().all(|c| allowed.contains(c)) {
-            true => Verdict::Allow,
-            false => Verdict::Ask,
-        }
+        answer
     }
 }
 

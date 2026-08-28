@@ -12,7 +12,7 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 ```
 
 ```text
-┌ chat │ context │ trace ──────────────────────────────────────────────────────────────────────────────────────┐
+┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
 │> what does the kernel do?                                                                                    │
 │                                                                                                              │
 │⟩ read({"path":"src/kernel.rs"})                                                                              │
@@ -26,23 +26,23 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 │produced; `turn` repeats it until the model stops asking for tools. Nothing in it decides what the model is    │
 │told - that is the projector's job.                                                                           │
 │                                                                                                              │
-└──────────────────────────────────────────────────────────────────── alt+1 chat · alt+2 context · alt+3 trace ┘
+└──────────────────────────────────────────────── alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions ┘
 ┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ ask for something, or /help                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
  done · gpt-4o-mini · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back · F1 for the keys
 ```
 
-## 👉 three tabs, one window
+## 👉 four tabs, one window
 
-<kbd>ctrl+t</kbd> for the next one, or <kbd>alt+1</kbd> / <kbd>alt+2</kbd> / <kbd>alt+3</kbd>
-directly. The prompt and the status line are under all three, so a message can be sent from
-anywhere and the budget is always in view.
+<kbd>ctrl+t</kbd> for the next one, or <kbd>alt+1</kbd> … <kbd>alt+4</kbd> directly. The prompt and
+the status line are under all of them, so a message can be sent from anywhere and the budget is
+always in view.
 
 **chat** is the conversation, and every terminal agent has one. **context** is why this exists:
 
 ```text
-┌ chat │ context │ trace ──────────────────────────────────────────────────────────────────────────────────────┐
+┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
 │  id  label                      kind                tokens  what it says, or why it is not being sent        │
 │  1 ▪ src/kernel.rs              reference            1,045  pub struct Kernel;                               │
 │  2 · user                       user_message             6  what does the kernel do?                         │
@@ -89,7 +89,7 @@ next request carries only the edit, because a superseded item is not projected. 
 made of:
 
 ```text
-┌ chat │ context │ trace ──────────────────────────────────────────────────────────────────────────────────────┐
+┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
 │model.requested       6 messages, 4 tools, ~1579 tokens                                                       │
 │context.added         [7] assistant, 72 tokens                                                                │
 │model.finished        EndTurn, 1522 in / 19 out (reported)                                                    │
@@ -154,6 +154,36 @@ Stopping is cooperative rather than a killed process: the provider notices betwe
 returns the text it has, the shell tool kills its child and still answers the call it was given,
 and the partial turn ends up in the context like any other — where it can be read, pruned, or left
 alone.
+
+## 🔑 the permissions tab
+
+The other place the policy appears is the permission prompt — one call at a time, at the moment
+you are least inclined to think about it. **permissions** is the whole of it, in advance:
+
+```text
+┌ chat │ context │ trace │ permissions ──────────────────────────────────────────────┐
+│  capability             answer      the tools it covers                            │
+│  read                   allow       read                                           │
+│  write                  ask         write                                          │
+│  edit                   ask         edit                                           │
+│  shell                  ask         shell                                          │
+│  network                deny        nothing registered needs it                    │
+│  mcp:epoch              ask         epoch__from_stamp, epoch__to_stamp             │
+│                                                                                    │
+└──────────────────────────────── space cycles · a allow · n never · r ask again ────┘
+```
+
+Two lists in one: every capability the policy has an opinion about, *and* every capability a
+registered tool declares. Either alone would mislead — a tool can need something nobody has
+decided about (the row that will stop and ask), and `network` is refused here though nothing
+registered wants it, which is a fact worth being able to see rather than take on trust.
+
+<kbd>space</kbd> cycles a row through **ask → allow → deny**, or <kbd>a</kbd>/<kbd>n</kbd>/<kbd>r</kbd>
+directly, and it takes effect on the next call. Answering "always" at a permission prompt writes
+to this same table — the prompt and the tab are one object, not two.
+
+`allow` runs with no question. `deny` never runs and never asks: the model gets `the call was not
+permitted` as a tool result it can read and work around, rather than a call that silently vanished.
 
 ## 🐢 one transition at a time
 

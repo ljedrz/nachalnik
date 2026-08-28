@@ -152,7 +152,7 @@ $ cargo run -p kamchatka -- -f src/lib.rs "what does this crate do?"
 ```
 
 ```text
-┌ chat │ context │ trace ──────────────────────────────────────────────────────────────────────────────────────┐
+┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
 │  id  label                      kind                tokens  what it says, or why it is not being sent        │
 │  1 ▪ src/kernel.rs              reference            1,045  pub struct Kernel;                               │
 │  2 · user                       user_message             6  what does the kernel do?                         │
@@ -169,13 +169,15 @@ $ cargo run -p kamchatka -- -f src/lib.rs "what does this crate do?"
  done · gpt-4o-mini · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back · F1 for the keys
 ```
 
-Three tabs, each of which gets the whole window: **chat**, **context**, **trace**. The first is
-the conversation, which every terminal agent has. The one above is the second, and it is this
-runtime: every item the context holds, what it costs, whether it is going into the next request,
-and what the model will actually read of it - with the ones that are *not* going saying why, on
-their own row, in the projector's words. `space` takes an item out and puts it back, `p` pins it,
-`enter` reads the whole of it, `u` undoes. The third is every event the runtime emits, as it
-happens, in the same names the session log is made of.
+Four tabs, each of which gets the whole window. The first is the conversation, which every
+terminal agent has. The one above is the second, and it is this runtime: every item the context
+holds, what it costs, whether it is going into the next request, and what the model will actually
+read of it - with the ones that are *not* going saying why, on their own row, in the projector's
+words. `space` takes an item out and puts it back, `p` pins it, `e` changes what it says, `enter`
+reads the whole of it, `u` undoes. The third is every event the runtime emits, as it happens, in
+the same names the session log is made of. The fourth is the permission policy - every capability,
+what the policy will answer about it, and which tools that covers - decided in advance and changed
+where it is read, rather than one prompt at a time at the moment it is least convenient.
 
 `ctrl+p` heads that request with everything the projector left out and why - `excluded: pruned by
 \`tool:shell:latest\``, `archived: the whole output; the model was shown a shortened copy`,
@@ -547,8 +549,8 @@ wedge the kernel), the loop, permissions, projection and tool-call repair, token
 calibration, compaction, and the session log. A replaced `Projector` gets its own test, because a
 seam nothing has ever been swapped through is a claim rather than a seam.
 
-`cargo test --workspace` runs 181 in all: those, the bridge's 22 - which stand a real MCP server
-up rather than mocking one - and `kamchatka`'s 25, which draw its screen and read the characters
+`cargo test --workspace` runs 191 in all: those, the bridge's 22 - which stand a real MCP server
+up rather than mocking one - and `kamchatka`'s 35, which draw its screen and read the characters
 back, plus one that puts a socket in front of it that answers and then goes silent.
 
 There is also a live suite, which is the only way to check the things a mock cannot - that the

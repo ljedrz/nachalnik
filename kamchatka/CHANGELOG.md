@@ -30,7 +30,12 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
 - `/prune` with no selector prints the language rather than reporting that the empty string is not
   a selector, and `23G` on the context tab goes to the item numbered 23 - the number every note
   names and every selector takes.
-- Three tabs, each taking the whole window: `chat`, `context`, `trace`. `ctrl+t` for the next,
+- A `permissions` tab: every capability the policy has an opinion about *and* every capability a
+  registered tool declares, what the policy will answer about each, and which tools that covers.
+  `space` cycles a row through ask, allow and deny; `a`/`n`/`r` set one directly. The permission
+  prompt writes to the same table, so "always" and the tab are one object rather than two - and a
+  refusal is visible in advance rather than only when it fires.
+- Four tabs, each taking the whole window: `chat`, `context`, `trace`, `permissions`. `ctrl+t` for the next,
   `alt+1`/`2`/`3` for one in particular, `tab` between the prompt and the open tab. The prompt and
   the status line are under all three.
 - The context tab is a table: every item the runtime holds, its kind, what it costs, whether it is

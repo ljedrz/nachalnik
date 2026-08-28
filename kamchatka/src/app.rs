@@ -6,12 +6,15 @@
 //! rendering of the record rather than a second account of it. When a turn stops for a decision,
 //! the task ends and hands control back; nothing is waiting on a channel for an answer.
 
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::Arc,
+};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    BytesPerToken, Calibrating, ContextId, ContextItem, ContextKind, ContextState, Delta, Event,
-    Grant, Kernel, State, selectors::Selector,
+    BytesPerToken, Calibrating, Capability, ContextId, ContextItem, ContextKind, ContextState,
+    Delta, Event, Grant, Kernel, State, Verdict, selectors::Selector,
 };
 use ratatui_textarea::{CursorMove, TextArea};
 use tokio::sync::mpsc::UnboundedSender;
@@ -49,11 +52,13 @@ pub enum Tab {
     Context,
     /// Every event, as it happens.
     Trace,
+    /// What the policy will do about each capability, and what that covers.
+    Permissions,
 }
 
 impl Tab {
     /// The tabs, in the order they are shown.
-    pub const ALL: [Self; 3] = [Self::Chat, Self::Context, Self::Trace];
+    pub const ALL: [Self; 4] = [Self::Chat, Self::Context, Self::Trace, Self::Permissions];
 
     /// What it is called on the tab strip.
     pub fn name(self) -> &'static str {
@@ -61,8 +66,20 @@ impl Tab {
             Self::Chat => "chat",
             Self::Context => "context",
             Self::Trace => "trace",
+            Self::Permissions => "permissions",
         }
     }
+}
+
+/// One row of the permissions tab: a capability, what the policy will answer about it, and the
+/// tools that would be affected.
+pub struct Stance {
+    /// The capability itself.
+    pub capability: Capability,
+    /// What the policy answers about it today.
+    pub verdict: Verdict,
+    /// The registered tools that declare it, in the order the model is offered them.
+    pub tools: Vec<String>,
 }
 
 /// One line of the trace pane: an event's name, and what it says for itself.
@@ -175,6 +192,10 @@ pub struct App {
     pub stepping: bool,
     /// Digits typed at the context tab, waiting for the key that uses them.
     pub count: String,
+    /// Which capability is picked out on the permissions tab.
+    pub chosen: usize,
+    /// Where the permissions tab is scrolled to, which it keeps between frames.
+    pub grants: ratatui::widgets::ListState,
     /// Whether the last stop was asked for rather than reached.
     interrupting: bool,
     /// Whether the response being awaited has put anything on the screen of its own.
@@ -225,6 +246,8 @@ impl App {
             editing: None,
             stepping: false,
             count: String::new(),
+            chosen: 0,
+            grants: ratatui::widgets::ListState::default(),
             interrupting: false,
             streamed: false,
             streamed_bytes: 0,
@@ -661,6 +684,7 @@ impl App {
             (KeyCode::Char('1'), _) if alt => self.show(Tab::Chat),
             (KeyCode::Char('2'), _) if alt => self.show(Tab::Context),
             (KeyCode::Char('3'), _) if alt => self.show(Tab::Trace),
+            (KeyCode::Char('4'), _) if alt => self.show(Tab::Permissions),
             (KeyCode::Char('p'), true) => {
                 self.preview("the next request", request_preview(&self.kernel))
             }
@@ -676,6 +700,7 @@ impl App {
             _ => match (self.tab, self.focus) {
                 (Tab::Context, Focus::Body) => self.context_key(key),
                 (Tab::Trace, Focus::Body) => self.trace_key(key),
+                (Tab::Permissions, Focus::Body) => self.permissions_key(key),
                 _ => self.input_key(key).await,
             },
         }
@@ -894,6 +919,92 @@ impl App {
 
         // any key that was not another digit has now had its chance to use them
         self.count.clear();
+    }
+
+    /// Every capability that matters here, and what would happen if a tool asked for it.
+    ///
+    /// note: The union of two lists, because either on its own is misleading. What the policy has
+    /// been told about is not the whole story - a tool can need something nobody has mentioned,
+    /// and that is exactly the row worth seeing, since it is the one that will stop and ask. And
+    /// what the tools declare is not the whole story either: `network` is refused here and no
+    /// built-in tool wants it, but a refusal you cannot see is not a policy you can trust.
+    pub fn permissions(&self) -> Vec<Stance> {
+        let mut rows: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
+        for (capability, _) in self.policy.stances() {
+            rows.entry(capability).or_default();
+        }
+        for spec in self.kernel.tool_specs() {
+            for capability in spec.capabilities {
+                rows.entry(capability).or_default().push(spec.id.clone());
+            }
+        }
+
+        rows.into_iter()
+            .map(|(capability, tools)| Stance {
+                verdict: self.policy.stance(&capability),
+                capability,
+                tools,
+            })
+            .collect()
+    }
+
+    /// Keys that belong to the permissions tab.
+    fn permissions_key(&mut self, key: KeyEvent) {
+        let rows = self.permissions();
+        if rows.is_empty() {
+            return;
+        }
+        self.chosen = self.chosen.min(rows.len() - 1);
+        let picked = &rows[self.chosen];
+        let capability = picked.capability.clone();
+
+        let decided = match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.chosen = self.chosen.saturating_sub(1);
+                return;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.chosen = (self.chosen + 1).min(rows.len() - 1);
+                return;
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                self.chosen = 0;
+                return;
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                self.chosen = rows.len() - 1;
+                return;
+            }
+            KeyCode::Char('?') => {
+                self.preview("the keys", crate::ui::HELP);
+                return;
+            }
+            KeyCode::Char(' ') => self.policy.cycle(&capability),
+            KeyCode::Char('a') => {
+                self.policy.set(capability.clone(), Verdict::Allow);
+                Verdict::Allow
+            }
+            KeyCode::Char('n') => {
+                self.policy.set(capability.clone(), Verdict::Deny);
+                Verdict::Deny
+            }
+            KeyCode::Char('r') | KeyCode::Backspace => {
+                self.policy.set(capability.clone(), Verdict::Ask);
+                Verdict::Ask
+            }
+            _ => return,
+        };
+
+        // said out loud, because this is a decision about what may happen later and the tab it
+        // was made on is not the one somebody will be looking at when it does
+        self.say(
+            Speaker::Note,
+            match decided {
+                Verdict::Allow => format!("`{capability}` runs without asking, from now on"),
+                Verdict::Deny => format!("`{capability}` is refused, from now on"),
+                Verdict::Ask => format!("`{capability}` is a question again"),
+            },
+        );
     }
 
     /// Keys that belong to the trace tab, which is a log and therefore worth reading backwards.
@@ -1117,13 +1228,10 @@ impl App {
                 self.preview("what the model is offered", body);
             }
             "budget" => self.budget(),
-            "policy" => {
-                let allowed = self.policy.listing().join(", ");
-                self.say(
-                    Speaker::Note,
-                    format!("allowed without asking: {allowed}; everything else is a question, and the network is refused"),
-                );
-            }
+            // it used to print a line naming the allowed capabilities. The tab is that line, plus
+            // the ones that are refused, plus the ones nobody has decided about yet, plus what
+            // each of them covers - and every row can be changed where it is read
+            "policy" | "permissions" => self.show(Tab::Permissions),
             "prune" | "keep" | "restore" => self.by_selector(command, rest),
             "model" => {
                 if !rest.is_empty() {

@@ -587,9 +587,10 @@ async fn a_slash_is_a_command_and_everything_else_is_a_message() {
         harness.app.kernel.items().is_empty(),
         "a command is not something the model is told about"
     );
-    let screen = harness.screen();
-    assert!(screen.contains("allowed without asking"), "{screen}");
+    assert_eq!(harness.app.tab, Tab::Permissions);
 
+    // it moved the focus to the tab it opened, so the prompt needs it back
+    harness.tab(Tab::Chat);
     harness.send("/nonsense").await;
     assert!(harness.screen().contains("there is no `/nonsense`"));
 }
@@ -1055,4 +1056,147 @@ async fn an_item_can_be_reached_by_the_number_it_is_shown_under() {
     assert_eq!(harness.app.kernel.items()[harness.app.selected].id.0, 9);
     // and the digits do not linger to derail the next key
     assert!(harness.app.count.is_empty());
+}
+
+#[tokio::test]
+async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("grep", "found it").with_capabilities([Capability::Read]),
+    ));
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("rm", "gone").with_capabilities([Capability::Shell]),
+    ));
+    harness.tab(Tab::Permissions);
+
+    let screen = harness.sized(110, 30);
+    // what the policy has been told about, including the refusal - a `deny` you cannot see is
+    // not a policy anybody can check
+    assert!(screen.contains("read"), "{screen}");
+    assert!(screen.contains("network"), "{screen}");
+    assert!(screen.contains("deny"), "{screen}");
+    // and what the tools need, whether or not anybody has decided about it: `shell` is the row
+    // that will stop and ask, which is exactly the one worth seeing in advance
+    let shell = screen
+        .lines()
+        .find(|line| line.contains("shell"))
+        .expect("the capability a registered tool declares is listed");
+    assert!(shell.contains("ask"), "{shell}");
+    assert!(
+        shell.contains("rm"),
+        "the row names what it covers: {shell}"
+    );
+
+    // network is refused and nothing declares it, which should read as a fact rather than a gap
+    let network = screen
+        .lines()
+        .find(|line| line.contains("network"))
+        .expect("the refusal is listed");
+    assert!(network.contains("nothing registered needs it"), "{network}");
+}
+
+#[tokio::test]
+async fn changing_a_permission_changes_what_happens_next() {
+    let mut harness = Harness::configured(
+        [
+            ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))]),
+            ModelResponse::text("as you wish"),
+            ModelResponse::tool_calls(vec![call("c2", "rm", json!({}))]),
+            ModelResponse::text("done"),
+        ],
+        Config::default(),
+    );
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("rm", "gone").with_capabilities([Capability::Shell]),
+    ));
+
+    // shell is a question by default, so this turn stops and asks
+    harness.send("tidy up").await;
+    harness.settle().await;
+    assert!(matches!(
+        harness.app.overlay,
+        Some(kamchatka::app::Overlay::Permission)
+    ));
+    // answering resumes the turn, so let it finish before starting another
+    harness.press(KeyCode::Char('n')).await;
+    harness.settle().await;
+
+    // decide it in advance instead, on the tab, and the same call no longer asks
+    harness.tab(Tab::Permissions);
+    harness.press(KeyCode::Home).await;
+    while harness.app.permissions()[harness.app.chosen].capability != Capability::Shell {
+        harness.press(KeyCode::Down).await;
+    }
+    harness.press(KeyCode::Char('a')).await;
+
+    assert_eq!(
+        harness.app.permissions()[harness.app.chosen].verdict,
+        nachalnik::Verdict::Allow
+    );
+    harness.tab(Tab::Chat);
+    assert!(harness.screen().contains("runs without asking"));
+
+    harness.send("tidy up again").await;
+    harness.settle().await;
+
+    assert!(
+        harness.app.overlay.is_none(),
+        "it was decided in advance, so there is nothing to ask"
+    );
+    let screen = harness.screen();
+    assert!(screen.contains("gone"), "the tool ran: {screen}");
+}
+
+#[tokio::test]
+async fn a_capability_can_be_refused_outright_rather_than_asked_about() {
+    let mut harness = Harness::configured(
+        [
+            ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))]),
+            ModelResponse::text("fine, I will not"),
+        ],
+        Config::default(),
+    );
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("rm", "gone").with_capabilities([Capability::Shell]),
+    ));
+
+    harness.tab(Tab::Permissions);
+    harness.press(KeyCode::Home).await;
+    while harness.app.permissions()[harness.app.chosen].capability != Capability::Shell {
+        harness.press(KeyCode::Down).await;
+    }
+    harness.press(KeyCode::Char('n')).await;
+
+    harness.tab(Tab::Chat);
+    harness.send("tidy up").await;
+    harness.settle().await;
+
+    // no question, no run, and the model is told rather than left guessing
+    assert!(harness.app.overlay.is_none(), "a refusal is not a question");
+    let request = harness.app.kernel.preview_request().unwrap();
+    let sent = format!("{:?}", request.messages);
+    assert!(!sent.contains("gone"), "it should not have run: {sent}");
+    assert!(sent.contains("not permitted"), "{sent}");
+}
+
+#[tokio::test]
+async fn cycling_a_permission_goes_round_rather_than_getting_stuck() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("rm", "gone").with_capabilities([Capability::Shell]),
+    ));
+    harness.tab(Tab::Permissions);
+    harness.press(KeyCode::Home).await;
+    while harness.app.permissions()[harness.app.chosen].capability != Capability::Shell {
+        harness.press(KeyCode::Down).await;
+    }
+
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        seen.push(harness.app.permissions()[harness.app.chosen].verdict);
+        harness.press(KeyCode::Char(' ')).await;
+    }
+
+    use nachalnik::Verdict::{Allow, Ask, Deny};
+    assert_eq!(seen, vec![Ask, Allow, Deny, Ask], "space should go round");
 }

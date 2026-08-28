@@ -1,14 +1,16 @@
 //! Drawing. Nothing here decides anything - it reads [`App`] and the kernel and puts what it
 //! finds on the screen.
 //!
-//! note: Three tabs, each of which gets the whole window, because each of them is a whole view.
+//! note: Four tabs, each of which gets the whole window, because each of them is a whole view.
 //! Every terminal agent in the world has the first one. The second is the point of this program:
 //! the *context*, item by item, with what each one costs, whether it is going into the next
 //! request, and what the model will actually read of it - because in this runtime that is a list
 //! of ordinary values rather than something the harness keeps to itself. The third is the event
-//! stream the session log is made of, as it happens.
+//! stream the session log is made of, as it happens. The fourth is the permission policy, which
+//! is otherwise only ever seen one call at a time, at the moment it is least convenient to think
+//! about.
 
-use nachalnik::{ContextKind, ContextState, Kernel, State};
+use nachalnik::{ContextKind, ContextState, Kernel, State, Verdict};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -28,8 +30,8 @@ use crate::app::{App, Focus, Overlay, Speaker, Tab};
 /// other heading sat under it.
 pub(crate) const HELP: &str = "  THE TABS
     ctrl+t              the next one
-    alt+1 / 2 / 3       chat / context / trace
-    tab                 move between the prompt and the tab, on the last two
+    alt+1 / 2 / 3 / 4   chat / context / trace / permissions
+    tab                 move between the prompt and the tab, on the last three
 
   ANYWHERE
     ctrl+p              the exact request that would be sent next
@@ -37,7 +39,7 @@ pub(crate) const HELP: &str = "  THE TABS
     esc                 close this, or stop what is running
     ctrl+c              stop what is running; again to leave
 
-  THE PROMPT, which is under all three tabs
+  THE PROMPT, which is under every tab
     enter               send
     alt+enter           a new line
     pgup / pgdn         scroll the conversation
@@ -58,6 +60,11 @@ pub(crate) const HELP: &str = "  THE TABS
     pgup / pgdn         a screenful at a time
     g / G               the oldest it still holds / the newest
 
+  THE PERMISSIONS TAB, when it has the focus
+    up / down, j / k    pick a capability
+    space               cycle it: ask, then allow, then deny
+    a / n / r           allow it / never allow it / ask about it again
+
   A TOOL IS WAITING TO RUN
     y / n                once / no
     a                   always, for what it needs rather than for its name
@@ -77,7 +84,7 @@ pub(crate) const HELP: &str = "  THE TABS
                         correction the counter has worked out from the difference
     /tools              what the model is offered
     /tools drop ID      stop offering one of them, from now on
-    /policy             what runs without being asked about
+    /policy             open the permissions tab
     /model [ID]         show or switch the model
     /params [KEY JSON]  show or set a model parameter
     /save [PATH]        the session log, and a snapshot to resume from
@@ -173,6 +180,7 @@ fn draw_body(frame: &mut Frame, app: &mut App, area: Rect) {
         Tab::Chat => draw_chat(frame, app, inner),
         Tab::Context => draw_context(frame, app, inner),
         Tab::Trace => draw_trace(frame, app, inner),
+        Tab::Permissions => draw_permissions(frame, app, inner),
     }
 }
 
@@ -181,7 +189,7 @@ fn footer(app: &App) -> String {
     match app.tab {
         Tab::Chat => match app.busy {
             true => " esc stops it ".to_owned(),
-            false => " alt+1 chat · alt+2 context · alt+3 trace ".to_owned(),
+            false => " alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions ".to_owned(),
         },
         Tab::Context => {
             let out = app
@@ -197,6 +205,7 @@ fn footer(app: &App) -> String {
         }
         // the pane keeps the last few hundred; the log keeps everything, and `/save` writes it
         Tab::Trace => format!(" {} events · /save keeps them all ", app.trace.len()),
+        Tab::Permissions => " space cycles · a allow · n never · r ask again ".to_owned(),
     }
 }
 
@@ -387,6 +396,93 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) {
         List::new(rows).highlight_style(highlight),
         inner,
         &mut app.list,
+    );
+}
+
+// ------------------------------------------------------------------------------ the permissions
+
+/// What the policy will answer about each capability, and which tools that covers.
+///
+/// note: The permission prompt is the policy's only other appearance, and it shows up one call at
+/// a time, at the worst possible moment to think about it. This is the same decisions, all of
+/// them, in advance, and changeable - which is also the plainest thing to point at when somebody
+/// asks what a replaceable `PermissionPolicy` buys you: a policy is an object with state, not a
+/// callback you can only learn about by triggering it.
+fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) {
+    let rows = app.permissions();
+    if rows.is_empty() {
+        frame.render_widget(
+            Paragraph::new("no tool has declared anything")
+                .style(Style::default().fg(Color::DarkGray)),
+            area,
+        );
+        return;
+    }
+
+    let [head, inner] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+    let width = inner.width as usize;
+    let capability = 22.min(width / 3);
+    let covers = width.saturating_sub(2 + capability + 1 + 10 + 2);
+
+    frame.render_widget(
+        Paragraph::new(Line::styled(
+            format!(
+                "  {:<capability$} {:<10}  {}",
+                "capability",
+                "answer",
+                match covers >= 8 {
+                    true => "the tools it covers",
+                    false => "",
+                }
+            ),
+            Style::default().fg(Color::DarkGray),
+        )),
+        head,
+    );
+
+    let listed: Vec<ListItem> = rows
+        .iter()
+        .map(|row| {
+            let (answer, style) = match row.verdict {
+                Verdict::Allow => ("allow", Style::default().fg(Color::Green)),
+                Verdict::Ask => ("ask", Style::default().fg(Color::Yellow)),
+                Verdict::Deny => ("deny", Style::default().fg(Color::Red)),
+            };
+            // a capability nothing declares is still worth a row - `network` is refused here and
+            // no built-in tool wants it - but it should say so rather than look like an oversight
+            let tools = match row.tools.is_empty() {
+                true => "nothing registered needs it".to_owned(),
+                false => row.tools.join(", "),
+            };
+
+            ListItem::new(Line::from(vec![
+                Span::raw(format!(
+                    "  {:<capability$} ",
+                    clip(&row.capability.to_string(), capability)
+                )),
+                Span::styled(format!("{answer:<10}  "), style),
+                Span::styled(
+                    clip(&tools, covers),
+                    Style::default().fg(match row.tools.is_empty() {
+                        true => Color::DarkGray,
+                        false => Color::Reset,
+                    }),
+                ),
+            ]))
+        })
+        .collect();
+
+    app.chosen = app.chosen.min(rows.len() - 1);
+    app.grants.select(Some(app.chosen));
+    let highlight = match app.focus == Focus::Body {
+        true => Style::default().add_modifier(Modifier::REVERSED),
+        false => Style::default().bg(Color::Rgb(40, 40, 40)),
+    };
+
+    frame.render_stateful_widget(
+        List::new(listed).highlight_style(highlight),
+        inner,
+        &mut app.grants,
     );
 }
 
