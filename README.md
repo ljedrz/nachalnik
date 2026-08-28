@@ -549,8 +549,8 @@ wedge the kernel), the loop, permissions, projection and tool-call repair, token
 calibration, compaction, and the session log. A replaced `Projector` gets its own test, because a
 seam nothing has ever been swapped through is a claim rather than a seam.
 
-`cargo test --workspace` runs 191 in all: those, the bridge's 22 - which stand a real MCP server
-up rather than mocking one - and `kamchatka`'s 35, which draw its screen and read the characters
+`cargo test --workspace` runs 197 in all: those, the bridge's 22 - which stand a real MCP server
+up rather than mocking one - and `kamchatka`'s 41, which draw its screen and read the characters
 back, plus one that puts a socket in front of it that answers and then goes silent.
 
 There is also a live suite, which is the only way to check the things a mock cannot - that the

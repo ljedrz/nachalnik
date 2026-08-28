@@ -900,7 +900,6 @@ impl App {
             }
             KeyCode::Char(digit) if digit.is_ascii_digit() => {
                 self.count = format!("{count}{digit}");
-                return;
             }
             KeyCode::Char('?') => self.preview("the keys", crate::ui::HELP),
             KeyCode::Esc => self.cancel_edit(),
