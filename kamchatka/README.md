@@ -67,8 +67,23 @@ refused if it comes for it. Nothing disappeared: things changed state, and the s
 | --- | --- |
 | <kbd>space</kbd> | take an item out of the next request, or put it back |
 | <kbd>p</kbd> | pin it, so that the compactor is refused if it tries |
+| <kbd>e</kbd> | change what it says |
 | <kbd>enter</kbd> | read the whole of what it says |
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
+| <kbd>23G</kbd> | go to the item numbered 23 — the number `/prune` takes |
+
+<kbd>e</kbd> is the verb the others were missing. `space` and `p` decide whether the model reads an
+item; `e` decides **what** it reads. The prompt turns into an editor holding the item's text, and
+committing supersedes the old one rather than overwriting it:
+
+```text
+  1 ~ ledger.py    reference    469  superseded: superseded by item 8
+  8 ▪ ledger.py    reference    477  """A running-balance ledger.
+```
+
+The original is still there, still readable, still one <kbd>u</kbd> from coming back — and the
+next request carries only the edit, because a superseded item is not projected. Trimming a
+2,000-line file down to the function that matters is two keystrokes and a delete.
 
 **trace** is every event the runtime emits, as it happens, in the same names the session log is
 made of:
@@ -140,6 +155,30 @@ returns the text it has, the shell tool kills its child and still answers the ca
 and the partial turn ends up in the context like any other — where it can be read, pruned, or left
 alone.
 
+## 🐢 one transition at a time
+
+The loop is a state machine, and `/step` performs exactly one transition of it instead of a whole
+turn. That is the only way to stand in `ready` — which the runtime documents as *a resting state
+on purpose*, the moment the model has said what it wants and **nothing has happened yet**:
+
+```text
+> /step how many lines are in ledger.py?
+
+⟩ shell({"cmd":"wc -l ledger.py"})
+
+· step → ready: 1 call(s) decided, none of them run yet
+      shell {"cmd":"wc -l ledger.py"}
+```
+
+The command is decided, permitted, and not running. From here you can read it, prune the context
+it would have run against, drop it, or `/step` again to run it. A whole turn walks through this
+state without ever drawing it, which is why every other agent's "approve this command?" is the
+only checkpoint it has. Here the checkpoint is the state machine's own.
+
+`/step` again for each transition — the tool runs, then the next request goes — or `/continue` for
+the rest of the turn. While stepping, answering a permission does *not* quietly resume: you asked
+to drive.
+
 ## 🔧 what it comes with
 
 Four tools — `read`, `write`, `edit`, `shell` — and a policy that allows reading, refuses the
@@ -154,6 +193,11 @@ Those arrive through [`nachalnik-mcp`](../nachalnik-mcp) carrying `mcp:files`, s
 mcp:files" is one server and not the next one. The `name=` is worth giving: it prefixes the
 server's tools and it is what the grant is *for*, and without it the name comes from the program,
 which for most of the servers people actually run is `npx`.
+
+The registry is live rather than fixed at startup: `/tools drop shell` stops offering it from the
+next request onward, which is one call on the kernel and no restart. When a model has gone down
+the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* call it is waiting on
+with one reason — and the model is told, rather than left waiting on calls that silently vanished.
 
 ## 📏 the number in the status line is a guess, and says so
 

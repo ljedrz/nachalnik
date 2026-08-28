@@ -17,6 +17,19 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   the defaults put a coloured slab behind headings and code, which reads as a redaction on a dark
   theme and a bruise on a light one. Nothing else is treated as markdown: a tool's output is what
   the tool said.
+- `/step` performs exactly one transition of the state machine instead of a whole turn, which is
+  the only way to stand in `State::Ready` - the moment the model has said what it wants to do and
+  none of it has run. A turn walks through that state without ever drawing it.
+- `e` on a context item changes what it says, through `Kernel::supersede`: the original stays,
+  marked `~`, naming the item that replaced it, and one `u` brings it back. `space` and `p` decide
+  whether the model reads an item; this decides what it reads.
+- `d` at the permission prompt drops every call the model is waiting on, with one reason, and the
+  model is told - a call that silently vanished would leave it waiting.
+- `/tools drop ID` stops offering a tool from the next request onward, because the kernel's
+  registry is live rather than fixed at startup.
+- `/prune` with no selector prints the language rather than reporting that the empty string is not
+  a selector, and `23G` on the context tab goes to the item numbered 23 - the number every note
+  names and every selector takes.
 - Three tabs, each taking the whole window: `chat`, `context`, `trace`. `ctrl+t` for the next,
   `alt+1`/`2`/`3` for one in particular, `tab` between the prompt and the open tab. The prompt and
   the status line are under all three.

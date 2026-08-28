@@ -187,9 +187,23 @@ with no tokenizer, and beside it is what the provider actually charged. `/budget
 and shows the correction the counter drew from the difference - over a real session it went from
 13% low to within 0.3%.
 
+And because the loop is a state machine rather than a function that runs to completion, `/step`
+performs exactly *one* transition of it. That is the only way to stand in `Ready` - the moment the
+model has said what it wants to do and none of it has run yet:
+
+```text
+· step → ready: 1 call(s) decided, none of them run yet
+      shell {"cmd":"wc -l ledger.py"}
+```
+
+The command is decided, permitted, and not running. Every other agent's only checkpoint is
+"approve this command?"; this one is the state machine's own, and from it you can read the call,
+prune the context it would run against, drop it, or take the next transition.
+
 It is a few hundred lines of ordinary user code on top of the crate: a provider, four tools, a
 policy, a compactor and the drawing. None of it needed anything the runtime does not already hand
-out.
+out - `step`, `supersede`, `cancel_pending_calls` and `remove_tool` are all public API, used from
+the outside like anything else.
 
 ---
 

@@ -855,3 +855,204 @@ async fn a_turn_that_runs_out_of_requests_says_so_instead_of_looking_finished() 
     harness.settle().await;
     assert!(harness.screen().contains("and there it was"));
 }
+
+#[tokio::test]
+async fn stepping_stops_where_a_turn_walks_straight_through() {
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "look",
+        json!({"at": "the state machine"}),
+    )])]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("look", "nothing to see")));
+
+    // one transition: the request goes, the model asks for a tool, and the kernel comes to rest
+    // in `Ready` - which a whole turn passes through without ever being visible. The message has
+    // to come with it, because sending one on its own runs the turn and leaves nothing to step
+    harness.send("/step look around").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("step \u{2192} ready"), "{screen}");
+    // and it says what is about to happen, which is the only reason to stand here
+    assert!(screen.contains("look"), "{screen}");
+    assert!(screen.contains("the state machine"), "{screen}");
+    assert_eq!(
+        harness.app.kernel.pending_calls().len(),
+        1,
+        "the call is decided and waiting, not run"
+    );
+    assert!(
+        harness
+            .app
+            .kernel
+            .items()
+            .iter()
+            .all(|item| !matches!(item.kind, nachalnik::ContextKind::ToolResult { .. })),
+        "nothing has run yet, so there is no result"
+    );
+
+    // the next transition runs it
+    harness.app.start_step();
+    harness.settle().await;
+    assert!(harness.screen().contains("nothing to see"), "{screen}");
+}
+
+#[tokio::test]
+async fn editing_an_item_changes_what_the_model_reads_and_keeps_the_old_one() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("notes.txt", "the wrong note"));
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+
+    harness.press(KeyCode::Char('e')).await;
+    // the prompt now holds what the item says, and says so
+    assert!(
+        harness.screen().contains("editing [1]"),
+        "{}",
+        harness.screen()
+    );
+    assert_eq!(harness.app.input.lines(), ["the wrong note"]);
+
+    harness.send("s").await;
+
+    // the request carries the edit, and only the edit: the item it replaced is superseded, so
+    // the projector leaves it out
+    let request = harness.app.kernel.preview_request().unwrap();
+    let sent = format!("{:?}", request.messages);
+    assert!(sent.contains("the wrong notes"), "{sent}");
+    assert_eq!(
+        sent.matches("the wrong note").count(),
+        1,
+        "both copies went into the request: {sent}"
+    );
+
+    // and the one it replaced is still there, in a state that says why
+    let items = harness.app.kernel.items();
+    assert_eq!(items[0].state, ContextState::Superseded);
+    assert!(
+        items[0].note.as_deref().unwrap_or_default().contains("2"),
+        "the old item should name the one that replaced it: {:?}",
+        items[0].note
+    );
+    let screen = harness.screen();
+    assert!(
+        screen.contains('~'),
+        "superseded should be marked: {screen}"
+    );
+}
+
+#[tokio::test]
+async fn dropping_the_pending_calls_tells_the_model_rather_than_losing_them() {
+    let mut harness = Harness::configured(
+        [ModelResponse::tool_calls(vec![
+            call("c1", "danger", json!({})),
+            call("c2", "danger", json!({})),
+        ])],
+        Config::default(),
+    );
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("danger", "ran").with_capabilities([Capability::Shell]),
+    ));
+
+    harness.send("do something rash").await;
+    harness.settle().await;
+    let asked = harness.screen();
+    assert!(asked.contains("[d] drop them all"), "{asked}");
+
+    harness.press(KeyCode::Char('d')).await;
+    harness.drain();
+
+    assert!(
+        harness.app.kernel.pending_permissions().is_empty(),
+        "nothing should still be waiting"
+    );
+    // the model is told, rather than left waiting for calls that silently vanished
+    let request = harness.app.kernel.preview_request().unwrap();
+    let sent = format!("{:?}", request.messages);
+    assert!(sent.contains("cancelled"), "{sent}");
+    assert!(harness.screen().contains("2 call(s) dropped"));
+}
+
+#[tokio::test]
+async fn a_tool_can_stop_being_offered_without_restarting() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("shell", "ran")));
+    harness.app.kernel.push(ContextItem::user("hello"));
+
+    assert!(
+        harness
+            .app
+            .kernel
+            .preview_request()
+            .unwrap()
+            .tools
+            .iter()
+            .any(|spec| spec.id == "shell")
+    );
+
+    harness.send("/tools drop shell").await;
+
+    assert!(
+        harness
+            .app
+            .kernel
+            .preview_request()
+            .unwrap()
+            .tools
+            .is_empty(),
+        "the next request should not offer it"
+    );
+    assert!(harness.screen().contains("no longer offered"));
+}
+
+#[tokio::test]
+async fn a_selector_with_nothing_to_select_teaches_the_language() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user("hello"));
+
+    harness.send("/prune").await;
+
+    // an error saying the empty string is not a selector is true and useless; the grammar has
+    // ten forms and this is where somebody goes looking for them
+    let screen = harness.sized(110, 40);
+    assert!(screen.contains("tool:grep:latest"), "{screen}");
+    assert!(screen.contains("state:excluded"), "{screen}");
+    // and the forms it advertises really are forms
+    for form in ["all", "state:excluded", "tool:grep:latest", "17"] {
+        assert!(
+            form.parse::<nachalnik::selectors::Selector>().is_ok(),
+            "the help offers `{form}`, which does not parse"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_item_can_be_reached_by_the_number_it_is_shown_under() {
+    let mut harness = Harness::new([]);
+    for i in 0..12 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("message {i}")));
+    }
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+
+    // the number in the first column is the one every note names and `/prune` takes, so it is
+    // the one that should get you there
+    harness.press(KeyCode::Char('9')).await;
+    harness.press(KeyCode::Char('G')).await;
+
+    assert_eq!(harness.app.kernel.items()[harness.app.selected].id.0, 9);
+    // and the digits do not linger to derail the next key
+    assert!(harness.app.count.is_empty());
+}

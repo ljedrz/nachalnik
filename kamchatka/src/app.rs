@@ -10,8 +10,8 @@ use std::{collections::VecDeque, sync::Arc};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    BytesPerToken, Calibrating, ContextItem, ContextKind, ContextState, Delta, Event, Grant,
-    Kernel, State, selectors::Selector,
+    BytesPerToken, Calibrating, ContextId, ContextItem, ContextKind, ContextState, Delta, Event,
+    Grant, Kernel, State, selectors::Selector,
 };
 use ratatui_textarea::{CursorMove, TextArea};
 use tokio::sync::mpsc::UnboundedSender;
@@ -121,6 +121,8 @@ pub struct Entry {
 pub enum Outcome {
     /// The turn ended in this state.
     Stopped(State),
+    /// One transition happened, and produced this state.
+    Stepped(State),
     /// It could not be finished.
     Failed(String),
 }
@@ -165,6 +167,14 @@ pub struct App {
     pub rendered: usize,
     /// How many lines fit, as of the last frame.
     pub viewport: usize,
+    /// Which context item the prompt is editing, if it is editing one rather than composing a
+    /// message.
+    pub editing: Option<ContextId>,
+    /// Whether the loop is being driven a transition at a time, so that answering a permission
+    /// does not quietly run the rest of the turn.
+    pub stepping: bool,
+    /// Digits typed at the context tab, waiting for the key that uses them.
+    pub count: String,
     /// Whether the last stop was asked for rather than reached.
     interrupting: bool,
     /// Whether the response being awaited has put anything on the screen of its own.
@@ -212,6 +222,9 @@ impl App {
             quit: false,
             rendered: 0,
             viewport: 0,
+            editing: None,
+            stepping: false,
+            count: String::new(),
             interrupting: false,
             streamed: false,
             streamed_bytes: 0,
@@ -357,6 +370,7 @@ impl App {
         }
 
         self.busy = true;
+        self.stepping = false;
         self.interrupting = false;
         let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
         tokio::spawn(async move {
@@ -366,6 +380,60 @@ impl App {
             };
             let _ = outcomes.send(outcome);
         });
+    }
+
+    /// Performs exactly one transition of the state machine, and stops.
+    ///
+    /// note: This is the runtime's own shape, made visible. A turn is a loop over `step`, and
+    /// running it a transition at a time is the only way to stand in [`State::Ready`] and look at
+    /// what the model has asked for *before* any of it runs - which the kernel documents as a
+    /// resting state on purpose, and which a whole turn walks straight through.
+    pub fn start_step(&mut self) {
+        if self.busy {
+            return;
+        }
+
+        self.busy = true;
+        self.stepping = true;
+        self.interrupting = false;
+        let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
+        tokio::spawn(async move {
+            let outcome = match kernel.step().await {
+                Ok(state) => Outcome::Stepped(state),
+                Err(e) => Outcome::Failed(e.to_string()),
+            };
+            let _ = outcomes.send(outcome);
+        });
+    }
+
+    /// What one transition landed in, in a form somebody can act on.
+    fn stepped(&mut self, state: State) {
+        let told = match &state {
+            // the whole point of stepping: the calls are decided and about to run, and nothing
+            // has happened yet
+            State::Ready { calls } => {
+                let waiting: Vec<String> = self
+                    .kernel
+                    .pending_calls()
+                    .iter()
+                    .map(|call| format!("    {} {}", call.tool, one_line(&call.args.to_string())))
+                    .collect();
+                format!(
+                    "ready: {} call(s) decided, none of them run yet\n{}",
+                    calls.len(),
+                    waiting.join("\n")
+                )
+            }
+            State::Deciding { calls } => format!("deciding: {} waiting on you", calls.len()),
+            State::Executing { calls } => format!("executing: {} running", calls.len()),
+            State::Finished { stop, .. } => format!("finished: the model stopped, {stop:?}"),
+            other => other.name().to_owned(),
+        };
+
+        self.say(Speaker::Note, format!("step → {told}"));
+        if matches!(state, State::Deciding { .. }) {
+            self.overlay = Some(Overlay::Permission);
+        }
     }
 
     /// Takes in the end of a turn.
@@ -391,6 +459,7 @@ impl App {
                 );
             }
             Outcome::Stopped(_) => {}
+            Outcome::Stepped(state) => self.stepped(state),
         }
         self.interrupting = false;
 
@@ -640,6 +709,18 @@ impl App {
         let alt = key.modifiers.contains(KeyModifiers::ALT);
 
         match key.code {
+            // the prompt is editing an item rather than composing a message; enter commits it and
+            // escape puts it back the way it was
+            KeyCode::Enter if !alt && self.editing.is_some() => {
+                let text = self.input.lines().join("\n");
+                self.clear_input();
+                self.commit_edit(&text);
+            }
+            KeyCode::Esc if self.editing.is_some() => {
+                self.clear_input();
+                self.editing = None;
+                self.focus = Focus::Body;
+            }
             // enter sends, because that is what a prompt is for; a newline is alt+enter, which
             // is the one every terminal agrees on
             KeyCode::Enter if !alt => {
@@ -647,9 +728,7 @@ impl App {
                 if line.is_empty() {
                     return;
                 }
-                self.input.select_all();
-                self.input.cut();
-                self.input.move_cursor(CursorMove::End);
+                self.clear_input();
                 self.submit(&line).await;
             }
             KeyCode::Enter => {
@@ -665,6 +744,54 @@ impl App {
             _ => {
                 self.input.input(key);
             }
+        }
+    }
+
+    /// Empties the prompt, wherever what was in it has just gone.
+    fn clear_input(&mut self) {
+        self.input.select_all();
+        self.input.cut();
+        self.input.move_cursor(CursorMove::End);
+    }
+
+    /// Puts an edited item into the context in place of the one it came from.
+    ///
+    /// note: [`Kernel::supersede`] rather than a replacement in place, so the old one is still
+    /// there to be read and put back - marked `~`, with a note saying which item replaced it.
+    /// The kind is carried over whole, which matters for an assistant turn: its tool calls live
+    /// inside the kind, and rebuilding it without them would orphan their results.
+    fn commit_edit(&mut self, text: &str) {
+        let Some(id) = self.editing.take() else {
+            return;
+        };
+        self.focus = Focus::Body;
+
+        let Some(old) = self.kernel.item(id) else {
+            self.say(Speaker::Error, format!("[{id}] is no longer there"));
+            return;
+        };
+        if old.content.to_text() == text {
+            self.say(Speaker::Note, format!("[{id}] is unchanged"));
+            return;
+        }
+
+        let mut edited = ContextItem::new(
+            old.kind.clone(),
+            old.source.clone(),
+            old.label.clone(),
+            text.to_owned(),
+        )
+        .because("edited at the terminal");
+        if old.state == ContextState::Pinned {
+            edited = edited.pinned();
+        }
+
+        match self.kernel.supersede(id, edited) {
+            Ok(new) => self.say(
+                Speaker::Note,
+                format!("[{id}] is now [{new}]; the old one is still there, marked superseded"),
+            ),
+            Err(e) => self.say(Speaker::Error, e.to_string()),
         }
     }
 
@@ -689,8 +816,36 @@ impl App {
                 self.selected = (self.selected + self.viewport.max(2) / 2).min(items.len() - 1)
             }
             KeyCode::Home | KeyCode::Char('g') => self.selected = 0,
-            KeyCode::End | KeyCode::Char('G') => self.selected = items.len() - 1,
+            // `23G` goes to the item *numbered* 23 rather than the twenty-third row, because the
+            // number in the first column is the one `/prune` takes and the one every note names.
+            // Bare `G` is the last item, as everywhere else
+            KeyCode::End | KeyCode::Char('G') => {
+                self.selected = match self.count.parse::<u64>() {
+                    Ok(id) => match items.iter().position(|item| item.id.0 == id) {
+                        Some(at) => at,
+                        None => {
+                            self.say(Speaker::Note, format!("there is no item [{id}]"));
+                            self.selected
+                        }
+                    },
+                    Err(_) => items.len() - 1,
+                }
+            }
+            KeyCode::Char(digit) if digit.is_ascii_digit() => {
+                self.count.push(digit);
+                return;
+            }
             KeyCode::Char('?') => self.preview("the keys", crate::ui::HELP),
+            // changing what an item says, which is the verb the other keys were missing: `space`
+            // and `p` decide whether the model reads it, and this decides what it reads
+            KeyCode::Char('e') => {
+                self.input.select_all();
+                self.input.cut();
+                self.input.insert_str(picked.content.to_text());
+                self.input.move_cursor(CursorMove::End);
+                self.editing = Some(picked.id);
+                self.focus = Focus::Input;
+            }
             // taking something out of the next request, and putting it back
             KeyCode::Char(' ') => {
                 let (to, note) = match picked.state {
@@ -736,6 +891,9 @@ impl App {
             }
             _ => {}
         }
+
+        // any key that was not another digit has now had its chance to use them
+        self.count.clear();
     }
 
     /// Keys that belong to the trace tab, which is a log and therefore worth reading backwards.
@@ -812,6 +970,10 @@ impl App {
                 return;
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Grant::Deny,
+            KeyCode::Char('d') | KeyCode::Char('D') => {
+                self.drop_pending();
+                return;
+            }
             _ => return,
         };
 
@@ -821,8 +983,30 @@ impl App {
         // the model may have asked for several things at once, and each is its own question
         if self.kernel.pending_permissions().is_empty() {
             self.overlay = None;
-            self.start_turn();
+            // somebody driving this a transition at a time did not ask for the rest of the turn,
+            // and running it here would be the harness taking the wheel back
+            match self.stepping {
+                true => self.say(
+                    Speaker::Note,
+                    "decided; /step runs the calls, /continue runs the rest of the turn",
+                ),
+                false => self.start_turn(),
+            }
         }
+    }
+
+    /// Drops every call the model is waiting on an answer for, and tells it so.
+    ///
+    /// note: Denying them one at a time says no to each; this says no to all of them with one
+    /// reason, which is the answer when the model has gone off down the wrong path entirely.
+    /// Either way the model is told - a call that simply vanished would leave it waiting.
+    fn drop_pending(&mut self) {
+        let dropped = self.kernel.cancel_pending_calls("dropped at the terminal");
+        self.overlay = None;
+        self.say(
+            Speaker::Note,
+            format!("{dropped} call(s) dropped; the model is told, and can try something else"),
+        );
     }
 
     /// Asks the running turn to stop at the next opportunity.
@@ -873,6 +1057,15 @@ impl App {
             "quit" | "exit" | "q" => self.quit = true,
             "help" | "?" => self.preview("the keys", crate::ui::HELP),
             "continue" => self.start_turn(),
+            // with a message, because otherwise the only way to reach the first transition is to
+            // send one - which runs the whole turn, and there is nothing left to step through
+            "step" => {
+                if !rest.is_empty() {
+                    self.say(Speaker::User, rest);
+                    self.kernel.push(ContextItem::user(rest));
+                }
+                self.start_step();
+            }
             "request" => self.preview("the next request", request_preview(&self.kernel)),
             "payload" => {
                 let body = match self.kernel.preview_payload() {
@@ -888,6 +1081,20 @@ impl App {
                     None => "nothing has been answered yet".into(),
                 };
                 self.preview("the provider's last answer, verbatim", body);
+            }
+            // the registry is live rather than fixed at startup, and taking a tool out of it is
+            // the plainest demonstration of that: the next request simply does not offer it
+            "tools" if rest.starts_with("drop ") => {
+                let id = rest.trim_start_matches("drop ").trim();
+                match self.kernel.remove_tool(id) {
+                    Some(_) => self.say(
+                        Speaker::Note,
+                        format!(
+                            "`{id}` is no longer offered; the next request will not mention it"
+                        ),
+                    ),
+                    None => self.say(Speaker::Error, format!("there is no tool called `{id}`")),
+                }
             }
             "tools" => {
                 let body = self
@@ -969,7 +1176,19 @@ impl App {
     }
 
     /// Prunes, pins or restores whatever a selector names.
+    ///
+    /// note: With nothing to act on, this shows the language rather than reporting that the empty
+    /// string is not a selector. The grammar has ten forms and the terminal used to advertise two
+    /// of them in a help line, so the only way to find the rest was the crate documentation.
     fn by_selector(&mut self, command: &str, input: &str) {
+        if input.is_empty() {
+            self.preview(
+                format!("/{command} takes any of these"),
+                crate::ui::SELECTORS,
+            );
+            return;
+        }
+
         let ids = match input.parse::<Selector>() {
             Ok(selector) => selector.matches(&self.kernel.items()),
             Err(e) => {

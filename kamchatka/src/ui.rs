@@ -46,8 +46,10 @@ pub(crate) const HELP: &str = "  THE TABS
     up / down, j / k    pick an item
     pgup / pgdn         a screenful at a time
     g / G               the first item / the last
+    23G                 the item numbered 23
     space               take it out of the next request, or put it back
     p                   pin it, so that compaction cannot touch it
+    e                   change what it says; the old one stays, marked ~
     enter               read the whole of what it says
     u / U               undo / redo the last change to the context
 
@@ -56,26 +58,67 @@ pub(crate) const HELP: &str = "  THE TABS
     pgup / pgdn         a screenful at a time
     g / G               the oldest it still holds / the newest
 
+  A TOOL IS WAITING TO RUN
+    y / n                once / no
+    a                   always, for what it needs rather than for its name
+    i                   the exact JSON, and the tool's own definition
+    d                   drop every call it is waiting on, and tell it why
+
   COMMANDS
+    /step [MESSAGE]     one transition of the state machine, and stop
+    /continue           run the rest of the turn
     /request            the request that would go next
     /payload            the provider's own rendering of it, byte for byte
     /raw                the provider's own last answer
-    /prune SELECTOR     take items out; e.g. all:tool_results, 12
+    /prune SELECTOR     take items out; with no selector, the whole language
     /keep SELECTOR      pin them
     /restore SELECTOR   put them back
     /budget             the estimate, what the last request really cost, and the
                         correction the counter has worked out from the difference
     /tools              what the model is offered
+    /tools drop ID      stop offering one of them, from now on
     /policy             what runs without being asked about
     /model [ID]         show or switch the model
     /params [KEY JSON]  show or set a model parameter
-    /continue           carry on after the request budget ran out
     /save [PATH]        the session log, and a snapshot to resume from
     /quit";
 
+/// The selector language, shown by `/prune` with nothing to prune.
+///
+/// note: Kept beside the help rather than derived from the crate, because `Selector` is a parser
+/// and a parser cannot tell you what it would have accepted. It is the same list as the type's
+/// own documentation, and the tests check that a few of these really do parse.
+pub(crate) const SELECTORS: &str = "  17                      the item with that number
+  all                     every item, whatever state it is in
+
+  tool_results            every item from that source; also: files, diagnostics,
+                          selections, memories, instructions, system, user, model,
+                          compaction
+  all:tool_results        the same, spelled out
+  source:helix            every item from a source with that name
+
+  kind:assistant_message  every item of that kind
+  state:excluded          every item in that state
+
+  file:src/parser.rs      the file with that path
+  tool:grep               every result the `grep` tool produced
+  tool:grep:latest        the most recent one; also: tool:grep:first
+  tool_result:1842        the tool result with that call id
+  label:cargo test        every item with exactly that label
+  src/parser.rs           anything else is taken as a label
+
+  What it matched is reported before anything is sent, and every change is one
+  `u` away from being undone.";
+
 /// Draws one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    let input_height = (app.input.lines().len() as u16).clamp(1, 8) + 2;
+    // editing an item wants more room than composing a message does, and the tab underneath is
+    // the one thing that can afford to give it up: the item being edited is on it
+    let most = match app.editing.is_some() {
+        true => 16,
+        false => 8,
+    };
+    let input_height = (app.input.lines().len() as u16).clamp(1, most) + 2;
     let [body, input, status] = Layout::vertical([
         Constraint::Min(3),
         Constraint::Length(input_height),
@@ -407,16 +450,29 @@ fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) {
 
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Focus::Input;
+    // the same box does two jobs, so it has to say which one it is doing: typing into it
+    // ordinarily sends a message, and typing into it while an item is being edited rewrites what
+    // the model will read
+    let (title, colour) = match app.editing {
+        Some(id) => (
+            format!(" editing [{id}] · enter commits · esc cancels "),
+            Color::Yellow,
+        ),
+        None => (
+            match focused {
+                true => " you ".to_owned(),
+                false => " you · tab ".to_owned(),
+            },
+            match focused {
+                true => Color::White,
+                false => Color::DarkGray,
+            },
+        ),
+    };
     app.input.set_block(
         Block::bordered()
-            .title(match focused {
-                true => " you ",
-                false => " you · tab ",
-            })
-            .border_style(match focused {
-                true => Style::default().fg(Color::White),
-                false => Style::default().fg(Color::DarkGray),
-            }),
+            .title(title)
+            .border_style(Style::default().fg(colour)),
     );
     // the cursor belongs wherever the keys are going
     app.input.set_cursor_style(match focused {
@@ -533,13 +589,21 @@ fn draw_permission(frame: &mut Frame, app: &App) {
         .iter()
         .map(|capability| capability.to_string())
         .collect();
+    // two lines of options rather than one that wraps wherever it happens to run out: the answers
+    // on the first, and the two that are about looking closer or giving up on the lot on the
+    // second
     let body = format!(
         "{} wants: {}\n\n{}\n\
-         [y] once   [a] always, for {}   [n] no   [i] the exact JSON{}",
+         [y] once   [a] always, for {}   [n] no\n\
+         [i] the exact JSON   [d] {}{}",
         request.tool,
         capabilities.join(", "),
         readable(&request.args),
         capabilities.join(" and "),
+        match waiting > 1 {
+            true => "drop them all",
+            false => "drop it",
+        },
         match waiting > 1 {
             true => format!("\n\n{} more after this one", waiting - 1),
             false => String::new(),
