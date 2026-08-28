@@ -1,19 +1,12 @@
-//! The boilerplate the networked examples share: a [`Provider`] that speaks the OpenAI
-//! chat-completions dialect over HTTP, streamed.
+//! A [`Provider`] that speaks the OpenAI chat-completions dialect over HTTP, streamed.
 //!
-//! This is not part of the library and it is not what the examples are about - it is a hundred
-//! and fifty lines of server-sent events that `compare` and `panel` would otherwise say twice
-//! each. The interesting code is in the examples themselves.
-//!
-//! It is pulled in with `#[path = "common/mod.rs"] mod common;`, because a directory under
-//! `examples/` with no `main.rs` is not built as an example of its own.
-
-// each example uses a different part of this
-#![allow(dead_code)]
+//! note: There is nothing terminal-specific in here, and nothing kernel-specific either - it is
+//! the HTTP that every one of these APIs happens to agree on. It reports fragments through the
+//! [`DeltaSink`] and prints nothing: the screen belongs to the terminal, and a provider that
+//! wrote to it would be drawing over the frame.
 
 use std::{
     env,
-    io::Write,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -33,21 +26,16 @@ const RETRIES: usize = 4;
 
 /// Any server that speaks the OpenAI chat-completions dialect, streamed.
 pub struct OpenAiCompatible {
-    pub client: reqwest::Client,
-    pub base_url: String,
-    pub api_key: String,
-    pub model: Mutex<String>,
-    pub context_limit: Mutex<Option<usize>>,
-    /// Whether fragments are printed as they arrive.
-    ///
-    /// note: For a client that drives one loop on the terminal's own task this is the simplest
-    /// thing that works. For one that runs several models at once it is exactly wrong - their
-    /// output would interleave into nonsense - so those subscribe to
-    /// [`Event::ModelDelta`](nachalnik::Event::ModelDelta) instead, or wait.
-    pub echo: bool,
+    client: reqwest::Client,
+    base_url: String,
+    api_key: String,
+    model: Mutex<String>,
+    context_limit: Mutex<Option<usize>>,
     /// How many times this provider has backed off, so that a busy server cannot be retried
     /// forever by a session that keeps making new requests.
     attempts: AtomicUsize,
+    /// What the last retry was about, for the status line; the terminal has no stderr to spare.
+    notice: Mutex<Option<String>>,
 }
 
 /// A tool call being assembled from streamed fragments.
@@ -60,80 +48,46 @@ struct PartialCall {
     extra: Value,
 }
 
-/// Translates a kernel message into the wire format.
-fn to_wire(message: &Message) -> Value {
-    let mut wire = json!({
-        "role": message.role.as_str()
-    });
-
-    if let Some(content) = &message.content {
-        wire["content"] = json!(content.to_text());
-    }
-    if !message.tool_calls.is_empty() {
-        wire["tool_calls"] = Value::Array(
-            message
-                .tool_calls
-                .iter()
-                .map(|call| {
-                    let mut wire = json!({
-                        "id": call.id.0,
-                        "type": "function",
-                        "function": { "name": call.tool, "arguments": call.args.to_string() },
-                    });
-                    // some APIs hand back a signature per call and reject the next request
-                    // without it, so it goes back exactly as it arrived
-                    if !call.extra.is_null() {
-                        wire["extra_content"] = (*call.extra).clone();
-                    }
-
-                    wire
-                })
-                .collect(),
-        );
-    }
-    if let Some(id) = &message.tool_call_id {
-        wire["tool_call_id"] = json!(id.0);
-    }
-    if let Some(name) = &message.name {
-        wire["name"] = json!(name);
-    }
-
-    wire
-}
-
 impl OpenAiCompatible {
-    /// Builds a provider for one model, reading the endpoint and the key from the environment.
-    ///
-    /// note: The client is passed in rather than made here, so that several models on the same
-    /// host share one connection pool.
-    pub fn new(client: reqwest::Client, model: impl Into<String>) -> Result<Self, BoxError> {
-        Ok(Self {
-            client,
-            base_url: base_url(),
-            api_key: api_key()?,
+    /// Builds a provider for one model.
+    pub fn new(
+        model: impl Into<String>,
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+    ) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            base_url: base_url.into(),
+            api_key: api_key.into(),
             model: Mutex::new(model.into()),
             context_limit: Mutex::new(
-                env::var("NACHALNIK_CONTEXT_LIMIT")
+                env::var("KAMCHATKA_CONTEXT_LIMIT")
                     .ok()
                     .and_then(|v| v.parse().ok()),
             ),
-            echo: false,
             attempts: AtomicUsize::new(0),
-        })
+            notice: Mutex::new(None),
+        }
     }
 
-    /// Prints the model's output as it streams in.
-    pub fn echoing(mut self) -> Self {
-        self.echo = true;
-        self
+    /// Switches models, and forgets the context limit that belonged to the old one.
+    pub async fn set_model(&self, model: impl Into<String>) {
+        *self.model.lock() = model.into();
+        *self.context_limit.lock() = None;
+        self.probe().await;
+    }
+
+    /// Takes whatever the provider last wanted to say for itself, if anything.
+    pub fn take_notice(&self) -> Option<String> {
+        self.notice.lock().take()
     }
 
     /// Asks the provider what it knows about the model, so that the context limit the kernel
     /// reports is the real one rather than a guess.
     ///
-    /// note: Worth the round trip, because everything the kernel says about how full a context is
-    /// is measured against this number. An unknown limit is reported as unknown rather than
-    /// guessed at, which is the honest answer but not a useful one.
+    /// note: Worth the round trip, because every figure the status line shows about how full the
+    /// context is is measured against this number. An unknown limit is reported as unknown rather
+    /// than guessed at, which is the honest answer but not a useful one.
     pub async fn probe(&self) {
         if self.context_limit.lock().is_some() {
             return;
@@ -164,8 +118,8 @@ impl OpenAiCompatible {
     ///
     /// note: Its `/api/show` advertises the architecture's maximum - 131,072 for a llama that is
     /// in fact loaded with a `num_ctx` of 4,096 - and a budget measured against that number would
-    /// be wrong in the one direction that matters. A compactor would never fire, nothing would
-    /// ever look full, and the server would quietly drop the front of the conversation instead.
+    /// be wrong in the one direction that matters. Nothing would ever look full, no compactor
+    /// would fire, and the server would quietly drop the front of the conversation instead.
     /// `/api/ps` reports what a loaded model is really serving, and a model that is not loaded
     /// yields nothing at all, because "unknown" is a better answer than a number that is wrong.
     async fn loaded_limit(&self, root: &str) -> Option<usize> {
@@ -175,8 +129,7 @@ impl OpenAiCompatible {
 
         // only a *loaded* model reports one, and this one is cold. Asking for it with an empty
         // prompt loads it and generates nothing, which is a side effect worth having: it is the
-        // model the examples are about to talk to anyway, and the alternative is a budget with
-        // no denominator
+        // model this session is about to talk to anyway
         self.client
             .post(format!("{root}/api/generate"))
             .json(&json!({ "model": *self.model.lock(), "prompt": "" }))
@@ -277,8 +230,8 @@ impl Provider for OpenAiCompatible {
                     .collect(),
             );
         }
-        // only what the user set, and nothing else: the kernel invents no parameters, and
-        // neither does this provider
+        // only what the user set, and nothing else: the kernel invents no parameters, and neither
+        // does this provider
         for (key, value) in &request.params {
             body[key] = value.clone();
         }
@@ -293,10 +246,9 @@ impl Provider for OpenAiCompatible {
     ) -> Result<ModelResponse, BoxError> {
         let body = self.render(&request).expect("this provider always renders");
 
-        // a free tier answers "busy" often enough that not retrying makes the examples look
-        // broken when they are not. It is worth being clear about where this belongs: waiting
-        // and trying again is the *provider's* business, because the kernel must not silently
-        // send a request twice behind a caller's back
+        // a free tier answers "busy" often enough that not retrying makes the whole thing look
+        // broken when it is not. Waiting and trying again is the *provider's* business: the
+        // kernel must not silently send a request twice behind a caller's back
         let mut response = loop {
             let response = self
                 .client
@@ -318,14 +270,13 @@ impl Provider for OpenAiCompatible {
                 return Err(format!("{status}: {body}").into());
             }
 
-            // on stderr, so that it never lands in output somebody is piping somewhere
             let wait = Duration::from_secs(1 << attempt);
-            eprintln!(
-                "\x1b[2m  {} answered {}; trying again in {}s\x1b[0m",
+            *self.notice.lock() = Some(format!(
+                "{} answered {}; trying again in {}s",
                 self.model.lock(),
                 status.as_u16(),
                 wait.as_secs()
-            );
+            ));
             tokio::time::sleep(wait).await;
         };
 
@@ -342,7 +293,7 @@ impl Provider for OpenAiCompatible {
             buffer.push_str(&String::from_utf8_lossy(&bytes));
 
             while let Some(end) = buffer.find('\n') {
-                // somebody asked to stop. Whatever has been parsed is kept and the rest of the
+                // somebody pressed escape. Whatever has been parsed is kept and the rest of the
                 // socket is abandoned; the check is here, before the next fragment, so that a
                 // fragment is never read and then thrown away
                 if deltas.is_interrupted() {
@@ -387,18 +338,10 @@ impl Provider for OpenAiCompatible {
 
                 let delta = &choice["delta"];
                 if let Some(fragment) = delta["content"].as_str().filter(|f| !f.is_empty()) {
-                    if self.echo {
-                        print!("{fragment}");
-                        let _ = std::io::stdout().flush();
-                    }
                     deltas.text(fragment);
                     text.push_str(fragment);
                 }
                 if let Some(fragment) = delta["reasoning"].as_str().filter(|f| !f.is_empty()) {
-                    if self.echo {
-                        print!("\x1b[2m{fragment}\x1b[0m");
-                        let _ = std::io::stdout().flush();
-                    }
                     deltas.reasoning(fragment);
                     reasoning.push_str(fragment);
                 }
@@ -431,12 +374,9 @@ impl Provider for OpenAiCompatible {
                 break;
             }
         }
-        if self.echo && (!text.is_empty() || !reasoning.is_empty()) {
-            println!();
-        }
         if chunks.is_empty() {
-            // a request stopped before the server had said anything is not a broken response,
-            // and reporting it as one would be an error message for doing as it was told
+            // a request stopped before the server had said anything is not a broken response, and
+            // reporting it as one would put a red line on the screen for doing what was asked
             if finish.as_deref() == Some("interrupted") || deltas.is_interrupted() {
                 return Ok(ModelResponse {
                     content: None,
@@ -466,8 +406,8 @@ impl Provider for OpenAiCompatible {
                     let args: Value = serde_json::from_str(&call.args)
                         .unwrap_or_else(|_| json!({ "_unparsed": call.args }));
 
-                    // an empty or repeated identifier is repaired by the kernel, which says so
-                    // on the event stream; a provider does not have to paper over it
+                    // an empty or repeated identifier is repaired by the kernel, which says so on
+                    // the event stream; a provider does not have to paper over it
                     ToolCall::new(call.id, call.name, args).with_extra(call.extra)
                 })
                 .collect(),
@@ -486,6 +426,45 @@ impl Provider for OpenAiCompatible {
     }
 }
 
+/// Translates a kernel message into the wire format.
+fn to_wire(message: &Message) -> Value {
+    let mut wire = json!({ "role": message.role.as_str() });
+
+    if let Some(content) = &message.content {
+        wire["content"] = json!(content.to_text());
+    }
+    if !message.tool_calls.is_empty() {
+        wire["tool_calls"] = Value::Array(
+            message
+                .tool_calls
+                .iter()
+                .map(|call| {
+                    let mut wire = json!({
+                        "id": call.id.0,
+                        "type": "function",
+                        "function": { "name": call.tool, "arguments": call.args.to_string() },
+                    });
+                    // some APIs hand back a signature per call and reject the next request
+                    // without it, so it goes back exactly as it arrived
+                    if !call.extra.is_null() {
+                        wire["extra_content"] = (*call.extra).clone();
+                    }
+
+                    wire
+                })
+                .collect(),
+        );
+    }
+    if let Some(id) = &message.tool_call_id {
+        wire["tool_call_id"] = json!(id.0);
+    }
+    if let Some(name) = &message.name {
+        wire["name"] = json!(name);
+    }
+
+    wire
+}
+
 /// Whether a listed identifier names the model being asked about, allowing for the decorations
 /// listings put on them: Google's `models/` prefix, ollama's implicit `:latest` tag.
 fn same_model(listed: &str, model: &str) -> bool {
@@ -494,86 +473,23 @@ fn same_model(listed: &str, model: &str) -> bool {
         || listed.strip_suffix(":latest") == Some(model)
 }
 
-// -------------------------------------------------------------------------------- the trimmings
-
 /// The API key, under whichever of the documented names it is set.
 pub fn api_key() -> Result<String, BoxError> {
-    env::var("OPENROUTER_API_KEY")
-        .or_else(|_| env::var("NACHALNIK_API_KEY"))
+    env::var("KAMCHATKA_API_KEY")
+        .or_else(|_| env::var("OPENROUTER_API_KEY"))
         .or_else(|_| env::var("OPENAI_API_KEY"))
-        .map_err(|_| "set OPENROUTER_API_KEY (or NACHALNIK_API_KEY / OPENAI_API_KEY)".into())
+        .map_err(|_| "set KAMCHATKA_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY)".into())
 }
 
 /// The endpoint to talk to; OpenRouter unless told otherwise.
 pub fn base_url() -> String {
-    env::var("NACHALNIK_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_owned())
+    env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_owned())
 }
 
-/// The models to use, from repeated `-m` flags or from `NACHALNIK_MODELS`.
-pub fn models(flags: Vec<String>) -> Vec<String> {
-    if !flags.is_empty() {
-        return flags;
-    }
+/// Builds a provider from the environment, asking the endpoint what the model's limit is.
+pub async fn connect(model: impl Into<String>) -> Result<Arc<OpenAiCompatible>, BoxError> {
+    let provider = Arc::new(OpenAiCompatible::new(model, base_url(), api_key()?));
+    provider.probe().await;
 
-    env::var("NACHALNIK_MODELS")
-        .unwrap_or_default()
-        .split(',')
-        .map(|model| model.trim().to_owned())
-        .filter(|model| !model.is_empty())
-        .collect()
-}
-
-/// Builds one kernel-ready provider per model, sharing a connection pool, and asks each what its
-/// context limit is.
-pub async fn providers(models: &[String]) -> Result<Vec<Arc<OpenAiCompatible>>, BoxError> {
-    let client = reqwest::Client::new();
-
-    let mut providers = Vec::with_capacity(models.len());
-    for model in models {
-        let provider = Arc::new(OpenAiCompatible::new(client.clone(), model.clone())?);
-        provider.probe().await;
-        providers.push(provider);
-    }
-
-    Ok(providers)
-}
-
-/// Formats a number with `,` as the thousands separator.
-pub fn thousands(n: impl TryInto<u64>) -> String {
-    let digits = n.try_into().unwrap_or(0).to_string();
-    let mut out = String::new();
-    for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-
-    out
-}
-
-/// Wraps text to a width, indenting every line.
-pub fn wrap(text: &str, width: usize, indent: &str) -> String {
-    let mut out = String::new();
-
-    for paragraph in text.split('\n') {
-        let mut column = 0;
-        for word in paragraph.split_whitespace() {
-            if column == 0 {
-                out.push_str(indent);
-            } else if column + 1 + word.chars().count() > width {
-                out.push('\n');
-                out.push_str(indent);
-                column = 0;
-            } else {
-                out.push(' ');
-                column += 1;
-            }
-            out.push_str(word);
-            column += word.chars().count();
-        }
-        out.push('\n');
-    }
-
-    out.trim_end().to_owned()
+    Ok(provider)
 }

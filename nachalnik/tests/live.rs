@@ -1,7 +1,7 @@
 //! Tests against a real model, over the real wire.
 //!
-//! They are skipped unless an API key is in the environment, the same variable the `agent`
-//! example reads:
+//! They are skipped unless an API key is in the environment, the same variable the `compare` and
+//! `panel` examples read:
 //!
 //! ```text
 //! OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --nocapture

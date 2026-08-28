@@ -43,7 +43,7 @@ use nachalnik::{
 use parking_lot::Mutex;
 use serde_json::json;
 
-// the OpenAI-compatible HTTP provider, shared with the `agent` and `compare` examples
+// the OpenAI-compatible HTTP provider, shared with the `compare` example
 #[path = "common/mod.rs"]
 mod common;
 
@@ -712,7 +712,7 @@ async fn main() -> Result<(), BoxError> {
         heading("SAVED");
         save(&panel, &dir)?;
         println!(
-            "\n  each is a session of its own: `agent -r {dir}/<model>.json` carries any of them \
+            "\n  each is a session of its own: `kamchatka -r {dir}/<model>.json` carries any of them \
              on."
         );
     }

@@ -1,0 +1,64 @@
+[package]
+name = "kamchatka"
+version = "0.1.0"
+description = "A terminal agent built on nachalnik: the context, the budget and every decision, on screen."
+documentation = "https://docs.rs/kamchatka"
+readme = "README.md"
+categories = ["command-line-utilities", "development-tools"]
+keywords = ["agent", "llm", "tui", "terminal", "nachalnik"]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lib]
+name = "kamchatka"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kamchatka"
+path = "src/main.rs"
+
+[features]
+default = ["mcp"]
+# `--mcp 'cmd args'` puts somebody else's MCP server's tools in the same list as the built-in
+# ones. Optional because the runtime does not need it and neither does the terminal.
+mcp = ["dep:nachalnik-mcp"]
+
+[dependencies]
+nachalnik = { workspace = true, features = ["selectors"] }
+nachalnik-mcp = { workspace = true, optional = true }
+
+async-trait.workspace = true
+parking_lot.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = [
+    "fs",
+    "io-util",
+    "macros",
+    "process",
+    "rt-multi-thread",
+    "time",
+] }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+# `event-stream` so that the terminal's keys arrive as a `Stream` and can be selected on
+# alongside the kernel's events; the same crossterm `ratatui` is built against
+crossterm = { version = "0.29", features = ["event-stream"] }
+ratatui = "0.30"
+# the editing an input line is expected to do - words, selection, undo, paste - which is not
+# something this crate should be writing
+ratatui-textarea = "0.9"
+tokio-stream = "0.1"
+
+[dev-dependencies]
+# the screen is tested by drawing it: a scripted provider answers, and the frame that comes out
+# is asserted against
+nachalnik = { workspace = true, features = ["selectors", "test"] }

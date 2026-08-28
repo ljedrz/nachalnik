@@ -39,7 +39,7 @@ use nachalnik::{
     BoxError, Config, ContextItem, Kernel, ModelResponse, StopReason, Usage, selectors::Selector,
 };
 
-// the OpenAI-compatible HTTP provider, shared with the `agent` and `panel` examples
+// the OpenAI-compatible HTTP provider, shared with the `panel` example
 #[path = "common/mod.rs"]
 mod common;
 
@@ -474,7 +474,7 @@ async fn main() -> Result<(), BoxError> {
         heading("SAVED");
         save(&contenders, &dir)?;
         println!(
-            "\n  each is a session of its own: `agent -r {dir}/<model>.json` picks any of them up."
+            "\n  each is a session of its own: `kamchatka -r {dir}/<model>.json` picks any of them up."
         );
     }
 

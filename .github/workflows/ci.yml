@@ -28,9 +28,11 @@ jobs:
       # the tests turn both features on, so nothing else exercises the default build
       - name: default features
         run: cargo build --workspace
-      # `nachalnik` has to stand up with neither of its features; the others may need them
+      # `nachalnik` has to stand up with neither of its features, and `kamchatka` without MCP
       - name: no features
-        run: cargo check -p nachalnik --no-default-features
+        run: |
+          cargo check -p nachalnik --no-default-features
+          cargo check -p kamchatka --no-default-features
 
       - name: tests
         # the live suite skips itself without a key, which is how it should behave in CI

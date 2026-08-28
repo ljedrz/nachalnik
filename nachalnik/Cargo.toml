@@ -44,5 +44,4 @@ tokio = { workspace = true, features = ["rt", "sync"] }
 [dev-dependencies]
 nachalnik = { path = ".", features = ["selectors", "test"] } # a workaround to use these features in tests by default
 reqwest.workspace = true
-# `signal` so that the `agent` example can put ctrl-c on `Kernel::interrupt`
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

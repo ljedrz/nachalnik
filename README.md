@@ -59,8 +59,8 @@ Reach for it when **what was in the context is part of your answer**:
   a snapshot that resumes the same session in another process.
 
 Reach for something else if you want **an agent today**. This crate ships no provider, no tools,
-no prompt and no UI, so a working agent is yours to assemble; the `agent` example is what that
-costs, and most of it is tools and rendering. If you want batteries included, `goose` and `codex`
+no prompt and no UI, so a working agent is yours to assemble; `kamchatka` in this workspace is
+what that costs, and most of it is tools and rendering. If you want batteries included, `goose` and `codex`
 are good and also Rust. `nachalnik` is what you build a harness *out of*.
 
 ---
@@ -139,6 +139,51 @@ match kernel.turn().await? {
 kernel.set_state([file], ContextState::Excluded, Some("too big".into()));
 kernel.undo();
 ```
+
+---
+
+### 🖥️ the agent you can run
+
+`nachalnik` ships no UI, but the workspace does. **[`kamchatka`](kamchatka/)** is a terminal agent
+built on it, and built to show what it is for:
+
+```console
+$ cargo run -p kamchatka -- -f src/lib.rs "what does this crate do?"
+```
+
+```text
+┌ conversation ──────────────────────────────────────────────┐┌ context · 140 / 128,000 ───────────┐
+│· [1] src/kernel.rs is in the context, 1000 tokens          ││  1 - src/kernel.rs            1,000│
+│                                                            ││  2 · user                         6│
+│⟩ read({"path":"src/kernel.rs"})                            ││  3 · assistant                    7│
+│                                                            ││  4 · read                        15│
+││ pub struct Kernel(Arc<InnerKernel>);                      ││  5 · assistant                   74│
+│  // ... 900 more lines                                     ││                                    │
+│                                                            ││                                    │
+│· read: 15 tokens                                           ││                                    │
+│                                                            ││                                    │
+│The kernel is a state machine with five states. `step`      │└────────────────────────────────────┘
+│performs one transition and returns the state it produced;  │┌ trace ─────────────────────────────┐
+│`turn` repeats it until the model stops asking for tools.   ││state.changed  idle → requesting    │
+│Nothing in it decides what the model is told - that is the  ││model.requested  4 messages, 2 tool…│
+│projector's job, and the projector is a trait you can       ││context.added  [5] assistant, 74 to…│
+│replace.                                                    ││model.finished  EndTurn             │
+└────────────────────────────────────────────────────────────┘└────────────────────────────────────┘
+┌ you ─────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ask for something, or /help                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ done · gpt-4o-mini · 140 tokens, 0.1% of the limit · 1,000 held back · F1 for the keys
+```
+
+Every terminal agent has the pane on the left. The one on the right is this runtime: the context,
+item by item, with what each one costs and whether it is going into the next request. `tab` moves
+over to it, `space` takes an item out and puts it back, `p` pins it, `enter` reads it, `u` undoes
+it - and `ctrl+p` prints the request those items add up to, as the kernel renders it. The file
+marked `-` in that screenshot is why the status line says `1,000 held back`.
+
+It is a few hundred lines of ordinary user code on top of the crate: a provider, four tools, a
+policy, a compactor and the drawing. None of it needed anything the runtime does not already hand
+out.
 
 ---
 
@@ -380,48 +425,6 @@ Both are off by default, because neither is part of the runtime:
 
 ### 📚 examples
 
-**[agent](nachalnik/examples/agent.rs)** - a CLI agent you can actually talk to. Bring an OpenRouter key:
-
-```console
-$ export OPENROUTER_API_KEY=sk-or-...
-$ cargo run --example agent -- -f src/lib.rs
-
-nachalnik · openai/gpt-4o-mini · 128000 tokens of context
-type a message and press enter · /help for the commands · /model <id> to switch models
-
-> what does this crate do?
-  + [1] src/lib.rs (file), 1,204 tokens
-  → 2 messages, 4 tools, ~1,410 tokens
-  ⟩ shell({"cmd":"cargo test"})
-
-  ┌ shell wants: shell
-  │ {"cmd":"cargo test"}
-  └ [y]es / [n]o / [a]lways / [i]nspect? y
-  · shell: allow (by the User)
-  ⟨ shell: 3,412 tokens
-It is an agent runtime; the tests cover the state machine and the context model.
-  ← EndTurn; 4,933 in / 62 out (reported)
-
-> /context
-> /prune tool:shell:latest
-> /request
-```
-
-Type at the `>` prompt to send a message; `-f FILE` puts a file in the context (pinned), and
-anything else on the command line is sent as the first message, so
-`cargo run --example agent -- -f src/lib.rs "what does this do?"` starts working immediately.
-
-It streams (server-sent events, so `DeltaSink` gets a real workout), asks before anything with a
-side effect, and remembers an "always". `NACHALNIK_BASE_URL` points it at OpenAI, llama.cpp,
-ollama or vLLM instead; `/help` lists the slash commands, each of which is a one-line call into
-the kernel:
-
-```text
-/context [selector]   /request  /payload  /raw   /state   /events [n]
-/prune <selector>     /keep      /restore /undo
-/tools  /policy  /model [id]  /params [key json]  /save <path>
-```
-
 **[compare](nachalnik/examples/compare.rs)** - the same prompt to several models at once, with proof that
 it *was* the same prompt:
 
@@ -458,7 +461,7 @@ it stops claiming the requests are identical, because by then they are not:
 
 `EST` against `IN` is the other thing worth having: the kernel's own estimate beside what the
 provider charged for. `--payload` prints the exact bytes each provider will send, `--save DIR`
-writes every session as a log and a snapshot, and each one is resumable with `agent -r`.
+writes every session as a log and a snapshot, and each one is resumable with `kamchatka -r`.
 
 **[panel](nachalnik/examples/panel.rs)** - several models arguing about one question, in rounds, ending in
 a ruling with a tally behind it:
@@ -560,7 +563,7 @@ through `serde`.
 | --- | --- |
 | **[`nachalnik`](nachalnik/)** | the runtime. Five dependencies, no `unsafe`, no network, no prompt. This is the part that matters, and it is meant to stay boring. |
 | **[`nachalnik-mcp`](nachalnik-mcp/)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
-| `kamchatka` *(planned)* | a small TUI agent built on the runtime - the thing you actually run. |
+| **[`kamchatka`](kamchatka/)** | a terminal agent built on the runtime - the thing you actually run, and the demonstration that the seams hold up under one. |
 
 The bridge is deliberately *not* in the core. Speaking MCP means spawning processes, opening
 sockets and reading notifications in the background, and the runtime promises to do none of those;
