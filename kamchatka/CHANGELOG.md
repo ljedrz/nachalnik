@@ -37,7 +37,9 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   network and asks about the rest. "Always" answers for a capability rather than a tool name, so
   it works for tools the program has never heard of.
 - Cooperative stopping on `esc`: the provider returns what it had streamed, the shell tool kills
-  its child and still answers the call, and the partial turn is an ordinary context item.
+  its child and still answers the call, and the partial turn is an ordinary context item. Both of
+  them wait on a heartbeat rather than on the next byte, so a model or a command that has said
+  nothing at all is as interruptible as a chatty one.
 - A compactor that drops the oldest tool results past `--compact` of the limit, says which ones,
   and is refused anything pinned. Nothing is deleted; items are excluded, and restoring one is a
   keystroke.
