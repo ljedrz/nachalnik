@@ -488,7 +488,10 @@ async fn the_status_line_says_what_the_budget_is_measured_against() {
 
     assert!(status.contains("idle"), "{status}");
     assert!(status.contains("scripted"), "{status}");
-    assert!(status.contains("% of the limit"), "{status}");
+    // the estimate, marked as one, and the limit it is a percentage *of* - a bare percentage is
+    // not something anybody can act on
+    assert!(status.contains("~"), "{status}");
+    assert!(status.contains("% (128k)"), "{status}");
 }
 
 #[tokio::test]

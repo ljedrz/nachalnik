@@ -421,16 +421,24 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let budget = app.kernel.budget();
     let used = thousands(budget.used());
     add(
-        match budget.fraction_used() {
+        match (budget.fraction_used(), budget.limit) {
             // a decimal place, because rounding a large context down to "0%" reads like a
-            // measurement that is not being taken
-            Some(fraction) => format!("~{used} tokens, {:.1}% of the limit", fraction * 100.0),
-            None => format!("~{used} tokens, of an unknown limit"),
+            // measurement that is not being taken; and the limit itself, because a percentage
+            // of an unstated total is not a fact anybody can act on
+            (Some(fraction), Some(limit)) => {
+                format!(
+                    "~{used} tokens, {:.1}% ({})",
+                    fraction * 100.0,
+                    compact(limit)
+                )
+            }
+            _ => format!("~{used} tokens, of an unknown limit"),
         },
         match budget.fraction_used() {
             Some(fraction) if fraction >= 0.9 => Style::default().fg(Color::Red),
             Some(fraction) if fraction >= 0.7 => Style::default().fg(Color::Yellow),
-            _ => dim,
+            Some(_) => Style::default().fg(Color::Green),
+            None => dim,
         },
     );
 
@@ -676,6 +684,20 @@ fn clip(text: &str, width: usize) -> String {
         true if width > 1 => format!("{}…", text.chars().take(width - 1).collect::<String>()),
         true => text.chars().take(width).collect(),
         false => text.to_owned(),
+    }
+}
+
+/// A round number in as few characters as it can be said in: `1M`, `131k`, `4.1k`.
+///
+/// note: For the limit rather than the count. Nobody reads `1,048,576` as anything but "a lot",
+/// and it is the shape of the number that matters when it is sitting next to a percentage.
+fn compact(n: usize) -> String {
+    match n {
+        0..1_000 => n.to_string(),
+        1_000..10_000 => format!("{:.1}k", n as f64 / 1_000.0),
+        10_000..1_000_000 => format!("{}k", n / 1_000),
+        1_000_000..10_000_000 => format!("{:.1}M", n as f64 / 1_000_000.0).replace(".0M", "M"),
+        _ => format!("{}M", n / 1_000_000),
     }
 }
 
