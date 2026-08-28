@@ -15,6 +15,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{
     app::{App, Outcome, Speaker, Tab},
     provider::OpenAiCompatible,
+    sandbox::Confinement,
     tools::Careful,
     ui,
 };
@@ -1193,28 +1194,32 @@ async fn the_permissions_tab_admits_what_a_shell_can_do() {
 
     // nothing here runs commands, so the five verdicts are the whole story
     let screen = harness.sized(120, 30);
-    assert!(
-        !screen.contains("a shell command can do any of these"),
-        "{screen}"
-    );
+    assert!(!screen.contains("shell:"), "{screen}");
 
-    // ... and once something does, the tab says so, because `shell` subsumes every other row
+    // ... and once something does, the tab has to account for it: `shell` subsumes every other
+    // row unless something is confining it, and nothing is here
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("sh", "output").with_capabilities([Capability::Shell]),
     ));
     let screen = harness.sized(120, 30);
     assert!(
-        screen.contains("a shell command can do any of these"),
+        screen.contains("shell: a command can do any of these"),
         "{screen}"
     );
 
-    // refusing it outright puts the other rows back in charge
+    // ... and when something is, it says what a command can reach instead of what it cannot
+    harness.app.confinement = Confinement::Full;
+    let screen = harness.sized(120, 30);
+    assert!(screen.contains("shell: confined"), "{screen}");
+    assert!(
+        !screen.contains("can do any of these"),
+        "a confined shell cannot: {screen}"
+    );
+
+    // refusing it outright puts the other rows back in charge either way
     harness.app.policy.set(Capability::Shell, Verdict::Deny);
     let screen = harness.sized(120, 30);
-    assert!(
-        !screen.contains("a shell command can do any of these"),
-        "{screen}"
-    );
+    assert!(!screen.contains("shell:"), "{screen}");
 }
 
 #[tokio::test]

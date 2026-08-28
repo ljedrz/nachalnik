@@ -25,5 +25,6 @@
 
 pub mod app;
 pub mod provider;
+pub mod sandbox;
 pub mod tools;
 pub mod ui;

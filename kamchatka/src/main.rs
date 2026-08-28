@@ -25,7 +25,7 @@ use tokio_stream::StreamExt;
 
 use kamchatka::{
     app::{App, Outcome, Speaker},
-    provider, tools, ui,
+    provider, sandbox, tools, ui,
 };
 
 /// How often the screen is redrawn when nothing at all is happening.
@@ -75,10 +75,34 @@ struct Args {
     /// Let the model's tool calls run at the same time, instead of in the order it asked.
     #[arg(long)]
     parallel: bool,
+
+    /// Run the shell tool with no sandbox, reaching whatever the user running this can reach.
+    #[arg(long)]
+    no_sandbox: bool,
+
+    /// A path outside the working directory the shell tool may also read and write. May be
+    /// repeated.
+    #[arg(long, value_name = "PATH")]
+    sandbox_allow: Vec<std::path::PathBuf>,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    // before anything else, and before a runtime exists: this is the mode the `shell` tool
+    // re-executes this program in, and its whole job is to confine itself and run one command.
+    // Landlock restricts the calling thread, so the one shape that needs no thought about which
+    // thread that was is a program with only one
+    if let Some(code) = sandbox::run_if_asked() {
+        std::process::exit(code);
+    }
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(terminal())
+}
+
+/// The program proper.
+async fn terminal() -> Result<()> {
     let args = Args::parse();
 
     let provider = provider::connect(&args.model)
@@ -111,7 +135,24 @@ async fn main() -> Result<()> {
             target: (args.compact - 0.2).max(0.1),
         })));
     }
-    for tool in tools::builtin() {
+    let confinement = match args.no_sandbox {
+        true => sandbox::Confinement::Unsupported,
+        false => sandbox::available(&std::env::current_exe()?),
+    };
+    let reach = sandbox::Reach {
+        workdir: std::env::current_dir()?,
+        extra: args.sandbox_allow.clone(),
+        confined: !args.no_sandbox,
+    };
+    for tool in tools::builtin(
+        tools::Shell {
+            policy: policy.clone(),
+            workdir: reach.workdir.clone(),
+            extra: reach.extra.clone(),
+            confined: reach.confined,
+        },
+        reach,
+    ) {
         kernel.add_tool(tool);
     }
 
@@ -136,6 +177,7 @@ async fn main() -> Result<()> {
 
     let (outcomes, mut finished) = mpsc::unbounded_channel();
     let mut app = App::new(kernel, policy, provider, outcomes);
+    app.confinement = confinement;
     match args.resume.is_some() {
         // a resumed session has a conversation in it already, and it would be strange to have to
         // read it out of the context pane one item at a time

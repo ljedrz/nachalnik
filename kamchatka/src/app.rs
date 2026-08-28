@@ -19,7 +19,7 @@ use nachalnik::{
 use ratatui_textarea::{CursorMove, TextArea};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{provider::OpenAiCompatible, tools::Careful, ui::thousands};
+use crate::{provider::OpenAiCompatible, sandbox::Confinement, tools::Careful, ui::thousands};
 
 /// How many trace lines are kept; the session log is the one that keeps everything.
 const TRACE_DEPTH: usize = 400;
@@ -159,6 +159,12 @@ pub struct App {
     pub policy: Arc<Careful>,
     /// The provider, for switching models.
     pub provider: Arc<OpenAiCompatible>,
+    /// How much of the shell's sandbox the kernel agreed to, asked once at startup.
+    ///
+    /// note: on `App` rather than worked out where it is drawn, because finding out means
+    /// applying a ruleset in a child process and that is not something a frame should be doing
+    /// sixty times a second. It cannot change while the program runs.
+    pub confinement: Confinement,
     /// The conversation.
     pub transcript: Vec<Entry>,
     /// Every event, name and detail.
@@ -227,6 +233,9 @@ impl App {
             kernel,
             policy,
             provider,
+            // the terminal's own default, for a screen test that never spawns anything; the
+            // program overwrites it with what a child process actually reported
+            confinement: Confinement::Unsupported,
             transcript: Vec::new(),
             trace: VecDeque::new(),
             input,
@@ -1012,12 +1021,24 @@ impl App {
             .collect()
     }
 
+    /// What the shell can reach, in one line, or `None` if nothing here runs commands.
+    pub fn confinement(&self) -> Option<String> {
+        if !self.shell_is_live() {
+            return None;
+        }
+
+        Some(match self.confinement.is_confined() {
+            true => format!("shell: {}", self.confinement),
+            false => "shell: a command can do any of these".to_owned(),
+        })
+    }
+
     /// Whether a registered tool can run commands, and the policy has not refused it outright.
     ///
     /// note: the question the permissions tab has to answer honestly. `Capability::Shell` subsumes
     /// every other capability - a command reads, writes and reaches the network - so while one is
     /// on the list and not denied, every other row is what a *tool* declares rather than what can
-    /// happen. `Ask` counts as live: the answer might be yes.
+    /// happen, unless something is actually confining it.
     pub fn shell_is_live(&self) -> bool {
         self.policy.stance(&Capability::Shell) != Verdict::Deny
             && self
@@ -1166,6 +1187,20 @@ impl App {
             }
             _ => return,
         };
+
+        // saying yes to a command that reaches for the network is permission for *that* command,
+        // and the sandbox has to hear about it. Without this the call runs with the network cut
+        // and fails, one keystroke after somebody was told it would run
+        if grant == Grant::Allow
+            && request.capabilities.contains(&Capability::Shell)
+            && request
+                .args
+                .get("cmd")
+                .and_then(|cmd| cmd.as_str())
+                .is_some_and(crate::tools::reaches_the_network)
+        {
+            self.policy.grant_the_network(&request.call);
+        }
 
         if let Err(e) = self.kernel.decide(request.id, grant) {
             self.say(Speaker::Error, e.to_string());

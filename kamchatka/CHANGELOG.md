@@ -9,6 +9,19 @@ minor bump may break you.
 
 ### added
 
+- **The `shell` tool runs under [Landlock](https://landlock.io)**, so the permission stances are
+  enforced rather than reported: `network: deny` is refused by the kernel at `connect()`,
+  `write: deny` makes the working directory read-only, and nothing outside that directory is
+  readable or writable either way. It is applied by re-executing this program in a mode that
+  confines itself and then runs the command - Landlock restricts the calling thread, and a
+  single-threaded helper is the shape that needs no thought about which one. A directory of the
+  run's own is handed over as `TMPDIR`; `/tmp` itself is not opened up.
+- `read`, `write` and `edit` are held to the same boundary by their own code, resolving `..` and
+  symlinks before comparing. Weaker in kind than a ruleset, and said to be.
+- `--sandbox-allow PATH` opens up another path, `--no-sandbox` turns the whole thing off, and the
+  permissions tab says which of `shell: confined` and `shell: a command can do any of these` is
+  true here.
+
 - Fenced code blocks in the model's answers are syntax-coloured, by token *name* rather than by
   theme: `synoptic` says which pieces are comments, strings, keywords, numbers and calls, and this
   program picks the colours. The fences are split out before the markdown renderer sees them,

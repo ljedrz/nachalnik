@@ -192,9 +192,17 @@ README and the crate docs in longer form:
 - **A `Capability` is a declaration, not a verified property**, and `Shell` subsumes every other
   one. A client that shows `shell: allow` beside `network: deny` without saying so is reporting a
   restriction that does not exist - which is why `kamchatka`'s permissions tab says so.
+- **Confinement lives where the process is spawned.** `kamchatka` puts its `shell` tool under
+  Landlock by re-executing itself in a mode that restricts itself first, so `network: deny` is a
+  refused `connect` and the working directory is the edge of the world. The three file tools run
+  in-process and are held to the same boundary by their own code, which is weaker in kind and said
+  to be. `#![deny(unsafe_code)]` is why it is a re-exec rather than `Command::pre_exec`.
+- **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it
+  can fail and the permissions tab draws it. Never let it degrade silently.
 - **Do not add a check that implies more than it delivers.** `reaches_the_network` is allowed to
-  exist because its documentation is exact about what it misses, and because it makes a refusal
-  real for the command actually written. Anything of that shape needs the same treatment.
+  exist because its documentation is exact about what it misses, and because refusing up front with
+  a reason is kinder than letting a command run and fail. It is no longer what stands between the
+  model and the network. Anything of that shape needs the same treatment.
 
 ## conventions
 

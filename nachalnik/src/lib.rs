@@ -61,7 +61,9 @@
 //! - [`Capability::Shell`] subsumes every other one, so a policy that allows it has allowed all of
 //!   them whatever it answers about the rest.
 //! - A policy that reads a command's text is a heuristic. It can make a refusal real for what was
-//!   written; it cannot stop a program that reaches the network some other way.
+//!   written; it cannot stop a program that reaches the network some other way. Confinement that
+//!   *can* belongs where the process is spawned - see `kamchatka`, which puts its `shell` tool
+//!   under Landlock and so turns `network: deny` into a refused `connect` syscall.
 //! - Anything in the context is something the model reads, and it can carry instructions. What
 //!   this runtime offers against that is the policy - which nothing in a model's output reaches
 //!   except as a tool name and arguments - and a context you can see before the request goes.

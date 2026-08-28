@@ -74,6 +74,13 @@ synoptic = "2.2"
 
 tokio-stream = "0.1"
 
+# the sandbox the `shell` tool runs under. Landlock is a Linux LSM a process applies to *itself* -
+# no privileges, no setuid helper, no container - which is what makes it small enough to belong in
+# a demonstration and strong enough that `network: deny` is refused by the kernel rather than by a
+# policy reading the word `curl`
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4"
+
 [dev-dependencies]
 # the screen is tested by drawing it: a scripted provider answers, and the frame that comes out
 # is asserted against

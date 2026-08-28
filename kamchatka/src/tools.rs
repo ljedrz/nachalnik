@@ -5,7 +5,13 @@
 //! declares what it needs, a [`PermissionPolicy`] that is asked before anything happens, and a
 //! [`Compactor`] whose plan is applied in the open and can be undone.
 
-use std::{collections::BTreeMap, process::Stdio, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+    process::Stdio,
+    sync::Arc,
+    time::Duration,
+};
 
 use nachalnik::{
     BoxError, Budget, Capability, CompactionPlan, Compactor, ContextItem, ContextKind, OutputSink,
@@ -13,6 +19,8 @@ use nachalnik::{
     async_trait,
 };
 use parking_lot::Mutex;
+
+use crate::sandbox::{Reach, Sandbox};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
@@ -29,17 +37,18 @@ fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, BoxError> {
         .ok_or_else(|| format!("the `{name}` argument is required").into())
 }
 
-/// Returns the four tools a terminal agent needs to be worth talking to.
-pub fn builtin() -> Vec<Arc<dyn Tool>> {
+/// Returns the four tools a terminal agent needs to be worth talking to, all held to `reach`.
+pub fn builtin(shell: Shell, reach: Reach) -> Vec<Arc<dyn Tool>> {
+    let reach = Arc::new(reach);
     vec![
-        Arc::new(Read),
-        Arc::new(Write),
-        Arc::new(Edit),
-        Arc::new(Shell),
+        Arc::new(Read(reach.clone())),
+        Arc::new(Write(reach.clone())),
+        Arc::new(Edit(reach)),
+        Arc::new(shell),
     ]
 }
 
-struct Read;
+struct Read(Arc<Reach>);
 
 #[async_trait]
 impl Tool for Read {
@@ -55,17 +64,20 @@ impl Tool for Read {
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
-        let path = arg(&call.args, "path")?;
+        let path = match self.0.allows(arg(&call.args, "path")?) {
+            Ok(path) => path,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+        };
 
         // a failure the model should read and react to, rather than one that stops the loop
-        match tokio::fs::read_to_string(path).await {
+        match tokio::fs::read_to_string(&path).await {
             Ok(content) => Ok(ToolOutput::new(content)),
-            Err(e) => Ok(ToolOutput::error(format!("{path}: {e}"))),
+            Err(e) => Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         }
     }
 }
 
-struct Write;
+struct Write(Arc<Reach>);
 
 #[async_trait]
 impl Tool for Write {
@@ -84,18 +96,23 @@ impl Tool for Write {
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         let (path, content) = (arg(&call.args, "path")?, arg(&call.args, "content")?);
+        let path = match self.0.allows(path) {
+            Ok(path) => path,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+        };
 
-        match tokio::fs::write(path, content).await {
+        match tokio::fs::write(&path, content).await {
             Ok(()) => Ok(ToolOutput::new(format!(
-                "wrote {} bytes to {path}",
-                content.len()
+                "wrote {} bytes to {}",
+                content.len(),
+                path.display()
             ))),
-            Err(e) => Ok(ToolOutput::error(format!("{path}: {e}"))),
+            Err(e) => Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         }
     }
 }
 
-struct Edit;
+struct Edit(Arc<Reach>);
 
 #[async_trait]
 impl Tool for Edit {
@@ -117,23 +134,30 @@ impl Tool for Edit {
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
-        let path = arg(&call.args, "path")?;
         let (old, new) = (arg(&call.args, "old")?, arg(&call.args, "new")?);
+        let path = match self.0.allows(arg(&call.args, "path")?) {
+            Ok(path) => path,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+        };
 
-        let before = match tokio::fs::read_to_string(path).await {
+        let before = match tokio::fs::read_to_string(&path).await {
             Ok(before) => before,
-            Err(e) => return Ok(ToolOutput::error(format!("{path}: {e}"))),
+            Err(e) => return Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         };
         let Some(at) = before.find(old) else {
-            return Ok(ToolOutput::error(format!("`old` does not occur in {path}")));
+            return Ok(ToolOutput::error(format!(
+                "`old` does not occur in {}",
+                path.display()
+            )));
         };
 
         let after = format!("{}{new}{}", &before[..at], &before[at + old.len()..]);
-        match tokio::fs::write(path, after).await {
+        match tokio::fs::write(&path, after).await {
             Ok(()) => Ok(ToolOutput::new(format!(
-                "replaced one occurrence in {path}"
+                "replaced one occurrence in {}",
+                path.display()
             ))),
-            Err(e) => Ok(ToolOutput::error(format!("{path}: {e}"))),
+            Err(e) => Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         }
     }
 }
@@ -144,7 +168,21 @@ impl Tool for Edit {
 /// the moment it is read, so a command that takes a minute is visible for that minute rather
 /// than appearing all at once at the end; and between lines it asks whether somebody has pressed
 /// escape, in which case the child is killed and the call still answers - with what it got.
-struct Shell;
+/// Runs a command, under whatever confinement the policy's stances add up to.
+///
+/// note: it holds the policy rather than being handed a verdict, because the kernel's answer is
+/// only whether the call may run at all. What it may *reach* is a second question, and the policy
+/// is the thing that knows: see [`Sandbox::of`](crate::sandbox::Sandbox::of).
+pub struct Shell {
+    /// The stances the confinement is built from.
+    pub policy: Arc<Careful>,
+    /// The directory a command may work in.
+    pub workdir: PathBuf,
+    /// Extra paths the user asked to open up.
+    pub extra: Vec<PathBuf>,
+    /// Whether to confine at all; `--no-sandbox` turns this off.
+    pub confined: bool,
+}
 
 #[async_trait]
 impl Tool for Shell {
@@ -165,9 +203,32 @@ impl Tool for Shell {
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
         let cmd = arg(&call.args, "cmd")?;
 
-        let mut child = match tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(cmd)
+        // what the command may reach, which is a different question from whether it may run: the
+        // kernel answered that one before this was called
+        let mut command = match self
+            .confined
+            .then(|| std::env::current_exe().ok())
+            .flatten()
+        {
+            Some(me) => {
+                let sandbox = Sandbox::of(
+                    &self.policy,
+                    self.workdir.clone(),
+                    self.extra.clone(),
+                    self.policy.was_granted_the_network(&call.id),
+                );
+                let mut command = tokio::process::Command::new(me);
+                command.args(sandbox.argv(cmd));
+                command
+            }
+            None => {
+                let mut command = tokio::process::Command::new("sh");
+                command.arg("-c").arg(cmd).current_dir(&self.workdir);
+                command
+            }
+        };
+
+        let mut child = match command
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -249,6 +310,13 @@ impl Tool for Shell {
 /// is not much of a demonstration of a replaceable policy.
 pub struct Careful {
     stances: Mutex<BTreeMap<Capability, Verdict>>,
+    /// The calls a person was asked about and allowed, whose command reaches for the network.
+    ///
+    /// note: a stance of `ask` answered `yes, once` is permission for *that call*, and the
+    /// sandbox has to know or the command runs with the network cut and fails in a way that
+    /// contradicts what the person was just told. A stance is what the tab draws; this is the
+    /// answer to a question, which the tab never sees.
+    networked: Mutex<BTreeSet<ToolCallId>>,
     /// Why the last few refusals were refused, by the call they refused.
     ///
     /// note: the policy is the only thing that knows this, and nothing carries it out: the
@@ -274,6 +342,7 @@ impl Careful {
                 (Capability::Read, Verdict::Allow),
                 (Capability::Network, Verdict::Deny),
             ])),
+            networked: Mutex::new(BTreeSet::new()),
             refusals: Mutex::new(BTreeMap::new()),
         }
     }
@@ -311,6 +380,20 @@ impl Careful {
         for capability in capabilities {
             stances.insert(capability.clone(), Verdict::Allow);
         }
+    }
+
+    /// Records that a person, asked about this call, allowed it - and that it reaches the network.
+    pub fn grant_the_network(&self, call: &ToolCallId) {
+        let mut networked = self.networked.lock();
+        if networked.len() > 32 {
+            networked.clear();
+        }
+        networked.insert(call.clone());
+    }
+
+    /// Whether [`Careful::grant_the_network`] was told about this call.
+    pub fn was_granted_the_network(&self, call: &ToolCallId) -> bool {
+        self.networked.lock().contains(call)
     }
 
     /// Why the given call was refused, if this is what refused it; the answer is handed over once.

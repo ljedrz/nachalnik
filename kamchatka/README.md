@@ -37,11 +37,14 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
  done · gpt-4o-mini · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back · F1 for the keys
 ```
 
-> **It is a demonstration, not a hardened agent.** It runs `sh -c` with no isolation and its file
-> tools take any path you give them, and the permission policy is a decision point with a paper
-> trail rather than a boundary — `shell` subsumes every other capability, which the permissions tab
-> says out loud. Run it where you would run a shell. See
-> [what it does not protect you from](../README.md#-what-it-does-not-protect-you-from).
+> **The permissions are enforced, and it is still a demonstration rather than a hardened agent.**
+> The `shell` tool runs under [Landlock](https://landlock.io): `network: deny` is refused by the
+> kernel at `connect()`, `write: deny` makes the working directory read-only, and nothing outside
+> that directory is reachable either way. The three file tools are held to the same boundary by
+> their own code. The permissions tab says which you have — `shell: confined`, or
+> `shell: a command can do any of these` where Landlock is not available. `--sandbox-allow PATH`
+> opens up more and `--no-sandbox` turns it off. It is one LSM, not a container; see
+> [what it does and does not protect you from](../README.md#-what-it-does-and-does-not-protect-you-from).
 
 ## 👉 four tabs, one window
 

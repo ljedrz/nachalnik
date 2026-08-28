@@ -405,50 +405,66 @@ whatever had been streamed.
 
 ---
 
-### 🔓 what it does not protect you from
+### 🔓 what it does and does not protect you from
 
-There is no sandbox here, and there is not going to be one in the core. It is worth saying that
-plainly, in a crate that uses the word *permissions*, because that word invites the assumption.
+**The kernel executes nothing.** No filesystem code, no network code, no process spawning; every
+side effect in a session happens inside a `Tool` you wrote and registered. So there is nothing here
+to contain, and there will be no sandbox in this crate - containment belongs where the process is
+actually spawned, which is your tool or the program around it. What the runtime enforces is one
+thing: a call the `PermissionPolicy` refused is never handed to `Tool::invoke`, and the refusal is
+recorded as an event and as a tool result the model is told about. That is a decision point with a
+paper trail.
 
-**The kernel executes nothing.** It has no filesystem code, no network code and no process
-spawning; every side effect in a session happens inside a `Tool` you wrote and registered. So
-there is nothing for it to contain, and containment - a jail, a namespace, `seccomp`, a container,
-a read-only mount - belongs either inside your tool or around the whole process. That is a real
-answer rather than a dodge: it is the same reason the crate has no HTTP client.
-
-**What it does enforce is one thing:** a call the `PermissionPolicy` refused is never handed to
-`Tool::invoke`, and the refusal is recorded as an event and as a tool result the model is told
-about. That is a *decision point with a paper trail*, not a boundary. Everything past `invoke` is
-the tool's.
-
-Four things follow, and none of them is a bug:
+Three things follow, and none of them is a bug:
 
 * **A `Capability` is a declaration, not a verified property.** A tool that declares `Read` and
   opens a socket is lying, and the kernel has nothing to check it against. The defence is that you
-  chose to register it - the same defence as for a `Provider` whose `render` does not match what it
-  sends.
+  chose to register it.
 * **`Capability::Shell` subsumes every other one.** A command can read, write and reach the
   network, so a policy that allows `Shell` has allowed all of it whatever it answers about the
-  rest. A client that showed `shell: allow` beside `network: deny` without saying so would be
-  reporting a restriction that does not exist; `kamchatka` says so on the permissions tab.
-* **A policy that reads a command's text is a heuristic, not a boundary.** `kamchatka`'s judges
-  `curl` and `pip install` against its `network` stance, which makes that row mean something; it
-  does not catch a script that curls. Asked for a URL with the network refused, a live model had
-  its `curl` refused and reached the page with `python3 -c "import urllib.request"` on the very
-  next call. Nothing short of the OS wins that argument.
+  rest - unless something outside the runtime is confining the command.
 * **Context can be hostile.** A fetched page, a file, an MCP server's output: anything in the
   context is something a model reads, and it can carry instructions. What this runtime offers
-  against that is not a cleverer model but the two things it is built on - the policy, which
-  nothing in a model's output can reach except as a tool name and arguments, and a context you can
-  *see*, item by item, before the next request goes out.
+  against that is not a cleverer model but the two things it is built on - a policy that nothing
+  in a model's output can reach except as a tool name and arguments, and a context you can *see*,
+  item by item, before the next request goes out.
 
-Third-party tools deserve their own line. `nachalnik-mcp` speaks to servers somebody else wrote,
-and the specification says a client should never make tool-use decisions on hints from a server it
-does not trust - so `Trust` believes none of them by default, and the bridge's tests include a
-server offering a `delete_everything` that claims to be read-only.
+Third-party tools get their own line. `nachalnik-mcp` speaks to servers somebody else wrote, and
+the specification says a client should never make tool-use decisions on hints from a server it does
+not trust - so `Trust` believes none of them by default, and the bridge's tests include a server
+offering a `delete_everything` that claims to be read-only.
 
-And `kamchatka` is a demonstration, not a hardened agent: it runs `sh -c` with no isolation and
-its file tools take any path you give them. Run it where you would run a shell.
+#### the sandbox is `kamchatka`'s, because that is where the process is
+
+`kamchatka` is the program that actually spawns things, so it is the one that can confine them, and
+it does - with [Landlock](https://landlock.io), a Linux LSM a process applies to *itself*. No
+privileges, no setuid helper, no container, no daemon. The `shell` tool re-executes `kamchatka` in
+a mode that restricts itself and then runs the command, so:
+
+```text
+network: deny  ->  connect() is refused by the kernel
+write:   deny  ->  the working directory is read-only
+               ->  nothing outside the working directory is readable or writable at all
+```
+
+Which is the difference that matters. A policy that refuses a command because it contains the word
+`curl` is a heuristic somebody walks around: asked for a page with the network refused, a live model
+had its `curl` refused and reached the same page with `python3 -c "import urllib.request"` on the
+very next call. Under Landlock it tried `curl`, then a raw `socket.connect`, and got
+`Permission denied` from the kernel both times. The command-reading check is still there, because
+refusing up front with a reason is kinder than letting something run and fail - but it is no longer
+the thing standing between the model and the network.
+
+The three file tools cannot be confined that way - they run on the terminal's own threads, and a
+ruleset applied there would confine the terminal - so they are held to the same boundary by their
+own code, which resolves `..` and symlinks before comparing. That is weaker in kind, and the
+permissions tab says which kind you have: `shell: confined`, or `shell: a command can do any of
+these` where Landlock is unavailable, because a sandbox that quietly did nothing would be the worst
+thing in this workspace.
+
+`--sandbox-allow PATH` opens up more, `--no-sandbox` turns it off, and both are visible on that
+tab. It is a demonstration rather than a hardened agent: it is one LSM, not a container, and a
+temporary directory of its own is the only thing outside the working directory a command can write.
 
 ---
 
@@ -630,9 +646,10 @@ calibration, compaction, and the session log - including that the log's account 
 states is in the order they were applied, which two threads changing one item is enough to break. A replaced `Projector` gets its own test, because a
 seam nothing has ever been swapped through is a claim rather than a seam.
 
-`cargo test --workspace` runs 218 in all: those, the bridge's 23 - which stand a real MCP server
-up rather than mocking one - and `kamchatka`'s 53, which draw its screen and read the characters
-back, plus one that puts a socket in front of it that answers and then goes silent.
+`cargo test --workspace` runs 225 in all: those, the bridge's 23 - which stand a real MCP server
+up rather than mocking one - and `kamchatka`'s 60, which draw its screen and read the characters
+back, plus one that puts a socket in front of it that answers and then goes silent and seven that
+try to escape its sandbox and report what the kernel refused.
 
 Every count and every percentage in this file was measured at the commit it was written for,
 against a real API where it says so. They are here because a claim with a number in it can be
