@@ -482,3 +482,37 @@ async fn resources_arrive_as_items_to_push_or_not() {
     let kernel = kernel();
     assert!(kernel.items().is_empty());
 }
+
+#[tokio::test]
+async fn the_tools_can_be_looked_at_before_anything_is_registered() {
+    let (server, _) = bench("files").await;
+    let kernel = kernel();
+
+    // `install` is the convenient answer, but it is built on this one: a list handed back, with
+    // nothing registered anywhere yet. Somebody deciding *whether* to install a server - or which
+    // of its tools to take - needs to see what it offers first
+    let offered = server.tools().await.expect("the server lists them");
+
+    assert!(!offered.is_empty());
+    assert!(
+        kernel.tool_ids().is_empty(),
+        "looking at them should not have registered any"
+    );
+
+    // they are ordinary tools, carrying the server's name as a capability, and adding one by hand
+    // works exactly as adding any other tool does
+    let one = offered
+        .iter()
+        .find(|tool| tool.spec().id == "files__counts")
+        .expect("the prefix is the server's name");
+    assert!(
+        one.spec()
+            .capabilities
+            .contains(&Capability::Custom("mcp:files".into())),
+        "{:?}",
+        one.spec().capabilities
+    );
+
+    kernel.add_tool(one.clone());
+    assert_eq!(kernel.tool_ids(), vec!["files__counts"]);
+}

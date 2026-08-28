@@ -80,6 +80,15 @@ pub trait Projector: Send + Sync {
     /// Projects the items - all of them, in insertion order, whatever their state - into the
     /// messages of a request.
     fn project(&self, items: &[Arc<ContextItem>]) -> Projection;
+
+    /// What this is, for a client that wants to say which one is installed.
+    ///
+    /// note: The default is the implementing type's own path, which costs an implementor nothing
+    /// and is right often enough to be worth having. Override it to say something friendlier. It
+    /// is for showing a person, not for matching on: `type_name` makes no stability promise.
+    fn name(&self) -> &'static str {
+        std::any::type_name::<Self>()
+    }
 }
 
 /// The default [`Projector`]: one message per item, in insertion order.

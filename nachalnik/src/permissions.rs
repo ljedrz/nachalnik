@@ -164,6 +164,15 @@ pub trait PermissionPolicy: Send + Sync {
     /// [`Verdict::Allow`] or [`Verdict::Deny`]. Returning [`Verdict::Ask`] instead pushes the
     /// question up to whoever is driving the kernel, which is usually what a client wants.
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict;
+
+    /// What this is, for a client that wants to say which one is installed.
+    ///
+    /// note: The default is the implementing type's own path, which costs an implementor nothing
+    /// and is right often enough to be worth having. Override it to say something friendlier. It
+    /// is for showing a person, not for matching on: `type_name` makes no stability promise.
+    fn name(&self) -> &'static str {
+        std::any::type_name::<Self>()
+    }
 }
 
 /// A [`PermissionPolicy`] that asks about everything.

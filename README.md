@@ -204,8 +204,8 @@ prune the context it would run against, drop it, or take the next transition.
 
 It is a few hundred lines of ordinary user code on top of the crate: a provider, four tools, a
 policy, a compactor and the drawing. None of it needed anything the runtime does not already hand
-out - `step`, `supersede`, `cancel_pending_calls` and `remove_tool` are all public API, used from
-the outside like anything else.
+out - `step`, `supersede`, `cancel_pending_calls`, `remove_tool` and the seam accessors are all
+public API, used from the outside like anything else.
 
 ---
 
@@ -222,6 +222,22 @@ trait object you can set, swap at runtime, and inspect:
 | `Projector` | the shape of a request | the context it is projected from |
 | `TokenCounter` | how tokens are counted | every number it reports, and what each request really cost |
 | `Compactor` | what to drop when it fills up | the veto on pinned items, and the report |
+
+Each of them can also say what it is - `Provider` through `info()`, `Tool` through `spec()`, and
+the other four through a `name()` whose default is the implementing type's own path. So
+`kernel.policy().name()` is a thing a client can put on a screen, and "six replaceable parts" is
+checkable rather than asserted:
+
+```text
+provider     gemini-3.5-flash via openai-compatible
+tools        6 offered: edit, epoch__from_stamp, epoch__to_stamp, read, shell, write
+policy       kamchatka::tools::Careful
+projector    nachalnik::projection::LinearProjector
+counter      nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>
+compactor    kamchatka::tools::Trim
+```
+
+That is `/seams` in `kamchatka`, and every line of it is an accessor on the kernel.
 
 Model parameters are an opaque `serde_json` map carried to the provider verbatim, so `thinking`,
 `safety_settings` and `reasoning_effort` are exactly as first-class as `temperature` - and the
@@ -543,13 +559,13 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
 
 ### 🧪 tests
 
-`cargo test -p nachalnik` runs 110 offline tests: the context model, the selectors, the state
+`cargo test -p nachalnik` runs 113 offline tests: the context model, the selectors, the state
 machine (including that a second concurrent `step` is refused and that a dropped one does not
 wedge the kernel), the loop, permissions, projection and tool-call repair, token counting and
 calibration, compaction, and the session log. A replaced `Projector` gets its own test, because a
 seam nothing has ever been swapped through is a claim rather than a seam.
 
-`cargo test --workspace` runs 197 in all: those, the bridge's 22 - which stand a real MCP server
+`cargo test --workspace` runs 201 in all: those, the bridge's 23 - which stand a real MCP server
 up rather than mocking one - and `kamchatka`'s 41, which draw its screen and read the characters
 back, plus one that puts a socket in front of it that answers and then goes silent.
 

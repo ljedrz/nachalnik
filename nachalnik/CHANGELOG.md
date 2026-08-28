@@ -21,7 +21,9 @@ and the requests as explicit state.
   whole of what a tool said beside the shortened copy the model is shown.
 - `undo` / `redo` / `supersede` / `replace` / `annotate` / `push_all`, each one operation.
 - Six seams, all replaceable at runtime: `Provider`, `Tool`, `PermissionPolicy`, `Projector`,
-  `TokenCounter`, `Compactor`.
+  `TokenCounter`, `Compactor`. Each of the four that had no other way to identify itself carries a
+  `name()` whose default is the implementing type's own path, so `Kernel::policy`, `projector`,
+  `counter` and `compactor` hand back something a client can actually show somebody.
 - `preview_request` and `preview_payload`: the exact request, and the provider's own bytes for it,
   before anything is sent.
 - `Event`, an append-only session log of typed events covering every transition, broadcast live.

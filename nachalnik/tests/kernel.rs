@@ -1257,3 +1257,83 @@ async fn the_shape_of_a_request_is_the_projectors_and_the_kernel_sends_what_it_s
         "an excluded item is excluded whatever the shape of the request"
     );
 }
+
+#[tokio::test]
+async fn every_seam_can_say_what_is_plugged_into_it() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse::text("hi")])));
+    kernel.set_policy(Arc::new(AllowAll));
+    kernel.set_compactor(Some(Arc::new(LargestFirstCompactor::default())));
+
+    // a trait object nobody can name is a seam nobody can inspect, which for a runtime whose
+    // whole claim is that the parts are visible and replaceable is the wrong way round
+    assert!(
+        kernel.policy().name().ends_with("AllowAll"),
+        "{}",
+        kernel.policy().name()
+    );
+    assert!(
+        kernel.projector().name().ends_with("LinearProjector"),
+        "the default projector should name itself: {}",
+        kernel.projector().name()
+    );
+    assert!(kernel.counter().name().ends_with("BytesPerToken"));
+    assert!(
+        kernel
+            .compactor()
+            .expect("one was set")
+            .name()
+            .ends_with("LargestFirstCompactor")
+    );
+    assert!(kernel.provider().is_some());
+
+    // and swapping one through the seam is visible through the same accessor
+    kernel.set_policy(Arc::new(DenyAll));
+    assert!(kernel.policy().name().ends_with("DenyAll"));
+}
+
+#[tokio::test]
+async fn a_policy_can_say_something_friendlier_than_its_type() {
+    struct Bespoke;
+
+    #[async_trait::async_trait]
+    impl nachalnik::PermissionPolicy for Bespoke {
+        async fn evaluate(&self, _: &nachalnik::PermissionRequest) -> Verdict {
+            Verdict::Ask
+        }
+        fn name(&self) -> &'static str {
+            "the one from the config file"
+        }
+    }
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_policy(Arc::new(Bespoke));
+
+    assert_eq!(kernel.policy().name(), "the one from the config file");
+}
+
+#[tokio::test]
+async fn a_provider_can_be_taken_out_again() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse::text("hi")])));
+    let mut events = kernel.subscribe();
+
+    let previous = kernel.clear_provider();
+    assert!(previous.is_some(), "the one that was there is handed back");
+    assert!(kernel.provider().is_none());
+    assert!(kernel.model_info().is_none());
+
+    // detaching is a change to the session like any other, so it is on the record
+    assert!(
+        drain(&mut events)
+            .iter()
+            .any(|event| matches!(event, Event::ModelChanged { to: None, .. })),
+        "clearing the provider should be announced"
+    );
+
+    // and a step with nothing to talk to says so rather than doing something surprising
+    assert!(matches!(
+        kernel.step().await,
+        Err(nachalnik::Error::NoProvider)
+    ));
+}

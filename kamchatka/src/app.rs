@@ -1274,6 +1274,7 @@ impl App {
                 self.preview("what the model is offered", body);
             }
             "budget" => self.budget(),
+            "seams" => self.seams(),
             // it used to print a line naming the allowed capabilities. The tab is that line, plus
             // the ones that are refused, plus the ones nobody has decided about yet, plus what
             // each of them covers - and every row can be changed where it is read
@@ -1373,6 +1374,54 @@ impl App {
     /// produced by a counter that does not have the model's tokenizer and is therefore wrong.
     /// This is where the two numbers sit side by side, along with the correction the counter has
     /// worked out for itself from the difference. A budget nobody can check is a decoration.
+    /// What is plugged into each of the runtime's six seams, right now.
+    ///
+    /// note: The crate's headline claim is six replaceable parts, and until this there was no way
+    /// to see any of them from here - `Kernel::policy`, `projector`, `counter` and `compactor`
+    /// hand back trait objects, and a trait object you cannot name is not worth asking for. Each
+    /// of those traits now names itself, so this is the claim, checked against the kernel rather
+    /// than restated from what this program set up at startup.
+    fn seams(&mut self) {
+        let kernel = &self.kernel;
+        let tools = kernel.tool_specs();
+        let body = format!(
+            "provider     {}\n\
+             tools        {} offered: {}\n\
+             policy       {}\n\
+             projector    {}\n\
+             counter      {}\n\
+             compactor    {}\n\
+             \n\
+             Every one of these is a trait object the kernel holds, and every one of them can be\n\
+             replaced while a session is running. Nothing here is the terminal's own bookkeeping:\n\
+             it is what the kernel answers when asked.",
+            match kernel.model_info() {
+                Some(info) => format!("{} via {}", info.model, info.provider),
+                None => "none set".to_owned(),
+            },
+            tools.len(),
+            match tools.is_empty() {
+                true => "-".to_owned(),
+                false => tools
+                    .iter()
+                    .map(|spec| spec.id.clone())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            },
+            kernel.policy().name(),
+            kernel.projector().name(),
+            kernel.counter().name(),
+            match kernel.compactor() {
+                Some(compactor) => compactor.name().to_owned(),
+                // `--compact 1` leaves none installed, and "nothing will be dropped" is a fact
+                // worth being able to check rather than infer from a flag
+                None => "none: nothing is ever dropped to make room".to_owned(),
+            },
+        );
+
+        self.preview("what is plugged into the runtime", body);
+    }
+
     fn budget(&mut self) {
         let budget = self.kernel.budget();
         let withheld = self

@@ -83,6 +83,8 @@ pub(crate) const HELP: &str = "  THE TABS
     /restore SELECTOR   put them back
     /budget             the estimate, what the last request really cost, and the
                         correction the counter has worked out from the difference
+    /seams              what is plugged into each of the runtime's six parts
+    /seams              what is plugged into each of the runtime's six parts
     /tools              what the model is offered
     /tools drop ID      stop offering one of them, from now on
     /policy             open the permissions tab; also /permissions

@@ -110,4 +110,13 @@ pub trait Compactor: Send + Sync {
     /// note: The items arrive in insertion order, with their states, labels, sizes and
     /// metadata - everything needed to make an informed choice, and nothing hidden.
     async fn plan(&self, items: &[Arc<ContextItem>], budget: &Budget) -> Option<CompactionPlan>;
+
+    /// What this is, for a client that wants to say which one is installed.
+    ///
+    /// note: The default is the implementing type's own path, which costs an implementor nothing
+    /// and is right often enough to be worth having. Override it to say something friendlier. It
+    /// is for showing a person, not for matching on: `type_name` makes no stability promise.
+    fn name(&self) -> &'static str {
+        std::any::type_name::<Self>()
+    }
 }

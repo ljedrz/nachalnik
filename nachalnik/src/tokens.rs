@@ -20,6 +20,15 @@ pub trait TokenCounter: Send + Sync {
     /// Returns the number of tokens `content` is expected to occupy.
     fn count(&self, content: &Content) -> usize;
 
+    /// What this is, for a client that wants to say which one is installed.
+    ///
+    /// note: The default is the implementing type's own path, which costs an implementor nothing
+    /// and is right often enough to be worth having. Override it to say something friendlier. It
+    /// is for showing a person, not for matching on: `type_name` makes no stability promise.
+    fn name(&self) -> &'static str {
+        std::any::type_name::<Self>()
+    }
+
     /// Returns the number of tokens a tool definition is expected to occupy.
     ///
     /// note: The default implementation counts the JSON schema as if it were content, sharing it

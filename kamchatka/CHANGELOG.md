@@ -25,6 +25,10 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   whether the model reads an item; this decides what it reads.
 - `d` at the permission prompt drops every call the model is waiting on, with one reason, and the
   model is told - a call that silently vanished would leave it waiting.
+- `/seams` says what is plugged into each of the runtime's six parts, asked of the kernel rather
+  than restated from what this program set up: the provider, the tools, the policy, the projector,
+  the counter and the compactor - or that no compactor is installed and nothing will ever be
+  dropped to make room.
 - `/tools drop ID` stops offering a tool from the next request onward, because the kernel's
   registry is live rather than fixed at startup.
 - `/prune` with no selector prints the language rather than reporting that the empty string is not
