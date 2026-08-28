@@ -1,0 +1,18 @@
+[package]
+name = "nachalnik-utils"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+# Never published. It exists so that this crate's own examples and its live test suite stop
+# carrying two copies of the same provider; it is not API, it makes no promises, and the version
+# stays 0.0.0 so that nothing can come to depend on it by accident.
+publish = false
+
+[dependencies]
+nachalnik.workspace = true
+async-trait.workspace = true
+parking_lot.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["time"] }

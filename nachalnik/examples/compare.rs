@@ -399,12 +399,12 @@ async fn main() -> Result<(), BoxError> {
     let mut contenders = Vec::with_capacity(models.len());
     for provider in common::providers(&models).await? {
         let kernel = Kernel::new(Config {
-            session_name: Some(provider.model.lock().clone()),
+            session_name: Some(provider.model()),
             ..config.clone()
         });
         kernel.set_provider(provider.clone());
         contenders.push(Contender {
-            model: provider.model.lock().clone(),
+            model: provider.model(),
             kernel,
         });
     }

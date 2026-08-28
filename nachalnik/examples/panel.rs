@@ -532,7 +532,7 @@ async fn main() -> Result<(), BoxError> {
 
     let mut panel = Vec::with_capacity(models.len());
     for provider in common::providers(&models).await? {
-        let model = provider.model.lock().clone();
+        let model = provider.model();
         let kernel = Kernel::new(Config {
             session_name: Some(model.clone()),
             ..Default::default()

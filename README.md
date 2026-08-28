@@ -609,6 +609,7 @@ cost.
 | **[`nachalnik`](nachalnik/)** | the runtime. Five dependencies, no `unsafe`, no network, no prompt. This is the part that matters, and it is meant to stay boring. |
 | **[`nachalnik-mcp`](nachalnik-mcp/)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`kamchatka`](kamchatka/)** | a terminal agent built on the runtime - the thing you actually run, and the demonstration that the seams hold up under one. |
+| `nachalnik-utils` | never published, permanently `0.0.0`. The OpenAI-compatible provider this crate's own examples and live tests talk through, so that scaffolding is written once rather than three times. A *dev*-dependency, which is the whole trick: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
 
 The bridge is deliberately *not* in the core. Speaking MCP means spawning processes, opening
 sockets and reading notifications in the background, and the runtime promises to do none of those;

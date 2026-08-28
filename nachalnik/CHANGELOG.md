@@ -38,4 +38,7 @@ and the requests as explicit state.
 - `Config::parallel_tool_calls`, off by default: the one place the kernel spawns tasks.
 - Features: `selectors` (a small language for naming context items) and `test` (a scripted
   provider, dummy tools, off-the-shelf policies and a mechanical compactor).
-- Five dependencies, no `unsafe`, no system prompt, no default tools, no HTTP client.
+- Five dependencies, no `unsafe`, no system prompt, no default tools, no HTTP client. The
+  OpenAI-compatible provider the examples and the live suite talk through lives in
+  `nachalnik-utils`, an unpublished `0.0.0` workspace member that is a dev-dependency and nothing
+  else - so none of it reaches anybody who depends on this crate.

@@ -46,5 +46,9 @@ tokio = { workspace = true, features = ["rt", "sync"] }
 
 [dev-dependencies]
 nachalnik = { path = ".", features = ["selectors", "test"] } # a workaround to use these features in tests by default
+# the OpenAI-compatible provider the examples and the live suite talk through. A dev-dependency,
+# and only ever a dev-dependency: cargo strips those from a published manifest, which is what lets
+# that crate stay unpublished at 0.0.0
+nachalnik-utils.workspace = true
 reqwest.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

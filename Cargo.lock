@@ -1429,6 +1429,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "nachalnik",
+ "nachalnik-utils",
  "parking_lot",
  "reqwest",
  "serde",
@@ -1443,6 +1444,18 @@ dependencies = [
  "async-trait",
  "nachalnik",
  "rmcp",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "nachalnik-utils"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "nachalnik",
+ "parking_lot",
+ "reqwest",
  "serde_json",
  "tokio",
 ]

@@ -55,7 +55,7 @@
 use std::{
     env,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicUsize, Ordering::SeqCst},
     },
     time::Duration,
@@ -63,25 +63,17 @@ use std::{
 
 use nachalnik::{
     BoxError, BytesPerToken, Calibrating, Capability, Config, Content, ContextItem, ContextKind,
-    ContextState, Delta, DeltaSink, Event, Grant, Kernel, Message, ModelInfo, ModelRequest,
-    ModelResponse, OutputSink, Params, Provider, Record, Role, State, StopReason, Tool, ToolCall,
-    ToolCallId, ToolOutput, ToolSpec, async_trait,
+    ContextState, Delta, Event, Grant, Kernel, OutputSink, Params, Record, Role, State, StopReason,
+    Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
     selectors::Selector,
     test::{AllowAll, DenyAll, LargestFirstCompactor},
 };
+use nachalnik_utils::{OpenAiCompatible, out_of_quota};
 use serde_json::{Value, json};
 use tokio::sync::broadcast::Receiver;
 
 /// A small, free, tool-capable model.
 const DEFAULT_MODEL: &str = "liquid/lfm-2.5-2.6b:free";
-
-/// Whether a listed identifier names the model under test, allowing for the decorations listings
-/// put on them: Google's `models/` prefix, ollama's implicit `:latest` tag.
-fn names_model(listed: &str, model: &str) -> bool {
-    listed == model
-        || listed.strip_prefix("models/") == Some(model)
-        || listed.strip_suffix(":latest") == Some(model)
-}
 
 /// Live tests take turns, so that the free tier's rate limit is not what is being measured.
 static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -92,512 +84,10 @@ async fn serialize() -> tokio::sync::MutexGuard<'static, ()> {
 
 // ------------------------------------------------------------------------------- the provider
 
-/// An OpenAI-compatible provider that remembers what it was asked and what it was told.
-struct Live {
-    client: reqwest::Client,
-    base_url: String,
-    api_key: String,
-    info: ModelInfo,
-    requests: Mutex<Vec<ModelRequest>>,
-    attempts: AtomicUsize,
-}
-
-fn to_wire(message: &Message) -> Value {
-    let mut wire = json!({
-        "role": message.role.as_str()
-    });
-
-    if let Some(content) = &message.content {
-        wire["content"] = json!(content.to_text());
-    }
-    if !message.tool_calls.is_empty() {
-        wire["tool_calls"] = Value::Array(
-            message
-                .tool_calls
-                .iter()
-                .map(|call| {
-                    let mut wire = json!({
-                        "id": call.id.0,
-                        "type": "function",
-                        "function": { "name": call.tool, "arguments": call.args.to_string() },
-                    });
-                    // whatever the provider attached to this call goes straight back
-                    if !call.extra.is_null() {
-                        wire["extra_content"] = (*call.extra).clone();
-                    }
-
-                    wire
-                })
-                .collect(),
-        );
-    }
-    if let Some(id) = &message.tool_call_id {
-        wire["tool_call_id"] = json!(id.0);
-    }
-    if let Some(name) = &message.name {
-        wire["name"] = json!(name);
-    }
-
-    wire
-}
-
-fn usage_of(reported: &Value) -> nachalnik::Usage {
-    nachalnik::Usage {
-        input_tokens: reported["prompt_tokens"].as_u64(),
-        output_tokens: reported["completion_tokens"].as_u64(),
-        reasoning_tokens: reported["completion_tokens_details"]["reasoning_tokens"].as_u64(),
-        cached_input_tokens: reported["prompt_tokens_details"]["cached_tokens"].as_u64(),
-    }
-}
-
-/// Whether an error means the account is out of free requests for the day, rather than having
-/// hit a momentary upstream limit. The first is worth skipping over; the second is worth waiting
-/// out.
-fn out_of_quota(error: &str) -> bool {
-    error.contains("per-day") || error.contains("daily")
-}
-
-/// How long the server asked us to wait, from the header or from the error it embedded.
-fn retry_after(headers: &reqwest::header::HeaderMap, body: &Value) -> Option<Duration> {
-    let from_header = headers
-        .get("retry-after")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<u64>().ok());
-    let from_body = body["error"]["metadata"]["retry_after_seconds"].as_u64();
-
-    from_header
-        .or(from_body)
-        // long enough to be worth honouring, short enough not to hang a test run
-        .map(|seconds| Duration::from_secs(seconds.clamp(1, 90)))
-}
-
-/// Turns the `error` object these APIs like to return *inside a 200* into a real error.
-fn body_error(body: &Value) -> Option<(u64, String)> {
-    let error = body.get("error").filter(|e| !e.is_null())?;
-    let code = error["code"].as_u64().unwrap_or(0);
-
-    Some((code, error.to_string()))
-}
-
-impl Live {
-    fn new(model: &str) -> Option<Arc<Self>> {
-        // note: deliberately not `OPENAI_API_KEY`, which plenty of people have exported for
-        // other reasons; spending someone's credits as a side effect of `cargo test` would be a
-        // poor way to demonstrate a crate about not doing things behind the user's back
-        let api_key = env::var("OPENROUTER_API_KEY")
-            .or_else(|_| env::var("NACHALNIK_API_KEY"))
-            .ok()?;
-
-        Some(Arc::new(Self {
-            client: reqwest::Client::builder()
-                .timeout(Duration::from_secs(180))
-                .build()
-                .expect("a client"),
-            base_url: env::var("NACHALNIK_BASE_URL")
-                .unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_owned()),
-            api_key,
-            info: ModelInfo {
-                context_limit: None,
-                tool_calling: true,
-                reasoning: true,
-                ..ModelInfo::new("openrouter", model)
-            },
-            requests: Mutex::new(Vec::new()),
-            attempts: AtomicUsize::new(0),
-        }))
-    }
-
-    /// Fills in the context limit from the provider's own model listing.
-    ///
-    /// note: Two shapes, because two real APIs. OpenRouter lists `context_length` beside an
-    /// `id`; Google's OpenAI-compatible listing carries no limit at all, so the number has to
-    /// come from its native one - which calls the field `inputTokenLimit`, prefixes the
-    /// identifier with `models/`, and wants the key in the query string rather than a header.
-    async fn probe(self: &Arc<Self>) -> Arc<Self> {
-        let mut provider = Self {
-            client: self.client.clone(),
-            base_url: self.base_url.clone(),
-            api_key: self.api_key.clone(),
-            info: self.info.clone(),
-            requests: Mutex::new(Vec::new()),
-            attempts: AtomicUsize::new(0),
-        };
-
-        let mut limit = self
-            .listed_limit(&format!("{}/models", self.base_url), true)
-            .await;
-        // Google's OpenAI-compatible listing carries no context length; its native one does
-        if limit.is_none()
-            && let Some(native) = self.base_url.strip_suffix("/openai")
-        {
-            limit = self.listed_limit(&format!("{native}/models"), false).await;
-        }
-        // ollama's carries none either, and what it advertises elsewhere is the architecture's
-        // maximum rather than the `num_ctx` it is actually serving
-        if limit.is_none()
-            && let Some(root) = self.base_url.strip_suffix("/v1")
-        {
-            limit = self.loaded_limit(root).await;
-        }
-        provider.info.context_limit = limit;
-
-        Arc::new(provider)
-    }
-
-    /// Asks ollama what context length the model is actually loaded with, loading it first if it
-    /// has to. Its listings advertise the architecture's maximum, which is not what it will
-    /// serve, and a limit that is wrong in that direction is worse than none.
-    async fn loaded_limit(&self, root: &str) -> Option<usize> {
-        for attempt in 0..2 {
-            if attempt == 1 {
-                // an empty prompt loads the model and generates nothing; only a loaded model
-                // reports the context it was given
-                self.client
-                    .post(format!("{root}/api/generate"))
-                    .json(&json!({ "model": &self.info.model, "prompt": "" }))
-                    .send()
-                    .await
-                    .ok()?;
-            }
-
-            let body = self
-                .client
-                .get(format!("{root}/api/ps"))
-                .send()
-                .await
-                .ok()?
-                .json::<Value>()
-                .await
-                .ok()?;
-            let found = body["models"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .find(|entry| {
-                    names_model(entry["name"].as_str().unwrap_or_default(), &self.info.model)
-                })
-                .and_then(|entry| entry["context_length"].as_u64());
-
-            if let Some(limit) = found {
-                return Some(limit as usize);
-            }
-        }
-
-        None
-    }
-
-    /// Looks the model up in a listing and returns whatever context limit it advertises.
-    async fn listed_limit(&self, url: &str, bearer: bool) -> Option<usize> {
-        let request = match bearer {
-            true => self.client.get(url).bearer_auth(&self.api_key),
-            false => self.client.get(format!("{url}?key={}", self.api_key)),
-        };
-        let body = request.send().await.ok()?.json::<Value>().await.ok()?;
-
-        // `data` is the OpenAI shape, `models` the native Google one
-        let entries = body["data"]
-            .as_array()
-            .or_else(|| body["models"].as_array())?;
-        let entry = entries.iter().find(|entry| {
-            let listed = entry["id"]
-                .as_str()
-                .or_else(|| entry["name"].as_str())
-                .unwrap_or_default();
-
-            names_model(listed, &self.info.model)
-        })?;
-
-        entry["context_length"]
-            .as_u64()
-            .or_else(|| entry["top_provider"]["context_length"].as_u64())
-            .or_else(|| entry["inputTokenLimit"].as_u64())
-            .map(|limit| limit as usize)
-    }
-
-    /// The requests this provider was handed, in order.
-    fn requests(&self) -> Vec<ModelRequest> {
-        self.requests.lock().unwrap().clone()
-    }
-
-    /// How many HTTP attempts it took, retries included.
-    fn attempts(&self) -> usize {
-        self.attempts.load(SeqCst)
-    }
-
-    /// Renders the request; [`Provider::render`] and [`Provider::respond`] both come here, so
-    /// what is previewed is what is sent.
-    fn body(&self, request: &ModelRequest) -> Value {
-        let mut body = json!({
-            "model": self.info.model,
-            "messages": request.messages.iter().map(to_wire).collect::<Vec<_>>(),
-        });
-
-        if !request.tools.is_empty() {
-            body["tools"] = Value::Array(
-                request
-                    .tools
-                    .iter()
-                    .map(|spec| {
-                        json!({
-                            "type": "function",
-                            "function": {
-                                "name": spec.id,
-                                "description": spec.description,
-                                "parameters": spec.schema,
-                            },
-                        })
-                    })
-                    .collect(),
-            );
-        }
-        // whatever the user set, and nothing else
-        for (key, value) in &request.params {
-            body[key] = value.clone();
-        }
-
-        body
-    }
-
-    /// Parses a whole (non-streamed) answer.
-    fn parse(&self, body: &Value) -> ModelResponse {
-        let choice = &body["choices"][0];
-        let message = &choice["message"];
-
-        ModelResponse {
-            content: message["content"]
-                .as_str()
-                .filter(|text| !text.is_empty())
-                .map(Content::text),
-            reasoning: message["reasoning"]
-                .as_str()
-                .filter(|text| !text.is_empty())
-                .map(Content::text),
-            tool_calls: message["tool_calls"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|call| {
-                    let args: Value = serde_json::from_str(
-                        call["function"]["arguments"].as_str().unwrap_or("{}"),
-                    )
-                    .unwrap_or_else(|_| json!({}));
-
-                    ToolCall::new(
-                        call["id"].as_str().unwrap_or_default(),
-                        call["function"]["name"].as_str().unwrap_or_default(),
-                        args,
-                    )
-                    .with_extra(call["extra_content"].clone())
-                })
-                .collect(),
-            stop: stop_reason(choice["finish_reason"].as_str()),
-            usage: body.get("usage").filter(|u| !u.is_null()).map(usage_of),
-            raw: Some(body.clone()),
-        }
-    }
-
-    /// Parses a streamed answer, reporting fragments as they arrive.
-    async fn parse_stream(
-        &self,
-        mut response: reqwest::Response,
-        deltas: &DeltaSink,
-    ) -> Result<ModelResponse, BoxError> {
-        let mut buffer = String::new();
-        let mut text = String::new();
-        let mut reasoning = String::new();
-        let mut calls: Vec<(String, String, String, Value)> = Vec::new();
-        let mut finish = None;
-        let mut usage = None;
-        let mut chunks = Vec::new();
-
-        while let Some(bytes) = response.chunk().await? {
-            buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-            while let Some(end) = buffer.find('\n') {
-                let line = buffer[..end].trim().to_owned();
-                buffer.drain(..=end);
-
-                let Some(data) = line.strip_prefix("data:") else {
-                    continue;
-                };
-                let data = data.trim();
-                if data == "[DONE]" {
-                    continue;
-                }
-                let Ok(chunk) = serde_json::from_str::<Value>(data) else {
-                    continue;
-                };
-                if let Some((code, error)) = body_error(&chunk) {
-                    return Err(format!("{code} mid-stream: {error}").into());
-                }
-
-                if let Some(reported) = chunk.get("usage").filter(|u| !u.is_null()) {
-                    usage = Some(usage_of(reported));
-                }
-
-                // somebody asked to stop; the rest of the stream is abandoned and what has
-                // arrived is handed back as a short answer
-                if deltas.is_interrupted() {
-                    finish = Some("interrupted".to_owned());
-                    break;
-                }
-
-                let choice = &chunk["choices"][0];
-                if let Some(reason) = choice["finish_reason"].as_str() {
-                    finish = Some(reason.to_owned());
-                }
-
-                let delta = &choice["delta"];
-                if let Some(fragment) = delta["content"].as_str().filter(|f| !f.is_empty()) {
-                    deltas.text(fragment);
-                    text.push_str(fragment);
-                }
-                if let Some(fragment) = delta["reasoning"].as_str().filter(|f| !f.is_empty()) {
-                    deltas.reasoning(fragment);
-                    reasoning.push_str(fragment);
-                }
-                for requested in delta["tool_calls"].as_array().into_iter().flatten() {
-                    let index = requested["index"].as_u64().unwrap_or(0) as usize;
-                    while calls.len() <= index {
-                        calls.push(Default::default());
-                    }
-                    let call = &mut calls[index];
-                    if let Some(id) = requested["id"].as_str() {
-                        call.0 = id.to_owned();
-                    }
-                    if let Some(name) = requested["function"]["name"].as_str() {
-                        call.1.push_str(name);
-                    }
-                    // the provider's own state for this call, which it will want back
-                    if !requested["extra_content"].is_null() {
-                        call.3 = requested["extra_content"].clone();
-                    }
-                    if let Some(fragment) = requested["function"]["arguments"].as_str() {
-                        call.2.push_str(fragment);
-                        deltas.tool_args(ToolCallId(call.0.clone()), fragment);
-                    }
-                }
-
-                chunks.push(chunk);
-            }
-            if finish.as_deref() == Some("interrupted") {
-                break;
-            }
-        }
-
-        if chunks.is_empty() {
-            // not a stream at all: an error body, most likely
-            let payload: Value = serde_json::from_str(&buffer).unwrap_or(Value::Null);
-            return match body_error(&payload) {
-                Some((code, error)) => Err(format!("{code}: {error}").into()),
-                None => Err(format!("the stream carried no data: {buffer}").into()),
-            };
-        }
-
-        Ok(ModelResponse {
-            content: (!text.is_empty()).then_some(Content::text(text)),
-            reasoning: (!reasoning.is_empty()).then_some(Content::text(reasoning)),
-            tool_calls: calls
-                .into_iter()
-                .map(|(id, tool, args, extra)| {
-                    let args: Value = serde_json::from_str(&args).unwrap_or_else(|_| json!({}));
-
-                    ToolCall::new(id, tool, args).with_extra(extra)
-                })
-                .collect(),
-            stop: stop_reason(finish.as_deref()),
-            usage,
-            raw: Some(json!({ "stream": chunks })),
-        })
-    }
-}
-
-fn stop_reason(finish: Option<&str>) -> StopReason {
-    match finish {
-        Some("stop") => StopReason::EndTurn,
-        Some("tool_calls") | Some("function_call") => StopReason::ToolUse,
-        Some("length") => StopReason::Length,
-        Some("content_filter") => StopReason::Refusal,
-        Some(other) => StopReason::Other(other.to_owned()),
-        None => StopReason::Other("unreported".to_owned()),
-    }
-}
-
-#[async_trait]
-impl Provider for Live {
-    fn info(&self) -> ModelInfo {
-        self.info.clone()
-    }
-
-    fn render(&self, request: &ModelRequest) -> Option<Value> {
-        Some(self.body(request))
-    }
-
-    async fn respond(
-        &self,
-        request: ModelRequest,
-        deltas: DeltaSink,
-    ) -> Result<ModelResponse, BoxError> {
-        self.requests.lock().unwrap().push(request.clone());
-        // exactly what `render` shows, because it is the same call
-        let body = self.render(&request).expect("this provider always renders");
-        let streaming = body["stream"] == json!(true);
-
-        const ATTEMPTS: u32 = 5;
-        let mut last = String::new();
-
-        for attempt in 0..ATTEMPTS {
-            self.attempts.fetch_add(1, SeqCst);
-
-            let response = self
-                .client
-                .post(format!("{}/chat/completions", self.base_url))
-                .bearer_auth(&self.api_key)
-                .json(&body)
-                .send()
-                .await?;
-
-            let status = response.status();
-            if streaming && status.is_success() {
-                return self.parse_stream(response, &deltas).await;
-            }
-
-            let headers = response.headers().clone();
-            let text = response.text().await?;
-            let payload: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
-            let error = body_error(&payload);
-
-            // an upstream rate limit arrives either as a 429 or as an error inside a fine 200
-            // waiting out an upstream limit is worth it; waiting out a daily one is not
-            let code = |wanted: u64| {
-                status.as_u16() as u64 == wanted
-                    || error.as_ref().is_some_and(|(code, _)| *code == wanted)
-            };
-            let limited = code(429) && !out_of_quota(&text);
-            // and a model that is simply busy is not what any of these tests is about; it says
-            // so as a 503, which is as transient as a rate limit and just as uninteresting
-            let overloaded = code(503) || status.is_server_error();
-
-            if (limited || overloaded) && attempt + 1 < ATTEMPTS {
-                let wait = retry_after(&headers, &payload)
-                    .unwrap_or_else(|| Duration::from_secs(2u64.pow(attempt)));
-                let why = if limited { "rate limited" } else { "busy" };
-                eprintln!("  {why}; waiting {}s", wait.as_secs());
-                last = text;
-                tokio::time::sleep(wait).await;
-                continue;
-            }
-
-            return match error {
-                Some((code, error)) => Err(format!("{code}: {error}").into()),
-                None if !status.is_success() => Err(format!("{status}: {text}").into()),
-                None => Ok(self.parse(&payload)),
-            };
-        }
-
-        Err(format!("gave up after {ATTEMPTS} attempts: {last}").into())
-    }
-}
+// note: `nachalnik-utils::OpenAiCompatible`, which is a workspace member that is never published
+// and exists for exactly this: the provider these tests talk through, and the one the examples
+// talk through, used to be two five-hundred-line copies of each other that had to be fixed twice.
+// It records every request it sends, which is what most of the assertions below are about.
 
 // ---------------------------------------------------------------------------------- the tools
 
@@ -654,14 +144,23 @@ impl Tool for Secret {
 // -------------------------------------------------------------------------------- the fixtures
 
 /// A kernel wired to a live provider, or `None` when there is no API key to use.
-async fn live() -> Option<(Kernel, Arc<Live>)> {
+async fn live() -> Option<(Kernel, Arc<OpenAiCompatible>)> {
     live_with(Config::default()).await
 }
 
 /// The same, for a test that needs the kernel configured differently.
-async fn live_with(config: Config) -> Option<(Kernel, Arc<Live>)> {
+async fn live_with(config: Config) -> Option<(Kernel, Arc<OpenAiCompatible>)> {
     let model = env::var("NACHALNIK_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
-    let provider = Live::new(&model)?.probe().await;
+    // no key means no live tests, which is how this suite skips itself. `streaming(false)` because
+    // most of these are about what goes out rather than how it comes back; the one that is about
+    // streaming turns it on through `params`, the same way a user would
+    let provider = Arc::new(
+        OpenAiCompatible::from_env(OpenAiCompatible::client(), &model)
+            .ok()?
+            .labelled("openrouter")
+            .streaming(false),
+    );
+    provider.probe().await;
 
     let kernel = Kernel::new(config);
     kernel.set_provider(provider.clone());
@@ -1216,11 +715,21 @@ async fn the_model_can_be_swapped_mid_session() {
     let model = env::var("NACHALNIK_TEST_MODEL_B")
         .or_else(|_| env::var("NACHALNIK_TEST_MODEL"))
         .unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
-    let second = Live::new(&model).unwrap().probe().await;
+    let second = Arc::new(
+        OpenAiCompatible::from_env(OpenAiCompatible::client(), &model)
+            .expect("the key that got us this far")
+            .labelled("openrouter")
+            .streaming(false),
+    );
+    second.probe().await;
 
     let mut events = kernel.subscribe();
     let previous = kernel.set_provider(second.clone()).unwrap();
-    assert_eq!(previous.info(), first.info(), "the old one is handed back");
+    assert_eq!(
+        previous.info(),
+        nachalnik::Provider::info(&*first),
+        "the old one is handed back"
+    );
     assert!(drain(&mut events).iter().any(|event| matches!(
         event,
         Event::ModelChanged { to: Some(info), .. } if info.model == model
