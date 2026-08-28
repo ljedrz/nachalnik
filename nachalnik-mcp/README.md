@@ -1,5 +1,9 @@
 # nachalnik-mcp
 
+[![crates.io](https://img.shields.io/crates/v/nachalnik-mcp.svg)](https://crates.io/crates/nachalnik-mcp)
+[![docs.rs](https://docs.rs/nachalnik-mcp/badge.svg)](https://docs.rs/nachalnik-mcp)
+[![CI](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml/badge.svg)](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml)
+
 **An [MCP](https://modelcontextprotocol.io) bridge for [`nachalnik`](../nachalnik): a tool
 somebody else wrote, as a `Tool` like any other.**
 

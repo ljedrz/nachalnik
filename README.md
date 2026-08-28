@@ -1,5 +1,9 @@
 # nachalnik
 
+[![crates.io](https://img.shields.io/crates/v/nachalnik.svg)](https://crates.io/crates/nachalnik)
+[![docs.rs](https://docs.rs/nachalnik/badge.svg)](https://docs.rs/nachalnik)
+[![CI](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml/badge.svg)](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml)
+
 **An agent runtime in which the context, the tools, the permissions and the requests are explicit
 state you can read, change and put back - rather than decisions taken inside a framework and
 reported to you afterwards.**

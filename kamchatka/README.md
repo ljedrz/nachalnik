@@ -1,5 +1,9 @@
 # kamchatka
 
+[![crates.io](https://img.shields.io/crates/v/kamchatka.svg)](https://crates.io/crates/kamchatka)
+[![docs.rs](https://docs.rs/kamchatka/badge.svg)](https://docs.rs/kamchatka)
+[![CI](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml/badge.svg)](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml)
+
 **A terminal agent that shows you its context.**
 
 Built on [`nachalnik`](../nachalnik), and built to demonstrate it. Everything in here is
