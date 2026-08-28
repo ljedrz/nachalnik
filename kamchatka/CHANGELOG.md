@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### added
 
+- Fenced code blocks in the model's answers are syntax-coloured, by token *name* rather than by
+  theme: `synoptic` says which pieces are comments, strings, keywords, numbers and calls, and this
+  program picks the colours. The fences are split out before the markdown renderer sees them,
+  which is what makes the language, the whole block and the rule down its left all available at
+  once - a block still streaming in is a block, and one in a language nothing recognises still
+  gets the rule.
 - A scrollbar down the right border of any tab holding more than fits, and of the overlays. It is
   drawn on the border rather than in a column of its own, so nothing gets narrower and a window
   with nothing to scroll looks exactly as it did.

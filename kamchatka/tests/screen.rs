@@ -13,7 +13,7 @@ use std::{sync::Arc, time::Duration};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{
-    app::{App, Outcome, Tab},
+    app::{App, Outcome, Speaker, Tab},
     provider::OpenAiCompatible,
     tools::Careful,
     ui,
@@ -1368,6 +1368,80 @@ async fn a_command_that_opens_a_tab_leaves_the_keys_on_the_prompt() {
         harness.app.policy.stance(&Capability::Read),
         before,
         "typing at the prompt should not have rewritten the policy"
+    );
+}
+
+#[tokio::test]
+async fn a_fenced_block_is_coloured_by_what_the_tokens_are() {
+    // note: a real string with real newlines; a `\` continuation would eat them, and the block
+    // would arrive as one line of prose
+    let answer = r#"how it works:
+
+```rust
+// the loop
+fn step() { let x = 1; }
+```
+"#;
+    let mut harness = Harness::new([ModelResponse::text(answer)]);
+    harness.send("go on").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+
+    // the fences themselves are punctuation and are not shown; the rule down the left is
+    assert!(!screen.contains("```"), "{screen}");
+    let code = screen
+        .lines()
+        .find(|line| line.contains("fn step()"))
+        .expect("the block is on screen");
+    assert!(code.contains("│ fn step()"), "{code}");
+
+    // and the tokens are told apart: a keyword, a number and a comment are three colours
+    let (keyword, _) = harness.style_of("fn step");
+    let (digit, _) = harness.style_of("1;");
+    let (comment, _) = harness.style_of("// the loop");
+    assert_eq!(keyword, Color::Magenta);
+    assert_eq!(digit, Color::Yellow);
+    assert_eq!(comment, Color::Gray);
+    assert_ne!(keyword, digit);
+}
+
+#[tokio::test]
+async fn a_block_still_arriving_is_a_block_rather_than_prose() {
+    // every code block is unterminated for as long as it is streaming in, and one read as prose
+    // would jump from unstyled text to a coloured block the moment the closing fence landed
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .say(Speaker::Model, "here:\n\n```rust\nfn half(");
+
+    let screen = harness.screen();
+
+    let code = screen
+        .lines()
+        .find(|line| line.contains("fn half("))
+        .expect("what there is of it is on screen");
+    assert!(code.contains("│ fn half("), "{code}");
+    assert!(!screen.contains("```"), "{screen}");
+}
+
+#[tokio::test]
+async fn a_language_nothing_can_colour_is_still_a_block() {
+    let mut harness = Harness::new([]);
+    harness.app.say(
+        Speaker::Model,
+        "look:\n\n```brainfuck\n+[----->+++<]>+.\n```\n",
+    );
+
+    let screen = harness.screen();
+
+    let code = screen
+        .lines()
+        .find(|line| line.contains("+[----->+++<]>+."))
+        .expect("the block is on screen");
+    assert!(
+        code.contains("│ +[----->+++<]>+."),
+        "it gets the rule whether or not anybody can colour it: {code}"
     );
 }
 

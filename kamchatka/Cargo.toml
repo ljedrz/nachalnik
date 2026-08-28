@@ -62,9 +62,16 @@ ratatui = "0.30"
 # something this crate should be writing
 ratatui-textarea = "0.9"
 # models answer in markdown, and a terminal that showed the asterisks would be showing the
-# punctuation instead of the emphasis. `default-features = false` leaves out the syntect-based
-# code highlighting, which is a large dependency for a demonstration app
+# punctuation instead of the emphasis. `default-features = false` leaves out its syntect-based
+# highlighting, which is done here instead - see `synoptic` below for why
 tui-markdown = { version = "0.3", default-features = false }
+# fenced code blocks, coloured by token *name* - `comment`, `string`, `keyword` - which is what
+# lets the palette be this program's own. `default-features = false` on `tui-markdown` above is
+# the other half of that decision: its `highlight-code` feature is syntect, whose themes are
+# 24-bit colour chosen against a known background, and which drops the marker that tells this
+# program a line is code at all
+synoptic = "2.2"
+
 tokio-stream = "0.1"
 
 [dev-dependencies]
