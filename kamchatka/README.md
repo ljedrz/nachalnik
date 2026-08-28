@@ -113,6 +113,17 @@ why:
 only answer the other one. `/payload` goes one further and prints what the provider will put on
 the wire, byte for byte.
 
+## ✍️ what the model writes
+
+Models answer in markdown, so the chat tab reads it as markdown: headings and emphasis get weight
+and colour, inline code gets told apart from prose, list continuations hang under their bullets,
+and a fenced block gets a rule down its left instead of a slab of background — which is the one
+thing a terminal cannot do without knowing what colour the theme is.
+
+The parsing is [`tui-markdown`](https://crates.io/crates/tui-markdown); only the styling is this
+crate's. Nothing else on the screen is treated as markdown: a tool's output is what the tool said,
+and running that through a renderer would be inventing structure it never had.
+
 ## ⌨️ the rest of the keys
 
 | key | what happens |

@@ -17,6 +17,8 @@ use ratatui::{
     widgets::{Block, Clear, List, ListItem, Paragraph},
 };
 
+use tui_markdown::StyleSheet as _;
+
 use crate::app::{App, Focus, Overlay, Speaker, Tab};
 
 /// What the keys do, shown by F1.
@@ -157,14 +159,32 @@ fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) {
     let width = inner.width as usize;
     let mut lines: Vec<Line> = Vec::new();
     for entry in &app.transcript {
+        // the model writes markdown, and a terminal that printed the asterisks would be showing
+        // the punctuation instead of the emphasis. Nothing else here is markdown: a tool's output
+        // is whatever the tool said, and running it through a renderer would be inventing
+        // structure the tool did not put there
+        if entry.speaker == Speaker::Model {
+            let rendered = tui_markdown::from_str_with_options(&entry.text, &markdown());
+            for line in rendered.lines {
+                // a fenced block gets a rule down its left rather than a slab of background,
+                // which is the one thing a terminal cannot do without knowing the theme
+                match line.style == Markdown.code() {
+                    true => lines.extend(gutter(&line, width)),
+                    false => lines.extend(refit(&line, width)),
+                }
+            }
+            lines.push(Line::default());
+            continue;
+        }
+
         let (prefix, style) = match entry.speaker {
             Speaker::User => ("> ", Style::default().fg(Color::White).bold()),
-            Speaker::Model => ("", Style::default()),
             Speaker::Reasoning => ("", Style::default().fg(Color::DarkGray).italic()),
             Speaker::Call => ("⟩ ", Style::default().fg(Color::Cyan)),
             Speaker::Result => ("│ ", Style::default().fg(Color::DarkGray)),
             Speaker::Note => ("· ", Style::default().fg(Color::DarkGray)),
             Speaker::Error => ("! ", Style::default().fg(Color::Red)),
+            Speaker::Model => unreachable!("rendered above"),
         };
 
         for text in wrapped(&entry.text, width, prefix) {
@@ -609,6 +629,154 @@ fn centred(area: Rect, columns: u16, rows: u16) -> Rect {
         width,
         height,
     }
+}
+
+/// How markdown is dressed for a terminal that does not know what colour the background is.
+///
+/// note: The defaults put a cyan slab behind an H1 and a black one behind every code block, which
+/// looks like a redaction on a dark theme and a bruise on a light one. Weight and colour say the
+/// same thing and survive both. The `#` and the ``` are dropped: they are the punctuation of the
+/// format, and what is wanted is what they mean.
+#[derive(Clone)]
+struct Markdown;
+
+impl tui_markdown::StyleSheet for Markdown {
+    fn heading(&self, level: u8) -> Style {
+        match level {
+            1 => Style::default().fg(Color::Yellow).bold().underlined(),
+            2 => Style::default().fg(Color::Yellow).bold(),
+            _ => Style::default().bold(),
+        }
+    }
+
+    fn heading_marker(&self, _level: u8) -> &str {
+        ""
+    }
+
+    fn code(&self) -> Style {
+        Style::default().fg(Color::Cyan)
+    }
+
+    fn code_block_fence(&self) -> &str {
+        ""
+    }
+
+    fn blockquote(&self) -> Style {
+        Style::default().fg(Color::DarkGray).italic()
+    }
+
+    fn link(&self) -> Style {
+        Style::default().fg(Color::Blue).underlined()
+    }
+}
+
+/// The options every model answer is rendered with.
+fn markdown() -> tui_markdown::Options<Markdown> {
+    tui_markdown::Options::new(Markdown)
+}
+
+/// A line of a fenced code block: a rule down the left, and no reflowing of what is inside it.
+fn gutter(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
+    let bar = Span::styled("│ ", Style::default().fg(Color::DarkGray));
+    let code = Style::default().fg(Color::Cyan);
+    let text: String = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+
+    split_to_fit(&text, width.saturating_sub(2).max(8))
+        .into_iter()
+        .map(|piece| Line::from(vec![bar.clone(), Span::styled(piece, code)]))
+        .collect()
+}
+
+/// Breaks a line of already-styled fragments into lines that fit, keeping every fragment's style
+/// and hanging the continuations under whatever the line was indented by.
+///
+/// note: `Paragraph` can wrap, but it wraps at render time, and this program counts lines to know
+/// where it is scrolled to - a widget that quietly turned forty lines into sixty would put the
+/// scrolling out by twenty. So the wrapping happens here, where the count is taken.
+fn refit(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
+    let width = width.max(8);
+    let plain: String = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+    if plain.chars().count() <= width {
+        return vec![
+            Line::from(
+                line.spans
+                    .iter()
+                    .map(|span| Span::styled(span.content.to_string(), span.style))
+                    .collect::<Vec<_>>(),
+            )
+            .style(line.style),
+        ];
+    }
+
+    // an indented line's continuations belong under it rather than back at the margin, and so do
+    // a list item's: `- ` and `1. ` are indentation as far as reading it goes
+    let spaces = plain.chars().take_while(|c| *c == ' ').count();
+    let hang = " ".repeat(spaces + bullet(&plain[spaces..]));
+    let hang = match hang.chars().count() + 8 < width {
+        true => hang,
+        false => String::new(),
+    };
+
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut current: Vec<Span<'static>> = Vec::new();
+    let mut column = 0;
+    for span in &line.spans {
+        // `split_inclusive` keeps the spaces, so what is placed is a word and the gap after it
+        for word in span.content.split_inclusive(' ') {
+            for piece in split_to_fit(word, width - hang.chars().count()) {
+                let length = piece.trim_end().chars().count();
+                if column != 0 && column + length > width {
+                    out.push(Line::from(std::mem::take(&mut current)).style(line.style));
+                    column = hang.chars().count();
+                    if !hang.is_empty() {
+                        current.push(Span::raw(hang.clone()));
+                    }
+                }
+                current.push(Span::styled(piece.clone(), span.style));
+                column += piece.chars().count();
+            }
+        }
+    }
+    out.push(Line::from(current).style(line.style));
+
+    out
+}
+
+/// The width of a list marker at the start of a line, or nought if there is not one.
+fn bullet(text: &str) -> usize {
+    if let Some(rest) = text.strip_prefix(['-', '*', '+'])
+        && rest.starts_with(' ')
+    {
+        return 2;
+    }
+
+    // `12. ` and `12) `, however many digits it runs to
+    let digits = text.chars().take_while(char::is_ascii_digit).count();
+    match digits != 0 && matches!(text.get(digits..digits + 2), Some(". ") | Some(") ")) {
+        true => digits + 2,
+        false => 0,
+    }
+}
+
+/// Splits a word that is wider than the line into pieces that are not.
+fn split_to_fit(word: &str, width: usize) -> Vec<String> {
+    if word.chars().count() <= width {
+        return vec![word.to_owned()];
+    }
+    let characters: Vec<char> = word.chars().collect();
+
+    characters
+        .chunks(width.max(1))
+        .map(|piece| piece.iter().collect())
+        .collect()
 }
 
 // ------------------------------------------------------------------------------------- the words

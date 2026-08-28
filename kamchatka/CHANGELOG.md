@@ -11,6 +11,12 @@ minor bump may break you.
 
 The first release: a terminal agent built on `nachalnik`, and a demonstration of it.
 
+- The model's answers are rendered as markdown - headings, emphasis, inline code, lists and
+  fenced blocks - because a terminal that printed the asterisks would be showing the punctuation
+  instead of what it meant. `tui-markdown` does the parsing; the styling is this crate's, since
+  the defaults put a coloured slab behind headings and code, which reads as a redaction on a dark
+  theme and a bruise on a light one. Nothing else is treated as markdown: a tool's output is what
+  the tool said.
 - Three tabs, each taking the whole window: `chat`, `context`, `trace`. `ctrl+t` for the next,
   `alt+1`/`2`/`3` for one in particular, `tab` between the prompt and the open tab. The prompt and
   the status line are under all three.

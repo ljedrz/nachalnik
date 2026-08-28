@@ -56,6 +56,10 @@ ratatui = "0.30"
 # the editing an input line is expected to do - words, selection, undo, paste - which is not
 # something this crate should be writing
 ratatui-textarea = "0.9"
+# models answer in markdown, and a terminal that showed the asterisks would be showing the
+# punctuation instead of the emphasis. `default-features = false` leaves out the syntect-based
+# code highlighting, which is a large dependency for a demonstration app
+tui-markdown = { version = "0.3", default-features = false }
 tokio-stream = "0.1"
 
 [dev-dependencies]

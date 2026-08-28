@@ -23,7 +23,11 @@ use nachalnik::{
     StopReason, Usage,
     test::{ConstTool, ScriptedProvider, call},
 };
-use ratatui::{Terminal, backend::TestBackend};
+use ratatui::{
+    Terminal,
+    backend::TestBackend,
+    style::{Color, Modifier},
+};
 use serde_json::json;
 use tokio::sync::{broadcast::Receiver, mpsc::UnboundedReceiver};
 
@@ -104,6 +108,37 @@ impl Harness {
     /// Draws, and returns what is on the screen.
     fn screen(&mut self) -> String {
         self.sized(100, 30)
+    }
+
+    /// Draws, and reports how the first character of `needle` is styled.
+    fn style_of(&mut self, needle: &str) -> (Color, Modifier) {
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| ui::draw(frame, &mut self.app))
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+
+        let first = needle.chars().next().expect("a needle to look for");
+        for y in 0..buffer.area.height {
+            let row: String = (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect();
+            if let Some(at) = row.find(needle) {
+                // `find` gives bytes and the buffer is indexed in cells; every character this is
+                // used on is one cell wide
+                let x = row[..at].chars().count() as u16;
+                let cell = &buffer[(x, y)];
+                assert_eq!(
+                    cell.symbol(),
+                    first.to_string(),
+                    "the cell under the needle"
+                );
+
+                return (cell.fg, cell.modifier);
+            }
+        }
+
+        panic!("`{needle}` is not on the screen");
     }
 
     /// Draws at a given size.
@@ -441,6 +476,72 @@ async fn several_repairs_at_once_are_one_line_rather_than_a_wall_of_them() {
     assert_eq!(screen.matches("dropped the call").count(), 0, "{screen}");
     assert!(screen.contains("repaired in 3 places"), "{screen}");
     assert!(screen.contains("ctrl+p says where"), "{screen}");
+}
+
+#[tokio::test]
+async fn a_models_markdown_is_shown_as_formatting_rather_than_as_punctuation() {
+    // a raw literal, because what is under test is markdown and the escapes would be the first
+    // thing to get it wrong
+    const ANSWER: &str = r#"## What I found
+
+The `median` function is **wrong** for even lengths:
+
+```rust
+let mid = sorted.len() / 2;
+```
+
+- `mean` is fine.
+"#;
+
+    let mut harness = Harness::new([ModelResponse::text(ANSWER)]);
+
+    harness.send("look").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    // the punctuation of the format is not the message
+    assert!(!screen.contains("##"), "{screen}");
+    assert!(!screen.contains("**"), "{screen}");
+    assert!(!screen.contains("```"), "{screen}");
+    assert!(!screen.contains('`'), "{screen}");
+
+    // ... but everything it was marking up is still there, and marked up
+    assert!(screen.contains("What I found"), "{screen}");
+    assert!(screen.contains("let mid = sorted.len() / 2;"), "{screen}");
+    assert!(screen.contains("- mean is fine."), "{screen}");
+
+    let (_, heading) = harness.style_of("What I found");
+    assert!(heading.contains(Modifier::BOLD), "a heading should be bold");
+
+    let (_, emphasis) = harness.style_of("wrong");
+    assert!(emphasis.contains(Modifier::BOLD), "**bold** should be bold");
+
+    let (code, _) = harness.style_of("median");
+    assert_eq!(code, Color::Cyan, "`code` should be told apart from prose");
+
+    // a fenced block gets a rule down its left rather than a slab of background
+    let fenced = screen
+        .lines()
+        .find(|line| line.contains("let mid"))
+        .expect("the block is on the screen");
+    assert!(fenced.trim_start().starts_with('│'), "{fenced}");
+}
+
+#[tokio::test]
+async fn what_a_tool_said_is_shown_as_the_tool_said_it() {
+    let mut harness = Harness::new([]);
+
+    // markdown is what the *model* writes. A tool's output is bytes, and running it through a
+    // renderer would be inventing structure that the tool did not put there
+    harness.app.say(
+        kamchatka::app::Speaker::Result,
+        "**not bold** and `not code` and # not a heading",
+    );
+
+    let screen = harness.screen();
+    assert!(screen.contains("**not bold**"), "{screen}");
+    assert!(screen.contains("`not code`"), "{screen}");
+    assert!(screen.contains("# not a heading"), "{screen}");
 }
 
 #[tokio::test]
