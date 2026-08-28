@@ -752,7 +752,15 @@ impl App {
                 KeyCode::Down => *scroll += 1,
                 KeyCode::PageUp => *scroll = scroll.saturating_sub(20),
                 KeyCode::PageDown => *scroll += 20,
-                _ => self.overlay = None,
+                // a tool is still waiting to be told whether it may run, so closing whatever was
+                // being read goes back to the question rather than leaving it unanswered and
+                // unreachable - which is what happened after [i] showed the exact JSON
+                _ => {
+                    self.overlay = match self.kernel.pending_permissions().is_empty() {
+                        true => None,
+                        false => Some(Overlay::Permission),
+                    }
+                }
             },
             Overlay::Permission => self.permission_key(key),
         }

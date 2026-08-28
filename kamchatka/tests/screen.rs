@@ -223,6 +223,21 @@ async fn a_tool_that_needs_permission_stops_the_turn_and_puts_the_question_on_th
     assert!(screen.contains("dig wants: shell"), "{screen}");
     assert!(screen.contains("\"where\""), "{screen}");
 
+    // looking closer, and then coming back: the tool is still waiting, so the question has to
+    // still be there. It was not, and there was no way left to answer it
+    harness.press(KeyCode::Char('i')).await;
+    let inspected = harness.screen();
+    assert!(inspected.contains("what it was asked to do"), "{inspected}");
+    assert!(
+        inspected.contains("\"capabilities\""),
+        "the tool itself: {inspected}"
+    );
+
+    harness.press(KeyCode::Esc).await;
+    let back = harness.screen();
+    assert!(back.contains("dig wants: shell"), "{back}");
+    assert!(back.contains("[y] once"), "{back}");
+
     // saying no answers the call rather than abandoning it: the model is told
     harness.press(KeyCode::Char('n')).await;
     harness.settle().await;
