@@ -455,6 +455,15 @@ very next call. Under Landlock it tried `curl`, then a raw `socket.connect`, and
 refusing up front with a reason is kinder than letting something run and fail - but it is no longer
 the thing standing between the model and the network.
 
+Within that boundary the file tools are finer than a capability. `read` is allowed outright, but
+`Careful` also holds a short list of patterns - `.env*`, `*.pem`, `id_rsa*`, `.ssh/` - and the
+strictest of everything consulted wins, so reading `src/main.rs` is silent and reading `.env` is a
+question that names the rule that raised it. They bind `read`, `write` and `edit`, and deliberately
+not `shell`: a command names its files inside a string, and `cat .env`, `sed -n 1p .env` and
+`python -c "open('.env')"` are the same act written three ways. What binds a command is the kernel,
+and what the kernel can express is a directory. So `cat .env` works where `read .env` asks, which is
+the honest shape of it.
+
 The three file tools cannot be confined that way - they run on the terminal's own threads, and a
 ruleset applied there would confine the terminal - so they are held to the same boundary by their
 own code, which resolves `..` and symlinks before comparing. That is weaker in kind, and the
@@ -646,8 +655,8 @@ calibration, compaction, and the session log - including that the log's account 
 states is in the order they were applied, which two threads changing one item is enough to break. A replaced `Projector` gets its own test, because a
 seam nothing has ever been swapped through is a claim rather than a seam.
 
-`cargo test --workspace` runs 225 in all: those, the bridge's 23 - which stand a real MCP server
-up rather than mocking one - and `kamchatka`'s 60, which draw its screen and read the characters
+`cargo test --workspace` runs 228 in all: those, the bridge's 23 - which stand a real MCP server
+up rather than mocking one - and `kamchatka`'s 63, which draw its screen and read the characters
 back, plus one that puts a socket in front of it that answers and then goes silent and seven that
 try to escape its sandbox and report what the kernel refused.
 

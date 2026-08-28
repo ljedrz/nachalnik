@@ -549,7 +549,7 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
         Paragraph::new(Line::styled(
             format!(
                 "  {:<capability$} {:<10}  {}",
-                "capability",
+                "capability or path",
                 "answer",
                 match covers >= 8 {
                     true => "the tools it covers",
@@ -589,7 +589,7 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
             ListItem::new(Line::from(vec![
                 Span::raw(format!(
                     "  {:<capability$} ",
-                    clip(&row.capability.to_string(), capability)
+                    clip(&row.subject.to_string(), capability)
                 )),
                 Span::styled(format!("{answer:<10}  "), style),
                 Span::styled(
@@ -827,10 +827,15 @@ fn draw_permission(frame: &mut Frame, app: &App) {
     };
     let waiting = app.kernel.pending_permissions().len();
 
-    let capabilities: Vec<String> = request
-        .capabilities
+    // what the policy will actually consult, not what the tool declared: `shell` reaching for the
+    // network and `read` handed a path there is a rule about are both judged against something the
+    // spec does not mention, and a question that named only the spec would be answering for less
+    // than it decides
+    let judged: Vec<String> = app
+        .policy
+        .judges(&request)
         .iter()
-        .map(|capability| capability.to_string())
+        .map(|subject| subject.to_string())
         .collect();
     // two lines of options rather than one that wraps wherever it happens to run out: the answers
     // on the first, and the two that are about looking closer or giving up on the lot on the
@@ -840,9 +845,9 @@ fn draw_permission(frame: &mut Frame, app: &App) {
          [y] once   [a] always, for {}   [n] no\n\
          [i] the exact JSON   [d] {}{}",
         request.tool,
-        capabilities.join(", "),
+        judged.join(", "),
         readable(&request.args),
-        capabilities.join(" and "),
+        judged.join(" and "),
         match waiting > 1 {
             true => "drop them all",
             false => "drop it",

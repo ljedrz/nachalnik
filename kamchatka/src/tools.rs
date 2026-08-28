@@ -7,6 +7,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fmt,
     path::PathBuf,
     process::Stdio,
     sync::Arc,
@@ -295,6 +296,92 @@ impl Tool for Shell {
 
 // --------------------------------------------------------------------------------- the policy
 
+/// Something [`Careful`] holds an opinion about.
+///
+/// note: two kinds, because a capability is not fine enough on its own. `read: allow` is a
+/// reasonable thing to want and `read .env: allow` is not, and the difference is a property of the
+/// *file* rather than of the tool that opened it - which is why a path rule is one subject rather
+/// than three, and binds `read`, `write` and `edit` alike.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Subject {
+    /// A class of side effect a tool declares.
+    Capability(Capability),
+    /// A pattern the path a tool was handed is matched against.
+    Path(String),
+}
+
+impl fmt::Display for Subject {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Capability(capability) => write!(f, "{capability}"),
+            Self::Path(pattern) => write!(f, "{pattern}"),
+        }
+    }
+}
+
+/// The paths a fresh policy has something to say about.
+///
+/// note: a short list of the names that are credentials by convention, and every one of them is
+/// `ask` rather than `deny`. Reading is otherwise allowed outright, so the whole of what this does
+/// is turn a silent `read` of `.env` into a question - which is the point of a rule that is finer
+/// than a capability. They are on the permissions tab like everything else, and cycle like
+/// everything else.
+const SUSPECT: &[&str] = &[
+    ".env*",
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "id_rsa*",
+    "id_ed25519*",
+    "*credentials*",
+    "secrets/",
+    ".ssh/",
+    ".aws/",
+    ".gnupg/",
+];
+
+/// Whether a path is one this pattern is about.
+///
+/// note: a pattern ending in `/` is a directory: it matches a path with that component anywhere in
+/// it. Anything else is matched against the file name, with `*` standing for any run of
+/// characters. That is less than a glob crate would give and it is what these rules need; a
+/// pattern language nobody can predict is worse on a permissions screen than a small one.
+pub fn path_matches(pattern: &str, path: &str) -> bool {
+    let path = path.replace('\\', "/");
+    if let Some(directory) = pattern.strip_suffix('/') {
+        return path.split('/').any(|part| part == directory);
+    }
+
+    let name = path.rsplit('/').next().unwrap_or(&path);
+    let mut rest = name;
+    let mut parts = pattern.split('*');
+    let Some(first) = parts.next() else {
+        return false;
+    };
+    let Some(after) = rest.strip_prefix(first) else {
+        return false;
+    };
+    rest = after;
+
+    let mut last = None;
+    for part in parts {
+        last = Some(part);
+        if part.is_empty() {
+            continue;
+        }
+        match rest.find(part) {
+            Some(at) => rest = &rest[at + part.len()..],
+            None => return false,
+        }
+    }
+
+    // a pattern with no `*` has to have consumed the whole name; one ending in `*` need not
+    match last {
+        None => rest.is_empty(),
+        Some(part) => part.is_empty() || rest.is_empty(),
+    }
+}
+
 /// Reading is allowed, the network is refused, and everything else is a question - unless the
 /// person at the terminal has said otherwise about that capability.
 ///
@@ -308,8 +395,26 @@ impl Tool for Shell {
 /// every one of those answers is now a value somebody can look at and change - which is what the
 /// permissions tab is drawing. A policy whose decisions can only be observed by triggering them
 /// is not much of a demonstration of a replaceable policy.
+///
+/// note: a capability is not fine enough on its own. `read: allow` is a reasonable thing to want
+/// and `read .env: allow` is not, so there is a second kind of [`Subject`]: a pattern the *path* a
+/// tool was handed is matched against. The strictest of everything consulted wins, so a rule can
+/// only tighten what a capability allows - `read` stays `allow` and `.env` becomes a question.
+///
+/// note: those rules bind `read`, `write` and `edit`, and deliberately not `shell`. A command
+/// names its files inside a string, and `cat .env`, `sed -n 1p .env`, `python -c "open('.env')"`
+/// and `base64 <.env` are the same act written four ways: a check over that string would refuse
+/// the first and wave the rest through while looking like a rule. What binds a command is the
+/// kernel, and what the kernel can express is a directory - see [`crate::sandbox`]. So `cat .env`
+/// works where `read .env` asks, and that is the honest shape of it rather than an oversight.
 pub struct Careful {
     stances: Mutex<BTreeMap<Capability, Verdict>>,
+    /// What it answers about paths matching a pattern, in the order they are consulted.
+    ///
+    /// note: ordered rather than a map, because these are read out on a screen and somebody
+    /// adding one wants it where they put it. The strictest match wins regardless, so the order
+    /// is for the reader rather than for the answer.
+    paths: Mutex<Vec<(String, Verdict)>>,
     /// The calls a person was asked about and allowed, whose command reaches for the network.
     ///
     /// note: a stance of `ask` answered `yes, once` is permission for *that call*, and the
@@ -340,45 +445,109 @@ impl Careful {
         Self {
             stances: Mutex::new(BTreeMap::from([
                 (Capability::Read, Verdict::Allow),
-                (Capability::Network, Verdict::Deny),
+                // note: `ask`, not `deny`. Refusing outright was a decision made on the user's
+                // behalf about a thing they might perfectly well want, and it is theirs to make -
+                // the sandbox is what makes the answer mean something either way
+                (Capability::Network, Verdict::Ask),
             ])),
+            paths: Mutex::new(
+                SUSPECT
+                    .iter()
+                    .map(|pattern| ((*pattern).to_owned(), Verdict::Ask))
+                    .collect(),
+            ),
             networked: Mutex::new(BTreeSet::new()),
             refusals: Mutex::new(BTreeMap::new()),
         }
     }
 
-    /// What this will answer about one capability; asking is what it does about anything it has
-    /// not been told about.
-    pub fn stance(&self, capability: &Capability) -> Verdict {
-        self.stances
-            .lock()
-            .get(capability)
-            .copied()
-            .unwrap_or(Verdict::Ask)
+    /// Everything this policy consults about one call, in the order it reads them out.
+    ///
+    /// note: the declared capabilities, plus the two things only the arguments can say - that a
+    /// command reaches for the network, and that a path is one there is a rule about. It is one
+    /// list rather than three checks because everything downstream wants the same thing: the
+    /// question asks about these, `always` answers for these, and a refusal is blamed on whichever
+    /// of these said no. A one-off `yes` to a `curl` that then ran with the network cut is the
+    /// shape of bug that comes of having three of them.
+    pub fn judges(&self, request: &PermissionRequest) -> Vec<Subject> {
+        let mut judged: Vec<Subject> = request
+            .capabilities
+            .iter()
+            .cloned()
+            .map(Subject::Capability)
+            .collect();
+
+        if request.capabilities.contains(&Capability::Shell)
+            && command(&request.args).is_some_and(reaches_the_network)
+        {
+            judged.push(Subject::Capability(Capability::Network));
+        }
+        // note: the path a *tool* was handed, which is not the same as a path named inside a shell
+        // command; see the note on `Careful` for why the second is not attempted
+        if let Some(path) = request.args.get("path").and_then(|path| path.as_str()) {
+            judged.extend(
+                self.paths
+                    .lock()
+                    .iter()
+                    .filter(|(pattern, _)| path_matches(pattern, path))
+                    .map(|(pattern, _)| Subject::Path(pattern.clone())),
+            );
+        }
+
+        judged
     }
 
-    /// Decides what to answer about one capability from now on.
-    pub fn set(&self, capability: Capability, verdict: Verdict) {
-        self.stances.lock().insert(capability, verdict);
+    /// What it answers about one subject; asking is what it does about anything unmentioned.
+    pub fn stance(&self, subject: &Subject) -> Verdict {
+        match subject {
+            Subject::Capability(capability) => self
+                .stances
+                .lock()
+                .get(capability)
+                .copied()
+                .unwrap_or(Verdict::Ask),
+            Subject::Path(pattern) => self
+                .paths
+                .lock()
+                .iter()
+                .find(|(known, _)| known == pattern)
+                .map(|(_, verdict)| *verdict)
+                .unwrap_or(Verdict::Ask),
+        }
     }
 
-    /// Moves one capability on to the next answer: ask, then allow, then deny, then ask again.
-    pub fn cycle(&self, capability: &Capability) -> Verdict {
-        let next = match self.stance(capability) {
+    /// Decides what to answer about one subject from now on.
+    pub fn set(&self, subject: &Subject, verdict: Verdict) {
+        match subject {
+            Subject::Capability(capability) => {
+                self.stances.lock().insert(capability.clone(), verdict);
+            }
+            Subject::Path(pattern) => {
+                let mut paths = self.paths.lock();
+                match paths.iter_mut().find(|(known, _)| known == pattern) {
+                    Some(rule) => rule.1 = verdict,
+                    None => paths.push((pattern.clone(), verdict)),
+                }
+            }
+        }
+    }
+
+    /// Moves one subject on to the next answer: ask, then allow, then deny, then ask again.
+    pub fn cycle(&self, subject: &Subject) -> Verdict {
+        let next = match self.stance(subject) {
             Verdict::Ask => Verdict::Allow,
             Verdict::Allow => Verdict::Deny,
             Verdict::Deny => Verdict::Ask,
         };
-        self.set(capability.clone(), next);
+        self.set(subject, next);
 
         next
     }
 
-    /// Remembers that these capabilities may be used without asking again.
-    pub fn always(&self, capabilities: &[Capability]) {
-        let mut stances = self.stances.lock();
-        for capability in capabilities {
-            stances.insert(capability.clone(), Verdict::Allow);
+    /// Remembers that these subjects may be used without asking again.
+    pub fn always(&self, subjects: &[Subject]) {
+        for subject in subjects {
+            self.set(subject, Verdict::Allow);
         }
     }
 
@@ -404,6 +573,11 @@ impl Careful {
         self.refusals.lock().remove(call)
     }
 
+    /// The path rules, in the order they are read out.
+    pub fn paths(&self) -> Vec<(String, Verdict)> {
+        self.paths.lock().clone()
+    }
+
     /// Every capability this has been told about, and what it will answer, in a stable order.
     pub fn stances(&self) -> Vec<(Capability, Verdict)> {
         self.stances
@@ -417,47 +591,31 @@ impl Careful {
 #[async_trait]
 impl PermissionPolicy for Careful {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
-        let stances = self.stances.lock();
-        let answer = |capability| stances.get(capability).copied().unwrap_or(Verdict::Ask);
-
-        // the strictest answer among them wins, so a tool that needs both an allowed capability
+        // the strictest answer among the subjects wins, so a call that needs both an allowed one
         // and an unmentioned one is still a question. `Verdict::strictest` is the runtime's own
         // fold for exactly this, and a second hand-written copy of a three-way ordering is a
         // second place to get it wrong. A call that needs nothing is allowed: the empty fold
-        let declared = request
-            .capabilities
+        let judged = self.judges(request);
+        let verdict = judged
             .iter()
-            .map(answer)
+            .map(|subject| self.stance(subject))
             .fold(Verdict::Allow, Verdict::strictest);
 
-        // ... and then what the call actually says. A `shell` that is about to run `curl` is using
-        // the network whatever its spec declared, and `network: deny` sitting beside `shell: ask`
-        // would otherwise be a row that nothing ever consults. This is the thing a policy can do
-        // that a capability list cannot: it is handed the arguments
-        let networked = request.capabilities.contains(&Capability::Shell)
-            && command(&request.args).is_some_and(reaches_the_network);
-        let verdict = match networked {
-            true => declared.strictest(answer(&Capability::Network)),
-            false => declared,
-        };
-
         if verdict == Verdict::Deny {
-            // the capability that did it, so that a refused `shell` in a session where `shell` is
+            // which subject did it, so that a refused `shell` in a session where `shell` is
             // allowed can say what actually refused it
-            let blamed: Vec<String> = request
-                .capabilities
+            let blamed: Vec<String> = judged
                 .iter()
-                .chain(networked.then_some(&Capability::Network))
-                .filter(|capability| answer(capability) == Verdict::Deny)
-                .map(|capability| match (capability, networked) {
-                    (Capability::Network, true) => {
+                .filter(|subject| self.stance(subject) == Verdict::Deny)
+                .map(|subject| match subject {
+                    Subject::Capability(Capability::Network) => {
                         "`network`, which this command reaches for".to_owned()
                     }
-                    _ => format!("`{capability}`"),
+                    Subject::Path(pattern) => format!("the rule for `{pattern}`"),
+                    subject => format!("`{subject}`"),
                 })
                 .collect();
 
-            drop(stances);
             let mut refusals = self.refusals.lock();
             // nobody is obliged to read these; a session that never does should not grow a map
             if refusals.len() > 32 {

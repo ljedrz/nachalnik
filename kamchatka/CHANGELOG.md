@@ -47,6 +47,19 @@ minor bump may break you.
 
 ### changed
 
+- The `network` stance starts at `ask` rather than `deny`. Refusing outright was a decision made on
+  the user's behalf about something they may perfectly well want, and now that the sandbox enforces
+  either answer, the answer is theirs to give.
+- Permissions are finer than a capability where that is worth anything: `Careful` holds path rules
+  as well as capability stances - `.env*`, `*.pem`, `id_rsa*`, `.ssh/` and a few more, all `ask` -
+  and the strictest of everything consulted wins. Reading `src/main.rs` is silent; reading `.env`
+  is a question. They bind `read`, `write` and `edit` and deliberately not `shell`, because a
+  command names its files inside a string and a check over that string would refuse `cat .env`
+  while waving `sed -n 1p .env` through.
+- The permission question names everything the policy actually consults, and `[a] always` answers
+  for all of it. A `yes, always` that answered only for the declared capability would ask again on
+  the very next call, whether the question came from the network fold or from a path rule.
+
 - The `network` stance is consulted for a `shell` call whose command names a program that goes out
   to the network - `curl`, `pip install`, `git push`. No tool declares `Capability::Network`,
   because a model that wants the network writes `curl`, so the row read `deny` beside `nothing

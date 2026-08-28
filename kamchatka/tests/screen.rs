@@ -16,7 +16,7 @@ use kamchatka::{
     app::{App, Outcome, Speaker, Tab},
     provider::OpenAiCompatible,
     sandbox::Confinement,
-    tools::Careful,
+    tools::{Careful, Subject},
     ui,
 };
 use nachalnik::{
@@ -314,7 +314,10 @@ async fn saying_always_stops_the_question_being_asked_again() {
     // "always" and the permissions tab are the same table
     assert!(harness.app.overlay.is_none());
     assert_eq!(
-        harness.app.policy.stance(&Capability::Shell),
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::Shell)),
         nachalnik::Verdict::Allow
     );
     let results = harness
@@ -1078,11 +1081,11 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
     harness.tab(Tab::Permissions);
 
     let screen = harness.sized(110, 30);
-    // what the policy has been told about, including the refusal - a `deny` you cannot see is
-    // not a policy anybody can check
+    // what the policy has been told about, including the answers nobody has changed - a stance
+    // you cannot see is not a policy anybody can check
     assert!(screen.contains("read"), "{screen}");
     assert!(screen.contains("network"), "{screen}");
-    assert!(screen.contains("deny"), "{screen}");
+    assert!(screen.contains("allow"), "{screen}");
     // and what the tools need, whether or not anybody has decided about it: `shell` is the row
     // that will stop and ask, which is exactly the one worth seeing in advance
     let shell = screen
@@ -1095,21 +1098,24 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         "the row names what it covers: {shell}"
     );
 
-    // network is refused, and no tool declares it - but the shell is judged against it anyway, on
-    // what the command says, so the row that used to read `nothing registered needs it` beside a
-    // `deny` (a restriction that was not there) now names the tool the refusal actually reaches
+    // no tool declares `network` - but the shell is judged against it anyway, on what the command
+    // says, so the row that used to read `nothing registered needs it` (a coverage claim that was
+    // not true) now names the tool the answer actually reaches
     let network = screen
         .lines()
         .find(|line| line.contains("network"))
-        .expect("the refusal is listed");
-    assert!(network.contains("deny"), "{network}");
+        .expect("the stance is listed");
+    assert!(network.contains("ask"), "{network}");
     assert!(
         network.contains("rm, when the command reaches for it"),
         "{network}"
     );
 
     // and a capability nothing needs at all still reads as a fact rather than a gap
-    harness.app.policy.set(Capability::Write, Verdict::Deny);
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::Write), Verdict::Deny);
     let screen = harness.sized(110, 30);
     let write = screen
         .lines()
@@ -1154,11 +1160,19 @@ async fn a_denied_network_reaches_the_shell_that_would_have_used_it() {
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("shell", "output").with_capabilities([Capability::Shell]),
     ));
-    // the default: reads allowed, network refused, everything else a question
+    // the default is a question, not a refusal: reaching the network is a thing somebody may
+    // perfectly well want, and the sandbox is what makes either answer mean something
     assert_eq!(
-        harness.app.policy.stance(&Capability::Network),
-        Verdict::Deny
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::Network)),
+        Verdict::Ask
     );
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::Network), Verdict::Deny);
 
     harness.send("fetch it").await;
     harness.settle().await;
@@ -1217,9 +1231,110 @@ async fn the_permissions_tab_admits_what_a_shell_can_do() {
     );
 
     // refusing it outright puts the other rows back in charge either way
-    harness.app.policy.set(Capability::Shell, Verdict::Deny);
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::Shell), Verdict::Deny);
     let screen = harness.sized(120, 30);
     assert!(!screen.contains("shell:"), "{screen}");
+}
+
+#[tokio::test]
+async fn a_path_rule_is_finer_than_the_capability_above_it() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "read", json!({ "path": "src/main.rs" }))]),
+        ModelResponse::tool_calls(vec![call("c2", "read", json!({ "path": ".env" }))]),
+        ModelResponse::text("as you wish"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
+    ));
+
+    // `read` is allowed outright, so an ordinary file is not a question - and `.env` is, because
+    // the strictest of what is consulted wins and a rule about the *file* is finer than a verdict
+    // about the tool that opened it. One turn, both reads, one question
+    assert_eq!(
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::Read)),
+        Verdict::Allow
+    );
+    harness.send("read both").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(
+        screen.contains("src/main.rs") && screen.contains("read: 2 tokens"),
+        "the ordinary one ran without being asked about: {screen}"
+    );
+    let asked = screen
+        .lines()
+        .find(|line| line.contains("wants:"))
+        .expect("this one is a question");
+    assert!(asked.contains(".env*"), "the rule is named: {asked}");
+    assert!(asked.contains("read"), "and so is the capability: {asked}");
+}
+
+#[tokio::test]
+async fn saying_always_answers_for_everything_the_question_named() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "read", json!({ "path": ".env" }))]),
+        ModelResponse::text("done"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
+    ));
+    harness.send("read it").await;
+    harness.settle().await;
+    assert!(harness.app.overlay.is_some(), "the rule made it a question");
+
+    // `a` has to answer the path rule. Answering only for `read` - which was already `allow` -
+    // would leave the question exactly where it was
+    harness.press(KeyCode::Char('a')).await;
+    harness.settle().await;
+
+    assert_eq!(
+        harness
+            .app
+            .policy
+            .stance(&Subject::Path(".env*".to_owned())),
+        Verdict::Allow,
+        "the rule that raised the question is the one that was answered"
+    );
+}
+
+#[tokio::test]
+async fn the_permissions_tab_draws_the_path_rules_too() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
+    ));
+    harness.tab(Tab::Permissions);
+
+    let screen = harness.sized(120, 40);
+    let rule = screen
+        .lines()
+        .find(|line| line.contains(".env*"))
+        .expect("a rule finer than a capability is still a stance, and is still drawn");
+    assert!(rule.contains("ask"), "{rule}");
+    assert!(rule.contains("read"), "it names the tools it binds: {rule}");
+
+    // ... and it cycles like any other row
+    harness.app.chosen = harness
+        .app
+        .permissions()
+        .iter()
+        .position(|row| row.subject == Subject::Path(".env*".to_owned()))
+        .expect("the row is there");
+    harness.press(KeyCode::Char(' ')).await;
+    assert_eq!(
+        harness
+            .app
+            .policy
+            .stance(&Subject::Path(".env*".to_owned())),
+        Verdict::Allow
+    );
 }
 
 #[tokio::test]
@@ -1232,7 +1347,10 @@ async fn a_refusal_says_which_stance_made_it() {
         ConstTool::new("shell", "output").with_capabilities([Capability::Shell]),
     ));
     // this time it is the tool's own capability that is refused, not something the command reached
-    harness.app.policy.set(Capability::Shell, Verdict::Deny);
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::Shell), Verdict::Deny);
 
     harness.send("clean up").await;
     harness.settle().await;
@@ -1278,7 +1396,9 @@ async fn changing_a_permission_changes_what_happens_next() {
     // decide it in advance instead, on the tab, and the same call no longer asks
     harness.tab(Tab::Permissions);
     harness.press(KeyCode::Home).await;
-    while harness.app.permissions()[harness.app.chosen].capability != Capability::Shell {
+    while harness.app.permissions()[harness.app.chosen].subject
+        != Subject::Capability(Capability::Shell)
+    {
         harness.press(KeyCode::Down).await;
     }
     harness.press(KeyCode::Char('a')).await;
@@ -1316,7 +1436,9 @@ async fn a_capability_can_be_refused_outright_rather_than_asked_about() {
 
     harness.tab(Tab::Permissions);
     harness.press(KeyCode::Home).await;
-    while harness.app.permissions()[harness.app.chosen].capability != Capability::Shell {
+    while harness.app.permissions()[harness.app.chosen].subject
+        != Subject::Capability(Capability::Shell)
+    {
         harness.press(KeyCode::Down).await;
     }
     harness.press(KeyCode::Char('n')).await;
@@ -1341,7 +1463,9 @@ async fn cycling_a_permission_goes_round_rather_than_getting_stuck() {
     ));
     harness.tab(Tab::Permissions);
     harness.press(KeyCode::Home).await;
-    while harness.app.permissions()[harness.app.chosen].capability != Capability::Shell {
+    while harness.app.permissions()[harness.app.chosen].subject
+        != Subject::Capability(Capability::Shell)
+    {
         harness.press(KeyCode::Down).await;
     }
 
@@ -1509,10 +1633,16 @@ async fn a_command_that_opens_a_tab_leaves_the_keys_on_the_prompt() {
     assert_eq!(harness.app.tab, Tab::Permissions);
     assert_eq!(harness.app.focus, kamchatka::app::Focus::Input);
 
-    let before = harness.app.policy.stance(&Capability::Read);
+    let before = harness
+        .app
+        .policy
+        .stance(&Subject::Capability(Capability::Read));
     harness.send("are we ok?").await;
     assert_eq!(
-        harness.app.policy.stance(&Capability::Read),
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::Read)),
         before,
         "typing at the prompt should not have rewritten the policy"
     );

@@ -26,7 +26,7 @@ use std::{
 
 use nachalnik::{Capability, Verdict};
 
-use crate::tools::Careful;
+use crate::tools::{Careful, Subject};
 
 /// The argument that puts this program into the mode that confines itself and runs a command.
 pub const EXEC_FLAG: &str = "--confine-and-run";
@@ -61,8 +61,9 @@ impl Sandbox {
             // a refusal of `write` reaches the shell too; anything short of a refusal leaves the
             // working directory writable, because a shell that cannot write in it is not one
             // anybody can work with
-            writable: policy.stance(&Capability::Write) != Verdict::Deny,
-            network: granted || policy.stance(&Capability::Network) == Verdict::Allow,
+            writable: policy.stance(&Subject::Capability(Capability::Write)) != Verdict::Deny,
+            network: granted
+                || policy.stance(&Subject::Capability(Capability::Network)) == Verdict::Allow,
         }
     }
 

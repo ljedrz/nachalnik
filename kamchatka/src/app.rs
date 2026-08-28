@@ -19,7 +19,12 @@ use nachalnik::{
 use ratatui_textarea::{CursorMove, TextArea};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{provider::OpenAiCompatible, sandbox::Confinement, tools::Careful, ui::thousands};
+use crate::{
+    provider::OpenAiCompatible,
+    sandbox::Confinement,
+    tools::{Careful, Subject},
+    ui::thousands,
+};
 
 /// How many trace lines are kept; the session log is the one that keeps everything.
 const TRACE_DEPTH: usize = 400;
@@ -74,8 +79,8 @@ impl Tab {
 /// One row of the permissions tab: a capability, what the policy will answer about it, and the
 /// tools that would be affected.
 pub struct Stance {
-    /// The capability itself.
-    pub capability: Capability,
+    /// What the row is about: a capability, or a pattern the paths are matched against.
+    pub subject: Subject,
     /// What the policy answers about it today.
     pub verdict: Verdict,
     /// The registered tools that declare it, in the order the model is offered them.
@@ -1011,13 +1016,43 @@ impl App {
             }
         }
 
+        // the capabilities first, then the rules that are finer than any of them. note: a path
+        // rule binds the three tools that are handed a path, and no others - a `shell` command
+        // names its files inside a string this program does not parse, and pretending otherwise
+        // would be exactly the sort of check that implies more than it delivers
+        let bound: Vec<String> = self
+            .kernel
+            .tool_specs()
+            .iter()
+            .filter(|spec| {
+                spec.capabilities.iter().any(|capability| {
+                    matches!(
+                        capability,
+                        Capability::Read | Capability::Write | Capability::Edit
+                    )
+                })
+            })
+            .map(|spec| spec.id.clone())
+            .collect();
+
         rows.into_iter()
             .map(|(capability, tools)| Stance {
-                verdict: self.policy.stance(&capability),
+                verdict: self.policy.stance(&Subject::Capability(capability.clone())),
                 sometimes: sometimes.remove(&capability).unwrap_or_default(),
-                capability,
+                subject: Subject::Capability(capability),
                 tools,
             })
+            .chain(
+                self.policy
+                    .paths()
+                    .into_iter()
+                    .map(|(pattern, verdict)| Stance {
+                        subject: Subject::Path(pattern),
+                        verdict,
+                        tools: bound.clone(),
+                        sometimes: Vec::new(),
+                    }),
+            )
             .collect()
     }
 
@@ -1040,7 +1075,7 @@ impl App {
     /// on the list and not denied, every other row is what a *tool* declares rather than what can
     /// happen, unless something is actually confining it.
     pub fn shell_is_live(&self) -> bool {
-        self.policy.stance(&Capability::Shell) != Verdict::Deny
+        self.policy.stance(&Subject::Capability(Capability::Shell)) != Verdict::Deny
             && self
                 .kernel
                 .tool_specs()
@@ -1055,8 +1090,7 @@ impl App {
             return;
         }
         self.chosen = self.chosen.min(rows.len() - 1);
-        let picked = &rows[self.chosen];
-        let capability = picked.capability.clone();
+        let subject = rows[self.chosen].subject.clone();
 
         let decided = match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
@@ -1079,17 +1113,17 @@ impl App {
                 self.preview("the keys", crate::ui::HELP);
                 return;
             }
-            KeyCode::Char(' ') => self.policy.cycle(&capability),
+            KeyCode::Char(' ') => self.policy.cycle(&subject),
             KeyCode::Char('a') => {
-                self.policy.set(capability.clone(), Verdict::Allow);
+                self.policy.set(&subject, Verdict::Allow);
                 Verdict::Allow
             }
             KeyCode::Char('n') => {
-                self.policy.set(capability.clone(), Verdict::Deny);
+                self.policy.set(&subject, Verdict::Deny);
                 Verdict::Deny
             }
             KeyCode::Char('r') | KeyCode::Backspace => {
-                self.policy.set(capability.clone(), Verdict::Ask);
+                self.policy.set(&subject, Verdict::Ask);
                 Verdict::Ask
             }
             _ => return,
@@ -1100,9 +1134,9 @@ impl App {
         self.say(
             Speaker::Note,
             match decided {
-                Verdict::Allow => format!("`{capability}` runs without asking, from now on"),
-                Verdict::Deny => format!("`{capability}` is refused, from now on"),
-                Verdict::Ask => format!("`{capability}` is a question again"),
+                Verdict::Allow => format!("`{subject}` runs without asking, from now on"),
+                Verdict::Deny => format!("`{subject}` is refused, from now on"),
+                Verdict::Ask => format!("`{subject}` is a question again"),
             },
         );
     }
@@ -1163,7 +1197,10 @@ impl App {
         let grant = match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => Grant::Allow,
             KeyCode::Char('a') | KeyCode::Char('A') => {
-                self.policy.always(&request.capabilities);
+                // everything the policy actually consulted, not just what the tool declared: a
+                // `yes, always` to a `curl` that left `network` on `ask`, or to a `.env` that left
+                // its rule on `ask`, would ask again on the very next call
+                self.policy.always(&self.policy.judges(&request));
                 Grant::Allow
             }
             KeyCode::Char('i') | KeyCode::Char('I') => {

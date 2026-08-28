@@ -43,7 +43,9 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 > that directory is reachable either way. The three file tools are held to the same boundary by
 > their own code. The permissions tab says which you have — `shell: confined`, or
 > `shell: a command can do any of these` where Landlock is not available. `--sandbox-allow PATH`
-> opens up more and `--no-sandbox` turns it off. It is one LSM, not a container; see
+> opens up more and `--no-sandbox` turns it off. Within the boundary the file tools are finer than
+> a capability: `read` is allowed, and `read .env` is a question, because a path rule can tighten
+> what a capability allows. It is one LSM, not a container; see
 > [what it does and does not protect you from](../README.md#-what-it-does-and-does-not-protect-you-from).
 
 ## 👉 four tabs, one window
