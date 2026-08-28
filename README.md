@@ -630,8 +630,8 @@ calibration, compaction, and the session log - including that the log's account 
 states is in the order they were applied, which two threads changing one item is enough to break. A replaced `Projector` gets its own test, because a
 seam nothing has ever been swapped through is a claim rather than a seam.
 
-`cargo test --workspace` runs 217 in all: those, the bridge's 23 - which stand a real MCP server
-up rather than mocking one - and `kamchatka`'s 52, which draw its screen and read the characters
+`cargo test --workspace` runs 218 in all: those, the bridge's 23 - which stand a real MCP server
+up rather than mocking one - and `kamchatka`'s 53, which draw its screen and read the characters
 back, plus one that puts a socket in front of it that answers and then goes silent.
 
 Every count and every percentage in this file was measured at the commit it was written for,
