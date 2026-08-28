@@ -22,8 +22,11 @@ use tui_markdown::StyleSheet as _;
 use crate::app::{App, Focus, Overlay, Speaker, Tab};
 
 /// What the keys do, shown by F1.
-pub(crate) const HELP: &str = "\
-  THE TABS
+///
+/// note: no `\` continuation after the opening quote: it would eat the newline *and* the two
+/// spaces indenting the first heading, leaving `THE TABS` flush against the border while every
+/// other heading sat under it.
+pub(crate) const HELP: &str = "  THE TABS
     ctrl+t              the next one
     alt+1 / 2 / 3       chat / context / trace
     tab                 move between the prompt and the tab, on the last two
@@ -42,6 +45,7 @@ pub(crate) const HELP: &str = "\
   THE CONTEXT TAB, when it has the focus
     up / down, j / k    pick an item
     pgup / pgdn         a screenful at a time
+    g / G               the first item / the last
     space               take it out of the next request, or put it back
     p                   pin it, so that compaction cannot touch it
     enter               read the whole of what it says

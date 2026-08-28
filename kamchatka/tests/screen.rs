@@ -771,6 +771,17 @@ async fn the_help_lists_the_keys_that_exist() {
     assert!(top.contains("alt+1 / 2 / 3"), "{top}");
     assert!(top.contains("alt+enter"), "{top}");
 
+    // every heading starts at the same column: the first one used to sit flush against the
+    // border, because a `\` continuation after the opening quote had eaten its indent
+    let column = |heading: &str| {
+        top.lines()
+            .find(|line| line.contains(heading))
+            .unwrap_or_else(|| panic!("`{heading}` is in the help: {top}"))
+            .find(heading)
+            .expect("just found it")
+    };
+    assert_eq!(column("THE TABS"), column("ANYWHERE"), "{top}");
+
     // it is longer than a screenful, and says so, and scrolls
     assert!(
         top.contains(" of "),
