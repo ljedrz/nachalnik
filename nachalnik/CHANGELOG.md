@@ -7,6 +7,14 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- The counter a `Kernel::new` starts with is `Calibrating<BytesPerToken>` rather than a bare
+  `BytesPerToken`. It corrects by `1.0` until a provider has reported what a request cost, so it is
+  the same counter until there is something better to be - and the low estimate is no longer what
+  everybody who did not read the documentation was left with. `kernel.counter().name()` says both
+  halves now; `set_counter(Arc::new(BytesPerToken::default()))` gets the bare one back.
+
 ### 0.1.0
 
 The first release: an agent loop as a state machine, with the context, the tools, the permissions

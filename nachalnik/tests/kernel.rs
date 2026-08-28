@@ -1277,7 +1277,13 @@ async fn every_seam_can_say_what_is_plugged_into_it() {
         "the default projector should name itself: {}",
         kernel.projector().name()
     );
-    assert!(kernel.counter().name().ends_with("BytesPerToken"));
+    // the default counter is `Calibrating<BytesPerToken>`, and the name says both halves: which
+    // estimate is being made, and that it is being corrected
+    let counter = kernel.counter().name();
+    assert!(
+        counter.contains("Calibrating") && counter.contains("BytesPerToken"),
+        "{counter}"
+    );
     assert!(
         kernel
             .compactor()

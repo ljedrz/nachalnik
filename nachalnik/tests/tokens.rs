@@ -277,6 +277,8 @@ async fn the_kernel_tells_the_counter_what_the_request_actually_cost() {
 #[tokio::test]
 async fn a_counter_that_ignores_the_feedback_is_left_alone() {
     let kernel = kernel();
+    // the default counter learns; this is the one that has been asked not to
+    kernel.set_counter(Arc::new(BytesPerToken::default()));
     kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse {
         usage: Some(Usage {
             input_tokens: Some(900),
@@ -292,7 +294,48 @@ async fn a_counter_that_ignores_the_feedback_is_left_alone() {
     assert_eq!(
         kernel.item(item).unwrap().tokens,
         before,
-        "the default counter does nothing with it, and nothing is rewritten behind anyone's back"
+        "a counter with no `observe` does nothing with it, and nothing is rewritten anyway"
+    );
+    let after = kernel.push(ContextItem::user("a".repeat(400)));
+    assert_eq!(
+        kernel.item(after).unwrap().tokens,
+        before,
+        "and it goes on estimating the same bytes at exactly what it did before"
+    );
+}
+
+#[tokio::test]
+async fn the_counter_a_kernel_starts_with_corrects_itself() {
+    // nothing is set here: this is what somebody who never read the documentation gets
+    let kernel = kernel();
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse {
+            usage: Some(Usage {
+                input_tokens: Some(900),
+                ..Usage::default()
+            }),
+            ..ModelResponse::text("hello")
+        },
+        ModelResponse::text("again"),
+    ])));
+    let item = kernel.push(ContextItem::user("a".repeat(400)));
+    let estimated = kernel.budget().used();
+
+    kernel.turn().await.unwrap();
+
+    assert_eq!(
+        kernel.item(item).unwrap().tokens,
+        estimated,
+        "the figure already recorded is still the one that was recorded"
+    );
+
+    // ... but what is counted from now on carries the correction the provider's own number implies
+    let after = kernel.push(ContextItem::user("a".repeat(400)));
+    assert!(
+        kernel.item(after).unwrap().tokens > kernel.item(item).unwrap().tokens,
+        "the same bytes, counted after the lesson: {} vs {}",
+        kernel.item(after).unwrap().tokens,
+        kernel.item(item).unwrap().tokens
     );
 }
 

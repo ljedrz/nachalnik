@@ -27,7 +27,7 @@ use crate::{
     },
     projection::{LinearProjector, Projection, Projector},
     session::{Record, Session, Snapshot},
-    tokens::{BytesPerToken, TokenCounter},
+    tokens::{BytesPerToken, Calibrating, TokenCounter},
     tool::{Tool, ToolOutput, ToolSpec},
 };
 
@@ -288,9 +288,18 @@ impl Kernel {
     /// Creates a kernel with the given [`Config`], and broadcasts [`Event::SessionStarted`].
     ///
     /// The kernel starts out in [`State::Idle`] with no provider, no tools, an [`AskAlways`]
-    /// permission policy, a [`LinearProjector`], a [`BytesPerToken`] token counter, no
-    /// compactor, no parameters, and an empty context: it will not talk to anything, or agree
+    /// permission policy, a [`LinearProjector`], a [`Calibrating<BytesPerToken>`] token counter,
+    /// no compactor, no parameters, and an empty context: it will not talk to anything, or agree
     /// to anything, until it is told to.
+    ///
+    /// note: The counter is wrapped rather than bare because [`Calibrating`] costs nothing until
+    /// it is told something: it corrects by `1.0` until a provider has reported what a request
+    /// actually cost, so it *is* [`BytesPerToken`] right up to the moment there is something
+    /// better to be. Leaving it off by default meant the low estimate was what everybody who did
+    /// not read the documentation got. Unwrap it with [`Kernel::set_counter`] if a counter that
+    /// never changes its mind is what a measurement needs.
+    ///
+    /// [`Calibrating<BytesPerToken>`]: Calibrating
     pub fn new(config: Config) -> Self {
         let kernel = Self::build(config);
         kernel.emit(Event::SessionStarted {
@@ -385,7 +394,11 @@ impl Kernel {
             tools: RwLock::new(BTreeMap::new()),
             policy: RwLock::new(Arc::new(AskAlways)),
             projector: RwLock::new(Arc::new(LinearProjector::default())),
-            counter: RwLock::new(Arc::new(BytesPerToken::default())),
+            // note: wrapped, not bare. `BytesPerToken` is an admitted estimate and a low one;
+            // `Calibrating` corrects nothing until a provider has said what a request cost, so
+            // this is the same counter until the moment there is something better to be, and
+            // then it is better. A user who never reads the documentation gets the honest number
+            counter: RwLock::new(Arc::new(Calibrating::new(BytesPerToken::default()))),
             compactor: RwLock::new(None),
             params: RwLock::new(Params::new()),
             last_response: RwLock::new(None),

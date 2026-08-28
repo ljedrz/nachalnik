@@ -345,19 +345,23 @@ and broadcasts a report of exactly what it did - which the user can then disagre
 
 ### 🎯 a budget that corrects itself
 
-Every token figure the kernel reports comes from a `TokenCounter`, and the default one -
-`bytes / 4` - is an admitted estimate. How wrong it is depends on the shape of what you are
-sending: measured against a real API, about a third low on a short chat carrying four tool
+Every token figure the kernel reports comes from a `TokenCounter`, and the estimate underneath the
+default one - `bytes / 4` - is admittedly that. How wrong it is depends on the shape of what you
+are sending: measured against a real API, about a third low on a short chat carrying four tool
 definitions, and a steady 7% low once the conversation is a few thousand tokens. It cannot see
 per-message framing and never sees the tokens a reasoning model spends thinking. Embedding a
 tokenizer would mean embedding a model-specific assumption, which this crate will not do.
 
 So it does the other thing. After every response, the provider has said what the request actually
 cost, and the kernel knows what it estimated for the very same bytes - so it hands both numbers to
-the counter:
+the counter, and a `Kernel::new` is already holding one that acts on them:
 
 ```rust
-kernel.set_counter(Arc::new(Calibrating::new(BytesPerToken::default())));
+// what a kernel starts with; correcting by 1.0 until a provider has said otherwise
+Calibrating::new(BytesPerToken::default())
+
+// and the bare estimate, for a measurement that wants a counter which never changes its mind
+kernel.set_counter(Arc::new(BytesPerToken::default()));
 ```
 
 `Calibrating` converges on the first response worth learning from and settles there - measured over
