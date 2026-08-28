@@ -403,10 +403,10 @@ impl App {
 
     /// Takes in one event from the runtime.
     pub fn on_event(&mut self, event: Event) {
-        // a line per streamed fragment would push everything else out of the pane before it could
-        // be read - and a `cat` of a thousand lines really did erase the whole trace, one
-        // `tool.output` at a time. The fragments are on the left; the log has them if
-        // `record_progress` is on
+        // a line per streamed fragment would push everything else out of the trace before it could
+        // be read - and a `cat` of a thousand lines really did erase the whole of it, one
+        // `tool.output` at a time. The fragments themselves are on the chat tab; the session log
+        // has them if `record_progress` is on
         match &event {
             Event::ModelDelta { .. } => {}
             Event::ToolOutput { tool, chunk, .. } => {

@@ -1,4 +1,13 @@
-# 0.1.0 (unreleased)
+# changelog
+
+All notable changes to this crate are recorded here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the crate follows
+[semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
+minor bump may break you.
+
+## [unreleased]
+
+### 0.1.0
 
 The first release: an agent loop as a state machine, with the context, the tools, the permissions
 and the requests as explicit state.

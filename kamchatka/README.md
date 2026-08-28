@@ -30,7 +30,7 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 ┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ ask for something, or /help                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- done · gpt-4o-mini · ~1,168 tokens, 0.9% of the limit · 1,102 really · 15 held back · F1 for the keys
+ done · gpt-4o-mini · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back · F1 for the keys
 ```
 
 ## 👉 three tabs, one window
@@ -158,8 +158,10 @@ which for most of the servers people actually run is `npx`.
 ## 📏 the number in the status line is a guess, and says so
 
 Nothing here has the model's tokenizer, so the figure the status line leads with is an estimate —
-it is written `~2,460` for that reason. Beside it is what the provider actually charged for the
-last request, and `/budget` is where the two are reconciled:
+it is written `~2,460` for that reason. The percentage beside it names the total it is a
+percentage of (`0.9% (128k)`), because a fraction of an unstated number is not something anybody
+can act on, and it turns yellow past 70% and red past 90%. Then comes what the provider actually
+charged for the last request, and `/budget` is where the two are reconciled:
 
 ```text
 the next request: ~20,125 tokens, 19,953 of context and 172 of tool definitions
@@ -197,8 +199,9 @@ kamchatka [OPTIONS] [MESSAGE]...
 ```
 
 ```text
-KAMCHATKA_API_KEY   or OPENROUTER_API_KEY, or OPENAI_API_KEY
-KAMCHATKA_BASE_URL  e.g. http://localhost:11434/v1 for ollama; OpenRouter by default
+KAMCHATKA_API_KEY       or OPENROUTER_API_KEY, or OPENAI_API_KEY
+KAMCHATKA_BASE_URL      e.g. http://localhost:11434/v1 for ollama; OpenRouter by default
+KAMCHATKA_CONTEXT_LIMIT the model's context size, for a provider that will not say
 ```
 
 `/save` writes two files: a `.jsonl` of every event that happened, and a `.json` snapshot that
@@ -209,7 +212,7 @@ KAMCHATKA_BASE_URL  e.g. http://localhost:11434/v1 for ollama; OpenRouter by def
 They draw the screen and read it back, against a scripted model:
 
 ```rust
-harness.press(KeyCode::Tab).await;       // over to the context
+harness.tab(Tab::Context);               // over to the context
 harness.press(KeyCode::Home).await;      // the first item
 harness.press(KeyCode::Char(' ')).await; // out
 

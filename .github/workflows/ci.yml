@@ -28,10 +28,13 @@ jobs:
       # the tests turn both features on, so nothing else exercises the default build
       - name: default features
         run: cargo build --workspace
-      # `nachalnik` has to stand up with neither of its features, and `kamchatka` without MCP
+      # `nachalnik` has to stand up with neither of its features, `kamchatka` without MCP, and the
+      # bridge with no transport at all - which is a real configuration: `Server::connect` takes
+      # one you opened yourself
       - name: no features
         run: |
           cargo check -p nachalnik --no-default-features
+          cargo check -p nachalnik-mcp --no-default-features
           cargo check -p kamchatka --no-default-features
 
       - name: tests

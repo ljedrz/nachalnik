@@ -166,7 +166,7 @@ $ cargo run -p kamchatka -- -f src/lib.rs "what does this crate do?"
 ┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ ask for something, or /help                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- done · gpt-4o-mini · ~1,168 tokens, 0.9% of the limit · 1,102 really · 15 held back · F1 for the keys
+ done · gpt-4o-mini · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back · F1 for the keys
 ```
 
 Three tabs, each of which gets the whole window: **chat**, **context**, **trace**. The first is
@@ -527,11 +527,15 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
 
 ### 🧪 tests
 
-`cargo test` runs 110 offline tests: the context model, the selectors, the state machine
-(including that a second concurrent `step` is refused and that a dropped one does not wedge the
-kernel), the loop, permissions, projection and tool-call repair, token counting and calibration,
-compaction, and the session log. A replaced `Projector` gets its own test, because a seam nothing
-has ever been swapped through is a claim rather than a seam.
+`cargo test -p nachalnik` runs 110 offline tests: the context model, the selectors, the state
+machine (including that a second concurrent `step` is refused and that a dropped one does not
+wedge the kernel), the loop, permissions, projection and tool-call repair, token counting and
+calibration, compaction, and the session log. A replaced `Projector` gets its own test, because a
+seam nothing has ever been swapped through is a claim rather than a seam.
+
+`cargo test --workspace` runs 179 in all: those, the bridge's 22 - which stand a real MCP server
+up rather than mocking one - and `kamchatka`'s 23, which draw its screen and read the characters
+back.
 
 There is also a live suite, which is the only way to check the things a mock cannot - that the
 requests this crate builds are accepted by a real API, and that a real model's answers survive
@@ -552,14 +556,17 @@ $ NACHALNIK_API_KEY=... \
 
 It skips itself when there is no key (and reads only `OPENROUTER_API_KEY` /
 `NACHALNIK_API_KEY`, never a stray `OPENAI_API_KEY`), defaults to a small free model, costs
-about twenty requests per run, waits out momentary upstream rate limits, and skips rather than
-fails when a free-tier key has spent its daily allowance. Fourteen tests cover: a plain turn,
+about thirty requests per run, waits out momentary upstream rate limits, and skips rather than
+fails when a free-tier key has spent its daily allowance. Nineteen tests cover: a plain turn,
 the provider's own context limit, a system instruction, a labelled reference, streamed fragments
 adding up to the answer, a tool call whose result the model reads back, a paused-and-resumed
 permission decision, a refused call the model is told about, a *pruned* tool exchange still
 producing a request the API accepts, a truncated tool result, compaction before a request, an
-opaque parameter reaching the model, a mid-session model swap, and a whole session round-tripping
-through `serde`.
+opaque parameter reaching the model, a mid-session model swap, a whole session round-tripping
+through `serde`, the recorded payload being the one that actually went out, a step abandoned
+mid-request leaving the kernel usable, a turn interrupted between requests, an interrupt stopping
+a stream that is already arriving, and the calibrating counter being told what a real request
+cost.
 
 ---
 
