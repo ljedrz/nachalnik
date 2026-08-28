@@ -7,6 +7,12 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- A scrollbar down the right border of any tab holding more than fits, and of the overlays. It is
+  drawn on the border rather than in a column of its own, so nothing gets narrower and a window
+  with nothing to scroll looks exactly as it did.
+
 ### changed
 
 - `/budget` asks whichever counter is installed what it has learned, through the kernel, rather

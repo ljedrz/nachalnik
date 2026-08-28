@@ -1372,6 +1372,74 @@ async fn a_command_that_opens_a_tab_leaves_the_keys_on_the_prompt() {
 }
 
 #[tokio::test]
+async fn a_tab_with_more_than_fits_says_so_down_its_border() {
+    let mut harness = Harness::new([]);
+    for i in 0..80 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::file(format!("src/f{i}.rs"), "fn f() {}"));
+    }
+    harness.tab(Tab::Context);
+
+    let screen = harness.sized(100, 30);
+    let thumb: Vec<_> = screen
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| line.ends_with('█'))
+        .map(|(y, _)| y)
+        .collect();
+
+    assert!(
+        !thumb.is_empty(),
+        "eighty items in twenty-odd rows: {screen}"
+    );
+    assert!(
+        thumb.windows(2).all(|pair| pair[1] == pair[0] + 1),
+        "the thumb is one run, not scattered: {thumb:?}"
+    );
+
+    // it sits at the top, because that is where the list is
+    let top = screen
+        .lines()
+        .position(|line| line.contains("tokens"))
+        .expect("the header row");
+    assert_eq!(
+        thumb[0],
+        top + 1,
+        "the bar starts under the header: {screen}"
+    );
+
+    // ... and moves when the list does
+    for _ in 0..60 {
+        harness.press(KeyCode::Down).await;
+    }
+    let scrolled = harness.sized(100, 30);
+    let moved = scrolled
+        .lines()
+        .position(|line| line.ends_with('█'))
+        .expect("still a thumb");
+    assert!(moved > thumb[0], "{scrolled}");
+}
+
+#[tokio::test]
+async fn a_tab_that_fits_draws_no_bar_at_all() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("src/parser.rs", "fn parse() {}"));
+    harness.tab(Tab::Context);
+
+    let screen = harness.sized(100, 30);
+
+    assert!(
+        !screen.contains('█'),
+        "one item in thirty rows needs no scrollbar: {screen}"
+    );
+}
+
+#[tokio::test]
 async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
     let dir = std::env::temp_dir().join(format!("kamchatka-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a place to write");

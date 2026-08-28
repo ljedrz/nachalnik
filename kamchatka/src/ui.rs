@@ -16,7 +16,9 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Clear, List, ListItem, Paragraph},
+    widgets::{
+        Block, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    },
 };
 
 use tui_markdown::StyleSheet as _;
@@ -169,22 +171,76 @@ fn draw_body(frame: &mut Frame, app: &mut App, area: Rect) {
         ));
     }
 
+    let edge = match focused {
+        true => Style::default().fg(Color::Yellow),
+        false => dim,
+    };
     let block = Block::bordered()
         .title(Line::from(strip))
         .title_bottom(Line::styled(footer(app), dim).right_aligned())
-        .border_style(match focused {
-            true => Style::default().fg(Color::Yellow),
-            false => dim,
-        });
+        .border_style(edge);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    match app.tab {
+    let scrolled = match app.tab {
         Tab::Chat => draw_chat(frame, app, inner),
         Tab::Context => draw_context(frame, app, inner),
         Tab::Trace => draw_trace(frame, app, inner),
         Tab::Permissions => draw_permissions(frame, app, inner),
+    };
+    scrollbar(frame, area, edge, scrolled);
+}
+
+/// How far through its content a tab is, and the rows it drew that content in.
+#[derive(Clone, Copy, Default)]
+struct Scrolled {
+    /// The first row on screen, counted from the top of the content.
+    position: usize,
+    /// How many rows of content there are in all.
+    total: usize,
+    /// Where the content was drawn; the bar lines up with these rows and no others.
+    area: Rect,
+}
+
+/// Draws a scrollbar down the window's right-hand border, when there is anything to scroll.
+///
+/// note: on the border rather than in a column of its own. A tab that gave up a column would be
+/// one character narrower for the whole session in order to say something that is only true some
+/// of the time, and the two table tabs spend that column on the thing they exist for - what the
+/// model will actually read of an item. The track *is* the border character, so a window with
+/// nothing to scroll looks exactly as it did before.
+///
+/// note: it lines up with the content rather than with the window: the context and permissions
+/// tabs spend their first row on a header, and a bar that started above it would be off by one
+/// for the whole length of the list.
+fn scrollbar(frame: &mut Frame, window: Rect, border: Style, scrolled: Scrolled) {
+    let viewport = scrolled.area.height as usize;
+    if viewport == 0 || scrolled.total <= viewport {
+        return;
     }
+
+    let bar = Rect {
+        x: window.right().saturating_sub(1),
+        y: scrolled.area.y,
+        width: 1,
+        height: scrolled.area.height,
+    };
+    let mut state = ScrollbarState::new(scrolled.total)
+        .position(scrolled.position)
+        .viewport_content_length(viewport);
+
+    frame.render_stateful_widget(
+        Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            // the ends of the bar are the corners of the window, which are already drawn
+            .begin_symbol(None)
+            .end_symbol(None)
+            .track_symbol(Some("│"))
+            .track_style(border)
+            .thumb_symbol("█")
+            .thumb_style(border),
+        bar,
+        &mut state,
+    );
 }
 
 /// What the open tab has to say about itself, along the bottom.
@@ -214,7 +270,7 @@ fn footer(app: &App) -> String {
 
 // ------------------------------------------------------------------------------ the conversation
 
-fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) {
+fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
     let width = inner.width as usize;
     let mut lines: Vec<Line> = Vec::new();
     for entry in &app.transcript {
@@ -267,8 +323,15 @@ fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) {
         app.scroll = bottom;
     }
     let at = app.scroll.min(bottom);
+    let total = lines.len();
 
     frame.render_widget(Paragraph::new(lines).scroll((at as u16, 0)), inner);
+
+    Scrolled {
+        position: at,
+        total,
+        area: inner,
+    }
 }
 
 // ---------------------------------------------------------------------------------- the context
@@ -279,14 +342,14 @@ fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) {
 /// note: With the whole window to work in there is room for the last column, and it is the one
 /// that matters: a list of labels and numbers tells you an item exists, and this tells you what
 /// the model is actually being told.
-fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) {
+fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let items = app.kernel.items();
     if items.is_empty() {
         frame.render_widget(
             Paragraph::new("nothing here yet").style(Style::default().fg(Color::DarkGray)),
             area,
         );
-        return;
+        return Scrolled::default();
     }
 
     let [head, inner] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
@@ -400,6 +463,14 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) {
         inner,
         &mut app.list,
     );
+
+    // read after the render, because that is what settles the offset: the list scrolls itself to
+    // keep the selected row on screen, and asking first would measure the frame before this one
+    Scrolled {
+        position: app.list.offset(),
+        total: items.len(),
+        area: inner,
+    }
 }
 
 // ------------------------------------------------------------------------------ the permissions
@@ -411,7 +482,7 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) {
 /// them, in advance, and changeable - which is also the plainest thing to point at when somebody
 /// asks what a replaceable `PermissionPolicy` buys you: a policy is an object with state, not a
 /// callback you can only learn about by triggering it.
-fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) {
+fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let rows = app.permissions();
     if rows.is_empty() {
         frame.render_widget(
@@ -419,7 +490,7 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) {
                 .style(Style::default().fg(Color::DarkGray)),
             area,
         );
-        return;
+        return Scrolled::default();
     }
 
     let [head, inner] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
@@ -487,6 +558,12 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) {
         inner,
         &mut app.grants,
     );
+
+    Scrolled {
+        position: app.grants.offset(),
+        total: rows.len(),
+        area: inner,
+    }
 }
 
 // ------------------------------------------------------------------------------------ the trace
@@ -498,7 +575,7 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) {
 /// columns line every event up under the last. Anything that still does not fit wraps under the
 /// column rather than being cut off - a log whose lines end in an ellipsis in the middle of the
 /// interesting part is not a log.
-fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) {
+fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
     const NAMES: usize = 22;
 
     let (width, height) = (inner.width as usize, inner.height as usize);
@@ -541,8 +618,15 @@ fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) {
     let bottom = lines.len().saturating_sub(height);
     app.trace_scroll = app.trace_scroll.min(bottom);
     let at = bottom - app.trace_scroll;
+    let total = lines.len();
 
     frame.render_widget(Paragraph::new(lines).scroll((at as u16, 0)), inner);
+
+    Scrolled {
+        position: at,
+        total,
+        area: inner,
+    }
 }
 
 // ------------------------------------------------------------------------------------ the prompt
@@ -784,11 +868,23 @@ fn panel(frame: &mut Frame, title: &str, body: &str, scroll: usize, columns: u16
         lines.len()
     );
 
+    let total = lines.len();
     frame.render_widget(
         Paragraph::new(lines.join("\n"))
             .scroll((at as u16, 0))
             .block(block.title_bottom(footer)),
         area,
+    );
+
+    scrollbar(
+        frame,
+        area,
+        Style::default().fg(Color::Cyan),
+        Scrolled {
+            position: at,
+            total,
+            area: inner,
+        },
     );
 }
 
