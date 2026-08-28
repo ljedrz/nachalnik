@@ -1,0 +1,42 @@
+[package]
+name = "nachalnik-mcp"
+version = "0.1.0"
+description = "An MCP bridge for the nachalnik agent runtime: a tool somebody else wrote, as a Tool like any other."
+documentation = "https://docs.rs/nachalnik-mcp"
+readme = "README.md"
+categories = ["asynchronous", "development-tools"]
+keywords = ["agent", "llm", "mcp", "tools", "nachalnik"]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+default = ["child-process"]
+# Servers run as a child process, talking over its stdin and stdout. This is how most MCP
+# servers are distributed, and it is the reason this crate is not part of the runtime: the
+# runtime spawns no processes.
+child-process = ["rmcp/transport-child-process"]
+# Servers reached over HTTP.
+http = ["rmcp/transport-streamable-http-client-reqwest"]
+
+[dependencies]
+nachalnik.workspace = true
+async-trait.workspace = true
+serde_json.workspace = true
+# the official MCP SDK. `default-features = false` because its defaults build a *server*, and
+# nothing here is one
+rmcp = { version = "3.1", default-features = false, features = ["client"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
+
+[dev-dependencies]
+nachalnik = { workspace = true, features = ["test"] }
+# the tests stand up a real MCP server in-process and talk to it over a pipe, so that what is
+# being tested is the protocol rather than a mock of it
+rmcp = { version = "3.1", features = ["server", "transport-async-rw"] }
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "time"] }

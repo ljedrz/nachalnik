@@ -559,16 +559,21 @@ through `serde`.
 | crate | what it is |
 | --- | --- |
 | **[`nachalnik`](nachalnik/)** | the runtime. Five dependencies, no `unsafe`, no network, no prompt. This is the part that matters, and it is meant to stay boring. |
-| `nachalnik-mcp` *(planned)* | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
+| **[`nachalnik-mcp`](nachalnik-mcp/)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | `kamchatka` *(planned)* | a small TUI agent built on the runtime - the thing you actually run. |
 
-The two planned crates are deliberately *not* in the core, and MCP is the clearer case of the two.
-Supporting it means spawning processes, speaking HTTP and reading notifications in the background,
-and the runtime promises to do none of those; it would also tie a context library's version to a
-protocol that revises faster than the library should. None of it needs anything the kernel does not
-already expose - an MCP tool is a `Tool` that forwards to a server - so it belongs beside the
-runtime rather than inside it. A seam nothing has ever been pushed through is a claim, not a seam,
-and that bridge is how this one gets tested.
+The bridge is deliberately *not* in the core. Speaking MCP means spawning processes, opening
+sockets and reading notifications in the background, and the runtime promises to do none of those;
+it would also tie a context library's version to a protocol that revises faster than the library
+should.
+
+It is also the answer to the obvious question about a crate this abstract - whether the seams are
+real. Writing it needed **no change to the runtime at all**: an MCP tool is a `Tool` that forwards
+to a server, tools arriving and leaving are `add_tool` and `remove_tool`, a structured result is
+`Content::Json`. And it pushed back on one thing worth knowing about: MCP tool annotations are
+*hints*, the specification says a client should never make tool-use decisions on hints from an
+untrusted server, so the bridge believes none of them by default. Its tests include a server
+offering a tool called `delete_everything` that claims to be read-only.
 
 ---
 
