@@ -669,16 +669,31 @@ impl App {
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
+        // before anything else, including whatever is on top: these two mean the same thing
+        // wherever they are pressed, and an overlay that took them for its own would be answering
+        // a question nobody asked. `ctrl+d` at a permission prompt used to drop every pending
+        // call, because `d` is a key there and nothing was looking at the modifiers
+        if ctrl && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')) {
+            match self.busy && key.code == KeyCode::Char('c') {
+                true => self.interrupt(),
+                false => self.quit = true,
+            }
+            return;
+        }
+
         if self.overlay.is_some() {
             self.overlay_key(key);
             return;
         }
 
         let alt = key.modifiers.contains(KeyModifiers::ALT);
+        // taken rather than read, so that a count lives for exactly one key wherever that key is
+        // handled: only the digit arm below puts it back. Cleared at the end of `context_key`
+        // instead, a `4` followed by `tab` or `F1` - neither of which gets that far - survived to
+        // send the next `G` to item 4
+        let count = std::mem::take(&mut self.count);
 
         match (key.code, ctrl) {
-            (KeyCode::Char('c'), true) if self.busy => self.interrupt(),
-            (KeyCode::Char('c'), true) | (KeyCode::Char('d'), true) => self.quit = true,
             (KeyCode::Esc, _) if self.busy => self.interrupt(),
             (KeyCode::Char('t'), true) => self.show(self.next_tab()),
             (KeyCode::Char('1'), _) if alt => self.show(Tab::Chat),
@@ -698,7 +713,7 @@ impl App {
                 }
             }
             _ => match (self.tab, self.focus) {
-                (Tab::Context, Focus::Body) => self.context_key(key),
+                (Tab::Context, Focus::Body) => self.context_key(key, &count),
                 (Tab::Trace, Focus::Body) => self.trace_key(key),
                 (Tab::Permissions, Focus::Body) => self.permissions_key(key),
                 _ => self.input_key(key).await,
@@ -722,11 +737,33 @@ impl App {
     /// on it, so the focus follows; switching back to the conversation is not, so it does not.
     /// `tab` moves it either way.
     pub fn show(&mut self, tab: Tab) {
+        // an edit belongs to the tab it was started from, and leaving that tab abandons it.
+        // Otherwise the prompt is still holding the item's text with `editing` still set, and the
+        // next message somebody types and sends is committed into the context instead of asked
+        self.cancel_edit();
+
         self.tab = tab;
         self.focus = match tab {
             Tab::Chat => Focus::Input,
             _ => Focus::Body,
         };
+    }
+
+    /// Opens a tab without taking the keys off the prompt.
+    ///
+    /// note: For a tab reached by *typing a command*, where moving the focus would hand the next
+    /// thing somebody types to the tab. The permissions tab is the worst place for that: `a`, `n`
+    /// and `r` are all bare letters there, and all of them change something.
+    pub fn open(&mut self, tab: Tab) {
+        self.cancel_edit();
+        self.tab = tab;
+    }
+
+    /// Puts the prompt back to composing a message, whatever it was doing.
+    fn cancel_edit(&mut self) {
+        if self.editing.take().is_some() {
+            self.clear_input();
+        }
     }
 
     /// Keys that belong to the prompt.
@@ -807,9 +844,14 @@ impl App {
             text.to_owned(),
         )
         .because("edited at the terminal");
-        if old.state == ContextState::Pinned {
-            edited = edited.pinned();
-        }
+        // editing something decides what it says, not whether it is sent - so whatever it was
+        // doing, it goes on doing. `ContextItem::new` starts out Active, and carrying over only
+        // the pin meant editing a pruned item quietly put it back into the next request, and
+        // editing an *archived* one promoted the whole of an oversized tool output into it
+        edited.state = match old.state {
+            ContextState::Pinned | ContextState::Excluded | ContextState::Archived => old.state,
+            _ => ContextState::Active,
+        };
 
         match self.kernel.supersede(id, edited) {
             Ok(new) => self.say(
@@ -821,7 +863,7 @@ impl App {
     }
 
     /// Keys that belong to the context pane.
-    fn context_key(&mut self, key: KeyEvent) {
+    fn context_key(&mut self, key: KeyEvent, count: &str) {
         let items = self.kernel.items();
         if items.is_empty() {
             return;
@@ -845,7 +887,7 @@ impl App {
             // number in the first column is the one `/prune` takes and the one every note names.
             // Bare `G` is the last item, as everywhere else
             KeyCode::End | KeyCode::Char('G') => {
-                self.selected = match self.count.parse::<u64>() {
+                self.selected = match count.parse::<u64>() {
                     Ok(id) => match items.iter().position(|item| item.id.0 == id) {
                         Some(at) => at,
                         None => {
@@ -857,15 +899,15 @@ impl App {
                 }
             }
             KeyCode::Char(digit) if digit.is_ascii_digit() => {
-                self.count.push(digit);
+                self.count = format!("{count}{digit}");
                 return;
             }
             KeyCode::Char('?') => self.preview("the keys", crate::ui::HELP),
+            KeyCode::Esc => self.cancel_edit(),
             // changing what an item says, which is the verb the other keys were missing: `space`
             // and `p` decide whether the model reads it, and this decides what it reads
             KeyCode::Char('e') => {
-                self.input.select_all();
-                self.input.cut();
+                self.clear_input();
                 self.input.insert_str(picked.content.to_text());
                 self.input.move_cursor(CursorMove::End);
                 self.editing = Some(picked.id);
@@ -916,9 +958,6 @@ impl App {
             }
             _ => {}
         }
-
-        // any key that was not another digit has now had its chance to use them
-        self.count.clear();
     }
 
     /// Every capability that matters here, and what would happen if a tool asked for it.
@@ -1118,6 +1157,14 @@ impl App {
             Speaker::Note,
             format!("{dropped} call(s) dropped; the model is told, and can try something else"),
         );
+
+        // and then the model gets to say something about it. Answering `n` to every request ends
+        // up at `start_turn`; dropping them all left the kernel idle with the refusals recorded
+        // and nobody driving, so the session simply stopped until somebody typed `/continue`
+        match self.stepping {
+            true => self.say(Speaker::Note, "/step or /continue when you are ready"),
+            false => self.start_turn(),
+        }
     }
 
     /// Asks the running turn to stop at the next opportunity.
@@ -1196,7 +1243,7 @@ impl App {
             // the registry is live rather than fixed at startup, and taking a tool out of it is
             // the plainest demonstration of that: the next request simply does not offer it
             "tools" if rest.starts_with("drop ") => {
-                let id = rest.trim_start_matches("drop ").trim();
+                let id = rest.strip_prefix("drop ").unwrap_or_default().trim();
                 match self.kernel.remove_tool(id) {
                     Some(_) => self.say(
                         Speaker::Note,
@@ -1231,7 +1278,7 @@ impl App {
             // it used to print a line naming the allowed capabilities. The tab is that line, plus
             // the ones that are refused, plus the ones nobody has decided about yet, plus what
             // each of them covers - and every row can be changed where it is read
-            "policy" | "permissions" => self.show(Tab::Permissions),
+            "policy" | "permissions" => self.open(Tab::Permissions),
             "prune" | "keep" | "restore" => self.by_selector(command, rest),
             "model" => {
                 if !rest.is_empty() {

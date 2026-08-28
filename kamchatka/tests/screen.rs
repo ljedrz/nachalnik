@@ -309,9 +309,13 @@ async fn saying_always_stops_the_question_being_asked_again() {
     harness.press(KeyCode::Char('a')).await;
     harness.settle().await;
 
-    // the second call went through without stopping, and the policy says why
+    // the second call went through without stopping, and the policy says why - the prompt's
+    // "always" and the permissions tab are the same table
     assert!(harness.app.overlay.is_none());
-    assert!(harness.app.policy.listing().contains(&"shell".to_owned()));
+    assert_eq!(
+        harness.app.policy.stance(&Capability::Shell),
+        nachalnik::Verdict::Allow
+    );
     let results = harness
         .app
         .kernel
@@ -898,7 +902,10 @@ async fn stepping_stops_where_a_turn_walks_straight_through() {
     // the next transition runs it
     harness.app.start_step();
     harness.settle().await;
-    assert!(harness.screen().contains("nothing to see"), "{screen}");
+    // a fresh snapshot: printing the one captured before the step would show `step -> ready` at
+    // exactly the moment somebody needs to see why the tool did not run
+    let after = harness.screen();
+    assert!(after.contains("nothing to see"), "{after}");
 }
 
 #[tokio::test]
@@ -1199,4 +1206,167 @@ async fn cycling_a_permission_goes_round_rather_than_getting_stuck() {
 
     use nachalnik::Verdict::{Allow, Ask, Deny};
     assert_eq!(seen, vec![Ask, Allow, Deny, Ask], "space should go round");
+}
+
+#[tokio::test]
+async fn ctrl_d_leaves_even_when_a_tool_is_waiting_to_run() {
+    let mut harness = Harness::configured(
+        [ModelResponse::tool_calls(vec![call(
+            "c1",
+            "danger",
+            json!({}),
+        )])],
+        Config::default(),
+    );
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("danger", "ran").with_capabilities([Capability::Shell]),
+    ));
+
+    harness.send("do something rash").await;
+    harness.settle().await;
+    assert!(harness.app.overlay.is_some(), "a question is up");
+
+    // `d` is a key at this prompt, and the overlay used to be dispatched before anything looked
+    // at the modifiers - so the key people press to leave dropped every pending call instead
+    harness
+        .app
+        .on_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL))
+        .await;
+
+    assert!(
+        harness.app.quit,
+        "ctrl+d means leave, wherever it is pressed"
+    );
+    assert_eq!(
+        harness.app.kernel.pending_permissions().len(),
+        1,
+        "and it does not answer the question on the way out"
+    );
+}
+
+#[tokio::test]
+async fn dropping_the_calls_hands_the_turn_back_to_the_model() {
+    let mut harness = Harness::configured(
+        [
+            ModelResponse::tool_calls(vec![call("c1", "danger", json!({}))]),
+            ModelResponse::text("all right, something else then"),
+        ],
+        Config::default(),
+    );
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("danger", "ran").with_capabilities([Capability::Shell]),
+    ));
+
+    harness.send("do something rash").await;
+    harness.settle().await;
+    harness.press(KeyCode::Char('d')).await;
+
+    // answering `n` to each resumes the turn; dropping them all used to leave the kernel idle
+    // with the refusals recorded and nobody driving, until somebody noticed and typed /continue
+    harness.settle().await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("all right, something else then"),
+        "{screen}"
+    );
+}
+
+#[tokio::test]
+async fn editing_an_item_leaves_it_doing_whatever_it_was_doing() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("big.log", "a wall of output"));
+    harness.app.kernel.push(ContextItem::user("hello"));
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+
+    // take it out, then change what it says
+    harness.press(KeyCode::Char(' ')).await;
+    harness.press(KeyCode::Char('e')).await;
+    harness.send("a shorter wall").await;
+
+    // editing decides what an item says, not whether it is sent: a pruned item that came back
+    // Active would quietly put itself in the next request, and an archived one would promote the
+    // whole of an oversized tool output into it
+    let items = harness.app.kernel.items();
+    let edited = items.last().expect("the replacement");
+    assert_eq!(edited.state, ContextState::Excluded);
+    let sent = format!(
+        "{:?}",
+        harness.app.kernel.preview_request().unwrap().messages
+    );
+    assert!(!sent.contains("shorter wall"), "{sent}");
+}
+
+#[tokio::test]
+async fn a_count_does_not_outlive_the_key_after_it() {
+    let mut harness = Harness::new([]);
+    for i in 0..12 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("message {i}")));
+    }
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::End).await;
+
+    // typed, then abandoned by a key that never reaches the context tab at all
+    harness.press(KeyCode::Char('4')).await;
+    harness.press(KeyCode::F(1)).await;
+    harness.press(KeyCode::Esc).await;
+
+    // so `G` is the last item, not item 4
+    harness.press(KeyCode::Char('G')).await;
+    assert_eq!(harness.app.kernel.items()[harness.app.selected].id.0, 12);
+}
+
+#[tokio::test]
+async fn an_abandoned_edit_does_not_swallow_the_next_message() {
+    let mut harness = Harness::new([ModelResponse::text("hello back")]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("notes.txt", "the original"));
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Char('e')).await;
+    assert!(harness.app.editing.is_some());
+
+    // walking away from the tab abandons the edit; it used to stay armed, with the item's text
+    // still in the prompt, so the next message was committed into the context instead of sent
+    harness.tab(Tab::Chat);
+    assert!(harness.app.editing.is_none(), "the edit was abandoned");
+    assert_eq!(harness.app.input.lines(), [""], "and the prompt is empty");
+
+    harness.send("hello").await;
+    harness.settle().await;
+
+    assert!(harness.screen().contains("hello back"), "it was sent");
+    assert_eq!(
+        harness.app.kernel.items()[0].content.to_text(),
+        "the original",
+        "and the item is untouched"
+    );
+}
+
+#[tokio::test]
+async fn a_command_that_opens_a_tab_leaves_the_keys_on_the_prompt() {
+    let mut harness = Harness::new([]);
+
+    harness.send("/policy").await;
+
+    // `a`, `n`, `r` and `d` are all bare letters on this tab and all of them change something, so
+    // a command typed at the prompt must not hand the next keystroke to it
+    assert_eq!(harness.app.tab, Tab::Permissions);
+    assert_eq!(harness.app.focus, kamchatka::app::Focus::Input);
+
+    let before = harness.app.policy.stance(&Capability::Read);
+    harness.send("are we ok?").await;
+    assert_eq!(
+        harness.app.policy.stance(&Capability::Read),
+        before,
+        "typing at the prompt should not have rewritten the policy"
+    );
 }

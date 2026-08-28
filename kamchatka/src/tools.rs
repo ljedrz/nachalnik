@@ -311,16 +311,6 @@ impl Careful {
             .map(|(capability, verdict)| (capability.clone(), *verdict))
             .collect()
     }
-
-    /// The capabilities that no longer produce a question, in a stable order.
-    pub fn listing(&self) -> Vec<String> {
-        self.stances
-            .lock()
-            .iter()
-            .filter(|(_, verdict)| **verdict == Verdict::Allow)
-            .map(|(capability, _)| capability.to_string())
-            .collect()
-    }
 }
 
 #[async_trait]
@@ -328,18 +318,15 @@ impl PermissionPolicy for Careful {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
         let stances = self.stances.lock();
 
-        // one refusal settles it; otherwise the strictest answer among them wins, so a tool that
-        // needs both an allowed capability and an unmentioned one is still a question
-        let mut answer = Verdict::Allow;
-        for capability in &request.capabilities {
-            match stances.get(capability).copied().unwrap_or(Verdict::Ask) {
-                Verdict::Deny => return Verdict::Deny,
-                Verdict::Ask => answer = Verdict::Ask,
-                Verdict::Allow => {}
-            }
-        }
-
-        answer
+        // the strictest answer among them wins, so a tool that needs both an allowed capability
+        // and an unmentioned one is still a question. `Verdict::strictest` is the runtime's own
+        // fold for exactly this, and a second hand-written copy of a three-way ordering is a
+        // second place to get it wrong. A call that needs nothing is allowed: the empty fold
+        request
+            .capabilities
+            .iter()
+            .map(|capability| stances.get(capability).copied().unwrap_or(Verdict::Ask))
+            .fold(Verdict::Allow, Verdict::strictest)
     }
 }
 

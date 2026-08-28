@@ -62,11 +62,12 @@ pub(crate) const HELP: &str = "  THE TABS
 
   THE PERMISSIONS TAB, when it has the focus
     up / down, j / k    pick a capability
+    g / G               the first / the last
     space               cycle it: ask, then allow, then deny
     a / n / r           allow it / never allow it / ask about it again
 
   A TOOL IS WAITING TO RUN
-    y / n                once / no
+    y / n               once / no
     a                   always, for what it needs rather than for its name
     i                   the exact JSON, and the tool's own definition
     d                   drop every call it is waiting on, and tell it why
@@ -84,7 +85,7 @@ pub(crate) const HELP: &str = "  THE TABS
                         correction the counter has worked out from the difference
     /tools              what the model is offered
     /tools drop ID      stop offering one of them, from now on
-    /policy             open the permissions tab
+    /policy             open the permissions tab; also /permissions
     /model [ID]         show or switch the model
     /params [KEY JSON]  show or set a model parameter
     /save [PATH]        the session log, and a snapshot to resume from
