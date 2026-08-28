@@ -137,7 +137,8 @@ part of the change.
 - **Identifiers are never reused**, including by items that `undo` took away, and including tool
   call identifiers across a resumed session (`Snapshot::used_calls`, `repair_call_ids`).
 - **Every state change is an `Event`**, and the log and the broadcast are written under one lock
-  so their order agrees. No logging a user cannot see.
+  so their order agrees - with each other, and with the order the changes were actually applied in.
+  No logging a user cannot see.
 - **The log names things, it does not copy them.** `model.requested` records context ids, not
   messages. `context.replaced` is the one event carrying content, because overwritten text is the
   one thing nothing else can recover.
@@ -219,9 +220,11 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   keeps everything alive. Store a `Weak`, or drop the components.
 - `Kernel::with_context` holds the context read lock for the whole closure. The closure must not
   call back into the kernel.
-- Events are emitted after the relevant lock is released wherever the order allows it; when adding
-  an emit, keep the existing lock order (machine → session, context → session) or a `{kernel:?}`
-  will eventually deadlock somebody.
+- **Emit while still holding the lock that made the change** - the machine lock for a transition,
+  the context lock for anything the context did. Announcing after the release looks tidier and is
+  wrong: two threads changing the same item apply in one order and get logged in the other. The
+  lock order is machine → context → session and nothing goes back up it; `emit` takes the session
+  lock and nothing else, and a broadcast `send` runs no subscriber code.
 - The `test` and `selectors` features are off by default but on for `nachalnik`'s own tests, via a
   dev-dependency on itself. `cargo build -p nachalnik` is the configuration users get, and CI
   checks it separately for that reason.

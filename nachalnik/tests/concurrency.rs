@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    CompactionPlan, Config, ContextItem, ContextState, Kernel, ModelResponse, State,
+    CompactionPlan, Config, ContextItem, ContextState, Event, Kernel, ModelResponse, State,
     test::{AllowAll, ConstTool, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -91,6 +91,54 @@ async fn a_context_survives_being_edited_from_several_places() {
         kernel.items().iter().all(|item| item.is_projected()),
         "every one of them ended where its own thread left it"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_log_tells_the_states_in_the_order_they_happened() {
+    // one item, four threads flipping it, so that every operation contends with the others. The
+    // states the log reports have to chain - each `from` being the previous `to` - because a log
+    // whose entries were announced after the lock was dropped can be applied in one order and
+    // recorded in the other, and its last word on an item then contradicts the item
+    for _ in 0..50 {
+        let kernel = Kernel::new(Config::default());
+        let item = kernel.push(ContextItem::file("src/a.rs", "x"));
+
+        let mut hands = Vec::new();
+        for _ in 0..4 {
+            let kernel = kernel.clone();
+            hands.push(tokio::spawn(async move {
+                for _ in 0..25 {
+                    kernel.set_state([item], ContextState::Excluded, None);
+                    kernel.set_state([item], ContextState::Active, None);
+                }
+            }));
+        }
+        for hand in hands {
+            hand.await.unwrap();
+        }
+
+        let mut walked = ContextState::Active;
+        let mut seen = 0;
+        for record in kernel.history() {
+            let Event::ContextChanged { id, from, to, .. } = record.event else {
+                continue;
+            };
+            assert_eq!(id, item);
+            assert_eq!(
+                from, walked,
+                "the log skipped a state, or reported two out of order"
+            );
+            walked = to;
+            seen += 1;
+        }
+
+        assert!(seen > 0, "something has to have been recorded");
+        assert_eq!(
+            walked,
+            kernel.item(item).unwrap().state,
+            "and the last thing the log says about the item is what the item says"
+        );
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

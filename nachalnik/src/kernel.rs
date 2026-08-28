@@ -532,6 +532,15 @@ impl Kernel {
     /// note: The log is written and the event is broadcast under the same lock, so what a
     /// subscriber sees is in the same order as what the log ends up holding, even when several
     /// threads are driving the same kernel.
+    ///
+    /// note: Callers emit while still holding the lock that made the change - the machine lock
+    /// for a transition, the context lock for everything the context does. Releasing first and
+    /// announcing afterwards looks tidier and is wrong: two threads excluding the same item can
+    /// then apply in one order and be logged in the other, and the log's last word on that item
+    /// contradicts the item. The order is machine, then context, then session, and nothing goes
+    /// back up it - `emit` takes the session lock and nothing else, and `send` on a broadcast
+    /// channel runs no subscriber code, so holding a lock across it costs a memcpy and blocks
+    /// nobody.
     pub(crate) fn emit(&self, event: Event) {
         let mut session = self.0.session.lock();
 
@@ -733,15 +742,12 @@ impl Kernel {
     /// hints, and a hint you can only set before the item exists is not much use - by the time
     /// you know a tool result was worthless, it has already been recorded.
     pub fn annotate(&self, id: ContextId, meta: Value) -> Result<()> {
-        let changed = {
-            let mut context = self.0.context.write();
-            if context.item(id).is_none() {
-                return Err(Error::UnknownItem(id));
-            }
-            context.annotate(id, meta.clone())
-        };
+        let mut context = self.0.context.write();
+        if context.item(id).is_none() {
+            return Err(Error::UnknownItem(id));
+        }
 
-        if changed {
+        if context.annotate(id, meta.clone()) {
             self.emit(Event::ContextAnnotated { id, meta });
         }
 
@@ -824,10 +830,11 @@ impl Kernel {
                 });
                 outcome.changed.push(id);
             }
-        }
 
-        for announcement in announcements {
-            self.emit(announcement);
+            // still under the lock: see the note on `Kernel::emit`
+            for announcement in announcements {
+                self.emit(announcement);
+            }
         }
 
         outcome
@@ -836,17 +843,14 @@ impl Kernel {
     /// Replaces an item's content in place, keeping its identifier.
     pub fn replace(&self, id: ContextId, content: impl Into<Content>) -> Result<()> {
         let counter = self.counter();
-        let changed = {
-            let mut context = self.0.context.write();
-            // an operation that is about to fail does not get a checkpoint
-            if context.item(id).is_none() {
-                return Err(Error::UnknownItem(id));
-            }
-            context.checkpoint();
-            context.replace(id, content.into(), &*counter)
-        };
+        let mut context = self.0.context.write();
+        // an operation that is about to fail does not get a checkpoint
+        if context.item(id).is_none() {
+            return Err(Error::UnknownItem(id));
+        }
+        context.checkpoint();
 
-        match changed {
+        match context.replace(id, content.into(), &*counter) {
             Some((was, tokens_before, tokens_after)) => {
                 self.emit(Event::ContextReplaced {
                     id,
@@ -866,11 +870,9 @@ impl Kernel {
     /// that excluded eight items puts all eight back. Model responses and tool results are
     /// operations too, so undo can also walk back a turn's worth of additions.
     pub fn undo(&self) -> bool {
-        let Some(diff) = ({
-            let mut context = self.0.context.write();
-            let before = context.items().to_vec();
-            context.undo().then(|| Self::diff(&before, context.items()))
-        }) else {
+        let mut context = self.0.context.write();
+        let before = context.items().to_vec();
+        let Some(diff) = context.undo().then(|| Self::diff(&before, context.items())) else {
             return false;
         };
 
@@ -890,11 +892,9 @@ impl Kernel {
     /// redo that reached across work done since would be overwriting it rather than restoring
     /// anything.
     pub fn redo(&self) -> bool {
-        let Some(diff) = ({
-            let mut context = self.0.context.write();
-            let before = context.items().to_vec();
-            context.redo().then(|| Self::diff(&before, context.items()))
-        }) else {
+        let mut context = self.0.context.write();
+        let before = context.items().to_vec();
+        let Some(diff) = context.redo().then(|| Self::diff(&before, context.items())) else {
             return false;
         };
 
@@ -910,16 +910,13 @@ impl Kernel {
     /// Recounts every item's tokens with the active [`TokenCounter`].
     pub fn recount(&self) {
         let counter = self.counter();
-        let (tokens_before, tokens_after) = {
-            let mut context = self.0.context.write();
-            let before = context.tokens();
-            context.recount(&*counter);
-            (before, context.tokens())
-        };
+        let mut context = self.0.context.write();
+        let tokens_before = context.tokens();
+        context.recount(&*counter);
 
         self.emit(Event::ContextRecounted {
             tokens_before,
-            tokens_after,
+            tokens_after: context.tokens(),
         });
     }
 
@@ -993,7 +990,7 @@ impl Kernel {
         // the whole pass happens under one lock. Taking it item by item would let a push land
         // between the checkpoint and the removals, and the next `undo` would then restore a
         // context that never existed - one without the item somebody had just added
-        let (tokens_before, tokens_after) = {
+        {
             let mut context = self.0.context.write();
             let tokens_before = context.tokens();
             context.checkpoint();
@@ -1044,26 +1041,26 @@ impl Kernel {
                 });
             }
 
-            (tokens_before, context.tokens())
-        };
+            let report = CompactionReport {
+                removed,
+                refused,
+                summary: added,
+                reason,
+                tokens_before,
+                tokens_after: context.tokens(),
+            };
 
-        for announcement in announcements {
-            self.emit(announcement);
+            // still under the lock, and the pass's own events before the report of it: see the
+            // note on `Kernel::emit`
+            for announcement in announcements {
+                self.emit(announcement);
+            }
+            self.emit(Event::Compacted {
+                report: report.clone(),
+            });
+
+            report
         }
-
-        let report = CompactionReport {
-            removed,
-            refused,
-            summary: added,
-            reason,
-            tokens_before,
-            tokens_after,
-        };
-        self.emit(Event::Compacted {
-            report: report.clone(),
-        });
-
-        report
     }
 
     // ------------------------------------------------------------------------------- the loop
@@ -1687,31 +1684,20 @@ impl Kernel {
     /// Adds an item to the context, optionally checkpointing it for [`Kernel::undo`] first.
     fn add_item(&self, item: ContextItem, checkpoint: bool) -> ContextId {
         let counter = self.counter();
-        let (id, kind, source, label, tokens, because) = {
-            let mut context = self.0.context.write();
-            if checkpoint {
-                context.checkpoint();
-            }
-            let id = context.add(item, &*counter);
-            let item = context.item(id).expect("the item was just added");
-
-            (
-                id,
-                item.kind.name().to_owned(),
-                item.source.clone(),
-                item.label.clone(),
-                item.tokens,
-                item.included_because.clone(),
-            )
-        };
+        let mut context = self.0.context.write();
+        if checkpoint {
+            context.checkpoint();
+        }
+        let id = context.add(item, &*counter);
+        let item = context.item(id).expect("the item was just added");
 
         self.emit(Event::ContextAdded {
             id,
-            kind,
-            source,
-            label,
-            tokens,
-            because,
+            kind: item.kind.name().to_owned(),
+            source: item.source.clone(),
+            label: item.label.clone(),
+            tokens: item.tokens,
+            because: item.included_because.clone(),
         });
 
         id
@@ -1761,7 +1747,8 @@ impl Kernel {
         state: ContextState,
         note: Option<String>,
     ) -> Option<ContextState> {
-        let from = self.0.context.write().set_state(id, state, note.clone())?;
+        let mut context = self.0.context.write();
+        let from = context.set_state(id, state, note.clone())?;
 
         self.emit(Event::ContextChanged {
             id,

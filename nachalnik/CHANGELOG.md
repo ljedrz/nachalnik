@@ -16,6 +16,13 @@ minor bump may break you.
 - `Calibration` now derives `Serialize`/`Deserialize` and has a hand-written `Default` (scale
   `1.0`, not `f64::default()`).
 
+### fixed
+
+- Context events are recorded while the context lock is still held, so the log's account of an
+  item's states matches the order they were applied in. Two threads changing one item could apply
+  in one order and be announced in the other, leaving the log's last word on that item
+  contradicting the item itself.
+
 ### changed
 
 - The counter a `Kernel::new` starts with is `Calibrating<BytesPerToken>` rather than a bare
