@@ -1,17 +1,22 @@
 [package]
 name = "kamchatka"
 version = "0.1.0"
-description = "A terminal agent built on nachalnik: the context, the budget and every decision, on screen."
+description = "A terminal LLM agent built on nachalnik: the context, the budget and every decision, on screen."
 documentation = "https://docs.rs/kamchatka"
 readme = "README.md"
 categories = ["command-line-utilities", "development-tools"]
-keywords = ["agent", "llm", "tui", "terminal", "nachalnik"]
+# `tui` rather than `terminal` as well: they are near-duplicates, and the slot buys `ai`, which
+# is where the people who want this actually look
+keywords = ["agent", "llm", "ai", "tui", "nachalnik"]
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 rust-version.workspace = true
+
+[badges]
+maintenance = { status = "actively-developed" }
 
 [package.metadata.docs.rs]
 all-features = true

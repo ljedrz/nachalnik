@@ -5,7 +5,10 @@ description = "A minimal, transparent agent runtime: context, tools, permissions
 documentation = "https://docs.rs/nachalnik"
 readme = "README.md"
 categories = ["asynchronous", "development-tools"]
-keywords = ["agent", "llm", "runtime", "context", "harness"]
+# note: five is the limit, so each one has to earn its place. `ai` and `llm` are the pair every
+# crate in this corner of the registry is found by; `context` is what this one is actually about,
+# and is how somebody looking for context management rather than for another SDK arrives.
+keywords = ["agent", "llm", "ai", "context", "runtime"]
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

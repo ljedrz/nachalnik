@@ -1,17 +1,23 @@
 [package]
 name = "nachalnik-mcp"
 version = "0.1.0"
-description = "An MCP bridge for the nachalnik agent runtime: a tool somebody else wrote, as a Tool like any other."
+description = "Model Context Protocol (MCP) servers as tools for the nachalnik agent runtime: a tool somebody else wrote, as a Tool like any other."
 documentation = "https://docs.rs/nachalnik-mcp"
 readme = "README.md"
-categories = ["asynchronous", "development-tools"]
-keywords = ["agent", "llm", "mcp", "tools", "nachalnik"]
+# `api-bindings` because that is what this is: a binding to somebody else's server
+categories = ["api-bindings", "asynchronous", "development-tools"]
+# `nachalnik` is a keyword rather than a wasted slot: it is the one page on the registry that
+# lists all three of these crates together, and reverse dependencies is a tab nobody clicks
+keywords = ["mcp", "agent", "llm", "ai", "nachalnik"]
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 rust-version.workspace = true
+
+[badges]
+maintenance = { status = "actively-developed" }
 
 [package.metadata.docs.rs]
 all-features = true
