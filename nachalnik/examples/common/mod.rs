@@ -31,6 +31,10 @@ use serde_json::{Value, json};
 /// How many times a request is retried when the server says it is busy.
 const RETRIES: usize = 4;
 
+/// How long a stream may say nothing before the provider looks up to check whether it has been
+/// asked to stop.
+const HEARTBEAT: Duration = Duration::from_millis(120);
+
 /// Any server that speaks the OpenAI chat-completions dialect, streamed.
 pub struct OpenAiCompatible {
     pub client: reqwest::Client,
@@ -338,7 +342,22 @@ impl Provider for OpenAiCompatible {
         // every payload the server sent, verbatim
         let mut chunks = Vec::new();
 
-        while let Some(bytes) = response.chunk().await? {
+        loop {
+            // the timeout is what makes a model that says nothing at all interruptible; without
+            // it this sits in `chunk` until the server feels like talking, and a request that
+            // stalls before its first byte cannot be stopped at all
+            let bytes = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
+                Ok(Ok(Some(bytes))) => bytes,
+                Ok(Ok(None)) => break,
+                Ok(Err(e)) => return Err(e.into()),
+                Err(_) => {
+                    if deltas.is_interrupted() {
+                        finish = Some("interrupted".to_owned());
+                        break;
+                    }
+                    continue;
+                }
+            };
             buffer.push_str(&String::from_utf8_lossy(&bytes));
 
             while let Some(end) = buffer.find('\n') {
