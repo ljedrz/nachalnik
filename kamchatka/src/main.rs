@@ -210,7 +210,16 @@ async fn run(
                 ),
                 Err(RecvError::Closed) => return Ok(()),
             },
-            Some(outcome) = finished.recv() => app.on_outcome(outcome),
+            Some(outcome) = finished.recv() => {
+                // the turn's last events are still in the queue behind this, and `select!` picks
+                // whichever branch is ready rather than whichever happened first - so an outcome
+                // drawn now would put "the turn paused after 3 requests" *above* the result it
+                // paused after. The transcript is meant to be what happened, in that order
+                while let Ok(event) = events.try_recv() {
+                    app.on_event(event);
+                }
+                app.on_outcome(outcome);
+            }
             _ = ticks.tick() => {
                 if let Some(notice) = app.provider.take_notice() {
                     app.say(Speaker::Note, notice);
