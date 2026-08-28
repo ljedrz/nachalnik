@@ -17,7 +17,9 @@ minor bump may break you.
   gets the rule.
 - A scrollbar down the right border of any tab holding more than fits, and of the overlays. It is
   drawn on the border rather than in a column of its own, so nothing gets narrower and a window
-  with nothing to scroll looks exactly as it did.
+  with nothing to scroll looks exactly as it did. The thumb reaches the last row of the track when
+  the content reaches its last row: `ScrollbarState` counts scroll *positions*, not rows, and these
+  tabs stop at the last full page rather than scrolling the final row up to the top.
 
 ### changed
 

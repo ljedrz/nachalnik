@@ -1597,6 +1597,33 @@ async fn a_tab_with_more_than_fits_says_so_down_its_border() {
         .position(|line| line.ends_with('█'))
         .expect("still a thumb");
     assert!(moved > thumb[0], "{scrolled}");
+
+    // and at the end of the list it is at the end of the track: a bar that stopped short would be
+    // saying there is more below when there is not
+    harness.press(KeyCode::End).await;
+    let bottom = harness.sized(100, 30);
+    let rows: Vec<_> = bottom.lines().collect();
+    let last = rows
+        .iter()
+        .rposition(|line| line.contains("src/f79.rs"))
+        .expect("the last item is on screen");
+    assert!(
+        rows[last].ends_with('█'),
+        "the thumb reaches the row the content does:\n{bottom}"
+    );
+
+    // ... and back at the top it starts at the top
+    harness.press(KeyCode::Home).await;
+    let top = harness.sized(100, 30);
+    let rows: Vec<_> = top.lines().collect();
+    let first = rows
+        .iter()
+        .position(|line| line.contains("src/f0.rs"))
+        .expect("the first item is on screen");
+    assert!(
+        rows[first].ends_with('█'),
+        "and the row the content starts on:\n{top}"
+    );
 }
 
 #[tokio::test]

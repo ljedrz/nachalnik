@@ -243,7 +243,14 @@ fn scrollbar(frame: &mut Frame, window: Rect, border: Style, scrolled: Scrolled)
         width: 1,
         height: scrolled.area.height,
     };
-    let mut state = ScrollbarState::new(scrolled.total)
+    // note: `content_length` is the number of *scroll positions*, not the number of rows, and the
+    // difference is the whole reason the thumb used to stop short of the bottom. Ratatui places
+    // the thumb over `0..content_length` and adds the viewport back on at the far end, so passing
+    // the row count says the last position is "the final row alone at the top" - a page further
+    // down than anything here scrolls to. Every tab stops at the last full page, so the positions
+    // it can be in are `total - viewport + 1`, and with that the thumb reaches the last row when
+    // the content does.
+    let mut state = ScrollbarState::new(scrolled.total - viewport + 1)
         .position(scrolled.position)
         .viewport_content_length(viewport);
 
