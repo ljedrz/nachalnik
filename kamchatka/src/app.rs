@@ -80,6 +80,13 @@ pub struct Stance {
     pub verdict: Verdict,
     /// The registered tools that declare it, in the order the model is offered them.
     pub tools: Vec<String>,
+    /// The registered tools the policy judges against it only sometimes, by looking at the call.
+    ///
+    /// note: `network` and `shell` are the pair this exists for. No tool here declares `network` -
+    /// a model that wants the network writes `curl` - so the row read `nothing registered needs
+    /// it` beside a verdict of `deny`, which is a restriction that was not there. What is there is
+    /// [`crate::tools::Careful`] reading the command, and that is what this says.
+    pub sometimes: Vec<String>,
 }
 
 /// One line of the trace pane: an event's name, and what it says for itself.
@@ -960,10 +967,20 @@ impl App {
     /// built-in tool wants it, but a refusal you cannot see is not a policy you can trust.
     pub fn permissions(&self) -> Vec<Stance> {
         let mut rows: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
+        let mut sometimes: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
         for (capability, _) in self.policy.stances() {
             rows.entry(capability).or_default();
         }
         for spec in self.kernel.tool_specs() {
+            // a shell is judged against `network` too, when the command it was handed reaches for
+            // it; the policy is the one that knows, and this is the row that has to say so
+            if spec.capabilities.contains(&Capability::Shell) {
+                sometimes
+                    .entry(Capability::Network)
+                    .or_default()
+                    .push(spec.id.clone());
+                rows.entry(Capability::Network).or_default();
+            }
             for capability in spec.capabilities {
                 rows.entry(capability).or_default().push(spec.id.clone());
             }
@@ -972,6 +989,7 @@ impl App {
         rows.into_iter()
             .map(|(capability, tools)| Stance {
                 verdict: self.policy.stance(&capability),
+                sometimes: sometimes.remove(&capability).unwrap_or_default(),
                 capability,
                 tools,
             })

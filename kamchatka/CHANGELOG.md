@@ -21,6 +21,12 @@ minor bump may break you.
 
 ### changed
 
+- The `network` stance is consulted for a `shell` call whose command names a program that goes out
+  to the network - `curl`, `pip install`, `git push`. No tool declares `Capability::Network`,
+  because a model that wants the network writes `curl`, so the row read `deny` beside `nothing
+  registered needs it`: a restriction that was not there. It now names the shell it reaches, and
+  the policy's own documentation is plain about the heuristic being over the command as written
+  rather than a sandbox.
 - Everything a person is meant to read is a step lighter. `DarkGray` is the terminal's bright
   *black* and sits a shade off the background on many themes, and nearly every secondary thing on
   these screens was drawn in it - why an item is not being sent, what an event says, the context

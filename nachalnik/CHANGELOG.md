@@ -18,6 +18,12 @@ minor bump may break you.
 - `Calibration` now derives `Serialize`/`Deserialize` and has a hand-written `Default` (scale
   `1.0`, not `f64::default()`).
 
+### changed
+
+- `Capability`'s documentation says that `Shell` subsumes every other capability, so a policy that
+  allows it has allowed all of them - and that what closes the gap is `PermissionRequest::args`,
+  which a policy is handed and a capability list cannot see.
+
 ### fixed
 
 - Context events are recorded while the context lock is still held, so the log's account of an

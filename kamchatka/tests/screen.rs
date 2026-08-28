@@ -20,7 +20,7 @@ use kamchatka::{
 };
 use nachalnik::{
     Capability, Config, ContextItem, ContextState, Delta, Event, Kernel, ModelInfo, ModelResponse,
-    StopReason, Usage,
+    StopReason, Usage, Verdict,
     test::{ConstTool, ScriptedProvider, call},
 };
 use ratatui::{
@@ -1094,12 +1094,86 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         "the row names what it covers: {shell}"
     );
 
-    // network is refused and nothing declares it, which should read as a fact rather than a gap
+    // network is refused, and no tool declares it - but the shell is judged against it anyway, on
+    // what the command says, so the row that used to read `nothing registered needs it` beside a
+    // `deny` (a restriction that was not there) now names the tool the refusal actually reaches
     let network = screen
         .lines()
         .find(|line| line.contains("network"))
         .expect("the refusal is listed");
-    assert!(network.contains("nothing registered needs it"), "{network}");
+    assert!(network.contains("deny"), "{network}");
+    assert!(
+        network.contains("rm, when the command reaches for it"),
+        "{network}"
+    );
+
+    // and a capability nothing needs at all still reads as a fact rather than a gap
+    harness.app.policy.set(Capability::Write, Verdict::Deny);
+    let screen = harness.sized(110, 30);
+    let write = screen
+        .lines()
+        .find(|line| line.contains("write"))
+        .expect("what the policy has been told about is listed");
+    assert!(write.contains("nothing registered needs it"), "{write}");
+}
+
+#[tokio::test]
+async fn a_shell_reaching_for_the_network_is_judged_as_reaching_for_it() {
+    use kamchatka::tools::reaches_the_network as reaches;
+
+    // what a model writes when it wants the network
+    assert!(reaches("curl https://example.com"));
+    assert!(reaches("pip install requests"));
+    assert!(reaches("git push origin master"));
+    assert!(reaches("wc -l x.py && curl -s https://example.com"));
+    assert!(reaches(
+        "HTTPS_PROXY=http://p:8080 curl https://example.com"
+    ));
+    assert!(reaches("/usr/bin/curl https://example.com"));
+
+    // and what it writes the rest of the time
+    assert!(!reaches("wc -l ledger.py"));
+    assert!(!reaches("cat curl.txt"));
+    assert!(!reaches("echo 'curl is a program'"));
+    assert!(!reaches(""));
+}
+
+#[tokio::test]
+async fn a_denied_network_reaches_the_shell_that_would_have_used_it() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "shell",
+            json!({ "cmd": "curl https://example.com" }),
+        )]),
+        ModelResponse::text("refused, then"),
+    ]);
+    // a stand-in for the shell: what is under test is the policy reading the command, not the
+    // program that would run it
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "output").with_capabilities([Capability::Shell]),
+    ));
+    // the default: reads allowed, network refused, everything else a question
+    assert_eq!(
+        harness.app.policy.stance(&Capability::Network),
+        Verdict::Deny
+    );
+
+    harness.send("fetch it").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(
+        !screen.contains("allow this?"),
+        "a refusal is not a question: {screen}"
+    );
+    let refused = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .any(|item| item.content.to_text().contains("refused"));
+    assert!(refused, "the model is told, rather than left waiting");
 }
 
 #[tokio::test]

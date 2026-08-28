@@ -317,17 +317,119 @@ impl Careful {
 impl PermissionPolicy for Careful {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
         let stances = self.stances.lock();
+        let answer = |capability| stances.get(capability).copied().unwrap_or(Verdict::Ask);
 
         // the strictest answer among them wins, so a tool that needs both an allowed capability
         // and an unmentioned one is still a question. `Verdict::strictest` is the runtime's own
         // fold for exactly this, and a second hand-written copy of a three-way ordering is a
         // second place to get it wrong. A call that needs nothing is allowed: the empty fold
-        request
+        let declared = request
             .capabilities
             .iter()
-            .map(|capability| stances.get(capability).copied().unwrap_or(Verdict::Ask))
-            .fold(Verdict::Allow, Verdict::strictest)
+            .map(answer)
+            .fold(Verdict::Allow, Verdict::strictest);
+
+        // ... and then what the call actually says. A `shell` that is about to run `curl` is using
+        // the network whatever its spec declared, and `network: deny` sitting beside `shell: ask`
+        // would otherwise be a row that nothing ever consults. This is the thing a policy can do
+        // that a capability list cannot: it is handed the arguments
+        match request.capabilities.contains(&Capability::Shell)
+            && command(&request.args).is_some_and(reaches_the_network)
+        {
+            true => declared.strictest(answer(&Capability::Network)),
+            false => declared,
+        }
     }
+}
+
+/// The command a `shell` call was asked to run, if it was asked to run one.
+fn command(args: &serde_json::Value) -> Option<&str> {
+    args.get("cmd")?.as_str()
+}
+
+/// The programs this counts as going out to the network.
+///
+/// note: short on purpose, and made of what a model actually writes. Every entry here is a
+/// program whose *whole point* is the network, so a false positive is nearly impossible; the
+/// misses are the other way round, and are the subject of the note on
+/// [`reaches_the_network`].
+const NETWORKED: &[&str] = &[
+    "curl",
+    "wget",
+    "aria2c",
+    "http",
+    "https",
+    "xh",
+    "httpie",
+    "nc",
+    "ncat",
+    "netcat",
+    "telnet",
+    "ssh",
+    "scp",
+    "sftp",
+    "rsync",
+    "ftp",
+    "ping",
+    "dig",
+    "nslookup",
+    "host",
+    "whois",
+    "git",
+    "gh",
+    "cargo",
+    "npm",
+    "pnpm",
+    "yarn",
+    "npx",
+    "pip",
+    "pip3",
+    "uv",
+    "poetry",
+    "gem",
+    "go",
+    "brew",
+    "apt",
+    "apt-get",
+    "dnf",
+    "pacman",
+    "apk",
+    "docker",
+    "podman",
+    "kubectl",
+    "helm",
+    "aws",
+    "gcloud",
+    "az",
+    "terraform",
+];
+
+/// Whether a shell command names one of them.
+///
+/// note: a heuristic over the command as it was written, and it is worth being exact about what
+/// that is worth. It catches `curl https://…`, `pip install x` and `git push`, which is what a
+/// model writes when it wants the network, and it does not catch a script that curls, a binary
+/// that opens a socket of its own, or `$(echo cur)l`. It is not a sandbox and this program does
+/// not pretend it is one - `Capability::Shell` subsumes every other capability, and the runtime's
+/// own documentation says so.
+///
+/// note: what it *is* for is that `network` on the permissions tab should mean something. A row
+/// that reads `deny` beside a `shell` the model uses for `curl` all day is worse than no row: it
+/// reports a restriction that is not there. Several of these - `git`, `cargo`, `go`, `docker` -
+/// also do plenty offline, so the answer will sometimes be a question about `git status`. Erring
+/// that way is the point of a policy called `Careful`.
+pub fn reaches_the_network(cmd: &str) -> bool {
+    cmd.split([';', '|', '&', '\n', '(', ')', '`'])
+        .filter_map(|segment| {
+            // `FOO=bar curl …`: the assignments come first, and none of them is the program
+            segment.split_whitespace().find(|word| !word.contains('='))
+        })
+        .any(|program| {
+            let program = program.trim_matches(['"', '\'']);
+            let program = program.rsplit('/').next().unwrap_or(program);
+
+            NETWORKED.contains(&program)
+        })
 }
 
 // ------------------------------------------------------------------------------ the compactor

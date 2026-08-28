@@ -12,6 +12,17 @@ use crate::{Config, Kernel, Tool};
 /// note: These are labels the kernel compares and reports; it cannot verify them. A tool that
 /// declares `Read` and then opens a socket is lying, and the only defense is that the user
 /// chose to register it.
+///
+/// note: [`Capability::Shell`] subsumes every other one, and it is worth saying so out loud
+/// because a list of capabilities invites being read as a list of boundaries. A command can read,
+/// write, and reach the network; a policy that allows `Shell` has allowed all of it, whatever it
+/// answers about the rest. That is not a flaw in the labels - it is what a shell *is* - but a
+/// client that showed `shell: allow` beside `network: deny` without saying so would be reporting
+/// a restriction that does not exist. What closes the gap is the arguments: a
+/// [`PermissionPolicy`] is handed the call the model actually made
+/// ([`PermissionRequest::args`]), so it can judge `curl https://…` against whatever it thinks of
+/// the network. See `kamchatka`'s `Careful` for one that does, and for an honest account of what
+/// a heuristic over a command line is and is not worth.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]

@@ -555,11 +555,21 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                 Verdict::Ask => ("ask", Style::default().fg(Color::Yellow)),
                 Verdict::Deny => ("deny", Style::default().fg(Color::Red)),
             };
-            // a capability nothing declares is still worth a row - `network` is refused here and
-            // no built-in tool wants it - but it should say so rather than look like an oversight
-            let tools = match row.tools.is_empty() {
-                true => "nothing registered needs it".to_owned(),
-                false => row.tools.join(", "),
+            // a capability nothing declares is still worth a row, and it should say so rather
+            // than look like an oversight - but `network` is not one of them, however it looks: no
+            // tool declares it and the shell is judged against it anyway, on what the command says
+            let tools = match (row.tools.is_empty(), row.sometimes.is_empty()) {
+                (true, true) => "nothing registered needs it".to_owned(),
+                (true, false) => format!(
+                    "{}, when the command reaches for it",
+                    row.sometimes.join(", ")
+                ),
+                (false, true) => row.tools.join(", "),
+                (false, false) => format!(
+                    "{}; {}, when the command reaches for it",
+                    row.tools.join(", "),
+                    row.sometimes.join(", ")
+                ),
             };
 
             ListItem::new(Line::from(vec![
@@ -570,7 +580,7 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                 Span::styled(format!("{answer:<10}  "), style),
                 Span::styled(
                     clip(&tools, covers),
-                    match row.tools.is_empty() {
+                    match row.tools.is_empty() && row.sometimes.is_empty() {
                         true => quiet(),
                         false => Style::default(),
                     },
