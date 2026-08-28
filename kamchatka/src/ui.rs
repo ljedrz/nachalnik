@@ -98,12 +98,14 @@ fn draw_body(frame: &mut Frame, app: &mut App, area: Rect) {
         if !strip.is_empty() {
             strip.push(Span::styled("│", dim));
         }
+        // the open tab looks open whatever the keys are doing; which half of the window they are
+        // talking to is the border's job, and having both say it left `chat` looking shut,
+        // because the prompt always has the focus there
         strip.push(Span::styled(
             format!(" {} ", tab.name()),
-            match (tab == app.tab, focused) {
-                (true, true) => Style::default().fg(Color::Yellow).bold(),
-                (true, false) => Style::default().bold(),
-                (false, _) => dim,
+            match tab == app.tab {
+                true => Style::default().fg(Color::Yellow).bold(),
+                false => dim,
             },
         ));
     }
