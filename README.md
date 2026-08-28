@@ -152,31 +152,30 @@ $ cargo run -p kamchatka -- -f src/lib.rs "what does this crate do?"
 ```
 
 ```text
-┌ conversation ──────────────────────────────────────────────────────┐┌ context │ trace ───────────────────────┐
-│· [1] src/kernel.rs is in the context, 1000 tokens                  ││  1 ▪ src/kernel.rs                1,000│
-│                                                                    ││  2 · user                             6│
-│⟩ read({"path":"src/kernel.rs"})                                    ││  3 · assistant                        7│
-│                                                                    ││  4 - read                            15│
-││ pub struct Kernel(Arc<InnerKernel>);                              ││      excluded: pruned at the terminal  │
-│  // ... 900 more lines                                             ││  5 · assistant                        7│
-│                                                                    ││  6 · shell                            7│
-│· read: 15 tokens                                                   ││  7 · assistant                       43│
-│                                                                    ││                                        │
-│The kernel is a state machine with five states. `step` performs one ││                                        │
-│transition and returns the state it produced; `turn` repeats it     ││                                        │
-│until the model stops asking for tools.                             ││                                        │
-└────────────────────────────────────────────────────────────────────┘└──────────── 7 items · ~1,101 / 128,000 ┘
+┌ chat │ context │ trace ──────────────────────────────────────────────────────────────────────────────────────┐
+│  id  label                      kind                tokens  what it says, or why it is not being sent        │
+│  1 ▪ src/kernel.rs              reference            1,045  pub struct Kernel;                               │
+│  2 · user                       user_message             6  what does the kernel do?                         │
+│  3 · assistant                  assistant_message        7  asked for read                                   │
+│  4 - read                       tool_result             15  excluded: pruned at the terminal                 │
+│  5 · assistant                  assistant_message        7  asked for shell                                  │
+│  6 · shell                      tool_result             10  test result: ok. 175 passed; 0 failed            │
+│  7 · assistant                  assistant_message       62  The kernel is a state machine with five states. …│
+│                                                                                                              │
+└──────────────────────────────────────────────────────────────────────────────────────── 7 items, 1 not going ┘
 ┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ ask for something, or /help                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- done · gpt-4o-mini · ~1,101 tokens, 0.9% of the limit · 1,043 really · 15 held back · F1 for the keys
+ done · gpt-4o-mini · ~1,168 tokens, 0.9% of the limit · 1,102 really · 15 held back · F1 for the keys
 ```
 
-Every terminal agent has the pane on the left. The one on the right is this runtime: the context,
-item by item, with what each one costs, whether it is going into the next request, and - for the
-ones that are not - why. `tab` moves over to it, `space` takes an item out and puts it back, `p`
-pins it, `enter` reads it, `u` undoes it. `ctrl+t` swaps the pane for the trace: every event the
-runtime emits, as it happens, in the same names the session log is made of.
+Three tabs, each of which gets the whole window: **chat**, **context**, **trace**. The first is
+the conversation, which every terminal agent has. The one above is the second, and it is this
+runtime: every item the context holds, what it costs, whether it is going into the next request,
+and what the model will actually read of it - with the ones that are *not* going saying why, on
+their own row, in the projector's words. `space` takes an item out and puts it back, `p` pins it,
+`enter` reads the whole of it, `u` undoes. The third is every event the runtime emits, as it
+happens, in the same names the session log is made of.
 
 `ctrl+p` heads that request with everything the projector left out and why - `excluded: pruned by
 \`tool:shell:latest\``, `archived: the whole output; the model was shown a shortened copy`,

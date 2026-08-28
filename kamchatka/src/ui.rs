@@ -1,12 +1,14 @@
 //! Drawing. Nothing here decides anything - it reads [`App`] and the kernel and puts what it
 //! finds on the screen.
 //!
-//! note: The pane on the right is the point of this program. Every other terminal agent in the
-//! world can show you a conversation; what this one shows beside it is the *context* - every
-//! item, what it costs, and whether it is going into the next request - because in this runtime
-//! that is a list of ordinary values rather than something the harness keeps to itself.
+//! note: Three tabs, each of which gets the whole window, because each of them is a whole view.
+//! Every terminal agent in the world has the first one. The second is the point of this program:
+//! the *context*, item by item, with what each one costs, whether it is going into the next
+//! request, and what the model will actually read of it - because in this runtime that is a list
+//! of ordinary values rather than something the harness keeps to itself. The third is the event
+//! stream the session log is made of, as it happens.
 
-use nachalnik::{ContextState, Kernel, State};
+use nachalnik::{ContextKind, ContextState, Kernel, State};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -15,38 +17,35 @@ use ratatui::{
     widgets::{Block, Clear, List, ListItem, Paragraph},
 };
 
-use crate::app::{App, Aside, Focus, Overlay, Speaker};
-
-/// The width the pane beside the conversation wants.
-///
-/// note: Wider than it was when it held two boxes, but not by much - the trace wraps now rather
-/// than cutting every line off, so it reads perfectly well in forty columns, and the conversation
-/// is still the thing most of the screen is for.
-const SIDE: u16 = 42;
+use crate::app::{App, Focus, Overlay, Speaker, Tab};
 
 /// What the keys do, shown by F1.
-const HELP: &str = "\
-  GETTING AROUND
-    tab                 move between the prompt and the pane beside it
-    ctrl+t              switch that pane between the context and the trace
-    pgup / pgdn         scroll the conversation
+pub(crate) const HELP: &str = "\
+  THE TABS
+    ctrl+t              the next one
+    alt+1 / 2 / 3       chat / context / trace
+    tab                 move between the prompt and the tab, on the last two
+
+  ANYWHERE
     ctrl+p              the exact request that would be sent next
     f1                  this
     esc                 close this, or stop what is running
     ctrl+c              stop what is running; again to leave
 
-  THE PROMPT
+  THE PROMPT, which is under all three tabs
     enter               send
     alt+enter           a new line
+    pgup / pgdn         scroll the conversation
 
-  THE CONTEXT TAB, when the pane has the focus
+  THE CONTEXT TAB, when it has the focus
     up / down, j / k    pick an item
+    pgup / pgdn         a screenful at a time
     space               take it out of the next request, or put it back
     p                   pin it, so that compaction cannot touch it
-    enter               read what it actually says
+    enter               read the whole of what it says
     u / U               undo / redo the last change to the context
 
-  THE TRACE TAB, when the pane has the focus
+  THE TRACE TAB, when it has the focus
     up / down, j / k    read back through it
     pgup / pgdn         a screenful at a time
     g / G               the oldest it still holds / the newest
@@ -78,12 +77,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .areas(frame.area());
 
-    let side = SIDE.min(frame.area().width * 40 / 100);
-    let [conversation, aside] =
-        Layout::horizontal([Constraint::Min(20), Constraint::Length(side)]).areas(body);
-
-    draw_conversation(frame, app, conversation);
-    draw_aside(frame, app, aside);
+    draw_body(frame, app, body);
     draw_input(frame, app, input);
     draw_status(frame, app, status);
 
@@ -92,15 +86,72 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 }
 
-// ------------------------------------------------------------------------------ the conversation
+// -------------------------------------------------------------------------------------- the tabs
 
-fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
+/// The window: a strip of tabs, and whichever one is open filling everything under it.
+fn draw_body(frame: &mut Frame, app: &mut App, area: Rect) {
+    let focused = app.focus == Focus::Body;
+    let dim = Style::default().fg(Color::DarkGray);
+
+    let mut strip = Vec::new();
+    for tab in Tab::ALL {
+        if !strip.is_empty() {
+            strip.push(Span::styled("│", dim));
+        }
+        strip.push(Span::styled(
+            format!(" {} ", tab.name()),
+            match (tab == app.tab, focused) {
+                (true, true) => Style::default().fg(Color::Yellow).bold(),
+                (true, false) => Style::default().bold(),
+                (false, _) => dim,
+            },
+        ));
+    }
+
     let block = Block::bordered()
-        .title(" conversation ")
-        .border_style(Style::default().fg(Color::DarkGray));
+        .title(Line::from(strip))
+        .title_bottom(Line::styled(footer(app), dim).right_aligned())
+        .border_style(match focused {
+            true => Style::default().fg(Color::Yellow),
+            false => dim,
+        });
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    match app.tab {
+        Tab::Chat => draw_chat(frame, app, inner),
+        Tab::Context => draw_context(frame, app, inner),
+        Tab::Trace => draw_trace(frame, app, inner),
+    }
+}
+
+/// What the open tab has to say about itself, along the bottom.
+fn footer(app: &App) -> String {
+    match app.tab {
+        Tab::Chat => match app.busy {
+            true => " esc stops it ".to_owned(),
+            false => " alt+1 chat · alt+2 context · alt+3 trace ".to_owned(),
+        },
+        Tab::Context => {
+            let out = app
+                .kernel
+                .items()
+                .iter()
+                .filter(|item| !item.is_projected())
+                .count();
+            match out {
+                0 => format!(" {} items, all of them going ", app.kernel.items().len()),
+                n => format!(" {} items, {n} not going ", app.kernel.items().len()),
+            }
+        }
+        // the pane keeps the last few hundred; the log keeps everything, and `/save` writes it
+        Tab::Trace => format!(" {} events · /save keeps them all ", app.trace.len()),
+    }
+}
+
+// ------------------------------------------------------------------------------ the conversation
+
+fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) {
     let width = inner.width as usize;
     let mut lines: Vec<Line> = Vec::new();
     for entry in &app.transcript {
@@ -132,82 +183,54 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(Paragraph::new(lines).scroll((at as u16, 0)), inner);
 }
 
-// ------------------------------------------------------------------------------------ the aside
-
-/// The pane beside the conversation: one box, two tabs, and whichever is showing gets all of it.
-fn draw_aside(frame: &mut Frame, app: &mut App, area: Rect) {
-    let focused = app.focus == Focus::Aside;
-    let dim = Style::default().fg(Color::DarkGray);
-    let tab = |name: &'static str, showing: bool| {
-        Span::styled(
-            format!(" {name} "),
-            match (showing, focused) {
-                (true, true) => Style::default().fg(Color::Yellow).bold(),
-                (true, false) => Style::default().bold(),
-                (false, _) => dim,
-            },
-        )
-    };
-
-    let block = Block::bordered()
-        .title(Line::from(vec![
-            tab("context", app.aside == Aside::Context),
-            Span::styled("│", dim),
-            tab("trace", app.aside == Aside::Trace),
-        ]))
-        .title_bottom(Line::styled(aside_footer(app), dim).right_aligned())
-        .border_style(match focused {
-            true => Style::default().fg(Color::Yellow),
-            false => dim,
-        });
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    match app.aside {
-        Aside::Context => draw_context(frame, app, inner),
-        Aside::Trace => draw_trace(frame, app, inner),
-    }
-}
-
-/// What the pane has to say about itself, along the bottom.
-fn aside_footer(app: &App) -> String {
-    match app.aside {
-        Aside::Context => {
-            let budget = app.kernel.budget();
-            match budget.limit {
-                Some(limit) => format!(
-                    " {} items · ~{} / {} ",
-                    app.kernel.items().len(),
-                    thousands(budget.used()),
-                    thousands(limit)
-                ),
-                None => format!(
-                    " {} items · ~{} tokens ",
-                    app.kernel.items().len(),
-                    thousands(budget.used())
-                ),
-            }
-        }
-        // the pane keeps the last few hundred; the log keeps everything, and `/save` writes it
-        Aside::Trace => format!(" {} events · /save keeps them all ", app.trace.len()),
-    }
-}
-
 // ---------------------------------------------------------------------------------- the context
 
-fn draw_context(frame: &mut Frame, app: &mut App, inner: Rect) {
+/// The context as a table: every item, what kind of thing it is, what it costs, and either the
+/// first line of what it says or - if it is not going into the next request - why not.
+///
+/// note: With the whole window to work in there is room for the last column, and it is the one
+/// that matters: a list of labels and numbers tells you an item exists, and this tells you what
+/// the model is actually being told.
+fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) {
     let items = app.kernel.items();
     if items.is_empty() {
         frame.render_widget(
-            Paragraph::new("nothing yet").style(Style::default().fg(Color::DarkGray)),
-            inner,
+            Paragraph::new("nothing here yet").style(Style::default().fg(Color::DarkGray)),
+            area,
         );
         return;
     }
 
-    // the width the label gets is whatever the identifier, the mark and the token count leave
+    let [head, inner] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
     let width = inner.width as usize;
-    let label_width = width.saturating_sub(3 + 2 + 8);
+
+    // the columns give way from the right as the window narrows, so this works in eighty
+    let label = 26.min(width / 3);
+    let kind = if width >= 84 { 18 } else { 0 };
+    let counted = 4 + 2 + label + 1 + kind + 8 + 2;
+    let says = width.saturating_sub(counted);
+
+    frame.render_widget(
+        Paragraph::new(Line::styled(
+            format!(
+                "  {:<4}{:<label$} {:<kind$}{:>8}  {}",
+                "id",
+                "label",
+                match kind {
+                    0 => "",
+                    _ => "kind",
+                },
+                "tokens",
+                match says >= 8 {
+                    true => "what it says, or why it is not being sent",
+                    false => "",
+                }
+            ),
+            Style::default().fg(Color::DarkGray),
+        )),
+        head,
+    );
+
     let rows: Vec<ListItem> = items
         .iter()
         .map(|item| {
@@ -219,37 +242,67 @@ fn draw_context(frame: &mut Frame, app: &mut App, inner: Rect) {
                 ContextState::Superseded => ("~", Style::default().fg(Color::DarkGray)),
                 _ => ("?", Style::default().fg(Color::DarkGray)),
             };
-            let label = clip(&item.label, label_width);
-            let mut lines = vec![Line::styled(
-                format!(
-                    "{:>3} {mark} {label:<label_width$}{:>7}",
-                    item.id.0,
-                    thousands(item.tokens)
-                ),
-                style,
-            )];
 
-            // an item that is not going into the next request says so here rather than only in
-            // `ctrl+p`, because "why is that out?" is a question about the thing you are looking
-            // at. The wording is the projector's own
-            if !item.is_projected() {
-                let why = match &item.note {
-                    Some(note) => format!("{}: {note}", item.state),
-                    None => item.state.to_string(),
-                };
-                lines.push(Line::styled(
-                    format!("      {}", clip(&why, width.saturating_sub(6))),
+            // an item that is not going says why, in the projector's own words; one that is
+            // shows the first thing the model will read of it
+            let (tail, tail_style) = match item.is_projected() {
+                false => (
+                    match &item.note {
+                        Some(note) => format!("{}: {note}", item.state),
+                        None => item.state.to_string(),
+                    },
                     Style::default().fg(Color::DarkGray).italic(),
-                ));
-            }
+                ),
+                true => (
+                    match item
+                        .content
+                        .to_text()
+                        .lines()
+                        .find(|line| !line.trim().is_empty())
+                    {
+                        Some(first) => first.trim().to_owned(),
+                        // a turn that was nothing but tool calls has no text to show, and the
+                        // calls are the whole of what it said
+                        None => match &item.kind {
+                            ContextKind::AssistantMessage { tool_calls, .. }
+                                if !tool_calls.is_empty() =>
+                            {
+                                let names: Vec<_> =
+                                    tool_calls.iter().map(|call| call.tool.as_str()).collect();
+                                format!("asked for {}", names.join(", "))
+                            }
+                            _ => String::new(),
+                        },
+                    },
+                    Style::default().fg(Color::DarkGray),
+                ),
+            };
 
-            ListItem::new(lines)
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!(
+                        "{:>3} {mark} {:<label$} ",
+                        item.id.0,
+                        clip(&item.label, label)
+                    ),
+                    style,
+                ),
+                Span::styled(
+                    match kind {
+                        0 => String::new(),
+                        _ => format!("{:<kind$}", clip(item.kind.name(), kind)),
+                    },
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(format!("{:>8}  ", thousands(item.tokens)), style),
+                Span::styled(clip(&tail, says), tail_style),
+            ]))
         })
         .collect();
 
     app.selected = app.selected.min(items.len() - 1);
     app.list.select(Some(app.selected));
-    let highlight = match app.focus == Focus::Aside {
+    let highlight = match app.focus == Focus::Body {
         true => Style::default().add_modifier(Modifier::REVERSED),
         false => Style::default().bg(Color::Rgb(40, 40, 40)),
     };
@@ -263,13 +316,21 @@ fn draw_context(frame: &mut Frame, app: &mut App, inner: Rect) {
 
 // ------------------------------------------------------------------------------------ the trace
 
-/// Every event, newest at the bottom, wrapped rather than cut off.
+/// Every event, newest at the bottom, in two aligned columns.
 ///
-/// note: The name and the detail are separate lines when the detail does not fit, which is most
-/// of the time in a pane this wide - a log whose every line ends in an ellipsis in the middle of
-/// the interesting part is not a log.
+/// note: The names are a column of their own rather than run together with what they say, which
+/// is what a whole window buys: `permission.requested` is the longest of them, so twenty-two
+/// columns line every event up under the last. Anything that still does not fit wraps under the
+/// column rather than being cut off - a log whose lines end in an ellipsis in the middle of the
+/// interesting part is not a log.
 fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) {
+    const NAMES: usize = 22;
+
     let (width, height) = (inner.width as usize, inner.height as usize);
+    let column = match width >= NAMES + 20 {
+        true => NAMES,
+        false => 0,
+    };
 
     let mut lines: Vec<Line> = Vec::new();
     for event in &app.trace {
@@ -282,25 +343,21 @@ fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) {
 
         let named = Style::default().fg(colour);
         let said = Style::default().fg(Color::DarkGray);
-        let together = event.name.chars().count() + 2 + event.detail.chars().count();
-        let detail = |text: &str| {
-            wrapped(text, width, "  ")
-                .into_iter()
-                .map(move |line| Line::styled(line, said))
-        };
+        let indent = " ".repeat(column.max(2));
+        let mut detail = wrapped(&event.detail, width, &indent).into_iter();
 
         match (event.name.is_empty(), event.detail.is_empty()) {
             // a continuation: something the event before it had more to say about
-            (true, _) => lines.extend(detail(&event.detail)),
+            (true, _) => lines.extend(detail.map(|line| Line::styled(line, said))),
             (false, true) => lines.push(Line::styled(event.name.clone(), named)),
-            // one line wherever it fits, which is most of them, and two where it does not
-            (false, false) if together <= width => lines.push(Line::from(vec![
-                Span::styled(event.name.clone(), named),
-                Span::styled(format!("  {}", event.detail), said),
-            ])),
             (false, false) => {
-                lines.push(Line::styled(event.name.clone(), named));
-                lines.extend(detail(&event.detail));
+                // the first line of the detail sits beside the name, the rest under it
+                let first = detail.next().unwrap_or_default();
+                lines.push(Line::from(vec![
+                    Span::styled(format!("{:<column$}", event.name), named),
+                    Span::styled(first.trim_start().to_owned(), said),
+                ]));
+                lines.extend(detail.map(|line| Line::styled(line, said)));
             }
         }
     }
@@ -414,7 +471,6 @@ fn state_name(kernel: &Kernel) -> &'static str {
 
 fn draw_overlay(frame: &mut Frame, overlay: &Overlay, app: &App) {
     match overlay {
-        Overlay::Help => panel(frame, " the keys ", HELP, 0, 78, 80),
         Overlay::Text {
             title,
             body,

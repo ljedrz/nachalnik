@@ -11,13 +11,15 @@ minor bump may break you.
 
 The first release: a terminal agent built on `nachalnik`, and a demonstration of it.
 
-- A context pane beside the conversation, listing every item the runtime holds with what it costs
-  and whether it is going into the next request. `space` takes one out and puts it back, `p` pins
-  it, `enter` reads it, `u` undoes the last change - and `ctrl+p` shows the request they add up to,
-  as the kernel renders it.
-- A trace tab on `ctrl+t`, beside the context in one pane rather than stacked under it: every
-  event as it happens, in the same names the session log uses, wrapped rather than cut off, and
-  readable backwards with `tab` then the arrows.
+- Three tabs, each taking the whole window: `chat`, `context`, `trace`. `ctrl+t` for the next,
+  `alt+1`/`2`/`3` for one in particular, `tab` between the prompt and the open tab. The prompt and
+  the status line are under all three.
+- The context tab is a table: every item the runtime holds, its kind, what it costs, whether it is
+  going into the next request, and what the model will actually read of it - or, for the ones that
+  are not going, why not, in the projector's own words. `space` takes one out and puts it back,
+  `p` pins it, `enter` reads the whole of it, `u` undoes the last change.
+- The trace tab is every event as it happens, in the same names the session log uses, in two
+  aligned columns, wrapped rather than cut off, and readable backwards.
 - `ctrl+p` heads the request with what the projector left out and what it repaired, because "why
   is that not in there?" is the question somebody opens it to answer.
 - `/budget`, and a `~` on the status line's estimate beside what the provider really charged: the

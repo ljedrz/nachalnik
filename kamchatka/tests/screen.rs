@@ -9,11 +9,11 @@
 //! the kernel's answer reaches the screen, and that what the screen says about the next request
 //! is what the next request would actually contain.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{
-    app::{App, Outcome},
+    app::{App, Outcome, Tab},
     provider::OpenAiCompatible,
     tools::Careful,
     ui,
@@ -81,9 +81,22 @@ impl Harness {
         }
     }
 
+    /// Opens a tab, the way `alt+2` would.
+    fn tab(&mut self, tab: Tab) {
+        self.app.show(tab);
+    }
+
     /// Waits for the running turn to stop, the way the real loop does.
+    ///
+    /// note: With a deadline, because the alternative is a test that hangs for ever when a key
+    /// press went somewhere other than where it was expected to - which is exactly the mistake
+    /// this file exists to catch.
     async fn settle(&mut self) {
-        let outcome = self.finished.recv().await.expect("a turn was started");
+        let outcome = tokio::time::timeout(Duration::from_secs(5), self.finished.recv())
+            .await
+            .expect("a turn should have been started, and should have finished")
+            .expect("the channel outlives the turn");
+
         self.drain();
         self.app.on_outcome(outcome);
     }
@@ -122,6 +135,7 @@ async fn every_item_in_the_context_is_on_the_screen_with_what_it_costs() {
         .kernel
         .push(ContextItem::file("src/parser.rs", "fn parse() {}").pinned());
     harness.app.kernel.push(ContextItem::user("what is this?"));
+    harness.tab(Tab::Context);
 
     let screen = harness.screen();
 
@@ -148,8 +162,8 @@ async fn taking_an_item_out_of_the_next_request_takes_it_out_of_the_next_request
     let before = harness.app.kernel.preview_request().unwrap();
     assert!(format!("{:?}", before.messages).contains("hunter2"));
 
-    // tab to the context, pick the file, take it out
-    harness.press(KeyCode::Tab).await;
+    // to the context tab, pick the file, take it out
+    harness.tab(Tab::Context);
     harness.press(KeyCode::Home).await;
     harness.press(KeyCode::Char(' ')).await;
 
@@ -466,12 +480,9 @@ async fn the_status_line_says_what_the_budget_is_measured_against() {
 async fn the_trace_shows_the_events_the_session_log_is_made_of() {
     let mut harness = Harness::new([ModelResponse::text("done")]);
 
-    harness
-        .app
-        .on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL))
-        .await;
     harness.send("go").await;
     harness.settle().await;
+    harness.tab(Tab::Trace);
 
     let screen = harness.sized(120, 30);
     assert!(screen.contains("model.requested"), "{screen}");
@@ -491,36 +502,66 @@ async fn the_trace_shows_the_events_the_session_log_is_made_of() {
 }
 
 #[tokio::test]
-async fn the_pane_beside_the_conversation_shows_one_tab_at_a_time() {
+async fn each_tab_takes_the_whole_window_and_the_others_are_not_under_it() {
     let mut harness = Harness::new([ModelResponse::text("done")]);
     harness.app.kernel.push(ContextItem::file("a.rs", "one"));
-    harness.send("go").await;
+    harness.send("hello there").await;
     harness.settle().await;
 
-    // both tabs are named whichever is showing, so that the other one is findable
+    // the strip names all three wherever you are, so the others are findable
+    for tab in Tab::ALL {
+        harness.tab(tab);
+        let screen = harness.screen();
+        for name in Tab::ALL.map(Tab::name) {
+            assert!(
+                screen.contains(name),
+                "{name} is missing from the strip: {screen}"
+            );
+        }
+    }
+
+    harness.tab(Tab::Chat);
+    let chat = harness.screen();
+    assert!(chat.contains("hello there"), "{chat}");
+    assert!(!chat.contains("state.changed"), "{chat}");
+    assert!(!chat.contains("user_message"), "{chat}");
+
+    harness.tab(Tab::Context);
     let context = harness.screen();
-    assert!(context.contains("context"), "{context}");
-    assert!(context.contains("trace"), "{context}");
+    assert!(context.contains("a.rs"), "{context}");
     assert!(
-        context.contains("a.rs"),
-        "the context tab is showing: {context}"
+        context.contains("user_message"),
+        "the kinds are a column: {context}"
     );
-    assert!(
-        !context.contains("state.changed"),
-        "and the trace is not underneath it: {context}"
-    );
+    assert!(!context.contains("state.changed"), "{context}");
+
+    harness.tab(Tab::Trace);
+    let trace = harness.screen();
+    assert!(trace.contains("state.changed"), "{trace}");
+    assert!(!trace.contains("user_message"), "{trace}");
+}
+
+#[tokio::test]
+async fn the_next_tab_is_one_keystroke_and_each_of_them_is_two() {
+    let mut harness = Harness::new([]);
 
     harness
         .app
         .on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL))
         .await;
+    assert_eq!(harness.app.tab, Tab::Context);
 
-    let trace = harness.screen();
-    assert!(trace.contains("state.changed"), "{trace}");
-    assert!(
-        !trace.contains("1 · a.rs") && !trace.contains("items ·"),
-        "the context is not underneath the trace either: {trace}"
-    );
+    harness
+        .app
+        .on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT))
+        .await;
+    assert_eq!(harness.app.tab, Tab::Chat);
+
+    harness
+        .app
+        .on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::ALT))
+        .await;
+    assert_eq!(harness.app.tab, Tab::Trace);
 }
 
 #[tokio::test]
@@ -529,9 +570,10 @@ async fn an_item_that_is_not_going_into_the_request_says_why_where_it_is_listed(
     harness.app.kernel.push(ContextItem::file("a.rs", "one"));
 
     harness.send("/prune files").await;
+    harness.tab(Tab::Context);
 
     // "why is that out?" is a question about the thing you are looking at, so it is answered
-    // beside it rather than only in the request preview
+    // on its row rather than only in the request preview
     let screen = harness.screen();
     assert!(screen.contains("excluded: pruned by `files`"), "{screen}");
 }
@@ -554,8 +596,8 @@ async fn a_command_that_names_items_by_selector_reports_what_it_matched() {
             .all(|item| item.state == ContextState::Excluded)
     );
 
-    // and the undo the runtime keeps is one keystroke away, from the context pane
-    harness.press(KeyCode::Tab).await;
+    // and the undo the runtime keeps is one keystroke away, from the context tab
+    harness.tab(Tab::Context);
     harness.press(KeyCode::Char('u')).await;
     assert!(
         harness
@@ -572,12 +614,20 @@ async fn the_help_lists_the_keys_that_exist() {
     let mut harness = Harness::new([]);
 
     harness.press(KeyCode::F(1)).await;
-    let screen = harness.sized(110, 40);
+    let top = harness.sized(110, 40);
+    assert!(top.contains("alt+1 / 2 / 3"), "{top}");
+    assert!(top.contains("alt+enter"), "{top}");
 
-    assert!(screen.contains("alt+enter"), "{screen}");
-    assert!(screen.contains("/prune"), "{screen}");
+    // it is longer than a screenful, and says so, and scrolls
+    assert!(
+        top.contains(" of "),
+        "the panel should count its own lines: {top}"
+    );
+    harness.press(KeyCode::PageDown).await;
+    let rest = harness.sized(110, 40);
+    assert!(rest.contains("/prune"), "{rest}");
 
-    // any key closes it
+    // any other key closes it
     harness.press(KeyCode::Esc).await;
     assert!(harness.app.overlay.is_none());
 }

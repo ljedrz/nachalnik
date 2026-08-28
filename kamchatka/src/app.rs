@@ -24,27 +24,45 @@ const TRACE_DEPTH: usize = 400;
 /// How much of a still-running tool's output the transcript holds on to.
 const LIVE_OUTPUT: usize = 8_000;
 
-/// Which pane the keys are talking to.
+/// Which half of the window the keys are talking to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
-    /// The prompt.
+    /// The prompt, which is under every tab and can always be typed into.
     Input,
-    /// Whichever tab the pane beside the conversation is showing.
-    Aside,
+    /// Whatever the open tab is showing.
+    Body,
 }
 
-/// What the pane beside the conversation is showing.
+/// What the window is showing.
 ///
-/// note: Tabs rather than two boxes stacked on top of each other. They were competing for the
-/// same forty columns and both lost: the context could not say why an item was out, and every
-/// trace line was cut off with an ellipsis in the middle of the part worth reading. Only one of
-/// them is ever being read at a time, and the one being read should have the whole pane.
+/// note: Whole-window tabs rather than panes side by side. Three things want the screen - the
+/// conversation, the context and the event stream - and splitting it between them meant all three
+/// were cramped: the trace was cut off mid-sentence, the context could only afford a label and a
+/// number, and a long answer was reading in sixty columns. Only one of them is being read at a
+/// time. The prompt and the status line are under all of them, because a message can be sent from
+/// anywhere and the budget is always worth seeing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Aside {
+pub enum Tab {
+    /// The conversation.
+    Chat,
     /// The context, item by item.
     Context,
     /// Every event, as it happens.
     Trace,
+}
+
+impl Tab {
+    /// The tabs, in the order they are shown.
+    pub const ALL: [Self; 3] = [Self::Chat, Self::Context, Self::Trace];
+
+    /// What it is called on the tab strip.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Chat => "chat",
+            Self::Context => "context",
+            Self::Trace => "trace",
+        }
+    }
 }
 
 /// One line of the trace pane: an event's name, and what it says for itself.
@@ -57,8 +75,6 @@ pub struct Traced {
 
 /// What is being shown over the top of everything else.
 pub enum Overlay {
-    /// The key bindings.
-    Help,
     /// A tool wants to run, and somebody has to say so.
     Permission,
     /// Something long enough to need its own screen.
@@ -137,8 +153,8 @@ pub struct App {
     pub scroll: usize,
     /// Whether the transcript sticks to the bottom.
     pub follow: bool,
-    /// Which tab the pane beside the conversation is showing.
-    pub aside: Aside,
+    /// Which tab the window is showing.
+    pub tab: Tab,
     /// How far back through the trace it is scrolled, in lines from the bottom.
     pub trace_scroll: usize,
     /// Whether a turn is running.
@@ -188,7 +204,7 @@ impl App {
             overlay: None,
             scroll: 0,
             follow: true,
-            aside: Aside::Context,
+            tab: Tab::Chat,
             trace_scroll: 0,
             busy: false,
             quit: false,
@@ -548,37 +564,57 @@ impl App {
             return;
         }
 
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
+
         match (key.code, ctrl) {
             (KeyCode::Char('c'), true) if self.busy => self.interrupt(),
             (KeyCode::Char('c'), true) | (KeyCode::Char('d'), true) => self.quit = true,
             (KeyCode::Esc, _) if self.busy => self.interrupt(),
-            (KeyCode::Char('t'), true) => {
-                self.aside = match self.aside {
-                    Aside::Context => Aside::Trace,
-                    Aside::Trace => Aside::Context,
-                };
-                self.trace_scroll = 0;
-            }
+            (KeyCode::Char('t'), true) => self.show(self.next_tab()),
+            (KeyCode::Char('1'), _) if alt => self.show(Tab::Chat),
+            (KeyCode::Char('2'), _) if alt => self.show(Tab::Context),
+            (KeyCode::Char('3'), _) if alt => self.show(Tab::Trace),
             (KeyCode::Char('p'), true) => {
                 self.preview("the next request", request_preview(&self.kernel))
             }
-            (KeyCode::F(1), _) => self.overlay = Some(Overlay::Help),
-            (KeyCode::Tab, _) => {
+            (KeyCode::F(1), _) => self.preview("the keys", crate::ui::HELP),
+            // the chat tab has nothing to move the focus to: the conversation is read, not
+            // operated, and swallowing what somebody typed at it would be a trap
+            (KeyCode::Tab, _) if self.tab != Tab::Chat => {
                 self.focus = match self.focus {
-                    Focus::Input => Focus::Aside,
-                    Focus::Aside => Focus::Input,
+                    Focus::Input => Focus::Body,
+                    Focus::Body => Focus::Input,
                 }
             }
-            (KeyCode::PageUp, _) => self.scroll_by(-(self.viewport as isize / 2)),
-            (KeyCode::PageDown, _) => self.scroll_by(self.viewport as isize / 2),
-            _ => match self.focus {
-                Focus::Input => self.input_key(key).await,
-                Focus::Aside => match self.aside {
-                    Aside::Context => self.context_key(key),
-                    Aside::Trace => self.trace_key(key),
-                },
+            _ => match (self.tab, self.focus) {
+                (Tab::Context, Focus::Body) => self.context_key(key),
+                (Tab::Trace, Focus::Body) => self.trace_key(key),
+                _ => self.input_key(key).await,
             },
         }
+    }
+
+    /// The tab after the open one, wrapping round.
+    fn next_tab(&self) -> Tab {
+        let at = Tab::ALL
+            .iter()
+            .position(|tab| *tab == self.tab)
+            .unwrap_or(0);
+
+        Tab::ALL[(at + 1) % Tab::ALL.len()]
+    }
+
+    /// Opens a tab, and puts the keys wherever they are useful on it.
+    ///
+    /// note: Switching to the context or the trace is something somebody does in order to work
+    /// on it, so the focus follows; switching back to the conversation is not, so it does not.
+    /// `tab` moves it either way.
+    pub fn show(&mut self, tab: Tab) {
+        self.tab = tab;
+        self.focus = match tab {
+            Tab::Chat => Focus::Input,
+            _ => Focus::Body,
+        };
     }
 
     /// Keys that belong to the prompt.
@@ -606,6 +642,8 @@ impl App {
             KeyCode::Down if self.input.cursor().0 + 1 == self.input.lines().len() => {
                 self.scroll_by(1)
             }
+            KeyCode::PageUp => self.scroll_by(-(self.viewport as isize / 2)),
+            KeyCode::PageDown => self.scroll_by(self.viewport as isize / 2),
             _ => {
                 self.input.input(key);
             }
@@ -626,9 +664,15 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') => {
                 self.selected = (self.selected + 1).min(items.len() - 1)
             }
+            KeyCode::PageUp => {
+                self.selected = self.selected.saturating_sub(self.viewport.max(2) / 2)
+            }
+            KeyCode::PageDown => {
+                self.selected = (self.selected + self.viewport.max(2) / 2).min(items.len() - 1)
+            }
             KeyCode::Home | KeyCode::Char('g') => self.selected = 0,
             KeyCode::End | KeyCode::Char('G') => self.selected = items.len() - 1,
-            KeyCode::Char('?') => self.overlay = Some(Overlay::Help),
+            KeyCode::Char('?') => self.preview("the keys", crate::ui::HELP),
             // taking something out of the next request, and putting it back
             KeyCode::Char(' ') => {
                 let (to, note) = match picked.state {
@@ -691,7 +735,7 @@ impl App {
             }
             KeyCode::End | KeyCode::Char('G') => self.trace_scroll = 0,
             KeyCode::Home | KeyCode::Char('g') => self.trace_scroll = usize::MAX,
-            KeyCode::Char('?') => self.overlay = Some(Overlay::Help),
+            KeyCode::Char('?') => self.preview("the keys", crate::ui::HELP),
             _ => {}
         }
     }
@@ -710,7 +754,6 @@ impl App {
                 KeyCode::PageDown => *scroll += 20,
                 _ => self.overlay = None,
             },
-            Overlay::Help => self.overlay = None,
             Overlay::Permission => self.permission_key(key),
         }
     }
@@ -802,7 +845,7 @@ impl App {
 
         match command {
             "quit" | "exit" | "q" => self.quit = true,
-            "help" | "?" => self.overlay = Some(Overlay::Help),
+            "help" | "?" => self.preview("the keys", crate::ui::HELP),
             "continue" => self.start_turn(),
             "request" => self.preview("the next request", request_preview(&self.kernel)),
             "payload" => {
