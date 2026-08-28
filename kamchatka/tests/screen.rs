@@ -545,6 +545,34 @@ async fn what_a_tool_said_is_shown_as_the_tool_said_it() {
 }
 
 #[tokio::test]
+async fn a_chatty_tool_does_not_wipe_out_the_trace() {
+    let mut harness = Harness::new([]);
+
+    harness.app.on_event(Event::ToolStarted {
+        call: nachalnik::ToolCallId("c1".to_owned()),
+        tool: "shell".to_owned(),
+    });
+    // `cat` of a thousand lines really did erase the whole trace, one `tool.output` at a time
+    for _ in 0..900 {
+        harness.app.on_event(Event::ToolOutput {
+            call: nachalnik::ToolCallId("c1".to_owned()),
+            tool: "shell".to_owned(),
+            chunk: "a line of it\n".to_owned(),
+        });
+    }
+
+    assert_eq!(
+        harness.app.trace.len(),
+        2,
+        "the started, and one line counting the output up"
+    );
+    harness.tab(Tab::Trace);
+    let screen = harness.screen();
+    assert!(screen.contains("tool.started"), "{screen}");
+    assert!(screen.contains("11,700 bytes so far"), "{screen}");
+}
+
+#[tokio::test]
 async fn a_slash_is_a_command_and_everything_else_is_a_message() {
     let mut harness = Harness::new([]);
 

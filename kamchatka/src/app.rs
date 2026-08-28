@@ -169,6 +169,8 @@ pub struct App {
     interrupting: bool,
     /// Whether the response being awaited has put anything on the screen of its own.
     streamed: bool,
+    /// How much the running tool has said so far, for the one trace line that counts it.
+    streamed_bytes: usize,
     /// Where a finished turn reports itself.
     outcomes: UnboundedSender<Outcome>,
 }
@@ -212,6 +214,7 @@ impl App {
             viewport: 0,
             interrupting: false,
             streamed: false,
+            streamed_bytes: 0,
             outcomes,
         }
     }
@@ -400,11 +403,25 @@ impl App {
 
     /// Takes in one event from the runtime.
     pub fn on_event(&mut self, event: Event) {
-        // a line per streamed token would push everything else out of the pane before it could be
-        // read; the fragments are on the left, and the log has them if `record_progress` is on
-        if !matches!(event, Event::ModelDelta { .. }) {
-            let (name, detail) = trace_line(&event);
-            self.trace(name, detail);
+        // a line per streamed fragment would push everything else out of the pane before it could
+        // be read - and a `cat` of a thousand lines really did erase the whole trace, one
+        // `tool.output` at a time. The fragments are on the left; the log has them if
+        // `record_progress` is on
+        match &event {
+            Event::ModelDelta { .. } => {}
+            Event::ToolOutput { tool, chunk, .. } => {
+                self.streamed_bytes += chunk.len();
+                let detail = format!("{tool}, {} bytes so far", thousands(self.streamed_bytes));
+                // one line that counts up, rather than one line per chunk
+                match self.trace.back_mut() {
+                    Some(last) if last.name == "tool.output" => last.detail = detail,
+                    _ => self.trace("tool.output", detail),
+                }
+            }
+            _ => {
+                let (name, detail) = trace_line(&event);
+                self.trace(name, detail);
+            }
         }
 
         match event {
@@ -477,6 +494,7 @@ impl App {
                     self.say(Speaker::Error, error);
                 }
             }
+            Event::ToolStarted { .. } => self.streamed_bytes = 0,
             Event::ToolRequested { tool, args, .. } => {
                 self.close();
                 self.say(
@@ -1113,7 +1131,6 @@ fn trace_line(event: &Event) -> (String, String) {
             None => format!("{stop:?}"),
         },
         Event::ToolRequested { tool, .. } | Event::ToolStarted { tool, .. } => tool.clone(),
-        Event::ToolOutput { tool, chunk, .. } => format!("{tool}, {} bytes", chunk.len()),
         Event::ToolFinished { tool, tokens, .. } => format!("{tool}, {tokens} tokens"),
         Event::PermissionRequested { request } => format!("{} ({})", request.tool, request.id),
         Event::PermissionDecided {
