@@ -7,6 +7,12 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- `/budget` asks whichever counter is installed what it has learned, through the kernel, rather
+  than keeping a typed handle to one this program set up. A counter that never corrects itself now
+  says so in a sentence instead of leaving the line out.
+
 ### 0.1.0
 
 The first release: a terminal agent built on `nachalnik`, and a demonstration of it.

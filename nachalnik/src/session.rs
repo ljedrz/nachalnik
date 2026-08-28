@@ -11,6 +11,7 @@ use crate::{
     context::ContextItem,
     event::Event,
     model::{Params, ToolCallId},
+    tokens::Calibration,
 };
 
 /// A single entry in a session's history.
@@ -143,4 +144,16 @@ pub struct Snapshot {
     /// note: Without these, a resumed session could hand out an identifier it has used before,
     /// which is the whole thing [`Event::ToolCallRepaired`] exists to prevent.
     pub used_calls: Vec<ToolCallId>,
+    /// What the [`TokenCounter`](crate::TokenCounter) had learned, if it learns at all.
+    ///
+    /// note: The one piece of a seam's own state a snapshot carries, and it is here for the same
+    /// reason as everything else: it is easy to lose and nothing else can recover it. A session
+    /// long enough to be worth resuming has already told its counter what several requests really
+    /// cost; resuming at `1.0` would spend the next few relearning it, and would report a budget
+    /// that quietly disagreed with the one the session was closed on.
+    ///
+    /// note: `serde(default)`, so a snapshot written before this existed still resumes - it just
+    /// resumes with nothing learned, which is exactly what it had.
+    #[serde(default)]
+    pub calibration: Option<Calibration>,
 }

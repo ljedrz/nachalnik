@@ -244,6 +244,75 @@ async fn a_snapshot_is_not_the_log_and_says_so() {
 }
 
 #[tokio::test]
+async fn what_the_counter_learned_survives_a_restart() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse {
+        usage: Some(nachalnik::Usage {
+            input_tokens: Some(900),
+            ..nachalnik::Usage::default()
+        }),
+        ..ModelResponse::text("hello")
+    }])));
+    kernel.push(ContextItem::user("a".repeat(400)));
+    kernel.turn().await.unwrap();
+
+    let learned = kernel.counter().calibration().expect("the default learns");
+    assert_eq!(learned.observations, 1);
+    assert!(learned.scale > 1.0);
+
+    // through `serde`, because that is how a session actually comes back
+    let snapshot = kernel.snapshot();
+    let snapshot: Snapshot =
+        serde_json::from_str(&serde_json::to_string(&snapshot).unwrap()).unwrap();
+    let resumed = Kernel::resume(Config::default(), snapshot);
+
+    assert_eq!(
+        resumed.counter().calibration(),
+        Some(learned),
+        "a session long enough to resume has already paid for this lesson"
+    );
+    // resuming recounts, which it has always done - and now it recounts with the lesson applied.
+    // The figures that come back are therefore *not* the ones the session was closed on: they are
+    // what the session would have shown had it called `recount` before saving, which is nearer to
+    // what the provider actually charged than the stale estimate was
+    let (before, after) = (kernel.budget().used(), resumed.budget().used());
+    assert!(
+        after > before,
+        "the correction reaches the items a resume counts: {before} -> {after}"
+    );
+    let recounted: usize = kernel
+        .items()
+        .iter()
+        .map(|item| kernel.counter().count_item(item))
+        .sum();
+    assert_eq!(
+        after, recounted,
+        "which is exactly what a `recount` before saving would have produced"
+    );
+}
+
+#[tokio::test]
+async fn a_snapshot_written_before_the_counter_learned_anything_still_resumes() {
+    // the field is `serde(default)`: a snapshot from an older version has no `calibration` key at
+    // all, and resuming has to mean "nothing learned" rather than a parse error
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("hello"));
+
+    let mut json = serde_json::to_value(kernel.snapshot()).unwrap();
+    json.as_object_mut().unwrap().remove("calibration");
+    let snapshot: Snapshot = serde_json::from_value(json).unwrap();
+    assert_eq!(snapshot.calibration, None);
+
+    let resumed = Kernel::resume(Config::default(), snapshot);
+    assert_eq!(resumed.items().len(), 1);
+    assert_eq!(
+        resumed.counter().calibration(),
+        Some(nachalnik::Calibration::default()),
+        "which is exactly what it had"
+    );
+}
+
+#[tokio::test]
 async fn parameters_survive_a_restart() {
     let kernel = worked_session().await;
     let mut params = Params::new();

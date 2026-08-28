@@ -13,8 +13,8 @@ use std::{
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    BytesPerToken, Calibrating, Capability, ContextId, ContextItem, ContextKind, ContextState,
-    Delta, Event, Grant, Kernel, State, Verdict, selectors::Selector,
+    Capability, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Grant, Kernel,
+    State, Verdict, selectors::Selector,
 };
 use ratatui_textarea::{CursorMove, TextArea};
 use tokio::sync::mpsc::UnboundedSender;
@@ -152,8 +152,6 @@ pub struct App {
     pub policy: Arc<Careful>,
     /// The provider, for switching models.
     pub provider: Arc<OpenAiCompatible>,
-    /// The counter, kept concrete so that what it has learned can be shown.
-    pub counter: Arc<Calibrating<BytesPerToken>>,
     /// The conversation.
     pub transcript: Vec<Entry>,
     /// Every event, name and detail.
@@ -214,11 +212,6 @@ impl App {
         provider: Arc<OpenAiCompatible>,
         outcomes: UnboundedSender<Outcome>,
     ) -> Self {
-        // the counter the kernel is using, as the type it actually is: `Kernel::counter` hands
-        // back a `dyn TokenCounter`, and what it has learned is not on that trait
-        let counter = Arc::new(Calibrating::new(BytesPerToken::default()));
-        kernel.set_counter(counter.clone());
-
         let mut input = TextArea::default();
         input.set_placeholder_text("ask for something, or /help");
         input.set_cursor_line_style(ratatui::style::Style::default());
@@ -227,7 +220,6 @@ impl App {
             kernel,
             policy,
             provider,
-            counter,
             transcript: Vec::new(),
             trace: VecDeque::new(),
             input,
@@ -1463,17 +1455,26 @@ impl App {
             None => lines.push("nothing has been sent yet, so there is no real figure".to_owned()),
         }
 
+        // note: whichever counter is installed is asked what it has learned, rather than one this
+        // program kept a typed handle to; a counter that learns nothing says so by having nothing
+        // to report, and is a sentence rather than a missing line
+        //
         // note: small requests teach it nothing and are not counted here, which is why this can
         // say "2" in a session that has sent six things
-        let learned = self.counter.calibration();
-        lines.push(match learned.observations {
-            0 => "the counter has not been corrected yet: it is guessing at four bytes a token, \
-                  and no request so far has been big enough to learn anything from"
+        lines.push(match self.kernel.counter().calibration() {
+            None => "the counter installed here does not correct itself, so every figure above \
+                     is whatever it estimates and nothing has told it otherwise"
                 .to_owned(),
-            n => format!(
-                "the counter has learned from {n} request(s) and scaled itself by {:.3}: its own \
+            Some(learned) if learned.observations == 0 => {
+                "the counter has not been corrected yet: it is guessing at four bytes a token, \
+                 and no request so far has been big enough to learn anything from"
+                    .to_owned()
+            }
+            Some(learned) => format!(
+                "the counter has learned from {} request(s) and scaled itself by {:.3}: its own \
                  guesses came to {} tokens where the provider counted {}, so it was reading {:.1}% \
                  {}",
+                learned.observations,
                 learned.scale,
                 thousands(learned.estimated as usize),
                 thousands(learned.reported as usize),

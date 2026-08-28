@@ -7,6 +7,15 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- `TokenCounter::calibration` and `recalibrate`, both defaulted, and `Snapshot::calibration`
+  (`serde(default)`) that carries what one hands out to the other. A resumed session no longer
+  spends its first requests relearning what it had already been told, and - because resuming
+  recounts - comes back with the corrected figures rather than the stale ones.
+- `Calibration` now derives `Serialize`/`Deserialize` and has a hand-written `Default` (scale
+  `1.0`, not `f64::default()`).
+
 ### changed
 
 - The counter a `Kernel::new` starts with is `Calibrating<BytesPerToken>` rather than a bare

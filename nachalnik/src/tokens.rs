@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[cfg(doc)]
@@ -80,6 +81,30 @@ pub trait TokenCounter: Send + Sync {
     fn observe(&self, estimated: usize, reported: usize) {
         let _ = (estimated, reported);
     }
+
+    /// Returns what this counter has learned from [`TokenCounter::observe`], if it learns at all.
+    ///
+    /// note: This is the other half of `observe`, and it exists for one reason: a
+    /// [`Snapshot`](crate::Snapshot) that did not carry it would resume a long session with a
+    /// counter back at `1.0`, re-learning across the next few requests something it had already
+    /// been told. What is *not* carried is anything else - a counter whose learning does not fit
+    /// these four numbers returns `None` here and persists its own state, which is no worse off
+    /// than it was.
+    ///
+    /// note: The default is `None`, which is the honest answer for a counter that never changes
+    /// its mind, and is why this is not a required method.
+    fn calibration(&self) -> Option<Calibration> {
+        None
+    }
+
+    /// Puts back what [`TokenCounter::calibration`] handed out, when a session is resumed.
+    ///
+    /// note: The default does nothing, and a counter that does not implement
+    /// [`TokenCounter::calibration`] never sees this called - the kernel only offers back what a
+    /// counter gave it.
+    fn recalibrate(&self, calibration: Calibration) {
+        let _ = calibration;
+    }
 }
 
 /// A [`TokenCounter`] that divides the byte length of the content by a fixed number.
@@ -114,7 +139,12 @@ impl TokenCounter for BytesPerToken {
 }
 
 /// What a [`Calibrating`] counter has learned, and what it is derived from.
-#[derive(Debug, Clone, Copy, PartialEq)]
+///
+/// note: `serde`, because this is the one thing a [`Snapshot`](crate::Snapshot) carries on a
+/// counter's behalf. A session that has been running long enough to be worth resuming has also
+/// been running long enough to have learned something, and starting the next process back at
+/// `1.0` would throw it away for no reason anybody asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Calibration {
     /// The factor applied to the underlying counter's figures; `1.0` until something has been
     /// observed.
@@ -125,6 +155,21 @@ pub struct Calibration {
     pub estimated: u64,
     /// The tokens the providers charged for them, in total.
     pub reported: u64,
+}
+
+impl Default for Calibration {
+    /// Nothing learned: a scale of `1.0`, drawn from no observations.
+    ///
+    /// note: Hand-written because `f64::default()` is `0.0`, and a counter multiplying by zero
+    /// would report every request as costing nothing at all.
+    fn default() -> Self {
+        Self {
+            scale: 1.0,
+            observations: 0,
+            estimated: 0,
+            reported: 0,
+        }
+    }
 }
 
 /// A [`TokenCounter`] that corrects another one against what providers actually charge.
@@ -195,12 +240,7 @@ impl<C> Calibrating<C> {
     pub fn new(inner: C) -> Self {
         Self {
             inner,
-            learned: RwLock::new(Calibration {
-                scale: 1.0,
-                observations: 0,
-                estimated: 0,
-                reported: 0,
-            }),
+            learned: RwLock::new(Calibration::default()),
         }
     }
 
@@ -211,12 +251,7 @@ impl<C> Calibrating<C> {
 
     /// Forgets it, which is what a change of model calls for.
     pub fn reset(&self) {
-        *self.learned.write() = Calibration {
-            scale: 1.0,
-            observations: 0,
-            estimated: 0,
-            reported: 0,
-        };
+        *self.learned.write() = Calibration::default();
     }
 
     /// Returns the counter being corrected.
@@ -245,6 +280,14 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
 
     fn count_item(&self, item: &ContextItem) -> usize {
         self.corrected(self.inner.count_item(item))
+    }
+
+    fn calibration(&self) -> Option<Calibration> {
+        Some(*self.learned.read())
+    }
+
+    fn recalibrate(&self, calibration: Calibration) {
+        *self.learned.write() = calibration;
     }
 
     fn observe(&self, estimated: usize, reported: usize) {

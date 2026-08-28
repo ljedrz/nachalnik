@@ -321,6 +321,15 @@ impl Kernel {
     ///
     /// note: The items are recounted with this kernel's [`TokenCounter`], so a snapshot taken
     /// under a different one reports honest numbers rather than inherited ones.
+    ///
+    /// note: What the previous counter had *learned* does come back, when both counters deal in
+    /// [`Calibration`](crate::Calibration)s, and it is offered *before* the items are counted. So
+    /// a resumed session does not spend its first few requests relearning what it had already been
+    /// told - and, since resuming recounts, the figures it comes back with are the corrected ones
+    /// rather than the stale ones it was saved with. That is a visible change in the numbers, and
+    /// the right one: it is what [`Kernel::recount`] before saving would have produced, and it is
+    /// nearer to what the provider had been charging. A counter that learns nothing ignores all of
+    /// this.
     pub fn resume(mut config: Config, snapshot: Snapshot) -> Self {
         config
             .session_name
@@ -329,6 +338,13 @@ impl Kernel {
 
         {
             let counter = kernel.counter();
+            // before the items are counted, not after: a resumed context that reported one set of
+            // figures and then corrected itself on the first response would be showing the user
+            // two different budgets for the same bytes, which is the thing a snapshot exists to
+            // avoid
+            if let Some(calibration) = snapshot.calibration {
+                counter.recalibrate(calibration);
+            }
             kernel
                 .0
                 .context
@@ -359,6 +375,7 @@ impl Kernel {
     pub fn snapshot(&self) -> Snapshot {
         let session = self.session_name();
         let params = self.params();
+        let counter = self.counter();
         let mut used_calls: Vec<_> = self.0.seen_calls.lock().iter().cloned().collect();
         used_calls.sort();
 
@@ -370,6 +387,7 @@ impl Kernel {
             params,
             next_item: context.next_id(),
             used_calls,
+            calibration: counter.calibration(),
         }
     }
 
