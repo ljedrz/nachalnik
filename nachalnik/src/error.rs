@@ -24,6 +24,15 @@ pub enum Error {
     ///
     /// note: See [`Kernel::state`]: [`State::Requesting`] and [`State::Executing`] are the two
     /// states in which somebody else is already driving the loop.
+    ///
+    /// note: There is deliberately nothing here to wait on. A kernel that handed out a "tell me
+    /// when you are free" future would be choosing a queueing policy - who gets it next, and what
+    /// becomes of whoever asked first - and that is not the same answer twice. What it offers
+    /// instead is the fact: every transition is an
+    /// [`Event::StateChanged`](crate::Event::StateChanged), so waiting is
+    /// [`Kernel::subscribe`](crate::Kernel::subscribe) and a loop until
+    /// [`State::is_busy`] stops being true, and a client that would rather refuse than queue
+    /// reports this and moves on.
     Busy,
     /// [`Kernel::step`] was called without a [`Provider`] being set.
     NoProvider,

@@ -9,6 +9,8 @@ minor bump may break you.
 
 ### added
 
+- `Kernel::with_history`, the mirror of `with_context`: a question about the log - a count, a
+  search - answered without copying it. `history` says on itself that it copies the whole thing.
 - `TokenCounter::calibration` and `recalibrate`, both defaulted, and `Snapshot::calibration`
   (`serde(default)`) that carries what one hands out to the other. A resumed session no longer
   spends its first requests relearning what it had already been told, and - because resuming

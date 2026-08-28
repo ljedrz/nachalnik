@@ -582,6 +582,11 @@ seam nothing has ever been swapped through is a claim rather than a seam.
 up rather than mocking one - and `kamchatka`'s 43, which draw its screen and read the characters
 back, plus one that puts a socket in front of it that answers and then goes silent.
 
+Every count and every percentage in this file was measured at the commit it was written for,
+against a real API where it says so. They are here because a claim with a number in it can be
+checked and a claim without one cannot - but the current answer is always `cargo test --workspace`
+and `/budget`, not this page.
+
 There is also a live suite, which is the only way to check the things a mock cannot - that the
 requests this crate builds are accepted by a real API, and that a real model's answers survive
 the round trip through the context:

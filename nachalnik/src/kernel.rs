@@ -451,8 +451,22 @@ impl Kernel {
     }
 
     /// Returns the session's records, oldest first.
+    ///
+    /// note: A copy of the whole log, which on a long session - and longer still with
+    /// [`Config::record_payloads`] on - is not free. [`Kernel::history_since`] is the one to
+    /// reach for when a client is following along, and [`Kernel::with_history`] when the answer
+    /// is a count or a search rather than the records themselves.
     pub fn history(&self) -> Vec<Record> {
         self.0.session.lock().records().cloned().collect()
+    }
+
+    /// Runs a closure against the session log, copying nothing.
+    ///
+    /// note: The mirror of [`Kernel::with_context`], and it carries a sharper version of the same
+    /// warning: the log is locked for the duration, so the closure must not call back into the
+    /// kernel - every emit anywhere in the process is waiting on it.
+    pub fn with_history<R>(&self, f: impl FnOnce(&Session) -> R) -> R {
+        f(&self.0.session.lock())
     }
 
     /// Returns the session's records that follow the given sequence number.

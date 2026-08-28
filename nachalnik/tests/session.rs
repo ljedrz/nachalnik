@@ -313,6 +313,23 @@ async fn a_snapshot_written_before_the_counter_learned_anything_still_resumes() 
 }
 
 #[tokio::test]
+async fn the_log_can_be_asked_a_question_without_being_copied() {
+    let kernel = worked_session().await;
+
+    let copied = kernel.history();
+    let (counted, last) = kernel.with_history(|session| {
+        (
+            session.records().count(),
+            session.records().last().map(|r| r.seq),
+        )
+    });
+
+    assert_eq!(counted, copied.len());
+    assert_eq!(last, Some(kernel.last_seq()));
+    assert!(counted > 1, "there is a session here to ask about");
+}
+
+#[tokio::test]
 async fn parameters_survive_a_restart() {
     let kernel = worked_session().await;
     let mut params = Params::new();
