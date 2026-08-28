@@ -1172,8 +1172,42 @@ async fn a_denied_network_reaches_the_shell_that_would_have_used_it() {
         .kernel
         .items()
         .iter()
-        .any(|item| item.content.to_text().contains("refused"));
+        .any(|item| item.content.to_text().contains("permitted"));
     assert!(refused, "the model is told, rather than left waiting");
+
+    // and the screen says which stance did it. Without this the tab reads `shell: ask` beside a
+    // refused shell call and nothing anywhere accounts for the refusal
+    assert!(
+        screen.contains("network"),
+        "a refusal nobody can account for is the thing this program is not for: {screen}"
+    );
+}
+
+#[tokio::test]
+async fn a_refusal_says_which_stance_made_it() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "shell", json!({ "cmd": "rm -rf /tmp/x" }))]),
+        ModelResponse::text("no, then"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "output").with_capabilities([Capability::Shell]),
+    ));
+    // this time it is the tool's own capability that is refused, not something the command reached
+    harness.app.policy.set(Capability::Shell, Verdict::Deny);
+
+    harness.send("clean up").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    let note = screen
+        .lines()
+        .find(|line| line.contains("refused by"))
+        .expect("the refusal is accounted for");
+    assert!(note.contains("shell"), "{note}");
+    assert!(
+        !note.contains("network"),
+        "the command never reached for it: {note}"
+    );
 }
 
 #[tokio::test]

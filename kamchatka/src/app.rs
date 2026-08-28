@@ -13,8 +13,8 @@ use std::{
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    Capability, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Grant, Kernel,
-    State, Verdict, selectors::Selector,
+    Capability, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Grant,
+    GrantSource, Kernel, State, Verdict, selectors::Selector,
 };
 use ratatui_textarea::{CursorMove, TextArea};
 use tokio::sync::mpsc::UnboundedSender;
@@ -583,6 +583,22 @@ impl App {
                 });
                 if !repeat {
                     self.say(Speaker::Error, error);
+                }
+            }
+            // note: a refusal the policy made on its own, which nobody was asked about and which
+            // the tool result records only as `the call was not permitted`. When the tool's own
+            // capability is `allow` - `shell` usually is - that leaves a refused call with nothing
+            // on screen accounting for it, and "why was that refused?" is the question the
+            // permissions tab exists to answer
+            Event::PermissionDecided {
+                call,
+                tool,
+                grant: Grant::Deny,
+                source: GrantSource::Policy,
+                ..
+            } => {
+                if let Some(reason) = self.policy.why(&call) {
+                    self.say(Speaker::Note, format!("{tool}: {reason}"));
                 }
             }
             Event::ToolStarted { .. } => self.streamed_bytes = 0,

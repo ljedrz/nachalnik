@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, process::Stdio, sync::Arc, time::Duration};
 
 use nachalnik::{
     BoxError, Budget, Capability, CompactionPlan, Compactor, ContextItem, ContextKind, OutputSink,
-    PermissionPolicy, PermissionRequest, Tool, ToolCall, ToolOutput, ToolSpec, Verdict,
+    PermissionPolicy, PermissionRequest, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, Verdict,
     async_trait,
 };
 use parking_lot::Mutex;
@@ -249,6 +249,15 @@ impl Tool for Shell {
 /// is not much of a demonstration of a replaceable policy.
 pub struct Careful {
     stances: Mutex<BTreeMap<Capability, Verdict>>,
+    /// Why the last few refusals were refused, by the call they refused.
+    ///
+    /// note: the policy is the only thing that knows this, and nothing carries it out: the
+    /// kernel is handed a `Verdict` and records `the call was not permitted`, which is true and
+    /// unhelpful when the tool's own capability is `allow` and something else refused it. That is
+    /// exactly the `shell: allow` / `network: deny` pair, and a refusal nobody can account for is
+    /// the one thing this program is not for. So it is written down here, where it is known, and
+    /// [`Careful::why`] hands it out.
+    refusals: Mutex<BTreeMap<ToolCallId, String>>,
 }
 
 impl Default for Careful {
@@ -265,6 +274,7 @@ impl Careful {
                 (Capability::Read, Verdict::Allow),
                 (Capability::Network, Verdict::Deny),
             ])),
+            refusals: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -303,6 +313,14 @@ impl Careful {
         }
     }
 
+    /// Why the given call was refused, if this is what refused it; the answer is handed over once.
+    ///
+    /// note: taken out rather than copied, because the one caller renders it and there is nothing
+    /// to be gained by holding it afterwards.
+    pub fn why(&self, call: &ToolCallId) -> Option<String> {
+        self.refusals.lock().remove(call)
+    }
+
     /// Every capability this has been told about, and what it will answer, in a stable order.
     pub fn stances(&self) -> Vec<(Capability, Verdict)> {
         self.stances
@@ -333,12 +351,45 @@ impl PermissionPolicy for Careful {
         // the network whatever its spec declared, and `network: deny` sitting beside `shell: ask`
         // would otherwise be a row that nothing ever consults. This is the thing a policy can do
         // that a capability list cannot: it is handed the arguments
-        match request.capabilities.contains(&Capability::Shell)
-            && command(&request.args).is_some_and(reaches_the_network)
-        {
+        let networked = request.capabilities.contains(&Capability::Shell)
+            && command(&request.args).is_some_and(reaches_the_network);
+        let verdict = match networked {
             true => declared.strictest(answer(&Capability::Network)),
             false => declared,
+        };
+
+        if verdict == Verdict::Deny {
+            // the capability that did it, so that a refused `shell` in a session where `shell` is
+            // allowed can say what actually refused it
+            let blamed: Vec<String> = request
+                .capabilities
+                .iter()
+                .chain(networked.then_some(&Capability::Network))
+                .filter(|capability| answer(capability) == Verdict::Deny)
+                .map(|capability| match (capability, networked) {
+                    (Capability::Network, true) => {
+                        "`network`, which this command reaches for".to_owned()
+                    }
+                    _ => format!("`{capability}`"),
+                })
+                .collect();
+
+            drop(stances);
+            let mut refusals = self.refusals.lock();
+            // nobody is obliged to read these; a session that never does should not grow a map
+            if refusals.len() > 32 {
+                refusals.clear();
+            }
+            refusals.insert(
+                request.call.clone(),
+                match blamed.is_empty() {
+                    true => "the policy refused it".to_owned(),
+                    false => format!("refused by {}", blamed.join(" and ")),
+                },
+            );
         }
+
+        verdict
     }
 }
 
@@ -412,6 +463,13 @@ const NETWORKED: &[&str] = &[
 /// that opens a socket of its own, or `$(echo cur)l`. It is not a sandbox and this program does
 /// not pretend it is one - `Capability::Shell` subsumes every other capability, and the runtime's
 /// own documentation says so.
+///
+/// note: that is not hypothetical. Asked for a URL against a live model with `network` refused,
+/// the `curl` was refused - and the next call was
+/// `python3 -c "import urllib.request; urllib.request.urlopen(...)"`, which was allowed and
+/// fetched it. Nothing here is going to win that argument, and trying to would be an arms race
+/// with a model's vocabulary. What this *does* do is make the refusal real and visible for the
+/// command that was actually written, which is the difference between a policy and a decoration.
 ///
 /// note: what it *is* for is that `network` on the permissions tab should mean something. A row
 /// that reads `deny` beside a `shell` the model uses for `curl` all day is worse than no row: it

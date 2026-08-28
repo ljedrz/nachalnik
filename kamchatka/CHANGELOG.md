@@ -21,6 +21,13 @@ minor bump may break you.
   the content reaches its last row: `ScrollbarState` counts scroll *positions*, not rows, and these
   tabs stop at the last full page rather than scrolling the final row up to the top.
 
+### added
+
+- A call the policy refuses on its own says which stance refused it - `shell: refused by
+  `network`, which this command reaches for` - because the tool result records only `the call was
+  not permitted`, and when the tool's own capability is `allow` that leaves a refused call with
+  nothing on screen accounting for it.
+
 ### changed
 
 - The `network` stance is consulted for a `shell` call whose command names a program that goes out
