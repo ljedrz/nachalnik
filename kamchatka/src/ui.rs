@@ -149,15 +149,33 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 // -------------------------------------------------------------------------------------- the tabs
 
+/// Text that is secondary but still meant to be read.
+///
+/// note: `Gray`, not `DarkGray`. Nearly everything on these screens that is not the answer itself
+/// used to be `DarkGray` - why an item is not being sent, what an event says, the whole of the
+/// trace - and `DarkGray` is the terminal's bright *black*: on a good half of the themes people
+/// actually use it sits a shade off the background. That is the wrong thing to do to the column
+/// this program exists for. Anything a person is meant to read is this.
+fn quiet() -> Style {
+    Style::default().fg(Color::Gray)
+}
+
+/// Chrome that is supposed to stay out of the way: borders, rules, the rule down a code block.
+///
+/// note: this one is `DarkGray`, and it is the only thing that should be. It is drawing lines,
+/// not words.
+fn faint() -> Style {
+    Style::default().fg(Color::DarkGray)
+}
+
 /// The window: a strip of tabs, and whichever one is open filling everything under it.
 fn draw_body(frame: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Focus::Body;
-    let dim = Style::default().fg(Color::DarkGray);
 
     let mut strip = Vec::new();
     for tab in Tab::ALL {
         if !strip.is_empty() {
-            strip.push(Span::styled("│", dim));
+            strip.push(Span::styled("│", faint()));
         }
         // the open tab looks open whatever the keys are doing; which half of the window they are
         // talking to is the border's job, and having both say it left `chat` looking shut,
@@ -166,18 +184,18 @@ fn draw_body(frame: &mut Frame, app: &mut App, area: Rect) {
             format!(" {} ", tab.name()),
             match tab == app.tab {
                 true => Style::default().fg(Color::Yellow).bold(),
-                false => dim,
+                false => quiet(),
             },
         ));
     }
 
     let edge = match focused {
         true => Style::default().fg(Color::Yellow),
-        false => dim,
+        false => faint(),
     };
     let block = Block::bordered()
         .title(Line::from(strip))
-        .title_bottom(Line::styled(footer(app), dim).right_aligned())
+        .title_bottom(Line::styled(footer(app), quiet()).right_aligned())
         .border_style(edge);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -305,10 +323,7 @@ fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
                         true => lines.extend(gutter(&line, width)),
                         false => match rule(&line) {
                             // a horizontal rule, drawn rather than spelled `---`
-                            true => lines.push(Line::styled(
-                                "─".repeat(width),
-                                Style::default().fg(Color::DarkGray),
-                            )),
+                            true => lines.push(Line::styled("─".repeat(width), faint())),
                             false => lines.extend(refit(&line, width)),
                         },
                     }
@@ -320,10 +335,10 @@ fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
 
         let (prefix, style) = match entry.speaker {
             Speaker::User => ("> ", Style::default().fg(Color::White).bold()),
-            Speaker::Reasoning => ("", Style::default().fg(Color::DarkGray).italic()),
+            Speaker::Reasoning => ("", quiet().italic()),
             Speaker::Call => ("⟩ ", Style::default().fg(Color::Cyan)),
-            Speaker::Result => ("│ ", Style::default().fg(Color::DarkGray)),
-            Speaker::Note => ("· ", Style::default().fg(Color::DarkGray)),
+            Speaker::Result => ("│ ", quiet()),
+            Speaker::Note => ("· ", quiet()),
             Speaker::Error => ("! ", Style::default().fg(Color::Red)),
             Speaker::Model => unreachable!("rendered above"),
         };
@@ -364,10 +379,7 @@ fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
 fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let items = app.kernel.items();
     if items.is_empty() {
-        frame.render_widget(
-            Paragraph::new("nothing here yet").style(Style::default().fg(Color::DarkGray)),
-            area,
-        );
+        frame.render_widget(Paragraph::new("nothing here yet").style(quiet()), area);
         return Scrolled::default();
     }
 
@@ -396,7 +408,7 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                     false => "",
                 }
             ),
-            Style::default().fg(Color::DarkGray),
+            quiet(),
         )),
         head,
     );
@@ -407,10 +419,10 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
             let (mark, style) = match item.state {
                 ContextState::Active => ("·", Style::default()),
                 ContextState::Pinned => ("▪", Style::default().fg(Color::Yellow)),
-                ContextState::Excluded => ("-", Style::default().fg(Color::DarkGray)),
-                ContextState::Archived => ("▫", Style::default().fg(Color::DarkGray)),
-                ContextState::Superseded => ("~", Style::default().fg(Color::DarkGray)),
-                _ => ("?", Style::default().fg(Color::DarkGray)),
+                ContextState::Excluded => ("-", quiet()),
+                ContextState::Archived => ("▫", quiet()),
+                ContextState::Superseded => ("~", quiet()),
+                _ => ("?", quiet()),
             };
 
             // an item that is not going says why, in the projector's own words; one that is
@@ -421,7 +433,7 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                         Some(note) => format!("{}: {note}", item.state),
                         None => item.state.to_string(),
                     },
-                    Style::default().fg(Color::DarkGray).italic(),
+                    quiet().italic(),
                 ),
                 true => (
                     match item
@@ -444,7 +456,7 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                             _ => String::new(),
                         },
                     },
-                    Style::default().fg(Color::DarkGray),
+                    quiet(),
                 ),
             };
 
@@ -462,7 +474,7 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                         0 => String::new(),
                         _ => format!("{:<kind$}", clip(item.kind.name(), kind)),
                     },
-                    Style::default().fg(Color::DarkGray),
+                    quiet(),
                 ),
                 Span::styled(format!("{:>8}  ", thousands(item.tokens)), style),
                 Span::styled(clip(&tail, says), tail_style),
@@ -474,7 +486,10 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     app.list.select(Some(app.selected));
     let highlight = match app.focus == Focus::Body {
         true => Style::default().add_modifier(Modifier::REVERSED),
-        false => Style::default().bg(Color::Rgb(40, 40, 40)),
+        // note: underlined rather than a dark slab behind it. `Rgb(40, 40, 40)` is a shade of the
+        // background this program does not know it has - it reads as barely-there on a dark theme
+        // and as a black bar on a light one, which is the same mistake the code blocks avoid
+        false => Style::default().add_modifier(Modifier::UNDERLINED),
     };
 
     frame.render_stateful_widget(
@@ -505,8 +520,7 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let rows = app.permissions();
     if rows.is_empty() {
         frame.render_widget(
-            Paragraph::new("no tool has declared anything")
-                .style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new("no tool has declared anything").style(quiet()),
             area,
         );
         return Scrolled::default();
@@ -528,7 +542,7 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                     false => "",
                 }
             ),
-            Style::default().fg(Color::DarkGray),
+            quiet(),
         )),
         head,
     );
@@ -556,10 +570,10 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                 Span::styled(format!("{answer:<10}  "), style),
                 Span::styled(
                     clip(&tools, covers),
-                    Style::default().fg(match row.tools.is_empty() {
-                        true => Color::DarkGray,
-                        false => Color::Reset,
-                    }),
+                    match row.tools.is_empty() {
+                        true => quiet(),
+                        false => Style::default(),
+                    },
                 ),
             ]))
         })
@@ -569,7 +583,10 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     app.grants.select(Some(app.chosen));
     let highlight = match app.focus == Focus::Body {
         true => Style::default().add_modifier(Modifier::REVERSED),
-        false => Style::default().bg(Color::Rgb(40, 40, 40)),
+        // note: underlined rather than a dark slab behind it. `Rgb(40, 40, 40)` is a shade of the
+        // background this program does not know it has - it reads as barely-there on a dark theme
+        // and as a black bar on a light one, which is the same mistake the code blocks avoid
+        false => Style::default().add_modifier(Modifier::UNDERLINED),
     };
 
     frame.render_stateful_widget(
@@ -608,12 +625,12 @@ fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
         let colour = match () {
             _ if event.name.ends_with(".failed") => Color::Red,
             _ if event.name.starts_with("permission") => Color::Yellow,
-            _ if event.name.is_empty() => Color::DarkGray,
-            _ => Color::Gray,
+            _ if event.name.is_empty() => Color::Gray,
+            _ => Color::White,
         };
 
         let named = Style::default().fg(colour);
-        let said = Style::default().fg(Color::DarkGray);
+        let said = quiet();
         let indent = " ".repeat(column.max(2));
         let mut detail = wrapped(&event.detail, width, &indent).into_iter();
 
@@ -667,7 +684,7 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
             },
             match focused {
                 true => Color::White,
-                false => Color::DarkGray,
+                false => Color::Gray,
             },
         ),
     };
@@ -688,7 +705,7 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 // ------------------------------------------------------------------------------- the status line
 
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
-    let dim = Style::default().fg(Color::DarkGray);
+    let dim = quiet();
     let mut spans = vec![match app.busy {
         true => Span::styled(
             format!(" {} ", state_name(&app.kernel)),
@@ -971,7 +988,7 @@ fn token(name: &str) -> Style {
 /// across lines is one token rather than several guesses. A language nothing here recognises still
 /// gets the rule and the wrapping - it is a code block whether or not anybody can colour it.
 fn highlighted(language: &str, body: &str, width: usize) -> Vec<Line<'static>> {
-    let bar = Span::styled("│ ", Style::default().fg(Color::DarkGray));
+    let bar = Span::styled("│ ", faint());
     let room = width.saturating_sub(2).max(8);
     let source: Vec<String> = body.lines().map(str::to_owned).collect();
 
@@ -1188,7 +1205,7 @@ impl tui_markdown::StyleSheet for Markdown {
     }
 
     fn blockquote(&self) -> Style {
-        Style::default().fg(Color::DarkGray).italic()
+        Style::default().fg(Color::Gray).italic()
     }
 
     fn link(&self) -> Style {
@@ -1221,7 +1238,7 @@ fn rule(line: &Line<'_>) -> bool {
 
 /// A line of a fenced code block: a rule down the left, and no reflowing of what is inside it.
 fn gutter(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
-    let bar = Span::styled("│ ", Style::default().fg(Color::DarkGray));
+    let bar = Span::styled("│ ", faint());
     let code = Style::default().fg(Color::Cyan);
     let text: String = line
         .spans

@@ -1446,6 +1446,35 @@ async fn a_language_nothing_can_colour_is_still_a_block() {
 }
 
 #[tokio::test]
+async fn what_a_person_reads_is_lighter_than_what_holds_it_together() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("src/parser.rs", "fn parse() {}"));
+    harness.app.kernel.set_state(
+        [nachalnik::ContextId(1)],
+        ContextState::Excluded,
+        Some("too big".into()),
+    );
+    harness.tab(Tab::Context);
+
+    // the reason an item is not being sent is the column this tab exists for, and it is read
+    let (reason, _) = harness.style_of("excluded: too big");
+    assert_eq!(reason, Color::Gray, "not the terminal's bright black");
+
+    // the same for the header above it, and for the count along the bottom
+    let (header, _) = harness.style_of("tokens");
+    assert_eq!(header, Color::Gray);
+
+    // the rule down the left of a code block is not read, and stays out of the way
+    harness.app.say(Speaker::Model, "```rust\nfn f() {}\n```\n");
+    harness.tab(Tab::Chat);
+    let (bar, _) = harness.style_of("│ fn f()");
+    assert_eq!(bar, Color::DarkGray, "chrome, not words");
+}
+
+#[tokio::test]
 async fn a_tab_with_more_than_fits_says_so_down_its_border() {
     let mut harness = Harness::new([]);
     for i in 0..80 {

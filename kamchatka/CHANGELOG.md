@@ -21,6 +21,13 @@ minor bump may break you.
 
 ### changed
 
+- Everything a person is meant to read is a step lighter. `DarkGray` is the terminal's bright
+  *black* and sits a shade off the background on many themes, and nearly every secondary thing on
+  these screens was drawn in it - why an item is not being sent, what an event says, the context
+  and permissions headers, the status line. Those are `Gray` now; `DarkGray` is left to the things
+  that draw lines rather than words.
+- The selected row of a tab the keys are not on is underlined rather than backed by a slab of
+  `Rgb(40, 40, 40)`, which was a shade of a background this program does not know it has.
 - `/budget` asks whichever counter is installed what it has learned, through the kernel, rather
   than keeping a typed handle to one this program set up. A counter that never corrects itself now
   says so in a sentence instead of leaving the line out.
