@@ -12,36 +12,30 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 ```
 
 ```text
-┌ conversation ──────────────────────────────────────────────┐┌ context · 140 / 128,000 ───────────┐
-│· tab moves to the context · F1 lists the keys · ctrl+p     ││  1 - src/kernel.rs            1,000│
-│  shows the next request                                    ││  2 · user                         6│
-│                                                            ││  3 · assistant                    7│
-│· [1] src/kernel.rs is in the context, 1000 tokens          ││  4 · read                        15│
-│                                                            ││  5 · assistant                   74│
-│⟩ read({"path":"src/kernel.rs"})                            ││                                    │
-│                                                            ││                                    │
-││ pub struct Kernel(Arc<InnerKernel>);                      ││                                    │
-│  // ... 900 more lines                                     ││                                    │
-│                                                            ││                                    │
-│· read: 15 tokens                                           ││                                    │
-│                                                            ││                                    │
-│The kernel is a state machine with five states. `step`      ││                                    │
-│performs one transition and returns the state it produced;  ││                                    │
-│`turn` repeats it until the model stops asking for tools.   │└────────────────────────────────────┘
-│Nothing in it decides what the model is told - that is the  │┌ trace ─────────────────────────────┐
-│projector's job, and the projector is a trait you can       ││context.added  [4] read, 15 tokens  │
-│replace.                                                    ││tool.finished  read, 15 tokens      │
-│                                                            ││state.changed  executing → idle     │
-│                                                            ││state.changed  idle → requesting    │
-│                                                            ││model.requested  4 messages, 2 tool…│
-│                                                            ││context.added  [5] assistant, 74 to…│
-│                                                            ││model.finished  EndTurn             │
-│                                                            ││state.changed  requesting → finished│
-└────────────────────────────────────────────────────────────┘└────────────────────────────────────┘
-┌ you ─────────────────────────────────────────────────────────────────────────────────────────────┐
-│ ask for something, or /help                                                                      │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
- done · scripted · 140 tokens, 0.1% of the limit · 1,000 held back · F1 for the keys
+┌ conversation ──────────────────────────────────────────────────────┐┌ context │ trace ───────────────────────┐
+│· [1] src/kernel.rs is in the context, 1000 tokens                  ││  1 ▪ src/kernel.rs                1,000│
+│                                                                    ││  2 · user                             6│
+│⟩ read({"path":"src/kernel.rs"})                                    ││  3 · assistant                        7│
+│                                                                    ││  4 - read                            15│
+││ pub struct Kernel(Arc<InnerKernel>);                              ││      excluded: pruned at the terminal  │
+│  // ... 900 more lines                                             ││  5 · assistant                        7│
+│                                                                    ││  6 · shell                            7│
+│· read: 15 tokens                                                   ││  7 · assistant                       43│
+│                                                                    ││                                        │
+│⟩ shell({"cmd":"cargo test"})                                       ││                                        │
+│                                                                    ││                                        │
+││ test result: ok. 173 passed                                       ││                                        │
+│                                                                    ││                                        │
+│· shell: 7 tokens                                                   ││                                        │
+│                                                                    ││                                        │
+│The kernel is a state machine with five states. `step` performs one ││                                        │
+│transition and returns the state it produced; `turn` repeats it     ││                                        │
+│until the model stops asking for tools.                             ││                                        │
+└────────────────────────────────────────────────────────────────────┘└──────────── 7 items · ~1,101 / 128,000 ┘
+┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ask for something, or /help                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ done · gpt-4o-mini · ~1,101 tokens, 0.9% of the limit · 1,043 really · 15 held back · F1 for the keys
 ```
 
 ## 👉 the pane on the right
@@ -49,10 +43,10 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 Every terminal agent has the conversation. The **context** beside it is why this one exists.
 
 It is not a summary and not a debug view: it is the list of items the runtime is holding, in
-order, with what each one costs and whether it is going into the next request. `src/kernel.rs` in
-that screenshot is marked `-` because somebody took it out — which is why the status line says
-`1,000 held back`, and why the trace says `skipped [1]: excluded: too big` the next time a request
-goes out. Nothing disappeared; it changed state, and the state is on screen.
+order, with what each one costs and whether it is going into the next request. Item 4 in that
+screenshot is marked `-` because somebody took it out, and says underneath itself why — which is
+also why the status line reads `15 held back`. Item 1 is `▪`, pinned, so the compactor will be
+refused if it comes for it. Nothing disappeared: things changed state, and the state is on screen.
 
 Press <kbd>tab</kbd> to move over to it:
 
@@ -62,6 +56,44 @@ Press <kbd>tab</kbd> to move over to it:
 | <kbd>p</kbd> | pin it, so that the compactor is refused if it tries |
 | <kbd>enter</kbd> | read what the item actually says |
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
+
+An item that is not going into the next request says so underneath itself, in the projector's own
+words — `excluded: pruned at the terminal`, `archived: the whole output; the model was shown a
+shortened copy`. "Why is that out?" is a question about the thing you are looking at.
+
+## 🧾 the other tab
+
+<kbd>ctrl+t</kbd> swaps the pane for the trace: every event the runtime emits, as it happens, in
+the same names the session log is made of.
+
+```text
+┌ conversation ──────────────────────────────────────────────────────┐┌ context │ trace ───────────────────────┐
+│                                                                    ││model.requested                         │
+│                                                                    ││  4 messages, 2 tools, ~1066 tokens     │
+│                                                                    ││context.added  [5] assistant, 7 tokens  │
+│                                                                    ││model.finished  ToolUse                 │
+│                                                                    ││tool.requested  shell                   │
+│                                                                    ││permission.decided                      │
+│                                                                    ││  shell: allow, by the User             │
+│                                                                    ││state.changed  requesting → ready       │
+│                                                                    ││state.changed  ready → executing        │
+│                                                                    ││tool.started  shell                     │
+│                                                                    ││tool.output  shell, 27 bytes            │
+│                                                                    ││context.added  [6] shell, 7 tokens      │
+│                                                                    ││tool.finished  shell, 7 tokens          │
+│                                                                    ││state.changed  executing → idle         │
+│                                                                    ││model.requested                         │
+│                                                                    ││  6 messages, 2 tools, ~1080 tokens     │
+│                                                                    ││context.added  [7] assistant, 43 tokens │
+│                                                                    ││model.finished  EndTurn                 │
+│                                                                    ││state.changed  requesting → finished    │
+└────────────────────────────────────────────────────────────────────┘└────── 34 events · /save keeps them all ┘
+```
+
+It is the same stream `/save` writes to a `.jsonl`, and reading it is how you find out that a
+permission question became a decision became a state change became a call. <kbd>tab</kbd> then
+<kbd>up</kbd> reads back through it.
+
 
 And <kbd>ctrl+p</kbd> prints the request those items add up to — the kernel's own rendering of it,
 not a description, with a header naming everything the projector left out and why:
@@ -84,8 +116,8 @@ the wire, byte for byte.
 | key | what happens |
 | --- | --- |
 | <kbd>enter</kbd> / <kbd>alt+enter</kbd> | send / a new line |
-| <kbd>tab</kbd> | move between the prompt and the context |
-| <kbd>ctrl+t</kbd> | show or hide the trace — every event, as it happens |
+| <kbd>tab</kbd> | move between the prompt and the pane beside it |
+| <kbd>ctrl+t</kbd> | swap the pane between the context and the trace |
 | <kbd>esc</kbd> | stop what is running, and keep what arrived |
 | <kbd>ctrl+c</kbd> | the same, and again to leave |
 | <kbd>F1</kbd> | all of them, including the slash commands |

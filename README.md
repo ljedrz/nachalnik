@@ -152,34 +152,31 @@ $ cargo run -p kamchatka -- -f src/lib.rs "what does this crate do?"
 ```
 
 ```text
-┌ conversation ──────────────────────────────────────────────┐┌ context · 140 / 128,000 ───────────┐
-│· [1] src/kernel.rs is in the context, 1000 tokens          ││  1 - src/kernel.rs            1,000│
-│                                                            ││  2 · user                         6│
-│⟩ read({"path":"src/kernel.rs"})                            ││  3 · assistant                    7│
-│                                                            ││  4 · read                        15│
-││ pub struct Kernel(Arc<InnerKernel>);                      ││  5 · assistant                   74│
-│  // ... 900 more lines                                     ││                                    │
-│                                                            ││                                    │
-│· read: 15 tokens                                           ││                                    │
-│                                                            ││                                    │
-│The kernel is a state machine with five states. `step`      │└────────────────────────────────────┘
-│performs one transition and returns the state it produced;  │┌ trace ─────────────────────────────┐
-│`turn` repeats it until the model stops asking for tools.   ││state.changed  idle → requesting    │
-│Nothing in it decides what the model is told - that is the  ││model.requested  4 messages, 2 tool…│
-│projector's job, and the projector is a trait you can       ││context.added  [5] assistant, 74 to…│
-│replace.                                                    ││model.finished  EndTurn             │
-└────────────────────────────────────────────────────────────┘└────────────────────────────────────┘
-┌ you ─────────────────────────────────────────────────────────────────────────────────────────────┐
-│ ask for something, or /help                                                                      │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
- done · gpt-4o-mini · 140 tokens, 0.1% of the limit · 1,000 held back · F1 for the keys
+┌ conversation ──────────────────────────────────────────────────────┐┌ context │ trace ───────────────────────┐
+│· [1] src/kernel.rs is in the context, 1000 tokens                  ││  1 ▪ src/kernel.rs                1,000│
+│                                                                    ││  2 · user                             6│
+│⟩ read({"path":"src/kernel.rs"})                                    ││  3 · assistant                        7│
+│                                                                    ││  4 - read                            15│
+││ pub struct Kernel(Arc<InnerKernel>);                              ││      excluded: pruned at the terminal  │
+│  // ... 900 more lines                                             ││  5 · assistant                        7│
+│                                                                    ││  6 · shell                            7│
+│· read: 15 tokens                                                   ││  7 · assistant                       43│
+│                                                                    ││                                        │
+│The kernel is a state machine with five states. `step` performs one ││                                        │
+│transition and returns the state it produced; `turn` repeats it     ││                                        │
+│until the model stops asking for tools.                             ││                                        │
+└────────────────────────────────────────────────────────────────────┘└──────────── 7 items · ~1,101 / 128,000 ┘
+┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ask for something, or /help                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ done · gpt-4o-mini · ~1,101 tokens, 0.9% of the limit · 1,043 really · 15 held back · F1 for the keys
 ```
 
 Every terminal agent has the pane on the left. The one on the right is this runtime: the context,
-item by item, with what each one costs and whether it is going into the next request. `tab` moves
-over to it, `space` takes an item out and puts it back, `p` pins it, `enter` reads it, `u` undoes
-it - and `ctrl+p` prints the request those items add up to, as the kernel renders it. The file
-marked `-` in that screenshot is why the status line says `1,000 held back`.
+item by item, with what each one costs, whether it is going into the next request, and - for the
+ones that are not - why. `tab` moves over to it, `space` takes an item out and puts it back, `p`
+pins it, `enter` reads it, `u` undoes it. `ctrl+t` swaps the pane for the trace: every event the
+runtime emits, as it happens, in the same names the session log is made of.
 
 `ctrl+p` heads that request with everything the projector left out and why - `excluded: pruned by
 \`tool:shell:latest\``, `archived: the whole output; the model was shown a shortened copy`,

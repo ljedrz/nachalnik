@@ -477,6 +477,63 @@ async fn the_trace_shows_the_events_the_session_log_is_made_of() {
     assert!(screen.contains("model.requested"), "{screen}");
     assert!(screen.contains("model.finished"), "{screen}");
     assert!(screen.contains("state.changed"), "{screen}");
+
+    // nothing is cut off with an ellipsis in the middle of the part worth reading, which is what
+    // the pane did while it was sharing forty columns with the context
+    assert!(
+        screen.contains("requesting → finished"),
+        "a state change is truncated: {screen}"
+    );
+    assert!(
+        screen.contains("/save keeps them all"),
+        "the pane should say where the rest of them are: {screen}"
+    );
+}
+
+#[tokio::test]
+async fn the_pane_beside_the_conversation_shows_one_tab_at_a_time() {
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+    harness.app.kernel.push(ContextItem::file("a.rs", "one"));
+    harness.send("go").await;
+    harness.settle().await;
+
+    // both tabs are named whichever is showing, so that the other one is findable
+    let context = harness.screen();
+    assert!(context.contains("context"), "{context}");
+    assert!(context.contains("trace"), "{context}");
+    assert!(
+        context.contains("a.rs"),
+        "the context tab is showing: {context}"
+    );
+    assert!(
+        !context.contains("state.changed"),
+        "and the trace is not underneath it: {context}"
+    );
+
+    harness
+        .app
+        .on_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL))
+        .await;
+
+    let trace = harness.screen();
+    assert!(trace.contains("state.changed"), "{trace}");
+    assert!(
+        !trace.contains("1 · a.rs") && !trace.contains("items ·"),
+        "the context is not underneath the trace either: {trace}"
+    );
+}
+
+#[tokio::test]
+async fn an_item_that_is_not_going_into_the_request_says_why_where_it_is_listed() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::file("a.rs", "one"));
+
+    harness.send("/prune files").await;
+
+    // "why is that out?" is a question about the thing you are looking at, so it is answered
+    // beside it rather than only in the request preview
+    let screen = harness.screen();
+    assert!(screen.contains("excluded: pruned by `files`"), "{screen}");
 }
 
 #[tokio::test]

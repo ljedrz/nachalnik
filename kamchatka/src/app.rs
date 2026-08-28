@@ -29,8 +29,30 @@ const LIVE_OUTPUT: usize = 8_000;
 pub enum Focus {
     /// The prompt.
     Input,
-    /// The list of context items.
+    /// Whichever tab the pane beside the conversation is showing.
+    Aside,
+}
+
+/// What the pane beside the conversation is showing.
+///
+/// note: Tabs rather than two boxes stacked on top of each other. They were competing for the
+/// same forty columns and both lost: the context could not say why an item was out, and every
+/// trace line was cut off with an ellipsis in the middle of the part worth reading. Only one of
+/// them is ever being read at a time, and the one being read should have the whole pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Aside {
+    /// The context, item by item.
     Context,
+    /// Every event, as it happens.
+    Trace,
+}
+
+/// One line of the trace pane: an event's name, and what it says for itself.
+pub struct Traced {
+    /// The dotted name, e.g. `model.requested`; empty for a continuation line.
+    pub name: String,
+    /// The rest of it.
+    pub detail: String,
 }
 
 /// What is being shown over the top of everything else.
@@ -99,8 +121,8 @@ pub struct App {
     pub counter: Arc<Calibrating<BytesPerToken>>,
     /// The conversation.
     pub transcript: Vec<Entry>,
-    /// Every event, one line each.
-    pub trace: VecDeque<String>,
+    /// Every event, name and detail.
+    pub trace: VecDeque<Traced>,
     /// The prompt.
     pub input: TextArea<'static>,
     /// Which pane the keys go to.
@@ -115,8 +137,10 @@ pub struct App {
     pub scroll: usize,
     /// Whether the transcript sticks to the bottom.
     pub follow: bool,
-    /// Whether the trace pane is shown.
-    pub show_trace: bool,
+    /// Which tab the pane beside the conversation is showing.
+    pub aside: Aside,
+    /// How far back through the trace it is scrolled, in lines from the bottom.
+    pub trace_scroll: usize,
     /// Whether a turn is running.
     pub busy: bool,
     /// Whether it is time to leave.
@@ -164,7 +188,8 @@ impl App {
             overlay: None,
             scroll: 0,
             follow: true,
-            show_trace: false,
+            aside: Aside::Context,
+            trace_scroll: 0,
             busy: false,
             quit: false,
             rendered: 0,
@@ -293,12 +318,15 @@ impl App {
         );
     }
 
-    /// Adds a line to the trace pane.
-    fn trace(&mut self, line: impl Into<String>) {
+    /// Adds an event to the trace pane.
+    fn trace(&mut self, name: impl Into<String>, detail: impl Into<String>) {
         if self.trace.len() == TRACE_DEPTH {
             self.trace.pop_front();
         }
-        self.trace.push_back(line.into());
+        self.trace.push_back(Traced {
+            name: name.into(),
+            detail: detail.into(),
+        });
     }
 
     // ---------------------------------------------------------------------- driving the kernel
@@ -359,7 +387,8 @@ impl App {
         // a line per streamed token would push everything else out of the pane before it could be
         // read; the fragments are on the left, and the log has them if `record_progress` is on
         if !matches!(event, Event::ModelDelta { .. }) {
-            self.trace(trace_line(&event));
+            let (name, detail) = trace_line(&event);
+            self.trace(name, detail);
         }
 
         match event {
@@ -394,10 +423,13 @@ impl App {
                     ),
                 }
                 for repair in &repairs {
-                    self.trace(format!("  repaired: {repair}"));
+                    self.trace("", format!("repaired: {repair}"));
                 }
                 for left_out in skipped {
-                    self.trace(format!("  skipped [{}]: {}", left_out.id, left_out.reason));
+                    self.trace(
+                        "",
+                        format!("[{}] left out: {}", left_out.id, left_out.reason),
+                    );
                 }
             }
             Event::ModelFinished { item, .. } => {
@@ -520,22 +552,31 @@ impl App {
             (KeyCode::Char('c'), true) if self.busy => self.interrupt(),
             (KeyCode::Char('c'), true) | (KeyCode::Char('d'), true) => self.quit = true,
             (KeyCode::Esc, _) if self.busy => self.interrupt(),
-            (KeyCode::Char('t'), true) => self.show_trace = !self.show_trace,
+            (KeyCode::Char('t'), true) => {
+                self.aside = match self.aside {
+                    Aside::Context => Aside::Trace,
+                    Aside::Trace => Aside::Context,
+                };
+                self.trace_scroll = 0;
+            }
             (KeyCode::Char('p'), true) => {
                 self.preview("the next request", request_preview(&self.kernel))
             }
             (KeyCode::F(1), _) => self.overlay = Some(Overlay::Help),
             (KeyCode::Tab, _) => {
                 self.focus = match self.focus {
-                    Focus::Input => Focus::Context,
-                    Focus::Context => Focus::Input,
+                    Focus::Input => Focus::Aside,
+                    Focus::Aside => Focus::Input,
                 }
             }
             (KeyCode::PageUp, _) => self.scroll_by(-(self.viewport as isize / 2)),
             (KeyCode::PageDown, _) => self.scroll_by(self.viewport as isize / 2),
             _ => match self.focus {
                 Focus::Input => self.input_key(key).await,
-                Focus::Context => self.context_key(key),
+                Focus::Aside => match self.aside {
+                    Aside::Context => self.context_key(key),
+                    Aside::Trace => self.trace_key(key),
+                },
             },
         }
     }
@@ -631,6 +672,26 @@ impl App {
                 );
                 self.preview(title, picked.content.to_text());
             }
+            _ => {}
+        }
+    }
+
+    /// Keys that belong to the trace tab, which is a log and therefore worth reading backwards.
+    fn trace_key(&mut self, key: KeyEvent) {
+        // the pane draws the tail, so scrolling counts upwards from the newest line; the frame
+        // clamps it to what there is
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => self.trace_scroll += 1,
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.trace_scroll = self.trace_scroll.saturating_sub(1)
+            }
+            KeyCode::PageUp => self.trace_scroll += self.viewport.max(1),
+            KeyCode::PageDown => {
+                self.trace_scroll = self.trace_scroll.saturating_sub(self.viewport.max(1))
+            }
+            KeyCode::End | KeyCode::Char('G') => self.trace_scroll = 0,
+            KeyCode::Home | KeyCode::Char('g') => self.trace_scroll = usize::MAX,
+            KeyCode::Char('?') => self.overlay = Some(Overlay::Help),
             _ => {}
         }
     }
@@ -972,8 +1033,8 @@ impl App {
 
 // ------------------------------------------------------------------------------------ helpers
 
-/// One line describing an event, for the trace pane.
-fn trace_line(event: &Event) -> String {
+/// An event's name, and one line of whatever else it has to say.
+fn trace_line(event: &Event) -> (String, String) {
     let name = event.name();
 
     let detail = match event {
@@ -1021,10 +1082,7 @@ fn trace_line(event: &Event) -> String {
         _ => String::new(),
     };
 
-    match detail.is_empty() {
-        true => name.to_owned(),
-        false => format!("{name}  {detail}"),
-    }
+    (name.to_owned(), detail)
 }
 
 /// The request the kernel would send, or what stopped it building one.

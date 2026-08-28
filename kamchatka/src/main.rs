@@ -142,7 +142,8 @@ async fn main() -> Result<()> {
         true => app.replay(),
         false => app.say(
             Speaker::Note,
-            "tab moves to the context · F1 lists the keys · ctrl+p shows the next request",
+            "tab moves to the context · ctrl+t swaps it for the trace · ctrl+p shows the \
+             next request · F1 lists the keys",
         ),
     }
     if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {

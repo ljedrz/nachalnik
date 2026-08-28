@@ -15,7 +15,9 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   and whether it is going into the next request. `space` takes one out and puts it back, `p` pins
   it, `enter` reads it, `u` undoes the last change - and `ctrl+p` shows the request they add up to,
   as the kernel renders it.
-- A trace pane on `ctrl+t`: every event, as it happens, in the same names the session log uses.
+- A trace tab on `ctrl+t`, beside the context in one pane rather than stacked under it: every
+  event as it happens, in the same names the session log uses, wrapped rather than cut off, and
+  readable backwards with `tab` then the arrows.
 - `ctrl+p` heads the request with what the projector left out and what it repaired, because "why
   is that not in there?" is the question somebody opens it to answer.
 - `/budget`, and a `~` on the status line's estimate beside what the provider really charged: the

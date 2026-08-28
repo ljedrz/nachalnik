@@ -15,17 +15,21 @@ use ratatui::{
     widgets::{Block, Clear, List, ListItem, Paragraph},
 };
 
-use crate::app::{App, Focus, Overlay, Speaker};
+use crate::app::{App, Aside, Focus, Overlay, Speaker};
 
-/// The width the context pane wants.
-const SIDE: u16 = 38;
+/// The width the pane beside the conversation wants.
+///
+/// note: Wider than it was when it held two boxes, but not by much - the trace wraps now rather
+/// than cutting every line off, so it reads perfectly well in forty columns, and the conversation
+/// is still the thing most of the screen is for.
+const SIDE: u16 = 42;
 
 /// What the keys do, shown by F1.
 const HELP: &str = "\
   GETTING AROUND
-    tab                 move between the prompt and the context
+    tab                 move between the prompt and the pane beside it
+    ctrl+t              switch that pane between the context and the trace
     pgup / pgdn         scroll the conversation
-    ctrl+t              show or hide the trace
     ctrl+p              the exact request that would be sent next
     f1                  this
     esc                 close this, or stop what is running
@@ -35,12 +39,17 @@ const HELP: &str = "\
     enter               send
     alt+enter           a new line
 
-  THE CONTEXT, when it has the focus
+  THE CONTEXT TAB, when the pane has the focus
     up / down, j / k    pick an item
     space               take it out of the next request, or put it back
     p                   pin it, so that compaction cannot touch it
     enter               read what it actually says
     u / U               undo / redo the last change to the context
+
+  THE TRACE TAB, when the pane has the focus
+    up / down, j / k    read back through it
+    pgup / pgdn         a screenful at a time
+    g / G               the oldest it still holds / the newest
 
   COMMANDS
     /request            the request that would go next
@@ -69,22 +78,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .areas(frame.area());
 
-    let side = SIDE.min(frame.area().width / 2);
+    let side = SIDE.min(frame.area().width * 40 / 100);
     let [conversation, aside] =
         Layout::horizontal([Constraint::Min(20), Constraint::Length(side)]).areas(body);
 
     draw_conversation(frame, app, conversation);
-    match app.show_trace {
-        true => {
-            let [context, trace] =
-                Layout::vertical([Constraint::Percentage(60), Constraint::Percentage(40)])
-                    .areas(aside);
-            draw_context(frame, app, context);
-            draw_trace(frame, app, trace);
-        }
-        false => draw_context(frame, app, aside),
-    }
-
+    draw_aside(frame, app, aside);
     draw_input(frame, app, input);
     draw_status(frame, app, status);
 
@@ -133,27 +132,70 @@ fn draw_conversation(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(Paragraph::new(lines).scroll((at as u16, 0)), inner);
 }
 
-// ---------------------------------------------------------------------------------- the context
+// ------------------------------------------------------------------------------------ the aside
 
-fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) {
-    let budget = app.kernel.budget();
-    let title = match budget.limit {
-        Some(limit) => format!(
-            " context · {} / {} ",
-            thousands(budget.used()),
-            thousands(limit)
-        ),
-        None => format!(" context · {} tokens ", thousands(budget.used())),
+/// The pane beside the conversation: one box, two tabs, and whichever is showing gets all of it.
+fn draw_aside(frame: &mut Frame, app: &mut App, area: Rect) {
+    let focused = app.focus == Focus::Aside;
+    let dim = Style::default().fg(Color::DarkGray);
+    let tab = |name: &'static str, showing: bool| {
+        Span::styled(
+            format!(" {name} "),
+            match (showing, focused) {
+                (true, true) => Style::default().fg(Color::Yellow).bold(),
+                (true, false) => Style::default().bold(),
+                (false, _) => dim,
+            },
+        )
     };
 
-    let focused = app.focus == Focus::Context;
-    let block = Block::bordered().title(title).border_style(match focused {
-        true => Style::default().fg(Color::Yellow),
-        false => Style::default().fg(Color::DarkGray),
-    });
+    let block = Block::bordered()
+        .title(Line::from(vec![
+            tab("context", app.aside == Aside::Context),
+            Span::styled("│", dim),
+            tab("trace", app.aside == Aside::Trace),
+        ]))
+        .title_bottom(Line::styled(aside_footer(app), dim).right_aligned())
+        .border_style(match focused {
+            true => Style::default().fg(Color::Yellow),
+            false => dim,
+        });
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    match app.aside {
+        Aside::Context => draw_context(frame, app, inner),
+        Aside::Trace => draw_trace(frame, app, inner),
+    }
+}
+
+/// What the pane has to say about itself, along the bottom.
+fn aside_footer(app: &App) -> String {
+    match app.aside {
+        Aside::Context => {
+            let budget = app.kernel.budget();
+            match budget.limit {
+                Some(limit) => format!(
+                    " {} items · ~{} / {} ",
+                    app.kernel.items().len(),
+                    thousands(budget.used()),
+                    thousands(limit)
+                ),
+                None => format!(
+                    " {} items · ~{} tokens ",
+                    app.kernel.items().len(),
+                    thousands(budget.used())
+                ),
+            }
+        }
+        // the pane keeps the last few hundred; the log keeps everything, and `/save` writes it
+        Aside::Trace => format!(" {} events · /save keeps them all ", app.trace.len()),
+    }
+}
+
+// ---------------------------------------------------------------------------------- the context
+
+fn draw_context(frame: &mut Frame, app: &mut App, inner: Rect) {
     let items = app.kernel.items();
     if items.is_empty() {
         frame.render_widget(
@@ -164,7 +206,8 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     // the width the label gets is whatever the identifier, the mark and the token count leave
-    let label_width = (inner.width as usize).saturating_sub(3 + 2 + 8);
+    let width = inner.width as usize;
+    let label_width = width.saturating_sub(3 + 2 + 8);
     let rows: Vec<ListItem> = items
         .iter()
         .map(|item| {
@@ -177,21 +220,36 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) {
                 _ => ("?", Style::default().fg(Color::DarkGray)),
             };
             let label = clip(&item.label, label_width);
-
-            ListItem::new(Line::styled(
+            let mut lines = vec![Line::styled(
                 format!(
                     "{:>3} {mark} {label:<label_width$}{:>7}",
                     item.id.0,
                     thousands(item.tokens)
                 ),
                 style,
-            ))
+            )];
+
+            // an item that is not going into the next request says so here rather than only in
+            // `ctrl+p`, because "why is that out?" is a question about the thing you are looking
+            // at. The wording is the projector's own
+            if !item.is_projected() {
+                let why = match &item.note {
+                    Some(note) => format!("{}: {note}", item.state),
+                    None => item.state.to_string(),
+                };
+                lines.push(Line::styled(
+                    format!("      {}", clip(&why, width.saturating_sub(6))),
+                    Style::default().fg(Color::DarkGray).italic(),
+                ));
+            }
+
+            ListItem::new(lines)
         })
         .collect();
 
     app.selected = app.selected.min(items.len() - 1);
     app.list.select(Some(app.selected));
-    let highlight = match focused {
+    let highlight = match app.focus == Focus::Aside {
         true => Style::default().add_modifier(Modifier::REVERSED),
         false => Style::default().bg(Color::Rgb(40, 40, 40)),
     };
@@ -205,29 +263,54 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) {
 
 // ------------------------------------------------------------------------------------ the trace
 
-fn draw_trace(frame: &mut Frame, app: &App, area: Rect) {
-    let block = Block::bordered()
-        .title(" trace ")
-        .border_style(Style::default().fg(Color::DarkGray));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
+/// Every event, newest at the bottom, wrapped rather than cut off.
+///
+/// note: The name and the detail are separate lines when the detail does not fit, which is most
+/// of the time in a pane this wide - a log whose every line ends in an ellipsis in the middle of
+/// the interesting part is not a log.
+fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) {
+    let (width, height) = (inner.width as usize, inner.height as usize);
 
-    let height = inner.height as usize;
-    let lines: Vec<Line> = app
-        .trace
-        .iter()
-        .rev()
-        .take(height)
-        .rev()
-        .map(|line| {
-            Line::styled(
-                clip(line, inner.width as usize),
-                Style::default().fg(Color::DarkGray),
-            )
-        })
-        .collect();
+    let mut lines: Vec<Line> = Vec::new();
+    for event in &app.trace {
+        let colour = match () {
+            _ if event.name.ends_with(".failed") => Color::Red,
+            _ if event.name.starts_with("permission") => Color::Yellow,
+            _ if event.name.is_empty() => Color::DarkGray,
+            _ => Color::Gray,
+        };
 
-    frame.render_widget(Paragraph::new(lines), inner);
+        let named = Style::default().fg(colour);
+        let said = Style::default().fg(Color::DarkGray);
+        let together = event.name.chars().count() + 2 + event.detail.chars().count();
+        let detail = |text: &str| {
+            wrapped(text, width, "  ")
+                .into_iter()
+                .map(move |line| Line::styled(line, said))
+        };
+
+        match (event.name.is_empty(), event.detail.is_empty()) {
+            // a continuation: something the event before it had more to say about
+            (true, _) => lines.extend(detail(&event.detail)),
+            (false, true) => lines.push(Line::styled(event.name.clone(), named)),
+            // one line wherever it fits, which is most of them, and two where it does not
+            (false, false) if together <= width => lines.push(Line::from(vec![
+                Span::styled(event.name.clone(), named),
+                Span::styled(format!("  {}", event.detail), said),
+            ])),
+            (false, false) => {
+                lines.push(Line::styled(event.name.clone(), named));
+                lines.extend(detail(&event.detail));
+            }
+        }
+    }
+
+    // it is a log, so it is read from the bottom; `trace_scroll` counts upwards from there
+    let bottom = lines.len().saturating_sub(height);
+    app.trace_scroll = app.trace_scroll.min(bottom);
+    let at = bottom - app.trace_scroll;
+
+    frame.render_widget(Paragraph::new(lines).scroll((at as u16, 0)), inner);
 }
 
 // ------------------------------------------------------------------------------------ the prompt
