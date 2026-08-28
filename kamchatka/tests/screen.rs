@@ -490,6 +490,8 @@ The `median` function is **wrong** for even lengths:
 let mid = sorted.len() / 2;
 ```
 
+---
+
 - `mean` is fine.
 "#;
 
@@ -518,6 +520,10 @@ let mid = sorted.len() / 2;
 
     let (code, _) = harness.style_of("median");
     assert_eq!(code, Color::Cyan, "`code` should be told apart from prose");
+
+    // a horizontal rule is drawn rather than spelled
+    assert!(!screen.contains("---"), "{screen}");
+    assert!(screen.contains("────"), "{screen}");
 
     // a fenced block gets a rule down its left rather than a slab of background
     let fenced = screen

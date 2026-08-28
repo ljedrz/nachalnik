@@ -170,7 +170,14 @@ fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) {
                 // which is the one thing a terminal cannot do without knowing the theme
                 match line.style == Markdown.code() {
                     true => lines.extend(gutter(&line, width)),
-                    false => lines.extend(refit(&line, width)),
+                    false => match rule(&line) {
+                        // a horizontal rule, drawn rather than spelled `---`
+                        true => lines.push(Line::styled(
+                            "─".repeat(width),
+                            Style::default().fg(Color::DarkGray),
+                        )),
+                        false => lines.extend(refit(&line, width)),
+                    },
                 }
             }
             lines.push(Line::default());
@@ -673,6 +680,24 @@ impl tui_markdown::StyleSheet for Markdown {
 /// The options every model answer is rendered with.
 fn markdown() -> tui_markdown::Options<Markdown> {
     tui_markdown::Options::new(Markdown)
+}
+
+/// Whether a line is a horizontal rule, which markdown spells in punctuation.
+///
+/// note: Only outside a fenced block, where `---` is three characters a tool printed rather than
+/// a divider a model asked for; the caller has already sent those the other way.
+fn rule(line: &Line<'_>) -> bool {
+    let text: String = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect();
+    let text = text.trim();
+
+    text.len() >= 3
+        && (text.chars().all(|c| c == '-')
+            || text.chars().all(|c| c == '*')
+            || text.chars().all(|c| c == '_'))
 }
 
 /// A line of a fenced code block: a rule down the left, and no reflowing of what is inside it.
