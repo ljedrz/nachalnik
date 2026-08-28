@@ -202,6 +202,19 @@ impl fmt::Display for Role {
 /// note: Messages are not stored anywhere; they are produced from the context by a
 /// [`Projector`] every time a request is built. The context items are the state - see
 /// [`Context`].
+///
+/// note: One content slot, one optional reasoning, and a flat list of tool calls - not an ordered
+/// sequence of typed blocks. That is a ceiling on what swapping the [`Projector`] can reach, and
+/// it is worth saying exactly where it falls rather than leaving somebody to find it. A dialect
+/// that puts tool results inside a user turn, or keeps thinking-only turns, or flattens the whole
+/// conversation into one string, is a projector away: each of those is a decision about which
+/// items become which messages, which is precisely what a projector decides. A dialect whose
+/// assistant turn is an *ordered* list of blocks - thinking, text, a tool call, more thinking
+/// before the next one - is not. There the order is itself the information, and there is nowhere
+/// in this struct to put it: a provider for such an API reassembles a conventional order
+/// (reasoning, then content, then calls) and is right until the model interleaves them. Lifting
+/// that means blocks in [`Content`], which is a change to what the whole context holds rather
+/// than to how it is projected.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     /// Who the message is attributed to.

@@ -76,6 +76,13 @@ pub struct Projection {
 ///     }
 /// }
 /// ```
+///
+/// note: What a projector decides is which items become which messages, and there is one dialect
+/// that is more than that: an assistant turn that is an ordered list of typed blocks, thinking
+/// interleaved between tool calls. [`Message`] has one content slot and cannot hold that order,
+/// so a provider for such an API reassembles a conventional one and is right until the model
+/// interleaves. See the note on [`Message`]; the fix is blocks in [`Content`], not a cleverer
+/// projector, and it is not made yet.
 pub trait Projector: Send + Sync {
     /// Projects the items - all of them, in insertion order, whatever their state - into the
     /// messages of a request.

@@ -256,6 +256,15 @@ produced it, counted like everything else, and offered back to the provider in
 from and a runtime that dropped it could not talk to them. It is never separated from its turn,
 and `LinearProjector::send_reasoning` decides whether it goes back out.
 
+A projector decides which items become which messages, and it is worth being exact about how far
+that reaches. Tool results inside a user turn, thinking-only turns kept rather than dropped, the
+whole conversation flattened into one string - each of those is a projector away. What is not is a
+dialect whose assistant turn is an *ordered* list of typed blocks, with thinking interleaved
+between tool calls: `Message` has one content slot, so the order is not something a projector has
+anywhere to put. A provider for such an API reassembles a conventional order and is right until
+the model interleaves. Lifting that means blocks in `Content`, which changes what the context
+holds rather than how it is projected, and it is not done.
+
 `ToolCall::extra` is the same idea at the level of a single call: whatever a provider attaches to
 a call - Google's `thought_signature`, an encrypted reasoning item - is carried back attached to
 that call, verbatim and uninterpreted. Gemini rejects the *next* request outright when it goes
