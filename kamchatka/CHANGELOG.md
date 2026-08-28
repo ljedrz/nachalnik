@@ -68,7 +68,10 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
 - MCP servers with `--mcp '[name=]cmd args'`, behind the default `mcp` feature. The name prefixes
   the server's tools and is what an "always" grant is for, so it is worth giving: taken from the
   program it would be `npx` for most of them.
-- `/save` writes the event log and a resumable snapshot; `-r` picks it back up.
+- `/save PATH` writes the event log and a resumable snapshot beside it; `-r PATH` picks it back
+  up in a fresh process. Both take a path you chose, on your disk - there is no session id, no
+  server, and nothing to look up. Saving over files that already exist says which ones it
+  replaced.
 - Tested by drawing the screen into a `TestBackend` and reading the characters back, against a
   scripted model - including that an item taken out of the context really does leave the next
   request.

@@ -1370,3 +1370,78 @@ async fn a_command_that_opens_a_tab_leaves_the_keys_on_the_prompt() {
         "typing at the prompt should not have rewritten the policy"
     );
 }
+
+#[tokio::test]
+async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a place to write");
+    // named `.jsonl` on purpose: the stem used to keep it, so this wrote `notes.jsonl.jsonl`
+    let asked = dir.join("notes.jsonl");
+
+    let mut harness = Harness::new([ModelResponse::text("4817, noted")]);
+    harness.send("remember 4817").await;
+    harness.settle().await;
+
+    harness.send(&format!("/save {}", asked.display())).await;
+
+    let log = dir.join("notes.jsonl");
+    let state = dir.join("notes.json");
+    assert!(log.exists(), "the log is at the path that was asked for");
+    assert!(state.exists(), "and so is the snapshot");
+    assert!(
+        !dir.join("notes.jsonl.jsonl").exists(),
+        "the extension should not have been doubled"
+    );
+    let screen = harness.screen();
+    assert!(screen.contains("notes.json"), "{screen}");
+
+    // the log is one record per line, and every line is a record
+    let written = std::fs::read_to_string(&log).unwrap();
+    let records: Vec<&str> = written.lines().filter(|line| !line.is_empty()).collect();
+    assert!(!records.is_empty());
+    for line in &records {
+        serde_json::from_str::<nachalnik::Record>(line).expect("every line is a record");
+    }
+
+    // and the snapshot rebuilds the context in a kernel that never saw any of it happen
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_slice(&std::fs::read(&state).unwrap()).expect("a session");
+    let carried = Kernel::resume(Config::default(), snapshot);
+
+    let said: Vec<String> = carried
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert!(said.iter().any(|text| text.contains("remember 4817")));
+    assert!(said.iter().any(|text| text.contains("4817, noted")));
+
+    // saving again over the same files says so rather than replacing them in silence
+    harness.send(&format!("/save {}", asked.display())).await;
+    assert!(
+        harness.screen().contains("replaced"),
+        "{}",
+        harness.screen()
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_resumed_session_is_read_back_as_the_conversation_it_was() {
+    let mut first = Harness::new([ModelResponse::text("of course")]);
+    first.send("hello there").await;
+    first.settle().await;
+
+    // what `-r` does: a fresh kernel from the snapshot, and the terminal reads the conversation
+    // back off the context, because a resume arrives as one event rather than a thousand
+    let carried = Kernel::resume(Config::default(), first.app.kernel.snapshot());
+    let mut second = Harness::new([]);
+    second.app.kernel = carried;
+    second.app.replay();
+
+    let screen = second.screen();
+    assert!(screen.contains("hello there"), "{screen}");
+    assert!(screen.contains("of course"), "{screen}");
+    assert!(screen.contains("resumed session"), "{screen}");
+}

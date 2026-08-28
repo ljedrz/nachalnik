@@ -1488,15 +1488,30 @@ impl App {
         self.preview("the budget", lines.join("\n\n"));
     }
 
-    /// Writes the session log and a snapshot that can be resumed from.
+    /// Writes the session log and a snapshot that can be resumed from, at a path somebody gave.
+    ///
+    /// note: Two files, because they answer different questions: the log says what happened, and
+    /// the snapshot is what can be picked back up. An event names an item rather than carrying
+    /// it, so the log alone cannot rebuild a context - keeping only one of them means losing
+    /// either the story or the state.
     fn save(&mut self, path: &str) {
-        // the log says what happened; the snapshot is what can be picked back up. Keeping only
-        // one of them means either losing the story or losing the context
+        // both extensions, so that `/save notes.jsonl` does not write `notes.jsonl.jsonl`
         let stem = match path {
             "" => "session",
-            given => given.strip_suffix(".json").unwrap_or(given),
+            given => given
+                .strip_suffix(".jsonl")
+                .or_else(|| given.strip_suffix(".json"))
+                .unwrap_or(given),
         };
         let (log, state) = (format!("{stem}.jsonl"), format!("{stem}.json"));
+
+        // said rather than asked about: writing the same session again is the ordinary case and
+        // a prompt every time would be noise, but a typo landing on somebody else's file should
+        // not pass in silence
+        let replacing: Vec<&str> = [log.as_str(), state.as_str()]
+            .into_iter()
+            .filter(|path| std::path::Path::new(path).exists())
+            .collect();
 
         let records: Vec<String> = self
             .kernel
@@ -1504,20 +1519,34 @@ impl App {
             .iter()
             .filter_map(|record| serde_json::to_string(record).ok())
             .collect();
-        let written = std::fs::write(&log, records.join("\n") + "\n").and_then(|()| {
-            let snapshot = serde_json::to_vec_pretty(&self.kernel.snapshot())?;
-            std::fs::write(&state, snapshot)
-        });
+        // named, because "No such file or directory" on its own leaves somebody guessing which
+        // one; `-r` says which file it could not read and this should match it
+        let written = std::fs::write(&log, records.join("\n") + "\n")
+            .map_err(|e| format!("could not write {log}: {e}"))
+            .and_then(|()| {
+                let snapshot = serde_json::to_vec_pretty(&self.kernel.snapshot())
+                    .map_err(|e| format!("could not render the session: {e}"))?;
+                std::fs::write(&state, snapshot)
+                    .map_err(|e| format!("could not write {state}: {e}"))
+            });
 
         match written {
-            Ok(()) => self.say(
-                Speaker::Note,
-                format!(
-                    "{} records in {log}, and a session in {state} (kamchatka -r {state})",
-                    records.len()
-                ),
-            ),
-            Err(e) => self.say(Speaker::Error, e.to_string()),
+            Ok(()) => {
+                if !replacing.is_empty() {
+                    self.say(
+                        Speaker::Note,
+                        format!("replaced {}", replacing.join(" and ")),
+                    );
+                }
+                self.say(
+                    Speaker::Note,
+                    format!(
+                        "{} records in {log}, and a session in {state} (kamchatka -r {state})",
+                        records.len()
+                    ),
+                );
+            }
+            Err(e) => self.say(Speaker::Error, e),
         }
     }
 }
