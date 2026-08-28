@@ -576,14 +576,15 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
 
 ### 🧪 tests
 
-`cargo test -p nachalnik` runs 113 offline tests: the context model, the selectors, the state
+`cargo test -p nachalnik` runs 123 offline tests: the context model, the selectors, the state
 machine (including that a second concurrent `step` is refused and that a dropped one does not
 wedge the kernel), the loop, permissions, projection and tool-call repair, token counting and
-calibration, compaction, and the session log. A replaced `Projector` gets its own test, because a
+calibration, compaction, and the session log - including that the log's account of an item's
+states is in the order they were applied, which two threads changing one item is enough to break. A replaced `Projector` gets its own test, because a
 seam nothing has ever been swapped through is a claim rather than a seam.
 
-`cargo test --workspace` runs 203 in all: those, the bridge's 23 - which stand a real MCP server
-up rather than mocking one - and `kamchatka`'s 43, which draw its screen and read the characters
+`cargo test --workspace` runs 216 in all: those, the bridge's 23 - which stand a real MCP server
+up rather than mocking one - and `kamchatka`'s 51, which draw its screen and read the characters
 back, plus one that puts a socket in front of it that answers and then goes silent.
 
 Every count and every percentage in this file was measured at the commit it was written for,
