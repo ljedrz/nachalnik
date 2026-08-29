@@ -234,6 +234,11 @@ impl Tool for Shell {
             }
         };
 
+        // a group of its own, so that stopping the command can stop everything the command
+        // started; see `stop`
+        #[cfg(unix)]
+        command.process_group(0);
+
         let mut child = match command
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -283,7 +288,7 @@ impl Tool for Shell {
             }
 
             if output.is_interrupted() {
-                let _ = child.start_kill();
+                stop(&mut child).await;
                 interrupted = true;
                 break;
             }
@@ -321,6 +326,41 @@ impl Tool for Shell {
 
         Ok(ToolOutput::new(text))
     }
+}
+
+/// Stops a running command, and whatever that command started.
+///
+/// note: the group rather than the process, because a shell command is rarely one process. `make`
+/// starts a compiler, `npm test` starts a runner, and a signal addressed to the shell alone leaves
+/// those running - confined, since the domain is inherited, but still writing in the working
+/// directory with nothing left that will ever report them. Somebody who pressed escape has been
+/// told it stopped.
+///
+/// note: through `sh`, because signalling a *group* is not in `std` and this workspace has no
+/// `unsafe` and no libc to reach past it with. It is the same `sh` the tool is built on, so it
+/// brings nothing new into the program. The group is the child's own - `process_group(0)` asked
+/// for that at spawn - and the child has not been waited on yet, so the identifier cannot yet mean
+/// anybody else.
+#[cfg(unix)]
+async fn stop(child: &mut tokio::process::Child) {
+    if let Some(pid) = child.id() {
+        let _ = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("kill -KILL -{pid}"))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
+    // and the child itself, in case it was never in a group of its own
+    let _ = child.start_kill();
+}
+
+/// The same, where there are no process groups.
+#[cfg(not(unix))]
+async fn stop(child: &mut tokio::process::Child) {
+    let _ = child.start_kill();
 }
 
 // --------------------------------------------------------------------------------- the policy

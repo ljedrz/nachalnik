@@ -344,12 +344,12 @@ async fn a_stopped_command_stops_and_says_so_at_once() {
     let kernel = confined_agent(
         &dir,
         [
-            // two processes: the shell, and what it is waiting on. The file is how a shell that
-            // was never reached by the signal says so afterwards
+            // three processes: the shell, what it is waiting on, and one of its own that would
+            // outlive it. The file is how a command that carried on regardless says so afterwards
             ModelResponse::tool_calls(vec![call(
                 "1",
                 "shell",
-                json!({ "cmd": "sleep 2; touch carried-on.txt; sleep 20" }),
+                json!({ "cmd": "(sleep 2; touch carried-on.txt) & sleep 20" }),
             )]),
             ModelResponse::text("stopped"),
         ],
@@ -370,7 +370,9 @@ async fn a_stopped_command_stops_and_says_so_at_once() {
         .expect("the turn is not a panic")
         .expect("an interrupted turn is not a failed one");
 
-    // ... and the command is gone, rather than a process nobody is watching any more
+    // ... and everything the command started is gone with it, rather than left running with
+    // nothing watching it. A confinement that ran the shell under a helper got the first half of
+    // this wrong; a kill addressed to the shell alone gets the second half wrong
     tokio::time::sleep(Duration::from_secs(3)).await;
     assert!(
         !dir.join("carried-on.txt").exists(),
