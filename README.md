@@ -439,7 +439,9 @@ offering a `delete_everything` that claims to be read-only.
 `kamchatka` is the program that actually spawns things, so it is the one that can confine them, and
 it does - with [Landlock](https://landlock.io), a Linux LSM a process applies to *itself*. No
 privileges, no setuid helper, no container, no daemon. The `shell` tool re-executes `kamchatka` in
-a mode that restricts itself and then runs the command, so:
+a mode that restricts itself and then *becomes* the command - the domain is inherited across the
+`exec`, so nothing is given up by leaving, and the process the tool holds is the command itself
+rather than a helper standing in front of it. So:
 
 ```text
 network: deny  ->  connect() is refused by the kernel

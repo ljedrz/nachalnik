@@ -116,8 +116,12 @@ fails without a key, or when a free tier has spent its allowance. `kamchatka` re
 `KAMCHATKA_API_KEY` / `KAMCHATKA_MODEL` / `KAMCHATKA_BASE_URL` instead.
 
 Test files: `nachalnik/tests/` is `kernel`, `context`, `state`, `session`, `tokens`,
-`concurrency`, `live`; `kamchatka/tests/` draws the screen and reads the characters back
-(`screen`) plus one socket that answers and goes silent (`stalled`); `nachalnik-mcp/tests/`
+`concurrency`, `live`. `kamchatka/tests/` draws the screen and reads the characters back
+(`screen`), runs real commands under a real ruleset (`sandbox`), and answers three sockets: one
+that goes silent mid-stream (`stalled`) and two that serve the shapes a streamed tool call arrives
+in (`streaming`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at
+every tab with nothing to act on, and both scrolled past their own ends - a frame that panics takes
+the session with it, which is the one failure this program cannot report. `nachalnik-mcp/tests/`
 stands a real MCP server up rather than mocking one.
 
 ---
@@ -193,8 +197,10 @@ README and the crate docs in longer form:
   one. A client that shows `shell: allow` beside `network: deny` without saying so is reporting a
   restriction that does not exist - which is why `kamchatka`'s permissions tab says so.
 - **Confinement lives where the process is spawned.** `kamchatka` puts its `shell` tool under
-  Landlock by re-executing itself in a mode that restricts itself first, so `network: deny` is a
-  refused `connect` and the working directory is the edge of the world. The three file tools run
+  Landlock by re-executing itself in a mode that restricts itself and then `exec`s the command, so
+  `network: deny` is a refused `connect` and the working directory is the edge of the world. The
+  `exec` is load-bearing rather than tidy: a helper standing in front of the command is what a
+  stopped call would kill instead of the command. The three file tools run
   in-process and are held to the same boundary by their own code, which is weaker in kind and said
   to be. `#![deny(unsafe_code)]` is why it is a re-exec rather than `Command::pre_exec`.
 - **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it
