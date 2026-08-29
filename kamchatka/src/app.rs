@@ -232,9 +232,8 @@ pub struct App {
     interrupting: bool,
     /// When a key that was not an answer to a question was last pressed.
     typing: Instant,
-    /// How many requests had gone out when somebody last sent a message into a turn that was
-    /// already running.
-    typed_ahead: Option<usize>,
+    /// A message somebody sent into a turn that was already running, waiting for it to end.
+    typed_ahead: Option<String>,
     /// Whether the response being awaited has put anything on the screen of its own.
     streamed: bool,
     /// How much the running tool has said so far, for the one trace line that counts it.
@@ -441,22 +440,6 @@ impl App {
         });
     }
 
-    /// How many requests this session has made.
-    ///
-    /// note: counted off the session log rather than from the events this screen has taken in,
-    /// because the two questions this is asked - at the moment somebody types, and at the end of a
-    /// turn - have to be answered against the same clock. An event is broadcast when it happens
-    /// and drawn when the loop next comes round, and a key press that overtook one would make the
-    /// answer "no request since" for a request that had already gone out.
-    fn requests(&self) -> usize {
-        self.kernel.with_history(|session| {
-            session
-                .records()
-                .filter(|record| matches!(record.event, Event::ModelRequested { .. }))
-                .count()
-        })
-    }
-
     /// Performs exactly one transition of the state machine, and stops.
     ///
     /// note: This is the runtime's own shape, made visible. A turn is a loop over `step`, and
@@ -541,18 +524,13 @@ impl App {
         }
         self.interrupting = false;
 
-        // note: a message sent while a turn was running was pushed into the context and started
-        // nothing, because a turn was already going. Whether it was ever answered was then down to
-        // luck: a turn still working its way through tool calls picked it up on its next request,
-        // and one that ended first left it sitting there with nobody coming back to it and nothing
-        // on screen saying so. The question is not whether the model has spoken since - it answers
-        // the request it was already sent, which went out before the message existed - but whether
-        // a request has gone out at all since the message was pushed. If none has, the model has
-        // not been shown it
-        if carry_on
-            && std::mem::take(&mut self.typed_ahead).is_some_and(|then| then == self.requests())
-        {
-            self.start_turn();
+        // a message somebody sent into this turn has waited for it to end; now it goes in, and
+        // unless the turn was stopped or stepped it gets a turn of its own
+        if let Some(message) = self.typed_ahead.take() {
+            self.kernel.push(ContextItem::user(message));
+            if carry_on {
+                self.start_turn();
+            }
         }
 
         // the counter has just been told what the last request really cost, so the figures on the
@@ -1450,11 +1428,21 @@ impl App {
         }
 
         self.say(Speaker::User, line);
+        // note: a message sent while a turn is running waits for the end of it rather than going
+        // into the context there and then. Both of the obvious alternatives are worse. Pushed
+        // immediately, it lands *before* the answer the model is still writing - so the next
+        // request ends with a model turn, which Google refuses outright with `requests ending with
+        // a model turn are not supported`, and which every other provider answers by replying to
+        // itself. Pushed mid-tool-loop it is worse still: it lands between an assistant's call and
+        // that call's result, which is a shape most of these APIs reject. What it costs is that a
+        // message typed to steer a turn does not reach it - it is answered after, not during
+        if self.busy {
+            self.typed_ahead = Some(line.to_owned());
+            return;
+        }
+
         // this is all "sending a message" is: one context item, and then the loop
         self.kernel.push(ContextItem::user(line));
-        // ... except while the loop is already running, where the turn that is running gets first
-        // refusal on it; see `on_outcome`
-        self.typed_ahead = self.busy.then(|| self.requests());
         self.start_turn();
     }
 

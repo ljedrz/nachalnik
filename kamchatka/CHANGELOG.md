@@ -130,8 +130,7 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
 - Four tabs, each taking the whole window: `chat`, `context`, `trace`, `permissions`. `ctrl+t`
   for the next, `alt+1` to `alt+4` for one in particular, `tab` between the prompt and the open
   tab. The prompt and the status line are under all of them; a message sent into a turn that is
-  already running is picked up by that turn if it asks anything else, and gets a turn of its own
-  the moment the running one ends without having. A pasted block goes into the prompt
+  already running waits for the end of it, and then goes in and gets a turn of its own. A pasted block goes into the prompt
   as the lines it was pasted as: bracketed paste stops a pasted newline being read as `enter` and
   sending half of what was pasted, and the carriage returns a terminal spells those newlines with
   are put back, or the whole of it arrives as one line with invisible characters in it.

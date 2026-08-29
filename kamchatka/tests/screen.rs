@@ -2119,18 +2119,15 @@ async fn a_pasted_block_arrives_as_the_lines_it_was_pasted_as() {
 }
 
 #[tokio::test]
-async fn a_message_a_turn_ended_without_sending_starts_a_turn_of_its_own() {
+async fn a_message_sent_into_a_running_turn_is_answered_when_it_ends() {
     let mut harness = Harness::new([
         ModelResponse::text("the first answer"),
         ModelResponse::text("the second answer"),
     ]);
 
     harness.send("the first question").await;
-    harness.settle().await;
-
-    // typed into a turn that is already running, and which then ends without having asked
-    // anything since. Nothing used to come back to it: the message sat in the context, answered by
-    // nobody, with the screen showing it as though it had been sent
+    // ... and this one goes in while that turn is still running. Nothing used to come back to it:
+    // the turn was already going, so nothing started, and it sat in the context unanswered
     harness.app.busy = true;
     harness.send("the second question").await;
     harness.app.busy = false;
@@ -2143,27 +2140,47 @@ async fn a_message_a_turn_ended_without_sending_starts_a_turn_of_its_own() {
 }
 
 #[tokio::test]
-async fn a_message_the_running_turn_did_ask_about_does_not_start_another() {
-    let mut harness = Harness::new([
-        ModelResponse::text("the first answer"),
-        ModelResponse::text("both of them, answered"),
-    ]);
+async fn a_message_sent_into_a_running_turn_goes_in_after_the_answer_it_interrupted() {
+    let mut harness = Harness::new([ModelResponse::text("the first answer")]);
 
     harness.send("the first question").await;
-    harness.settle().await;
-
     harness.app.busy = true;
     harness.send("the second question").await;
-    harness.app.busy = false;
 
-    // ... and this time a request does go out after it was typed, which is the turn that was
-    // running picking it up on its way. A turn started here would be one nobody asked for
-    harness.app.start_turn();
+    // ... which is not in the context yet, because the answer being written is not in it either
+    let during: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert!(
+        !during.iter().any(|text| text.contains("the second")),
+        "a message pushed here lands in front of the answer the model is still writing: {during:?}"
+    );
+
+    harness.app.busy = false;
     harness.settle().await;
 
-    assert!(!harness.app.busy, "nothing was started a second time");
-    let screen = harness.screen();
-    assert!(screen.contains("both of them, answered"), "{screen}");
+    // the conversation reads in the order it happened, and ends with the person - which is the
+    // one shape a request is allowed to have
+    let after: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    let question = after
+        .iter()
+        .position(|text| text.contains("the second question"))
+        .expect("it went in when the turn ended");
+    let answer = after
+        .iter()
+        .position(|text| text.contains("the first answer"))
+        .expect("the answer it waited for");
+    assert!(answer < question, "{after:?}");
 }
 
 #[tokio::test]
