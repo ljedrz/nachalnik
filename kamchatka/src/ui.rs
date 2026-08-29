@@ -302,14 +302,24 @@ fn footer(app: &App) -> String {
         // note: the count of what is *not* listed. The tab is the decisions; this is the honest
         // footnote that they are not the whole policy
         Tab::Permissions => {
-            let asked = match app.undecided() {
-                0 => String::new(),
-                n => format!(" · {n} more it will ask about"),
-            };
-            match app.confinement() {
-                Some(line) => format!(" {line}{asked} · space cycles · a allow · n never "),
-                None => format!(" a allow · n never · r ask again{asked} "),
+            let mut parts = Vec::new();
+            if let Some(line) = app.confinement() {
+                parts.push(line);
             }
+            match app.undecided() {
+                0 => {}
+                n => parts.push(format!("{n} more it will ask about")),
+            }
+            // note: the same keys whatever else is on the line. Which of them were named used to
+            // depend on whether there was a sandbox line to fit in beside them, so `r` was
+            // advertised only on a tab with no shell on it - and with nothing decided yet the
+            // footer offered three keys that do nothing whatever, because there is no row for
+            // them to act on
+            if !app.permissions().is_empty() {
+                parts.push("space cycles · a allow · n never · r ask again".to_owned());
+            }
+
+            format!(" {} ", parts.join(" · "))
         }
     }
 }
