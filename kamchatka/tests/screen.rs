@@ -833,8 +833,15 @@ async fn the_help_lists_the_keys_that_exist() {
         top.contains(" of "),
         "the panel should count its own lines: {top}"
     );
-    harness.press(KeyCode::PageDown).await;
-    let rest = harness.sized(110, 40);
+    // ... and the commands are reachable from the top by scrolling, however long the help grows
+    let mut rest = String::new();
+    for _ in 0..8 {
+        harness.press(KeyCode::PageDown).await;
+        rest = harness.sized(110, 40);
+        if rest.contains("/prune") {
+            break;
+        }
+    }
     assert!(rest.contains("/prune"), "{rest}");
 
     // ... and every command is listed once. `/seams` was in there twice, and a test that could
@@ -2284,4 +2291,47 @@ async fn a_message_sent_into_a_turn_that_stops_to_ask_waits_for_the_answer_too()
         .position(|text| text.contains("a bone"))
         .expect("the call's result");
     assert!(result < question, "{after:?}");
+}
+
+/// Every command the prompt answers to is in the help.
+///
+/// note: read out of the source rather than listed here. A list in a test is one more copy for
+/// somebody to forget, updated by the same person who forgot the help - and the thing worth
+/// catching is a command that works and cannot be found, which is the shape `/help` itself was in.
+#[test]
+fn every_command_that_exists_is_in_the_help() {
+    let source = include_str!("../src/app.rs");
+    let handler = source
+        .split_once("async fn command(")
+        .expect("the slash commands are answered in one place")
+        .1
+        .split_once("\n    }\n")
+        .expect("and that place ends")
+        .0;
+
+    let mut listed = 0;
+    for line in handler.lines() {
+        // a match arm whose pattern is one or more quoted names: `"prune" | "keep" | "restore" =>`
+        let Some((arms, _)) = line.split_once("=>") else {
+            continue;
+        };
+        if !arms.trim_start().starts_with('"') {
+            continue;
+        }
+        for name in arms.split('|') {
+            let Some((name, _)) = name.trim().trim_start_matches('"').split_once('"') else {
+                continue;
+            };
+            assert!(
+                ui::HELP.contains(&format!("/{name}")),
+                "`/{name}` works and F1 does not mention it"
+            );
+            listed += 1;
+        }
+    }
+
+    assert!(
+        listed > 15,
+        "only found {listed} commands; the scan is broken"
+    );
 }

@@ -43,14 +43,17 @@ pub const HELP: &str = "  THE TABS
 
   ANYWHERE
     ctrl+p              the exact request that would be sent next
-    f1                  this
+    f1                  this; also ? on a tab that has the focus
     esc                 close this, or stop what is running
     ctrl+c              stop what is running; again to leave
+    ctrl+d              leave
 
   THE PROMPT, which is under every tab
     enter               send
     alt+enter           a new line
     pgup / pgdn         scroll the conversation
+    (a message sent while a turn is running waits for the end of it, and
+     then gets a turn of its own)
 
   THE CONTEXT TAB, when it has the focus
     up / down, j / k    pick an item
@@ -59,6 +62,8 @@ pub const HELP: &str = "  THE TABS
     23G                 the item numbered 23
     space               take it out of the next request, or put it back
     p                   pin it, so that compaction cannot touch it
+                        (on a ▫ archived row, either of those sends the whole
+                         of an output the model was shown a shortened copy of)
     e                   change what it says; the old one stays, marked ~
     enter               read the whole of what it says
     u / U               undo / redo the last change to the context
@@ -73,15 +78,22 @@ pub const HELP: &str = "  THE TABS
     g / G               the first / the last
     space               cycle it: ask, then allow, then deny
     a / n / r           allow it / never allow it / ask about it again
-    (the line along the bottom says what a shell command can reach)
+                        (backspace does what r does)
+    (the line along the bottom says what a shell command can reach, and how
+     many subjects are not listed here because nobody has answered about them)
 
   A TOOL IS WAITING TO RUN
     y / n               once / no
-    a                   always, for what it needs rather than for its name
+    esc                 no
+    a                   always, for everything the question names - and for
+                        the calls already waiting behind it
     i                   the exact JSON, and the tool's own definition
     d                   drop every call it is waiting on, and tell it why
+    (a question that arrives while you are typing waits for you to stop:
+     until then your keys go to the prompt, where you aimed them)
 
   COMMANDS
+    /help               this; also /?
     /step [MESSAGE]     one transition of the state machine, and stop
     /continue           run the rest of the turn
     /request            the request that would go next
@@ -99,7 +111,7 @@ pub const HELP: &str = "  THE TABS
     /model [ID]         show or switch the model
     /params [KEY JSON]  show or set a model parameter
     /save [PATH]        the session log, and a snapshot to resume from
-    /quit";
+    /quit               also /exit, /q";
 
 /// The selector language, shown by `/prune` with nothing to prune.
 ///
