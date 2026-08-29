@@ -205,6 +205,7 @@ place, where it can be changed:
 └──────────────── shell: confined · 12 more it will ask about · space cycles · a allow · n never · r ask again ┘
 ```
 
+A fresh session has no rows at all: everything starts at `ask`, and the tab fills up as you answer.
 Rows are **decisions**, not defaults. `ask` is what this policy does about anything nobody has
 mentioned, so a row per undecided thing would be a screenful of "it will stop and ask" burying the
 one or two lines that say what this agent can do *without* stopping. What is not listed is counted
@@ -291,8 +292,8 @@ to drive.
 
 ## 🔧 what it comes with
 
-Four tools — `read`, `write`, `edit`, `shell` — and a policy that allows reading and asks about
-everything else, including the network. Answering **always** answers for a *capability*, not a
+Four tools — `read`, `write`, `edit`, `shell` — and a policy that asks about all of it. Nothing is
+allowed on your behalf before you have been asked, `read` included. Answering **always** answers for a *capability*, not a
 tool name, which is what makes it work for tools this program has never heard of:
 
 ```console

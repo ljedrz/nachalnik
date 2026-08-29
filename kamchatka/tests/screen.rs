@@ -1113,18 +1113,16 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
     ));
     harness.tab(Tab::Permissions);
 
-    // the answers somebody has, and only those. `ask` is what this policy does when nobody has
-    // told it anything, and a screenful of it buries the line that says what can happen without
-    // stopping - so the rest are counted along the bottom instead of listed
+    // nothing has been decided, so there is nothing to list: `ask` is what this policy does about
+    // everything nobody has answered for, and a screenful of it would bury the line that says what
+    // can happen without stopping. The rest are counted along the bottom instead
     let screen = harness.sized(110, 30);
-    assert!(screen.contains("read"), "{screen}");
-    assert!(screen.contains("allow"), "{screen}");
     assert_eq!(
         harness.app.permissions().len(),
-        1,
-        "`ask` is not a decision, and `read` is the only answer anybody has"
+        0,
+        "`ask` is not a decision, and nobody has made one"
     );
-    assert!(!screen.contains("shell "), "{screen}");
+    assert!(screen.contains("nothing has been decided"), "{screen}");
     assert!(screen.contains("more it will ask about"), "{screen}");
 
     // ... and deciding one puts it on the tab, naming what it covers
@@ -1300,16 +1298,14 @@ async fn a_path_rule_is_finer_than_the_capability_above_it() {
         ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
     ));
 
-    // `read` is allowed outright, so an ordinary file is not a question - and `.env` is, because
-    // the strictest of what is consulted wins and a rule about the *file* is finer than a verdict
-    // about the tool that opened it. One turn, both reads, one question
-    assert_eq!(
-        harness
-            .app
-            .policy
-            .stance(&Subject::Capability(Capability::Read)),
-        Verdict::Allow
-    );
+    // answered for the capability and nothing else, which is what `always` on an ordinary read
+    // does. The ordinary file is no longer a question and `.env` still is, because the strictest
+    // of what is consulted wins and a rule about the *file* is finer than a verdict about the tool
+    // that opened it. One turn, both reads, one question
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::Read), Verdict::Allow);
     harness.send("read both").await;
     harness.settle().await;
 
@@ -1339,8 +1335,8 @@ async fn saying_always_answers_for_everything_the_question_named() {
     harness.settle().await;
     assert!(harness.app.overlay.is_some(), "the rule made it a question");
 
-    // `a` has to answer the path rule. Answering only for `read` - which was already `allow` -
-    // would leave the question exactly where it was
+    // `a` has to answer the path rule as well as the capability. Answering for `read` alone would
+    // leave the question exactly where it was, since the rule is the stricter of the two
     harness.answer(KeyCode::Char('a')).await;
     harness.settle().await;
 

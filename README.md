@@ -457,10 +457,11 @@ very next call. Under Landlock it tried `curl`, then a raw `socket.connect`, and
 refusing up front with a reason is kinder than letting something run and fail - but it is no longer
 the thing standing between the model and the network.
 
-Within that boundary the file tools are finer than a capability. `read` is allowed outright, but
-`Careful` also holds a short list of patterns - `.env*`, `*.pem`, `id_rsa*`, `.ssh/` - and the
-strictest of everything consulted wins, so reading `src/main.rs` is silent and reading `.env` is a
-question that names the rule that raised it. They bind `read`, `write` and `edit`, and deliberately
+Within that boundary the file tools are finer than a capability. Everything starts at `ask`, and
+`Careful` also holds a short list of patterns - `.env*`, `*.pem`, `id_rsa*`, `.ssh/` - where the
+strictest of everything consulted wins. Answer `always` to an ordinary read and the *capability*
+goes to `allow` while those do not, so reading `src/main.rs` goes silent from then on and reading
+`.env` is still a question that names the rule that raised it. They bind `read`, `write` and `edit`, and deliberately
 not `shell`: a command names its files inside a string, and `cat .env`, `sed -n 1p .env` and
 `python -c "open('.env')"` are the same act written three ways. What binds a command is the kernel,
 and what the kernel can express is a directory. So `cat .env` works where `read .env` asks, which is

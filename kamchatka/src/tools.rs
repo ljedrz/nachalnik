@@ -391,10 +391,10 @@ impl fmt::Display for Subject {
 /// The paths a fresh policy has something to say about.
 ///
 /// note: a short list of the names that are credentials by convention, and every one of them is
-/// `ask` rather than `deny`. Reading is otherwise allowed outright, so the whole of what this does
-/// is turn a silent `read` of `.env` into a question - which is the point of a rule that is finer
-/// than a capability. They are on the permissions tab like everything else, and cycle like
-/// everything else.
+/// `ask` rather than `deny`, like everything else here. What they are for is the moment somebody
+/// answers `always` for `read`: the capability goes to `allow` and these stay where they are, so
+/// reading `src/main.rs` goes silent and reading `.env` is still a question. A rule finer than a
+/// capability is only worth having once the capability is open.
 const SUSPECT: &[&str] = &[
     ".env*",
     "*.pem",
@@ -451,8 +451,8 @@ pub fn path_matches(pattern: &str, path: &str) -> bool {
     }
 }
 
-/// Reading is allowed, a handful of paths that look like credentials are a question, and so is
-/// everything else - unless the person at the terminal has said otherwise about it.
+/// Everything is a question until the person at the terminal answers one - including reading, and
+/// including a handful of paths that look like credentials.
 ///
 /// note: Capabilities are the unit rather than tool names, which is what makes this work for
 /// tools this crate has never heard of. An MCP server's tools all carry a `mcp:<server>`
@@ -513,13 +513,12 @@ impl Careful {
     /// paths that look like credentials.
     pub fn new() -> Self {
         Self {
-            stances: Mutex::new(BTreeMap::from([
-                (Capability::Read, Verdict::Allow),
-                // note: `ask`, not `deny`. Refusing outright was a decision made on the user's
-                // behalf about a thing they might perfectly well want, and it is theirs to make -
-                // the sandbox is what makes the answer mean something either way
-                (Capability::Network, Verdict::Ask),
-            ])),
+            // note: empty, and `stance` answers `ask` for anything it does not find. Nothing is
+            // decided on somebody's behalf - not `read`, which was `allow` here and is the one
+            // people would have picked, and not `network`, which was `deny`. Both were decisions
+            // taken for the user about things they may perfectly well want, and the sandbox is
+            // what makes either answer mean something once they have given it
+            stances: Mutex::new(BTreeMap::new()),
             paths: Mutex::new(
                 SUSPECT
                     .iter()

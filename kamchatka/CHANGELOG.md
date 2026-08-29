@@ -55,9 +55,12 @@ minor bump may break you.
   bottom. `ask` is what the policy does when it has not been told anything, and a screenful of it
   buried the one or two lines that say what this agent can do without stopping. Cycling a row back
   to `ask` takes it off the tab, which is what taking a decision back looks like.
-- The `network` stance starts at `ask` rather than `deny`. Refusing outright was a decision made on
-  the user's behalf about something they may perfectly well want, and now that the sandbox enforces
-  either answer, the answer is theirs to give.
+- **Every stance starts at `ask`**, `read` and `network` included. `read: allow` was the answer
+  most people would have given and `network: deny` was the cautious one, and both were still
+  answers given on somebody's behalf before they had been asked - by a program whose whole argument
+  is that it does not do that. Now the tab starts empty, the first `read` is a question, and what
+  is on the tab is what somebody decided. The path rules earn their keep the moment `read` is
+  answered `always`: the capability goes to `allow` and `.env*` does not.
 - Permissions are finer than a capability where that is worth anything: `Careful` holds path rules
   as well as capability stances - `.env*`, `*.pem`, `id_rsa*`, `.ssh/` and a few more, all `ask` -
   and the strictest of everything consulted wins. Reading `src/main.rs` is silent; reading `.env`
@@ -142,9 +145,9 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   JSON verbatim. A question that arrives while somebody is typing does not take their typing as an
   answer - its keys are ordinary letters, and `a` grants a capability for the rest of the session -
   so the letters go on reaching the prompt until the typing stops.
-- Four tools (`read`, `write`, `edit`, `shell`) and a policy that allows reading, refuses the
-  network and asks about the rest. "Always" answers for a capability rather than a tool name, so
-  it works for tools the program has never heard of.
+- Four tools (`read`, `write`, `edit`, `shell`) and a policy that asks about all of it. "Always"
+  answers for a capability rather than a tool name, so it works for tools the program has never
+  heard of.
 - Cooperative stopping on `esc`: the provider returns what it had streamed, the shell tool kills
   the command - and everything the command started, since it runs in a process group of its own -
   and still answers the call, and the partial turn is an ordinary context item. Both of them wait
