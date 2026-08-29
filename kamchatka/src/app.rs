@@ -221,6 +221,9 @@ pub struct App {
     pub grants: ratatui::widgets::ListState,
     /// Whether the last stop was asked for rather than reached.
     interrupting: bool,
+    /// How many requests had gone out when somebody last sent a message into a turn that was
+    /// already running.
+    typed_ahead: Option<usize>,
     /// Whether the response being awaited has put anything on the screen of its own.
     streamed: bool,
     /// How much the running tool has said so far, for the one trace line that counts it.
@@ -269,6 +272,7 @@ impl App {
             chosen: 0,
             grants: ratatui::widgets::ListState::default(),
             interrupting: false,
+            typed_ahead: None,
             streamed: false,
             streamed_bytes: 0,
             outcomes,
@@ -425,6 +429,22 @@ impl App {
         });
     }
 
+    /// How many requests this session has made.
+    ///
+    /// note: counted off the session log rather than from the events this screen has taken in,
+    /// because the two questions this is asked - at the moment somebody types, and at the end of a
+    /// turn - have to be answered against the same clock. An event is broadcast when it happens
+    /// and drawn when the loop next comes round, and a key press that overtook one would make the
+    /// answer "no request since" for a request that had already gone out.
+    fn requests(&self) -> usize {
+        self.kernel.with_history(|session| {
+            session
+                .records()
+                .filter(|record| matches!(record.event, Event::ModelRequested { .. }))
+                .count()
+        })
+    }
+
     /// Performs exactly one transition of the state machine, and stops.
     ///
     /// note: This is the runtime's own shape, made visible. A turn is a loop over `step`, and
@@ -484,6 +504,9 @@ impl App {
         self.busy = false;
         self.close();
 
+        // a `Stepped` outcome is somebody driving this a transition at a time, and a failure is
+        // not the moment to start something else; either way what was typed waits for `/continue`
+        let carry_on = matches!(outcome, Outcome::Stopped(_)) && !self.interrupting;
         match outcome {
             Outcome::Failed(e) => self.say(Speaker::Error, e),
             Outcome::Stopped(State::Deciding { .. }) => self.overlay = Some(Overlay::Permission),
@@ -505,6 +528,20 @@ impl App {
             Outcome::Stepped(state) => self.stepped(state),
         }
         self.interrupting = false;
+
+        // note: a message sent while a turn was running was pushed into the context and started
+        // nothing, because a turn was already going. Whether it was ever answered was then down to
+        // luck: a turn still working its way through tool calls picked it up on its next request,
+        // and one that ended first left it sitting there with nobody coming back to it and nothing
+        // on screen saying so. The question is not whether the model has spoken since - it answers
+        // the request it was already sent, which went out before the message existed - but whether
+        // a request has gone out at all since the message was pushed. If none has, the model has
+        // not been shown it
+        if carry_on
+            && std::mem::take(&mut self.typed_ahead).is_some_and(|then| then == self.requests())
+        {
+            self.start_turn();
+        }
 
         // the counter has just been told what the last request really cost, so the figures on the
         // older items are out of date. Bringing them into line is a decision, not a side effect
@@ -1372,6 +1409,9 @@ impl App {
         self.say(Speaker::User, line);
         // this is all "sending a message" is: one context item, and then the loop
         self.kernel.push(ContextItem::user(line));
+        // ... except while the loop is already running, where the turn that is running gets first
+        // refusal on it; see `on_outcome`
+        self.typed_ahead = self.busy.then(|| self.requests());
         self.start_turn();
     }
 

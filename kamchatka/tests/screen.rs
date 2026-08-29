@@ -21,7 +21,7 @@ use kamchatka::{
 };
 use nachalnik::{
     Capability, Config, ContextItem, ContextState, Delta, Event, Kernel, ModelInfo, ModelResponse,
-    StopReason, Usage, Verdict,
+    State, StopReason, Usage, Verdict,
     test::{ConstTool, ScriptedProvider, call},
 };
 use ratatui::{
@@ -2106,4 +2106,52 @@ async fn a_pasted_block_arrives_as_the_lines_it_was_pasted_as() {
             "{line} is not in the prompt: {screen}"
         );
     }
+}
+
+#[tokio::test]
+async fn a_message_a_turn_ended_without_sending_starts_a_turn_of_its_own() {
+    let mut harness = Harness::new([
+        ModelResponse::text("the first answer"),
+        ModelResponse::text("the second answer"),
+    ]);
+
+    harness.send("the first question").await;
+    harness.settle().await;
+
+    // typed into a turn that is already running, and which then ends without having asked
+    // anything since. Nothing used to come back to it: the message sat in the context, answered by
+    // nobody, with the screen showing it as though it had been sent
+    harness.app.busy = true;
+    harness.send("the second question").await;
+    harness.app.busy = false;
+    harness.app.on_outcome(Outcome::Stopped(State::Idle));
+
+    assert!(harness.app.busy, "a turn was started for it");
+    harness.settle().await;
+    let screen = harness.screen();
+    assert!(screen.contains("the second answer"), "{screen}");
+}
+
+#[tokio::test]
+async fn a_message_the_running_turn_did_ask_about_does_not_start_another() {
+    let mut harness = Harness::new([
+        ModelResponse::text("the first answer"),
+        ModelResponse::text("both of them, answered"),
+    ]);
+
+    harness.send("the first question").await;
+    harness.settle().await;
+
+    harness.app.busy = true;
+    harness.send("the second question").await;
+    harness.app.busy = false;
+
+    // ... and this time a request does go out after it was typed, which is the turn that was
+    // running picking it up on its way. A turn started here would be one nobody asked for
+    harness.app.start_turn();
+    harness.settle().await;
+
+    assert!(!harness.app.busy, "nothing was started a second time");
+    let screen = harness.screen();
+    assert!(screen.contains("both of them, answered"), "{screen}");
 }
