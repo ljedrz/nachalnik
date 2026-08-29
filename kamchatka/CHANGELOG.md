@@ -15,6 +15,12 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   for the next, `alt+1` to `alt+4` for one in particular, `tab` between the prompt and the open
   tab. The prompt and the status line are under all of them; a message sent into a turn that is
   already running waits for the end of it, says so, and then goes in and gets a turn of its own.
+  A long message wraps in the prompt rather than sliding sideways under the left border, and the
+  box grows to hold every row of it: breaks fall at word bounds, so a path or a URL with no spaces
+  in it is broken at a `/` rather than run off the edge, and a word too long for a row of its own
+  is split. The box is sized by `ui::wrapped_rows`, which counts the rows the widget will draw -
+  two pieces of code that have to agree, so a test asks the widget rather than trusting the
+  arithmetic.
   A pasted block goes into the prompt as the lines it was pasted as: bracketed paste stops a
   pasted newline being read as `enter` and sending half of what was pasted, and the carriage
   returns a terminal spells those newlines with are put back, or the whole of it arrives as one

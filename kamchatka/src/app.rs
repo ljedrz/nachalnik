@@ -17,7 +17,7 @@ use nachalnik::{
     Capability, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Grant,
     GrantSource, Kernel, State, Verdict, selectors::Selector,
 };
-use ratatui_textarea::{CursorMove, TextArea};
+use ratatui_textarea::{CursorMove, TextArea, WrapMode};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
@@ -253,6 +253,12 @@ impl App {
         let mut input = TextArea::default();
         input.set_placeholder_text("ask for something, or /help");
         input.set_cursor_line_style(ratatui::style::Style::default());
+        // a long message wraps rather than scrolling sideways: the default keeps one long line on
+        // one row and slides it under the left border, so what somebody typed a moment ago is off
+        // the screen while they are still typing it. `WordOrGlyph` breaks at spaces and splits a
+        // word only when it could not fit on a line of its own - a path or a URL, which is
+        // exactly the thing worth seeing all of
+        input.set_wrap_mode(WrapMode::WordOrGlyph);
 
         Self {
             kernel,

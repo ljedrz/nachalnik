@@ -24,6 +24,7 @@ use ratatui::{
 };
 
 use tui_markdown::StyleSheet as _;
+use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::app::{App, Focus, Overlay, Speaker, Tab};
 
@@ -143,6 +144,83 @@ pub(crate) const SELECTORS: &str = "  17                      the item with that
   What it matched is reported before anything is sent, and every change is one
   `u` away from being undone.";
 
+/// How many rows a set of lines occupies once soft-wrapped to `width`.
+///
+/// note: `TextArea` wraps when it draws and does not report how many rows that came to, so this
+/// counts them the same way `WrapMode::WordOrGlyph` breaks them: fill up to the width, go back to
+/// the last space if there is one, and split a word that would not fit on a line of its own. It
+/// has to agree with the widget about the *number* of rows rather than about where the breaks
+/// fall, and the screen test is what holds the two together - if they ever disagree, the box is
+/// the wrong size and text goes missing, which is the thing worth failing a build over.
+pub fn wrapped_rows(lines: &[String], width: usize) -> usize {
+    if width == 0 {
+        return lines.len().max(1);
+    }
+
+    lines
+        .iter()
+        .map(|line| rows_for(line, width))
+        .sum::<usize>()
+        .max(1)
+}
+
+/// The rows one logical line takes: fill with whole word-bound chunks, start a new row when the
+/// next one will not fit, and split a chunk that will not fit on a row of its own.
+fn rows_for(line: &str, width: usize) -> usize {
+    let mut closed = 0;
+    let mut filled = 0;
+    let mut started = false;
+
+    for (_, text) in line.split_word_bound_indices() {
+        let mut chunk = text;
+        while !chunk.is_empty() {
+            let chunk_width = Span::raw(chunk).width();
+            if filled + chunk_width <= width {
+                filled += chunk_width;
+                started = true;
+                break;
+            }
+            // there is something on this row already, so end it and try the chunk on the next
+            if started {
+                closed += 1;
+                filled = 0;
+                started = false;
+                continue;
+            }
+            // an empty row and it still does not fit: this is one long word, and it is cut
+            let take = prefix_within(chunk, width);
+            closed += 1;
+            chunk = &chunk[take..];
+            filled = 0;
+        }
+    }
+
+    // the row still being filled counts, and a line with nothing on it is a row of its own
+    closed + usize::from(started || closed == 0)
+}
+
+/// The longest prefix of `text` that fits in `width` columns, and never nothing - a grapheme
+/// wider than the whole box would otherwise loop forever.
+fn prefix_within(text: &str, width: usize) -> usize {
+    let mut end = 0;
+    let mut filled = 0;
+
+    for (offset, grapheme) in text.grapheme_indices(true) {
+        let next = filled + Span::raw(grapheme).width();
+        if end != 0 && next > width {
+            break;
+        }
+        end = offset + grapheme.len();
+        filled = next;
+        if filled >= width {
+            break;
+        }
+    }
+
+    end.max(text.chars().next().map_or(1, char::len_utf8))
+        .min(text.len())
+}
+
 /// Draws one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
     // editing an item wants more room than composing a message does, and the tab underneath is
@@ -151,7 +229,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         true => 16,
         false => 8,
     };
-    let input_height = (app.input.lines().len() as u16).clamp(1, most) + 2;
+    // the *wrapped* height, not the number of lines somebody typed: with soft wrapping on, one
+    // long line is several rows, and a box sized to the line count would show the last of them
+    // and hide the rest
+    let inner = frame.area().width.saturating_sub(2) as usize;
+    let input_height = (wrapped_rows(app.input.lines(), inner) as u16).clamp(1, most) + 2;
     let [body, input, status] = Layout::vertical([
         Constraint::Min(3),
         Constraint::Length(input_height),

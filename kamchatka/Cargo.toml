@@ -71,6 +71,11 @@ tui-markdown = { version = "0.3", default-features = false }
 synoptic = "2.2"
 
 tokio-stream = "0.1"
+# the prompt box has to be as tall as its wrapped text, and `ratatui-textarea` wraps when it draws
+# without reporting how many rows that came to. `ui::wrapped_rows` counts them, and counting them
+# the same way means breaking where it breaks: at unicode word bounds, which is why `/` in a long
+# path is a break and a plain search for spaces is not enough
+unicode-segmentation = "1.13"
 
 # the sandbox the `shell` tool runs under. Landlock is a Linux LSM a process applies to *itself* -
 # no privileges, no setuid helper, no container - which is what makes it small enough to belong in
