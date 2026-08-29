@@ -398,3 +398,38 @@ fn the_row_count_agrees_with_what_the_widget_actually_draws() {
         }
     }
 }
+
+/// The status line is drawn without wrapping, so whatever runs past the right edge is gone. What
+/// sits at that end is the provider's own token figure and the key that opens the help, and they
+/// are worth more than the address - so the address is what gives way.
+///
+/// note: found by pointing the live suite at Google AI Studio, whose host is
+/// `generativelanguage.googleapis.com`: twenty columns longer than `openrouter.ai`, and enough to
+/// push `really` and `F1 for the keys` off a 100-column terminal.
+#[test]
+fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
+    let status_at = |width: u16| {
+        let mut app = app();
+        let mut terminal = Terminal::new(TestBackend::new(width, 12)).expect("a backend");
+        terminal
+            .draw(|frame| ui::draw(frame, &mut app))
+            .expect("a frame");
+        let buffer = terminal.backend().buffer().clone();
+        (0..width)
+            .map(|x| buffer[(x, 11)].symbol())
+            .collect::<String>()
+    };
+
+    // wide: the address is there beside the model
+    let wide = status_at(160);
+    assert!(wide.contains("@ 127.0.0.1:1"), "{wide}");
+    assert!(wide.contains("F1 for the keys"), "{wide}");
+
+    // narrow: dropping the address is exactly what makes the rest fit
+    let narrow = status_at(66);
+    assert!(!narrow.contains('@'), "the address gave way: {narrow}");
+    assert!(
+        narrow.contains("F1 for the keys"),
+        "and the key hint did not: {narrow}"
+    );
+}

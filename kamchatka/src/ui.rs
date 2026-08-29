@@ -935,7 +935,29 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
         dim,
     );
 
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+    // the line is drawn without wrapping, so anything past the right edge is simply gone - and
+    // what sits at that end is the provider's own figure and the key that opens the help, which
+    // are worth more than the address. The address is what gives way: `openrouter.ai` costs 16
+    // columns and `generativelanguage.googleapis.com` costs 36, which is the difference between
+    // a line that fits at 100 columns and one that loses its last two facts
+    let line = Line::from(spans);
+    let line = match line.width() > area.width as usize {
+        true => Line::from(without_host(line.spans)),
+        false => line,
+    };
+
+    frame.render_widget(Paragraph::new(line), area);
+}
+
+/// The same spans with the ` @ host` taken off the model's name.
+fn without_host(spans: Vec<Span<'static>>) -> Vec<Span<'static>> {
+    spans
+        .into_iter()
+        .map(|span| match span.content.split_once(" @ ") {
+            Some((model, _)) => Span::styled(model.to_owned(), span.style),
+            None => span,
+        })
+        .collect()
 }
 
 /// What the runtime is doing, in one word.
