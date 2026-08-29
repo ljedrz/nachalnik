@@ -61,7 +61,8 @@ pub const HELP: &str = "  THE TABS
     pgup / pgdn         a screenful at a time
     g / G               the first item / the last
     23G                 the item numbered 23
-    space               take it out of the next request, or put it back
+    space               cycle how much of it the model gets: all of it, then
+                        a … marker where it was, then nothing, then all of it
     p                   pin it, so that compaction cannot touch it
                         (on a ▫ archived row, either of those sends the whole
                          of an output the model was shown a shortened copy of)

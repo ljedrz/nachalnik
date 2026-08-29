@@ -90,7 +90,7 @@ again.
 
 | key | what happens |
 | --- | --- |
-| <kbd>space</kbd> | take an item out of the next request, or put it back |
+| <kbd>space</kbd> | cycle how much of it the model gets: all of it → a `…` marker → nothing → back |
 | <kbd>p</kbd> | pin it, so that the compactor is refused if it tries |
 | <kbd>e</kbd> | change what it says |
 | <kbd>enter</kbd> | read the whole of what it says |

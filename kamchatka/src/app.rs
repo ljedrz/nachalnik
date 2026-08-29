@@ -938,9 +938,15 @@ impl App {
         // editing something decides what it says, not whether it is sent - so whatever it was
         // doing, it goes on doing. `ContextItem::new` starts out Active, and carrying over only
         // the pin meant editing a pruned item quietly put it back into the next request, and
-        // editing an *archived* one promoted the whole of an oversized tool output into it
+        // editing an *archived* one promoted the whole of an oversized tool output into it. An
+        // elided one is the same trap in a quieter form: the row says a marker is being sent, so
+        // an edit that came back Active would be sending the new text against what the screen
+        // says. It stays elided, and `space` round to active is how you say you meant it read
         edited.state = match old.state {
-            ContextState::Pinned | ContextState::Excluded | ContextState::Archived => old.state,
+            ContextState::Pinned
+            | ContextState::Excluded
+            | ContextState::Elided
+            | ContextState::Archived => old.state,
             _ => ContextState::Active,
         };
 
@@ -1003,10 +1009,28 @@ impl App {
                 self.editing = Some(picked.id);
                 self.focus = Focus::Input;
             }
-            // taking something out of the next request, and putting it back
+            // how much of an item the model gets, in three steps out and one back: all of it,
+            // then a marker where it was, then nothing at all
+            //
+            // note: the middle step is the one worth having a key for. Taking a tool result out
+            // makes the projector drop the call that asked for it, so the model reads a
+            // conversation it never had; elided, the call keeps its answer and only the content
+            // is gone. Which of the two somebody wants is not something this program can guess -
+            // hiding a result outright is a fair thing to want - so it is a cycle rather than a
+            // decision, the same way the permissions tab cycles a stance through three
             KeyCode::Char(' ') => {
                 let (to, note) = match picked.state {
+                    // note: this one is read by the model, in the brackets the projector puts
+                    // round it, so it is written for somebody who has never heard of this
+                    // program: no "at the terminal", which is this codebase's own idiom for
+                    // "a person did it here" and reads to a model like a shell or a state. It
+                    // does not invite the model to ask for it back either - the thing hidden may
+                    // be the thing that should not be asked for
                     ContextState::Active | ContextState::Pinned => (
+                        ContextState::Elided,
+                        Some("removed from view by the user".into()),
+                    ),
+                    ContextState::Elided => (
                         ContextState::Excluded,
                         Some("taken out at the terminal".into()),
                     ),

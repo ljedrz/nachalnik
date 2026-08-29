@@ -210,23 +210,46 @@ async fn taking_an_item_out_of_the_next_request_takes_it_out_of_the_next_request
     let before = harness.app.kernel.preview_request().unwrap();
     assert!(format!("{:?}", before.messages).contains("hunter2"));
 
-    // to the context tab, pick the file, take it out
+    // to the context tab, pick the file, and walk it out one press at a time
     harness.tab(Tab::Context);
     harness.press(KeyCode::Home).await;
-    harness.press(KeyCode::Char(' ')).await;
 
-    let after = harness.app.kernel.preview_request().unwrap();
+    // once: elided. What it says is out of the request, and a marker stands where it was
+    harness.press(KeyCode::Char(' ')).await;
+    let sent = format!(
+        "{:?}",
+        harness.app.kernel.preview_request().unwrap().messages
+    );
+    assert!(!sent.contains("hunter2"), "the request still carries it");
     assert!(
-        !format!("{:?}", after.messages).contains("hunter2"),
-        "the request still carries what was taken out"
+        sent.contains("removed from view by the user"),
+        "and says where it went: {sent}"
+    );
+    assert_eq!(harness.app.kernel.items()[0].state, ContextState::Elided);
+
+    // and the screen says so, rather than the item simply disappearing
+    let screen = harness.screen();
+    let row = screen
+        .lines()
+        .find(|line| line.contains("secrets.txt"))
+        .expect("an elided item is still listed");
+    assert!(row.contains('…'), "{row}");
+
+    // twice: excluded, and now there is nothing of it in the request at all
+    harness.press(KeyCode::Char(' ')).await;
+    let sent = format!(
+        "{:?}",
+        harness.app.kernel.preview_request().unwrap().messages
+    );
+    assert!(
+        !sent.contains("hunter2") && !sent.contains("removed from view"),
+        "{sent}"
     );
     assert_eq!(
         harness.app.kernel.items()[0].state,
         ContextState::Excluded,
         "and the item is still there, in a state that says why"
     );
-
-    // and the screen says so, rather than the item simply disappearing
     let screen = harness.screen();
     let row = screen
         .lines()
@@ -234,10 +257,11 @@ async fn taking_an_item_out_of_the_next_request_takes_it_out_of_the_next_request
         .expect("an excluded item is still listed");
     assert!(row.contains('-'), "{row}");
 
-    // putting it back is the same key
+    // three times: back where it started, on the same key
     harness.press(KeyCode::Char(' ')).await;
     let again = harness.app.kernel.preview_request().unwrap();
     assert!(format!("{:?}", again.messages).contains("hunter2"));
+    assert_eq!(harness.app.kernel.items()[0].state, ContextState::Active);
 }
 
 #[tokio::test]
@@ -1662,7 +1686,8 @@ async fn editing_an_item_leaves_it_doing_whatever_it_was_doing() {
     harness.tab(Tab::Context);
     harness.press(KeyCode::Home).await;
 
-    // take it out, then change what it says
+    // take it out - twice, past the marker - then change what it says
+    harness.press(KeyCode::Char(' ')).await;
     harness.press(KeyCode::Char(' ')).await;
     harness.press(KeyCode::Char('e')).await;
     harness.send("a shorter wall").await;
@@ -2395,10 +2420,12 @@ async fn any_one_item_can_be_taken_out_of_the_request_or_pinned_against_compacti
     }
     harness.tab(Tab::Context);
 
-    // one at a time, by picking it: the second out of the next request, the third pinned. Neither
-    // is a sweep over everything, which is the operation that is never what anybody wants
+    // one at a time, by picking it: the second out of the next request - two presses, since the
+    // first stops at the marker - and the third pinned. Neither is a sweep over everything, which
+    // is the operation that is never what anybody wants
     harness.press(KeyCode::Home).await;
     harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Char(' ')).await;
     harness.press(KeyCode::Char(' ')).await;
     harness.press(KeyCode::Down).await;
     harness.press(KeyCode::Char('p')).await;
@@ -2430,6 +2457,7 @@ async fn any_one_item_can_be_taken_out_of_the_request_or_pinned_against_compacti
     assert!(!sent.contains("the second"), "{sent}");
 
     // and every change is one keystroke from being undone
+    harness.press(KeyCode::Char('u')).await;
     harness.press(KeyCode::Char('u')).await;
     harness.press(KeyCode::Char('u')).await;
     let restored: Vec<ContextState> = harness
@@ -2579,4 +2607,46 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
         kernel.with_context(|c| c.tokens_withheld()),
         kernel.item(result).unwrap().tokens
     );
+}
+
+/// Editing an elided item leaves it elided: the row says a marker is being sent, and an edit that
+/// came back `Active` would be sending the new text against what the screen says.
+#[tokio::test]
+async fn editing_an_elided_item_does_not_quietly_send_the_edit() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("big.log", "a wall of output"));
+    harness.app.kernel.push(ContextItem::user("hello"));
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+
+    // one press: elided. Then rewrite what it says
+    harness.press(KeyCode::Char(' ')).await;
+    assert_eq!(harness.app.kernel.items()[0].state, ContextState::Elided);
+    harness.press(KeyCode::Char('e')).await;
+    harness.send("a shorter wall").await;
+
+    let items = harness.app.kernel.items();
+    let edited = items.last().expect("the replacement");
+    assert_eq!(edited.state, ContextState::Elided);
+    let sent = format!(
+        "{:?}",
+        harness.app.kernel.preview_request().unwrap().messages
+    );
+    assert!(!sent.contains("shorter wall"), "{sent}");
+
+    // and `space` round the rest of the cycle - past excluded - is how you say you meant the
+    // model to read it
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Char(' ')).await;
+    harness.press(KeyCode::Char(' ')).await;
+    let items = harness.app.kernel.items();
+    assert_eq!(items.last().unwrap().state, ContextState::Active);
+    let sent = format!(
+        "{:?}",
+        harness.app.kernel.preview_request().unwrap().messages
+    );
+    assert!(sent.contains("shorter wall"), "{sent}");
 }

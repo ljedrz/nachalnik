@@ -29,9 +29,13 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   so nothing gets narrower and a window with nothing to scroll looks exactly as it did.
 - The context tab is a table: every item the runtime holds, its kind, what it costs, whether it is
   going into the next request, and what the model will actually read of it - or, for the ones that
-  are not going, why not, in the projector's own words. `space` takes one out and puts it back,
-  `p` pins it, `enter` reads the whole of it, `u` undoes the last change, and `23G` goes to the
-  item numbered 23 - the number every note names and every selector takes.
+  are not going, why not, in the projector's own words. `space` cycles how much of it the model
+  gets - all of it, then a `…` marker where it was, then nothing, then all of it again - `p` pins
+  it, `enter` reads the whole of it, `u` undoes the last change, and `23G` goes to the item
+  numbered 23, the number every note names and every selector takes. The middle step is the one
+  worth a key: taking a tool result out makes the projector drop the call that asked for it, and
+  eliding it leaves the call answered, so which of the two somebody wants is a choice rather than
+  something this program should be guessing at.
 - `e` on a context item changes what it says, through `Kernel::supersede`: the original stays,
   marked `~`, naming the item that replaced it, and one `u` brings it back. `space` and `p` decide
   whether the model reads an item; this decides what it reads.

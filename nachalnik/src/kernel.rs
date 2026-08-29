@@ -1060,11 +1060,11 @@ impl Kernel {
                 }
             }
 
-            // note: the note is set from the pass's reason rather than kept, exactly as the
-            // removals above do it - a note says why an item is in the state it is in, and the
-            // one it may already be carrying answers a different question ("4,096 bytes were
-            // truncated by the output limit"), which would be a strange thing to hand the model
-            // as the reason it cannot see this any more
+            // note: the note is set from the pass's reason rather than kept, as the removals
+            // above do - a note says why an item is in the state it is in, and the one it may
+            // already be carrying answers a different question ("4,096 bytes were truncated by
+            // the output limit"), which would be a strange thing to hand the model as the reason
+            // it cannot see this any more
             for id in elide {
                 let Some(item) = context.item(id) else {
                     continue;
@@ -1083,7 +1083,10 @@ impl Kernel {
                     continue;
                 }
 
-                let note = Some(format!("compaction: {reason}"));
+                // the reason as it was written, with no `compaction:` in front of it: unlike a
+                // removal's note this one is read by the model, in the brackets the projector
+                // puts round it, and a client showing it has already said `elided` in the row
+                let note = Some(reason.clone());
                 if let Some(from) = context.set_state(id, ContextState::Elided, note.clone()) {
                     announcements.push(Event::ContextChanged {
                         id,
