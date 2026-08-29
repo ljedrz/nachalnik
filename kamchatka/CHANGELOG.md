@@ -13,14 +13,13 @@ minor bump may break you.
   enforced rather than reported: `network: deny` is refused by the kernel at `connect()`,
   `write: deny` makes the working directory read-only, and nothing outside that directory is
   readable or writable either way. It is applied by re-executing this program in a mode that
-  confines itself and then *becomes* the command - Landlock restricts the calling thread, and a
-  single-threaded helper is the shape that needs no thought about which one; the domain is
-  inherited across the `exec`, so nothing is given up by leaving, and a command that is stopped is
-  reached by the signal rather than sheltering behind a helper. A directory of the
-  run's own is handed over as `TMPDIR`; `/tmp` itself is not opened up, and the directory is
-  removed by the process that spawned the command, that being the only one of the two which can:
-  unlinking a directory is a write to the one it sits in, and the confined process cannot write
-  there.
+  confines itself and then *becomes* the command: Landlock restricts the calling thread, and a
+  single-threaded helper is the shape that needs no thought about which one. The `exec` matters -
+  the domain is inherited across it, so nothing is given up by leaving, and the process a stopped
+  call kills is the command rather than a helper standing in front of it. A directory of the run's
+  own is handed over as `TMPDIR` and `/tmp` itself is not opened up; the spawning process removes
+  that directory afterwards, being the only one of the two that can, since unlinking a directory is
+  a write to the one it sits in.
 - `read`, `write` and `edit` are held to the same boundary by their own code, resolving `..` and
   symlinks before comparing. Weaker in kind than a ruleset, and said to be.
 - The binary that confines a command is settled once at startup rather than asked for per call.
@@ -30,7 +29,14 @@ minor bump may break you.
 - `--sandbox-allow PATH` opens up another path, `--no-sandbox` turns the whole thing off, and the
   permissions tab says which of `shell: confined` and `shell: a command can do any of these` is
   true here.
-
+- The permissions tab says `shell: a command can do any of these` while a registered tool that runs
+  commands is not refused outright. `Capability::Shell` subsumes every other capability, so a tab
+  that listed five verdicts and said nothing about that was reporting four restrictions that are
+  not there.
+- A call the policy refuses on its own says which stance refused it - ``shell: refused by
+  `network`, which this command reaches for`` - because the tool result records only `the call was
+  not permitted`, and when the tool's own capability is `allow` that leaves a refused call with
+  nothing on screen accounting for it.
 - Fenced code blocks in the model's answers are syntax-coloured, by token *name* rather than by
   theme: `synoptic` says which pieces are comments, strings, keywords, numbers and calls, and this
   program picks the colours. The fences are split out before the markdown renderer sees them,
@@ -43,24 +49,12 @@ minor bump may break you.
   the content reaches its last row: `ScrollbarState` counts scroll *positions*, not rows, and these
   tabs stop at the last full page rather than scrolling the final row up to the top.
 
-### added
-
-- The permissions tab says `a shell command can do any of these` while a registered tool that
-  runs commands is not refused outright. `Capability::Shell` subsumes every other capability, so a
-  tab that listed five verdicts and said nothing about that was reporting four restrictions that
-  are not there.
-- A call the policy refuses on its own says which stance refused it - `shell: refused by
-  `network`, which this command reaches for` - because the tool result records only `the call was
-  not permitted`, and when the tool's own capability is `allow` that leaves a refused call with
-  nothing on screen accounting for it.
-
 ### changed
 
 - The permissions tab lists the answers somebody has actually given, and counts the rest along the
   bottom. `ask` is what the policy does when it has not been told anything, and a screenful of it
   buried the one or two lines that say what this agent can do without stopping. Cycling a row back
   to `ask` takes it off the tab, which is what taking a decision back looks like.
-
 - The `network` stance starts at `ask` rather than `deny`. Refusing outright was a decision made on
   the user's behalf about something they may perfectly well want, and now that the sandbox enforces
   either answer, the answer is theirs to give.
@@ -77,7 +71,6 @@ minor bump may break you.
   produces three questions, all of them decided before the first is drawn, so an `always` that did
   not reach them went back on itself one keystroke later. Anything still waiting that the policy
   would now let through is let through; anything that needs something else is still a question.
-
 - The `network` stance is consulted for a `shell` call whose command names a program that goes out
   to the network - `curl`, `pip install`, `git push`. No tool declares `Capability::Network`,
   because a model that wants the network writes `curl`, so the row read `deny` beside `nothing
