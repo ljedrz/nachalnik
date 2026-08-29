@@ -1,1 +1,15 @@
 /target
+
+# what a local run of the agent leaves in the working directory: the settings its harness writes,
+# and the sandbox's scratch directory when a confined command was killed before it could be tidied
+.claude/settings.local.json
+kamchatka-*/
+
+# rustfmt's backups and the counters a profiled run drops
+**/*.rs.bk
+*.profraw
+
+# editors and desktops
+.DS_Store
+*.swp
+*~
