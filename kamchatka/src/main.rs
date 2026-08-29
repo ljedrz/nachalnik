@@ -126,6 +126,12 @@ async fn terminal() -> Result<()> {
         None => Kernel::new(config),
     };
 
+    // note: subscribed before anything is plugged in, so that the wiring is on the trace like
+    // everything else. Setting the provider, the policy, the compactor and each tool are all
+    // events, and a screen that started listening afterwards drew a session whose first few facts
+    // were only in the log
+    let mut events = kernel.subscribe();
+
     let policy = Arc::new(tools::Careful::new());
     kernel.set_provider(provider.clone());
     kernel.set_policy(policy.clone());
@@ -167,7 +173,6 @@ async fn terminal() -> Result<()> {
     #[cfg(feature = "mcp")]
     let _servers = attach_mcp(&kernel, &args.mcp).await?;
 
-    let mut events = kernel.subscribe();
     if let Some(system) = &args.system {
         kernel.push(ContextItem::system(system.clone()).pinned());
     }

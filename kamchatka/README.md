@@ -127,9 +127,22 @@ made of:
 └──────────────────────────────────────────────────────────────────── 41 events · /save keeps them all ────────┘
 ```
 
+Every transition of the state machine is in there, and so is everything either side of it: what was
+requested, what was decided, what was added to the context and what it cost — down to the wiring,
+since plugging in a provider, a policy and each tool is itself an event and the screen subscribes
+before any of it happens. There is a test that the tab draws every event the session recorded.
+
 It is the same stream `/save` writes to a `.jsonl`, and reading it is how you find out that a
 permission question became a decision became a state change became a call. <kbd>tab</kbd> then
 <kbd>up</kbd> reads back through it.
+
+The one thing it does not draw a line per is a *fragment*: the model's streamed text and a running
+command's output arrive dozens of times a second, and a line each would push the rest of the trace
+off the screen before it could be read — a `cat` of a thousand lines really did erase the whole of
+it. Tool output is one line that counts up (`tool.output  shell, 12,004 bytes so far`) and the
+model's text is on the chat tab as it arrives. The pane keeps the last few hundred lines; `/save`
+keeps every event there was, including the one line no subscriber can ever catch — the kernel's own
+`session.started`, emitted while it is being constructed.
 
 And from anywhere, <kbd>ctrl+p</kbd> prints the request those items add up to — the kernel's own
 rendering of it, not a description, with a header naming everything the projector left out and

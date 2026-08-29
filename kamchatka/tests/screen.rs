@@ -48,11 +48,13 @@ impl Harness {
     /// The same, for a runtime configured some other way.
     fn configured(script: impl IntoIterator<Item = ModelResponse>, config: Config) -> Self {
         let kernel = Kernel::new(config);
+        // subscribed first, the way the program does it: plugging things in is itself a handful of
+        // events, and they belong on the trace with the rest
+        let events = kernel.subscribe();
+
         let policy = Arc::new(Careful::new());
         kernel.set_provider(Arc::new(ScriptedProvider::new(script)));
         kernel.set_policy(policy.clone());
-
-        let events = kernel.subscribe();
         let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
         // the screen never talks to this one; it is here for `/model`, which the tests do not use
         let provider = Arc::new(OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""));
@@ -2376,4 +2378,98 @@ async fn the_address_the_requests_go_to_is_visible_and_can_be_changed() {
         seams.contains("http://127.0.0.1:2/v1"),
         "the seam that names the provider says where it is: {seams}"
     );
+}
+
+#[tokio::test]
+async fn any_one_item_can_be_taken_out_of_the_request_or_pinned_against_compaction() {
+    let mut harness = Harness::new([]);
+    for text in ["the first", "the second", "the third"] {
+        harness.app.kernel.push(ContextItem::user(text));
+    }
+    harness.tab(Tab::Context);
+
+    // one at a time, by picking it: the second out of the next request, the third pinned. Neither
+    // is a sweep over everything, which is the operation that is never what anybody wants
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Char(' ')).await;
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Char('p')).await;
+
+    let states: Vec<ContextState> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.state)
+        .collect();
+    assert_eq!(
+        states,
+        [
+            ContextState::Active,
+            ContextState::Excluded,
+            ContextState::Pinned
+        ]
+    );
+
+    // ... and what that means is on the wire: the excluded one is not in the request, and the
+    // pinned one is something the kernel will refuse a compactor
+    let request = harness.app.kernel.preview_request().expect("a request");
+    let sent = format!("{:?}", request.messages);
+    assert!(
+        sent.contains("the first") && sent.contains("the third"),
+        "{sent}"
+    );
+    assert!(!sent.contains("the second"), "{sent}");
+
+    // and every change is one keystroke from being undone
+    harness.press(KeyCode::Char('u')).await;
+    harness.press(KeyCode::Char('u')).await;
+    let restored: Vec<ContextState> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.state)
+        .collect();
+    assert_eq!(restored, [ContextState::Active; 3]);
+}
+
+#[tokio::test]
+async fn every_event_the_session_recorded_is_on_the_trace_tab() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "look", json!({}))]),
+        ModelResponse::text("and there it was"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("look", "a thing")));
+
+    harness.send("look").await;
+    harness.settle().await;
+    // the recount at the end of a turn is itself an event, and it is emitted by the outcome the
+    // line above has just handed over
+    harness.drain();
+    harness.tab(Tab::Trace);
+    let screen = harness.sized(120, 40);
+
+    // the claim is the whole log, not a selection of it: whatever the runtime recorded, this tab
+    // draws under the same name. Two exceptions, both of them nameable. The streaming fragments
+    // are coalesced into one counting line and are not in the log either by default
+    // (`Config::record_progress`), and the chat tab is where they are read; and `session.started`
+    // is emitted by the kernel's constructor, before a subscriber to it can exist at all
+    let recorded: std::collections::BTreeSet<String> = harness.app.kernel.with_history(|session| {
+        session
+            .records()
+            .map(|record| record.event.name().to_owned())
+            .collect()
+    });
+    assert!(recorded.len() > 8, "a turn records more than {recorded:?}");
+    for name in recorded.iter().filter(|name| *name != "session.started") {
+        assert!(
+            screen.contains(name.as_str()),
+            "`{name}` is not on the trace: {screen}"
+        );
+    }
 }
