@@ -262,3 +262,28 @@ async fn every_key_at_every_tab_with_nothing_to_act_on() {
         }
     }
 }
+
+/// The status line names the address as well as the model, and the address it names is the
+/// authority rather than the whole URL, which would not fit beside the rest of the line.
+///
+/// note: hand-parsed in `provider::host`, so the shapes worth pinning are the ones a person
+/// actually types at `/provider`: a bare host, a path to strip, a port to keep, and the ones that
+/// are not URLs at all - which come back as they came, a status line showing something odd being
+/// better than one showing nothing.
+#[test]
+fn the_address_on_the_status_line_is_the_host() {
+    let cases = [
+        ("https://openrouter.ai/api/v1", "openrouter.ai"),
+        ("http://localhost:11434/v1", "localhost:11434"),
+        ("https://openrouter.ai", "openrouter.ai"),
+        ("http://127.0.0.1:1", "127.0.0.1:1"),
+        ("localhost:8080/v1", "localhost:8080"),
+        ("", ""),
+        ("https://", "https://"),
+    ];
+
+    for (endpoint, expected) in cases {
+        let provider = OpenAiCompatible::new("m", endpoint, "");
+        assert_eq!(provider.host(), expected, "for endpoint {endpoint:?}");
+    }
+}

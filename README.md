@@ -170,7 +170,7 @@ $ cargo run -p kamchatka -- -f src/lib.rs "what does this crate do?"
 ┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ ask for something, or /help                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- done · gpt-4o-mini · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back · F1 for the keys
+ done · gpt-4o-mini @ openrouter.ai · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back · F1 for the keys
 ```
 
 Four tabs, each of which gets the whole window. The first is the conversation, which every

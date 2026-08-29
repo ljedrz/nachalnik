@@ -2480,3 +2480,22 @@ async fn every_event_the_session_recorded_is_on_the_trace_tab() {
         );
     }
 }
+
+/// The status line pairs the model with where it is being served from, without being asked for it.
+///
+/// note: `/model`, `/provider` and `/seams` have always named the address, but only when asked,
+/// so a session pointed at a local ollama drew exactly like one talking to OpenRouter - and the
+/// reason for naming the address at all is that those are two different models.
+#[tokio::test]
+async fn the_status_line_says_where_the_requests_go() {
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+
+    harness.send("go").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(
+        screen.contains("@ 127.0.0.1:1"),
+        "the status line does not say where the requests go: {screen}"
+    );
+}

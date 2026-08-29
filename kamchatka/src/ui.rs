@@ -793,8 +793,12 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
         spans.push(Span::raw(" "));
     };
 
+    // the address as well as the name, because the same name at a different address is a different
+    // model - `/model` and `/seams` have said so all along, but only when asked, so a session
+    // pointed at a local ollama looked exactly like one talking to OpenRouter. The host alone:
+    // the rest of the URL is `/provider`'s to show, and there is no room for it here
     if let Some(info) = app.kernel.model_info() {
-        add(info.model, dim);
+        add(format!("{} @ {}", info.model, app.provider.host()), dim);
     }
 
     let budget = app.kernel.budget();

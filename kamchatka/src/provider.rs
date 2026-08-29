@@ -92,6 +92,26 @@ impl OpenAiCompatible {
         self.base_url.lock().clone()
     }
 
+    /// Just the authority of [`Self::endpoint`] - `openrouter.ai`, `localhost:11434` - for the
+    /// status line, which has no room for the rest of it.
+    ///
+    /// note: hand-parsed rather than through a URL crate, because the whole use of it is a string
+    /// to draw. Anything this does not recognise as a URL is handed back as it came, since a
+    /// status line that showed nothing would be worse than one showing something odd.
+    pub fn host(&self) -> String {
+        let endpoint = self.endpoint();
+        let after_scheme = endpoint
+            .split_once("://")
+            .map_or(endpoint.as_str(), |(_, rest)| rest);
+
+        after_scheme
+            .split('/')
+            .next()
+            .filter(|host| !host.is_empty())
+            .unwrap_or(&endpoint)
+            .to_owned()
+    }
+
     /// Sends the requests somewhere else from now on, and asks the new place what it can hold.
     ///
     /// note: the model goes with it, because a model belongs to the address it is served at and

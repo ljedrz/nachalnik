@@ -150,6 +150,11 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   at a different address is a different model, and a comparison that cannot see the address is a
   comparison of names. The key is not changed with the address: it is read from the environment at
   startup, and a key typed at the prompt would be a key in the transcript.
+- The status line carries the host beside the model name - `gpt-4o-mini @ openrouter.ai`,
+  `qwen3-coder @ localhost:11434` - so the address is there without being asked for. Naming it only
+  in `/model`, `/provider` and `/seams` meant a session pointed at a local model drew exactly like
+  one talking to a hosted one, which is the confusion the paragraph above says it is avoiding. The
+  host alone, since the rest of the URL is `/provider`'s to show and there is no room for it here.
 - `/save PATH` writes the event log and a resumable snapshot beside it; `-r PATH` picks it back
   up in a fresh process. Both take a path you chose, on your disk - there is no session id, no
   server, and nothing to look up. Saving over files that already exist says which ones it
