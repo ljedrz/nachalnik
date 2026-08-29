@@ -205,11 +205,27 @@ fn the_file_tools_are_held_to_the_same_boundary() {
             .allows(dir.join("inside.txt").to_str().unwrap())
             .is_ok()
     );
-    assert!(
-        reach.allows("not-there-yet.txt").is_ok(),
+    // ... including one that is not there yet, which is most of what `write` is handed. Compared
+    // as strings, deliberately: a `PathBuf` compares by component, so a separator on the end of
+    // one is invisible to `assert_eq!` and visible to every `fs` call there is. That is how a
+    // `write` which could not create a single file went on passing a test that asserted `Ok`
+    let name = |path: &str| reach.allows(path).map(PathBuf::into_os_string);
+    assert_eq!(
+        name("not-there-yet.txt"),
+        Ok(dir.join("not-there-yet.txt").into_os_string()),
         "a file about to be created"
     );
-    assert!(reach.allows("sub/dir/new.txt").is_ok());
+    assert_eq!(
+        name("./not-there-yet.txt"),
+        Ok(dir.join("not-there-yet.txt").into_os_string())
+    );
+    assert_eq!(
+        name("sub/dir/new.txt"),
+        Ok(dir.join("sub/dir/new.txt").into_os_string())
+    );
+    // ... and the whole of what that is for
+    let made = reach.allows("not-there-yet.txt").expect("it is inside");
+    std::fs::write(&made, "made").expect("a file about to be created can be created");
 
     // outside, by every spelling somebody would reach for
     assert!(reach.allows("/etc/passwd").is_err());

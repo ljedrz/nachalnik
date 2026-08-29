@@ -186,7 +186,15 @@ impl Reach {
                 Ok(resolved) => break resolved.join(&rest),
                 Err(_) => match (existing.file_name(), existing.parent()) {
                     (Some(name), Some(parent)) => {
-                        rest = PathBuf::from(name).join(&rest);
+                        // note: and the same guard here, for the same reason. Without it every
+                        // path that does not exist yet came back with a separator on the end, so
+                        // `write` could create no file at all: `notes.txt/` is a directory, and
+                        // the tool reported `Is a directory (os error 21)` for a file it had just
+                        // been asked to make
+                        rest = match rest.as_os_str().is_empty() {
+                            true => PathBuf::from(name),
+                            false => Path::new(name).join(&rest),
+                        };
                         existing = parent;
                     }
                     _ => break absolute.clone(),
