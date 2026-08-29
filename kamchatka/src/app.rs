@@ -499,9 +499,14 @@ impl App {
         self.busy = false;
         self.close();
 
+        // note: a turn that stopped to ask a question has not ended - the call it is asking about
+        // still has a result to come - and a message pushed now would land between the call and
+        // that result, which is a place a request cannot have one. A live run put "what is the
+        // capital of Peru" exactly there
+        let ended = matches!(outcome, Outcome::Stopped(ref state) if !matches!(state, State::Deciding { .. }));
         // a `Stepped` outcome is somebody driving this a transition at a time, and a failure is
         // not the moment to start something else; either way what was typed waits for `/continue`
-        let carry_on = matches!(outcome, Outcome::Stopped(_)) && !self.interrupting;
+        let carry_on = ended && !self.interrupting;
         match outcome {
             Outcome::Failed(e) => self.say(Speaker::Error, e),
             Outcome::Stopped(State::Deciding { .. }) => self.overlay = Some(Overlay::Permission),
@@ -526,7 +531,7 @@ impl App {
 
         // a message somebody sent into this turn has waited for it to end; now it goes in, and
         // unless the turn was stopped or stepped it gets a turn of its own
-        if let Some(message) = self.typed_ahead.take() {
+        if ended && let Some(message) = self.typed_ahead.take() {
             self.kernel.push(ContextItem::user(message));
             if carry_on {
                 self.start_turn();

@@ -2224,3 +2224,55 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
     harness.settle().await;
     assert!(harness.app.overlay.is_none(), "answered");
 }
+
+#[tokio::test]
+async fn a_message_sent_into_a_turn_that_stops_to_ask_waits_for_the_answer_too() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("dug, and Lima"),
+        ModelResponse::text("Lima"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+    ));
+
+    harness.send("dig").await;
+    // typed while that turn is running, and the turn then stops to ask about the call
+    harness.send("what is the capital of Peru").await;
+    harness.settle().await;
+    assert!(harness.app.overlay.is_some(), "the turn stopped to ask");
+
+    // it must not have gone in yet: the call it stopped at has a result still to come, and a user
+    // message between an assistant's call and that call's result is a shape a request cannot have
+    let waiting: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert!(
+        !waiting.iter().any(|text| text.contains("capital of Peru")),
+        "{waiting:?}"
+    );
+
+    harness.answer(KeyCode::Char('y')).await;
+    harness.settle().await;
+
+    let after: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    let question = after
+        .iter()
+        .position(|text| text.contains("capital of Peru"))
+        .expect("it went in once the turn was done");
+    let result = after
+        .iter()
+        .position(|text| text.contains("a bone"))
+        .expect("the call's result");
+    assert!(result < question, "{after:?}");
+}
