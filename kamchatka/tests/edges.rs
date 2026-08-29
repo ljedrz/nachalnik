@@ -460,3 +460,35 @@ fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
         "and the key hint did not: {gone}"
     );
 }
+
+/// `/models` against somewhere that answers nothing says so, rather than opening an empty box.
+#[tokio::test]
+async fn models_says_when_the_endpoint_lists_none() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = app();
+    for c in "/models".chars() {
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+            .await;
+    }
+    app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .await;
+
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("a backend");
+    terminal
+        .draw(|frame| ui::draw(frame, &mut app))
+        .expect("a frame");
+    let screen: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|c| c.symbol())
+        .collect::<Vec<_>>()
+        .chunks(100)
+        .map(|row| format!("{}\n", row.concat()))
+        .collect();
+
+    assert!(screen.contains("lists no models"), "{screen}");
+    assert!(app.overlay.is_none(), "and no empty box was opened");
+}

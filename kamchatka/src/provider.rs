@@ -637,7 +637,7 @@ fn to_wire(message: &Message) -> Value {
 
 /// Whether a listed identifier names the model being asked about, allowing for the decorations
 /// listings put on them: Google's `models/` prefix, ollama's implicit `:latest` tag.
-fn same_model(listed: &str, model: &str) -> bool {
+pub fn same_model(listed: &str, model: &str) -> bool {
     listed == model
         || listed.strip_prefix("models/") == Some(model)
         || listed.strip_suffix(":latest") == Some(model)

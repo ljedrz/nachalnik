@@ -1587,6 +1587,62 @@ impl App {
                     None => self.say(Speaker::Error, "there is no provider"),
                 }
             }
+            // the ids an endpoint serves are its own - `google/gemini-3.5-flash` at one address
+            // and `gemini-3.5-flash` at another - so after `/provider` there was no way to find
+            // out what to hand `/model` except to guess it. The provider has always fetched this
+            // list, to say when a model is not on it; this is the same call with the answer shown
+            // rather than checked.
+            //
+            // note: awaited here rather than spawned, unlike the switches below. Those are told to
+            // go and do something and the screen carries on; this one *is* the answer, and a
+            // person who asked for a list is waiting for it either way
+            "models" => {
+                let provider = self.provider.clone();
+                let listed = provider.models().await;
+                if listed.is_empty() {
+                    self.say(
+                        Speaker::Error,
+                        format!("{} lists no models", provider.host()),
+                    );
+                    return;
+                }
+
+                let filter = rest.trim().to_lowercase();
+                let shown: Vec<&String> = listed
+                    .iter()
+                    .filter(|name| filter.is_empty() || name.to_lowercase().contains(&filter))
+                    .collect();
+                if shown.is_empty() {
+                    self.say(
+                        Speaker::Note,
+                        format!("none of the {} listed match `{filter}`", listed.len()),
+                    );
+                    return;
+                }
+
+                // the one in use is marked where it stands rather than pulled to the top, so the
+                // list keeps the order the endpoint gave it
+                let current = self.kernel.model_info().map(|info| info.model);
+                let body = shown
+                    .iter()
+                    .map(|name| {
+                        let mark = match &current {
+                            Some(model) if crate::provider::same_model(name, model) => "▸",
+                            _ => " ",
+                        };
+                        format!("{mark} {name}")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                // no address in the title: it is one `/provider` away, and the room it costs is
+                // the room the line below needs to say what to do with any of this
+                let title = match filter.is_empty() {
+                    true => format!(" {} models", shown.len()),
+                    false => format!(" {} of {} matching `{filter}`", shown.len(), listed.len()),
+                };
+                self.preview(format!("{title} · /model ID switches "), body);
+            }
             // the other half of `/model`: the same model name means a different model at a
             // different address, and comparing what is hosted with what is on this machine is two
             // endpoints rather than two names

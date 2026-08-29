@@ -165,6 +165,12 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   at a different address is a different model, and a comparison that cannot see the address is a
   comparison of names. The key is not changed with the address: it is read from the environment at
   startup, and a key typed at the prompt would be a key in the transcript.
+- `/models [FILTER]` asks the endpoint what it serves, marks the one in use with `▸`, and takes a
+  filter because fifty-four of them is not an answer. The ids belong to the address rather than to
+  the model - the same thing is `google/gemini-3.5-flash` at one and `gemini-3.5-flash` at another
+  - so `/model` was a command you could only use if you already knew what to type, and after a
+  `/provider` you did not. The provider had always fetched this list, to say when a model is not
+  on it; this is the same call with the answer shown rather than checked.
 - The status line carries the host beside the model name - `gpt-4o-mini @ openrouter.ai`,
   `qwen3-coder @ localhost:11434` - so the address is there without being asked for. Naming it only
   in `/model`, `/provider` and `/seams` meant a session pointed at a local model drew exactly like

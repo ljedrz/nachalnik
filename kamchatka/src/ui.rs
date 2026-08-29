@@ -111,6 +111,7 @@ pub const HELP: &str = "  THE TABS
     /tools drop ID      stop offering one of them, from now on
     /policy             open the permissions tab; also /permissions
     /model [ID]         show or switch the model, and say where it is
+    /models [FILTER]    what this endpoint serves, which is what /model takes
     /provider [URL [ID]] show or switch the address the requests go to, and
                         the model with it; also /endpoint. The key is the one
                         this started with

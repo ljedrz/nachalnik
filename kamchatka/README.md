@@ -351,6 +351,23 @@ now rather than a 404 on the next request. Both matter for different reasons: co
 models is one address and two names, while comparing a hosted model with the one running on this
 machine is two addresses. A comparison that cannot see the address is a comparison of names.
 
+`/models [FILTER]` is what makes `/model` usable, because the ids belong to the endpoint rather
+than to the model: the same thing is `google/gemini-3.5-flash` at one address and
+`gemini-3.5-flash` at another, and after a `/provider` there was no way to find out which without
+guessing. It asks the endpoint, marks the one you are on with `▸`, and takes a filter because a
+list of fifty-four is not an answer:
+
+```text
+┌  6 of 54 matching `flash-lite` · /model ID switches  ────────────────┐
+│   gemini-flash-lite-latest                                           │
+│   gemini-2.5-flash-lite                                              │
+│   gemini-3.1-flash-lite-preview                                      │
+│   gemini-3.1-flash-lite                                              │
+│   gemini-3.1-flash-lite-image                                        │
+│ ▸ gemini-3.5-flash-lite                                              │
+└ 1–6 of 6 · any key closes ───────────────────────────────────────────┘
+```
+
 The key is *not* switched with the address. It is read from the environment once, at startup, and a
 key typed at a prompt would be a key in the transcript — so `/provider` is for the addresses that
 need no key or take the same one: a local model, a proxy, another base URL on the same account.

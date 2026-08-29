@@ -417,3 +417,36 @@ async fn this_crates_provider_can_do_a_tool_call() {
     println!("  said:  {}", answer(&app).trim().replace('\n', " "));
     assert!(matches!(state, State::Finished { .. }), "{state:?}");
 }
+
+/// `/models` asks the endpoint what it serves, because the ids are the endpoint's own and
+/// `/model` is otherwise a command you can only use if you already knew the answer.
+#[tokio::test]
+async fn models_lists_what_the_endpoint_actually_serves() {
+    let _serial = SERIAL.lock().await;
+    let (mut app, _finished) = live!();
+
+    for c in "/models flash-lite".chars() {
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+            .await;
+    }
+    app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .await;
+
+    let screen = draw(&mut app);
+    assert!(
+        screen.contains("/model ID switches"),
+        "it says what to do with the list: {screen}"
+    );
+    assert!(
+        screen.contains("gemini-3.5-flash-lite"),
+        "and the list has real ids on it: {screen}"
+    );
+    assert!(
+        screen.contains("▸ gemini-3.5-flash-lite"),
+        "with the one in use marked: {screen}"
+    );
+    assert!(
+        !screen.contains("gemini-2.5-pro"),
+        "and the filter kept the rest out: {screen}"
+    );
+}
