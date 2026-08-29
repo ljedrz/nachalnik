@@ -575,6 +575,100 @@ async fn pruning_a_tool_exchange_still_produces_a_request_the_api_accepts() {
     assert!(!answer(&kernel).is_empty());
 }
 
+/// The other half of the test above, and the reason [`ContextState::Elided`] exists: pruning a
+/// tool result forces the projector to take the call down with it, so the model is handed a
+/// conversation in which it never asked for anything. Eliding leaves the call answered.
+///
+/// note: the assertion a mock cannot make is that a *real* API accepts a tool message whose
+/// content is a marker rather than the tool's own output - and, separately, that a real model
+/// reads it as "this happened and I cannot see it" rather than as the answer itself. The second
+/// one is checked the only way prose can be: the code word was in the result, the marker replaced
+/// it, so a model repeating the code word is reading something that is no longer in the request.
+#[tokio::test]
+async fn eliding_a_tool_result_keeps_the_call_and_the_api_accepts_it() {
+    let _serial = serialize().await;
+    let (kernel, provider) = live!();
+
+    kernel.add_tool(Secret::new("The secret code word is APRICOT."));
+    kernel.push(ContextItem::user(
+        "Use the secret tool, then tell me the code word it returned.",
+    ));
+    turn!(kernel);
+    assert!(
+        answer(&kernel).to_lowercase().contains("apricot"),
+        "the model read the result the first time: {}",
+        answer(&kernel)
+    );
+
+    // the content goes, the call keeps its answer
+    let noisy: Vec<_> = results(&kernel).iter().map(|i| i.id).collect();
+    assert_eq!(
+        kernel
+            .set_state(
+                noisy,
+                ContextState::Elided,
+                Some("removed from view by the user".into())
+            )
+            .len(),
+        1
+    );
+    let projection = kernel.project();
+    assert!(
+        projection.repairs.is_empty(),
+        "nothing had to be repaired: {:?}",
+        projection.repairs
+    );
+
+    kernel.push(ContextItem::user(
+        "What is the code word? If you cannot see it any more, say NOT VISIBLE and nothing else.",
+    ));
+    let state = turn!(kernel);
+
+    // the API accepted a tool message carrying a marker instead of the tool's output
+    assert!(matches!(state, State::Finished { .. }), "{state:?}");
+    let last = provider.requests().pop().unwrap();
+    let tool_messages: Vec<_> = last
+        .messages
+        .iter()
+        .filter(|m| m.role == Role::Tool)
+        .collect();
+    assert_eq!(
+        tool_messages.len(),
+        1,
+        "the result is still there, as a message: {:?}",
+        last.messages
+    );
+    assert!(
+        tool_messages[0]
+            .content
+            .as_ref()
+            .is_some_and(|c| c.to_text().contains("removed from view by the user")),
+        "carrying the marker: {:?}",
+        tool_messages[0].content
+    );
+    assert!(
+        !tool_messages[0]
+            .content
+            .as_ref()
+            .is_some_and(|c| c.to_text().contains("APRICOT")),
+        "and not the content: {:?}",
+        tool_messages[0].content
+    );
+    assert!(
+        last.messages.iter().any(|m| !m.tool_calls.is_empty()),
+        "and the call that asked for it is still on the record: {:?}",
+        last.messages
+    );
+
+    // and the model read the marker for what it is rather than inventing the answer
+    let said = answer(&kernel);
+    assert!(!said.is_empty());
+    assert!(
+        !said.to_lowercase().contains("apricot"),
+        "the code word is not in the request any more, so it should not be in the answer: {said}"
+    );
+}
+
 #[tokio::test]
 async fn a_truncated_tool_result_is_still_a_valid_request() {
     let _serial = serialize().await;
