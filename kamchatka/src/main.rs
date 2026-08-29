@@ -32,8 +32,23 @@ use kamchatka::{
 const TICK: Duration = Duration::from_millis(120);
 
 /// A terminal agent that shows you its context.
+///
+/// note: the three environment variables below are read by [`provider`] rather than declared as
+/// arguments, so clap cannot list them the way it lists `KAMCHATKA_MODEL` beside `--model`. A
+/// setting nothing on the screen mentions is a setting nobody finds, and `--help` is where a
+/// person looks for the list.
 #[derive(Parser)]
-#[command(version, about, long_about = None)]
+#[command(
+    version,
+    about,
+    long_about = None,
+    after_help = "\
+Environment:
+  KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY
+  KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
+                           OpenRouter by default
+  KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say"
+)]
 struct Args {
     /// A first message, sent as soon as it starts.
     message: Vec<String>,

@@ -414,13 +414,16 @@ kamchatka [OPTIONS] [MESSAGE]...
       --sandbox-allow <PATH> a path outside the working directory the shell may also
                             read and write; may be repeated
       --no-sandbox          run the shell tool unconfined, reaching whatever you can
+
+Environment:
+  KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY
+  KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for
+                           ollama; OpenRouter by default
+  KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
 ```
 
-```text
-KAMCHATKA_API_KEY       or OPENROUTER_API_KEY, or OPENAI_API_KEY
-KAMCHATKA_BASE_URL      e.g. http://localhost:11434/v1 for ollama; OpenRouter by default
-KAMCHATKA_CONTEXT_LIMIT the model's context size, for a provider that will not say
-```
+That is `--help`, which lists the environment too rather than leaving three settings for the
+readme alone to mention.
 
 `/save` writes two files: a `.jsonl` of every event that happened, and a `.json` snapshot that
 `-r` picks the session back up from.
