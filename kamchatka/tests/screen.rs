@@ -2014,3 +2014,74 @@ async fn a_resumed_session_is_read_back_as_the_conversation_it_was() {
     assert!(screen.contains("of course"), "{screen}");
     assert!(screen.contains("resumed session"), "{screen}");
 }
+
+#[tokio::test]
+async fn saying_always_answers_for_the_calls_already_waiting() {
+    let mut harness = Harness::new([
+        // one answer, three calls: the model asked for all of them before anybody was asked
+        // about any of them, and all three questions exist before the first is drawn
+        ModelResponse::tool_calls(vec![
+            call("c1", "dig", json!({ "where": "one" })),
+            call("c2", "dig", json!({ "where": "two" })),
+            call("c3", "dig", json!({ "where": "three" })),
+        ]),
+        ModelResponse::text("all three"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+    ));
+
+    harness.send("dig three times").await;
+    harness.settle().await;
+    assert_eq!(
+        harness.app.kernel.pending_permissions().len(),
+        3,
+        "one question each"
+    );
+
+    harness.press(KeyCode::Char('a')).await;
+    harness.settle().await;
+
+    // "always" said what happens from now on, and the other two were already in the queue when it
+    // was said. Asking about them again would be the prompt going back on it one keystroke later
+    assert!(
+        harness.app.kernel.pending_permissions().is_empty(),
+        "the rest of the batch was answered by the same `always`"
+    );
+    assert!(harness.app.overlay.is_none());
+    let results = harness
+        .app
+        .kernel
+        .items()
+        .into_iter()
+        .filter(|item| item.label == "dig")
+        .count();
+    assert_eq!(results, 3, "and all three of them ran");
+}
+
+#[tokio::test]
+async fn saying_always_leaves_a_waiting_call_that_needs_something_else_a_question() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![
+            call("c1", "dig", json!({ "path": "src/main.rs" })),
+            call("c2", "dig", json!({ "path": ".env" })),
+        ]),
+        ModelResponse::text("both"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+    ));
+
+    harness.send("dig twice").await;
+    harness.settle().await;
+
+    // no `settle` after this one: there is still a question, so no turn was started to wait for
+    harness.press(KeyCode::Char('a')).await;
+
+    // `shell` is allowed from now on and the second call is still a question, because the rule
+    // about `.env` is not what anybody just answered
+    let waiting = harness.app.kernel.pending_permissions();
+    assert_eq!(waiting.len(), 1, "the one with a rule of its own");
+    assert_eq!(waiting[0].args["path"], ".env");
+    assert!(harness.app.overlay.is_some());
+}

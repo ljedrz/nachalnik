@@ -567,6 +567,21 @@ impl Careful {
         judged
     }
 
+    /// What it would answer about a whole call, deciding nothing and recording nothing.
+    ///
+    /// note: [`Careful::evaluate`] is this and a note about whatever refused it, and the terminal
+    /// asks the same question when it sweeps up the calls an `always` has just answered for. A
+    /// second hand-written copy of the fold is a second place to get it wrong.
+    pub fn verdict(&self, request: &PermissionRequest) -> Verdict {
+        // the strictest answer among the subjects wins, so a call that needs both an allowed one
+        // and an unmentioned one is still a question. `Verdict::strictest` is the runtime's own
+        // fold for exactly this. A call that needs nothing is allowed: the empty fold
+        self.judges(request)
+            .iter()
+            .map(|subject| self.stance(subject))
+            .fold(Verdict::Allow, Verdict::strictest)
+    }
+
     /// What it answers about one subject; asking is what it does about anything unmentioned.
     pub fn stance(&self, subject: &Subject) -> Verdict {
         match subject {
@@ -661,20 +676,13 @@ impl Careful {
 #[async_trait]
 impl PermissionPolicy for Careful {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
-        // the strictest answer among the subjects wins, so a call that needs both an allowed one
-        // and an unmentioned one is still a question. `Verdict::strictest` is the runtime's own
-        // fold for exactly this, and a second hand-written copy of a three-way ordering is a
-        // second place to get it wrong. A call that needs nothing is allowed: the empty fold
-        let judged = self.judges(request);
-        let verdict = judged
-            .iter()
-            .map(|subject| self.stance(subject))
-            .fold(Verdict::Allow, Verdict::strictest);
+        let verdict = self.verdict(request);
 
         if verdict == Verdict::Deny {
             // which subject did it, so that a refused `shell` in a session where `shell` is
             // allowed can say what actually refused it
-            let blamed: Vec<String> = judged
+            let blamed: Vec<String> = self
+                .judges(request)
                 .iter()
                 .filter(|subject| self.stance(subject) == Verdict::Deny)
                 .map(|subject| match subject {

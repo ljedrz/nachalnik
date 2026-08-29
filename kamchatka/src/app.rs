@@ -1223,6 +1223,7 @@ impl App {
             return;
         };
 
+        let mut remembered = false;
         let grant = match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => Grant::Allow,
             KeyCode::Char('a') | KeyCode::Char('A') => {
@@ -1230,6 +1231,7 @@ impl App {
                 // `yes, always` to a `curl` that left `network` on `ask`, or to a `.env` that left
                 // its rule on `ask`, would ask again on the very next call
                 self.policy.always(&self.policy.judges(&request));
+                remembered = true;
                 Grant::Allow
             }
             KeyCode::Char('i') | KeyCode::Char('I') => {
@@ -1270,6 +1272,20 @@ impl App {
 
         if let Err(e) = self.kernel.decide(request.id, grant) {
             self.say(Speaker::Error, e.to_string());
+        }
+        // note: `always` is a promise about what happens next, and what happens next is often
+        // already in the queue. A model that asks for three commands in one answer produces three
+        // questions, all of them decided before the first was shown - so answering `a` to the
+        // first asked about the second one keystroke later, having just been told it would not.
+        // Everything still waiting that the policy would now let through is let through
+        if remembered {
+            for waiting in self.kernel.pending_permissions() {
+                if self.policy.verdict(&waiting) == Verdict::Allow
+                    && let Err(e) = self.kernel.decide(waiting.id, Grant::Allow)
+                {
+                    self.say(Speaker::Error, e.to_string());
+                }
+            }
         }
         // the model may have asked for several things at once, and each is its own question
         if self.kernel.pending_permissions().is_empty() {

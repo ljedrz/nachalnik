@@ -71,8 +71,12 @@ minor bump may break you.
   command names its files inside a string and a check over that string would refuse `cat .env`
   while waving `sed -n 1p .env` through.
 - The permission question names everything the policy actually consults, and `[a] always` answers
-  for all of it. A `yes, always` that answered only for the declared capability would ask again on
-  the very next call, whether the question came from the network fold or from a path rule.
+  for all of it - including the calls already waiting behind it. A `yes, always` that answered only
+  for the declared capability would ask again on the very next call, whether the question came from
+  the network fold or from a path rule; and a model that asks for three commands in one answer
+  produces three questions, all of them decided before the first is drawn, so an `always` that did
+  not reach them went back on itself one keystroke later. Anything still waiting that the policy
+  would now let through is let through; anything that needs something else is still a question.
 
 - The `network` stance is consulted for a `shell` call whose command names a program that goes out
   to the network - `curl`, `pip install`, `git push`. No tool declares `Capability::Network`,
