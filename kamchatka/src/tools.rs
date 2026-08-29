@@ -255,7 +255,7 @@ impl Tool for Shell {
         // taken out of the child, so that it can still be killed while these are being read
         let stdout = child.stdout.take().expect("stdout was piped");
         let stderr = child.stderr.take().expect("stderr was piped");
-        let collecting_stderr = tokio::spawn(async move {
+        let mut collecting_stderr = tokio::spawn(async move {
             let mut collected = String::new();
             let _ = BufReader::new(stderr).read_to_string(&mut collected).await;
 
@@ -289,7 +289,20 @@ impl Tool for Shell {
             }
         }
 
-        let errors = collecting_stderr.await.unwrap_or_default();
+        // note: a killed shell can leave children of its own behind - `sleep 60; echo done` is
+        // two processes - and they hold the standard error this is reading. Waiting for the end of
+        // it would mean a stopped call that answers a minute after it was stopped, which is the
+        // one thing `esc` is for. What has arrived by now is what the model is told
+        let errors = match interrupted {
+            true => match tokio::time::timeout(HEARTBEAT, &mut collecting_stderr).await {
+                Ok(collected) => collected.unwrap_or_default(),
+                Err(_) => {
+                    collecting_stderr.abort();
+                    String::new()
+                }
+            },
+            false => collecting_stderr.await.unwrap_or_default(),
+        };
         let status = match child.wait().await {
             Ok(status) => status.to_string(),
             Err(e) => format!("unknown ({e})"),

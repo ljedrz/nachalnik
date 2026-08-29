@@ -13,8 +13,10 @@ minor bump may break you.
   enforced rather than reported: `network: deny` is refused by the kernel at `connect()`,
   `write: deny` makes the working directory read-only, and nothing outside that directory is
   readable or writable either way. It is applied by re-executing this program in a mode that
-  confines itself and then runs the command - Landlock restricts the calling thread, and a
-  single-threaded helper is the shape that needs no thought about which one. A directory of the
+  confines itself and then *becomes* the command - Landlock restricts the calling thread, and a
+  single-threaded helper is the shape that needs no thought about which one; the domain is
+  inherited across the `exec`, so nothing is given up by leaving, and a command that is stopped is
+  reached by the signal rather than sheltering behind a helper. A directory of the
   run's own is handed over as `TMPDIR`; `/tmp` itself is not opened up, and the directory is
   removed by the process that spawned the command, that being the only one of the two which can:
   unlinking a directory is a write to the one it sits in, and the confined process cannot write

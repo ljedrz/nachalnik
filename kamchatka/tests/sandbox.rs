@@ -14,6 +14,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
+    time::Duration,
 };
 
 use kamchatka::{
@@ -331,6 +332,49 @@ async fn a_command_takes_its_temporary_directory_with_it() {
     assert!(
         !Path::new(scratch).exists(),
         "{scratch} outlived the command it was made for"
+    );
+}
+
+#[tokio::test]
+async fn a_stopped_command_stops_and_says_so_at_once() {
+    if !enforced() {
+        return;
+    }
+    let dir = workdir("interrupt");
+    let kernel = confined_agent(
+        &dir,
+        [
+            // two processes: the shell, and what it is waiting on. The file is how a shell that
+            // was never reached by the signal says so afterwards
+            ModelResponse::tool_calls(vec![call(
+                "1",
+                "shell",
+                json!({ "cmd": "sleep 2; touch carried-on.txt; sleep 20" }),
+            )]),
+            ModelResponse::text("stopped"),
+        ],
+    );
+    kernel.push(ContextItem::user("go"));
+
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.turn().await }
+    });
+    // long enough for the call to have been decided and the command to be running
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    kernel.interrupt();
+
+    tokio::time::timeout(Duration::from_secs(5), running)
+        .await
+        .expect("a stopped command answers now, not when whatever it started has finished")
+        .expect("the turn is not a panic")
+        .expect("an interrupted turn is not a failed one");
+
+    // ... and the command is gone, rather than a process nobody is watching any more
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert!(
+        !dir.join("carried-on.txt").exists(),
+        "the command outlived the call it was stopped in"
     );
 }
 

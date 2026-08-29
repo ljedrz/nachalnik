@@ -416,6 +416,12 @@ const REPORT_VAR: &str = "KAMCHATKA_REPORT_CONFINEMENT";
 /// code it should leave with.
 ///
 /// note: checked before anything else in `main`, and before a `tokio` runtime exists.
+///
+/// note: the shell *replaces* this process rather than running underneath it, which is what makes
+/// a stopped command stop. Two processes deep, the signal a stopped call sends lands on the middle
+/// one and the command carries on - and, still holding the standard error the tool is reading,
+/// keeps that call waiting long after somebody asked it to stop. Leaving costs nothing: a Landlock
+/// domain is inherited across `execve`, which is the point of an LSM a process applies to itself.
 pub fn run_if_asked() -> Option<i32> {
     let argv: Vec<OsString> = std::env::args_os().skip(1).collect();
     let (sandbox, cmd) = Sandbox::from_argv(&argv)?;
@@ -439,18 +445,31 @@ pub fn run_if_asked() -> Option<i32> {
         );
     }
 
-    let status = std::process::Command::new("sh")
+    let mut command = std::process::Command::new("sh");
+    command
         .arg("-c")
         .arg(&cmd)
         .current_dir(&sandbox.workdir)
-        .env("TMPDIR", &scratch)
-        .status();
+        .env("TMPDIR", &scratch);
 
-    Some(match status {
+    #[cfg(unix)]
+    let code = {
+        use std::os::unix::process::CommandExt as _;
+
+        // `exec` returns only when it could not happen at all
+        let failure = command.exec();
+        eprintln!("could not run the command: {failure}");
+        127
+    };
+    // there is no Landlock here anyway, so nothing is lost by staying a parent
+    #[cfg(not(unix))]
+    let code = match command.status() {
         Ok(status) => status.code().unwrap_or(1),
         Err(e) => {
             eprintln!("could not run the command: {e}");
             127
         }
-    })
+    };
+
+    Some(code)
 }
