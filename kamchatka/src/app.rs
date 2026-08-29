@@ -1545,16 +1545,35 @@ impl App {
                     Some(info) => self.say(
                         Speaker::Note,
                         format!(
-                            "{} via {}, {} tokens of context",
+                            "{} at {} ({}), {} tokens of context",
                             info.model,
+                            self.provider.endpoint(),
                             info.provider,
                             info.context_limit
                                 .map(thousands)
-                                .unwrap_or_else(|| "an unknown number of".into())
+                                .unwrap_or_else(|| "an unknown number of".into()),
                         ),
                     ),
                     None => self.say(Speaker::Error, "there is no provider"),
                 }
+            }
+            // the other half of `/model`: the same model name means a different model at a
+            // different address, and comparing what is hosted with what is on this machine is two
+            // endpoints rather than two names
+            "provider" | "endpoint" => {
+                if rest.is_empty() {
+                    let endpoint = self.provider.endpoint();
+                    self.say(Speaker::Note, format!("requests go to {endpoint}"));
+                    return;
+                }
+                let (provider, url) = (self.provider.clone(), rest.to_owned());
+                self.say(
+                    Speaker::Note,
+                    format!("requests now go to {url}; the key is the one this started with"),
+                );
+                // the new endpoint has a context limit of its own, and finding it out is a round
+                // trip; the screen should not stop for it
+                tokio::spawn(async move { provider.set_endpoint(url).await });
             }
             "params" => {
                 if let Some((key, value)) = rest.split_once(' ') {
@@ -1647,7 +1666,12 @@ impl App {
              replaced while a session is running. Nothing here is the terminal's own bookkeeping:\n\
              it is what the kernel answers when asked.",
             match kernel.model_info() {
-                Some(info) => format!("{} via {}", info.model, info.provider),
+                Some(info) => format!(
+                    "{} at {} ({})",
+                    info.model,
+                    self.provider.endpoint(),
+                    info.provider
+                ),
                 None => "none set".to_owned(),
             },
             tools.len(),

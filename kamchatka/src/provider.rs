@@ -31,7 +31,13 @@ const HEARTBEAT: Duration = Duration::from_millis(120);
 /// Any server that speaks the OpenAI chat-completions dialect, streamed.
 pub struct OpenAiCompatible {
     client: reqwest::Client,
-    base_url: String,
+    /// Where the requests go, which is a thing somebody changes mid-session.
+    ///
+    /// note: behind a lock for the same reason the model is. Comparing two models usually means
+    /// one endpoint and two names, but comparing a hosted model with the one on the machine in
+    /// front of you means two endpoints - and having to restart to do it makes the session, which
+    /// is the thing being compared, part of what changed.
+    base_url: Mutex<String>,
     api_key: String,
     model: Mutex<String>,
     context_limit: Mutex<Option<usize>>,
@@ -61,13 +67,30 @@ impl OpenAiCompatible {
     ) -> Self {
         Self {
             client: reqwest::Client::new(),
-            base_url: base_url.into(),
+            base_url: Mutex::new(base_url.into()),
             api_key: api_key.into(),
             model: Mutex::new(model.into()),
             context_limit: Mutex::new(configured_limit()),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
         }
+    }
+
+    /// Where the requests are going.
+    pub fn endpoint(&self) -> String {
+        self.base_url.lock().clone()
+    }
+
+    /// Sends the requests somewhere else from now on, and asks the new place what it can hold.
+    ///
+    /// note: the key is not changed with it. It is read from the environment once, at startup, and
+    /// a key typed at the prompt would be a key in the transcript - so what this is for is the
+    /// endpoints that need no key or the same one: a local model, a proxy, a second base URL on
+    /// the same account.
+    pub async fn set_endpoint(&self, url: impl Into<String>) {
+        *self.base_url.lock() = url.into();
+        *self.context_limit.lock() = configured_limit();
+        self.probe().await;
     }
 
     /// Switches models, and forgets the context limit that belonged to the old one.
@@ -98,20 +121,19 @@ impl OpenAiCompatible {
             return;
         }
 
-        let mut limit = self
-            .listed_limit(&format!("{}/models", self.base_url), true)
-            .await;
+        let base = self.endpoint();
+        let mut limit = self.listed_limit(&format!("{base}/models"), true).await;
 
         // an OpenAI-compatible listing does not have to carry a context length, and Google's does
         // not; its native one does, one path up
         if limit.is_none()
-            && let Some(native) = self.base_url.strip_suffix("/openai")
+            && let Some(native) = base.strip_suffix("/openai")
         {
             limit = self.listed_limit(&format!("{native}/models"), false).await;
         }
         // ollama's does not either, and the number its `/api/show` advertises is the wrong one
         if limit.is_none()
-            && let Some(root) = self.base_url.strip_suffix("/v1")
+            && let Some(root) = base.strip_suffix("/v1")
         {
             limit = self.loaded_limit(root).await;
         }
@@ -257,7 +279,7 @@ impl Provider for OpenAiCompatible {
         let mut response = loop {
             let response = self
                 .client
-                .post(format!("{}/chat/completions", self.base_url))
+                .post(format!("{}/chat/completions", self.endpoint()))
                 .bearer_auth(&self.api_key)
                 .json(&body)
                 .send()

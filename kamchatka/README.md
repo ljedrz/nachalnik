@@ -310,6 +310,30 @@ next request onward, which is one call on the kernel and no restart. When a mode
 the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* call it is waiting on
 with one reason — and the model is told, rather than left waiting on calls that silently vanished.
 
+## 🔀 the model, and the address it lives at
+
+`/model` says which model this is talking to, where that is, in what dialect, and how much context
+it has:
+
+```text
+· gemini-3.6-flash at https://generativelanguage.googleapis.com/v1beta/openai
+  (openai-compatible), 1,048,576 tokens of context
+```
+
+`/model ID` switches the model and `/provider URL` switches the address, both without restarting,
+and both are worth having for different reasons: comparing two hosted models is one address and two
+names, while comparing a hosted model with the one running on this machine is two addresses. A
+comparison that cannot see the address is a comparison of names.
+
+The key is *not* switched with the address. It is read from the environment once, at startup, and a
+key typed at a prompt would be a key in the transcript — so `/provider` is for the addresses that
+need no key or take the same one: a local model, a proxy, another base URL on the same account.
+
+What is not switched either way is the context. The same items go to whatever answers next, which
+is the whole of what makes the answers comparable. `/seams` names the six replaceable parts and
+what is in each of them right now, asked of the kernel rather than restated from what this program
+set up at startup.
+
 ## 📏 the number in the status line is a guess, and says so
 
 Nothing here has the model's tokenizer, so the figure the status line leads with is an estimate —

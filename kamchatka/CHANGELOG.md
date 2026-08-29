@@ -159,6 +159,11 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
 - MCP servers with `--mcp '[name=]cmd args'`, behind the default `mcp` feature. The name prefixes
   the server's tools and is what an "always" grant is for, so it is worth giving: taken from the
   program it would be `npx` for most of them.
+- `/model [ID]` and `/provider [URL]` show or change the model and the address its requests go to,
+  without restarting - and both are shown, because the same model name at a different address is a
+  different model, and a comparison that cannot see the address is a comparison of names. The key
+  is not changed with the address: it is read from the environment at startup, and a key typed at
+  the prompt would be a key in the transcript.
 - `/save PATH` writes the event log and a resumable snapshot beside it; `-r PATH` picks it back
   up in a fresh process. Both take a path you chose, on your disk - there is no session id, no
   server, and nothing to look up. Saving over files that already exist says which ones it

@@ -2348,3 +2348,32 @@ async fn a_message_that_has_to_wait_says_that_it_is_waiting() {
         "a queued message says it is queued: {screen}"
     );
 }
+
+#[tokio::test]
+async fn the_address_the_requests_go_to_is_visible_and_can_be_changed() {
+    let mut harness = Harness::new([]);
+
+    // where they are going, before anything is switched. A model name means a different model at a
+    // different address, so a comparison that cannot see the address is a comparison of names
+    harness.send("/provider").await;
+    let screen = harness.screen();
+    assert!(screen.contains("http://127.0.0.1:1"), "{screen}");
+
+    harness.send("/provider http://127.0.0.1:2/v1").await;
+    // the probe it starts is a round trip to a port with nothing on it; the address itself changes
+    // here, and that is what the next request would use
+    for _ in 0..50 {
+        if harness.app.provider.endpoint() == "http://127.0.0.1:2/v1" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(harness.app.provider.endpoint(), "http://127.0.0.1:2/v1");
+
+    harness.send("/seams").await;
+    let seams = harness.screen();
+    assert!(
+        seams.contains("http://127.0.0.1:2/v1"),
+        "the seam that names the provider says where it is: {seams}"
+    );
+}
