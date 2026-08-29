@@ -2219,6 +2219,15 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
     // arrives after a pause and is therefore not part of any typing this could have waited out
     assert_eq!(harness.app.input.lines(), ["what is the capital of Peru"]);
 
+    // ... and it can be sent from there, which puts it in the queue a message typed into a
+    // running turn goes in: the question is a pause in a turn, not the end of one
+    harness.press(KeyCode::Enter).await;
+    assert!(harness.app.input.lines() == [""], "the prompt was sent");
+    assert!(
+        harness.app.overlay.is_some(),
+        "and the question is still the question"
+    );
+
     // and once the typing stops, one key answers it
     harness.answer(KeyCode::Char('y')).await;
     harness.settle().await;

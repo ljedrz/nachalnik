@@ -752,7 +752,7 @@ impl App {
         if self.overlay.is_some() {
             // a key that answered a question is not somebody typing, and must not push the moment
             // the *next* question starts listening at; every other key is
-            if !self.overlay_key(key) {
+            if !self.overlay_key(key).await {
                 self.typing = Instant::now();
             }
             return;
@@ -1240,7 +1240,7 @@ impl App {
     }
 
     /// Keys that belong to whatever is on top; returns whether one answered a question.
-    fn overlay_key(&mut self, key: KeyEvent) -> bool {
+    async fn overlay_key(&mut self, key: KeyEvent) -> bool {
         let Some(overlay) = &mut self.overlay else {
             return false;
         };
@@ -1261,7 +1261,7 @@ impl App {
                     }
                 }
             },
-            Overlay::Permission => return self.permission_key(key),
+            Overlay::Permission => return self.permission_key(key).await,
         }
 
         false
@@ -1273,15 +1273,13 @@ impl App {
     /// Its keys are letters, and a live session granted `shell` for good with the `a` of "what" -
     /// typed at the prompt, into a question that had arrived a second earlier and was never read.
     /// Letters keep going where they were aimed until the typing stops; see [`SETTLING`].
-    fn permission_key(&mut self, key: KeyEvent) -> bool {
+    async fn permission_key(&mut self, key: KeyEvent) -> bool {
         let Some(request) = self.kernel.pending_permissions().into_iter().next() else {
             self.overlay = None;
             return false;
         };
         if self.typing.elapsed() < SETTLING {
-            if matches!(key.code, KeyCode::Char(_)) {
-                self.input.input(key);
-            }
+            self.input_key(key).await;
 
             return false;
         }
@@ -1316,14 +1314,13 @@ impl App {
                 self.drop_pending();
                 return true;
             }
-            // a letter that is not one of the answers is somebody typing at the prompt
-            // underneath, and that is where it goes rather than nowhere: the first key of a
-            // sentence arrives after a pause, so it is not the typing this waits out, and it was
-            // being eaten one character into every message
+            // a key that is not one of the answers is somebody typing at the prompt underneath,
+            // and that is where it goes rather than nowhere. The first key of a sentence arrives
+            // after a pause, so it is not the typing this waits out, and it was being eaten one
+            // character into every message; `enter` sends what is in the prompt, which waits for
+            // this question the same way a message typed into a running turn does
             _ => {
-                if matches!(key.code, KeyCode::Char(_)) {
-                    self.input.input(key);
-                }
+                self.input_key(key).await;
 
                 return false;
             }
@@ -1441,7 +1438,9 @@ impl App {
         // itself. Pushed mid-tool-loop it is worse still: it lands between an assistant's call and
         // that call's result, which is a shape most of these APIs reject. What it costs is that a
         // message typed to steer a turn does not reach it - it is answered after, not during
-        if self.busy {
+        // ... and the same holds while a question is open: the turn is paused rather than over,
+        // and the call it is waiting on still has a result to come
+        if self.busy || !self.kernel.pending_permissions().is_empty() {
             self.typed_ahead = Some(line.to_owned());
             return;
         }
