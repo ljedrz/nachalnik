@@ -41,6 +41,14 @@ fn app() -> App {
          and a list:\n\n- one\n- two\n",
     );
     app.say(Speaker::Result, "a line\nanother line\n");
+    // the shapes a model's answer actually arrives in, including the ones it never finishes: a
+    // block still streaming in has no closing fence, and one in a language nothing has heard of
+    // still has to be drawn
+    app.say(
+        Speaker::Model,
+        "```klingon\nwhat is this\n```\n\n```rust\nfn unfinished() {\n",
+    );
+    app.say(Speaker::Result, format!("{}\r\n", "x".repeat(5_000)));
     app.kernel.push(ContextItem::user("what does this do?"));
     app.kernel
         .push(ContextItem::file("src/some/deep/path.rs", "fn parse() {}").pinned());

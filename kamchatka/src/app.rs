@@ -9,6 +9,7 @@
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -28,6 +29,14 @@ use crate::{
 
 /// How many trace lines are kept; the session log is the one that keeps everything.
 const TRACE_DEPTH: usize = 400;
+
+/// How long after the last keystroke a permission question starts taking keys as answers.
+///
+/// note: a question arrives on its own schedule, in the middle of whatever somebody happens to be
+/// typing, and its keys are ordinary letters - `a` grants a capability for the rest of the session
+/// and is also the third letter of "what". Long enough to cover the keystrokes already on their
+/// way when it appeared; short enough that answering it is still one key.
+pub const SETTLING: Duration = Duration::from_millis(300);
 
 /// How much of a still-running tool's output the transcript holds on to.
 const LIVE_OUTPUT: usize = 8_000;
@@ -221,6 +230,8 @@ pub struct App {
     pub grants: ratatui::widgets::ListState,
     /// Whether the last stop was asked for rather than reached.
     interrupting: bool,
+    /// When a key that was not an answer to a question was last pressed.
+    typing: Instant,
     /// How many requests had gone out when somebody last sent a message into a turn that was
     /// already running.
     typed_ahead: Option<usize>,
@@ -272,6 +283,7 @@ impl App {
             chosen: 0,
             grants: ratatui::widgets::ListState::default(),
             interrupting: false,
+            typing: Instant::now(),
             typed_ahead: None,
             streamed: false,
             streamed_bytes: 0,
@@ -755,9 +767,14 @@ impl App {
         }
 
         if self.overlay.is_some() {
-            self.overlay_key(key);
+            // a key that answered a question is not somebody typing, and must not push the moment
+            // the *next* question starts listening at; every other key is
+            if !self.overlay_key(key) {
+                self.typing = Instant::now();
+            }
             return;
         }
+        self.typing = Instant::now();
 
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         // taken rather than read, so that a count lives for exactly one key wherever that key is
@@ -1239,10 +1256,10 @@ impl App {
         }
     }
 
-    /// Keys that belong to whatever is on top.
-    fn overlay_key(&mut self, key: KeyEvent) {
+    /// Keys that belong to whatever is on top; returns whether one answered a question.
+    fn overlay_key(&mut self, key: KeyEvent) -> bool {
         let Some(overlay) = &mut self.overlay else {
-            return;
+            return false;
         };
 
         match overlay {
@@ -1261,16 +1278,30 @@ impl App {
                     }
                 }
             },
-            Overlay::Permission => self.permission_key(key),
+            Overlay::Permission => return self.permission_key(key),
         }
+
+        false
     }
 
-    /// Answers the question a tool is waiting on.
-    fn permission_key(&mut self, key: KeyEvent) {
+    /// Answers the question a tool is waiting on; returns whether it answered.
+    ///
+    /// note: a question that appears under somebody's fingers is not answered by those fingers.
+    /// Its keys are letters, and a live session granted `shell` for good with the `a` of "what" -
+    /// typed at the prompt, into a question that had arrived a second earlier and was never read.
+    /// Letters keep going where they were aimed until the typing stops; see [`SETTLING`].
+    fn permission_key(&mut self, key: KeyEvent) -> bool {
         let Some(request) = self.kernel.pending_permissions().into_iter().next() else {
             self.overlay = None;
-            return;
+            return false;
         };
+        if self.typing.elapsed() < SETTLING {
+            if matches!(key.code, KeyCode::Char(_)) {
+                self.input.input(key);
+            }
+
+            return false;
+        }
 
         let mut remembered = false;
         let grant = match key.code {
@@ -1295,14 +1326,24 @@ impl App {
                     format!("{args}\n\n--- the tool ---\n{spec}"),
                 );
 
-                return;
+                return true;
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Grant::Deny,
             KeyCode::Char('d') | KeyCode::Char('D') => {
                 self.drop_pending();
-                return;
+                return true;
             }
-            _ => return,
+            // a letter that is not one of the answers is somebody typing at the prompt
+            // underneath, and that is where it goes rather than nowhere: the first key of a
+            // sentence arrives after a pause, so it is not the typing this waits out, and it was
+            // being eaten one character into every message
+            _ => {
+                if matches!(key.code, KeyCode::Char(_)) {
+                    self.input.input(key);
+                }
+
+                return false;
+            }
         };
 
         // saying yes to a command that reaches for the network is permission for *that* command,
@@ -1349,6 +1390,8 @@ impl App {
                 false => self.start_turn(),
             }
         }
+
+        true
     }
 
     /// Drops every call the model is waiting on an answer for, and tells it so.

@@ -64,6 +64,16 @@ impl Harness {
         }
     }
 
+    /// Answers the question on the screen, after the pause a question waits for.
+    ///
+    /// note: a permission question does not take a key as an answer while somebody is still
+    /// typing - see `kamchatka::app::SETTLING`, and the live session that granted `shell` for good
+    /// with the `a` of "what" - and a test presses its keys with nothing at all in between.
+    async fn answer(&mut self, code: KeyCode) {
+        tokio::time::sleep(kamchatka::app::SETTLING).await;
+        self.press(code).await;
+    }
+
     /// Presses a key.
     async fn press(&mut self, code: KeyCode) {
         self.app
@@ -261,7 +271,7 @@ async fn a_tool_that_needs_permission_stops_the_turn_and_puts_the_question_on_th
 
     // looking closer, and then coming back: the tool is still waiting, so the question has to
     // still be there. It was not, and there was no way left to answer it
-    harness.press(KeyCode::Char('i')).await;
+    harness.answer(KeyCode::Char('i')).await;
     let inspected = harness.screen();
     assert!(inspected.contains("what it was asked to do"), "{inspected}");
     assert!(
@@ -275,7 +285,7 @@ async fn a_tool_that_needs_permission_stops_the_turn_and_puts_the_question_on_th
     assert!(back.contains("[y] once"), "{back}");
 
     // saying no answers the call rather than abandoning it: the model is told
-    harness.press(KeyCode::Char('n')).await;
+    harness.answer(KeyCode::Char('n')).await;
     harness.settle().await;
 
     let denied = harness
@@ -307,7 +317,7 @@ async fn saying_always_stops_the_question_being_asked_again() {
     harness.settle().await;
     assert!(harness.app.overlay.is_some(), "the first one is a question");
 
-    harness.press(KeyCode::Char('a')).await;
+    harness.answer(KeyCode::Char('a')).await;
     harness.settle().await;
 
     // the second call went through without stopping, and the policy says why - the prompt's
@@ -993,7 +1003,7 @@ async fn dropping_the_pending_calls_tells_the_model_rather_than_losing_them() {
     let asked = harness.screen();
     assert!(asked.contains("[d] drop them all"), "{asked}");
 
-    harness.press(KeyCode::Char('d')).await;
+    harness.answer(KeyCode::Char('d')).await;
     harness.drain();
 
     assert!(
@@ -1324,7 +1334,7 @@ async fn saying_always_answers_for_everything_the_question_named() {
 
     // `a` has to answer the path rule. Answering only for `read` - which was already `allow` -
     // would leave the question exactly where it was
-    harness.press(KeyCode::Char('a')).await;
+    harness.answer(KeyCode::Char('a')).await;
     harness.settle().await;
 
     assert_eq!(
@@ -1453,7 +1463,7 @@ async fn changing_a_permission_changes_what_happens_next() {
         Some(kamchatka::app::Overlay::Permission)
     ));
     // answering resumes the turn, so let it finish before starting another
-    harness.press(KeyCode::Char('n')).await;
+    harness.answer(KeyCode::Char('n')).await;
     harness.settle().await;
 
     // `n` at the prompt refuses that call and decides nothing, so the tab still has nothing to
@@ -1624,7 +1634,7 @@ async fn dropping_the_calls_hands_the_turn_back_to_the_model() {
 
     harness.send("do something rash").await;
     harness.settle().await;
-    harness.press(KeyCode::Char('d')).await;
+    harness.answer(KeyCode::Char('d')).await;
 
     // answering `n` to each resumes the turn; dropping them all used to leave the kernel idle
     // with the refusals recorded and nobody driving, until somebody noticed and typed /continue
@@ -2039,7 +2049,7 @@ async fn saying_always_answers_for_the_calls_already_waiting() {
         "one question each"
     );
 
-    harness.press(KeyCode::Char('a')).await;
+    harness.answer(KeyCode::Char('a')).await;
     harness.settle().await;
 
     // "always" said what happens from now on, and the other two were already in the queue when it
@@ -2076,7 +2086,7 @@ async fn saying_always_leaves_a_waiting_call_that_needs_something_else_a_questio
     harness.settle().await;
 
     // no `settle` after this one: there is still a question, so no turn was started to wait for
-    harness.press(KeyCode::Char('a')).await;
+    harness.answer(KeyCode::Char('a')).await;
 
     // `shell` is allowed from now on and the second call is still a question, because the rule
     // about `.env` is not what anybody just answered
@@ -2154,4 +2164,46 @@ async fn a_message_the_running_turn_did_ask_about_does_not_start_another() {
     assert!(!harness.app.busy, "nothing was started a second time");
     let screen = harness.screen();
     assert!(screen.contains("both of them, answered"), "{screen}");
+}
+
+#[tokio::test]
+async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_them() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("done"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+    ));
+
+    harness.send("dig").await;
+    harness.settle().await;
+    assert!(harness.app.overlay.is_some(), "the question is up");
+
+    // the next thing typed is a message, not an answer - and `a` is the third letter of it. It
+    // used to grant `shell` for the rest of the session, which is what a live run did
+    for c in "what is the capital of Peru".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+
+    assert!(
+        harness.app.overlay.is_some(),
+        "the question is still waiting to be read"
+    );
+    assert_eq!(
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::Shell)),
+        Verdict::Ask,
+        "nothing was granted by somebody typing a sentence"
+    );
+    // ... and the sentence is where it was aimed, whole - including its first letter, which
+    // arrives after a pause and is therefore not part of any typing this could have waited out
+    assert_eq!(harness.app.input.lines(), ["what is the capital of Peru"]);
+
+    // and once the typing stops, one key answers it
+    harness.answer(KeyCode::Char('y')).await;
+    harness.settle().await;
+    assert!(harness.app.overlay.is_none(), "answered");
 }
