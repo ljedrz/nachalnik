@@ -15,9 +15,6 @@ repository.workspace = true
 homepage.workspace = true
 rust-version.workspace = true
 
-[badges]
-maintenance = { status = "actively-developed" }
-
 [package.metadata.docs.rs]
 all-features = true
 
