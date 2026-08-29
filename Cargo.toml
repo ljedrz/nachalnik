@@ -26,4 +26,16 @@ parking_lot = "0.12"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 tokio = { version = "1" }
-reqwest = { version = "0.13", default-features = false, features = ["charset", "default-tls", "http2", "json"] }
+# `rustls-no-provider` rather than `default-tls`: in reqwest 0.13 that name resolves to rustls
+# with `aws-lc-rs`, which is 1,659 C files and, on some platforms, cmake and NASM to build them.
+# The provider is named below instead, which is what `no-provider` means.
+reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "json", "rustls-no-provider"] }
+# the cryptography under the TLS, chosen here because reqwest was told to bring none. `ring` is
+# 17 C and assembly files, wants no cmake and no NASM, and is what rustls shipped with for years.
+# No production Rust TLS stack is free of C altogether - the pure-Rust providers are unaudited,
+# which is not a trade this workspace should make - so this is the smallest one rather than none.
+#
+# note: whoever builds a client also installs this, since `no-provider` leaves nothing to fall
+# back on. It must stay on the same major as the rustls reqwest itself uses, or the provider goes
+# into one rustls and the requests come out of another.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

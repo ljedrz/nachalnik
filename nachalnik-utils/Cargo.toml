@@ -14,5 +14,6 @@ nachalnik.workspace = true
 async-trait.workspace = true
 parking_lot.workspace = true
 reqwest.workspace = true
+rustls.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["time"] }

@@ -58,6 +58,16 @@ struct PartialCall {
     extra: Value,
 }
 
+/// Installs the cryptography `rustls` will use, and says nothing if it is already installed.
+///
+/// note: reqwest is built with `rustls-no-provider`, so there is no default waiting behind this -
+/// a client built without it fails at the first `https://` with "no process-level CryptoProvider
+/// available". It lives beside the constructor rather than in `main` so that a test or an example
+/// that builds a provider and never goes near `main` is not the one that finds out.
+fn install_crypto() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 impl OpenAiCompatible {
     /// Builds a provider for one model.
     pub fn new(
@@ -65,6 +75,7 @@ impl OpenAiCompatible {
         base_url: impl Into<String>,
         api_key: impl Into<String>,
     ) -> Self {
+        install_crypto();
         Self {
             client: reqwest::Client::new(),
             base_url: Mutex::new(base_url.into()),

@@ -91,7 +91,14 @@ impl OpenAiCompatible {
     }
 
     /// A client with the timeout a real API wants, which is longer than reqwest's default.
+    ///
+    /// note: this is also where the cryptography `rustls` will use is installed. reqwest is built
+    /// with `rustls-no-provider`, so there is no default waiting behind it - a client built
+    /// without one fails at the first `https://` with "no process-level CryptoProvider
+    /// available". Every client in here comes from this function, so this is the one place it has
+    /// to happen; the second call loses the race and says so, which is not an error.
     pub fn client() -> reqwest::Client {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         reqwest::Client::builder()
             .timeout(Duration::from_secs(180))
             .build()
