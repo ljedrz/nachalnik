@@ -109,6 +109,8 @@ pub const HELP: &str = "  THE TABS
     /seams              what is plugged into each of the runtime's six parts
     /tools              what the model is offered
     /tools drop ID      stop offering one of them, from now on
+    /mind               offer the model the two tools that read and change its
+                        own context, or stop offering them
     /policy             open the permissions tab; also /permissions
     /model [ID]         show or switch the model, and say where it is
     /models [FILTER]    what this endpoint serves, which is what /model takes

@@ -333,6 +333,51 @@ next request onward, which is one call on the kernel and no restart. When a mode
 the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* call it is waiting on
 with one reason — and the model is told, rather than left waiting on calls that silently vanished.
 
+## 🪞 giving the agent the same view
+
+`--mind`, or `/mind` at any point, offers two more tools. They are off by default because a model
+that can rewrite its own context is a decision, not a default.
+
+**`mind`** looks. `look` lists every item it is carrying — what each one is, what it costs,
+whether it is going into the next request, and why not if it is not — and reads any of them in
+full, including the reasoning recorded on its own turns. `request` shows the request it is about
+to send, message by message, with what the projector left out and what it had to repair.
+
+`draft` and `fork` are the interesting ones. Both take a snapshot of the context, resume it as a
+second kernel with **no tools**, ask it once, and hand back only what it said:
+
+```text
+⟩ mind({"action":"fork","question":"am I overfitting to the first stack trace?","without":[14,15]})
+
+  a copy of you, asked `am I overfitting to the first stack trace?`, on 9 of your items,
+  without 14, 15. None of this is in your context and nobody has read it; it is yours to
+  use or drop.
+```
+
+A fork can think; it cannot act, and it cannot go on thinking after it has answered once. Nothing
+it does reaches this session's context or its log. Forking a session needed no change to the
+runtime at all — `Kernel::snapshot` and `Kernel::resume` already *are* that, and leaving out an
+item is one field on a copy of the snapshot.
+
+**`amend`** changes things. `prune` moves items between the same states the <kbd>space</kbd> key
+does, `revise` rewrites what one says, and `undo` walks back — deliberately not the kernel's undo
+stack. That stack is yours, bound to <kbd>u</kbd>, and the top of it while a tool is running is
+always the assistant turn that asked for the call: one step would erase the model's own question
+and orphan the answer it is waiting for. So `amend` keeps a journal of what *it* did, and that is
+what it can walk back. A reason is required on every change, and it is what you read in the
+context pane.
+
+Three things are refused outright, with the refusal handed back to the model: a **pinned** item
+(a pin is a promise, and it was not made to the model), a **system instruction**, and the
+assistant turn it is currently speaking in. It may unpin what it pinned itself, and nothing else.
+
+They are two tools rather than one with a mode argument, because a tool declares its capabilities
+once for every call it will ever receive. One tool would mean that answering **always** to "may it
+look at its own context?" also answered "may it rewrite a tool result?" — a grant that delivers
+more than it implies, which is the shape of thing this program exists not to do. So the
+permissions tab has a row for `introspect` and a row for `amend`, and you can answer them
+differently.
+
 ## 🔀 the model, and the address it lives at
 
 `/model` says which model this is talking to, where that is, in what dialect, and how much context
@@ -437,6 +482,8 @@ kamchatka [OPTIONS] [MESSAGE]...
       --requests <N>        how many requests one turn may make            [default: 8]
       --compact <FRACTION>  how full the context may get; 1 never compacts [default: 0.8]
       --parallel            run the model's tool calls at the same time
+      --mind                offer the model the two tools that read and change its own
+                            context; /mind turns them on and off while it runs
       --sandbox-allow <PATH> a path outside the working directory the shell may also
                             read and write; may be repeated
       --no-sandbox          run the shell tool unconfined, reaching whatever you can

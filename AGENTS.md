@@ -79,9 +79,21 @@ seam is wrong, not the crate.
 | `test.rs` | feature `test`: `ScriptedProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |
 
 `kamchatka/src`: `app.rs` (state and key handling), `ui.rs` (drawing only - it decides nothing),
-`tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `provider.rs`, `main.rs`
-(arguments and wiring). It is a library plus a binary only so the screen can be drawn against a
-`TestBackend` in tests.
+`tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `mind.rs` (the two
+off-by-default tools that hand the agent its own context), `provider.rs`, `main.rs` (arguments and
+wiring). It is a library plus a binary only so the screen can be drawn against a `TestBackend` in
+tests.
+
+`mind.rs` is the second `nachalnik-mcp`: **written with no change to the runtime at all**, and
+worth reading for that reason. Forking a context is `Kernel::snapshot` and `Kernel::resume`;
+previewing a request is `preview_request`; pruning is `set_state`. What it adds is the part the
+runtime has no opinion about - which of those a *model* may do. A pinned item, a system
+instruction and the assistant turn carrying the call in flight are refused, `amend` may unpin only
+what it pinned itself, and `undo` walks that tool's own journal rather than `Kernel::undo`, whose
+stack belongs to the person and whose top during a turn is always the model's own question. There
+are two tools rather than one with a mode argument because a `ToolSpec` declares its capabilities
+once: looking and rewriting have to be separately grantable or the grant delivers more than it
+implies.
 
 `nachalnik/examples`: `transparency` and `compaction` need no key and run in CI; `compare` and
 `panel` talk to a real API through `examples/common`.
@@ -117,7 +129,8 @@ fails without a key, or when a free tier has spent its allowance. `kamchatka` re
 
 Test files: `nachalnik/tests/` is `kernel`, `context`, `state`, `session`, `tokens`,
 `concurrency`, `live`. `kamchatka/tests/` draws the screen and reads the characters back
-(`screen`), runs real commands under a real ruleset (`sandbox`), and answers three sockets: one
+(`screen`), drives the metacognition tools through the real loop (`mind`), runs real commands
+under a real ruleset (`sandbox`), and answers three sockets: one
 that goes silent mid-stream (`stalled`) and two that serve the shapes a streamed tool call arrives
 in (`streaming`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at
 every tab with nothing to act on, and both scrolled past their own ends - a frame that panics takes
