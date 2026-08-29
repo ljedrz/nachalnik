@@ -367,11 +367,28 @@ impl Provider for OpenAiCompatible {
                 }
 
                 for requested in delta["tool_calls"].as_array().into_iter().flatten() {
-                    let index = requested["index"].as_u64().unwrap_or(0) as usize;
-                    while calls.len() <= index {
+                    // note: OpenAI numbers the calls in a message and streams each one's arguments
+                    // in fragments, so the index is what says which call a fragment belongs to.
+                    // Google's compatible endpoint sends no index at all - one whole call per
+                    // chunk, each with an identifier of its own - and taking that for index zero
+                    // folded three parallel calls into one: the names ran together into
+                    // `writewritewrite` and the model was told there was no such tool. So the
+                    // identifier decides when there is no index, and a fragment with neither
+                    // continues whatever came last
+                    let at = match requested["index"].as_u64() {
+                        Some(index) => index as usize,
+                        None => match requested["id"].as_str().filter(|id| !id.is_empty()) {
+                            Some(id) => calls
+                                .iter()
+                                .position(|call| call.id == id)
+                                .unwrap_or(calls.len()),
+                            None => calls.len().saturating_sub(1),
+                        },
+                    };
+                    while calls.len() <= at {
                         calls.push(PartialCall::default());
                     }
-                    let call = &mut calls[index];
+                    let call = &mut calls[at];
 
                     if let Some(id) = requested["id"].as_str() {
                         call.id = id.to_owned();
