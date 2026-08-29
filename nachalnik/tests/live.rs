@@ -34,12 +34,12 @@
 //! ```
 //!
 //! note: These tests need a model that can read its own tool results, which is a real bar and
-//! not every small model clears it. Measured on the same machine, `granite4.2:3b` passes all
-//! eighteen; `llama3.2` passes fifteen and fails three, because it calls the tool, is handed the
-//! answer in the request, and then reports a different one it made up. That is a fair result for
-//! a test suite whose subject is whether a real model's answers survive the round trip - the
-//! failure is in the model, and the way to tell is that the projected messages in the panic
-//! output contain the tool result the model claims it never saw.
+//! not every small model clears it. Measured on the same machine against the eighteen there were
+//! then, `granite4.2:3b` passed all of them and `llama3.2` passed fifteen and failed three,
+//! because it calls the tool, is handed the answer in the request, and then reports a different
+//! one it made up. That is a fair result for a test suite whose subject is whether a real model's
+//! answers survive the round trip - the failure is in the model, and the way to tell is that the
+//! projected messages in the panic output contain the tool result the model claims it never saw.
 //!
 //! note: What these check is what a scripted provider cannot: that the requests the kernel
 //! builds are accepted by a real API, that a real model's answers survive the round trip
@@ -48,9 +48,9 @@
 //! assertion-heavy about structure.
 //!
 //! note: They run one at a time and retry on rate limits and on a busy upstream, so that neither
-//! a free-tier limit nor somebody else's traffic is ever the thing under test. A whole run costs about twenty requests, and a key that has run out of
-//! free requests for the day makes them skip rather than fail - the difference between the two
-//! kinds of rate limit is in [`out_of_quota`].
+//! a free-tier limit nor somebody else's traffic is ever the thing under test. A whole run costs
+//! about thirty requests, and a key that has run out of free requests for the day makes them skip
+//! rather than fail - the difference between the two kinds of rate limit is in [`out_of_quota`].
 
 use std::{
     env,
