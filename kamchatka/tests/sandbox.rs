@@ -10,9 +10,21 @@
 
 #![cfg(target_os = "linux")]
 
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+    sync::Arc,
+};
 
-use kamchatka::sandbox::{Confinement, Sandbox, available};
+use kamchatka::{
+    sandbox::{Confinement, Sandbox, available},
+    tools::{Careful, Shell},
+};
+use nachalnik::{
+    Config, ContextItem, ContextKind, Kernel, ModelResponse,
+    test::{AllowAll, ScriptedProvider, call},
+};
+use serde_json::json;
 
 /// The binary under test, which is also the thing that confines itself.
 fn program() -> PathBuf {
@@ -27,11 +39,21 @@ fn program() -> PathBuf {
 }
 
 /// Runs a command under the given sandbox, returning its output and whether it succeeded.
+///
+/// note: spawned rather than run in one call, and the temporary directory removed afterwards,
+/// because that is what the `shell` tool does: a confined process cannot remove its own, and a
+/// test that skipped it would leave one behind per command and prove nothing about the tool.
 fn run(sandbox: &Sandbox, cmd: &str) -> (bool, String) {
-    let output = Command::new(program())
+    let child = Command::new(program())
         .args(sandbox.argv(cmd))
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .expect("the binary under test is built");
+    let scratch = kamchatka::sandbox::scratch_for(child.id());
+    let output = child.wait_with_output().expect("it was spawned");
+    let _ = std::fs::remove_dir_all(&scratch);
+
     let mut said = String::from_utf8_lossy(&output.stdout).into_owned();
     said.push_str(&String::from_utf8_lossy(&output.stderr));
 
@@ -252,6 +274,64 @@ fn the_file_tools_are_held_to_the_same_boundary() {
         ..reach
     };
     assert!(open.allows("/etc/passwd").is_ok());
+}
+
+/// A kernel whose one tool is the confined `shell`, answering with a fixed script.
+///
+/// note: through the tool rather than the binary, because what a confined command leaves behind is
+/// removed by whoever *spawned* it, and a test that spawned the confiner itself would be checking
+/// nobody's work but its own.
+fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse>) -> Kernel {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(script)));
+    kernel.set_policy(Arc::new(AllowAll));
+    kernel.add_tool(Arc::new(Shell {
+        policy: Arc::new(Careful::new()),
+        workdir: workdir.to_path_buf(),
+        extra: Vec::new(),
+        confiner: Some(program()),
+    }));
+
+    kernel
+}
+
+#[tokio::test]
+async fn a_command_takes_its_temporary_directory_with_it() {
+    if !enforced() {
+        return;
+    }
+    let kernel = confined_agent(
+        &workdir("scratch"),
+        [
+            ModelResponse::tool_calls(vec![call(
+                "1",
+                "shell",
+                json!({ "cmd": "printf %s \"$TMPDIR\"" }),
+            )]),
+            ModelResponse::text("done"),
+        ],
+    );
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn runs");
+
+    let said = kernel
+        .items()
+        .into_iter()
+        .find(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .expect("the shell answered");
+    let prefix = format!("{}/kamchatka-", std::env::temp_dir().display());
+    let scratch = said
+        .lines()
+        .find(|line| line.starts_with(&prefix))
+        .unwrap_or_else(|| {
+            panic!("the command should have been given a TMPDIR of its own: {said}")
+        });
+
+    assert!(
+        !Path::new(scratch).exists(),
+        "{scratch} outlived the command it was made for"
+    );
 }
 
 #[test]

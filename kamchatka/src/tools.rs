@@ -243,6 +243,14 @@ impl Tool for Shell {
             Ok(child) => child,
             Err(e) => return Ok(ToolOutput::error(format!("could not run `{cmd}`: {e}"))),
         };
+        // the confined child cannot remove its own temporary directory, so this is where that
+        // happens; the identifier has to be read now, because a child that has been waited on no
+        // longer has one. See `sandbox::scratch_for`
+        let scratch = self
+            .confiner
+            .is_some()
+            .then(|| child.id().map(crate::sandbox::scratch_for))
+            .flatten();
 
         // taken out of the child, so that it can still be killed while these are being read
         let stdout = child.stdout.take().expect("stdout was piped");
@@ -286,6 +294,9 @@ impl Tool for Shell {
             Ok(status) => status.to_string(),
             Err(e) => format!("unknown ({e})"),
         };
+        if let Some(scratch) = scratch {
+            let _ = tokio::fs::remove_dir_all(scratch).await;
+        }
 
         let text = format!(
             "exit: {status}\n--- stdout ---\n{collected}\n--- stderr ---\n{errors}{}",

@@ -348,6 +348,17 @@ pub fn confine(_sandbox: &Sandbox, _scratch: &Path) -> Confinement {
     Confinement::Unsupported
 }
 
+/// The temporary directory a confined command is given, named after the process it belongs to.
+///
+/// note: named after the child rather than made with a random name, so that the process which
+/// *spawned* that child can find it again and remove it. The child cannot: `/tmp` is not writable
+/// under the ruleset and unlinking a directory is a write to the one it sits in, so every command
+/// used to leave an empty `kamchatka-<pid>` behind for good. Removing it is therefore the caller's
+/// job - see [`crate::tools::Shell`] - and this is the one place that spells the name.
+pub fn scratch_for(pid: u32) -> PathBuf {
+    std::env::temp_dir().join(format!("kamchatka-{pid}"))
+}
+
 /// Whether a confinement would hold here, asked without running anything.
 ///
 /// note: asked in a child, because finding out means applying a ruleset and a process cannot take
@@ -359,10 +370,22 @@ pub fn available(program: &Path) -> Confinement {
         writable: true,
         network: false,
     };
+    // spawned rather than run to completion in one call, because the answer is read out of a
+    // child that has left a directory behind it, and the identifier is how it is found again
     let output = std::process::Command::new(program)
         .args(sandbox.argv("exit 0"))
         .env(REPORT_VAR, "1")
-        .output();
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|child| {
+            let scratch = scratch_for(child.id());
+            let output = child.wait_with_output();
+            let _ = std::fs::remove_dir_all(&scratch);
+
+            output
+        });
 
     match output {
         Ok(output) => match String::from_utf8_lossy(&output.stderr)
@@ -398,8 +421,9 @@ pub fn run_if_asked() -> Option<i32> {
     let (sandbox, cmd) = Sandbox::from_argv(&argv)?;
 
     // a temporary directory of this run's own, made before anything is restricted and handed to
-    // the command as `TMPDIR`; see the note on `confine`
-    let scratch = std::env::temp_dir().join(format!("kamchatka-{}", std::process::id()));
+    // the command as `TMPDIR`; see the note on `confine`. Whoever spawned this removes it again,
+    // being the only one of the two processes that can
+    let scratch = scratch_for(std::process::id());
     let _ = std::fs::create_dir_all(&scratch);
 
     let confinement = confine(&sandbox, &scratch);
@@ -421,7 +445,6 @@ pub fn run_if_asked() -> Option<i32> {
         .current_dir(&sandbox.workdir)
         .env("TMPDIR", &scratch)
         .status();
-    let _ = std::fs::remove_dir_all(&scratch);
 
     Some(match status {
         Ok(status) => status.code().unwrap_or(1),

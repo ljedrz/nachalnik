@@ -15,7 +15,10 @@ minor bump may break you.
   readable or writable either way. It is applied by re-executing this program in a mode that
   confines itself and then runs the command - Landlock restricts the calling thread, and a
   single-threaded helper is the shape that needs no thought about which one. A directory of the
-  run's own is handed over as `TMPDIR`; `/tmp` itself is not opened up.
+  run's own is handed over as `TMPDIR`; `/tmp` itself is not opened up, and the directory is
+  removed by the process that spawned the command, that being the only one of the two which can:
+  unlinking a directory is a write to the one it sits in, and the confined process cannot write
+  there.
 - `read`, `write` and `edit` are held to the same boundary by their own code, resolving `..` and
   symlinks before comparing. Weaker in kind than a ruleset, and said to be.
 - The binary that confines a command is settled once at startup rather than asked for per call.
