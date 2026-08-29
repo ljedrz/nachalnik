@@ -176,7 +176,8 @@ since it runs in a process group of its own — and still answers the call it wa
 turn ends up in the context like any other, where it can be read, pruned, or left alone.
 
 A message sent while a turn is running **waits for the end of it**, and then goes in and gets a
-turn of its own. It cannot go in any earlier: the answer the model is still writing would land
+turn of its own — and says so when you send it, because until the turn ends it is on the screen and
+not yet in the context, which is the one moment those two disagree. It cannot go in any earlier: the answer the model is still writing would land
 after it, leaving the next request ending with the model talking rather than with your question —
 and mid-loop it would land between a tool call and that call's result, where a request cannot have
 a user message. So a message typed to steer a turn is answered after that turn rather than during

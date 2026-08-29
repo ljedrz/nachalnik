@@ -1442,6 +1442,12 @@ impl App {
         // and the call it is waiting on still has a result to come
         if self.busy || !self.kernel.pending_permissions().is_empty() {
             self.typed_ahead = Some(line.to_owned());
+            // said out loud, because until the turn ends this is the one thing on the screen that
+            // the context does not have: a session saved now would not contain it
+            self.say(
+                Speaker::Note,
+                "this goes in when the turn stops, and gets a turn of its own",
+            );
             return;
         }
 

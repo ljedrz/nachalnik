@@ -2335,3 +2335,20 @@ fn every_command_that_exists_is_in_the_help() {
         "only found {listed} commands; the scan is broken"
     );
 }
+
+#[tokio::test]
+async fn a_message_that_has_to_wait_says_that_it_is_waiting() {
+    let mut harness = Harness::new([ModelResponse::text("the first answer")]);
+
+    harness.send("the first question").await;
+    harness.app.busy = true;
+    harness.send("the second question").await;
+
+    // it is on the screen and not yet in the context, which is the one moment those two disagree.
+    // Saying so is the difference between a message waiting and a message that went nowhere
+    let screen = harness.screen();
+    assert!(
+        screen.contains("goes in when the turn stops"),
+        "a queued message says it is queued: {screen}"
+    );
+}
