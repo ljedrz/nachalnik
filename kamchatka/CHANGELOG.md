@@ -129,7 +129,10 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   refusal is visible in advance rather than only when it fires.
 - Four tabs, each taking the whole window: `chat`, `context`, `trace`, `permissions`. `ctrl+t`
   for the next, `alt+1` to `alt+4` for one in particular, `tab` between the prompt and the open
-  tab. The prompt and the status line are under all of them.
+  tab. The prompt and the status line are under all of them. A pasted block goes into the prompt
+  as the lines it was pasted as: bracketed paste stops a pasted newline being read as `enter` and
+  sending half of what was pasted, and the carriage returns a terminal spells those newlines with
+  are put back, or the whole of it arrives as one line with invisible characters in it.
 - The context tab is a table: every item the runtime holds, its kind, what it costs, whether it is
   going into the next request, and what the model will actually read of it - or, for the ones that
   are not going, why not, in the projector's own words. `space` takes one out and puts it back,

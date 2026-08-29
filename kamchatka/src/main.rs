@@ -244,7 +244,7 @@ async fn run(
                 Some(Ok(TerminalEvent::Key(key))) => app.on_key(key).await,
                 // without this, a pasted newline would be an enter press and would send half of
                 // what was pasted
-                Some(Ok(TerminalEvent::Paste(text))) => { app.input.insert_str(text); }
+                Some(Ok(TerminalEvent::Paste(text))) => app.paste(&text),
                 Some(Ok(_)) => {}
                 Some(Err(e)) => return Err(e).context("the terminal stopped talking"),
                 None => return Ok(()),

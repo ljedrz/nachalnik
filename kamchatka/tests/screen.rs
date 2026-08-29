@@ -2085,3 +2085,25 @@ async fn saying_always_leaves_a_waiting_call_that_needs_something_else_a_questio
     assert_eq!(waiting[0].args["path"], ".env");
     assert!(harness.app.overlay.is_some());
 }
+
+#[tokio::test]
+async fn a_pasted_block_arrives_as_the_lines_it_was_pasted_as() {
+    let mut harness = Harness::new([]);
+
+    // what a terminal sends: the breaks inside a paste are carriage returns, because a paste is
+    // spelled as though it had been typed and that is what enter sends
+    harness.app.paste("first line\rsecond line\r\nthird line");
+
+    assert_eq!(
+        harness.app.input.lines(),
+        ["first line", "second line", "third line"],
+        "a paste is the lines it was, not one line with invisible characters in it"
+    );
+    let screen = harness.screen();
+    for line in ["first line", "second line", "third line"] {
+        assert!(
+            screen.contains(line),
+            "{line} is not in the prompt: {screen}"
+        );
+    }
+}

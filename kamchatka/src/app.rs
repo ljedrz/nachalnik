@@ -845,6 +845,18 @@ impl App {
         }
     }
 
+    /// Puts pasted text into the prompt.
+    ///
+    /// note: the line breaks inside a paste arrive as carriage returns rather than newlines,
+    /// because a terminal sends a paste as though it had been typed and that is what the enter key
+    /// sends. The editor underneath splits on newlines, so a pasted stack trace went in as one
+    /// line with invisible characters where its breaks were and read as its lines run together -
+    /// in the one place whose whole job is to show somebody what they are about to send.
+    pub fn paste(&mut self, text: &str) {
+        self.input
+            .insert_str(text.replace("\r\n", "\n").replace('\r', "\n"));
+    }
+
     /// Empties the prompt, wherever what was in it has just gone.
     fn clear_input(&mut self) {
         self.input.select_all();
