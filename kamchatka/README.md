@@ -11,6 +11,7 @@ ordinary user code — the provider, the four tools, the permission policy, the 
 drawing. The runtime supplies the state machine, the context and the paper trail.
 
 ```console
+$ cargo install kamchatka
 $ export KAMCHATKA_API_KEY=sk-or-...
 $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 ```
@@ -377,6 +378,25 @@ The compactor drops the oldest tool results once the context passes `--compact` 
 of the limit and leaves a note saying which ones went. It does not summarize them — it never read
 them — and it removes nothing that is pinned, because the kernel refuses. Every removal is an
 excluded item you can put back.
+
+## 📦 installing
+
+```console
+$ cargo install kamchatka                     # from the registry
+$ cargo install --git https://github.com/ljedrz/nachalnik kamchatka
+$ cargo install --path kamchatka              # from a clone
+```
+
+Rust 1.88 or newer, and that is the whole list: no system libraries, no `pkg-config`, nothing
+to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
+looking for yours. Adding `--no-default-features` drops MCP support, and the `--mcp` flag with it.
+
+**The sandbox is Linux-only.** The `shell` tool is confined with [Landlock](https://landlock.io),
+which is a Linux LSM; everywhere else the program builds and runs, but the shell is unconfined,
+the permissions tab says `shell: a command can do any of these` rather than `shell: confined`,
+and the stances are answers you were asked for rather than a boundary anything enforces. On Linux
+it also wants a kernel new enough to have Landlock — 5.13 for the filesystem rules, 6.7 for
+`network: deny` — and the tab says which of the two it got.
 
 ## 🎛️ options
 
