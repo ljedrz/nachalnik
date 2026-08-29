@@ -2323,7 +2323,10 @@ async fn a_message_sent_into_a_turn_that_stops_to_ask_waits_for_the_answer_too()
 /// catching is a command that works and cannot be found, which is the shape `/help` itself was in.
 #[test]
 fn every_command_that_exists_is_in_the_help() {
-    let source = include_str!("../src/app.rs");
+    // note: line endings normalised first. `.gitattributes` pins the checkout to LF, and this is
+    // the belt to that pair of braces: a test that reads source to see what it says should not be
+    // the thing that notices how the source was checked out. It was, on Windows, and nowhere else.
+    let source = include_str!("../src/app.rs").replace("\r\n", "\n");
     let handler = source
         .split_once("async fn command(")
         .expect("the slash commands are answered in one place")

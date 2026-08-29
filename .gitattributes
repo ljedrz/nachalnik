@@ -1,0 +1,8 @@
+# LF in the working tree on every platform.
+#
+# note: Git for Windows checks out CRLF by default, which is invisible to whoever is running it
+# and breaks anything that reads a file and looks for `\n` - `screen.rs` reads `app.rs` to check
+# that every command the prompt answers to is in the help, and on Windows it found no `\n    }\n`
+# to stop at. It would also put CRLF into a crate packaged on that machine, which is a difference
+# nobody would notice until it was on the registry.
+* text=auto eol=lf
