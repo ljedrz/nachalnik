@@ -401,7 +401,7 @@ fn the_row_count_agrees_with_what_the_widget_actually_draws() {
 
 /// The status line is drawn without wrapping, so whatever runs past the right edge is gone. What
 /// sits at that end is the provider's own token figure and the key that opens the help, and they
-/// are worth more than the address - so the address is what gives way.
+/// are worth more than the address - so the address is what gives way, in two steps.
 ///
 /// note: found by pointing the live suite at Google AI Studio, whose host is
 /// `generativelanguage.googleapis.com`: twenty columns longer than `openrouter.ai`, and enough to
@@ -409,7 +409,20 @@ fn the_row_count_agrees_with_what_the_widget_actually_draws() {
 #[test]
 fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
     let status_at = |width: u16| {
-        let mut app = app();
+        let kernel = Kernel::new(Config::default());
+        let policy = Arc::new(Careful::new());
+        kernel.set_provider(Arc::new(ScriptedProvider::new([])));
+        kernel.set_policy(policy.clone());
+        let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
+        std::mem::forget(keep);
+        // the longest address anyone is likely to be pointed at, which is the one that found this
+        let provider = Arc::new(OpenAiCompatible::new(
+            "gemini-3.5-flash-lite",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            "",
+        ));
+        let mut app = App::new(kernel, policy, provider, outcomes);
+
         let mut terminal = Terminal::new(TestBackend::new(width, 12)).expect("a backend");
         terminal
             .draw(|frame| ui::draw(frame, &mut app))
@@ -420,16 +433,30 @@ fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
             .collect::<String>()
     };
 
-    // wide: the address is there beside the model
-    let wide = status_at(160);
-    assert!(wide.contains("@ 127.0.0.1:1"), "{wide}");
-    assert!(wide.contains("F1 for the keys"), "{wide}");
-
-    // narrow: dropping the address is exactly what makes the rest fit
-    let narrow = status_at(66);
-    assert!(!narrow.contains('@'), "the address gave way: {narrow}");
+    // room for all of it: the address is there whole
+    let whole = status_at(120);
     assert!(
-        narrow.contains("F1 for the keys"),
-        "and the key hint did not: {narrow}"
+        whole.contains("@ generativelanguage.googleapis.com"),
+        "{whole}"
+    );
+    assert!(whole.contains("F1 for the keys"), "{whole}");
+
+    // a little short: the address is shortened rather than dropped, and says that it was
+    let cut = status_at(90);
+    assert!(cut.contains("@ generativelanguage.goog"), "{cut}");
+    assert!(!cut.contains("googleapis.com"), "it really was cut: {cut}");
+    assert!(cut.contains('\u{2026}'), "and says so: {cut}");
+    assert!(cut.contains("F1 for the keys"), "{cut}");
+
+    // too short for any of it to mean anything: it goes, and the figures stay
+    let gone = status_at(70);
+    assert!(!gone.contains('@'), "the address gave way: {gone}");
+    assert!(
+        !gone.contains('\u{2026}'),
+        "with no stub left behind: {gone}"
+    );
+    assert!(
+        gone.contains("F1 for the keys"),
+        "and the key hint did not: {gone}"
     );
 }

@@ -941,21 +941,41 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     // columns and `generativelanguage.googleapis.com` costs 36, which is the difference between
     // a line that fits at 100 columns and one that loses its last two facts
     let line = Line::from(spans);
-    let line = match line.width() > area.width as usize {
-        true => Line::from(without_host(line.spans)),
-        false => line,
+    let over = line.width().saturating_sub(area.width as usize);
+    let line = match over {
+        0 => line,
+        _ => Line::from(shrink_host(line.spans, over)),
     };
 
     frame.render_widget(Paragraph::new(line), area);
 }
 
-/// The same spans with the ` @ host` taken off the model's name.
-fn without_host(spans: Vec<Span<'static>>) -> Vec<Span<'static>> {
+/// The least of an address worth showing. Below this it goes entirely: `gen…` names nothing, and
+/// the columns it was costing are better spent on the figures to its right.
+const HOST_FLOOR: usize = 8;
+
+/// The same spans with the ` @ host` shortened to claw back `over` columns, or taken off when
+/// there is no shortening of it left worth reading.
+fn shrink_host(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> {
     spans
         .into_iter()
-        .map(|span| match span.content.split_once(" @ ") {
-            Some((model, _)) => Span::styled(model.to_owned(), span.style),
-            None => span,
+        .map(|span| {
+            let style = span.style;
+            let Some((model, host)) = span.content.split_once(" @ ") else {
+                return span;
+            };
+
+            // one column of the saving goes on the ellipsis that says it was shortened
+            let keep = Span::raw(host).width().saturating_sub(over + 1);
+            let shortened = match keep >= HOST_FLOOR {
+                // from the right: the leftmost label is the one that distinguishes an endpoint -
+                // `generativelanguage` in Google's, the resource name in an Azure deployment -
+                // and the rest of it is a domain shared with everything else the vendor runs
+                true => format!("{model} @ {}…", &host[..prefix_within(host, keep)]),
+                false => model.to_owned(),
+            };
+
+            Span::styled(shortened, style)
         })
         .collect()
 }
