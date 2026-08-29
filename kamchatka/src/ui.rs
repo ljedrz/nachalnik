@@ -1225,9 +1225,21 @@ fn start_of_line(text: &str, end: usize) -> usize {
 }
 
 /// A rectangle in the middle, at most `columns` by `rows`, and never bigger than what it is in.
+///
+/// note: the smallest a box is allowed to be comes *before* the size of the thing it is in, and
+/// the last word is the terminal's. A box has to be about twenty columns and four rows to be worth
+/// drawing at all, but a terminal narrower or shorter than that is not a reason to draw outside the
+/// buffer, which is a panic: `F1` in a one-row window took the whole program down and the session
+/// with it, and a window is one row for as long as somebody is dragging its edge.
 fn centred(area: Rect, columns: u16, rows: u16) -> Rect {
-    let width = columns.min(area.width.saturating_sub(4)).max(20);
-    let height = rows.min(area.height.saturating_sub(2)).max(4);
+    let width = columns
+        .min(area.width.saturating_sub(4))
+        .max(20)
+        .min(area.width);
+    let height = rows
+        .min(area.height.saturating_sub(2))
+        .max(4)
+        .min(area.height);
 
     Rect {
         x: area.x + (area.width.saturating_sub(width)) / 2,
