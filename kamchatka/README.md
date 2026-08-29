@@ -87,6 +87,11 @@ refused if it comes for it. Nothing disappeared: things changed state, and the s
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
 | <kbd>23G</kbd> | go to the item numbered 23 — the number `/prune` takes |
 
+An oversized tool result is held as *two* items: the shortened copy the model was shown, and the
+whole of it beside it, marked `▫ archived` and not going. <kbd>space</kbd> or <kbd>p</kbd> on that
+row is how you say **send the whole thing** — it is the only way to say it, and the token count in
+the row is what it will cost you.
+
 <kbd>e</kbd> is the verb the others were missing. `space` and `p` decide whether the model reads an
 item; `e` decides **what** it reads. The prompt turns into an editor holding the item's text, and
 committing supersedes the old one rather than overwriting it:
@@ -160,45 +165,104 @@ and running that through a renderer would be inventing structure it never had.
 | --- | --- |
 | <kbd>enter</kbd> / <kbd>alt+enter</kbd> | send / a new line |
 | <kbd>tab</kbd> | move between the prompt and the open tab |
-| <kbd>ctrl+t</kbd> | the next tab; <kbd>alt+1/2/3</kbd> for one in particular |
+| <kbd>ctrl+t</kbd> | the next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for one in particular |
 | <kbd>esc</kbd> | stop what is running, and keep what arrived |
 | <kbd>ctrl+c</kbd> | the same, and again to leave |
 | <kbd>F1</kbd> | all of them, including the slash commands |
 
-Stopping is cooperative rather than a killed process: the provider notices between fragments and
-returns the text it has, the shell tool kills its child and still answers the call it was given,
-and the partial turn ends up in the context like any other — where it can be read, pruned, or left
-alone.
+Stopping is cooperative rather than a killed process. The provider notices between fragments and
+returns the text it has; the shell tool kills the command — and everything the command started,
+since it runs in a process group of its own — and still answers the call it was given. The partial
+turn ends up in the context like any other, where it can be read, pruned, or left alone.
+
+A message sent while a turn is running **waits for the end of it**, and then goes in and gets a
+turn of its own. It cannot go in any earlier: the answer the model is still writing would land
+after it, leaving the next request ending with the model talking rather than with your question —
+and mid-loop it would land between a tool call and that call's result, where a request cannot have
+a user message. So a message typed to steer a turn is answered after that turn rather than during
+it.
+
+A pasted block arrives as the lines it was pasted as: bracketed paste keeps a pasted newline from
+being read as <kbd>enter</kbd> and sending half of it, and the carriage returns a terminal spells
+those newlines with are put back.
 
 ## 🔑 the permissions tab
 
 The other place the policy appears is the permission prompt — one call at a time, at the moment
-you are least inclined to think about it. **permissions** is the whole of it, in advance:
+you are least inclined to think about it. **permissions** is every answer you have given, in one
+place, where it can be changed:
 
 ```text
-┌ chat │ context │ trace │ permissions ──────────────────────────────────────────────┐
-│  capability             answer      the tools it covers                            │
-│  read                   allow       read                                           │
-│  write                  ask         write                                          │
-│  edit                   ask         edit                                           │
-│  shell                  ask         shell                                          │
-│  network                deny        nothing registered needs it                    │
-│  mcp:epoch              ask         epoch__from_stamp, epoch__to_stamp             │
-│                                                                                    │
-└──────────────────────────────── space cycles · a allow · n never · r ask again ────┘
+┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
+│  capability or path     answer      the tools it covers                                                      │
+│  read                   allow       read                                                                     │
+│  write                  deny        write                                                                    │
+│  shell                  allow       shell                                                                    │
+│  network                allow       shell, when the command reaches for it                                   │
+│  .env*                  deny        edit, read, write                                                        │
+│                                                                                                              │
+└──────────────── shell: confined · 12 more it will ask about · space cycles · a allow · n never · r ask again ┘
 ```
 
-Two lists in one: every capability the policy has an opinion about, *and* every capability a
-registered tool declares. Either alone would mislead — a tool can need something nobody has
-decided about (the row that will stop and ask), and `network` is refused here though nothing
-registered wants it, which is a fact worth being able to see rather than take on trust.
+Rows are **decisions**, not defaults. `ask` is what this policy does about anything nobody has
+mentioned, so a row per undecided thing would be a screenful of "it will stop and ask" burying the
+one or two lines that say what this agent can do *without* stopping. What is not listed is counted
+instead — `12 more it will ask about` — because a screen showing five decisions while standing for
+seventeen answers would be a different kind of dishonest. A subject arrives here when somebody
+answers a question about it, and cycling one back to `ask` takes it off again, which is what taking
+a decision back looks like.
+
+What that costs is worth saying plainly: you cannot refuse something here that has never come up.
+Deciding in advance means answering the first question with <kbd>a</kbd> or <kbd>n</kbd>.
+
+The line along the bottom comes first because it is the one thing on this tab that is not
+negotiable. A registered `shell` that is not refused can read, write and reach the network whatever
+the other rows say — so `shell: confined` (or `shell: a command can do any of these`) is what makes
+the rest of the table mean anything.
+
+Two kinds of row. A **capability** is what a tool declares, which is what makes "always" work for
+tools this program has never heard of — including an MCP server's, which all carry `mcp:<name>`. A
+**path rule** is finer than any capability: `read: allow` is a reasonable thing to want and
+`read .env: allow` is not, and the difference is a property of the file rather than of the tool
+that opened it. The strictest of everything consulted wins, so a rule can only tighten what a
+capability allows. `network` is the odd one: no tool declares it, because a model that wants the
+network writes `curl` — so the row says which shell it reaches, and when.
 
 <kbd>space</kbd> cycles a row through **ask → allow → deny**, or <kbd>a</kbd>/<kbd>n</kbd>/<kbd>r</kbd>
-directly, and it takes effect on the next call. Answering "always" at a permission prompt writes
-to this same table — the prompt and the tab are one object, not two.
+directly, and it takes effect on the next call. Answering "always" at a permission prompt writes to
+this same table — the prompt and the tab are one object, not two.
 
 `allow` runs with no question. `deny` never runs and never asks: the model gets `the call was not
 permitted` as a tool result it can read and work around, rather than a call that silently vanished.
+When the policy refuses on its own, the transcript says which stance did it — ``shell: refused by
+`network`, which this command reaches for`` — because "the call was not permitted" beside a
+`shell: allow` is true and useless.
+
+### the question itself
+
+```text
+┌ a tool wants to run ─────────────────────────────────────────────────┐
+│ shell wants: shell, network                                          │
+│                                                                      │
+│ cmd: curl -s https://example.com                                     │
+│                                                                      │
+│ [y] once   [a] always, for shell and network   [n] no                │
+│ [i] the exact JSON   [d] drop it                                     │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+It names **everything the policy consulted**, not just what the tool declared, and <kbd>a</kbd>
+answers for all of it — including any calls already waiting behind this one, since a model that
+asks for three things at once produces three questions and an "always" that did not reach them
+would go back on itself one keystroke later. <kbd>y</kbd> is this call only; a `curl` allowed once
+runs with the network open for that command and no other.
+
+Typing does not answer it. A question arrives on its own schedule, in the middle of whatever you
+happen to be typing, and its keys are ordinary letters — `a` grants a capability for the rest of
+the session and is also the third letter of "what". So a question waits for a pause in the typing
+before it starts taking keys as answers, and until then your letters go where you aimed them: into
+the prompt. <kbd>enter</kbd> sends what is in the prompt, and it waits, exactly like a message sent
+into a running turn does.
 
 ## 🐢 one transition at a time
 
@@ -226,8 +290,8 @@ to drive.
 
 ## 🔧 what it comes with
 
-Four tools — `read`, `write`, `edit`, `shell` — and a policy that allows reading, refuses the
-network, and asks about everything else. Answering **always** answers for a *capability*, not a
+Four tools — `read`, `write`, `edit`, `shell` — and a policy that allows reading and asks about
+everything else, including the network. Answering **always** answers for a *capability*, not a
 tool name, which is what makes it work for tools this program has never heard of:
 
 ```console
@@ -285,6 +349,9 @@ kamchatka [OPTIONS] [MESSAGE]...
       --requests <N>        how many requests one turn may make            [default: 8]
       --compact <FRACTION>  how full the context may get; 1 never compacts [default: 0.8]
       --parallel            run the model's tool calls at the same time
+      --sandbox-allow <PATH> a path outside the working directory the shell may also
+                            read and write; may be repeated
+      --no-sandbox          run the shell tool unconfined, reaching whatever you can
 ```
 
 ```text

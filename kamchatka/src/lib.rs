@@ -6,9 +6,9 @@
 //! going into the next request, and - for the ones that are not - why not, in the projector's own
 //! words. Space takes an item out and puts it back; `p` pins it so that compaction cannot have
 //! it; enter shows what it actually says. **trace** is every event the runtime emits, as it
-//! happens, under the same names the session log is made of. **permissions** is what the policy
-//! will answer about every capability, and which tools each one covers - changeable in advance
-//! rather than one question at a time.
+//! happens, under the same names the session log is made of. **permissions** is every answer
+//! somebody has given the policy, what each one covers, and a count of what is still a question -
+//! changeable where it is read rather than one prompt at a time.
 //!
 //! Nothing is inferred and nothing is hidden: the context tab is a list of ordinary values the
 //! runtime hands out, and `ctrl+p` prints the exact request they add up to.
