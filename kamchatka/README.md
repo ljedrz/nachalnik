@@ -6,7 +6,7 @@
 
 **A terminal agent that shows you its context.**
 
-Built on [`nachalnik`](../nachalnik), and built to demonstrate it. Everything in here is
+Built on [`nachalnik`][nachalnik], and built to demonstrate it. Everything in here is
 ordinary user code — the provider, the four tools, the permission policy, the compactor, the
 drawing. The runtime supplies the state machine, the context and the paper trail.
 
@@ -46,7 +46,7 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 > opens up more and `--no-sandbox` turns it off. Within the boundary the file tools are finer than
 > a capability: `read` is allowed, and `read .env` is a question, because a path rule can tighten
 > what a capability allows. It is one LSM, not a container; see
-> [what it does and does not protect you from](../README.md#-what-it-does-and-does-not-protect-you-from).
+> [what it does and does not protect you from][protection].
 
 ## 👉 four tabs, one window
 
@@ -313,7 +313,7 @@ tool name, which is what makes it work for tools this program has never heard of
 $ kamchatka --mcp 'files=npx -y @modelcontextprotocol/server-filesystem /srv'
 ```
 
-Those arrive through [`nachalnik-mcp`](../nachalnik-mcp) carrying `mcp:files`, so "always, for
+Those arrive through [`nachalnik-mcp`][nachalnik-mcp] carrying `mcp:files`, so "always, for
 mcp:files" is one server and not the next one. The `name=` is worth giving: it prefixes the
 server's tools and it is what the grant is *for*, and without it the name comes from the program,
 which for most of the servers people actually run is `npx`.
@@ -429,3 +429,10 @@ Tsoi shovelled coal in; this is the one where the work actually happens.
 ## licence
 
 MIT.
+
+<!-- crates.io resolves a relative link against the directory this readme was published from,
+     which is not where the repository root is. Links into the tree are absolute. -->
+
+[nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
+[nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
+[protection]: https://github.com/ljedrz/nachalnik/blob/HEAD/README.md#-what-it-does-and-does-not-protect-you-from

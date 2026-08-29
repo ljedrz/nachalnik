@@ -4,7 +4,7 @@
 [![docs.rs](https://docs.rs/nachalnik-mcp/badge.svg)](https://docs.rs/nachalnik-mcp)
 [![CI](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml/badge.svg)](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml)
 
-**An [MCP](https://modelcontextprotocol.io) bridge for [`nachalnik`](../nachalnik): a tool
+**An [MCP](https://modelcontextprotocol.io) bridge for [`nachalnik`][nachalnik]: a tool
 somebody else wrote, as a `Tool` like any other.**
 
 ```rust
@@ -81,4 +81,10 @@ Under the default it buys nothing.
 
 ### 📜 license
 
-MIT ([LICENSE-MIT](LICENSE-MIT)).
+MIT ([LICENSE-MIT][license]).
+
+<!-- crates.io resolves a relative link against the directory this readme was published from,
+     which is not where the repository root is. Links into the tree are absolute. -->
+
+[nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
+[license]: https://github.com/ljedrz/nachalnik/blob/HEAD/LICENSE-MIT

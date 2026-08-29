@@ -148,7 +148,7 @@ kernel.undo();
 
 ### 🖥️ the agent you can run
 
-`nachalnik` ships no UI, but the workspace does. **[`kamchatka`](kamchatka/)** is a terminal agent
+`nachalnik` ships no UI, but the workspace does. **[`kamchatka`][kamchatka]** is a terminal agent
 built on it, and built to show what it is for:
 
 ```console
@@ -557,8 +557,8 @@ Both are off by default, because neither is part of the runtime:
 
 ### 📚 examples
 
-**[compare](nachalnik/examples/compare.rs)** - the same prompt to several models at once, with proof that
-it *was* the same prompt:
+**[compare][ex-compare]** - the same prompt to several models at once, with proof that it *was*
+the same prompt:
 
 ```console
 $ cargo run --example compare -- -m gemini-3.5-flash-lite -m gemini-3.5-flash \
@@ -595,8 +595,8 @@ it stops claiming the requests are identical, because by then they are not:
 provider charged for. `--payload` prints the exact bytes each provider will send, `--save DIR`
 writes every session as a log and a snapshot, and each one is resumable with `kamchatka -r`.
 
-**[panel](nachalnik/examples/panel.rs)** - several models arguing about one question, in rounds, ending in
-a ruling with a tally behind it:
+**[panel][ex-panel]** - several models arguing about one question, in rounds, ending in a ruling
+with a tally behind it:
 
 ```console
 $ cargo run --example panel -- -m gemini-3.5-flash-lite -m gemini-3.5-flash \
@@ -633,16 +633,16 @@ is never counted as agreement.
 
 Two more, offline and API-key-free:
 
-* **[transparency](nachalnik/examples/transparency.rs)** - the whole philosophy in one run: what will be
-  sent, a permission prompt, a tool that floods the context, and pruning it away. It also
-  contains the permission policy and the `/context` renderer the library deliberately does not:
+* **[transparency][ex-transparency]** - the whole philosophy in one run: what will be sent, a
+  permission prompt, a tool that floods the context, and pruning it away. It also contains the
+  permission policy and the `/context` renderer the library deliberately does not:
   `cargo run --example transparency`
-* **[compaction](nachalnik/examples/compaction.rs)** - a compactor that summarizes what it drops, and the
-  user putting it back anyway: `cargo run --example compaction`
+* **[compaction][ex-compaction]** - a compactor that summarizes what it drops, and the user
+  putting it back anyway: `cargo run --example compaction`
 
-The three networked ones share [`examples/common`](nachalnik/examples/common/mod.rs) - an OpenAI-compatible
-HTTP provider and nothing else, because a server-sent-event parser is not what any of them is
-about. They talk to anything that speaks that dialect, local models included:
+The three networked ones share [`examples/common`][ex-common] - an OpenAI-compatible HTTP
+provider and nothing else, because a server-sent-event parser is not what any of them is about.
+They talk to anything that speaks that dialect, local models included:
 
 ```console
 $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
@@ -707,9 +707,9 @@ cost.
 
 | crate | what it is |
 | --- | --- |
-| **[`nachalnik`](nachalnik/)** | the runtime. Five dependencies, no `unsafe`, no network, no prompt. This is the part that matters, and it is meant to stay boring. |
-| **[`nachalnik-mcp`](nachalnik-mcp/)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
-| **[`kamchatka`](kamchatka/)** | a terminal agent built on the runtime - the thing you actually run, and the demonstration that the seams hold up under one. |
+| **[`nachalnik`][nachalnik]** | the runtime. Five dependencies, no `unsafe`, no network, no prompt. This is the part that matters, and it is meant to stay boring. |
+| **[`nachalnik-mcp`][nachalnik-mcp]** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
+| **[`kamchatka`][kamchatka]** | a terminal agent built on the runtime - the thing you actually run, and the demonstration that the seams hold up under one. |
 | `nachalnik-utils` | never published, permanently `0.0.0`. The OpenAI-compatible provider this crate's own examples and live tests talk through, so that scaffolding is written once rather than three times. A *dev*-dependency, which is the whole trick: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
 
 The bridge is deliberately *not* in the core. Speaking MCP means spawning processes, opening
@@ -750,4 +750,18 @@ agent is not the boss, you are. `kamchatka` is the boiler room the work actually
 
 ### 📜 license
 
-Licensed under the MIT License ([LICENSE-MIT](LICENSE-MIT)).
+Licensed under the MIT License ([LICENSE-MIT][license]).
+
+<!-- This file is `nachalnik`'s readme as well as the workspace's, and crates.io resolves a
+     relative link against the directory the readme was published from - `nachalnik/` - rather
+     than against the repository root. Every link into the tree is therefore absolute. -->
+
+[kamchatka]: https://github.com/ljedrz/nachalnik/tree/HEAD/kamchatka
+[nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
+[nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
+[ex-compare]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compare.rs
+[ex-panel]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/panel.rs
+[ex-transparency]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/transparency.rs
+[ex-compaction]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compaction.rs
+[ex-common]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/common/mod.rs
+[license]: https://github.com/ljedrz/nachalnik/blob/HEAD/LICENSE-MIT
