@@ -5,10 +5,79 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
-## [unreleased]
+## [0.1.0] - 2026-08-29
+
+The first release: a terminal agent built on `nachalnik`, and a demonstration of it.
 
 ### added
 
+- Four tabs, each taking the whole window: `chat`, `context`, `trace`, `permissions`. `ctrl+t`
+  for the next, `alt+1` to `alt+4` for one in particular, `tab` between the prompt and the open
+  tab. The prompt and the status line are under all of them; a message sent into a turn that is
+  already running waits for the end of it, says so, and then goes in and gets a turn of its own.
+  A pasted block goes into the prompt as the lines it was pasted as: bracketed paste stops a
+  pasted newline being read as `enter` and sending half of what was pasted, and the carriage
+  returns a terminal spells those newlines with are put back, or the whole of it arrives as one
+  line with invisible characters in it. A scrollbar runs down the right border of any tab holding
+  more than fits, and of the overlays - drawn on the border rather than in a column of its own,
+  so nothing gets narrower and a window with nothing to scroll looks exactly as it did.
+- The context tab is a table: every item the runtime holds, its kind, what it costs, whether it is
+  going into the next request, and what the model will actually read of it - or, for the ones that
+  are not going, why not, in the projector's own words. `space` takes one out and puts it back,
+  `p` pins it, `enter` reads the whole of it, `u` undoes the last change, and `23G` goes to the
+  item numbered 23 - the number every note names and every selector takes.
+- `e` on a context item changes what it says, through `Kernel::supersede`: the original stays,
+  marked `~`, naming the item that replaced it, and one `u` brings it back. `space` and `p` decide
+  whether the model reads an item; this decides what it reads.
+- The trace tab is every event as it happens, in the same names the session log uses, in two
+  aligned columns, wrapped rather than cut off, and readable backwards.
+- A `permissions` tab: every capability the policy has an opinion about *and* every capability a
+  registered tool declares, what the policy will answer about each, and which tools that covers.
+  `space` cycles a row through ask, allow and deny; `a`/`n`/`r` set one directly. The permission
+  prompt writes to the same table, so "always" and the tab are one object rather than two - and a
+  refusal is visible in advance rather than only when it fires. The tab lists the answers somebody
+  has actually given and counts the rest along the bottom, since `ask` is what the policy does
+  when it has not been told anything and a screenful of it buried the one or two lines that say
+  what this agent can do without stopping. Cycling a row back to `ask` takes it off the tab, which
+  is what taking a decision back looks like.
+- **Every stance starts at `ask`**, `read` and `network` included. `read: allow` would have been
+  the answer most people would have given and `network: deny` the cautious one, and both would
+  still be answers given on somebody's behalf before they had been asked - by a program whose
+  whole argument is that it does not do that. The tab starts empty, the first `read` is a
+  question, and what is on the tab is what somebody decided.
+- Permissions are finer than a capability where that is worth anything: `Careful` holds path rules
+  as well as capability stances - `.env*`, `*.pem`, `id_rsa*`, `.ssh/` and a few more, all `ask` -
+  and the strictest of everything consulted wins. Reading `src/main.rs` is silent; reading `.env`
+  is a question, and stays one the moment `read` is answered `always`: the capability goes to
+  `allow` and `.env*` does not. They bind `read`, `write` and `edit` and deliberately not `shell`,
+  because a command names its files inside a string and a check over that string would refuse
+  `cat .env` while waving `sed -n 1p .env` through.
+- The permission question names everything the policy actually consults, and `[a] always` answers
+  for all of it - including the calls already waiting behind it. A `yes, always` that answered only
+  for the declared capability would ask again on the very next call, whether the question came from
+  the network fold or from a path rule; and a model that asks for three commands in one answer
+  produces three questions, all of them decided before the first is drawn, so an `always` that did
+  not reach them would go back on itself one keystroke later. Anything still waiting that the
+  policy would now let through is let through; anything that needs something else is still a
+  question.
+- A tool's arguments are shown as the lines they are rather than as `\n` inside a JSON string,
+  since the permission question is the moment somebody has to read them; `[i]` still shows the
+  JSON verbatim. A question that arrives while somebody is typing does not take their typing as an
+  answer - its keys are ordinary letters - so the letters go on reaching the prompt until the
+  typing stops. `d` drops every call the model is waiting on, with one reason, and the model is
+  told: a call that silently vanished would leave it waiting.
+- A call the policy refuses on its own says which stance refused it - ``shell: refused by
+  `network`, which this command reaches for`` - because the tool result records only `the call was
+  not permitted`, and when the tool's own capability is `allow` that leaves a refused call with
+  nothing on screen accounting for it.
+- Four tools (`read`, `write`, `edit`, `shell`) and a policy that asks about all of it. "Always"
+  answers for a capability rather than a tool name, so it works for tools the program has never
+  heard of. The `network` stance is consulted for a `shell` call whose command names a program that
+  goes out to the network - `curl`, `pip install`, `git push` - because no tool declares
+  `Capability::Network`, a model that wants the network writes `curl`, and a row reading `deny`
+  beside `nothing registered needs it` would be a restriction that is not there. The policy's own
+  documentation is plain about the heuristic being over the command as written rather than a
+  sandbox.
 - **The `shell` tool runs under [Landlock](https://landlock.io)**, so the permission stances are
   enforced rather than reported: `network: deny` is refused by the kernel at `connect()`,
   `write: deny` makes the working directory read-only, and nothing outside that directory is
@@ -22,132 +91,47 @@ minor bump may break you.
   a write to the one it sits in.
 - `read`, `write` and `edit` are held to the same boundary by their own code, resolving `..` and
   symlinks before comparing. Weaker in kind than a ruleset, and said to be.
-- The binary that confines a command is settled once at startup rather than asked for per call.
-  `current_exe()` reads `/proc/self/exe`, so a `cargo build` in the repository being worked on
-  replaced it mid-session and every command came back `No such file or directory` with nothing on
-  screen accounting for it. If it cannot confine, the shell runs unconfined and the tab says so.
 - `--sandbox-allow PATH` opens up another path, `--no-sandbox` turns the whole thing off, and the
   permissions tab says which of `shell: confined` and `shell: a command can do any of these` is
-  true here.
-- The permissions tab says `shell: a command can do any of these` while a registered tool that runs
-  commands is not refused outright. `Capability::Shell` subsumes every other capability, so a tab
-  that listed five verdicts and said nothing about that was reporting four restrictions that are
-  not there.
-- A call the policy refuses on its own says which stance refused it - ``shell: refused by
-  `network`, which this command reaches for`` - because the tool result records only `the call was
-  not permitted`, and when the tool's own capability is `allow` that leaves a refused call with
-  nothing on screen accounting for it.
-- Fenced code blocks in the model's answers are syntax-coloured, by token *name* rather than by
-  theme: `synoptic` says which pieces are comments, strings, keywords, numbers and calls, and this
-  program picks the colours. The fences are split out before the markdown renderer sees them,
-  which is what makes the language, the whole block and the rule down its left all available at
-  once - a block still streaming in is a block, and one in a language nothing recognises still
-  gets the rule.
-- A scrollbar down the right border of any tab holding more than fits, and of the overlays. It is
-  drawn on the border rather than in a column of its own, so nothing gets narrower and a window
-  with nothing to scroll looks exactly as it did. The thumb reaches the last row of the track when
-  the content reaches its last row: `ScrollbarState` counts scroll *positions*, not rows, and these
-  tabs stop at the last full page rather than scrolling the final row up to the top.
-
-### changed
-
-- The permissions tab lists the answers somebody has actually given, and counts the rest along the
-  bottom. `ask` is what the policy does when it has not been told anything, and a screenful of it
-  buried the one or two lines that say what this agent can do without stopping. Cycling a row back
-  to `ask` takes it off the tab, which is what taking a decision back looks like.
-- **Every stance starts at `ask`**, `read` and `network` included. `read: allow` was the answer
-  most people would have given and `network: deny` was the cautious one, and both were still
-  answers given on somebody's behalf before they had been asked - by a program whose whole argument
-  is that it does not do that. Now the tab starts empty, the first `read` is a question, and what
-  is on the tab is what somebody decided. The path rules earn their keep the moment `read` is
-  answered `always`: the capability goes to `allow` and `.env*` does not.
-- Permissions are finer than a capability where that is worth anything: `Careful` holds path rules
-  as well as capability stances - `.env*`, `*.pem`, `id_rsa*`, `.ssh/` and a few more, all `ask` -
-  and the strictest of everything consulted wins. Reading `src/main.rs` is silent; reading `.env`
-  is a question. They bind `read`, `write` and `edit` and deliberately not `shell`, because a
-  command names its files inside a string and a check over that string would refuse `cat .env`
-  while waving `sed -n 1p .env` through.
-- The permission question names everything the policy actually consults, and `[a] always` answers
-  for all of it - including the calls already waiting behind it. A `yes, always` that answered only
-  for the declared capability would ask again on the very next call, whether the question came from
-  the network fold or from a path rule; and a model that asks for three commands in one answer
-  produces three questions, all of them decided before the first is drawn, so an `always` that did
-  not reach them went back on itself one keystroke later. Anything still waiting that the policy
-  would now let through is let through; anything that needs something else is still a question.
-- The `network` stance is consulted for a `shell` call whose command names a program that goes out
-  to the network - `curl`, `pip install`, `git push`. No tool declares `Capability::Network`,
-  because a model that wants the network writes `curl`, so the row read `deny` beside `nothing
-  registered needs it`: a restriction that was not there. It now names the shell it reaches, and
-  the policy's own documentation is plain about the heuristic being over the command as written
-  rather than a sandbox.
-- Everything a person is meant to read is a step lighter. `DarkGray` is the terminal's bright
-  *black* and sits a shade off the background on many themes, and nearly every secondary thing on
-  these screens was drawn in it - why an item is not being sent, what an event says, the context
-  and permissions headers, the status line. Those are `Gray` now; `DarkGray` is left to the things
-  that draw lines rather than words.
-- The selected row of a tab the keys are not on is underlined rather than backed by a slab of
-  `Rgb(40, 40, 40)`, which was a shade of a background this program does not know it has.
-- `/budget` asks whichever counter is installed what it has learned, through the kernel, rather
-  than keeping a typed handle to one this program set up. A counter that never corrects itself now
-  says so in a sentence instead of leaving the line out.
-
-### 0.1.0
-
-The first release: a terminal agent built on `nachalnik`, and a demonstration of it.
-
+  true here - the second of them also while a registered tool that runs commands is not refused
+  outright, since `Capability::Shell` subsumes every other capability and a tab that listed five
+  verdicts without saying so would be reporting four restrictions that are not there. The binary
+  that confines a command is settled once at startup rather than asked for per call, and if it
+  cannot confine, the shell runs unconfined and the tab says so.
 - The model's answers are rendered as markdown - headings, emphasis, inline code, lists and
   fenced blocks - because a terminal that printed the asterisks would be showing the punctuation
   instead of what it meant. `tui-markdown` does the parsing; the styling is this crate's, since
   the defaults put a coloured slab behind headings and code, which reads as a redaction on a dark
   theme and a bruise on a light one. Nothing else is treated as markdown: a tool's output is what
   the tool said.
+- Fenced code blocks are syntax-coloured, by token *name* rather than by theme: `synoptic` says
+  which pieces are comments, strings, keywords, numbers and calls, and this program picks the
+  colours. The fences are split out before the markdown renderer sees them, which is what makes the
+  language, the whole block and the rule down its left all available at once - a block still
+  streaming in is a block, and one in a language nothing recognises still gets the rule.
+- Nothing is drawn against a background this program does not know it has. The secondary things -
+  why an item is not being sent, what an event says, the tab headers, the status line - are `Gray`
+  rather than `DarkGray`, which is the terminal's bright *black* and sits a shade off the
+  background on many themes; `DarkGray` is left to the things that draw lines rather than words.
+  The selected row of a tab the keys are not on is underlined rather than backed by a slab of some
+  guessed-at colour.
 - `/step` performs exactly one transition of the state machine instead of a whole turn, which is
   the only way to stand in `State::Ready` - the moment the model has said what it wants to do and
   none of it has run. A turn walks through that state without ever drawing it.
-- `e` on a context item changes what it says, through `Kernel::supersede`: the original stays,
-  marked `~`, naming the item that replaced it, and one `u` brings it back. `space` and `p` decide
-  whether the model reads an item; this decides what it reads.
-- `d` at the permission prompt drops every call the model is waiting on, with one reason, and the
-  model is told - a call that silently vanished would leave it waiting.
 - `/seams` says what is plugged into each of the runtime's six parts, asked of the kernel rather
   than restated from what this program set up: the provider, the tools, the policy, the projector,
   the counter and the compactor - or that no compactor is installed and nothing will ever be
   dropped to make room.
 - `/tools drop ID` stops offering a tool from the next request onward, because the kernel's
-  registry is live rather than fixed at startup.
-- `/prune` with no selector prints the language rather than reporting that the empty string is not
-  a selector, and `23G` on the context tab goes to the item numbered 23 - the number every note
-  names and every selector takes.
-- A `permissions` tab: every capability the policy has an opinion about *and* every capability a
-  registered tool declares, what the policy will answer about each, and which tools that covers.
-  `space` cycles a row through ask, allow and deny; `a`/`n`/`r` set one directly. The permission
-  prompt writes to the same table, so "always" and the tab are one object rather than two - and a
-  refusal is visible in advance rather than only when it fires.
-- Four tabs, each taking the whole window: `chat`, `context`, `trace`, `permissions`. `ctrl+t`
-  for the next, `alt+1` to `alt+4` for one in particular, `tab` between the prompt and the open
-  tab. The prompt and the status line are under all of them; a message sent into a turn that is
-  already running waits for the end of it, says so, and then goes in and gets a turn of its own. A pasted block goes into the prompt
-  as the lines it was pasted as: bracketed paste stops a pasted newline being read as `enter` and
-  sending half of what was pasted, and the carriage returns a terminal spells those newlines with
-  are put back, or the whole of it arrives as one line with invisible characters in it.
-- The context tab is a table: every item the runtime holds, its kind, what it costs, whether it is
-  going into the next request, and what the model will actually read of it - or, for the ones that
-  are not going, why not, in the projector's own words. `space` takes one out and puts it back,
-  `p` pins it, `enter` reads the whole of it, `u` undoes the last change.
-- The trace tab is every event as it happens, in the same names the session log uses, in two
-  aligned columns, wrapped rather than cut off, and readable backwards.
+  registry is live rather than fixed at startup. `/prune` with no selector prints the language
+  rather than reporting that the empty string is not a selector.
 - `ctrl+p` heads the request with what the projector left out and what it repaired, because "why
   is that not in there?" is the question somebody opens it to answer.
 - `/budget`, and a `~` on the status line's estimate beside what the provider really charged: the
-  runtime's counter corrects itself from the difference, and this is where that is visible.
-- A tool's arguments are shown as the lines they are rather than as `\n` inside a JSON string,
-  since the permission question is the moment somebody has to read them; `[i]` still shows the
-  JSON verbatim. A question that arrives while somebody is typing does not take their typing as an
-  answer - its keys are ordinary letters, and `a` grants a capability for the rest of the session -
-  so the letters go on reaching the prompt until the typing stops.
-- Four tools (`read`, `write`, `edit`, `shell`) and a policy that asks about all of it. "Always"
-  answers for a capability rather than a tool name, so it works for tools the program has never
-  heard of.
+  runtime's counter corrects itself from the difference, and this is where that is visible. It asks
+  whichever counter is installed what it has learned, through the kernel, rather than keeping a
+  typed handle to one this program set up - and a counter that never corrects itself says so in a
+  sentence rather than leaving the line out.
 - Cooperative stopping on `esc`: the provider returns what it had streamed, the shell tool kills
   the command - and everything the command started, since it runs in a process group of its own -
   and still answers the call, and the partial turn is an ordinary context item. Both of them wait
@@ -160,12 +144,12 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   the server's tools and is what an "always" grant is for, so it is worth giving: taken from the
   program it would be `npx` for most of them.
 - `/model [ID]` and `/provider [URL [ID]]` show or change the model and the address its requests go
-  to - the second takes a model too, since a model belongs to the address that serves it, and given
-  none it keeps the name and asks the new endpoint whether it has one by that name rather than
-  leaving a 404 for the next request - without restarting - and both are shown, because the same model name at a different address is a
-  different model, and a comparison that cannot see the address is a comparison of names. The key
-  is not changed with the address: it is read from the environment at startup, and a key typed at
-  the prompt would be a key in the transcript.
+  to, without restarting. The second takes a model too, since a model belongs to the address that
+  serves it, and given none it keeps the name and asks the new endpoint whether it has one by that
+  name rather than leaving a 404 for the next request. Both are shown, because the same model name
+  at a different address is a different model, and a comparison that cannot see the address is a
+  comparison of names. The key is not changed with the address: it is read from the environment at
+  startup, and a key typed at the prompt would be a key in the transcript.
 - `/save PATH` writes the event log and a resumable snapshot beside it; `-r PATH` picks it back
   up in a fresh process. Both take a path you chose, on your disk - there is no session id, no
   server, and nothing to look up. Saving over files that already exist says which ones it

@@ -5,11 +5,11 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
-## [unreleased]
-
-### 0.1.0
+## [0.1.0] - 2026-08-29
 
 The first release: MCP servers as `nachalnik` tools.
+
+### added
 
 - `Server`, a connection to one MCP server: over a child process (`spawn`) or any transport you
   have opened (`connect`).

@@ -5,56 +5,12 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
-## [unreleased]
-
-### added
-
-- **Replacing any of the six seams is an event, and the event names what was replaced.** Setting
-  the projector, the counter or the compactor emitted nothing at all, and `policy.changed` said
-  only that the policy had been swapped - so a session log could not answer "what was projecting
-  these requests?" or "was anything dropping items here?" for a session where somebody had changed
-  it half way, and those are the questions a log is for. `projector.changed`, `counter.changed` and
-  `compactor.changed` join `policy.changed`, all four carrying `from` and `to` as the seams' own
-  `name()`; a compactor removed is `to: None`, since "nothing will ever be dropped from now on" is
-  the change that matters most and was the one least visible. `policy.changed` gaining those fields
-  is a breaking change to a variant nothing has released yet.
-- `Kernel::with_history`, the mirror of `with_context`: a question about the log - a count, a
-  search - answered without copying it. `history` says on itself that it copies the whole thing.
-- `TokenCounter::calibration` and `recalibrate`, both defaulted, and `Snapshot::calibration`
-  (`serde(default)`) that carries what one hands out to the other. A resumed session no longer
-  spends its first requests relearning what it had already been told, and - because resuming
-  recounts - comes back with the corrected figures rather than the stale ones.
-- `Calibration` now derives `Serialize`/`Deserialize` and has a hand-written `Default` (scale
-  `1.0`, not `f64::default()`).
-
-### changed
-
-- The crate documentation has a `What it does not protect you from` section: there is no sandbox,
-  the kernel executes nothing, and what it enforces is that a refused call never reaches
-  `Tool::invoke` - a decision point with a paper trail rather than a boundary.
-- `Capability`'s documentation says that `Shell` subsumes every other capability, so a policy that
-  allows it has allowed all of them - and that what closes the gap is `PermissionRequest::args`,
-  which a policy is handed and a capability list cannot see.
-
-### fixed
-
-- Context events are recorded while the context lock is still held, so the log's account of an
-  item's states matches the order they were applied in. Two threads changing one item could apply
-  in one order and be announced in the other, leaving the log's last word on that item
-  contradicting the item itself.
-
-### changed
-
-- The counter a `Kernel::new` starts with is `Calibrating<BytesPerToken>` rather than a bare
-  `BytesPerToken`. It corrects by `1.0` until a provider has reported what a request cost, so it is
-  the same counter until there is something better to be - and the low estimate is no longer what
-  everybody who did not read the documentation was left with. `kernel.counter().name()` says both
-  halves now; `set_counter(Arc::new(BytesPerToken::default()))` gets the bare one back.
-
-### 0.1.0
+## [0.1.0] - 2026-08-29
 
 The first release: an agent loop as a state machine, with the context, the tools, the permissions
 and the requests as explicit state.
+
+### added
 
 - `Kernel`, the loop: `step` performs exactly one transition and returns the `State` it produced,
   `turn` repeats until the model ends its turn or somebody has to decide something. `Requesting`
@@ -71,14 +27,29 @@ and the requests as explicit state.
 - `preview_request` and `preview_payload`: the exact request, and the provider's own bytes for it,
   before anything is sent.
 - `Event`, an append-only session log of typed events covering every transition, broadcast live.
+  Replacing any of the seams is an event too - `policy.changed`, `projector.changed`,
+  `counter.changed`, `compactor.changed`, each carrying `from` and `to` as the seams' own `name()`
+  - so a log can answer "what was projecting these requests?" for a session where somebody changed
+  it half way. A compactor removed is `to: None`, "nothing will ever be dropped from now on" being
+  the change that matters most and the one least visible. Context events are recorded while the
+  context lock is still held, so the log's account of an item's states is in the order they were
+  applied rather than the order two threads happened to announce them.
 - `Snapshot` / `resume`, because a log of events that name their items cannot rebuild the items.
+  A snapshot carries `calibration`, so a resumed session does not spend its first requests
+  relearning what it had already been told.
 - `interrupt`, which stops the loop between transitions, and - through
   `DeltaSink::is_interrupted` and `OutputSink::is_interrupted` - lets a provider or a tool stop
   what is already in flight without losing what it had. Plus `Config::max_requests_per_turn` and
   `cancel_pending_calls`.
 - `Calibrating`, a token counter that corrects another against what providers actually charge,
   via `TokenCounter::observe` - the kernel reports what a request was estimated at and what it
-  cost, and the counter decides what to make of it.
+  cost, and the counter decides what to make of it. It is what `Kernel::new` starts with, wrapped
+  around `BytesPerToken`, correcting by `1.0` until a provider has said something; the bare
+  estimate is `set_counter(Arc::new(BytesPerToken::default()))` for anybody who wants it back.
+  `TokenCounter::calibration` and `recalibrate` are how one counter hands that over to another.
+- `Kernel::with_context` and `with_history`: a question about the context or the log - a count, a
+  search - answered without copying either. `context()` and `history()` say on themselves that
+  they copy the whole thing.
 - `Config::parallel_tool_calls`, off by default: the one place the kernel spawns tasks.
 - Features: `selectors` (a small language for naming context items) and `test` (a scripted
   provider, dummy tools, off-the-shelf policies and a mechanical compactor).
@@ -86,3 +57,9 @@ and the requests as explicit state.
   OpenAI-compatible provider the examples and the live suite talk through lives in
   `nachalnik-utils`, an unpublished `0.0.0` workspace member that is a dev-dependency and nothing
   else - so none of it reaches anybody who depends on this crate.
+- The crate documentation says what it does *not* protect you from: there is no sandbox and the
+  kernel executes nothing, so what it enforces is that a refused call never reaches `Tool::invoke`
+  - a decision point with a paper trail rather than a boundary. `Capability`'s own documentation
+  says that `Shell` subsumes every other capability, so a policy that allows it has allowed all of
+  them, and that what closes the gap is `PermissionRequest::args`, which a policy is handed and a
+  capability list cannot see.
