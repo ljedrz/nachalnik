@@ -170,6 +170,20 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   in `/model`, `/provider` and `/seams` meant a session pointed at a local model drew exactly like
   one talking to a hosted one, which is the confusion the paragraph above says it is avoiding. The
   host alone, since the rest of the URL is `/provider`'s to show and there is no room for it here.
+  Where even that does not fit, the address is what gives way rather than the figures beside it:
+  shortened with a `…` while enough of it is left to recognise, and dropped below that. The line
+  is drawn without wrapping, so anything past the right edge is gone, and what sits at that end is
+  the one number on it this program did not estimate.
+- **The TLS is `rustls` over `ring`, and building it needs nothing installed first.** In reqwest
+  0.13 `default-tls` means rustls with `aws-lc-rs`, which is 1,659 C files and, on some platforms,
+  cmake and NASM - so `cargo install kamchatka` was asking for a build toolchain nobody had been
+  told about. `ring` is 17 C and assembly files and no system libraries. It is a smaller surface
+  rather than none: the pure-Rust providers are unaudited, which is not a trade a program that
+  talks about sandboxing should make.
+- `--help` lists the environment as well as the flags. `KAMCHATKA_MODEL` was there, because it is
+  declared to `clap`; `KAMCHATKA_BASE_URL` and `KAMCHATKA_CONTEXT_LIMIT` are read directly and so
+  appeared nowhere the program itself would tell you about - and the base URL is the one somebody
+  running a local model needs before anything works at all.
 - `/save PATH` writes the event log and a resumable snapshot beside it; `-r PATH` picks it back
   up in a fresh process. Both take a path you chose, on your disk - there is no session id, no
   server, and nothing to look up. Saving over files that already exist says which ones it
