@@ -64,20 +64,21 @@ impl OpenAiCompatible {
             base_url: base_url.into(),
             api_key: api_key.into(),
             model: Mutex::new(model.into()),
-            context_limit: Mutex::new(
-                env::var("KAMCHATKA_CONTEXT_LIMIT")
-                    .ok()
-                    .and_then(|v| v.parse().ok()),
-            ),
+            context_limit: Mutex::new(configured_limit()),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
         }
     }
 
     /// Switches models, and forgets the context limit that belonged to the old one.
+    ///
+    /// note: the limit somebody set for themselves is not the old model's, and is put back rather
+    /// than forgotten. Without this, `/model` quietly replaced an explicit
+    /// `KAMCHATKA_CONTEXT_LIMIT` with whatever the endpoint advertises - which is the number the
+    /// person had already decided not to measure against.
     pub async fn set_model(&self, model: impl Into<String>) {
         *self.model.lock() = model.into();
-        *self.context_limit.lock() = None;
+        *self.context_limit.lock() = configured_limit();
         self.probe().await;
     }
 
@@ -508,6 +509,13 @@ fn same_model(listed: &str, model: &str) -> bool {
     listed == model
         || listed.strip_prefix("models/") == Some(model)
         || listed.strip_suffix(":latest") == Some(model)
+}
+
+/// The context limit somebody set by hand, if they set one.
+fn configured_limit() -> Option<usize> {
+    env::var("KAMCHATKA_CONTEXT_LIMIT")
+        .ok()
+        .and_then(|limit| limit.parse().ok())
 }
 
 /// The API key, under whichever of the documented names it is set.
