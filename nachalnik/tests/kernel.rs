@@ -726,6 +726,7 @@ async fn a_pin_is_a_promise() {
 
     let report = kernel.apply_compaction(nachalnik::CompactionPlan {
         remove: vec![pinned, doomed],
+        elide: Vec::new(),
         summary: None,
         reason: "an overzealous compactor".into(),
     });

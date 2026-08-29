@@ -153,6 +153,9 @@
 //!   removal is a state change ([`Kernel::set_state`]), so a removed item can still be listed,
 //!   inspected, and restored - and that holds even for an output limit, which records the whole
 //!   of what a tool said beside the shortened copy the model is shown.
+//!   [`ContextState::Elided`] is the third answer between in and out: the item stays in the
+//!   request as a short marker, so a tool result can stop costing what it holds without the
+//!   call that asked for it having to be taken off the record to keep the request valid.
 //! - [`Projection`] is what the context turns into on the wire, complete with what was left out
 //!   and why.
 //! - [`Event`] is everything that happens - including every state transition - broadcast live

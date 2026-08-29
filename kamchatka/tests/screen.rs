@@ -2499,3 +2499,84 @@ async fn the_status_line_says_where_the_requests_go() {
         "the status line does not say where the requests go: {screen}"
     );
 }
+
+/// A compaction pass leaves the conversation coherent: the calls the model made are still on the
+/// record, each with an answer saying its result was compacted.
+///
+/// note: the reason this program elides rather than removes. Removing a tool result forces the
+/// projector to drop the call that asked for it - a call with no result is a request most
+/// providers reject - so the model was left reading a history in which it never asked for any of
+/// this, immediately above a summary saying the results had been dropped.
+#[tokio::test]
+async fn compaction_shortens_a_result_without_unasking_the_question() {
+    use kamchatka::tools::Trim;
+    use nachalnik::{Compactor, Content, ToolCall};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    let call = ToolCall::new(
+        "call-1",
+        "read",
+        std::sync::Arc::new(json!({"path": "big.rs"})),
+    );
+    kernel.push(ContextItem::user("what is in big.rs?"));
+    kernel.push(ContextItem::assistant(
+        Content::text("let me look"),
+        vec![call.clone()],
+    ));
+    let result = kernel.push(ContextItem::tool_result(
+        call.id.clone(),
+        "read",
+        Content::text("x".repeat(40_000)),
+        false,
+    ));
+
+    let trim = Trim {
+        threshold: 0.0,
+        target: 0.0,
+    };
+    let plan = trim
+        .plan(&kernel.items(), &kernel.budget())
+        .await
+        .expect("something to compact");
+    assert_eq!(plan.elide, vec![result], "it elides rather than removes");
+    assert!(plan.remove.is_empty());
+
+    let report = kernel.apply_compaction(plan);
+    assert_eq!(report.elided.len(), 1);
+    assert!(
+        report.tokens_after < report.tokens_before / 10,
+        "{} -> {}",
+        report.tokens_before,
+        report.tokens_after
+    );
+
+    let request = kernel.preview_request().expect("a request");
+    let sent = format!("{:?}", request.messages);
+    assert!(!sent.contains("xxxx"), "the content is gone");
+    assert!(
+        sent.contains("compacted to make room"),
+        "and says so where it was: {sent}"
+    );
+    assert_eq!(
+        request
+            .messages
+            .iter()
+            .filter(|m| !m.tool_calls.is_empty())
+            .count(),
+        1,
+        "the call it made is still on the record: {sent}"
+    );
+    assert!(
+        kernel.project().repairs.is_empty(),
+        "so nothing had to be repaired"
+    );
+
+    // and it is still on the tab, marked, restorable, with what it holds counted as held back
+    assert_eq!(kernel.item(result).unwrap().state, ContextState::Elided);
+    assert_eq!(
+        kernel.with_context(|c| c.tokens_withheld()),
+        kernel.item(result).unwrap().tokens
+    );
+}

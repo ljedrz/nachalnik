@@ -326,6 +326,9 @@ impl Compactor for LargestFirstCompactor {
         }
 
         Some(CompactionPlan {
+            // this one still *removes*, so that the crate's own tests keep exercising the
+            // orphan repair that removal needs; `kamchatka`'s compactor is the one that elides
+            elide: Vec::new(),
             summary: Some(ContextItem::summary(format!(
                 "{} tool result(s) worth ~{freed} tokens were removed from the context",
                 remove.len()

@@ -114,6 +114,7 @@ impl Compactor for Summarizer {
                 budget.limit.unwrap_or_default(),
             ),
             remove,
+            elide: Vec::new(),
         })
     }
 }

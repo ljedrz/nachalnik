@@ -1013,11 +1013,13 @@ impl Kernel {
         let counter = self.counter();
         let CompactionPlan {
             remove,
+            elide,
             summary,
             reason,
         } = plan;
 
         let mut removed = Vec::new();
+        let mut elided = Vec::new();
         let mut refused = Vec::new();
         let mut announcements = Vec::new();
         let mut added = None;
@@ -1058,6 +1060,41 @@ impl Kernel {
                 }
             }
 
+            // note: the note is set from the pass's reason rather than kept, exactly as the
+            // removals above do it - a note says why an item is in the state it is in, and the
+            // one it may already be carrying answers a different question ("4,096 bytes were
+            // truncated by the output limit"), which would be a strange thing to hand the model
+            // as the reason it cannot see this any more
+            for id in elide {
+                let Some(item) = context.item(id) else {
+                    continue;
+                };
+                let entry = Removed {
+                    id,
+                    label: item.label.clone(),
+                    tokens: item.tokens,
+                };
+
+                if item.state == ContextState::Pinned {
+                    refused.push(entry);
+                    continue;
+                }
+                if !item.is_projected() || item.state.is_elided() {
+                    continue;
+                }
+
+                let note = Some(format!("compaction: {reason}"));
+                if let Some(from) = context.set_state(id, ContextState::Elided, note.clone()) {
+                    announcements.push(Event::ContextChanged {
+                        id,
+                        from,
+                        to: ContextState::Elided,
+                        note,
+                    });
+                }
+                elided.push(entry);
+            }
+
             if let Some(item) = summary {
                 let id = context.add(item, &*counter);
                 let item = context.item(id).expect("the item was just added");
@@ -1078,6 +1115,7 @@ impl Kernel {
 
             let report = CompactionReport {
                 removed,
+                elided,
                 refused,
                 summary: added,
                 reason,
@@ -1839,14 +1877,22 @@ impl Kernel {
     /// note: Both [`Kernel::budget`] and the request builder go through here, so that the number
     /// a client is shown is the number that is about to be sent. Summing the projected *items*
     /// instead would quietly count the ones the projector then repairs away.
+    /// Projects the context and reports what the projection costs.
+    ///
+    /// note: counted over the messages that came out, not over the items that went in. They are
+    /// not the same figure: a reference is labelled on its way out, and an elided item is a marker
+    /// the size of a line where the item behind it may be ten thousand tokens. Summing the items
+    /// would have the budget report what the context is holding, which is not what the request
+    /// costs - and a compactor that elides would watch the total refuse to move and elide again.
     fn projected(&self) -> (Projection, usize) {
         let projector = self.projector();
+        let counter = self.counter();
         let context = self.0.context.read();
         let projection = projector.project(context.items());
         let tokens = projection
-            .included
+            .messages
             .iter()
-            .filter_map(|id| context.item(*id).map(|i| i.tokens))
+            .map(|message| counter.count_message(message))
             .sum::<usize>();
 
         (projection, tokens)

@@ -65,10 +65,10 @@ always in view.
 │  3 · assistant                  assistant_message        7  asked for read                                   │
 │  4 - read                       tool_result             15  excluded: pruned at the terminal                 │
 │  5 · assistant                  assistant_message        7  asked for shell                                  │
-│  6 · shell                      tool_result             10  test result: ok. 175 passed; 0 failed            │
+│  6 … shell                      tool_result          9,004  compaction: compacted to make room               │
 │  7 · assistant                  assistant_message       62  The kernel is a state machine with five states. …│
 │                                                                                                              │
-└──────────────────────────────────────────────────────────────────────────────────────── 7 items, 1 not going ┘
+└────────────────────────────────────────────────────────────────────────────── 7 items, 2 not going, 1 elided ┘
 ```
 
 That is not a summary and not a debug view. It is the list of items the runtime is holding, in
@@ -76,6 +76,15 @@ order, with what each one costs, whether it is going into the next request — a
 matters most, what the model will actually read of it. Item 4 is marked `-` and says on its own
 row why it is out, in the projector's words. Item 1 is `▪`, pinned, so the compactor will be
 refused if it comes for it. Nothing disappeared: things changed state, and the state is on screen.
+
+Item 6 is `…`, **elided**, which is the third answer between in and out. It is still in the
+request — as the one line the row shows, saying it was compacted away — so the call on row 5 still
+has an answer, and the model reads a conversation in which it asked for something and can no
+longer see what came back. That is the truth. Dropping the result outright would have forced the
+projector to drop the call with it, since a call with no result is a request most providers
+reject, and the model would then be reading a conversation in which it never asked at all. What
+an elided item holds is counted as held back rather than spent, and <kbd>space</kbd> spends it
+again.
 
 <kbd>tab</kbd> moves the keys between the prompt and the table:
 
@@ -374,10 +383,10 @@ That correction is the runtime's `Calibrating` counter: every response tells it 
 it just estimated really cost, and it adjusts. Over a real session against Gemini it went from 13%
 low to within 0.3%. A budget nobody can check is a decoration.
 
-The compactor drops the oldest tool results once the context passes `--compact` (0.8 by default)
-of the limit and leaves a note saying which ones went. It does not summarize them — it never read
-them — and it removes nothing that is pinned, because the kernel refuses. Every removal is an
-excluded item you can put back.
+The compactor shortens the oldest tool results to a marker once the context passes `--compact`
+(0.8 by default) of the limit. It does not summarize them — it never read them — and it touches
+nothing that is pinned, because the kernel refuses. Every one of them is still on the context tab,
+marked `…`, still holding every byte it held, one <kbd>space</kbd> from coming back.
 
 ## 📦 installing
 

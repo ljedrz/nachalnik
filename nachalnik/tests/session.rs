@@ -271,24 +271,30 @@ async fn what_the_counter_learned_survives_a_restart() {
         Some(learned),
         "a session long enough to resume has already paid for this lesson"
     );
-    // resuming recounts, which it has always done - and now it recounts with the lesson applied.
-    // The figures that come back are therefore *not* the ones the session was closed on: they are
-    // what the session would have shown had it called `recount` before saving, which is nearer to
-    // what the provider actually charged than the stale estimate was
-    let (before, after) = (kernel.budget().used(), resumed.budget().used());
+    // resuming recounts, which it has always done - and now it recounts with the lesson applied,
+    // so the items come back carrying the corrected figures rather than the ones they were pushed
+    // with, before the counter had been told anything
+    let stale: usize = kernel.items().iter().map(|item| item.tokens).sum();
+    let recounted: usize = resumed.items().iter().map(|item| item.tokens).sum();
     assert!(
-        after > before,
-        "the correction reaches the items a resume counts: {before} -> {after}"
+        recounted > stale,
+        "the correction reaches the items a resume counts: {stale} -> {recounted}"
     );
-    let recounted: usize = kernel
-        .items()
-        .iter()
-        .map(|item| kernel.counter().count_item(item))
-        .sum();
     assert_eq!(
-        after, recounted,
+        recounted,
+        kernel
+            .items()
+            .iter()
+            .map(|item| kernel.counter().count_item(item))
+            .sum::<usize>(),
         "which is exactly what a `recount` before saving would have produced"
     );
+
+    // the budget, though, is counted over the projection with whatever the counter knows *now*,
+    // so both kernels already agree about what the next request costs - the one that never
+    // recounted its items included. A correction the budget only showed after a save and a
+    // reload would be a correction nobody watching the status line ever saw
+    assert_eq!(kernel.budget().used(), resumed.budget().used());
 }
 
 #[tokio::test]

@@ -94,6 +94,20 @@ pub enum ContextState {
     /// Included in the projection, and protected: the kernel refuses to let a [`Compactor`]
     /// remove it.
     Pinned,
+    /// Included in the projection, but as a short marker instead of its content.
+    ///
+    /// note: This is the state for "it happened, and you cannot see it any more", which is a
+    /// different thing from [`ContextState::Excluded`]. An excluded tool result takes its call
+    /// down with it - the projector has to, or the request is malformed - so the conversation the
+    /// model reads is one in which the call never happened. An elided one still answers its call,
+    /// so the shape of the turn survives and only the content is gone. That is the honest account
+    /// of a compaction pass, and it is why a [`Compactor`] should prefer it.
+    ///
+    /// note: The words belong to whoever elided it: the marker is the item's `note`, and the
+    /// projector supplies only the brackets around it. The content itself is untouched, so
+    /// restoring is [`Kernel::set_state`] back to [`ContextState::Active`] and nothing was copied
+    /// or destroyed to get here.
+    Elided,
     /// Not included; kept for the record, and not expected to come back.
     Archived,
     /// Not included; replaced by a newer item.
@@ -107,11 +121,29 @@ pub enum ContextState {
 impl ContextState {
     /// Returns whether an item in this state takes part in the projection.
     ///
-    /// note: [`ContextState::Active`] and [`ContextState::Pinned`] do; the rest do not. The
-    /// kernel attaches no other meaning to the remaining three - they are there so that *you*
-    /// can tell why something is out.
+    /// note: [`ContextState::Active`], [`ContextState::Pinned`] and [`ContextState::Elided`] do;
+    /// the rest do not. The kernel attaches no other meaning to the remaining three - they are
+    /// there so that *you* can tell why something is out.
+    ///
+    /// note: an elided item takes part as a marker rather than as its content, so this being
+    /// true does not mean the model reads what the item says. [`ContextState::is_elided`] is the
+    /// question "how much of it?", and a client showing a context wants both.
     pub fn is_projected(self) -> bool {
-        matches!(self, Self::Active | Self::Pinned)
+        matches!(self, Self::Active | Self::Pinned | Self::Elided)
+    }
+
+    /// Returns whether an item in this state is projected as a marker rather than as its content.
+    pub fn is_elided(self) -> bool {
+        matches!(self, Self::Elided)
+    }
+
+    /// Returns whether an item in this state sends the model what it actually says.
+    ///
+    /// note: the distinction [`ContextState::is_projected`] cannot draw on its own, and the one
+    /// the token figures are built on: an elided item is in the request and is not costing what
+    /// it holds, so it belongs on the withheld side of the ledger rather than the spent side.
+    pub fn sends_content(self) -> bool {
+        self.is_projected() && !self.is_elided()
     }
 }
 
@@ -121,6 +153,7 @@ impl fmt::Display for ContextState {
             Self::Active => "active",
             Self::Excluded => "excluded",
             Self::Pinned => "pinned",
+            Self::Elided => "elided",
             Self::Archived => "archived",
             Self::Superseded => "superseded",
         };
@@ -389,16 +422,27 @@ impl Context {
         self.items.iter().filter(|i| i.is_projected())
     }
 
-    /// Returns the estimated number of tokens the projected items occupy.
+    /// Returns the estimated number of tokens the items sending their content occupy.
+    ///
+    /// note: an elided item is projected but is not sending what it says, so its own size is not
+    /// here - it is in [`Context::tokens_withheld`] with the rest of what the model is not being
+    /// shown. What the marker in its place costs is small, and is counted where it is spent: in
+    /// [`Budget::context_tokens`](crate::Budget::context_tokens), over the messages that came out
+    /// of the projector.
     pub fn tokens(&self) -> usize {
-        self.projected().map(|i| i.tokens).sum()
+        self.items
+            .iter()
+            .filter(|i| i.state.sends_content())
+            .map(|i| i.tokens)
+            .sum()
     }
 
-    /// Returns the estimated number of tokens held by items that are *not* projected.
+    /// Returns the estimated number of tokens held by items the model is not being shown: the
+    /// ones that are not projected, and the ones projected only as a marker.
     pub fn tokens_withheld(&self) -> usize {
         self.items
             .iter()
-            .filter(|i| !i.is_projected())
+            .filter(|i| !i.state.sends_content())
             .map(|i| i.tokens)
             .sum()
     }

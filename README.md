@@ -163,10 +163,10 @@ $ cargo run -p kamchatka -- -f src/lib.rs "what does this crate do?"
 │  3 · assistant                  assistant_message        7  asked for read                                   │
 │  4 - read                       tool_result             15  excluded: pruned at the terminal                 │
 │  5 · assistant                  assistant_message        7  asked for shell                                  │
-│  6 · shell                      tool_result             10  test result: ok. 175 passed; 0 failed            │
+│  6 … shell                      tool_result          9,004  compaction: compacted to make room               │
 │  7 · assistant                  assistant_message       62  The kernel is a state machine with five states. …│
 │                                                                                                              │
-└──────────────────────────────────────────────────────────────────────────────────────── 7 items, 1 not going ┘
+└────────────────────────────────────────────────────────────────────────────── 7 items, 2 not going, 1 elided ┘
 ┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ ask for something, or /help                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -177,8 +177,12 @@ Four tabs, each of which gets the whole window. The first is the conversation, w
 terminal agent has. The one above is the second, and it is this runtime: every item the context
 holds, what it costs, whether it is going into the next request, and what the model will actually
 read of it - with the ones that are *not* going saying why, on their own row, in the projector's
-words. `space` takes an item out and puts it back, `p` pins it, `e` changes what it says, `enter`
-reads the whole of it, `u` undoes. The third is every event the runtime emits, as it happens, in
+words. Item 6 is `…`, elided: it is *in* the request, as a one-line marker saying it was compacted
+away, so the call on row 5 still has an answer and the model is not left reading a conversation in
+which it never asked for anything. What it holds is counted as held back rather than spent, and
+one `space` spends it again. `space` takes an item out and puts it back, `p` pins it, `e` changes
+what it says, `enter` reads the whole of it, `u` undoes. The third is every event the runtime
+emits, as it happens, in
 the same names the session log is made of. The fourth is the permission policy - every
 answer somebody has actually given, what it covers, and how many things are still a question -
 changed where it is read rather than one prompt at a time at the moment it is least convenient.

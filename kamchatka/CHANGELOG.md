@@ -137,9 +137,14 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
   and still answers the call, and the partial turn is an ordinary context item. Both of them wait
   on a heartbeat rather than on the next byte, so a model or a command that has said nothing at
   all is as interruptible as a chatty one.
-- A compactor that drops the oldest tool results past `--compact` of the limit, says which ones,
-  and is refused anything pinned. Nothing is deleted; items are excluded, and restoring one is a
-  keystroke.
+- A compactor that shortens the oldest tool results to a marker past `--compact` of the limit, and
+  is refused anything pinned. It elides rather than removes, so the call each result answers keeps
+  its answer: removing them would have the projector take the calls down too - a call with no
+  result is a request most providers reject - and the model would have been reading a conversation
+  in which it never asked for any of this, directly above a summary saying the results had been
+  dropped. Nothing is deleted; every one is on the context tab marked `…`, holding every byte it
+  held, and restoring it is a keystroke. The tab's footer counts them separately, because "going"
+  and "not going" is the wrong question about an item that is in the request without being read.
 - MCP servers with `--mcp '[name=]cmd args'`, behind the default `mcp` feature. The name prefixes
   the server's tools and is what an "always" grant is for, so it is worth giving: taken from the
   program it would be `npx` for most of them.

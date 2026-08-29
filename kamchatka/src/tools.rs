@@ -842,33 +842,38 @@ impl Compactor for Trim {
         });
 
         let mut used = budget.used();
-        let mut remove = Vec::new();
-        let mut dropped = Vec::new();
+        let mut elide = Vec::new();
         for item in candidates {
             if used <= target {
                 break;
             }
             used -= item.tokens.min(used);
-            remove.push(item.id);
-            dropped.push(format!("{} ({} tokens)", item.label, item.tokens));
+            elide.push(item.id);
         }
-        if remove.is_empty() {
+        if elide.is_empty() {
             return None;
         }
 
+        // elided rather than removed, so that the call each of these answers keeps its answer.
+        // Removing them would have the projector take the calls down as well - it has to, a call
+        // with no result is a request most providers reject - and the model would then be reading
+        // a conversation in which it never asked for any of this, directly above a note saying
+        // the results had been dropped. The two accounts disagreed and the marker is the true one
         Some(CompactionPlan {
             summary: Some(ContextItem::summary(format!(
-                "{} earlier tool results were removed from this conversation to make room: {}. \
-                 Ask for them again if you need them.",
-                dropped.len(),
-                dropped.join(", ")
+                "{} earlier tool result(s) in this conversation have been shortened to a marker \
+                 to make room. Ask for anything you still need.",
+                elide.len()
             ))),
+            // the model reads this too, in each marker's brackets, so it is written to be read by
+            // both: what happened, and why
             reason: format!(
-                "the context reached {}% of the {}-token limit",
+                "compacted to make room; the context had reached {}% of the {}-token limit",
                 (budget.fraction_used().unwrap_or_default() * 100.0).round() as usize,
                 budget.limit.unwrap_or_default(),
             ),
-            remove,
+            elide,
+            remove: Vec::new(),
         })
     }
 }

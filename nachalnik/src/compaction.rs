@@ -52,7 +52,24 @@ pub struct CompactionPlan {
     ///
     /// note: [`ContextState::Pinned`](crate::ContextState::Pinned) items in this list are
     /// refused by the kernel and reported in [`CompactionReport::refused`]. A pin is a promise.
+    ///
+    /// note: prefer [`CompactionPlan::elide`] for anything a tool call answers. Excluding a tool
+    /// result takes the call down with it - the projector has no choice, since most providers
+    /// reject a call with no result - so the model is left reading a conversation in which the
+    /// call was never made, while a summary at the end says its result was removed. Those two
+    /// accounts disagree, and the second one is right.
     pub remove: Vec<ContextId>,
+    /// The items to keep in the projection, as a marker instead of their content.
+    ///
+    /// note: the honest shape for "this happened and you cannot see it any more": the message
+    /// stays where it was and still answers whatever it answered, so the turn keeps its structure
+    /// and only the content is gone. The marker the model reads is the item's note, which the
+    /// kernel sets to [`CompactionPlan::reason`] here - so a reason worth showing a person is
+    /// worth writing for the model too, since it is the same sentence.
+    ///
+    /// note: pinned items are refused here for the same reason they are refused above. Taking the
+    /// content is taking it.
+    pub elide: Vec<ContextId>,
     /// An item to add in their place, e.g. a summary.
     pub summary: Option<ContextItem>,
     /// Why this is being proposed, in words a user can read.
@@ -79,6 +96,8 @@ pub struct Removed {
 pub struct CompactionReport {
     /// The items that were excluded.
     pub removed: Vec<Removed>,
+    /// The items that were reduced to a marker, with what they were costing before.
+    pub elided: Vec<Removed>,
     /// The items the kernel refused to remove because they are pinned.
     pub refused: Vec<Removed>,
     /// The summary item that was added, if any.

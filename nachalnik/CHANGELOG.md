@@ -20,6 +20,20 @@ and the requests as explicit state.
   listed, inspected and restored - and that holds for an output limit too, which archives the
   whole of what a tool said beside the shortened copy the model is shown.
 - `undo` / `redo` / `supersede` / `replace` / `annotate` / `push_all`, each one operation.
+- `ContextState::Elided`, the third answer between in and out: the item stays in the request as a
+  short marker - its own note, in brackets - instead of its content. It is what a `Compactor`
+  should reach for, through `CompactionPlan::elide`. Excluding a tool result forces the projector
+  to drop the call that asked for it, since a call with no result is a request most providers
+  reject, so the model ends up reading a history in which it never asked for anything, directly
+  under a summary saying the results were dropped; an elided result still answers its call, and
+  those two accounts stop disagreeing. `ContextState::sends_content` is the predicate the token
+  figures are built on, and an elided item's own size is `tokens_withheld` rather than spent.
+- `TokenCounter::count_message`, defaulted, and with it a budget counted over the messages the
+  projector produced rather than over the items that went in. The two are not the same figure and
+  never were: a reference is labelled on its way out, so `src/parser.rs:\n` was going on the wire
+  without appearing on the bill. It also means the budget answers with what the counter knows now
+  rather than what it knew when each item was pushed, so a `Calibrating` correction shows up
+  immediately instead of at the next `recount`.
 - Six seams, all replaceable at runtime: `Provider`, `Tool`, `PermissionPolicy`, `Projector`,
   `TokenCounter`, `Compactor`. Each of the four that had no other way to identify itself carries a
   `name()` whose default is the implementing type's own path, so `Kernel::policy`, `projector`,

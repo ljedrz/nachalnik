@@ -46,9 +46,18 @@ fn items_are_identified_and_counted() {
         kernel.item(file).unwrap().tokens,
         "fn parse() {}".len().div_ceil(4)
     );
+    // the budget is counted over what the projector produced, not over what the context holds,
+    // and for a labelled reference those are different numbers: `src/parser.rs:\n` goes on the
+    // wire and somebody pays for it. Summing the items would leave that off the bill
+    let items = kernel.items().iter().map(|i| i.tokens).sum::<usize>();
+    let projected = kernel.budget().context_tokens;
+    assert!(
+        projected > items,
+        "the label a reference is projected with costs something: {projected} vs {items}"
+    );
     assert_eq!(
-        kernel.budget().context_tokens,
-        kernel.items().iter().map(|i| i.tokens).sum::<usize>()
+        projected,
+        "be terse".len().div_ceil(4) + "src/parser.rs:\nfn parse() {}".len().div_ceil(4)
     );
 }
 
@@ -70,13 +79,16 @@ fn excluding_hides_items_without_destroying_them() {
         400,
         "the content is still there"
     );
+    let b_text = kernel.item(b).unwrap().content.to_text().into_owned();
     assert_eq!(
         kernel.budget().context_tokens,
-        kernel.item(b).unwrap().tokens
+        format!("src/b.rs:\n{b_text}").len().div_ceil(4),
+        "only `b` is left, and it is projected with its label"
     );
     assert_eq!(
         kernel.with_context(|c| c.tokens_withheld()),
-        before - kernel.budget().context_tokens
+        kernel.item(a).unwrap().tokens,
+        "what was excluded is what is being withheld"
     );
 
     // and it comes back
@@ -250,13 +262,16 @@ fn counting_is_replaceable() {
 
     let kernel = kernel();
     kernel.push(ContextItem::file("src/a.rs", "a".repeat(400)));
-    assert_eq!(kernel.budget().context_tokens, 100);
+    // 400 bytes of content plus the `src/a.rs:\n` the projector labels a reference with, which
+    // is what the request will actually carry
+    let projected = "src/a.rs:\n".len() + 400;
+    assert_eq!(kernel.budget().context_tokens, projected.div_ceil(4));
 
     kernel.set_counter(Arc::new(OneEach));
     assert_eq!(kernel.budget().context_tokens, 1);
 
     kernel.set_counter(Arc::new(BytesPerToken { bytes_per_token: 2 }));
-    assert_eq!(kernel.budget().context_tokens, 200);
+    assert_eq!(kernel.budget().context_tokens, projected.div_ceil(2));
 }
 
 #[tokio::test]
@@ -693,4 +708,128 @@ fn a_replacement_is_the_one_thing_that_would_otherwise_be_lost() {
     };
     assert!(!Arc::ptr_eq(now, before));
     assert_eq!(before.len(), 18);
+}
+
+/// An elided item is still in the request, as a marker, and its own size is on the withheld side
+/// of the ledger rather than the spent one.
+#[test]
+fn eliding_leaves_a_marker_where_the_content_was() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a".repeat(4000)));
+    let fat = kernel.budget().context_tokens;
+
+    kernel.set_state(
+        [a],
+        ContextState::Elided,
+        Some("compacted to make room".into()),
+    );
+
+    let item = kernel.item(a).unwrap();
+    assert_eq!(item.state, ContextState::Elided);
+    assert!(item.state.is_projected(), "it is still in the request");
+    assert!(!item.state.sends_content(), "but not as what it says");
+    assert_eq!(
+        item.content.to_text().len(),
+        4000,
+        "and nothing was destroyed to get here"
+    );
+
+    let projection = kernel.project();
+    assert_eq!(projection.included, vec![a]);
+    assert!(
+        projection.skipped.is_empty(),
+        "an elided item is not a skipped one: {:?}",
+        projection.skipped
+    );
+    let sent = projection.messages[0].content.as_ref().unwrap().to_text();
+    assert!(
+        sent.contains("[... compacted to make room ...]"),
+        "the model is told, in the words of whoever elided it: {sent}"
+    );
+    assert!(!sent.contains("aaaa"), "and not told the content: {sent}");
+
+    // the budget follows the marker, not the item
+    assert!(
+        kernel.budget().context_tokens < fat / 10,
+        "the request got smaller: {} vs {fat}",
+        kernel.budget().context_tokens
+    );
+    assert_eq!(
+        kernel.with_context(|c| c.tokens_withheld()),
+        item.tokens,
+        "what it holds is being withheld, not spent"
+    );
+
+    // and it comes back, because the content never went anywhere
+    kernel.set_state([a], ContextState::Active, None);
+    assert_eq!(kernel.budget().context_tokens, fat);
+}
+
+/// The reason eliding exists: an excluded tool result takes its call down with it, and an elided
+/// one does not.
+#[tokio::test]
+async fn eliding_a_tool_result_keeps_the_call_that_asked_for_it() {
+    use nachalnik::{Content, ToolCall};
+
+    let kernel = kernel();
+    let call = ToolCall::new("call-1", "read", Arc::new(json!({"path": "src/a.rs"})));
+    kernel.push(ContextItem::user("what is in a.rs?"));
+    kernel.push(ContextItem::assistant(
+        Content::text("let me look"),
+        vec![call.clone()],
+    ));
+    let result = kernel.push(ContextItem::tool_result(
+        call.id.clone(),
+        "read",
+        Content::text("a".repeat(4000)),
+        false,
+    ));
+
+    // excluded: the projector has to take the call down too, so the model reads a conversation in
+    // which nobody ever asked for the file
+    kernel.set_state([result], ContextState::Excluded, Some("too big".into()));
+    let projection = kernel.project();
+    assert_eq!(projection.repairs.len(), 1, "{:?}", projection.repairs);
+    let assistant = projection
+        .messages
+        .iter()
+        .find(|m| !m.tool_calls.is_empty() || m.role == nachalnik::Role::Assistant)
+        .expect("the assistant turn is there");
+    assert!(
+        assistant.tool_calls.is_empty(),
+        "excluding the result took the call with it"
+    );
+
+    // elided: the call keeps its answer, so the turn keeps its shape
+    kernel.set_state([result], ContextState::Elided, Some("compacted".into()));
+    let projection = kernel.project();
+    assert!(
+        projection.repairs.is_empty(),
+        "nothing had to be repaired: {:?}",
+        projection.repairs
+    );
+    let assistant = projection
+        .messages
+        .iter()
+        .find(|m| m.role == nachalnik::Role::Assistant)
+        .expect("the assistant turn is there");
+    assert_eq!(
+        assistant.tool_calls.len(),
+        1,
+        "the call it made is still on the record"
+    );
+    let answer = projection
+        .messages
+        .iter()
+        .find(|m| m.role == nachalnik::Role::Tool)
+        .expect("and it still has an answer");
+    assert!(
+        answer
+            .content
+            .as_ref()
+            .unwrap()
+            .to_text()
+            .contains("[... compacted ...]"),
+        "which says it was compacted"
+    );
 }

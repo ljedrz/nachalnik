@@ -297,15 +297,19 @@ fn footer(app: &App) -> String {
             false => " alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions ".to_owned(),
         },
         Tab::Context => {
-            let out = app
-                .kernel
-                .items()
+            // counted by whether the model is being shown what the item says, which is the
+            // question this line is answering. An elided item is in the request and is not being
+            // shown, and calling it "going" would be the more misleading of the two
+            let items = app.kernel.items();
+            let out = items
                 .iter()
-                .filter(|item| !item.is_projected())
+                .filter(|item| !item.state.sends_content())
                 .count();
-            match out {
-                0 => format!(" {} items, all of them going ", app.kernel.items().len()),
-                n => format!(" {} items, {n} not going ", app.kernel.items().len()),
+            let elided = items.iter().filter(|item| item.state.is_elided()).count();
+            match (out, elided) {
+                (0, _) => format!(" {} items, all of them going ", items.len()),
+                (n, 0) => format!(" {} items, {n} not going ", items.len()),
+                (n, e) => format!(" {} items, {n} not going, {e} elided ", items.len()),
             }
         }
         // the pane keeps the last few hundred; the log keeps everything, and `/save` writes it
@@ -473,14 +477,18 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                 ContextState::Active => ("·", Style::default()),
                 ContextState::Pinned => ("▪", Style::default().fg(Color::Yellow)),
                 ContextState::Excluded => ("-", quiet()),
+                // in the request, but only as a marker: a mark of its own, because "going" and
+                // "not going" is the wrong question about it and either answer would mislead
+                ContextState::Elided => ("…", quiet()),
                 ContextState::Archived => ("▫", quiet()),
                 ContextState::Superseded => ("~", quiet()),
                 _ => ("?", quiet()),
             };
 
             // an item that is not going says why, in the projector's own words; one that is
-            // shows the first thing the model will read of it
-            let (tail, tail_style) = match item.is_projected() {
+            // shows the first thing the model will read of it. An elided one is on the first
+            // side of that: what the model reads is the note, so the note is what to show
+            let (tail, tail_style) = match item.state.sends_content() {
                 false => (
                     match &item.note {
                         Some(note) => format!("{}: {note}", item.state),

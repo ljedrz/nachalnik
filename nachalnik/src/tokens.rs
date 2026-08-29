@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::{Budget, Kernel, Usage};
 use crate::{
     context::{ContextItem, ContextKind},
-    model::Content,
+    model::{Content, Message},
 };
 
 /// Turns content into a token count.
@@ -63,6 +63,29 @@ pub trait TokenCounter: Send + Sync {
             if let Some(reasoning) = reasoning {
                 tokens += self.count(reasoning);
             }
+        }
+
+        tokens
+    }
+
+    /// Returns the number of tokens a projected message is expected to occupy.
+    ///
+    /// note: The counterpart of [`TokenCounter::count_item`], and the one the budget is built
+    /// from. An item and the message it becomes are not always the same size - a reference is
+    /// labelled on its way out, an elided item goes as a marker - and what a request costs is
+    /// what was projected, not what the context happens to be holding.
+    fn count_message(&self, message: &Message) -> usize {
+        let mut tokens = message.content.as_ref().map_or(0, |c| self.count(c));
+
+        for call in &message.tool_calls {
+            tokens += self.count(&Content::text(&*call.tool))
+                + self.count(&Content::Json(call.args.clone()));
+            if !call.extra.is_null() {
+                tokens += self.count(&Content::Json(call.extra.clone()));
+            }
+        }
+        if let Some(reasoning) = &message.reasoning {
+            tokens += self.count(reasoning);
         }
 
         tokens

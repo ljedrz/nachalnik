@@ -154,6 +154,7 @@ async fn a_compaction_does_not_swallow_what_arrives_during_it() {
 
         let report = kernel.apply_compaction(CompactionPlan {
             remove: doomed.clone(),
+            elide: Vec::new(),
             summary: None,
             reason: "an overzealous compactor".into(),
         });

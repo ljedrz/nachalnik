@@ -139,6 +139,15 @@ pub struct LinearProjector {
     /// a context assembled by hand or restored from elsewhere can still repeat one, and counting
     /// keeps the number of calls and the number of results equal even then.
     pub repair_orphans: bool,
+    /// What a [`ContextState::Elided`](crate::ContextState::Elided) item is shown as when it
+    /// carries no note of its own.
+    ///
+    /// note: the words are the item's `note` where it has one, because whoever elided it knows
+    /// why and this projector does not; all this supplies is the brackets around it and this
+    /// fallback. It reads like [`Content::truncate_to`](crate::Content::truncate_to)'s marker on
+    /// purpose - they are the same promise to the model, made at two different limits, and a
+    /// model that has learnt to read one reads the other.
+    pub elision: &'static str,
     /// Whether an assistant turn's reasoning is carried back into
     /// [`Message::reasoning`](crate::Message::reasoning).
     ///
@@ -155,6 +164,7 @@ impl Default for LinearProjector {
             label_references: true,
             repair_orphans: true,
             send_reasoning: true,
+            elision: "elided by nachalnik",
         }
     }
 }
@@ -211,13 +221,28 @@ impl Projector for LinearProjector {
                 continue;
             }
 
+            // an elided item goes in as a marker in place of what it says, and nothing else about
+            // the message changes: same role, and a tool result still answers its call. That is
+            // the whole difference from excluding it - the turn keeps its shape, so the repair
+            // below never has to take the call down and rewrite history into one where it was
+            // never made. The words are the item's own note; this only supplies the brackets
+            let said = match item.state.is_elided() {
+                true => Content::text(format!(
+                    "[... {} ...]",
+                    item.note.as_deref().unwrap_or(self.elision)
+                )),
+                false => item.content.clone(),
+            };
+
             let message = match &item.kind {
-                ContextKind::System => Message::new(Role::System, item.content.clone()),
-                ContextKind::UserMessage => Message::new(Role::User, item.content.clone()),
+                ContextKind::System => Message::new(Role::System, said),
+                ContextKind::UserMessage => Message::new(Role::User, said),
                 ContextKind::Reference => {
-                    let content = match (self.label_references, item.content.as_text()) {
+                    // the label goes on an elided reference too: which file is gone is most of
+                    // what is worth knowing about it
+                    let content = match (self.label_references, said.as_text()) {
                         (true, Some(text)) => Content::text(format!("{}:\n{text}", item.label)),
-                        _ => item.content.clone(),
+                        _ => said,
                     };
                     Message::new(Role::User, content)
                 }
@@ -237,9 +262,9 @@ impl Projector for LinearProjector {
                         }
                     }
 
-                    let content = match item.content.as_text() {
+                    let content = match said.as_text() {
                         Some("") => None,
-                        _ => Some(item.content.clone()),
+                        _ => Some(said),
                     };
 
                     if content.is_none() && kept.is_empty() {
@@ -277,7 +302,7 @@ impl Projector for LinearProjector {
                         });
                         continue;
                     }
-                    Message::tool_result(call.clone(), tool.clone(), item.content.clone())
+                    Message::tool_result(call.clone(), tool.clone(), said)
                 }
             };
 
