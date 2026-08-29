@@ -333,10 +333,13 @@ it has:
   (openai-compatible), 1,048,576 tokens of context
 ```
 
-`/model ID` switches the model and `/provider URL` switches the address, both without restarting,
-and both are worth having for different reasons: comparing two hosted models is one address and two
-names, while comparing a hosted model with the one running on this machine is two addresses. A
-comparison that cannot see the address is a comparison of names.
+`/model ID` switches the model and `/provider URL [ID]` switches the address — and the model with
+it, because a model belongs to the address that serves it. Switching one and keeping the other is
+how a session ends up asking the ollama on this machine for `gemini-3.6-flash`; given no model the
+old name is kept and the new endpoint is asked whether it has one by that name, which is a notice
+now rather than a 404 on the next request. Both matter for different reasons: comparing two hosted
+models is one address and two names, while comparing a hosted model with the one running on this
+machine is two addresses. A comparison that cannot see the address is a comparison of names.
 
 The key is *not* switched with the address. It is read from the environment once, at startup, and a
 key typed at a prompt would be a key in the transcript — so `/provider` is for the addresses that

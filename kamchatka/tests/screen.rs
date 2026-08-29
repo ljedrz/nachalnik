@@ -2361,7 +2361,9 @@ async fn the_address_the_requests_go_to_is_visible_and_can_be_changed() {
     let screen = harness.screen();
     assert!(screen.contains("http://127.0.0.1:1"), "{screen}");
 
-    harness.send("/provider http://127.0.0.1:2/v1").await;
+    harness
+        .send("/provider http://127.0.0.1:2/v1 a-model-served-there")
+        .await;
     // the probe it starts is a round trip to a port with nothing on it; the address itself changes
     // here, and that is what the next request would use
     for _ in 0..50 {
@@ -2371,6 +2373,11 @@ async fn the_address_the_requests_go_to_is_visible_and_can_be_changed() {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     assert_eq!(harness.app.provider.endpoint(), "http://127.0.0.1:2/v1");
+    // the model went with the address, because a model belongs to the address that serves it
+    assert_eq!(
+        nachalnik::Provider::info(&*harness.app.provider).model,
+        "a-model-served-there"
+    );
 
     harness.send("/seams").await;
     let seams = harness.screen();

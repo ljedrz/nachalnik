@@ -1566,14 +1566,32 @@ impl App {
                     self.say(Speaker::Note, format!("requests go to {endpoint}"));
                     return;
                 }
-                let (provider, url) = (self.provider.clone(), rest.to_owned());
+                // `URL MODEL`, because a model belongs to the address that serves it: switching
+                // one and keeping the other is how a session ends up asking the ollama on this
+                // machine for `gemini-3.6-flash`. Given no model the old name is kept, and the new
+                // endpoint is asked whether it has one by that name
+                let (url, model) = match rest.split_once(char::is_whitespace) {
+                    Some((url, model)) => (url.to_owned(), Some(model.trim().to_owned())),
+                    None => (rest.to_owned(), None),
+                };
+                let provider = self.provider.clone();
                 self.say(
                     Speaker::Note,
-                    format!("requests now go to {url}; the key is the one this started with"),
+                    match &model {
+                        Some(model) => format!("{model} at {url}, from now on"),
+                        None => format!(
+                            "requests now go to {url}, still asking for {}; the key is the one \
+                             this started with",
+                            self.kernel
+                                .model_info()
+                                .map(|info| info.model)
+                                .unwrap_or_default()
+                        ),
+                    },
                 );
-                // the new endpoint has a context limit of its own, and finding it out is a round
-                // trip; the screen should not stop for it
-                tokio::spawn(async move { provider.set_endpoint(url).await });
+                // the new endpoint has a context limit of its own, and a list of what it serves;
+                // both are round trips and the screen should not stop for them
+                tokio::spawn(async move { provider.set_endpoint(url, model).await });
             }
             "params" => {
                 if let Some((key, value)) = rest.split_once(' ') {

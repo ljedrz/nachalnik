@@ -83,14 +83,92 @@ impl OpenAiCompatible {
 
     /// Sends the requests somewhere else from now on, and asks the new place what it can hold.
     ///
+    /// note: the model goes with it, because a model belongs to the address it is served at and
+    /// carrying the old name over is how a session ends up asking a local ollama for
+    /// `gemini-3.6-flash`. Given none, the old name is kept - a name that is right at both
+    /// addresses is the ordinary case, and refusing to keep it would be a nuisance - and the new
+    /// endpoint is then asked whether it has one by that name, which is a notice rather than a
+    /// 404 on the next request.
+    ///
     /// note: the key is not changed with it. It is read from the environment once, at startup, and
     /// a key typed at the prompt would be a key in the transcript - so what this is for is the
     /// endpoints that need no key or the same one: a local model, a proxy, a second base URL on
     /// the same account.
-    pub async fn set_endpoint(&self, url: impl Into<String>) {
+    pub async fn set_endpoint(&self, url: impl Into<String>, model: Option<String>) {
         *self.base_url.lock() = url.into();
+        if let Some(model) = model {
+            *self.model.lock() = model;
+        }
         *self.context_limit.lock() = configured_limit();
         self.probe().await;
+        self.say_if_the_model_is_not_there().await;
+    }
+
+    /// Every model this endpoint says it serves, if it will say.
+    ///
+    /// note: an empty answer means "it did not say" rather than "it has none". A gateway or a
+    /// proxy may serve no listing at all, and treating a silence as a denial would be inventing a
+    /// restriction nobody stated.
+    pub async fn models(&self) -> Vec<String> {
+        let base = self.endpoint();
+        let listed = self.listed_names(&format!("{base}/models"), true).await;
+        if !listed.is_empty() {
+            return listed;
+        }
+        match base.strip_suffix("/openai") {
+            Some(native) => self.listed_names(&format!("{native}/models"), false).await,
+            None => listed,
+        }
+    }
+
+    /// Puts a notice up if the model is not one the endpoint lists.
+    ///
+    /// note: the alternative is finding out on the next request, as a 404 with a paragraph of
+    /// somebody's API prose in it. Switching address and model are two commands and it is easy to
+    /// do one of them.
+    async fn say_if_the_model_is_not_there(&self) {
+        let model = self.model.lock().clone();
+        let listed = self.models().await;
+        if listed.is_empty() || listed.iter().any(|name| same_model(name, &model)) {
+            return;
+        }
+
+        let some: Vec<&str> = listed.iter().take(3).map(String::as_str).collect();
+        *self.notice.lock() = Some(format!(
+            "{model} is not one of the {} models at this address ({}{}); /model to pick one",
+            listed.len(),
+            some.join(", "),
+            match listed.len() > some.len() {
+                true => ", …",
+                false => "",
+            }
+        ));
+    }
+
+    /// The identifiers in a listing, however that listing spells them.
+    async fn listed_names(&self, url: &str, bearer: bool) -> Vec<String> {
+        let request = match bearer {
+            true => self.client.get(url).bearer_auth(&self.api_key),
+            false => self.client.get(format!("{url}?key={}", self.api_key)),
+        };
+        let Ok(response) = request.send().await else {
+            return Vec::new();
+        };
+        let Ok(body) = response.json::<Value>().await else {
+            return Vec::new();
+        };
+
+        body["data"]
+            .as_array()
+            .or_else(|| body["models"].as_array())
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter_map(|entry| entry["id"].as_str().or_else(|| entry["name"].as_str()))
+                    .map(|name| name.strip_prefix("models/").unwrap_or(name).to_owned())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Switches models, and forgets the context limit that belonged to the old one.
@@ -103,6 +181,7 @@ impl OpenAiCompatible {
         *self.model.lock() = model.into();
         *self.context_limit.lock() = configured_limit();
         self.probe().await;
+        self.say_if_the_model_is_not_there().await;
     }
 
     /// Takes whatever the provider last wanted to say for itself, if anything.

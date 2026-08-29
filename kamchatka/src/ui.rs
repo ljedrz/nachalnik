@@ -109,8 +109,9 @@ pub const HELP: &str = "  THE TABS
     /tools drop ID      stop offering one of them, from now on
     /policy             open the permissions tab; also /permissions
     /model [ID]         show or switch the model, and say where it is
-    /provider [URL]     show or switch the address the requests go to; also
-                        /endpoint. The key is the one this started with
+    /provider [URL [ID]] show or switch the address the requests go to, and
+                        the model with it; also /endpoint. The key is the one
+                        this started with
     /params [KEY JSON]  show or set a model parameter
     /save [PATH]        the session log, and a snapshot to resume from
     /quit               also /exit, /q";
