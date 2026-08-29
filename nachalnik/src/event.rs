@@ -378,9 +378,46 @@ pub enum Event {
         /// The identifiers of the tools the model will be offered from now on.
         tools: Vec<String>,
     },
-    /// The permission policy was replaced.
+    /// The [`PermissionPolicy`](crate::PermissionPolicy) was replaced.
+    ///
+    /// note: the four seam-changed events name what went out and what came in, because a session
+    /// log that recorded only *that* one was swapped would leave a reader of it unable to say what
+    /// had been deciding, projecting or counting for the requests either side of the line. The
+    /// names are the seams' own `name()`, which is what they are for.
     #[serde(rename = "policy.changed")]
-    PolicyChanged,
+    PolicyChanged {
+        /// What was deciding before.
+        from: String,
+        /// What decides now.
+        to: String,
+    },
+    /// The [`Projector`](crate::Projector) was replaced.
+    #[serde(rename = "projector.changed")]
+    ProjectorChanged {
+        /// What was turning the context into a request before.
+        from: String,
+        /// What turns it into one now.
+        to: String,
+    },
+    /// The [`TokenCounter`](crate::TokenCounter) was replaced.
+    ///
+    /// note: followed by a [`Event::ContextRecounted`], because every figure the old one produced
+    /// is now the wrong one and the kernel says so rather than leaving them to be read.
+    #[serde(rename = "counter.changed")]
+    CounterChanged {
+        /// What was estimating before.
+        from: String,
+        /// What estimates now.
+        to: String,
+    },
+    /// The [`Compactor`](crate::Compactor) was set, replaced or removed.
+    #[serde(rename = "compactor.changed")]
+    CompactorChanged {
+        /// What was making room before, if anything.
+        from: Option<String>,
+        /// What makes room now; `None` means nothing will ever be dropped to make it.
+        to: Option<String>,
+    },
 }
 
 impl Event {
@@ -417,7 +454,10 @@ impl Event {
             Self::ToolFinished { .. } => "tool.finished",
             Self::Compacted { .. } => "context.compacted",
             Self::ToolsChanged { .. } => "tools.changed",
-            Self::PolicyChanged => "policy.changed",
+            Self::PolicyChanged { .. } => "policy.changed",
+            Self::ProjectorChanged { .. } => "projector.changed",
+            Self::CounterChanged { .. } => "counter.changed",
+            Self::CompactorChanged { .. } => "compactor.changed",
         }
     }
 }

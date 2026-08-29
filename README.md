@@ -489,14 +489,16 @@ session.finished   context.changed     model.requested    tool.repaired
 turn.interrupted   context.replaced    model.delta        tool.started
 tools.changed      context.undone      model.payload      tool.output
 policy.changed     context.redone      model.finished     tool.finished
-                   context.annotated   model.failed
-                   context.recounted   step.failed        permission.requested
-                   context.compacted                      permission.decided
+projector.changed  context.annotated   model.failed
+counter.changed    context.recounted   step.failed        permission.requested
+compactor.changed  context.compacted                      permission.decided
 ```
 
 Every one of them carries what a client needs to render it without inferring anything: an undo
-names the items it took back and the ones it reverted, and a request names the items it left out
-and why.
+names the items it took back and the ones it reverted, a request names the items it left out and
+why, and a seam being swapped names what went out and what came in - because "the projector was
+replaced" leaves a reader of the log unable to say what was projecting the requests either side of
+that line, which is the question a log is for.
 
 `Kernel::subscribe` is the live stream; `Kernel::history` is the complete, append-only session
 log (both written under one lock, so their order agrees). Records are plain `serde` types, so

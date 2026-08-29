@@ -339,3 +339,66 @@ async fn parameters_survive_a_restart() {
     let resumed = Kernel::resume(Config::default(), kernel.snapshot());
     assert_eq!(resumed.params(), params);
 }
+
+/// Every seam that can be swapped says so, and says what was swapped.
+///
+/// note: four of the six were silent - the projector, the counter and the compactor entirely, and
+/// the policy about *which* policy - so a session log could not answer "what was projecting these
+/// requests?" for a session where somebody had changed it half way. That is the question a log is
+/// for.
+#[tokio::test]
+async fn replacing_a_seam_is_an_event_that_names_it() {
+    let kernel = Kernel::new(Config::default());
+
+    kernel.set_policy(Arc::new(nachalnik::test::AllowAll));
+    kernel.set_projector(Arc::new(nachalnik::LinearProjector::default()));
+    kernel.set_counter(Arc::new(nachalnik::BytesPerToken::default()));
+    kernel.set_compactor(Some(Arc::new(
+        nachalnik::test::LargestFirstCompactor::default(),
+    )));
+    kernel.set_compactor(None);
+
+    let names: Vec<String> = kernel.with_history(|session| {
+        session
+            .records()
+            .map(|record| record.event.name().to_owned())
+            .collect()
+    });
+    for expected in [
+        "policy.changed",
+        "projector.changed",
+        "counter.changed",
+        "compactor.changed",
+    ] {
+        assert!(names.contains(&expected.to_owned()), "{names:?}");
+    }
+
+    // ... and what they name is what was plugged in, rather than that something was
+    let events: Vec<Event> = kernel.with_history(|session| {
+        session
+            .records()
+            .map(|record| record.event.clone())
+            .collect()
+    });
+    let policy = events
+        .iter()
+        .find_map(|event| match event {
+            Event::PolicyChanged { from, to } => Some((from.clone(), to.clone())),
+            _ => None,
+        })
+        .expect("the policy was replaced");
+    assert!(policy.0.contains("AskAlways"), "{policy:?}");
+    assert!(policy.1.contains("AllowAll"), "{policy:?}");
+
+    // removing the compactor is a change like any other: from then on nothing is ever dropped, and
+    // a log that only recorded the setting would not say when that stopped being true
+    let removed = events
+        .iter()
+        .rev()
+        .find_map(|event| match event {
+            Event::CompactorChanged { from, to } => Some((from.clone(), to.clone())),
+            _ => None,
+        })
+        .expect("it was removed");
+    assert!(removed.0.is_some() && removed.1.is_none(), "{removed:?}");
+}

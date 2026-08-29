@@ -1882,6 +1882,18 @@ fn trace_line(event: &Event) -> (String, String) {
         ),
         Event::ModelFailed { error } | Event::StepFailed { error } => one_line(error),
         Event::ToolsChanged { tools } => format!("{} tools", tools.len()),
+        // a seam being swapped names what went out and what came in; the trace is where somebody
+        // reading a session finds out that the thing projecting its requests changed half way
+        Event::PolicyChanged { from, to }
+        | Event::ProjectorChanged { from, to }
+        | Event::CounterChanged { from, to } => format!("{} → {}", short(from), short(to)),
+        Event::CompactorChanged { from, to } => format!(
+            "{} → {}",
+            from.as_deref().map(short).unwrap_or("none"),
+            to.as_deref()
+                .map(short)
+                .unwrap_or("none, so nothing is dropped"),
+        ),
         _ => String::new(),
     };
 
@@ -1919,6 +1931,14 @@ fn request_preview(kernel: &Kernel) -> String {
         projection.included.len(),
         projection.skipped.len()
     )
+}
+
+/// The last part of a type's path, which is the part somebody reads.
+///
+/// note: a seam names itself with `std::any::type_name`, so what arrives here is
+/// `kamchatka::tools::Trim` and the column it goes in is thirty characters wide.
+fn short(name: &str) -> &str {
+    name.rsplit("::").next().unwrap_or(name)
 }
 
 /// JSON, indented.

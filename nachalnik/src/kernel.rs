@@ -642,8 +642,10 @@ impl Kernel {
 
     /// Sets the permission policy, returning the previous one.
     pub fn set_policy(&self, policy: Arc<dyn PermissionPolicy>) -> Arc<dyn PermissionPolicy> {
+        let from = self.0.policy.read().name().to_owned();
+        let to = policy.name().to_owned();
         let previous = std::mem::replace(&mut *self.0.policy.write(), policy);
-        self.emit(Event::PolicyChanged);
+        self.emit(Event::PolicyChanged { from, to });
 
         previous
     }
@@ -655,7 +657,14 @@ impl Kernel {
 
     /// Sets the projector, returning the previous one.
     pub fn set_projector(&self, projector: Arc<dyn Projector>) -> Arc<dyn Projector> {
-        std::mem::replace(&mut *self.0.projector.write(), projector)
+        let to = projector.name().to_owned();
+        let previous = std::mem::replace(&mut *self.0.projector.write(), projector);
+        self.emit(Event::ProjectorChanged {
+            from: previous.name().to_owned(),
+            to,
+        });
+
+        previous
     }
 
     /// Returns the projector.
@@ -665,7 +674,12 @@ impl Kernel {
 
     /// Sets the token counter and recounts the context, returning the previous counter.
     pub fn set_counter(&self, counter: Arc<dyn TokenCounter>) -> Arc<dyn TokenCounter> {
+        let to = counter.name().to_owned();
         let previous = std::mem::replace(&mut *self.0.counter.write(), counter);
+        self.emit(Event::CounterChanged {
+            from: previous.name().to_owned(),
+            to,
+        });
         self.recount();
 
         previous
@@ -683,7 +697,14 @@ impl Kernel {
         &self,
         compactor: Option<Arc<dyn Compactor>>,
     ) -> Option<Arc<dyn Compactor>> {
-        std::mem::replace(&mut *self.0.compactor.write(), compactor)
+        let to = compactor.as_ref().map(|c| c.name().to_owned());
+        let previous = std::mem::replace(&mut *self.0.compactor.write(), compactor);
+        self.emit(Event::CompactorChanged {
+            from: previous.as_ref().map(|c| c.name().to_owned()),
+            to,
+        });
+
+        previous
     }
 
     /// Returns the compactor, if one is set.

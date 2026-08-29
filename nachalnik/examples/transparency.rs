@@ -225,7 +225,7 @@ fn events(receiver: &mut Receiver<Event>) {
                 None => "none".to_owned(),
             },
             Event::ToolsChanged { tools } => format!("now offering: {}", tools.join(", ")),
-            Event::PolicyChanged => "AskAboutSideEffects".to_owned(),
+            Event::PolicyChanged { to, .. } => to.clone(),
             Event::ContextAdded {
                 id, label, tokens, ..
             } => {

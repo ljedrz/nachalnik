@@ -9,6 +9,15 @@ minor bump may break you.
 
 ### added
 
+- **Replacing any of the six seams is an event, and the event names what was replaced.** Setting
+  the projector, the counter or the compactor emitted nothing at all, and `policy.changed` said
+  only that the policy had been swapped - so a session log could not answer "what was projecting
+  these requests?" or "was anything dropping items here?" for a session where somebody had changed
+  it half way, and those are the questions a log is for. `projector.changed`, `counter.changed` and
+  `compactor.changed` join `policy.changed`, all four carrying `from` and `to` as the seams' own
+  `name()`; a compactor removed is `to: None`, since "nothing will ever be dropped from now on" is
+  the change that matters most and was the one least visible. `policy.changed` gaining those fields
+  is a breaking change to a variant nothing has released yet.
 - `Kernel::with_history`, the mirror of `with_context`: a question about the log - a count, a
   search - answered without copying it. `history` says on itself that it copies the whole thing.
 - `TokenCounter::calibration` and `recalibrate`, both defaulted, and `Snapshot::calibration`
