@@ -5,6 +5,40 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- `--mind`, and `/mind` while it is running, offer the model two more tools that hand it the same
+  view of itself this program gives you. `mind` reads: `look` lists every context item with its
+  state, its cost and the projector's own reason for leaving it out, and reads any of them in full
+  including the reasoning recorded on an assistant turn; `request` summarizes the request that
+  would go next, message by message, with what was skipped and what was repaired - a summary and
+  never the request itself, since the request *is* the context and quoting it would double every
+  token being asked about. `draft` and `fork` snapshot the context, resume it as a second kernel
+  with no tools and a limit of one request, ask it, and hand back only what it said: a fork can
+  think, it cannot act, and nothing it does reaches this session's context or its log. `fork`
+  takes a question and a list of items to leave out, which is how a counterfactual is asked. None
+  of this needed anything added to the runtime - forking a session is what `Kernel::snapshot` and
+  `Kernel::resume` already are.
+  `amend` changes: `prune` moves items between the states the context tab's <kbd>space</kbd> key
+  moves them between, `revise` rewrites what one says (recording the old text as
+  `context.replaced`, which is the one event that carries content, and the reason in the item's
+  metadata), and `undo` and `redo` walk this tool's own changes. Deliberately not `Kernel::undo`:
+  that stack belongs to the person at the terminal, and its top while a tool is running is always
+  the assistant turn that asked for the call - one step would erase the model's own question and
+  orphan the answer it is waiting for. A reason is required on every change and it is what the
+  context pane shows. A pinned item, a system instruction and the turn the model is speaking in
+  are refused, and the refusal is handed back to the model; it may unpin only what it pinned
+  itself.
+  Two tools rather than one with a mode argument, because a `ToolSpec` declares its capabilities
+  once for every call it will ever receive: one tool would have made "may it look at its own
+  context?" and "may it rewrite a tool result?" the same question. They declare `introspect` and
+  `amend`, and the permissions tab grows a row for each without being told anything.
+  Off by default. The tools hold a weak handle to a `Kernel` the `App` owns rather than a kernel
+  of their own - the cycle the runtime's documentation warns about - so `/mind` taking them away
+  really does take their reach away, and what `amend` had been remembering goes with it.
+
 ## [0.1.0] - 2026-08-29
 
 The first release: a terminal agent built on `nachalnik`, and a demonstration of it.

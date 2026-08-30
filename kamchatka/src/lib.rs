@@ -13,6 +13,14 @@
 //! Nothing is inferred and nothing is hidden: the context tab is a list of ordinary values the
 //! runtime hands out, and `ctrl+p` prints the exact request they add up to.
 //!
+//! `--mind`, or `/mind` at any point, adds two more tools and hands the agent the same view:
+//! [`mind`] reads its own context and its own recorded reasoning, previews the request it is
+//! about to send, and answers on a throwaway fork of itself so it can read what it would say
+//! before saying it; `amend` prunes, elides and rewrites what it is carrying, and walks its own
+//! changes back. Neither of them is allowed to touch what a person pinned. Nothing in the runtime
+//! knows about any of this - it is what a tool can already do with a context that is a list of
+//! public values and a request that can be built without being sent.
+//!
 //! Everything in here is user code: the provider, the tools, the policy, the compactor and the
 //! rendering. The kernel supplies the state machine, the context and the paper trail.
 //!
@@ -24,6 +32,7 @@
 #![deny(unsafe_code)]
 
 pub mod app;
+pub mod mind;
 pub mod provider;
 pub mod sandbox;
 pub mod tools;
