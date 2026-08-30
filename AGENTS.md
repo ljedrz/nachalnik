@@ -175,17 +175,18 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   sensible about pixels, which is the part that is not additive. **Not before multimodal support
   is actually being built** - a variant nothing produces and nothing counts would be worse than
   its absence.
-- **Message-level provider state.** `ToolCall::extra` carries whatever a provider attaches to a
-  *call* - Google's `thought_signature`, an encrypted reasoning item - and the live suite proves
-  it has to: Gemini 3 answers `400 Function call is missing a thought_signature` when the next
-  request goes without it. The same endpoint also attaches one to a whole *message* when the turn
-  made no calls, and there is nowhere to put that, so `nachalnik-utils` drops it. It is not fatal
-  (the requirement is on function-call parts; the whole live suite passes against
-  `gemini-3.6-flash` without it), and the fix is not obvious: a fourth slot on `Message`,
-  `ModelResponse` and `ContextItem` is the shape the crate has just spent an enum avoiding, while
-  `Block::Reasoning(Content::Json(..))` is already a home for it and would need the provider to
-  record ordered turns and `to_wire` to render them. **Decide it with a provider that needs it in
-  front of you**, not in the abstract.
+- **Per-block provider state.** `ToolCall::extra` carries whatever a provider attaches to a
+  *call* - Google's `thought_signature`, an encrypted reasoning item - and it has to: asked by
+  hand, Gemini 3 answers `400 Function call is missing a thought_signature` to a request that
+  drops it. What has no home is the same thing on a *text* or a *thinking* part, and Gemini's
+  native API puts it there: `generateContent` on `gemini-3.6-flash` returns
+  `[thought, text(thoughtSignature), ...]` for a turn that called nothing, and
+  `[thought, text, functionCall(thoughtSignature), functionCall]` for one that did. So it is one
+  field on `Block::Text` and `Block::Reasoning`, not on `Message` - which is only visible once
+  there is a block dialect to look at, and is why this is the entry a provider author meets
+  first. It is not fatal: the whole live suite passes against that model with the text-part
+  signature dropped, and Google calls a missing one degradation rather than rejection. **Decide
+  it with the provider in front of you**; the shape of the field is a guess until then.
 - **A provider that speaks a block dialect.** `Content::Blocks` exists and the projector will
   send it, but nothing in the tree *produces* one: both in-tree providers are OpenAI-compatible,
   and that dialect has no interleaving to report. The live suite records an ordered turn by hand
