@@ -25,7 +25,7 @@ use tokio_stream::StreamExt;
 
 use kamchatka::{
     app::{App, Outcome, Speaker},
-    gemini, mind,
+    gemini, introspect,
     provider::{self, Endpoint},
     sandbox, tools, ui,
 };
@@ -97,9 +97,9 @@ struct Args {
     #[arg(long)]
     no_sandbox: bool,
 
-    /// Offer the model the two tools that read and change its own context: `mind` and `amend`.
+    /// Offer the model the two tools that read and change its own context: `introspect` and `amend`.
     #[arg(long)]
-    mind: bool,
+    introspect: bool,
 
     /// A path outside the working directory the shell tool may also read and write. May be
     /// repeated.
@@ -214,10 +214,10 @@ async fn terminal() -> Result<()> {
         kernel.add_tool(tool);
     }
 
-    // the handle the two tools reach the kernel through, which `App` then holds so that `/mind`
-    // can turn them off again; see `mind::install` for why it is a weak handle to something out
+    // the handle the two tools reach the kernel through, which `App` then holds so that `/introspect`
+    // can turn them off again; see `introspect::install` for why it is a weak handle to something out
     // here rather than a kernel the tools hold
-    let mind = args.mind.then(|| mind::install(&kernel));
+    let introspect = args.introspect.then(|| introspect::install(&kernel));
 
     // the servers have to outlive this scope: dropping one takes its child process, and its
     // tools, with it
@@ -240,7 +240,7 @@ async fn terminal() -> Result<()> {
     let (outcomes, mut finished) = mpsc::unbounded_channel();
     let mut app = App::new(kernel, policy, provider, outcomes);
     app.confinement = confinement;
-    app.mind = mind;
+    app.introspect = introspect;
     match args.resume.is_some() {
         // a resumed session has a conversation in it already, and it would be strange to have to
         // read it out of the context pane one item at a time

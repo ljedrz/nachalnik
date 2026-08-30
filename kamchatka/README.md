@@ -333,21 +333,46 @@ next request onward, which is one call on the kernel and no restart. When a mode
 the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* call it is waiting on
 with one reason — and the model is told, rather than left waiting on calls that silently vanished.
 
-## 🪞 giving the agent the same view
+## 🔎 letting the agent read and manage its own context
 
-`--mind`, or `/mind` at any point, offers two more tools. They are off by default because a model
-that can rewrite its own context is a decision, not a default.
+`--introspect`, or `/introspect` at any point, offers two more tools. They are off by default,
+because a model that can rewrite its own context is a decision rather than a default.
 
-**`mind`** looks. `look` lists every item it is carrying — what each one is, what it costs,
-whether it is going into the next request, and why not if it is not — and reads any of them in
-full, including the reasoning recorded on its own turns. `request` shows the request it is about
-to send, message by message, with what the projector left out and what it had to repair.
+**`introspect`** reads. `look` lists every item it is carrying — what each one is, what it costs,
+whether it is going into the next request and why not if it is not — and reads any of them in
+full, block by block, including what it was thinking when it produced them. `request` shows the
+request about to go out, message by message, with what the projector left out and what it had to
+repair.
 
-`draft` and `fork` are the interesting ones. Both take a snapshot of the context, resume it as a
-second kernel with **no tools**, ask it once, and hand back only what it said:
+`budget` is the one a decision gets made from:
 
 ```text
-⟩ mind({"action":"fork","question":"am I overfitting to the first stack trace?","without":[14,15]})
+the next request is ~48,120 tokens of 128,000 (38% full, ~79,880 left)
+  47,343 in the context, 777 in the tool definitions
+~9,004 tokens are being held back - excluded, archived, or elided to a marker
+the last request really cost 52,905 in / 214 out, as the provider counted it
+the estimate is corrected by x1.09, learned from 6 request(s)
+
+the 4 most expensive item(s) actually going into it:
+  id  state       kind                  tokens  if all go  what it is
+  31  active      tool_result           18,204    18,204  shell: cargo test --workspace…
+  14  active      reference              9,880    28,084  src/kernel.rs: use std::…
+   9  pinned      system                   240    28,324  system: You are working in… · not yours
+```
+
+Estimates are named as estimates, the provider's own figure sits beside them, and the list is
+what the request *actually* carries — an orphaned tool result the projector repairs away costs
+nothing however active it looks, and offering it as something to give up would be advice that
+buys nothing. Items that are not the agent's to move say so, rather than costing it a refused
+call.
+
+`draft` and `fork` take a snapshot of the context, resume it as a second kernel with **no tools**,
+ask it once, and hand back only what it said. `draft` is for reading your own answer before you
+give it; `fork` is for asking whether a piece of context is what is leading you astray:
+
+```text
+⟩ introspect({"action":"fork","question":"am I overfitting to the first stack trace?",
+              "without":[14,15]})
 
   a copy of you, asked `am I overfitting to the first stack trace?`, on 9 of your items,
   without 14, 15. None of this is in your context and nobody has read it; it is yours to
@@ -355,17 +380,25 @@ second kernel with **no tools**, ask it once, and hand back only what it said:
 ```
 
 A fork can think; it cannot act, and it cannot go on thinking after it has answered once. Nothing
-it does reaches this session's context or its log. Forking a session needed no change to the
-runtime at all — `Kernel::snapshot` and `Kernel::resume` already *are* that, and leaving out an
-item is one field on a copy of the snapshot.
+it does reaches this session's context or its log. Forking needed no change to the runtime at all
+— `Kernel::snapshot` and `Kernel::resume` already *are* that, and leaving an item out is one field
+on a copy of the snapshot.
 
-**`amend`** changes things. `prune` moves items between the same states the <kbd>space</kbd> key
-does, `revise` rewrites what one says, and `undo` walks back — deliberately not the kernel's undo
-stack. That stack is yours, bound to <kbd>u</kbd>, and the top of it while a tool is running is
-always the assistant turn that asked for the call: one step would erase the model's own question
-and orphan the answer it is waiting for. So `amend` keeps a journal of what *it* did, and that is
-what it can walk back. A reason is required on every change, and it is what you read in the
-context pane.
+**`amend`** manages. `prune` moves items between the same states the <kbd>space</kbd> key does —
+`elide` for a tool result that has served its purpose, which keeps the call answered and stops it
+costing what it holds; `exclude` to take one out altogether; `pin` to protect one from compaction
+— named by `ids` or by `select`, which takes the same selector language `/prune` does, so "the
+tool results I am done with" is one call rather than twelve numbers read off a listing. `revise`
+rewrites what an item says. `note` writes something into the context — a plan, a conclusion, a
+thing not to try again — attributed to `agent` so the context pane can say who put it there, and
+pinnable so that compaction cannot take it. Saying the same thing out loud in a turn is not a
+promise about anything; a pin is.
+
+`undo` walks back — deliberately *not* the kernel's undo stack. That stack is yours, bound to
+<kbd>u</kbd>, and the top of it while a tool is running is always the assistant turn that asked
+for the call: one step would erase the model's own question and orphan the answer it is waiting
+for. So `amend` keeps a journal of what *it* did, and that is what it walks. A reason is required
+on every change, and it is what you read in the context pane.
 
 Three things are refused outright, with the refusal handed back to the model: a **pinned** item
 (a pin is a promise, and it was not made to the model), a **system instruction**, and the
@@ -373,10 +406,9 @@ assistant turn it is currently speaking in. It may unpin what it pinned itself, 
 
 They are two tools rather than one with a mode argument, because a tool declares its capabilities
 once for every call it will ever receive. One tool would mean that answering **always** to "may it
-look at its own context?" also answered "may it rewrite a tool result?" — a grant that delivers
-more than it implies, which is the shape of thing this program exists not to do. So the
-permissions tab has a row for `introspect` and a row for `amend`, and you can answer them
-differently.
+read its own context?" also answered "may it rewrite a tool result?" — a grant that delivers more
+than it implies, which is the shape of thing this program exists not to do. So the permissions tab
+has a row for `introspect` and a row for `amend`, and you can answer them differently.
 
 ## 🧩 two dialects, and why one of them keeps the order
 
@@ -397,7 +429,7 @@ nowhere to put an order. Everything downstream then reads a turn that has been t
     [2] call (signed): secret({})
 ```
 
-That is the context pane, and `mind` reads the same thing back to the agent. It is only worth
+That is the context pane, and `introspect` reads the same thing back to the agent. It is only worth
 having because the order is really in there: the runtime records it as `Content::Blocks`, counts
 it, prunes it and elides it like any other content, and `LinearProjector::send_blocks` sends it
 back the same way.
@@ -412,7 +444,7 @@ line work the same against either and nothing above them knows which wire format
 
 ```console
 $ export KAMCHATKA_API_KEY=...        # a Google AI Studio key
-$ kamchatka --gemini --mind "what does src/kernel.rs do?"
+$ kamchatka --gemini --introspect "what does src/kernel.rs do?"
 ```
 
 ## 🔀 the model, and the address it lives at
@@ -523,8 +555,8 @@ kamchatka [OPTIONS] [MESSAGE]...
       --parallel            run the model's tool calls at the same time
       --gemini              talk to Google's own API rather than an OpenAI-compatible
                             one, so a turn keeps the order it was produced in
-      --mind                offer the model the two tools that read and change its own
-                            context; /mind turns them on and off while it runs
+      --introspect          offer the model the two tools that read and manage its own
+                            context; /introspect turns them on and off while it runs
       --sandbox-allow <PATH> a path outside the working directory the shell may also
                             read and write; may be repeated
       --no-sandbox          run the shell tool unconfined, reaching whatever you can

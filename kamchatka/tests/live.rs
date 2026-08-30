@@ -489,11 +489,15 @@ fn gemini() -> Option<(
     );
     kernel.set_policy(policy.clone());
     kernel.add_tool(Arc::new(Secret));
-    let mind = kamchatka::mind::install(&kernel);
+    let introspect = kamchatka::introspect::install(&kernel);
 
     let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
 
-    Some((App::new(kernel, policy, provider, outcomes), mind, finished))
+    Some((
+        App::new(kernel, policy, provider, outcomes),
+        introspect,
+        finished,
+    ))
 }
 
 macro_rules! gemini {
@@ -520,7 +524,7 @@ fn turn(app: &App) -> Arc<nachalnik::ContextItem> {
 #[tokio::test]
 async fn a_real_turn_is_recorded_in_the_order_it_was_produced() {
     let _serial = SERIAL.lock().await;
-    let (mut app, _mind, mut finished) = gemini!();
+    let (mut app, _introspect, mut finished) = gemini!();
 
     send(
         &mut app,
@@ -580,7 +584,7 @@ async fn a_real_turn_is_recorded_in_the_order_it_was_produced() {
 #[tokio::test]
 async fn a_real_model_thinks_out_loud_between_what_it_says_and_what_it_asks_for() {
     let _serial = SERIAL.lock().await;
-    let (mut app, _mind, mut finished) = gemini!();
+    let (mut app, _introspect, mut finished) = gemini!();
 
     // the claim the whole exercise rests on: one turn holding thinking *and* speech *and* a call,
     // in the order the model produced them. Whether any one turn thinks aloud is the model's
@@ -624,7 +628,7 @@ async fn a_real_model_thinks_out_loud_between_what_it_says_and_what_it_asks_for(
 #[tokio::test]
 async fn an_ordered_turn_goes_back_and_is_accepted() {
     let _serial = SERIAL.lock().await;
-    let (mut app, _mind, mut finished) = gemini!();
+    let (mut app, _introspect, mut finished) = gemini!();
 
     send(&mut app, &mut finished, "Use the secret tool.").await;
     // the second request carries the first turn back, signatures and all. This API answers
@@ -644,9 +648,9 @@ async fn an_ordered_turn_goes_back_and_is_accepted() {
 }
 
 #[tokio::test]
-async fn the_metacognition_tools_read_an_ordered_turn() {
+async fn the_introspection_tools_read_an_ordered_turn() {
     let _serial = SERIAL.lock().await;
-    let (mut app, _mind, mut finished) = gemini!();
+    let (mut app, _introspect, mut finished) = gemini!();
 
     send(
         &mut app,
@@ -656,15 +660,15 @@ async fn the_metacognition_tools_read_an_ordered_turn() {
     .await;
     let turn = turn(&app);
 
-    // `mind` is the reason the two of these were built together: an agent that can look at its
-    // own context is only worth having if what it looks at is what really happened, and until
-    // there was a provider that reported an order there was no order in there to look at
-    let tool = app.kernel.tool("mind").expect("installed");
+    // `introspect` is the reason the two of these were built together: an agent that can read its
+    // own context is only worth having if what it reads is what really happened, and until there
+    // was a provider that reported an order there was no order in there to read
+    let tool = app.kernel.tool("introspect").expect("installed");
     let read = tool
         .invoke(
             &ToolCall::new(
                 "c1",
-                "mind",
+                "introspect",
                 json!({ "action": "look", "ids": [turn.id.0] }),
             ),
             OutputSink::disconnected(),
@@ -684,7 +688,7 @@ async fn the_metacognition_tools_read_an_ordered_turn() {
     // as having thought nothing and asked for nothing
     let listed = tool
         .invoke(
-            &ToolCall::new("c2", "mind", json!({ "action": "look" })),
+            &ToolCall::new("c2", "introspect", json!({ "action": "look" })),
             OutputSink::disconnected(),
         )
         .await
@@ -694,4 +698,22 @@ async fn the_metacognition_tools_read_an_ordered_turn() {
         .into_owned();
     assert!(listed.contains("ordered block(s)"), "{listed}");
     assert!(listed.contains("call(s)]"), "{listed}");
+
+    // and the figures it would budget against are the provider's own, not a guess nobody checked
+    let budget = tool
+        .invoke(
+            &ToolCall::new("c3", "introspect", json!({ "action": "budget" })),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("the tool answered")
+        .content
+        .to_text()
+        .into_owned();
+    assert!(budget.contains("the next request is"), "{budget}");
+    assert!(
+        budget.contains("as the provider counted it"),
+        "a real request has been charged for by now: {budget}"
+    );
+    assert!(budget.contains("most expensive item(s)"), "{budget}");
 }

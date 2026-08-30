@@ -13,13 +13,15 @@
 //! Nothing is inferred and nothing is hidden: the context tab is a list of ordinary values the
 //! runtime hands out, and `ctrl+p` prints the exact request they add up to.
 //!
-//! `--mind`, or `/mind` at any point, adds two more tools and hands the agent the same view:
-//! [`mind`] reads its own context and its own recorded reasoning, previews the request it is
-//! about to send, and answers on a throwaway fork of itself so it can read what it would say
-//! before saying it; `amend` prunes, elides and rewrites what it is carrying, and walks its own
-//! changes back. Neither of them is allowed to touch what a person pinned. Nothing in the runtime
-//! knows about any of this - it is what a tool can already do with a context that is a list of
-//! public values and a request that can be built without being sent.
+//! `--introspect`, or `/introspect` at any point, adds two more tools for reading and managing a
+//! context from the inside. [`introspect`] lists what is being carried and what each item costs,
+//! reports the budget against what the last request really cost, shows the request about to go
+//! out, and answers on a throwaway fork so an answer can be read before it is given; `amend`
+//! elides, excludes, pins and rewrites what is being carried, writes something down that
+//! compaction cannot take, and walks its own changes back. Neither is allowed to touch what a
+//! person pinned. Nothing in the runtime knows about any of this - it is what a tool can already
+//! do with a context that is a list of public values and a request that can be built without
+//! being sent.
 //!
 //! `--gemini` swaps the wire format for Google's own, in which an assistant turn is an ordered
 //! list of parts rather than a content slot beside a list of calls. What that buys is the order
@@ -39,7 +41,7 @@
 
 pub mod app;
 pub mod gemini;
-pub mod mind;
+pub mod introspect;
 pub mod provider;
 pub mod sandbox;
 pub mod tools;

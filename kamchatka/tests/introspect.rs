@@ -1,4 +1,4 @@
-//! Tests for the two tools that hand the agent its own context.
+//! Tests for the two tools an agent inspects and manages its own context with.
 //!
 //! note: these drive the real loop rather than calling `Tool::invoke` by hand, because most of
 //! what is worth checking is about the loop: that the tool is reached through the permission
@@ -12,9 +12,9 @@
 
 use std::sync::Arc;
 
-use kamchatka::mind;
+use kamchatka::introspect;
 use nachalnik::{
-    Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse,
+    Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, ToolCallId,
     test::{AllowAll, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -28,9 +28,14 @@ fn agent(
     let provider = Arc::new(ScriptedProvider::new(script));
     kernel.set_provider(provider.clone());
     kernel.set_policy(Arc::new(AllowAll));
-    let anchor = mind::install(&kernel);
+    let anchor = introspect::install(&kernel);
 
     (kernel, provider, anchor)
+}
+
+/// A tool call by id, for building an assistant turn by hand.
+fn call_of(id: &str) -> nachalnik::ToolCall {
+    call(id, "shell", json!({}))
 }
 
 /// A turn in which the model makes exactly these calls, and then says it is done.
@@ -54,10 +59,17 @@ fn answered(kernel: &Kernel) -> String {
 
 /// Every tool result, oldest first.
 fn all_answers(kernel: &Kernel) -> Vec<String> {
+    answers_from(kernel, &["introspect", "amend"])
+}
+
+/// Every result one of these tools produced, oldest first.
+fn answers_from(kernel: &Kernel, tools: &[&str]) -> Vec<String> {
     kernel
         .items()
         .iter()
-        .filter(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .filter(|item| {
+            matches!(&item.kind, ContextKind::ToolResult { tool, .. } if tools.contains(&tool.as_str()))
+        })
         .map(|item| item.content.to_text().into_owned())
         .collect()
 }
@@ -66,7 +78,7 @@ fn all_answers(kernel: &Kernel) -> Vec<String> {
 async fn look_lists_every_item_with_its_state_and_why() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "mind",
+        "introspect",
         json!({ "action": "look" }),
     )]));
 
@@ -96,7 +108,7 @@ async fn look_lists_every_item_with_its_state_and_why() {
 async fn look_with_ids_reads_the_whole_item_and_its_reasoning() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "mind",
+        "introspect",
         json!({ "action": "look", "ids": [1, 99] }),
     )]));
 
@@ -119,7 +131,7 @@ async fn look_with_ids_reads_the_whole_item_and_its_reasoning() {
 async fn request_reports_what_is_going_and_what_was_left_out() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "mind",
+        "introspect",
         json!({ "action": "request" }),
     )]));
 
@@ -142,7 +154,7 @@ async fn request_reports_what_is_going_and_what_was_left_out() {
 #[tokio::test]
 async fn draft_answers_on_a_fork_and_leaves_the_context_alone() {
     let (kernel, provider, _anchor) = agent([
-        ModelResponse::tool_calls(vec![call("c1", "mind", json!({ "action": "draft" }))]),
+        ModelResponse::tool_calls(vec![call("c1", "introspect", json!({ "action": "draft" }))]),
         // the fork's answer, taken off the same script
         ModelResponse::text("I would say the parser is fine"),
         ModelResponse::text("done"),
@@ -178,7 +190,7 @@ async fn a_fork_is_asked_a_question_without_the_items_it_was_told_to_leave_out()
     let (kernel, provider, _anchor) = agent([
         ModelResponse::tool_calls(vec![call(
             "c1",
-            "mind",
+            "introspect",
             json!({
                 "action": "fork",
                 "question": "does the note change your answer?",
@@ -447,7 +459,7 @@ async fn a_reason_is_required_before_anything_changes() {
 async fn the_tools_stop_working_when_the_handle_goes() {
     let (kernel, _provider, anchor) = agent(one_turn(vec![call(
         "c1",
-        "mind",
+        "introspect",
         json!({ "action": "look" }),
     )]));
 
@@ -533,4 +545,155 @@ async fn what_the_context_says_is_what_the_next_request_carries() {
             .byte_len(),
         400
     );
+}
+
+// ------------------------------------------------------------------- managing what it carries
+
+#[tokio::test]
+async fn budget_reports_what_is_really_going_and_what_it_would_buy_to_drop_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "introspect",
+        json!({ "action": "budget" }),
+    )]));
+
+    kernel.push(ContextItem::system("be brief").pinned());
+    kernel.push(ContextItem::file("big.rs", "0".repeat(4_000)));
+    // an orphan: active, and repaired out of every request by the projector, so it is costing
+    // nothing at all however expensive it looks
+    kernel.push(ContextItem::tool_result(
+        ToolCallId::from("nobody-asked"),
+        "shell",
+        "1".repeat(4_000),
+        false,
+    ));
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answered(&kernel);
+    assert!(said.contains("the next request is"), "{said}");
+    assert!(said.contains("in the tool definitions"), "{said}");
+    // the figures are said to be estimates until a provider has charged for something
+    assert!(said.contains("estimate"), "{said}");
+
+    // the expensive list is what the request actually carries, so the orphan is not offered as
+    // something to save tokens by giving up - eliding it would buy nothing
+    let listed = said
+        .lines()
+        .skip_while(|line| !line.contains("most expensive"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(listed.contains("big.rs"), "{listed}");
+    assert!(
+        !listed.contains("shell"),
+        "the orphan is not going anyway: {listed}"
+    );
+    // and what is not the agent's to move says so, rather than costing it a refused call
+    assert!(listed.contains("not yours"), "{listed}");
+}
+
+#[tokio::test]
+async fn a_class_of_items_can_be_pruned_without_naming_each_one() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "amend",
+            json!({
+                "action": "prune",
+                "select": "all:tool_results",
+                "state": "elide",
+                "reason": "I have what I needed from them",
+            }),
+        ),
+        call(
+            "c2",
+            "amend",
+            json!({
+                "action": "prune",
+                "select": "kind:nothing_like_this",
+                "state": "elide",
+                "reason": "trying it on",
+            }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call_of("t1"), call_of("t2")],
+    ));
+    for id in ["t1", "t2"] {
+        kernel.push(ContextItem::tool_result(
+            ToolCallId::from(id),
+            "shell",
+            "0".repeat(500),
+            false,
+        ));
+    }
+    kernel.push(ContextItem::user("tidy up"));
+
+    kernel.turn().await.expect("the turn ran");
+
+    let answers = all_answers(&kernel);
+    assert!(
+        answers[0].contains("2 item(s) are now elided"),
+        "{answers:?}"
+    );
+    for item in kernel.items() {
+        if matches!(item.kind, ContextKind::ToolResult { ref tool, .. } if tool == "shell") {
+            assert_eq!(item.state, ContextState::Elided);
+        }
+    }
+    // a selector it got wrong is answered with the whole grammar, so the next attempt is an
+    // informed one rather than another guess
+    assert!(answers[1].contains("is not a selector"), "{answers:?}");
+    assert!(answers[1].contains("tool:grep:latest"), "{answers:?}");
+    assert!(answers[1].contains("state:excluded"), "{answers:?}");
+}
+
+#[tokio::test]
+async fn a_note_is_written_down_where_compaction_cannot_reach_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "amend",
+        json!({
+            "action": "note",
+            "label": "the plan",
+            "content": "read the tests first, and do not touch the lexer",
+            "pin": true,
+            "reason": "so it outlives this turn",
+        }),
+    )]));
+
+    kernel.push(ContextItem::user("what is your plan?"));
+    kernel.turn().await.expect("the turn ran");
+
+    let written = kernel
+        .items()
+        .into_iter()
+        .find(|item| item.label == "the plan")
+        .expect("it was written down");
+
+    assert_eq!(written.state, ContextState::Pinned);
+    assert!(written.content.to_text().contains("do not touch the lexer"));
+    // attributed to whoever wrote it, so "who put these tokens in here?" has an answer
+    assert_eq!(written.source, "agent");
+    assert_eq!(
+        written.included_because.as_deref(),
+        Some("so it outlives this turn")
+    );
+
+    // and it is one of its own changes, so it can walk it back - which archives it rather than
+    // destroying it, like everything else here
+    let tool = kernel.tool("amend").expect("installed");
+    tool.invoke(
+        &nachalnik::ToolCall::new("c2", "amend", json!({ "action": "undo", "reason": "no" })),
+        nachalnik::OutputSink::disconnected(),
+    )
+    .await
+    .expect("the tool answered");
+
+    let written = kernel.item(written.id).expect("still listed");
+    assert_eq!(written.state, ContextState::Archived);
+    assert!(written.content.to_text().contains("do not touch the lexer"));
 }

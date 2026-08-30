@@ -79,8 +79,8 @@ seam is wrong, not the crate.
 | `test.rs` | feature `test`: `ScriptedProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |
 
 `kamchatka/src`: `app.rs` (state and key handling), `ui.rs` (drawing only - it decides nothing),
-`tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `mind.rs` (the two
-off-by-default tools that hand the agent its own context), `provider.rs` (the OpenAI-compatible
+`tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `introspect.rs` (the two
+off-by-default tools an agent inspects and manages its own context with), `provider.rs` (the OpenAI-compatible
 dialect, and the `Endpoint` trait both providers answer), `gemini.rs` (Google's own, the one that
 keeps the order of a turn), `main.rs` (arguments and wiring). It is a library plus a binary only so
 the screen can be drawn against a `TestBackend` in tests.
@@ -93,7 +93,7 @@ the claim `/seams` makes about every other part of the runtime and had not been 
 dialect's turn *is* an order and projecting three slots at it would flatten every turn on the way
 out one request after recording the order on the way in.
 
-`mind.rs` is the second `nachalnik-mcp`: **written with no change to the runtime at all**, and
+`introspect.rs` is the second `nachalnik-mcp`: **written with no change to the runtime at all**, and
 worth reading for that reason. Forking a context is `Kernel::snapshot` and `Kernel::resume`;
 previewing a request is `preview_request`; pruning is `set_state`. What it adds is the part the
 runtime has no opinion about - which of those a *model* may do. A pinned item, a system
@@ -138,7 +138,7 @@ fails without a key, or when a free tier has spent its allowance. `kamchatka` re
 
 Test files: `nachalnik/tests/` is `kernel`, `context`, `state`, `session`, `tokens`,
 `concurrency`, `blocks`, `live`. `kamchatka/tests/` draws the screen and reads the characters back
-(`screen`), drives the metacognition tools through the real loop (`mind`), serves a recorded
+(`screen`), drives the introspection tools through the real loop (`introspect`), serves a recorded
 Gemini stream off a socket and checks what goes back out (`gemini`), runs real commands
 under a real ruleset (`sandbox`), and answers three sockets: one
 that goes silent mid-stream (`stalled`) and two that serve the shapes a streamed tool call arrives
@@ -200,7 +200,7 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   its absence.
 - **A `nachalnik-gemini` crate.** `kamchatka/src/gemini.rs` is a self-contained module with no
   kamchatka-specific types in it, and it is in kamchatka because that is where the consumer is:
-  `mind` is only worth having if the turn it inspects is the one that really happened. What it
+  `introspect` is only worth having if the turn it reads is the one that really happened. What it
   costs is that `nachalnik/tests/live.rs` cannot reach it - the live suite may only use
   `nachalnik-utils`, which is dev-only and unpublished - so the core's block support goes on being
   checked against ordered turns recorded by hand. That is arguably the better test, since it does

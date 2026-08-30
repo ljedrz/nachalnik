@@ -180,12 +180,12 @@ pub struct App {
     pub policy: Arc<Careful>,
     /// The provider, for switching models - whichever dialect it speaks.
     pub provider: Arc<dyn Endpoint>,
-    /// The handle the two metacognition tools reach the kernel through, while they are offered.
+    /// The handle the two introspection tools reach the kernel through, while they are offered.
     ///
-    /// note: it is here rather than in `main` because `/mind` turns them on and off, and this is
+    /// note: it is here rather than in `main` because `/introspect` turns them on and off, and this is
     /// the thing that has to move when it does: they hold a weak handle to it, so dropping it is
-    /// what takes their reach away. See [`crate::mind::install`].
-    pub mind: Option<Arc<Kernel>>,
+    /// what takes their reach away. See [`crate::introspect::install`].
+    pub introspect: Option<Arc<Kernel>>,
     /// How much of the shell's sandbox the kernel agreed to, asked once at startup.
     ///
     /// note: on `App` rather than worked out where it is drawn, because finding out means
@@ -270,7 +270,7 @@ impl App {
             kernel,
             policy,
             provider,
-            mind: None,
+            introspect: None,
             // the terminal's own default, for a screen test that never spawns anything; the
             // program overwrites it with what a child process actually reported
             confinement: Confinement::Unsupported,
@@ -1565,7 +1565,7 @@ impl App {
             }
             "budget" => self.budget(),
             "seams" => self.seams(),
-            "mind" => self.mind(),
+            "introspect" => self.introspect(),
             // it used to print a line naming the allowed capabilities. The tab is that line, plus
             // the ones that are refused, plus the ones nobody has decided about yet, plus what
             // each of them covers - and every row can be changed where it is read
@@ -1723,22 +1723,22 @@ impl App {
     /// away drops it, and with it whatever `amend` had been remembering - which items it pinned,
     /// and the changes it could still walk back. That is the right answer rather than a
     /// shortcoming. The tools that come back are new ones, and they have not done anything yet.
-    fn mind(&mut self) {
-        match self.mind.take() {
+    fn introspect(&mut self) {
+        match self.introspect.take() {
             Some(_) => {
-                self.kernel.remove_tool("mind");
+                self.kernel.remove_tool("introspect");
                 self.kernel.remove_tool("amend");
                 self.say(
                     Speaker::Note,
-                    "`mind` and `amend` are no longer offered; the next request will not mention \
+                    "`introspect` and `amend` are no longer offered; the next request will not mention \
                      them",
                 );
             }
             None => {
-                self.mind = Some(crate::mind::install(&self.kernel));
+                self.introspect = Some(crate::introspect::install(&self.kernel));
                 self.say(
                     Speaker::Note,
-                    "`mind` and `amend` go into the next request: the model can now read its own \
+                    "`introspect` and `amend` go into the next request: the model can now read its own \
                      context, preview what it would say, ask a fork of itself, prune what it is \
                      carrying and walk its own changes back. It cannot touch anything you pinned",
                 );

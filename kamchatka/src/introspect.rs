@@ -1,9 +1,10 @@
-//! Two tools that hand the agent its own context: one that reads it, one that changes it.
+//! Two tools that let an agent inspect and manage its own context: one that reads it, one that
+//! changes it.
 //!
 //! note: Everything here is ordinary user code, like the rest of `tools.rs`, and none of it
 //! needed a line added to the runtime. What the runtime has is a context that is a list of public
 //! values, a request that can be built without being sent, and a session that can be snapshotted
-//! and resumed - and a tool is allowed to call all of it. That is the whole trick: metacognition
+//! and resumed - and a tool is allowed to call all of it. That is the whole trick: introspection
 //! is not a feature of the kernel, it is what a tool can already do with the kernel's ordinary
 //! surface. What these two add is the part the kernel has no opinion about: which of it a *model*
 //! may do.
@@ -12,7 +13,7 @@
 //! capabilities once for every call it will ever receive. One tool would mean that answering
 //! *always* to "may it look at its own context?" also answered "may it rewrite a tool result?" -
 //! a grant that delivers considerably more than it implies, which is the shape of thing this
-//! program exists not to do. So [`Mind`] looks and [`Amend`] changes, they declare different
+//! program exists not to do. So [`Introspect`] looks and [`Amend`] changes, they declare different
 //! capabilities, and the permissions tab has a row for each.
 //!
 //! note: What [`Amend`] will not do is undo a person's decisions. A pinned item, a system
@@ -28,7 +29,7 @@ use std::{
 use nachalnik::{
     Block, BoxError, Capability, Config, Content, ContextId, ContextItem, ContextKind,
     ContextState, Delta, Event, Kernel, OutputSink, Tool, ToolCall, ToolCallId, ToolOutput,
-    ToolSpec, async_trait,
+    ToolSpec, async_trait, selectors::Selector,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -52,13 +53,18 @@ const GLIMPSE: usize = 48;
 pub fn install(kernel: &Kernel) -> Arc<Kernel> {
     let anchor = Arc::new(kernel.clone());
     let reach = Reach(Arc::downgrade(&anchor));
+    // shared, because the two tools are one agent's hands: what `amend` pinned is what
+    // `introspect` should report as the agent's own to unpin, and a second set would have them
+    // disagreeing about a promise
+    let pinned = Arc::new(Mutex::new(BTreeSet::new()));
 
-    kernel.add_tool(Arc::new(Mind {
+    kernel.add_tool(Arc::new(Introspect {
         reach: reach.clone(),
+        pinned: pinned.clone(),
     }));
     kernel.add_tool(Arc::new(Amend {
         reach,
-        pinned: Mutex::new(BTreeSet::new()),
+        pinned,
         journal: Mutex::new(Journal::default()),
     }));
 
@@ -80,36 +86,46 @@ impl Reach {
 
 // ------------------------------------------------------------------------------------ looking
 
-/// Reads the agent's own context, the request it is about to send, and what it would say next.
+/// Reads the context, the budget, the request about to be sent, and the answer that would follow.
 ///
-/// note: none of the four actions changes anything, which is why they are together and why the
+/// note: none of the five actions changes anything, which is why they are together and why the
 /// capability they declare is its own. `draft` and `fork` do spend tokens - they ask the model -
 /// so this is not free, only harmless.
-pub struct Mind {
+pub struct Introspect {
     reach: Reach,
+    pinned: Pinned,
 }
 
+/// The items the agent pinned itself, shared between the tool that sets them and the one that
+/// reports them.
+type Pinned = Arc<Mutex<BTreeSet<ContextId>>>;
+
 #[async_trait]
-impl Tool for Mind {
+impl Tool for Introspect {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
-            "mind",
-            "looks at your own state. `look` lists every item in your context - what it is, what \
-             it costs, whether it is going into the next request, and why not if it is not - and \
-             with `ids` reads any of them in full, your own recorded reasoning included. \
+            "introspect",
+            "reads your own state, so you can check it before you act on it. `look` lists every \
+             item in your context - what it is, what it costs, whether it is going into the next \
+             request and why not if it is not - and with `ids` reads any of them in full, block \
+             by block, including what you were thinking when you produced them. `budget` is what \
+             the next request costs against what there is, what the last one really cost, and \
+             which items are the expensive ones - read it before deciding what to give up. \
              `request` shows the request you are about to send, message by message, with what the \
              projector left out and what it repaired. `draft` answers the conversation on a \
-             throwaway copy of your context and shows you what you would say, without saying it \
-             or recording it. `fork` puts a question to a copy of yourself on a copy of your \
-             context, optionally with some items left out, and returns its answer only. A fork \
-             has no tools: it can think, not act. Use `amend` to change any of this.",
+             throwaway copy and shows you what you would say *before* you say it, so you can \
+             check your answer against your context and fix either. `fork` puts a question to a \
+             copy of yourself on a copy of your context, optionally with some items left out - \
+             for weighing an approach, or asking whether a piece of context is what is leading \
+             you astray. A fork has no tools: it can think, not act. `amend` is the tool that \
+             changes any of this.",
         )
         .with_schema(json!({
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["look", "request", "draft", "fork"],
+                    "enum": ["look", "budget", "request", "draft", "fork"],
                 },
                 "ids": {
                     "type": "array",
@@ -137,6 +153,7 @@ impl Tool for Mind {
 
         match action(&call.args)? {
             "look" => Ok(ToolOutput::new(look(&kernel, &ids(&call.args, "ids")))),
+            "budget" => Ok(ToolOutput::new(budget(&kernel, &self.pinned.lock()))),
             "request" => Ok(ToolOutput::new(request(&kernel))),
             "draft" => branch(&kernel, None, &[], &output).await,
             "fork" => {
@@ -156,7 +173,7 @@ impl Tool for Mind {
             }
             other => Ok(ToolOutput::error(unknown(
                 other,
-                &["look", "request", "draft", "fork"],
+                &["look", "budget", "request", "draft", "fork"],
             ))),
         }
     }
@@ -279,7 +296,7 @@ fn full(items: &[Arc<ContextItem>], id: ContextId) -> String {
         out.push_str(&format!("  attached: {}\n", item.meta));
     }
     // a turn that was recorded as an order is read back as one, block by block. This is the
-    // thing `mind` exists for and the one view of it that is not available anywhere else: the
+    // thing `introspect` exists for and the one view of it that is not available anywhere else: the
     // request the model will be sent has the same parts in the same order, but by then the
     // thinking looks like a field rather than something that happened between two calls
     if let Some(blocks) = item.content.as_blocks() {
@@ -308,6 +325,118 @@ fn full(items: &[Arc<ContextItem>], id: ContextId) -> String {
         out.push_str(&format!("  --- reasoning ---\n{}\n", reasoning.to_text()));
     }
     out.push_str(&format!("  --- content ---\n{}\n", item.content.to_text()));
+
+    out
+}
+
+/// What the next request costs, what there is, and what giving something up would buy.
+///
+/// note: the action a compaction decision is actually made from, which `look` was being asked to
+/// be and is not: a table of every item in insertion order answers "what am I carrying?" and not
+/// "what is it costing me and what should go?". The expensive items are the ones that decide that,
+/// so they are sorted and totalled here rather than left to be found by reading.
+///
+/// note: it reports the estimate beside what the provider charged for the last request, and the
+/// correction the counter has worked out from the difference, because the estimate is made without
+/// the model's tokenizer and is usually low. An agent budgeting against a number nobody has
+/// checked is the thing this crate exists not to do quietly.
+fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
+    let budget = kernel.budget();
+    let withheld = kernel.with_context(|context| context.tokens_withheld());
+
+    let room = match budget.limit {
+        Some(limit) => format!(
+            " of {} ({}% full, ~{} left)",
+            thousands(limit),
+            (budget.fraction_used().unwrap_or_default() * 100.0).round() as usize,
+            thousands(limit.saturating_sub(budget.used())),
+        ),
+        None => ", against a limit this provider does not report".to_owned(),
+    };
+
+    let mut out = format!(
+        "the next request is ~{} tokens{room}\n  {} in the context, {} in the tool definitions\n\
+         ~{} tokens are being held back - excluded, archived, or elided to a marker\n",
+        thousands(budget.used()),
+        thousands(budget.context_tokens),
+        thousands(budget.tool_tokens),
+        thousands(withheld),
+    );
+
+    match budget.reported {
+        Some(usage) => out.push_str(&format!(
+            "the last request really cost {} in / {} out, as the provider counted it\n",
+            thousands(usage.input_tokens.unwrap_or_default() as usize),
+            thousands(usage.output_tokens.unwrap_or_default() as usize),
+        )),
+        None => out.push_str(
+            "nothing has been charged for yet, so the figures above are only an estimate\n",
+        ),
+    }
+    if let Some(learned) = kernel.counter().calibration() {
+        out.push_str(&match learned.observations {
+            0 => "the estimate has not been checked against a real request yet; treat it as a floor\n"
+                .to_owned(),
+            seen => format!(
+                "the estimate is corrected by x{:.2}, learned from {seen} request(s)\n",
+                learned.scale
+            ),
+        });
+    }
+
+    // the expensive ones, biggest first: what a decision about compaction is made from.
+    //
+    // note: what the *projection* included, not what the states say. They are not the same list -
+    // a tool result whose call is not in the request is repaired out of it by the projector, and
+    // is costing nothing however active it looks. Offering it as something to save tokens by
+    // eliding would be advice that buys nothing
+    let going: BTreeSet<ContextId> = kernel.project().included.into_iter().collect();
+    let mut costly: Vec<_> = kernel
+        .items()
+        .into_iter()
+        .filter(|item| going.contains(&item.id) && item.state.sends_content())
+        .collect();
+    costly.sort_by_key(|item| std::cmp::Reverse(item.tokens));
+    costly.truncate(10);
+
+    if costly.is_empty() {
+        return out;
+    }
+
+    out.push_str(&format!(
+        "\nthe {} most expensive item(s) actually going into it:\n{:>4}  {:<10}  {:<18}  {:>8}  {:>8}  what it is\n",
+        costly.len(),
+        "id",
+        "state",
+        "kind",
+        "tokens",
+        "if all go",
+    ));
+    let mut running = 0;
+    for item in &costly {
+        running += item.tokens;
+        // saying so here saves a call that would only be refused, and the reason is the same one
+        // `amend` would give: it is not the model's to move
+        let whose = match protected(item, mine, None) {
+            Some(_) => " · not yours",
+            None => "",
+        };
+        out.push_str(&format!(
+            "{:>4}  {:<10}  {:<18}  {:>8}  {:>8}  {}{whose}\n",
+            item.id.0,
+            item.state.to_string(),
+            item.kind.name(),
+            thousands(item.tokens),
+            thousands(running),
+            glimpse(&format!("{}: {}", item.label, item.content.to_text())),
+        ));
+    }
+    out.push_str(
+        "\nthe fifth column is what eliding everything down to that row would save, give or take \
+         what the markers cost. Eliding leaves a marker in place, so a tool result still answers \
+         the call that asked for it; excluding one takes that call down with it, and the model \
+         then reads a conversation in which it never asked. `amend` does either.\n",
+    );
 
     out
 }
@@ -503,7 +632,8 @@ async fn branch(
 
 // ----------------------------------------------------------------------------------- changing
 
-/// Changes the agent's own context: prunes it, rewrites an item, walks its own changes back.
+/// Manages the context: prunes it, rewrites an item, writes something down, walks its own
+/// changes back.
 ///
 /// note: it keeps the set of items it pinned itself, which is the whole of the mechanism that
 /// stops a model quietly unpinning what a person pinned. A pin is a promise, and the promise was
@@ -519,7 +649,7 @@ async fn branch(
 /// honest scope of "undo my mistakes" - the mistakes being the ones it made.
 pub struct Amend {
     reach: Reach,
-    pinned: Mutex<BTreeSet<ContextId>>,
+    pinned: Pinned,
     journal: Mutex<Journal>,
 }
 
@@ -590,37 +720,56 @@ impl Tool for Amend {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "amend",
-            "changes your own context. `prune` moves items to a state: `exclude` takes one out of \
-             the request entirely, `elide` leaves a marker in its place so the turn keeps its \
-             shape, `archive` puts it away for good, `pin` protects it from compaction, `restore` \
-             puts it back. `revise` rewrites what one item says. `undo` and `redo` walk back and \
-             forward through the changes *you* made with this tool, newest first; they do not \
-             touch anything anybody else did. Nothing here destroys anything: every item keeps \
-             its number, everything can be restored, and every change is recorded where the \
-             person at the terminal can see it. Some things are refused: a pinned item, a system \
-             instruction, and the assistant turn you are speaking in are not yours to change. A \
-             reason is required, and it is what the person will read. Use `mind` to look first.",
+            "manages your own context, so that what you carry into the next request is what you \
+             decided to carry. `prune` moves items: `elide` leaves a short marker in place of one, \
+             which is what to reach for when a tool result has served its purpose - the call it \
+             answers stays answered and stops costing what it holds; `exclude` takes one out \
+             altogether, which also takes down the call that asked for it; `archive` puts one away \
+             for good; `pin` protects one from being compacted away; `restore` puts one back. Name \
+             the items with `ids`, or with `select` for a whole class of them at once. `revise` \
+             rewrites what one item says, for when you wrote something down wrong. `note` writes \
+             something into your own context - a plan, a conclusion, a thing not to try again - \
+             which you can pin so that compaction cannot take it. `undo` and `redo` walk back and \
+             forward through the changes *you* made with this tool. Nothing here destroys \
+             anything: every item keeps its number and can be restored. A pinned item, a system \
+             instruction and the turn you are speaking in are refused - they are not yours. A \
+             reason is required, and it is what the person at the terminal reads. Use \
+             `introspect` to look first, `budget` especially.",
         )
         .with_schema(json!({
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["prune", "revise", "undo", "redo"],
+                    "enum": ["prune", "revise", "note", "undo", "redo"],
                 },
                 "ids": {
                     "type": "array",
                     "items": { "type": "integer" },
                     "description": "prune: the items to move. revise: exactly one item",
                 },
+                "select": {
+                    "type": "string",
+                    "description": "prune: a class of items instead of `ids` - `all:tool_results`, \
+                                    `tool:shell`, `tool:shell:first`, `kind:assistant_message`, \
+                                    `state:excluded`, `file:src/x.rs`, `source:mcp`, or a number",
+                },
                 "state": {
                     "type": "string",
-                    "enum": ["exclude", "elide", "archive", "pin", "restore"],
+                    "enum": ["elide", "exclude", "archive", "pin", "restore"],
                     "description": "prune: where they go",
                 },
                 "content": {
                     "type": "string",
-                    "description": "revise: what the item should say instead",
+                    "description": "revise: what the item should say instead. note: what to write down",
+                },
+                "label": {
+                    "type": "string",
+                    "description": "note: a short name for it, so it is findable later",
+                },
+                "pin": {
+                    "type": "boolean",
+                    "description": "note: protect it from compaction",
                 },
                 "reason": {
                     "type": "string",
@@ -653,11 +802,12 @@ impl Tool for Amend {
         match action(&call.args)? {
             "prune" => Ok(self.prune(&kernel, call, reason)),
             "revise" => Ok(self.revise(&kernel, call, reason)),
+            "note" => Ok(self.note(&kernel, call, reason)),
             "undo" => Ok(self.walk(&kernel, call, reason, true)),
             "redo" => Ok(self.walk(&kernel, call, reason, false)),
             other => Ok(ToolOutput::error(unknown(
                 other,
-                &["prune", "revise", "undo", "redo"],
+                &["prune", "revise", "note", "undo", "redo"],
             ))),
         }
     }
@@ -666,9 +816,33 @@ impl Tool for Amend {
 impl Amend {
     /// Moves items to a state, refusing the ones that are not the model's to move.
     fn prune(&self, kernel: &Kernel, call: &ToolCall, reason: &str) -> ToolOutput {
-        let ids = ids(&call.args, "ids");
+        // a selector, or a list of numbers. Naming a class of items is what makes this usable for
+        // the job it is mostly for - "the tool results I am done with" is one thought, and
+        // reading twelve numbers off a listing to say it is not
+        let selected = call.args["select"].as_str();
+        let ids = match selected {
+            Some(input) => match input.parse::<Selector>() {
+                Ok(selector) => selector.matches(&kernel.items()),
+                Err(e) => {
+                    return ToolOutput::error(format!(
+                        "`{input}` is not a selector: {e}\n\n{}",
+                        crate::ui::SELECTORS
+                    ));
+                }
+            },
+            None => ids(&call.args, "ids"),
+        };
         if ids.is_empty() {
-            return ToolOutput::error("`prune` needs `ids`");
+            // a selector that parsed and matched nothing is a different mistake from naming no
+            // items at all, and telling them apart is the difference between trying again with a
+            // better selector and trying again with the same one
+            return ToolOutput::error(match selected {
+                Some(input) => format!(
+                    "`{input}` is a selector, and nothing in your context matches it; \
+                     `introspect` with `look` lists what there is"
+                ),
+                None => "`prune` needs `ids`, or a `select` naming a class of them".to_owned(),
+            });
         }
         let Some(state) = state_of(call.args["state"].as_str().unwrap_or_default()) else {
             return ToolOutput::error(
@@ -768,6 +942,56 @@ impl Amend {
             item.label,
             thousands(now),
             thousands(was),
+            cost(kernel, before),
+        ))
+    }
+
+    /// Writes something into the context that will still be there later.
+    ///
+    /// note: the one thing here that *adds*, and it earns its place because everything else an
+    /// agent knows is in a turn - and a turn is the first thing a compactor comes for. A plan, a
+    /// conclusion, a thing that did not work: written down as an item of its own it can be pinned,
+    /// and a pin is a promise the kernel keeps even against a `Compactor`. Saying the same thing
+    /// out loud in a turn is not a promise about anything.
+    ///
+    /// note: the source is `agent`, not `memory` or `user`, so that "who put these 12,000 tokens
+    /// in here?" has an answer on the context pane. It is the item's own field for exactly this,
+    /// and a tool that attributed its writing to somebody else would be the one dishonest thing
+    /// in a program built to show where everything came from.
+    fn note(&self, kernel: &Kernel, call: &ToolCall, reason: &str) -> ToolOutput {
+        let Some(content) = call.args["content"]
+            .as_str()
+            .filter(|c| !c.trim().is_empty())
+        else {
+            return ToolOutput::error("`note` needs the `content` to write down");
+        };
+        let label = call.args["label"].as_str().unwrap_or("note");
+        let pin = call.args["pin"].as_bool().unwrap_or(false);
+
+        let before = kernel.budget().used();
+        let id = kernel.push(
+            ContextItem::new(ContextKind::Reference, "agent", label, content.to_owned())
+                .because(reason.to_owned()),
+        );
+        if pin {
+            kernel.set_state([id], ContextState::Pinned, Some(reason.to_owned()));
+            self.note_pin(id, ContextState::Pinned);
+        }
+        // the way back from having written it is to put it away; nothing here destroys anything,
+        // so an undone note is archived and still listed rather than gone
+        self.record(Undoing::States(vec![(
+            id,
+            ContextState::Archived,
+            Some("a note this tool wrote, and then walked back".to_owned()),
+        )]));
+
+        ToolOutput::new(format!(
+            "[{id}] {label} is in your context now, and goes into every request from here on. {}\n{}",
+            match pin {
+                true => "It is pinned, so compaction cannot take it.",
+                false =>
+                    "It is not pinned, so compaction may take it; say `pin` if it has to last.",
+            },
             cost(kernel, before),
         ))
     }
