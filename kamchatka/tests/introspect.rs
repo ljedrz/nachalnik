@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use kamchatka::introspect;
 use nachalnik::{
-    Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, ToolCallId,
+    Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, Role, ToolCallId,
     test::{AllowAll, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -696,4 +696,53 @@ async fn a_note_is_written_down_where_compaction_cannot_reach_it() {
     let written = kernel.item(written.id).expect("still listed");
     assert_eq!(written.state, ContextState::Archived);
     assert!(written.content.to_text().contains("do not touch the lexer"));
+}
+
+#[tokio::test]
+async fn a_fork_that_asks_for_a_tool_says_so_rather_than_answering_blank() {
+    // what a real model does when handed a copy of a context full of tool traffic and no tools:
+    // it asks for one. Nothing in a fork can run it, so the answer arrives as a call and no
+    // words - and a blank draft gives the caller no way to tell that from a copy that had
+    // nothing to say
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call("c1", "introspect", json!({ "action": "draft" }))]),
+        ModelResponse::tool_calls(vec![call("f1", "shell", json!({ "cmd": "ls" }))]),
+        ModelResponse::text("done"),
+    ]);
+
+    kernel.push(ContextItem::user("what would you say?"));
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answered(&kernel);
+    assert!(said.contains("it said nothing"), "{said}");
+    assert!(
+        said.contains("`shell`"),
+        "it names what was asked for: {said}"
+    );
+    assert!(said.contains("a fork has no tools"), "{said}");
+}
+
+#[tokio::test]
+async fn a_fork_is_told_it_cannot_act() {
+    let (kernel, provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call("c1", "introspect", json!({ "action": "draft" }))]),
+        ModelResponse::text("I would say this"),
+        ModelResponse::text("done"),
+    ]);
+
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn ran");
+
+    // the copy cannot work it out from a context that shows tool calls and offers no tools, so
+    // it is told - and told inside the fork, where it costs this session nothing
+    let asked = &provider.requests()[1];
+    let instructions: String = asked
+        .messages
+        .iter()
+        .filter(|message| message.role == Role::System)
+        .filter_map(|message| message.content.as_ref())
+        .map(|content| content.to_text().into_owned())
+        .collect();
+    assert!(instructions.contains("no tools here"), "{instructions}");
+    assert!(asked.tools.is_empty(), "and really has none");
 }

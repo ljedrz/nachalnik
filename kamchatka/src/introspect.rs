@@ -547,6 +547,18 @@ async fn branch(
     );
     fork.set_provider(provider);
     fork.set_projector(kernel.projector());
+    // note: said out loud, because the copy cannot work it out. It inherits a conversation full of
+    // tool calls and their results and no tool definitions at all, and a model reading that asks
+    // for a tool - which nothing here can run, so the answer comes back as a call and no words.
+    // Measured against a real model that is not a corner case, it is what happens every time
+    fork.push(
+        ContextItem::system(
+            "You are a copy of this session, made to think and not to act. You have no tools \
+             here, and nothing you ask for can be run: answer in words, from what is already in \
+             front of you.",
+        )
+        .pinned(),
+    );
     if let Some(question) = question {
         fork.push(ContextItem::user(question).because("put to a fork of this context"));
     }
@@ -617,15 +629,29 @@ async fn branch(
             reasoning.to_text()
         ));
     }
-    out.push_str(&format!(
-        "\n--- what it said ({:?}) ---\n{}\n",
-        response.stop,
-        response
-            .content
-            .as_ref()
-            .map(|c| c.to_text())
-            .unwrap_or_default(),
-    ));
+    let said = response
+        .content
+        .as_ref()
+        .map(|content| content.to_text())
+        .unwrap_or_default();
+    match said.trim().is_empty() {
+        // it asked for a tool instead of answering, and there is nothing in a fork to run one.
+        // Saying so beats handing back a blank: a caller reading an empty draft has no way to
+        // tell a copy that had nothing to say from one that tried to do something
+        true => out.push_str(&format!(
+            "\n--- it said nothing ({:?}) ---\nit asked for {} instead of answering, and a fork \
+             has no tools; ask it something it can answer from what it already has.\n",
+            response.stop,
+            match response.calls().next() {
+                Some(call) => format!("`{}`", call.tool),
+                None => "nothing at all".to_owned(),
+            },
+        )),
+        false => out.push_str(&format!(
+            "\n--- what it said ({:?}) ---\n{said}\n",
+            response.stop
+        )),
+    }
 
     Ok(ToolOutput::new(out))
 }
