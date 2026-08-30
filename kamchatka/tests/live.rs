@@ -26,8 +26,9 @@ use kamchatka::{
     ui,
 };
 use nachalnik::{
-    BoxError, Capability, Config, Content, ContextKind, ContextState, Kernel, OutputSink, Role,
-    State, Tool, ToolCall, ToolOutput, ToolSpec, Verdict, async_trait,
+    Block, BoxError, Capability, Config, Content, ContextKind, ContextState, Kernel,
+    LinearProjector, OutputSink, Role, State, Tool, ToolCall, ToolOutput, ToolSpec, Verdict,
+    async_trait,
 };
 use ratatui::{Terminal, backend::TestBackend};
 use serde_json::json;
@@ -449,4 +450,248 @@ async fn models_lists_what_the_endpoint_actually_serves() {
         !screen.contains("gemini-2.5-pro"),
         "and the filter kept the rest out: {screen}"
     );
+}
+
+// --------------------------------------------------------------- the dialect that keeps an order
+
+/// The same terminal, talking to Google's own API rather than the OpenAI-compatible shim.
+///
+/// note: its own environment variables, because the suite above is usually pointed at the shim
+/// through `KAMCHATKA_BASE_URL` and this one must not follow it there - the whole subject is what
+/// the shim cannot say.
+fn gemini() -> Option<(
+    App,
+    Arc<Kernel>,
+    tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
+)> {
+    let key = std::env::var("KAMCHATKA_API_KEY")
+        .or_else(|_| std::env::var("NACHALNIK_API_KEY"))
+        .ok()?;
+    let base = std::env::var("KAMCHATKA_GEMINI_BASE_URL")
+        .unwrap_or_else(|_| kamchatka::gemini::DEFAULT_BASE_URL.to_owned());
+    let model =
+        std::env::var("KAMCHATKA_GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.6-flash".to_owned());
+
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(kamchatka::gemini::Gemini::new(model, base, key));
+    kernel.set_provider(provider.clone());
+    // what `--gemini` wires up: this dialect's turn *is* an order, so the projector sends one
+    kernel.set_projector(Arc::new(LinearProjector {
+        send_blocks: true,
+        ..Default::default()
+    }));
+
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::Capability(Capability::Read), Verdict::Allow);
+    policy.set(
+        &Subject::Capability(Capability::Custom("introspect".into())),
+        Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    kernel.add_tool(Arc::new(Secret));
+    let mind = kamchatka::mind::install(&kernel);
+
+    let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
+
+    Some((App::new(kernel, policy, provider, outcomes), mind, finished))
+}
+
+macro_rules! gemini {
+    () => {
+        match gemini() {
+            Some(fixtures) => fixtures,
+            None => {
+                eprintln!("no key in the environment; skipping");
+                return;
+            }
+        }
+    };
+}
+
+/// The assistant turn a run produced.
+fn turn(app: &App) -> Arc<nachalnik::ContextItem> {
+    app.kernel
+        .items()
+        .into_iter()
+        .find(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+        .expect("a turn was recorded")
+}
+
+#[tokio::test]
+async fn a_real_turn_is_recorded_in_the_order_it_was_produced() {
+    let _serial = SERIAL.lock().await;
+    let (mut app, _mind, mut finished) = gemini!();
+
+    send(
+        &mut app,
+        &mut finished,
+        "Use the secret tool, then tell me the code word. Say a short sentence before you call it.",
+    )
+    .await;
+
+    let turn = turn(&app);
+    let blocks = turn
+        .content
+        .as_blocks()
+        .unwrap_or_else(|| panic!("recorded as an order, not as {:?}", turn.content));
+
+    // whatever the model chose to do, it is on the record in the order it did it, and the parts
+    // are the parts this API actually reports rather than three slots something rearranged it into
+    let names: Vec<_> = blocks.iter().map(Block::name).collect();
+    assert!(!names.is_empty(), "{names:?}");
+    assert!(
+        names.contains(&"call"),
+        "it was asked to use the tool: {names:?}"
+    );
+    // the conventional slots are empty, so nothing holds a second account of the same turn
+    let ContextKind::AssistantMessage {
+        tool_calls,
+        reasoning,
+    } = &turn.kind
+    else {
+        unreachable!()
+    };
+    assert!(tool_calls.is_empty() && reasoning.is_none());
+
+    // the calls were found, gated, run and answered - the ordinary loop, over a turn whose calls
+    // live somewhere it has never looked before
+    assert_eq!(turn.calls().count(), 1, "{names:?}");
+    assert!(
+        answer(&app).to_lowercase().contains("apricot"),
+        "it read the result: {}",
+        answer(&app)
+    );
+
+    // and the signature really did arrive on the part it belongs to, which is the thing the next
+    // request is rejected over
+    assert!(
+        blocks.iter().any(|block| !block.extra().is_null()),
+        "this model signs what it produces: {blocks:?}"
+    );
+
+    // note: whether the turn also *thought* out loud is not asserted here, and deliberately.
+    // Thought summaries are asked for and not promised: measured against this model, the same
+    // prompt answers `[thought, functionCall]` on one run and `[functionCall]` on the next. That
+    // the provider reports them when they come is `tests/gemini.rs`, over a recorded stream,
+    // where it is a fact rather than a coin toss - and the test below is the live half of it
+    eprintln!("recorded as {names:?}");
+}
+
+#[tokio::test]
+async fn a_real_model_thinks_out_loud_between_what_it_says_and_what_it_asks_for() {
+    let _serial = SERIAL.lock().await;
+    let (mut app, _mind, mut finished) = gemini!();
+
+    // the claim the whole exercise rests on: one turn holding thinking *and* speech *and* a call,
+    // in the order the model produced them. Whether any one turn thinks aloud is the model's
+    // business, so this asks a few times and skips rather than failing - what is under test is
+    // whether the order survives when it happens, not whether it happens
+    for attempt in 1..=3 {
+        send(
+            &mut app,
+            &mut finished,
+            "A farmer has 17 sheep and all but 9 die. Work it out, then call the secret tool, \
+             then give me both answers.",
+        )
+        .await;
+
+        let ordered = app.kernel.items().into_iter().rev().find(|item| {
+            item.content
+                .as_blocks()
+                .is_some_and(|blocks| blocks.len() > 1)
+        });
+        let Some(turn) = ordered else {
+            continue;
+        };
+        let blocks = turn.content.as_blocks().unwrap_or_default();
+        let names: Vec<_> = blocks.iter().map(Block::name).collect();
+        eprintln!("attempt {attempt}: {names:?}");
+
+        if names.contains(&"reasoning") {
+            // more than one kind of thing in one turn, which is the shape three slots cannot hold
+            assert!(names.len() > 1, "{names:?}");
+            assert!(
+                turn.thinking().next().is_some(),
+                "and `thinking()` finds it where it is actually kept"
+            );
+            return;
+        }
+    }
+
+    eprintln!("skipped: the model returned no thought summary in three turns");
+}
+
+#[tokio::test]
+async fn an_ordered_turn_goes_back_and_is_accepted() {
+    let _serial = SERIAL.lock().await;
+    let (mut app, _mind, mut finished) = gemini!();
+
+    send(&mut app, &mut finished, "Use the secret tool.").await;
+    // the second request carries the first turn back, signatures and all. This API answers
+    // `400 Function call is missing a thought_signature` when one is dropped, so a turn that
+    // survives being recorded and reprojected is the only way to find out that it did
+    send(&mut app, &mut finished, "Say the code word once more.").await;
+
+    assert!(
+        answer(&app).to_lowercase().contains("apricot"),
+        "{}",
+        answer(&app)
+    );
+    assert!(matches!(
+        app.kernel.state(),
+        State::Idle | State::Finished { .. }
+    ));
+}
+
+#[tokio::test]
+async fn the_metacognition_tools_read_an_ordered_turn() {
+    let _serial = SERIAL.lock().await;
+    let (mut app, _mind, mut finished) = gemini!();
+
+    send(
+        &mut app,
+        &mut finished,
+        "Use the secret tool, then tell me the code word.",
+    )
+    .await;
+    let turn = turn(&app);
+
+    // `mind` is the reason the two of these were built together: an agent that can look at its
+    // own context is only worth having if what it looks at is what really happened, and until
+    // there was a provider that reported an order there was no order in there to look at
+    let tool = app.kernel.tool("mind").expect("installed");
+    let read = tool
+        .invoke(
+            &ToolCall::new(
+                "c1",
+                "mind",
+                json!({ "action": "look", "ids": [turn.id.0] }),
+            ),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("the tool answered");
+    let said = read.content.to_text();
+
+    assert!(said.contains("block(s), in order"), "{said}");
+    // read out by kind, with the ones that came signed marked - none of which a turn flattened
+    // into three slots could have shown, because by then the order is gone and the signature with
+    // it
+    assert!(said.contains("call"), "{said}");
+    assert!(said.contains("(signed)"), "{said}");
+
+    // and the listing marks it as a turn with an order, rather than reporting a reasoning model
+    // as having thought nothing and asked for nothing
+    let listed = tool
+        .invoke(
+            &ToolCall::new("c2", "mind", json!({ "action": "look" })),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("the tool answered")
+        .content
+        .to_text()
+        .into_owned();
+    assert!(listed.contains("ordered block(s)"), "{listed}");
+    assert!(listed.contains("call(s)]"), "{listed}");
 }

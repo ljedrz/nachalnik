@@ -14,14 +14,14 @@ use std::{
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    Capability, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Grant,
+    Block, Capability, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Grant,
     GrantSource, Kernel, State, Verdict, selectors::Selector,
 };
 use ratatui_textarea::{CursorMove, TextArea, WrapMode};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
-    provider::OpenAiCompatible,
+    provider::Endpoint,
     sandbox::Confinement,
     tools::{Careful, Subject},
     ui::thousands,
@@ -178,8 +178,8 @@ pub struct App {
     pub kernel: Kernel,
     /// The policy, which the permission overlay teaches.
     pub policy: Arc<Careful>,
-    /// The provider, for switching models.
-    pub provider: Arc<OpenAiCompatible>,
+    /// The provider, for switching models - whichever dialect it speaks.
+    pub provider: Arc<dyn Endpoint>,
     /// The handle the two metacognition tools reach the kernel through, while they are offered.
     ///
     /// note: it is here rather than in `main` because `/mind` turns them on and off, and this is
@@ -253,7 +253,7 @@ impl App {
     pub fn new(
         kernel: Kernel,
         policy: Arc<Careful>,
-        provider: Arc<OpenAiCompatible>,
+        provider: Arc<dyn Endpoint>,
         outcomes: UnboundedSender<Outcome>,
     ) -> Self {
         let mut input = TextArea::default();
@@ -1077,7 +1077,7 @@ impl App {
                     picked.state,
                     picked.tokens
                 );
-                self.preview(title, picked.content.to_text());
+                self.preview(title, whole(&picked));
             }
             _ => {}
         }
@@ -2090,6 +2090,37 @@ fn short(name: &str) -> &str {
 /// JSON, indented.
 fn pretty(value: &serde_json::Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|e| format!("it will not serialize: {e}"))
+}
+
+/// The whole of what an item says, including the parts `to_text` leaves out.
+///
+/// note: for most items this is the content and nothing else. For a turn a provider recorded in
+/// the order it was produced, `to_text` is only the *text* blocks - which is right on the wire and
+/// wrong on this screen, where the whole point is to be shown what the item really holds. The
+/// thinking and the calls are read out where they happened, because between two calls is where
+/// the thinking that led to the second one belongs.
+fn whole(item: &ContextItem) -> String {
+    let Some(blocks) = item.content.as_blocks() else {
+        return item.content.to_text().into_owned();
+    };
+
+    blocks
+        .iter()
+        .map(|block| {
+            let said = match block {
+                Block::Call(call) => format!("{}({})", call.tool, call.args),
+                _ => block
+                    .part()
+                    .map(|part| part.content.to_text().into_owned())
+                    .unwrap_or_default(),
+            };
+            match block {
+                Block::Text(_) => said,
+                _ => format!("{}:\n{said}", block.name()),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 /// The first line of something, shortened.

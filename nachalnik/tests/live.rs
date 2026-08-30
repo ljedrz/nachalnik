@@ -1152,12 +1152,12 @@ async fn an_interrupt_stops_a_stream_that_is_watching() {
 fn ordered_turn(call: &ToolCall) -> ContextItem {
     ContextItem::assistant(
         Content::blocks([
-            Block::Reasoning(Content::text(
+            Block::reasoning(Content::text(
                 "the tool is the only place that word can come from",
             )),
-            Block::Text(Content::text("Looking it up.")),
+            Block::text(Content::text("Looking it up.")),
             Block::Call(call.clone()),
-            Block::Text(Content::text("That should be the one.")),
+            Block::text(Content::text("That should be the one.")),
         ]),
         Vec::new(),
     )

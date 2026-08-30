@@ -9,6 +9,31 @@ minor bump may break you.
 
 ### added
 
+- `--gemini` talks to Google's own API instead of an OpenAI-compatible one, and the difference is
+  the whole point: `generateContent` answers with `content.parts[]` - a thinking part, a sentence,
+  a `functionCall`, in the order they were produced - and the compatible shim flattens that into a
+  `content` string beside a `tool_calls` array, because the dialect it imitates has no order to
+  report. `kamchatka/src/gemini.rs` records the order as `Content::Blocks` and sends it back the
+  same way, with `LinearProjector::send_blocks` turned on to match. Streamed, with the same
+  heartbeat that makes `esc` reach a request that has gone quiet.
+  Signatures are the reason to bother beyond tidiness. This API answers `400 Function call is
+  missing a thought_signature` to a request that returns a turn without one, and it signs text
+  parts as well as calls; every part's own fields ride back out on the block they arrived on,
+  unread. `finishReason` is deliberately not what decides the stop reason - it says `STOP` for a
+  turn that asked for three tools - so the parts are.
+- `provider::Endpoint`, the half of a provider the person at the terminal drives: where the
+  requests go, what is served there, which model is being asked, what the last retry was about.
+  `Provider` is the kernel's half and is one method. `App` now holds an `Arc<dyn Endpoint>` and
+  never finds out which wire format is behind it, so `/model`, `/models`, `/provider` and the
+  status line work the same against either.
+- `mind` and `amend` read an ordered turn. `look` reads a turn back block by block, marking the
+  ones that came signed, because between two calls is where the thinking that led to the second
+  one belongs and the request the model will be sent has it looking like a field instead. The
+  guard that stops `amend` excising the turn it is speaking in now finds that turn by its calls
+  wherever they are recorded - matching on the kind alone, it would have found an ordered turn to
+  have asked for nothing, and quietly stopped holding.
+  `enter` on the context tab reads out the blocks in order rather than only the text.
+
 - `--mind`, and `/mind` while it is running, offer the model two more tools that hand it the same
   view of itself this program gives you. `mind` reads: `look` lists every context item with its
   state, its cost and the projector's own reason for leaving it out, and reads any of them in full

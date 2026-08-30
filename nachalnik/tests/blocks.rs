@@ -23,10 +23,10 @@ use common::permissive;
 /// content slot cannot hold.
 fn interleaved() -> Vec<Block> {
     vec![
-        Block::Reasoning(Content::text("the user wants both cities")),
-        Block::Text(Content::text("Checking Warsaw.")),
+        Block::reasoning(Content::text("the user wants both cities")),
+        Block::text(Content::text("Checking Warsaw.")),
         Block::Call(call("c1", "echo", json!({ "city": "Warsaw" }))),
-        Block::Text(Content::text("And now Krakow.")),
+        Block::text(Content::text("And now Krakow.")),
         Block::Call(call("c2", "echo", json!({ "city": "Krakow" }))),
     ]
 }
@@ -73,14 +73,14 @@ fn text_is_what_was_said_and_the_length_is_what_it_costs() {
 
 #[test]
 fn a_single_text_block_reads_as_that_text() {
-    let content = Content::blocks([Block::Text(Content::text("just this"))]);
+    let content = Content::blocks([Block::text(Content::text("just this"))]);
     assert_eq!(content.to_text(), "just this");
     assert_eq!(content.byte_len(), "just this".len());
 }
 
 #[test]
 fn cloning_blocks_shares_them() {
-    let big = Content::blocks([Block::Text(Content::text("x".repeat(1 << 20)))]);
+    let big = Content::blocks([Block::text(Content::text("x".repeat(1 << 20)))]);
     let copy = big.clone();
 
     let (Content::Blocks(a), Content::Blocks(b)) = (&big, &copy) else {
@@ -124,7 +124,7 @@ fn truncating_blocks_says_how_much_of_the_whole_turn_went() {
 
 #[test]
 fn a_turn_that_fits_is_left_alone() {
-    let mut content = Content::blocks([Block::Text(Content::text("short"))]);
+    let mut content = Content::blocks([Block::text(Content::text("short"))]);
     assert_eq!(content.truncate_to(64), None);
     assert!(content.as_blocks().is_some());
 }
@@ -137,7 +137,7 @@ fn blocks_survive_a_serde_round_trip() {
 
     assert_eq!(back, content);
     // the signed shape too: a thinking block a provider hands back verbatim is JSON
-    let signed = Content::blocks([Block::Reasoning(Content::json(
+    let signed = Content::blocks([Block::reasoning(Content::json(
         json!({ "thinking": "...", "signature": "abc" }),
     ))]);
     let back: Content = serde_json::from_str(&serde_json::to_string(&signed).unwrap()).unwrap();
@@ -158,7 +158,7 @@ fn a_response_of_blocks_derives_its_stop_reason_and_finds_its_calls() {
     assert!(response.tool_calls.is_empty());
     assert!(response.reasoning.is_none());
 
-    let quiet = ModelResponse::blocks([Block::Text(Content::text("nothing to do"))]);
+    let quiet = ModelResponse::blocks([Block::text(Content::text("nothing to do"))]);
     assert_eq!(quiet.stop, nachalnik::StopReason::EndTurn);
     assert_eq!(quiet.calls().count(), 0);
 }
@@ -216,7 +216,7 @@ async fn an_ordered_turn_costs_what_its_calls_cost() {
 #[tokio::test]
 async fn a_repaired_identifier_is_repaired_where_the_call_actually_lives() {
     let kernel = kernel_with(vec![
-        Block::Text(Content::text("both at once")),
+        Block::text(Content::text("both at once")),
         Block::Call(call("", "echo", json!({}))),
         Block::Call(call("dup", "echo", json!({}))),
         Block::Call(call("dup", "echo", json!({}))),
@@ -377,7 +377,10 @@ async fn sending_blocks_assembles_a_conventional_turn_into_the_conventional_orde
     // a context holding some of each projects to one shape rather than two
     let blocks = assistant.blocks().expect("assembled into blocks");
     assert_eq!(blocks.iter().map(Block::name).collect::<Vec<_>>(), ["text"]);
-    assert_eq!(blocks[0].said().unwrap().to_text(), "plain old text");
+    assert_eq!(
+        blocks[0].said().unwrap().content.to_text(),
+        "plain old text"
+    );
 }
 
 #[tokio::test]
@@ -468,7 +471,10 @@ async fn eliding_an_ordered_turn_keeps_the_calls_and_marks_the_words() {
         .filter_map(Block::said)
         .collect();
     assert_eq!(said.len(), 1);
-    assert!(said[0].to_text().contains("said too much"), "{said:?}");
+    assert!(
+        said[0].content.to_text().contains("said too much"),
+        "{said:?}"
+    );
     assert!(
         !assistant
             .content
@@ -483,7 +489,7 @@ async fn eliding_an_ordered_turn_keeps_the_calls_and_marks_the_words() {
 
 #[tokio::test]
 async fn a_turn_of_nothing_but_thinking_is_left_out_and_says_so() {
-    let (kernel, _) = permissive([ModelResponse::blocks([Block::Reasoning(Content::text(
+    let (kernel, _) = permissive([ModelResponse::blocks([Block::reasoning(Content::text(
         "still thinking",
     ))])]);
     kernel.push(ContextItem::user("go"));

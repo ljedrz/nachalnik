@@ -378,6 +378,43 @@ more than it implies, which is the shape of thing this program exists not to do.
 permissions tab has a row for `introspect` and a row for `amend`, and you can answer them
 differently.
 
+## 🧩 two dialects, and why one of them keeps the order
+
+`--gemini` talks to Google's own API instead of an OpenAI-compatible one. That is not a
+convenience — it is the difference between seeing what the model did and seeing a rearrangement of
+it.
+
+`generateContent` answers with `content.parts[]`: a thinking part, a sentence, a `functionCall`,
+in the order they were produced. The OpenAI-compatible shim in front of the same model flattens
+that into a `content` string beside a `tool_calls` array, because the dialect it is imitating has
+nowhere to put an order. Everything downstream then reads a turn that has been tidied up.
+
+```text
+▸ [4] assistant · assistant_message · from model · active · 178 tokens
+    --- 3 block(s), in order ---
+    [0] reasoning: The user wants the code word, and the tool is the only place it is…
+    [1] text: Let me look that up.
+    [2] call (signed): secret({})
+```
+
+That is the context pane, and `mind` reads the same thing back to the agent. It is only worth
+having because the order is really in there: the runtime records it as `Content::Blocks`, counts
+it, prunes it and elides it like any other content, and `LinearProjector::send_blocks` sends it
+back the same way.
+
+Signatures are the other half. Gemini signs the parts of a turn and answers
+`400 Function call is missing a thought_signature` to a request that returns one without it — and
+it signs text parts as well as calls, which a message with three slots has nowhere to keep. Here
+each part's own fields ride back out on the block they arrived on, unread.
+
+Both providers answer one trait, `Endpoint`, so `/model`, `/models`, `/provider` and the status
+line work the same against either and nothing above them knows which wire format it got.
+
+```console
+$ export KAMCHATKA_API_KEY=...        # a Google AI Studio key
+$ kamchatka --gemini --mind "what does src/kernel.rs do?"
+```
+
 ## 🔀 the model, and the address it lives at
 
 `/model` says which model this is talking to, where that is, in what dialect, and how much context
@@ -475,6 +512,8 @@ it also wants a kernel new enough to have Landlock — 5.13 for the filesystem r
 kamchatka [OPTIONS] [MESSAGE]...
 
   -m, --model <MODEL>       the model to talk to            [env: KAMCHATKA_MODEL]
+                            [default: openai/gpt-4o-mini, or gemini-3.6-flash
+                            with --gemini]
   -f, --file <PATH>         put a file in the context, pinned; may be repeated
   -s, --system <TEXT>       a system instruction; the runtime ships none of its own
   -r, --resume <PATH>       carry on from a session written by /save
@@ -482,6 +521,8 @@ kamchatka [OPTIONS] [MESSAGE]...
       --requests <N>        how many requests one turn may make            [default: 8]
       --compact <FRACTION>  how full the context may get; 1 never compacts [default: 0.8]
       --parallel            run the model's tool calls at the same time
+      --gemini              talk to Google's own API rather than an OpenAI-compatible
+                            one, so a turn keeps the order it was produced in
       --mind                offer the model the two tools that read and change its own
                             context; /mind turns them on and off while it runs
       --sandbox-allow <PATH> a path outside the working directory the shell may also
@@ -491,7 +532,8 @@ kamchatka [OPTIONS] [MESSAGE]...
 Environment:
   KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY
   KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for
-                           ollama; OpenRouter by default
+                           ollama; OpenRouter by default, or Google's own v1beta
+                           with --gemini
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
 ```
 

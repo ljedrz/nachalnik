@@ -21,7 +21,13 @@
 //! knows about any of this - it is what a tool can already do with a context that is a list of
 //! public values and a request that can be built without being sent.
 //!
-//! Everything in here is user code: the provider, the tools, the policy, the compactor and the
+//! `--gemini` swaps the wire format for Google's own, in which an assistant turn is an ordered
+//! list of parts rather than a content slot beside a list of calls. What that buys is the order
+//! itself: thinking, a sentence, a tool call, more thinking - recorded as it happened, counted and
+//! prunable like anything else, and sent back the same way. Both dialects answer one trait
+//! ([`provider::Endpoint`]), so nothing above them knows which one it got.
+//!
+//! Everything in here is user code: the providers, the tools, the policy, the compactor and the
 //! rendering. The kernel supplies the state machine, the context and the paper trail.
 //!
 //! It is a library only so that the screen can be tested - [`ui::draw`] against a
@@ -32,6 +38,7 @@
 #![deny(unsafe_code)]
 
 pub mod app;
+pub mod gemini;
 pub mod mind;
 pub mod provider;
 pub mod sandbox;

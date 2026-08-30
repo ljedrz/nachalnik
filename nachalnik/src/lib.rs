@@ -214,8 +214,8 @@ pub use crate::{
     event::{Delta, DeltaSink, Event, OutputSink},
     kernel::{Kernel, State, StateChange},
     model::{
-        Block, Content, Message, ModelInfo, ModelRequest, ModelResponse, Params, Provider, Role,
-        StopReason, ToolCall, ToolCallId, Usage,
+        Block, Content, Message, ModelInfo, ModelRequest, ModelResponse, Params, Part, Provider,
+        Role, StopReason, ToolCall, ToolCallId, Usage,
     },
     permissions::{
         AskAlways, Capability, Grant, GrantSource, PermissionId, PermissionPolicy,

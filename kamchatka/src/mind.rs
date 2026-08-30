@@ -26,9 +26,9 @@ use std::{
 };
 
 use nachalnik::{
-    BoxError, Capability, Config, Content, ContextId, ContextItem, ContextKind, ContextState,
-    Delta, Event, Kernel, OutputSink, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec,
-    async_trait,
+    Block, BoxError, Capability, Config, Content, ContextId, ContextItem, ContextKind,
+    ContextState, Delta, Event, Kernel, OutputSink, Tool, ToolCall, ToolCallId, ToolOutput,
+    ToolSpec, async_trait,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -232,16 +232,19 @@ fn row(item: &ContextItem) -> String {
         true => item.label.clone(),
         false => format!("{}: {glimpsed}", item.label),
     };
-    if let ContextKind::AssistantMessage {
-        tool_calls,
-        reasoning,
-    } = &item.kind
-    {
-        if !tool_calls.is_empty() {
-            said.push_str(&format!(" [{} call(s)]", tool_calls.len()));
+    if matches!(item.kind, ContextKind::AssistantMessage { .. }) {
+        // `calls()` and `thinking()` rather than the kind's own slots: a turn a provider recorded
+        // in the order it was produced keeps both inside its content, and a row that read the
+        // slots would report a reasoning model as having thought nothing and asked for nothing
+        let calls = item.calls().count();
+        if calls != 0 {
+            said.push_str(&format!(" [{calls} call(s)]"));
         }
-        if reasoning.is_some() {
+        if item.thinking().next().is_some() {
             said.push_str(" [+reasoning]");
+        }
+        if let Some(blocks) = item.content.as_blocks() {
+            said.push_str(&format!(" [{} ordered block(s)]", blocks.len()));
         }
     }
     if let Some(note) = &item.note {
@@ -275,6 +278,30 @@ fn full(items: &[Arc<ContextItem>], id: ContextId) -> String {
     if !item.meta.is_null() {
         out.push_str(&format!("  attached: {}\n", item.meta));
     }
+    // a turn that was recorded as an order is read back as one, block by block. This is the
+    // thing `mind` exists for and the one view of it that is not available anywhere else: the
+    // request the model will be sent has the same parts in the same order, but by then the
+    // thinking looks like a field rather than something that happened between two calls
+    if let Some(blocks) = item.content.as_blocks() {
+        out.push_str(&format!("  --- {} block(s), in order ---\n", blocks.len()));
+        for (at, block) in blocks.iter().enumerate() {
+            let said = match block {
+                Block::Call(call) => format!("{}({})", call.tool, call.args),
+                _ => block
+                    .part()
+                    .map(|part| part.content.to_text().into_owned())
+                    .unwrap_or_default(),
+            };
+            let signed = match block.extra().is_null() {
+                true => "",
+                false => " (signed)",
+            };
+            out.push_str(&format!("  [{at}] {}{signed}: {said}\n", block.name()));
+        }
+
+        return out;
+    }
+
     // the reasoning first, because on the turn that carries it it is the part that explains the
     // rest, and because it is the one thing here the model cannot see in the request itself
     if let Some(reasoning) = item.reasoning() {
@@ -906,12 +933,10 @@ fn own_turn(kernel: &Kernel, call: &ToolCallId) -> Option<ContextId> {
             .items()
             .iter()
             .rev()
-            .find(|item| match &item.kind {
-                ContextKind::AssistantMessage { tool_calls, .. } => {
-                    tool_calls.iter().any(|asked| &asked.id == call)
-                }
-                _ => false,
-            })
+            // `calls()`, or an ordered turn would look like a turn that asked for nothing and the
+            // guard below it - that a call cannot excise the turn it is speaking in - would
+            // quietly stop holding
+            .find(|item| item.calls().any(|asked| &asked.id == call))
             .map(|item| item.id)
     })
 }

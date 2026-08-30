@@ -29,12 +29,24 @@ minor bump may break you.
   goes out as blocks - a conventional one assembled into the conventional order - so a context
   holding some of each projects to one shape rather than two. Off, a turn recorded as blocks is
   flattened, and where that loses something (two thinking blocks joined into one, a sentence that
-  came after a call arriving before it) it is reported in `Projection::repairs` instead of being
-  done quietly. That is the honest version of the reassembly a provider used to have to do for
+  came after a call arriving before it, a signature that has nowhere to go) it is reported in
+  `Projection::repairs` instead of being done quietly. That is the honest version of the reassembly a provider used to have to do for
   itself, and for a signed thinking block it is not good enough, which is why the flag exists.
-- `Block::name` / `call` / `said` / `thought` / `byte_len`, `Content::blocks` / `as_blocks`,
-  `Message::blocks`, `ModelResponse::blocks`, and `ToolCall::byte_len` - the last one says once
-  what a call costs, which `TokenCounter::count_item` has always added on top of the content.
+- `Part`, which is what the two block variants that are not calls hold: a `Content` and an
+  `extra`. It is `ToolCall::extra` for the rest of a turn, and it exists because some APIs sign
+  each piece of one rather than the whole - Gemini's `thoughtSignature` rides on a text part as
+  readily as on a call, and `generateContent` puts it on the text part of a turn that called
+  nothing. Bound to the block rather than kept beside it, so that whatever removes the block
+  removes the signature of the thing that is no longer there; eliding a turn is the case that
+  makes it matter, since the marker replacing the words must not go out signed as if it were them.
+- `ContextItem::thinking`, the counterpart of `ContextItem::calls`: the model's thinking wherever
+  it is recorded, in order. An ordered turn keeps it in the content, where `ContextItem::reasoning`
+  cannot see it, so a client that only knew about the conventional slot would show a reasoning
+  model as having done no reasoning at all.
+- `Block::name` / `call` / `said` / `thought` / `part` / `extra` / `byte_len`, the `Block::text`
+  and `Block::reasoning` constructors, `Content::blocks` / `as_blocks`, `Message::blocks`,
+  `ModelResponse::blocks`, and `ToolCall::byte_len` - the last one says once what a call costs,
+  which `TokenCounter::count_item` has always added on top of the content.
 
 ### changed
 

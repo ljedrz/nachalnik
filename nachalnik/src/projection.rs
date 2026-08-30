@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{Context, Kernel};
 use crate::{
     context::{ContextId, ContextItem, ContextKind},
-    model::{Block, Content, Message, Role, ToolCall, ToolCallId},
+    model::{Block, Content, Message, Part, Role, ToolCall, ToolCallId},
 };
 
 /// An item that did not make it into the request, and why.
@@ -106,14 +106,18 @@ pub trait Projector: Send + Sync {
 /// received it as a string of its own serialization could not send it back. Several can only be
 /// joined as text, which is why [`LinearProjector::send_blocks`] exists and why joining is
 /// reported.
-fn join(parts: Vec<&Content>) -> Option<Content> {
+///
+/// note: what cannot survive either way is [`Part::extra`] - a conventional message has a
+/// [`Content`] in each slot and nowhere to put what a provider attached to it. The caller reports
+/// that rather than this, because a repair reads better naming the item it happened to.
+fn join(parts: Vec<&Part>) -> Option<Content> {
     match parts.len() {
         0 => None,
-        1 => Some(parts[0].clone()),
+        1 => Some(parts[0].content.clone()),
         _ => Some(Content::text(
             parts
                 .iter()
-                .map(|content| content.to_text())
+                .map(|part| part.content.to_text())
                 .collect::<Vec<_>>()
                 .join("\n"),
         )),
@@ -309,11 +313,11 @@ impl Projector for LinearProjector {
                         Some(blocks) => blocks.to_vec(),
                         None => {
                             let mut assembled = Vec::with_capacity(tool_calls.len() + 2);
-                            assembled.extend(reasoning.clone().map(Block::Reasoning));
+                            assembled.extend(reasoning.clone().map(Block::reasoning));
                             // an empty text is no text at all - but an elided turn still gets
                             // its marker, which is the whole of what elision leaves behind
                             if elided || item.content.as_text() != Some("") {
-                                assembled.push(Block::Text(item.content.clone()));
+                                assembled.push(Block::text(item.content.clone()));
                             }
                             assembled.extend(tool_calls.iter().cloned().map(Block::Call));
 
@@ -340,7 +344,7 @@ impl Projector for LinearProjector {
                             // calls still answer their results, so the turn keeps its shape
                             Block::Text(_) if elided => {
                                 if !marked {
-                                    kept.push(Block::Text(said.clone()));
+                                    kept.push(Block::text(said.clone()));
                                     marked = true;
                                 }
                             }
@@ -349,12 +353,12 @@ impl Projector for LinearProjector {
                     }
                     // a turn recorded as blocks need not have had any text to mark
                     if elided && !marked {
-                        kept.insert(0, Block::Text(said.clone()));
+                        kept.insert(0, Block::text(said.clone()));
                     }
 
                     let calls: Vec<ToolCall> =
                         kept.iter().filter_map(Block::call).cloned().collect();
-                    let spoke: Vec<&Content> = kept.iter().filter_map(Block::said).collect();
+                    let spoke: Vec<&Part> = kept.iter().filter_map(Block::said).collect();
 
                     if spoke.is_empty() && calls.is_empty() {
                         // note: a turn that is *nothing but* reasoning goes too, because this
@@ -393,11 +397,24 @@ impl Projector for LinearProjector {
                             .iter()
                             .skip_while(|block| block.call().is_none())
                             .any(|block| block.call().is_none());
-                        if interleaved || spoke.len() > 1 || thoughts > 1 {
+                        // a signature on a text or a thinking part has nowhere to go in a
+                        // conventional message, and going missing is the thing it is most
+                        // important to say out loud: it is what an API rejects the next request
+                        // over, and the reason it went is that this projector was asked for a
+                        // shape that cannot hold it
+                        let signed = kept
+                            .iter()
+                            .filter_map(Block::part)
+                            .any(|part| !part.extra.is_null());
+                        if interleaved || spoke.len() > 1 || thoughts > 1 || signed {
+                            let also = match signed {
+                                true => ", and what the provider had attached to them",
+                                false => "",
+                            };
                             projection.repairs.push(format!(
                                 "flattened item {} out of {} ordered block(s): this projector \
                                  sends one content slot, one reasoning slot and a list of calls, \
-                                 so their order is not carried",
+                                 so their order is not carried{also}",
                                 item.id,
                                 kept.len(),
                             ));

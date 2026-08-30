@@ -99,10 +99,10 @@ impl Content {
             Self::Json(v) => Cow::Owned(v.to_string()),
             Self::Blocks(blocks) => match blocks.iter().filter_map(Block::said).collect::<Vec<_>>()
             {
-                said if said.len() == 1 => said[0].to_text(),
+                said if said.len() == 1 => said[0].content.to_text(),
                 said => Cow::Owned(
                     said.iter()
-                        .map(|content| content.to_text())
+                        .map(|part| part.content.to_text())
                         .collect::<Vec<_>>()
                         .join("\n"),
                 ),
@@ -214,32 +214,94 @@ impl fmt::Display for Content {
     }
 }
 
+/// Something the model produced, and whatever the provider attached to it.
+///
+/// note: this is [`ToolCall::extra`] for the parts of a turn that are not calls, and it exists
+/// for the same reason. Some APIs sign each piece of an assistant turn rather than the turn as a
+/// whole - Gemini's `thoughtSignature` rides on a text part as readily as on a call - and a
+/// request that returns one altered is rejected or answered worse. The kernel never looks inside
+/// it, never separates it from the block it belongs to, and a provider that has nothing to attach
+/// pays a null.
+///
+/// note: bound to the block rather than kept in a list beside it, so that whatever removes the
+/// block removes the signature of the thing that is no longer there. An elided turn is the case
+/// that makes it matter: the marker replacing the words is not the words, and it must not go out
+/// signed as if it were.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Part {
+    /// What the model produced.
+    pub content: Content,
+    /// Whatever the provider attached to it, carried verbatim.
+    #[serde(default = "null", skip_serializing_if = "is_null")]
+    pub extra: Arc<Value>,
+}
+
+impl Part {
+    /// Creates a part with nothing attached to it.
+    pub fn new(content: impl Into<Content>) -> Self {
+        Self {
+            content: content.into(),
+            extra: Arc::new(Value::Null),
+        }
+    }
+
+    /// Attaches the provider's own opaque state to the part.
+    pub fn with_extra(mut self, extra: impl Into<Arc<Value>>) -> Self {
+        self.extra = extra.into();
+        self
+    }
+
+    /// Returns the size of the part in bytes, in the form it would be sent in.
+    pub fn byte_len(&self) -> usize {
+        let extra = match self.extra.is_null() {
+            true => 0,
+            false => json_len(&self.extra),
+        };
+
+        self.content.byte_len() + extra
+    }
+}
+
+impl<C: Into<Content>> From<C> for Part {
+    fn from(content: C) -> Self {
+        Self::new(content)
+    }
+}
+
 /// One piece of an assistant turn, in the position the model produced it in.
 ///
 /// note: three variants, because three things interleave in a turn: what the model thought, what
 /// it said, and what it asked for. A dialect that keeps their order - Anthropic's content blocks,
-/// a reasoning model that thinks again between two calls - cannot be expressed by a message with
-/// one content slot, one reasoning slot and a flat list of calls, however cleverly it is
-/// projected. The order is itself the information, and this is where it goes.
+/// Gemini's `parts`, a reasoning model that thinks again between two calls - cannot be expressed
+/// by a message with one content slot, one reasoning slot and a flat list of calls, however
+/// cleverly it is projected. The order is itself the information, and this is where it goes.
 ///
 /// note: nothing here is new *state*. A [`Block::Call`] is the same [`ToolCall`] a conventional
-/// turn carries, with the same `extra` for whatever a provider attaches to it; a
-/// [`Block::Reasoning`] holding [`Content::Json`] is how a signed or encrypted thinking block
-/// travels back verbatim, which is the same trick [`Message::reasoning`] already turns. What is
-/// new is that they are in a list, in order.
+/// turn carries, with the same `extra`; a [`Part`] is that `extra` for the two variants that are
+/// not calls. What is new is that they are in a list, in order.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Block {
     /// Something the model said.
-    Text(Content),
+    Text(Part),
     /// Something the model thought.
-    Reasoning(Content),
+    Reasoning(Part),
     /// A tool the model asked for, where it asked for it.
     Call(ToolCall),
 }
 
 impl Block {
+    /// Creates a text block with nothing attached to it.
+    pub fn text(content: impl Into<Content>) -> Self {
+        Self::Text(Part::new(content))
+    }
+
+    /// Creates a thinking block with nothing attached to it.
+    pub fn reasoning(content: impl Into<Content>) -> Self {
+        Self::Reasoning(Part::new(content))
+    }
+
     /// Returns the name of the block, as used in reports.
     pub fn name(&self) -> &'static str {
         match self {
@@ -257,30 +319,46 @@ impl Block {
         }
     }
 
-    /// Returns the text the model uttered, if this is [`Block::Text`].
+    /// Returns what the model uttered, if this is [`Block::Text`].
     ///
     /// note: not [`Block::Reasoning`], which is the thing the model did *not* say out loud. The
     /// difference is what keeps [`Content::to_text`] from handing a provider the model's own
     /// thinking to send back as content.
-    pub fn said(&self) -> Option<&Content> {
+    pub fn said(&self) -> Option<&Part> {
         match self {
-            Self::Text(content) => Some(content),
+            Self::Text(part) => Some(part),
             _ => None,
         }
     }
 
     /// Returns the model's thinking, if this is [`Block::Reasoning`].
-    pub fn thought(&self) -> Option<&Content> {
+    pub fn thought(&self) -> Option<&Part> {
         match self {
-            Self::Reasoning(content) => Some(content),
+            Self::Reasoning(part) => Some(part),
             _ => None,
+        }
+    }
+
+    /// Returns the part, for either of the two variants that are not a call.
+    pub fn part(&self) -> Option<&Part> {
+        match self {
+            Self::Text(part) | Self::Reasoning(part) => Some(part),
+            Self::Call(_) => None,
+        }
+    }
+
+    /// Returns whatever the provider attached to this block, wherever it keeps it.
+    pub fn extra(&self) -> &Arc<Value> {
+        match self {
+            Self::Text(part) | Self::Reasoning(part) => &part.extra,
+            Self::Call(call) => &call.extra,
         }
     }
 
     /// Returns the size of the block in bytes, in the form it would be sent in.
     pub fn byte_len(&self) -> usize {
         match self {
-            Self::Text(content) | Self::Reasoning(content) => content.byte_len(),
+            Self::Text(part) | Self::Reasoning(part) => part.byte_len(),
             Self::Call(call) => call.byte_len(),
         }
     }
