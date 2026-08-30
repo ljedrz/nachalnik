@@ -43,6 +43,16 @@ let b = serde_json::to_vec(&smart.preview_request()?.messages)?;
 assert_eq!(a, b, "byte for byte");
 ```
 
+**Hand the agent the same controls.** A `Tool` is ordinary code and the kernel it belongs to is
+ordinary public API, so an agent that reads its own budget and drops what it is finished with is a
+tool somebody wrote — not a runtime feature, and not a promise the runtime has to keep:
+
+```rust
+let budget = kernel.budget();                  // what the next request costs, and against what
+let worst = kernel.items().into_iter().max_by_key(|item| item.tokens);
+kernel.set_state(worst.map(|i| i.id), ContextState::Elided, Some("done with it".into()));
+```
+
 None of that is a hook, a callback or a tracing integration bolted on afterwards. It is the state
 the loop runs on, and there is no step between it and the wire where the kernel adds something of
 its own.
@@ -60,7 +70,12 @@ Reach for it when **what was in the context is part of your answer**:
 * **Editor and IDE integration.** A `/context` view, a permission prompt and an undo that are
   yours to render, over a loop that stops between transitions instead of acting and reporting.
 * **Anything that has to be auditable or reproducible.** An append-only log of typed events, plus
-  a snapshot that resumes the same session in another process.
+  a snapshot that resumes the same session in another process — and an assistant turn recorded in
+  the order the model produced it, thinking and tool calls interleaved, rather than rearranged
+  into whichever shape the wire format wanted.
+* **Agents that manage their own context.** Everything above is public API a `Tool` can call, so
+  the same budget, the same pruning and the same undo can be handed to the model. `kamchatka`
+  does; see [below](#-the-same-handles-given-to-the-agent) for what one did with them.
 
 Reach for something else if you want **an agent today**. This crate ships no provider, no tools,
 no prompt and no UI, so a working agent is yours to assemble; `kamchatka` in this workspace is
@@ -210,10 +225,15 @@ The command is decided, permitted, and not running. Every other agent's only che
 "approve this command?"; this one is the state machine's own, and from it you can read the call,
 prune the context it would run against, drop it, or take the next transition.
 
-It is a few hundred lines of ordinary user code on top of the crate: a provider, four tools, a
-policy, a compactor and the drawing. None of it needed anything the runtime does not already hand
-out - `step`, `supersede`, `cancel_pending_calls`, `remove_tool` and the seam accessors are all
-public API, used from the outside like anything else.
+`--gemini` swaps the wire format for Google's own, so a turn keeps the order it was produced in
+(see [below](#-a-turn-keeps-the-order-it-was-produced-in)); `--introspect` hands the model the same
+context controls the keys give you ([below](#-the-same-handles-given-to-the-agent)).
+
+It is a couple of thousand lines of ordinary user code on top of the crate: two providers, six
+tools, a policy, a compactor and the drawing. None of it needed anything the runtime does not
+already hand out - `step`, `supersede`, `cancel_pending_calls`, `remove_tool`, `snapshot`,
+`resume`, `budget`, `set_state` and the seam accessors are all public API, used from the outside
+like anything else.
 
 ---
 
@@ -266,16 +286,10 @@ and `LinearProjector::send_reasoning` decides whether it goes back out.
 
 A projector decides which items become which messages, and — for an assistant turn — which of two
 shapes it goes out in. Tool results inside a user turn, thinking-only turns kept rather than
-dropped, the whole conversation flattened into one string: each of those is a projector away. So
-is a dialect whose assistant turn is an *ordered* list of typed blocks, with thinking interleaved
-between tool calls, which is what `Content::Blocks` is for: thinking, a sentence, a call, another
-sentence after it, in the order the model produced them. That order is carried by the *content*
-rather than by the projection, which is the only place it can be — it has to survive being
-recorded, counted and pruned, and a projector cannot recover an order that was never kept.
-`LinearProjector::send_blocks` decides whether it goes back out that way or is flattened into the
-three slots; flattening is what a provider used to have to do for itself, and where it costs
-something — two thinking blocks joined into one, a sentence that came after a call arriving before
-it — the projection says so in `repairs` rather than doing it quietly.
+dropped, the whole conversation flattened into one string, or an ordered list of typed blocks:
+each of those is a projector away, the last of them through `LinearProjector::send_blocks`. What a
+projector cannot do is recover an order that was never recorded, which is why the order lives in
+the *content* — see [a turn keeps the order it was produced in](#-a-turn-keeps-the-order-it-was-produced-in).
 
 `ToolCall::extra` is the same idea at the level of a single call: whatever a provider attaches to
 a call - Google's `thought_signature`, an encrypted reasoning item - is carried back attached to
@@ -352,6 +366,101 @@ same time, which is `Error::Busy` rather than a second request.
 Automatic management is allowed, invisible management is not. A `Compactor` gets the budget and
 the items and returns a plan; the kernel refuses to remove anything pinned, applies the rest,
 and broadcasts a report of exactly what it did - which the user can then disagree with.
+
+---
+
+### 🧵 a turn keeps the order it was produced in
+
+Most runtimes record an assistant turn as three slots: a content string, a reasoning string, and a
+flat list of tool calls. Real turns are not shaped like that. A reasoning model thinks, says a
+sentence, asks for a tool, thinks again before the next one — and the order is *information*.
+Flatten it on the way in and no projector can ever get it back.
+
+So content can be an ordered sequence:
+
+```rust
+ContextItem::assistant(
+    Content::blocks([
+        Block::reasoning("the stack trace points at parse()"),
+        Block::text("Checking the tests first."),
+        Block::Call(read_tests),
+        Block::text("and now the parser itself"),
+        Block::Call(read_parser),
+    ]),
+    Vec::new(),
+)
+```
+
+It is a variant of `Content` rather than a field on `Message` because content is the one type a
+`ModelResponse`, a `ContextItem` and a `Message` all carry — so the order survives from the wire,
+into the context where it is counted and pruned like anything else, and back out again.
+
+A turn is recorded *either* that way *or* in the three conventional slots, never both, so nothing
+can hold two accounts of it; `calls()` and `thinking()` read whichever is in use.
+`LinearProjector::send_blocks` decides which shape goes out, and flattening reports what it cost
+in `Projection::repairs` rather than doing it quietly.
+
+`kamchatka --gemini` is what produces one. Google's `generateContent` reports `content.parts[]`
+and maps onto `Block` one for one; the OpenAI-compatible shim in front of the *same model*
+flattens it, because the dialect it imitates has nowhere to put an order. It also answers
+`400 Function call is missing a thought_signature` to a request that hands a turn back altered,
+which is what `Part::extra` is for: what a provider attached to a piece of a turn rides back out
+on the piece it arrived on, unread.
+
+---
+
+### 🪞 the same handles, given to the agent
+
+Everything above is public API. A `Tool` can call all of it — so `kamchatka --introspect` offers
+the model two more tools, and neither of them needed a line added to the runtime.
+
+`introspect` reads: `look` lists what is being carried and reads any of it back block by block,
+`budget` reports the next request against the limit and which items are the expensive ones,
+`request` shows what is about to be sent, and `draft` and `fork` answer on a throwaway copy of the
+context — so an answer can be read before it is given. `amend` manages: `prune` elides, excludes
+or pins items by id or by selector, `revise` rewrites one, `note` writes something down where
+compaction cannot reach it, and `undo` walks back the changes *it* made.
+
+Given a 10,000-token limit, no compactor, and a mundane question about a repository, one model's
+first move was to look before it moved:
+
+```text
+─── request 1: 2 msgs, ~1358 tokens
+    → introspect({"action": "budget"})
+```
+
+*"I'm realizing that 10,000 tokens is a tight budget!"* — and every shell command it wrote from
+then on ended in `| sort -n | tail -n 10`. Eight requests later:
+
+```text
+─── request 9: 18 msgs, ~6356 tokens
+    → amend({"action":"prune","select":"all:tool_results","state":"elide",
+             "reason":"pruning tool results to save context budget"})
+      [4] active → elided   [6] active → elided   [8] active → elided   … 8 items
+─── request 10: 20 msgs, ~4354 tokens
+```
+
+One call, eight items, two thousand tokens back — and nothing destroyed: every one of them is
+still listed, still inspectable, and one `set_state` from coming back.
+
+A second run, told to write its findings down, is the argument for pinning them. It overran badly
+— ~17,700 tokens against a 10,000 limit — then excluded every assistant turn it had, which took
+their calls down and the results with them:
+
+```text
+─── request 22: 48 msgs, ~11962 tokens,  0 items left out
+─── request 23:  8 msgs,  ~1971 tokens, 42 items left out, 21 repairs
+```
+
+83% of its own context, gone in one move. What survived: the pinned brief, the question, the turn
+it was speaking in — and the four notes it had pinned, which is the only reason the answer it then
+gave was still right.
+
+None of that is the runtime being clever. The runtime's contribution is that the context is a list
+of ordinary values with identities, states and sizes, and that a tool is allowed to call the same
+functions a user interface calls. What decides which of it a *model* may do is the tool: a pinned
+item, a system instruction, and the assistant turn the call is speaking in are refused, and the
+refusal is handed back to the model. The agent is not the boss.
 
 ---
 
@@ -738,7 +847,10 @@ should.
 It is also the answer to the obvious question about a crate this abstract - whether the seams are
 real. Writing it needed **no change to the runtime at all**: an MCP tool is a `Tool` that forwards
 to a server, tools arriving and leaving are `add_tool` and `remove_tool`, a structured result is
-`Content::Json`. And it pushed back on one thing worth knowing about: MCP tool annotations are
+`Content::Json`. The introspection tools above are the second instance of the same test, and a
+harder one: forking a context is `snapshot` and `resume`, previewing a request is
+`preview_request`, pruning is `set_state`, and reading the budget is `budget` - all of it already
+public, none of it added for the purpose. And it pushed back on one thing worth knowing about: MCP tool annotations are
 *hints*, the specification says a client should never make tool-use decisions on hints from an
 untrusted server, so the bridge believes none of them by default. Its tests include a server
 offering a tool called `delete_everything` that claims to be read-only.
