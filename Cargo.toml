@@ -15,8 +15,8 @@ rust-version = "1.88"
 # two versions of the same thing. The runtime's five are the ones that matter: whatever else
 # arrives in this workspace, `nachalnik` itself is not to grow a sixth without a reason.
 [workspace.dependencies]
-nachalnik = { version = "0.1.0", path = "nachalnik" }
-nachalnik-mcp = { version = "0.1.0", path = "nachalnik-mcp" }
+nachalnik = { version = "0.2.0", path = "nachalnik" }
+nachalnik-mcp = { version = "0.2.0", path = "nachalnik-mcp" }
 # no version: it is never published, so nothing may depend on it except as a dev-dependency
 nachalnik-utils = { path = "nachalnik-utils" }
 async-trait = "0.1"

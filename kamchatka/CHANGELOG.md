@@ -5,7 +5,10 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
-## [unreleased]
+## [0.2.0] - 2026-08-30
+
+A second wire format, in which a turn keeps its order, and two tools an agent reads and manages
+its own context with.
 
 ### added
 

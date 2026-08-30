@@ -5,6 +5,12 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [0.2.0] - 2026-08-30
+
+Nothing changed in this crate. It is released to track `nachalnik` 0.2.0, whose `LinearProjector`
+grew a field and is therefore a minor bump; the bridge builds against it untouched, which is the
+result that was wanted.
+
 ## [0.1.0] - 2026-08-29
 
 The first release: MCP servers as `nachalnik` tools.

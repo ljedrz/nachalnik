@@ -7,8 +7,8 @@
 **A terminal agent that shows you its context.**
 
 Built on [`nachalnik`][nachalnik], and built to demonstrate it. Everything in here is
-ordinary user code — the provider, the four tools, the permission policy, the compactor, the
-drawing. The runtime supplies the state machine, the context and the paper trail.
+ordinary user code — two providers, the tools, the permission policy, the compactor, the drawing.
+The runtime supplies the state machine, the context and the paper trail.
 
 ```console
 $ cargo install kamchatka

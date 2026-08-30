@@ -5,7 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
-## [unreleased]
+## [0.2.0] - 2026-08-30
+
+An assistant turn can be the ordered sequence the model produced it in, rather than a content
+slot, a reasoning slot and a flat list of calls.
+
+**Breaking:** `LinearProjector` has a new public field, so a struct literal that names every field
+no longer compiles; add `..Default::default()`. `Content` and `Block` are `#[non_exhaustive]`, so
+the new variants are additive.
 
 ### added
 
