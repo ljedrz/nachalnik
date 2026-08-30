@@ -73,9 +73,10 @@ Reach for it when **what was in the context is part of your answer**:
   a snapshot that resumes the same session in another process — and an assistant turn recorded in
   the order the model produced it, thinking and tool calls interleaved, rather than rearranged
   into whichever shape the wire format wanted.
-* **Agents that manage their own context.** Everything above is public API a `Tool` can call, so
-  the same budget, the same pruning and the same undo can be handed to the model. `kamchatka`
-  does; see [below](#-the-same-handles-given-to-the-agent) for what one did with them.
+* **Agents that read and manage their own context.** Everything above is public API a `Tool` can
+  call, so the same view and the same controls can be handed to the model. `kamchatka` does; see
+  [below](#-the-same-handles-given-to-the-agent), or the [write-up][writeup] of a session where an
+  agent found a false note in its own context and rewrote it.
 
 Reach for something else if you want **an agent today**. This crate ships no provider, no tools,
 no prompt and no UI, so a working agent is yours to assemble; `kamchatka` in this workspace is
@@ -888,6 +889,7 @@ Licensed under the MIT License ([LICENSE-MIT][license]).
 
 [kamchatka]: https://github.com/ljedrz/nachalnik/tree/HEAD/kamchatka
 [nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
+[writeup]: https://ljedrz.github.io/nachalnik/
 [nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
 [ex-compare]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compare.rs
 [ex-panel]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/panel.rs

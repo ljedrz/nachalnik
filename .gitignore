@@ -5,6 +5,9 @@
 .claude/settings.local.json
 kamchatka-*/
 
+# what `cargo run --example recorded` writes: whole sessions, regenerated on demand
+recorded/
+
 # rustfmt's backups and the counters a profiled run drops
 **/*.rs.bk
 *.profraw
