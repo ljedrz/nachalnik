@@ -79,9 +79,30 @@ seam is wrong, not the crate.
 | `test.rs` | feature `test`: `ScriptedProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |
 
 `kamchatka/src`: `app.rs` (state and key handling), `ui.rs` (drawing only - it decides nothing),
-`tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `provider.rs`, `main.rs`
-(arguments and wiring). It is a library plus a binary only so the screen can be drawn against a
-`TestBackend` in tests.
+`tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `introspect.rs` (the two
+off-by-default tools an agent inspects and manages its own context with), `provider.rs` (the OpenAI-compatible
+dialect, and the `Endpoint` trait both providers answer), `gemini.rs` (Google's own, the one that
+keeps the order of a turn), `main.rs` (arguments and wiring). It is a library plus a binary only so
+the screen can be drawn against a `TestBackend` in tests.
+
+Two providers, one trait. `Provider` is the kernel's half - ask, and be answered - and `Endpoint`
+is this program's: where the requests go, what is served there, what the last retry was about.
+`App` holds an `Arc<dyn Endpoint>` and never finds out which wire format is behind it, which is
+the claim `/seams` makes about every other part of the runtime and had not been true of this one.
+`--gemini` picks the second, and turns on `LinearProjector::send_blocks` with it, because that
+dialect's turn *is* an order and projecting three slots at it would flatten every turn on the way
+out one request after recording the order on the way in.
+
+`introspect.rs` is the second `nachalnik-mcp`: **written with no change to the runtime at all**, and
+worth reading for that reason. Forking a context is `Kernel::snapshot` and `Kernel::resume`;
+previewing a request is `preview_request`; pruning is `set_state`. What it adds is the part the
+runtime has no opinion about - which of those a *model* may do. A pinned item, a system
+instruction and the assistant turn carrying the call in flight are refused, `amend` may unpin only
+what it pinned itself, and `undo` walks that tool's own journal rather than `Kernel::undo`, whose
+stack belongs to the person and whose top during a turn is always the model's own question. There
+are two tools rather than one with a mode argument because a `ToolSpec` declares its capabilities
+once: looking and rewriting have to be separately grantable or the grant delivers more than it
+implies.
 
 `nachalnik/examples`: `transparency` and `compaction` need no key and run in CI; `compare` and
 `panel` talk to a real API through `examples/common`.
@@ -116,8 +137,10 @@ fails without a key, or when a free tier has spent its allowance. `kamchatka` re
 `KAMCHATKA_API_KEY` / `KAMCHATKA_MODEL` / `KAMCHATKA_BASE_URL` instead.
 
 Test files: `nachalnik/tests/` is `kernel`, `context`, `state`, `session`, `tokens`,
-`concurrency`, `live`. `kamchatka/tests/` draws the screen and reads the characters back
-(`screen`), runs real commands under a real ruleset (`sandbox`), and answers three sockets: one
+`concurrency`, `blocks`, `live`. `kamchatka/tests/` draws the screen and reads the characters back
+(`screen`), drives the introspection tools through the real loop (`introspect`), serves a recorded
+Gemini stream off a socket and checks what goes back out (`gemini`), runs real commands
+under a real ruleset (`sandbox`), and answers three sockets: one
 that goes silent mid-stream (`stalled`) and two that serve the shapes a streamed tool call arrives
 in (`streaming`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at
 every tab with nothing to act on, and both scrolled past their own ends - a frame that panics takes
@@ -167,7 +190,7 @@ part of the change.
 
 Known and decided against *for now*, so that nobody spends an afternoon rediscovering them:
 
-- **Content is `Text` or `Json`, and nothing else.** There is no image, audio or binary variant,
+- **Content is `Text`, `Json` or `Blocks`, and nothing else.** There is no image, audio or binary variant,
   so a multimodal provider has to carry bytes through `Content::Json`, and `BytesPerToken` then
   counts base64 length over four - a figure that is not so much wrong as meaningless, in a crate
   whose case rests on an honest budget. `Content` is `#[non_exhaustive]`, so a `Blob` variant is
@@ -175,11 +198,15 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   sensible about pixels, which is the part that is not additive. **Not before multimodal support
   is actually being built** - a variant nothing produces and nothing counts would be worse than
   its absence.
-- **`Message` carries one content slot, not a list of blocks**, which is the same limitation seen
-  from the wire end: a dialect whose assistant turn is an ordered list of typed blocks can be
-  approximated by a projector but not expressed by one. The constraint is stated where a projector
-  author will meet it, in `projection.rs`; do not restate the broader claim that *any* dialect is
-  reachable by swapping the projector alone.
+- **A `nachalnik-gemini` crate.** `kamchatka/src/gemini.rs` is a self-contained module with no
+  kamchatka-specific types in it, and it is in kamchatka because that is where the consumer is:
+  `introspect` is only worth having if the turn it reads is the one that really happened. What it
+  costs is that `nachalnik/tests/live.rs` cannot reach it - the live suite may only use
+  `nachalnik-utils`, which is dev-only and unpublished - so the core's block support goes on being
+  checked against ordered turns recorded by hand. That is arguably the better test, since it does
+  not depend on a vendor's whims. **The trigger to extract is a second consumer**, and the reason
+  to take it seriously when it comes is that two copies of a provider is the mistake
+  `nachalnik-utils` already exists to undo.
 
 ---
 

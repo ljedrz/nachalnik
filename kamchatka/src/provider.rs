@@ -22,7 +22,7 @@ use parking_lot::Mutex;
 use serde_json::{Value, json};
 
 /// How many times a request is retried when the server says it is busy.
-const RETRIES: usize = 4;
+pub(crate) const RETRIES: usize = 4;
 
 /// How long a stream may say nothing before the provider looks up to check whether it has been
 /// asked to stop.
@@ -64,7 +64,7 @@ struct PartialCall {
 /// a client built without it fails at the first `https://` with "no process-level CryptoProvider
 /// available". It lives beside the constructor rather than in `main` so that a test or an example
 /// that builds a provider and never goes near `main` is not the one that finds out.
-fn install_crypto() {
+pub(crate) fn install_crypto() {
     let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
@@ -95,21 +95,11 @@ impl OpenAiCompatible {
     /// Just the authority of [`Self::endpoint`] - `openrouter.ai`, `localhost:11434` - for the
     /// status line, which has no room for the rest of it.
     ///
-    /// note: hand-parsed rather than through a URL crate, because the whole use of it is a string
-    /// to draw. Anything this does not recognise as a URL is handed back as it came, since a
-    /// status line that showed nothing would be worse than one showing something odd.
+    /// note: the parsing lives on [`Endpoint::host`], where the other dialect can share it; this
+    /// is here so that a caller holding the concrete type does not have to import a trait to ask
+    /// an obvious question.
     pub fn host(&self) -> String {
-        let endpoint = self.endpoint();
-        let after_scheme = endpoint
-            .split_once("://")
-            .map_or(endpoint.as_str(), |(_, rest)| rest);
-
-        after_scheme
-            .split('/')
-            .next()
-            .filter(|host| !host.is_empty())
-            .unwrap_or(&endpoint)
-            .to_owned()
+        Endpoint::host(self)
     }
 
     /// Sends the requests somewhere else from now on, and asks the new place what it can hold.
@@ -596,6 +586,86 @@ impl Provider for OpenAiCompatible {
     }
 }
 
+/// The half of a provider the person at the terminal drives.
+///
+/// note: [`Provider`] is the kernel's half, and it is one method: the kernel asks for an answer
+/// and has no opinion about where the answer comes from. Where the requests go, what the endpoint
+/// serves, which model is being asked and what the last retry was about are this program's
+/// business - `/model`, `/models`, `/provider` and the status line - and they are the same
+/// questions whichever dialect is in use. So they are a trait of this crate's own rather than
+/// something the runtime was made to carry.
+///
+/// note: [`Provider`] is a supertrait, so one `Arc` answers both. That is what lets `App` hold a
+/// provider without knowing which wire format is behind it, which is the claim `/seams` makes
+/// about every other part of the runtime and had not been true of this one.
+#[async_trait]
+pub trait Endpoint: Provider {
+    /// Where the requests are going.
+    fn endpoint(&self) -> String;
+
+    /// Which model is being asked.
+    fn model(&self) -> String;
+
+    /// Just the authority of [`Endpoint::endpoint`] - `openrouter.ai`, `localhost:11434` - for
+    /// the status line, which has no room for the rest of it.
+    ///
+    /// note: hand-parsed rather than through a URL crate, because the whole use of it is a string
+    /// to draw. Anything this does not recognise as a URL is handed back as it came, since a
+    /// status line showing nothing would be worse than one showing something odd.
+    fn host(&self) -> String {
+        let endpoint = self.endpoint();
+        let after_scheme = endpoint
+            .split_once("://")
+            .map_or(endpoint.as_str(), |(_, rest)| rest);
+
+        after_scheme
+            .split('/')
+            .next()
+            .filter(|host| !host.is_empty())
+            .unwrap_or(&endpoint)
+            .to_owned()
+    }
+
+    /// What this endpoint serves, which is what [`Endpoint::set_model`] takes.
+    async fn models(&self) -> Vec<String>;
+
+    /// Switches models.
+    async fn set_model(&self, model: String);
+
+    /// Switches the address the requests go to, and optionally the model with it.
+    async fn set_endpoint(&self, url: String, model: Option<String>);
+
+    /// Takes whatever the provider last wanted to say for itself, if anything.
+    fn take_notice(&self) -> Option<String>;
+}
+
+#[async_trait]
+impl Endpoint for OpenAiCompatible {
+    fn endpoint(&self) -> String {
+        self.endpoint()
+    }
+
+    fn model(&self) -> String {
+        self.model.lock().clone()
+    }
+
+    async fn models(&self) -> Vec<String> {
+        self.models().await
+    }
+
+    async fn set_model(&self, model: String) {
+        self.set_model(model).await;
+    }
+
+    async fn set_endpoint(&self, url: String, model: Option<String>) {
+        self.set_endpoint(url, model).await;
+    }
+
+    fn take_notice(&self) -> Option<String> {
+        self.take_notice()
+    }
+}
+
 /// Translates a kernel message into the wire format.
 fn to_wire(message: &Message) -> Value {
     let mut wire = json!({ "role": message.role.as_str() });
@@ -603,10 +673,13 @@ fn to_wire(message: &Message) -> Value {
     if let Some(content) = &message.content {
         wire["content"] = json!(content.to_text());
     }
-    if !message.tool_calls.is_empty() {
+    // `calls()` rather than the field: a turn projected as ordered blocks keeps its calls in
+    // its content, and reading the field would send the words of a turn with none of the calls
+    // in it - which this API rejects, and which is very hard to see afterwards
+    let calls: Vec<_> = message.calls().collect();
+    if !calls.is_empty() {
         wire["tool_calls"] = Value::Array(
-            message
-                .tool_calls
+            calls
                 .iter()
                 .map(|call| {
                     let mut wire = json!({
@@ -644,7 +717,7 @@ pub fn same_model(listed: &str, model: &str) -> bool {
 }
 
 /// The context limit somebody set by hand, if they set one.
-fn configured_limit() -> Option<usize> {
+pub(crate) fn configured_limit() -> Option<usize> {
     env::var("KAMCHATKA_CONTEXT_LIMIT")
         .ok()
         .and_then(|limit| limit.parse().ok())

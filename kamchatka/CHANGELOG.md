@@ -5,6 +5,76 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- `--gemini` talks to Google's own API instead of an OpenAI-compatible one, and the difference is
+  the whole point: `generateContent` answers with `content.parts[]` - a thinking part, a sentence,
+  a `functionCall`, in the order they were produced - and the compatible shim flattens that into a
+  `content` string beside a `tool_calls` array, because the dialect it imitates has no order to
+  report. `kamchatka/src/gemini.rs` records the order as `Content::Blocks` and sends it back the
+  same way, with `LinearProjector::send_blocks` turned on to match. Streamed, with the same
+  heartbeat that makes `esc` reach a request that has gone quiet.
+  Signatures are the reason to bother beyond tidiness. This API answers `400 Function call is
+  missing a thought_signature` to a request that returns a turn without one, and it signs text
+  parts as well as calls; every part's own fields ride back out on the block they arrived on,
+  unread. `finishReason` is deliberately not what decides the stop reason - it says `STOP` for a
+  turn that asked for three tools - so the parts are.
+- `provider::Endpoint`, the half of a provider the person at the terminal drives: where the
+  requests go, what is served there, which model is being asked, what the last retry was about.
+  `Provider` is the kernel's half and is one method. `App` now holds an `Arc<dyn Endpoint>` and
+  never finds out which wire format is behind it, so `/model`, `/models`, `/provider` and the
+  status line work the same against either.
+- `introspect` and `amend` read an ordered turn. `look` reads a turn back block by block, marking the
+  ones that came signed, because between two calls is where the thinking that led to the second
+  one belongs and the request the model will be sent has it looking like a field instead. The
+  guard that stops `amend` excising the turn it is speaking in now finds that turn by its calls
+  wherever they are recorded - matching on the kind alone, it would have found an ordered turn to
+  have asked for nothing, and quietly stopped holding.
+  `enter` on the context tab reads out the blocks in order rather than only the text.
+
+- `--introspect`, and `/introspect` while it is running, offer the model two more tools for
+  reading and managing its own context. `introspect` reads: `look` lists every item with its
+  state, its cost and the projector's own reason for leaving it out, and reads any of them in full
+  - block by block, including what the model was thinking when it produced them. `budget` is what
+  a decision about what to give up is made from: the next request against the limit, split into
+  context and tool definitions, what the last one really cost as the provider counted it, the
+  correction the counter has learned from the difference, and the most expensive items *actually*
+  going into it - an orphaned tool result the projector repairs away costs nothing however active
+  it looks, and offering it as something to elide would be advice that buys nothing. Items that
+  are not the model's to move are marked as such, rather than costing it a refused call.
+  `request` summarizes what would go next, and summarizes it on purpose: the request *is* the
+  context, so quoting it would double every token being asked about. `draft` and `fork` snapshot
+  the context, resume it as a second kernel with no tools and a limit of one request, ask it, and
+  hand back only what it said - `draft` for reading your own answer before giving it, `fork` for
+  putting a question to a copy of yourself with some items left out. A fork can think and cannot
+  act, and nothing it does reaches this session's context or its log. None of it needed anything
+  added to the runtime: forking a session is what `Kernel::snapshot` and `Kernel::resume` already
+  are.
+  `amend` manages: `prune` moves items between the states the context tab's `space` key moves
+  them between, named by `ids` or by `select`, which takes the same selector language `/prune`
+  does - so "the tool results I am done with" is one call rather than twelve numbers read off a
+  listing, and a selector it gets wrong is answered with the whole grammar. `revise` rewrites what
+  one item says (recording the old text as `context.replaced`, which is the one event that carries
+  content, and the reason in the item's metadata). `note` writes something into the context - a
+  plan, a conclusion, a thing not to try again - attributed to `agent` so the pane can say who put
+  it there, and pinnable, because saying the same thing out loud in a turn is not a promise about
+  anything and a pin is. `undo` and `redo` walk this tool's own changes. Deliberately not
+  `Kernel::undo`: that stack belongs to the person at the terminal, and its top while a tool is
+  running is always the assistant turn that asked for the call - one step would erase the model's
+  own question and orphan the answer it is waiting for. A reason is required on every change and
+  it is what the context pane shows. A pinned item, a system instruction and the turn the model is
+  speaking in are refused, and the refusal is handed back to it; it may unpin only what it pinned
+  itself.
+  Two tools rather than one with a mode argument, because a `ToolSpec` declares its capabilities
+  once for every call it will ever receive: one tool would have made "may it read its own
+  context?" and "may it rewrite a tool result?" the same question. They declare `introspect` and
+  `amend`, and the permissions tab grows a row for each without being told anything.
+  Off by default. The tools hold a weak handle to a `Kernel` the `App` owns rather than a kernel
+  of their own - the cycle the runtime's documentation warns about - so `/introspect` taking them
+  away really does take their reach away, and what `amend` had been remembering goes with it.
+
 ## [0.1.0] - 2026-08-29
 
 The first release: a terminal agent built on `nachalnik`, and a demonstration of it.

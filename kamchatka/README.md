@@ -333,6 +333,120 @@ next request onward, which is one call on the kernel and no restart. When a mode
 the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* call it is waiting on
 with one reason — and the model is told, rather than left waiting on calls that silently vanished.
 
+## 🔎 letting the agent read and manage its own context
+
+`--introspect`, or `/introspect` at any point, offers two more tools. They are off by default,
+because a model that can rewrite its own context is a decision rather than a default.
+
+**`introspect`** reads. `look` lists every item it is carrying — what each one is, what it costs,
+whether it is going into the next request and why not if it is not — and reads any of them in
+full, block by block, including what it was thinking when it produced them. `request` shows the
+request about to go out, message by message, with what the projector left out and what it had to
+repair.
+
+`budget` is the one a decision gets made from:
+
+```text
+the next request is ~48,120 tokens of 128,000 (38% full, ~79,880 left)
+  47,343 in the context, 777 in the tool definitions
+~9,004 tokens are being held back - excluded, archived, or elided to a marker
+the last request really cost 52,905 in / 214 out, as the provider counted it
+the estimate is corrected by x1.09, learned from 6 request(s)
+
+the 4 most expensive item(s) actually going into it:
+  id  state       kind                  tokens  if all go  what it is
+  31  active      tool_result           18,204    18,204  shell: cargo test --workspace…
+  14  active      reference              9,880    28,084  src/kernel.rs: use std::…
+   9  pinned      system                   240    28,324  system: You are working in… · not yours
+```
+
+Estimates are named as estimates, the provider's own figure sits beside them, and the list is
+what the request *actually* carries — an orphaned tool result the projector repairs away costs
+nothing however active it looks, and offering it as something to give up would be advice that
+buys nothing. Items that are not the agent's to move say so, rather than costing it a refused
+call.
+
+`draft` and `fork` take a snapshot of the context, resume it as a second kernel with **no tools**,
+ask it once, and hand back only what it said. `draft` is for reading your own answer before you
+give it; `fork` is for asking whether a piece of context is what is leading you astray:
+
+```text
+⟩ introspect({"action":"fork","question":"am I overfitting to the first stack trace?",
+              "without":[14,15]})
+
+  a copy of you, asked `am I overfitting to the first stack trace?`, on 9 of your items,
+  without 14, 15. None of this is in your context and nobody has read it; it is yours to
+  use or drop.
+```
+
+A fork can think; it cannot act, and it cannot go on thinking after it has answered once. Nothing
+it does reaches this session's context or its log. Forking needed no change to the runtime at all
+— `Kernel::snapshot` and `Kernel::resume` already *are* that, and leaving an item out is one field
+on a copy of the snapshot.
+
+**`amend`** manages. `prune` moves items between the same states the <kbd>space</kbd> key does —
+`elide` for a tool result that has served its purpose, which keeps the call answered and stops it
+costing what it holds; `exclude` to take one out altogether; `pin` to protect one from compaction
+— named by `ids` or by `select`, which takes the same selector language `/prune` does, so "the
+tool results I am done with" is one call rather than twelve numbers read off a listing. `revise`
+rewrites what an item says. `note` writes something into the context — a plan, a conclusion, a
+thing not to try again — attributed to `agent` so the context pane can say who put it there, and
+pinnable so that compaction cannot take it. Saying the same thing out loud in a turn is not a
+promise about anything; a pin is.
+
+`undo` walks back — deliberately *not* the kernel's undo stack. That stack is yours, bound to
+<kbd>u</kbd>, and the top of it while a tool is running is always the assistant turn that asked
+for the call: one step would erase the model's own question and orphan the answer it is waiting
+for. So `amend` keeps a journal of what *it* did, and that is what it walks. A reason is required
+on every change, and it is what you read in the context pane.
+
+Three things are refused outright, with the refusal handed back to the model: a **pinned** item
+(a pin is a promise, and it was not made to the model), a **system instruction**, and the
+assistant turn it is currently speaking in. It may unpin what it pinned itself, and nothing else.
+
+They are two tools rather than one with a mode argument, because a tool declares its capabilities
+once for every call it will ever receive. One tool would mean that answering **always** to "may it
+read its own context?" also answered "may it rewrite a tool result?" — a grant that delivers more
+than it implies, which is the shape of thing this program exists not to do. So the permissions tab
+has a row for `introspect` and a row for `amend`, and you can answer them differently.
+
+## 🧩 two dialects, and why one of them keeps the order
+
+`--gemini` talks to Google's own API instead of an OpenAI-compatible one. That is not a
+convenience — it is the difference between seeing what the model did and seeing a rearrangement of
+it.
+
+`generateContent` answers with `content.parts[]`: a thinking part, a sentence, a `functionCall`,
+in the order they were produced. The OpenAI-compatible shim in front of the same model flattens
+that into a `content` string beside a `tool_calls` array, because the dialect it is imitating has
+nowhere to put an order. Everything downstream then reads a turn that has been tidied up.
+
+```text
+▸ [4] assistant · assistant_message · from model · active · 178 tokens
+    --- 3 block(s), in order ---
+    [0] reasoning: The user wants the code word, and the tool is the only place it is…
+    [1] text: Let me look that up.
+    [2] call (signed): secret({})
+```
+
+That is the context pane, and `introspect` reads the same thing back to the agent. It is only worth
+having because the order is really in there: the runtime records it as `Content::Blocks`, counts
+it, prunes it and elides it like any other content, and `LinearProjector::send_blocks` sends it
+back the same way.
+
+Signatures are the other half. Gemini signs the parts of a turn and answers
+`400 Function call is missing a thought_signature` to a request that returns one without it — and
+it signs text parts as well as calls, which a message with three slots has nowhere to keep. Here
+each part's own fields ride back out on the block they arrived on, unread.
+
+Both providers answer one trait, `Endpoint`, so `/model`, `/models`, `/provider` and the status
+line work the same against either and nothing above them knows which wire format it got.
+
+```console
+$ export KAMCHATKA_API_KEY=...        # a Google AI Studio key
+$ kamchatka --gemini --introspect "what does src/kernel.rs do?"
+```
+
 ## 🔀 the model, and the address it lives at
 
 `/model` says which model this is talking to, where that is, in what dialect, and how much context
@@ -430,6 +544,8 @@ it also wants a kernel new enough to have Landlock — 5.13 for the filesystem r
 kamchatka [OPTIONS] [MESSAGE]...
 
   -m, --model <MODEL>       the model to talk to            [env: KAMCHATKA_MODEL]
+                            [default: openai/gpt-4o-mini, or gemini-3.6-flash
+                            with --gemini]
   -f, --file <PATH>         put a file in the context, pinned; may be repeated
   -s, --system <TEXT>       a system instruction; the runtime ships none of its own
   -r, --resume <PATH>       carry on from a session written by /save
@@ -437,6 +553,10 @@ kamchatka [OPTIONS] [MESSAGE]...
       --requests <N>        how many requests one turn may make            [default: 8]
       --compact <FRACTION>  how full the context may get; 1 never compacts [default: 0.8]
       --parallel            run the model's tool calls at the same time
+      --gemini              talk to Google's own API rather than an OpenAI-compatible
+                            one, so a turn keeps the order it was produced in
+      --introspect          offer the model the two tools that read and manage its own
+                            context; /introspect turns them on and off while it runs
       --sandbox-allow <PATH> a path outside the working directory the shell may also
                             read and write; may be repeated
       --no-sandbox          run the shell tool unconfined, reaching whatever you can
@@ -444,7 +564,8 @@ kamchatka [OPTIONS] [MESSAGE]...
 Environment:
   KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY
   KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for
-                           ollama; OpenRouter by default
+                           ollama; OpenRouter by default, or Google's own v1beta
+                           with --gemini
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
 ```
 

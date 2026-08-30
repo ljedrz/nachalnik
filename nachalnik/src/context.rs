@@ -6,7 +6,7 @@ use serde_json::Value;
 #[cfg(doc)]
 use crate::{Compactor, Config, Event, Kernel, Projector};
 use crate::{
-    model::{Content, ToolCall, ToolCallId},
+    model::{Block, Content, ToolCall, ToolCallId},
     tokens::TokenCounter,
 };
 
@@ -316,12 +316,49 @@ impl ContextItem {
         self
     }
 
-    /// Returns the model's reasoning, if this is an assistant turn that carries any.
+    /// Returns the model's reasoning, if this is an assistant turn that carries it in the
+    /// conventional slot.
+    ///
+    /// note: [`ContextItem::thinking`] is the one to reach for. A turn recorded as ordered blocks
+    /// keeps its thinking in its content, where this cannot see it, and can carry more than one
+    /// piece of it besides - so this answers `None` for a turn that is visibly full of reasoning.
+    /// It is kept because a conventional turn has exactly one and the [`Option`] is what a caller
+    /// wants for that.
     pub fn reasoning(&self) -> Option<&Content> {
         match &self.kind {
             ContextKind::AssistantMessage { reasoning, .. } => reasoning.as_ref(),
             _ => None,
         }
+    }
+
+    /// Returns the model's thinking, wherever it is recorded, in the order it was produced.
+    ///
+    /// note: the counterpart of [`ContextItem::calls`], and it exists for the same reason: an
+    /// ordered turn keeps its thinking in [`Block::Reasoning`]s inside its content, and a client
+    /// that only knew about the conventional slot would show a reasoning model as having done no
+    /// reasoning at all.
+    ///
+    /// note: the content of each, not the [`Part`](crate::Part), because the conventional slot is a [`Content`]
+    /// and there is nothing to borrow a part from. Whatever a provider attached to a thinking
+    /// block is reachable through the blocks themselves, and belongs to the provider rather than
+    /// to a client showing somebody what the model thought.
+    pub fn thinking(&self) -> impl Iterator<Item = &Content> {
+        let ordered = match &self.kind {
+            ContextKind::AssistantMessage { .. } => self.content.as_blocks(),
+            _ => None,
+        };
+        let flat = match (&self.kind, ordered) {
+            (ContextKind::AssistantMessage { reasoning, .. }, None) => reasoning.as_ref(),
+            _ => None,
+        };
+
+        flat.into_iter().chain(
+            ordered
+                .into_iter()
+                .flatten()
+                .filter_map(Block::thought)
+                .map(|part| &part.content),
+        )
     }
 
     /// Attaches metadata for a [`Compactor`] or a [`Projector`].
@@ -339,6 +376,29 @@ impl ContextItem {
     /// Returns whether the item takes part in the next request.
     pub fn is_projected(&self) -> bool {
         self.state.is_projected()
+    }
+
+    /// Returns the tool calls this turn asked for, wherever they are recorded.
+    ///
+    /// note: an assistant turn records its calls *either* in
+    /// [`ContextKind::AssistantMessage::tool_calls`] *or*, when the order they came in is part of
+    /// the turn, as [`Block::Call`]s inside a [`Content::Blocks`] - never both, so that there is
+    /// never a second account of what the model asked for. This reads whichever is in use, and it
+    /// is what a [`Projector`] pairing calls with results should be reading; matching on the kind
+    /// alone would silently find no calls at all in an ordered turn.
+    pub fn calls(&self) -> impl Iterator<Item = &ToolCall> {
+        let ordered = match &self.kind {
+            ContextKind::AssistantMessage { .. } => self.content.as_blocks(),
+            _ => None,
+        };
+        let flat = match (&self.kind, ordered) {
+            (ContextKind::AssistantMessage { tool_calls, .. }, None) => Some(&tool_calls[..]),
+            _ => None,
+        };
+
+        flat.into_iter()
+            .flatten()
+            .chain(ordered.into_iter().flatten().filter_map(Block::call))
     }
 }
 

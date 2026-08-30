@@ -14,14 +14,14 @@ use std::{
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    Capability, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Grant,
+    Block, Capability, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Grant,
     GrantSource, Kernel, State, Verdict, selectors::Selector,
 };
 use ratatui_textarea::{CursorMove, TextArea, WrapMode};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
-    provider::OpenAiCompatible,
+    provider::Endpoint,
     sandbox::Confinement,
     tools::{Careful, Subject},
     ui::thousands,
@@ -178,8 +178,14 @@ pub struct App {
     pub kernel: Kernel,
     /// The policy, which the permission overlay teaches.
     pub policy: Arc<Careful>,
-    /// The provider, for switching models.
-    pub provider: Arc<OpenAiCompatible>,
+    /// The provider, for switching models - whichever dialect it speaks.
+    pub provider: Arc<dyn Endpoint>,
+    /// The handle the two introspection tools reach the kernel through, while they are offered.
+    ///
+    /// note: it is here rather than in `main` because `/introspect` turns them on and off, and this is
+    /// the thing that has to move when it does: they hold a weak handle to it, so dropping it is
+    /// what takes their reach away. See [`crate::introspect::install`].
+    pub introspect: Option<Arc<Kernel>>,
     /// How much of the shell's sandbox the kernel agreed to, asked once at startup.
     ///
     /// note: on `App` rather than worked out where it is drawn, because finding out means
@@ -247,7 +253,7 @@ impl App {
     pub fn new(
         kernel: Kernel,
         policy: Arc<Careful>,
-        provider: Arc<OpenAiCompatible>,
+        provider: Arc<dyn Endpoint>,
         outcomes: UnboundedSender<Outcome>,
     ) -> Self {
         let mut input = TextArea::default();
@@ -264,6 +270,7 @@ impl App {
             kernel,
             policy,
             provider,
+            introspect: None,
             // the terminal's own default, for a screen test that never spawns anything; the
             // program overwrites it with what a child process actually reported
             confinement: Confinement::Unsupported,
@@ -364,12 +371,14 @@ impl App {
         for item in &items {
             match &item.kind {
                 ContextKind::UserMessage => self.say(Speaker::User, item.content.to_text()),
-                ContextKind::AssistantMessage { tool_calls, .. } => {
+                ContextKind::AssistantMessage { .. } => {
                     let text = item.content.to_text();
                     if !text.trim().is_empty() {
                         self.say(Speaker::Model, text);
                     }
-                    for call in tool_calls {
+                    // `calls()`, so a turn the provider recorded as ordered blocks reads back
+                    // with the tools it asked for rather than as bare text
+                    for call in item.calls() {
                         let args = one_line(&call.args.to_string());
                         self.say(Speaker::Call, format!("{}({args})", call.tool));
                     }
@@ -1068,7 +1077,7 @@ impl App {
                     picked.state,
                     picked.tokens
                 );
-                self.preview(title, picked.content.to_text());
+                self.preview(title, whole(&picked));
             }
             _ => {}
         }
@@ -1556,6 +1565,7 @@ impl App {
             }
             "budget" => self.budget(),
             "seams" => self.seams(),
+            "introspect" => self.introspect(),
             // it used to print a line naming the allowed capabilities. The tab is that line, plus
             // the ones that are refused, plus the ones nobody has decided about yet, plus what
             // each of them covers - and every row can be changed where it is read
@@ -1701,6 +1711,38 @@ impl App {
                 Speaker::Error,
                 format!("there is no `/{other}`; F1 lists what there is"),
             ),
+        }
+    }
+
+    /// Offers the model the two tools that read and change its own context, or stops offering
+    /// them.
+    ///
+    /// note: `add_tool` and `remove_tool`, like `/tools drop` - the registry is live and this is
+    /// the plainest thing to demonstrate that with. What it also has to move is the handle the
+    /// tools reach the kernel through, because that is the piece with an end to it: taking them
+    /// away drops it, and with it whatever `amend` had been remembering - which items it pinned,
+    /// and the changes it could still walk back. That is the right answer rather than a
+    /// shortcoming. The tools that come back are new ones, and they have not done anything yet.
+    fn introspect(&mut self) {
+        match self.introspect.take() {
+            Some(_) => {
+                self.kernel.remove_tool("introspect");
+                self.kernel.remove_tool("amend");
+                self.say(
+                    Speaker::Note,
+                    "`introspect` and `amend` are no longer offered; the next request will not mention \
+                     them",
+                );
+            }
+            None => {
+                self.introspect = Some(crate::introspect::install(&self.kernel));
+                self.say(
+                    Speaker::Note,
+                    "`introspect` and `amend` go into the next request: the model can now read its own \
+                     context, preview what it would say, ask a fork of itself, prune what it is \
+                     carrying and walk its own changes back. It cannot touch anything you pinned",
+                );
+            }
         }
     }
 
@@ -2048,6 +2090,37 @@ fn short(name: &str) -> &str {
 /// JSON, indented.
 fn pretty(value: &serde_json::Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|e| format!("it will not serialize: {e}"))
+}
+
+/// The whole of what an item says, including the parts `to_text` leaves out.
+///
+/// note: for most items this is the content and nothing else. For a turn a provider recorded in
+/// the order it was produced, `to_text` is only the *text* blocks - which is right on the wire and
+/// wrong on this screen, where the whole point is to be shown what the item really holds. The
+/// thinking and the calls are read out where they happened, because between two calls is where
+/// the thinking that led to the second one belongs.
+fn whole(item: &ContextItem) -> String {
+    let Some(blocks) = item.content.as_blocks() else {
+        return item.content.to_text().into_owned();
+    };
+
+    blocks
+        .iter()
+        .map(|block| {
+            let said = match block {
+                Block::Call(call) => format!("{}({})", call.tool, call.args),
+                _ => block
+                    .part()
+                    .map(|part| part.content.to_text().into_owned())
+                    .unwrap_or_default(),
+            };
+            match block {
+                Block::Text(_) => said,
+                _ => format!("{}:\n{said}", block.name()),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 /// The first line of something, shortened.

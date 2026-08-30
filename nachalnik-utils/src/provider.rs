@@ -577,10 +577,13 @@ fn to_wire(message: &Message) -> Value {
     if let Some(content) = &message.content {
         wire["content"] = json!(content.to_text());
     }
-    if !message.tool_calls.is_empty() {
+    // `calls()` rather than the field: a turn projected as ordered blocks keeps its calls in
+    // its content, and reading the field would send the words of a turn with none of the calls
+    // in it - which this API rejects, and which is very hard to see afterwards
+    let calls: Vec<_> = message.calls().collect();
+    if !calls.is_empty() {
         wire["tool_calls"] = Value::Array(
-            message
-                .tool_calls
+            calls
                 .iter()
                 .map(|call| {
                     let mut wire = json!({

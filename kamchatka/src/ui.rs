@@ -109,6 +109,8 @@ pub const HELP: &str = "  THE TABS
     /seams              what is plugged into each of the runtime's six parts
     /tools              what the model is offered
     /tools drop ID      stop offering one of them, from now on
+    /introspect         offer the model the two tools that read and manage its own
+                        context, or stop offering them
     /policy             open the permissions tab; also /permissions
     /model [ID]         show or switch the model, and say where it is
     /models [FILTER]    what this endpoint serves, which is what /model takes
@@ -591,12 +593,13 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                         // a turn that was nothing but tool calls has no text to show, and the
                         // calls are the whole of what it said
                         None => match &item.kind {
-                            ContextKind::AssistantMessage { tool_calls, .. }
-                                if !tool_calls.is_empty() =>
-                            {
+                            ContextKind::AssistantMessage { .. } => {
                                 let names: Vec<_> =
-                                    tool_calls.iter().map(|call| call.tool.as_str()).collect();
-                                format!("asked for {}", names.join(", "))
+                                    item.calls().map(|call| call.tool.as_str()).collect();
+                                match names.is_empty() {
+                                    true => String::new(),
+                                    false => format!("asked for {}", names.join(", ")),
+                                }
                             }
                             _ => String::new(),
                         },

@@ -18,14 +18,16 @@ use crossterm::{
     event::{DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent, EventStream},
     execute,
 };
-use nachalnik::{Config, ContextItem, Event, Kernel};
+use nachalnik::{Config, ContextItem, Event, Kernel, LinearProjector};
 use ratatui::DefaultTerminal;
 use tokio::sync::{broadcast::error::RecvError, mpsc};
 use tokio_stream::StreamExt;
 
 use kamchatka::{
     app::{App, Outcome, Speaker},
-    provider, sandbox, tools, ui,
+    gemini, introspect,
+    provider::{self, Endpoint},
+    sandbox, tools, ui,
 };
 
 /// How often the screen is redrawn when nothing at all is happening.
@@ -46,21 +48,21 @@ const TICK: Duration = Duration::from_millis(120);
 Environment:
   KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY
   KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
-                           OpenRouter by default
+                           OpenRouter by default, or Google's own v1beta with --gemini
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say"
 )]
 struct Args {
     /// A first message, sent as soon as it starts.
     message: Vec<String>,
 
-    /// The model to talk to.
-    #[arg(
-        short,
-        long,
-        env = "KAMCHATKA_MODEL",
-        default_value = "openai/gpt-4o-mini"
-    )]
-    model: String,
+    /// The model to talk to. [default: openai/gpt-4o-mini, or gemini-3.6-flash with --gemini]
+    #[arg(short, long, env = "KAMCHATKA_MODEL")]
+    model: Option<String>,
+
+    /// Talk to Google's own API rather than an OpenAI-compatible one, so that a turn keeps the
+    /// order it was produced in: thinking, a sentence, a tool call, more thinking.
+    #[arg(long)]
+    gemini: bool,
 
     /// A file to put in the context, pinned. May be repeated.
     #[arg(short, long, value_name = "PATH")]
@@ -95,6 +97,10 @@ struct Args {
     #[arg(long)]
     no_sandbox: bool,
 
+    /// Offer the model the two tools that read and change its own context: `introspect` and `amend`.
+    #[arg(long)]
+    introspect: bool,
+
     /// A path outside the working directory the shell tool may also read and write. May be
     /// repeated.
     #[arg(long, value_name = "PATH")]
@@ -120,10 +126,26 @@ fn main() -> Result<()> {
 async fn terminal() -> Result<()> {
     let args = Args::parse();
 
-    let provider = provider::connect(&args.model)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))
-        .context("could not reach the model")?;
+    // two wire formats, one trait. `--gemini` is what a person picks, and everything downstream -
+    // the kernel, the screen, `/model`, `/provider` - is written against `Endpoint` and never
+    // finds out which one it got
+    let model = args.model.clone().unwrap_or_else(|| {
+        match args.gemini {
+            true => "gemini-3.6-flash",
+            false => "openai/gpt-4o-mini",
+        }
+        .to_owned()
+    });
+    let provider: Arc<dyn Endpoint> = match args.gemini {
+        true => gemini::connect(&model)
+            .await
+            .map(|it| it as Arc<dyn Endpoint>),
+        false => provider::connect(&model)
+            .await
+            .map(|it| it as Arc<dyn Endpoint>),
+    }
+    .map_err(|e| anyhow::anyhow!("{e}"))
+    .context("could not reach the model")?;
 
     let config = Config {
         max_requests_per_turn: (args.requests > 0).then_some(args.requests),
@@ -150,6 +172,15 @@ async fn terminal() -> Result<()> {
     let policy = Arc::new(tools::Careful::new());
     kernel.set_provider(provider.clone());
     kernel.set_policy(policy.clone());
+    // the projector is what decides the shape of a turn on the wire, and this dialect's whole
+    // point is that the shape is an order. Sending the three conventional slots to it would
+    // flatten every turn on the way out, one request after recording the order on the way in
+    if args.gemini {
+        kernel.set_projector(Arc::new(LinearProjector {
+            send_blocks: true,
+            ..Default::default()
+        }));
+    }
     if args.compact < 1.0 {
         kernel.set_compactor(Some(Arc::new(tools::Trim {
             threshold: args.compact,
@@ -183,6 +214,11 @@ async fn terminal() -> Result<()> {
         kernel.add_tool(tool);
     }
 
+    // the handle the two tools reach the kernel through, which `App` then holds so that `/introspect`
+    // can turn them off again; see `introspect::install` for why it is a weak handle to something out
+    // here rather than a kernel the tools hold
+    let introspect = args.introspect.then(|| introspect::install(&kernel));
+
     // the servers have to outlive this scope: dropping one takes its child process, and its
     // tools, with it
     #[cfg(feature = "mcp")]
@@ -204,6 +240,7 @@ async fn terminal() -> Result<()> {
     let (outcomes, mut finished) = mpsc::unbounded_channel();
     let mut app = App::new(kernel, policy, provider, outcomes);
     app.confinement = confinement;
+    app.introspect = introspect;
     match args.resume.is_some() {
         // a resumed session has a conversation in it already, and it would be strange to have to
         // read it out of the context pane one item at a time

@@ -264,14 +264,18 @@ produced it, counted like everything else, and offered back to the provider in
 from and a runtime that dropped it could not talk to them. It is never separated from its turn,
 and `LinearProjector::send_reasoning` decides whether it goes back out.
 
-A projector decides which items become which messages, and it is worth being exact about how far
-that reaches. Tool results inside a user turn, thinking-only turns kept rather than dropped, the
-whole conversation flattened into one string - each of those is a projector away. What is not is a
-dialect whose assistant turn is an *ordered* list of typed blocks, with thinking interleaved
-between tool calls: `Message` has one content slot, so the order is not something a projector has
-anywhere to put. A provider for such an API reassembles a conventional order and is right until
-the model interleaves. Lifting that means blocks in `Content`, which changes what the context
-holds rather than how it is projected, and it is not done.
+A projector decides which items become which messages, and — for an assistant turn — which of two
+shapes it goes out in. Tool results inside a user turn, thinking-only turns kept rather than
+dropped, the whole conversation flattened into one string: each of those is a projector away. So
+is a dialect whose assistant turn is an *ordered* list of typed blocks, with thinking interleaved
+between tool calls, which is what `Content::Blocks` is for: thinking, a sentence, a call, another
+sentence after it, in the order the model produced them. That order is carried by the *content*
+rather than by the projection, which is the only place it can be — it has to survive being
+recorded, counted and pruned, and a projector cannot recover an order that was never kept.
+`LinearProjector::send_blocks` decides whether it goes back out that way or is flattened into the
+three slots; flattening is what a provider used to have to do for itself, and where it costs
+something — two thinking blocks joined into one, a sentence that came after a call arriving before
+it — the projection says so in `repairs` rather than doing it quietly.
 
 `ToolCall::extra` is the same idea at the level of a single call: whatever a provider attaches to
 a call - Google's `thought_signature`, an encrypted reasoning item - is carried back attached to
