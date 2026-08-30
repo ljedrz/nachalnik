@@ -6,7 +6,7 @@ use serde_json::Value;
 #[cfg(doc)]
 use crate::{Compactor, Config, Event, Kernel, Projector};
 use crate::{
-    model::{Content, ToolCall, ToolCallId},
+    model::{Block, Content, ToolCall, ToolCallId},
     tokens::TokenCounter,
 };
 
@@ -339,6 +339,29 @@ impl ContextItem {
     /// Returns whether the item takes part in the next request.
     pub fn is_projected(&self) -> bool {
         self.state.is_projected()
+    }
+
+    /// Returns the tool calls this turn asked for, wherever they are recorded.
+    ///
+    /// note: an assistant turn records its calls *either* in
+    /// [`ContextKind::AssistantMessage::tool_calls`] *or*, when the order they came in is part of
+    /// the turn, as [`Block::Call`]s inside a [`Content::Blocks`] - never both, so that there is
+    /// never a second account of what the model asked for. This reads whichever is in use, and it
+    /// is what a [`Projector`] pairing calls with results should be reading; matching on the kind
+    /// alone would silently find no calls at all in an ordered turn.
+    pub fn calls(&self) -> impl Iterator<Item = &ToolCall> {
+        let ordered = match &self.kind {
+            ContextKind::AssistantMessage { .. } => self.content.as_blocks(),
+            _ => None,
+        };
+        let flat = match (&self.kind, ordered) {
+            (ContextKind::AssistantMessage { tool_calls, .. }, None) => Some(&tool_calls[..]),
+            _ => None,
+        };
+
+        flat.into_iter()
+            .flatten()
+            .chain(ordered.into_iter().flatten().filter_map(Block::call))
     }
 }
 

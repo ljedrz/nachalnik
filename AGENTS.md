@@ -116,7 +116,7 @@ fails without a key, or when a free tier has spent its allowance. `kamchatka` re
 `KAMCHATKA_API_KEY` / `KAMCHATKA_MODEL` / `KAMCHATKA_BASE_URL` instead.
 
 Test files: `nachalnik/tests/` is `kernel`, `context`, `state`, `session`, `tokens`,
-`concurrency`, `live`. `kamchatka/tests/` draws the screen and reads the characters back
+`concurrency`, `blocks`, `live`. `kamchatka/tests/` draws the screen and reads the characters back
 (`screen`), runs real commands under a real ruleset (`sandbox`), and answers three sockets: one
 that goes silent mid-stream (`stalled`) and two that serve the shapes a streamed tool call arrives
 in (`streaming`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at
@@ -167,7 +167,7 @@ part of the change.
 
 Known and decided against *for now*, so that nobody spends an afternoon rediscovering them:
 
-- **Content is `Text` or `Json`, and nothing else.** There is no image, audio or binary variant,
+- **Content is `Text`, `Json` or `Blocks`, and nothing else.** There is no image, audio or binary variant,
   so a multimodal provider has to carry bytes through `Content::Json`, and `BytesPerToken` then
   counts base64 length over four - a figure that is not so much wrong as meaningless, in a crate
   whose case rests on an honest budget. `Content` is `#[non_exhaustive]`, so a `Blob` variant is
@@ -175,11 +175,22 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   sensible about pixels, which is the part that is not additive. **Not before multimodal support
   is actually being built** - a variant nothing produces and nothing counts would be worse than
   its absence.
-- **`Message` carries one content slot, not a list of blocks**, which is the same limitation seen
-  from the wire end: a dialect whose assistant turn is an ordered list of typed blocks can be
-  approximated by a projector but not expressed by one. The constraint is stated where a projector
-  author will meet it, in `projection.rs`; do not restate the broader claim that *any* dialect is
-  reachable by swapping the projector alone.
+- **Message-level provider state.** `ToolCall::extra` carries whatever a provider attaches to a
+  *call* - Google's `thought_signature`, an encrypted reasoning item - and the live suite proves
+  it has to: Gemini 3 answers `400 Function call is missing a thought_signature` when the next
+  request goes without it. The same endpoint also attaches one to a whole *message* when the turn
+  made no calls, and there is nowhere to put that, so `nachalnik-utils` drops it. It is not fatal
+  (the requirement is on function-call parts; the whole live suite passes against
+  `gemini-3.6-flash` without it), and the fix is not obvious: a fourth slot on `Message`,
+  `ModelResponse` and `ContextItem` is the shape the crate has just spent an enum avoiding, while
+  `Block::Reasoning(Content::Json(..))` is already a home for it and would need the provider to
+  record ordered turns and `to_wire` to render them. **Decide it with a provider that needs it in
+  front of you**, not in the abstract.
+- **A provider that speaks a block dialect.** `Content::Blocks` exists and the projector will
+  send it, but nothing in the tree *produces* one: both in-tree providers are OpenAI-compatible,
+  and that dialect has no interleaving to report. The live suite records an ordered turn by hand
+  and checks a real API accepts what is built from it, which is the part that could be wrong; a
+  vendor provider is a crate, not a core change.
 
 ---
 

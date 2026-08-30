@@ -7,13 +7,13 @@ use serde_json::{Map, Value};
 use crate::{Config, Context, Kernel, Projector, TokenCounter};
 use crate::{error::BoxError, event::DeltaSink, tool::ToolSpec};
 
-/// A piece of content, either plain text or structured data.
+/// A piece of content: plain text, structured data, or an ordered sequence of [`Block`]s.
 ///
 /// note: The kernel does not interpret content; it counts it (via a [`TokenCounter`]), moves it
 /// around, and hands it to a [`Provider`], which decides how a [`Content::Json`] payload is
 /// rendered for its wire format.
 ///
-/// note: Both variants are behind an [`Arc`], so cloning content is a refcount bump rather than
+/// note: Every variant is behind an [`Arc`], so cloning content is a refcount bump rather than
 /// a copy. This is not an optimisation detail so much as what makes the rest of the design
 /// affordable: a context item is copied on every state change (the undo snapshot holding the old
 /// one is the point of undo) and again into a message on every request, and a 4 MiB tool output
@@ -27,6 +27,29 @@ pub enum Content {
     Text(Arc<str>),
     /// Structured data.
     Json(Arc<Value>),
+    /// An ordered sequence of typed [`Block`]s.
+    ///
+    /// note: this is what an assistant turn is in a dialect where the *order* is part of the
+    /// message - thinking, a sentence, a tool call, more thinking, another call - and it is here
+    /// rather than as a field on [`Message`] for one reason: content is the one thing a
+    /// [`ModelResponse`], a [`ContextItem`](crate::ContextItem) and a [`Message`] all carry, so
+    /// putting the order in it carries the order the whole way from the wire to the context and
+    /// back out again. A field on `Message` would have been a shape the context could not hold,
+    /// and a context that cannot hold it is a context no projector can project it out of.
+    ///
+    /// note: an assistant turn is recorded *either* this way *or* the conventional way - content
+    /// here, reasoning and calls in their own slots - and never both, so there is never a second
+    /// account of the same turn to disagree with the first. [`Message::calls`],
+    /// [`ModelResponse::calls`] and [`ContextItem::calls`](crate::ContextItem::calls) read
+    /// whichever one is in use, and are what the kernel, the projector and a provider should
+    /// reach for.
+    ///
+    /// note: a [`Block`] holds a [`Content`], so this nests, and nothing here stops it. Nothing
+    /// produces a nested one either - a turn is a flat sequence in every dialect there is - and
+    /// treating it as flat is what everything in this crate does. It is written down because a
+    /// sequence deep enough to matter would be recursing through [`Content::to_text`] and through
+    /// `Drop`, and somebody hand-writing a snapshot should know that is on them.
+    Blocks(Arc<[Block]>),
 }
 
 impl Content {
@@ -40,40 +63,64 @@ impl Content {
         Self::Json(Arc::new(value))
     }
 
+    /// Creates an ordered sequence of blocks.
+    pub fn blocks(blocks: impl IntoIterator<Item = Block>) -> Self {
+        Self::Blocks(blocks.into_iter().collect())
+    }
+
     /// Returns the text, if this is [`Content::Text`].
     pub fn as_text(&self) -> Option<&str> {
         match self {
             Self::Text(s) => Some(s),
-            Self::Json(_) => None,
+            Self::Json(_) | Self::Blocks(_) => None,
+        }
+    }
+
+    /// Returns the blocks, if this is [`Content::Blocks`].
+    pub fn as_blocks(&self) -> Option<&[Block]> {
+        match self {
+            Self::Blocks(blocks) => Some(blocks),
+            Self::Text(_) | Self::Json(_) => None,
         }
     }
 
     /// Returns the content as text, serializing it first if it is [`Content::Json`].
+    ///
+    /// note: for [`Content::Blocks`] this is what the turn *said* - the text blocks, joined with
+    /// a newline - and not what it costs to send: the thinking and the tool calls are not text
+    /// the model uttered, and a provider that put them in a `content` field would be sending the
+    /// model its own reasoning as if it had said it out loud. [`Content::byte_len`] is the other
+    /// question, and it counts all of them. The newline is there because two text blocks were
+    /// separated by *something* - a call, a thought - and running them together would make a word
+    /// that was never in the output.
     pub fn to_text(&self) -> Cow<'_, str> {
         match self {
             Self::Text(s) => Cow::Borrowed(s),
             Self::Json(v) => Cow::Owned(v.to_string()),
+            Self::Blocks(blocks) => match blocks.iter().filter_map(Block::said).collect::<Vec<_>>()
+            {
+                said if said.len() == 1 => said[0].to_text(),
+                said => Cow::Owned(
+                    said.iter()
+                        .map(|content| content.to_text())
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                ),
+            },
         }
     }
 
     /// Returns the size of the content in bytes, in the form it would be sent in.
     ///
-    /// note: A [`Content::Json`] payload has to be walked to be measured, but it does not have to
-    /// be *built*: this counts the bytes as they are written and throws them away. Token counting
-    /// runs over every tool schema on every request, and rendering each one into a string that is
-    /// immediately dropped is a cost worth not paying.
+    /// note: nothing is built to measure it - a [`Content::Json`] payload is walked and its
+    /// bytes counted as they are written; see `json_len`.
     pub fn byte_len(&self) -> usize {
         match self {
             Self::Text(s) => s.len(),
-            Self::Json(v) => {
-                let mut counted = Counting(0);
-                match serde_json::to_writer(&mut counted, &**v) {
-                    Ok(()) => counted.0,
-                    // a `Value` that will not serialize is not a thing that exists, but guessing
-                    // is better than panicking in a size estimate
-                    Err(_) => 0,
-                }
-            }
+            Self::Json(v) => json_len(v),
+            // all of them, including the thinking and the calls: what this answers is what the
+            // turn costs, which is not what `to_text` answers
+            Self::Blocks(blocks) => blocks.iter().map(Block::byte_len).sum(),
         }
     }
 
@@ -85,13 +132,20 @@ impl Content {
     /// does not fit, the content is cut to the limit without one, and the truncation is reported
     /// by the return value and by [`Event::ToolFinished`](crate::Event::ToolFinished) as usual.
     ///
-    /// note: Truncating [`Content::Json`] turns it into [`Content::Text`] - a truncated JSON
-    /// document is not JSON, and pretending otherwise would hide the truncation.
+    /// note: Truncating [`Content::Json`] or [`Content::Blocks`] turns it into
+    /// [`Content::Text`] - a truncated JSON document is not JSON and a cut string is not an
+    /// ordered sequence of blocks, and pretending otherwise would hide the truncation.
+    ///
+    /// note: what has to fit is [`Content::byte_len`] and what is cut is [`Content::to_text`],
+    /// which are the same string for text and for JSON and are not for blocks: a turn whose
+    /// words fit but whose tool calls do not is over the limit, and the number reported counts
+    /// everything that went.
     pub fn truncate_to(&mut self, limit: usize) -> Option<usize> {
-        let text = self.to_text();
-        if text.len() <= limit {
+        let whole = self.byte_len();
+        if whole <= limit {
             return None;
         }
+        let text = self.to_text();
 
         // the note's own length depends on the number it reports, so settle on a cut that fits
         // before committing to one
@@ -100,7 +154,7 @@ impl Content {
             while cut > 0 && !text.is_char_boundary(cut) {
                 cut -= 1;
             }
-            let dropped = text.len() - cut;
+            let dropped = whole - cut;
             let note = format!("\n[... {dropped} bytes truncated by nachalnik ...]");
 
             if cut + note.len() <= limit {
@@ -112,7 +166,7 @@ impl Content {
                 while cut > 0 && !text.is_char_boundary(cut) {
                     cut -= 1;
                 }
-                break (text[..cut].to_owned(), text.len() - cut);
+                break (text[..cut].to_owned(), whole - cut);
             }
             cut -= 1;
         };
@@ -160,6 +214,78 @@ impl fmt::Display for Content {
     }
 }
 
+/// One piece of an assistant turn, in the position the model produced it in.
+///
+/// note: three variants, because three things interleave in a turn: what the model thought, what
+/// it said, and what it asked for. A dialect that keeps their order - Anthropic's content blocks,
+/// a reasoning model that thinks again between two calls - cannot be expressed by a message with
+/// one content slot, one reasoning slot and a flat list of calls, however cleverly it is
+/// projected. The order is itself the information, and this is where it goes.
+///
+/// note: nothing here is new *state*. A [`Block::Call`] is the same [`ToolCall`] a conventional
+/// turn carries, with the same `extra` for whatever a provider attaches to it; a
+/// [`Block::Reasoning`] holding [`Content::Json`] is how a signed or encrypted thinking block
+/// travels back verbatim, which is the same trick [`Message::reasoning`] already turns. What is
+/// new is that they are in a list, in order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Block {
+    /// Something the model said.
+    Text(Content),
+    /// Something the model thought.
+    Reasoning(Content),
+    /// A tool the model asked for, where it asked for it.
+    Call(ToolCall),
+}
+
+impl Block {
+    /// Returns the name of the block, as used in reports.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Text(_) => "text",
+            Self::Reasoning(_) => "reasoning",
+            Self::Call(_) => "call",
+        }
+    }
+
+    /// Returns the call, if this is [`Block::Call`].
+    pub fn call(&self) -> Option<&ToolCall> {
+        match self {
+            Self::Call(call) => Some(call),
+            _ => None,
+        }
+    }
+
+    /// Returns the text the model uttered, if this is [`Block::Text`].
+    ///
+    /// note: not [`Block::Reasoning`], which is the thing the model did *not* say out loud. The
+    /// difference is what keeps [`Content::to_text`] from handing a provider the model's own
+    /// thinking to send back as content.
+    pub fn said(&self) -> Option<&Content> {
+        match self {
+            Self::Text(content) => Some(content),
+            _ => None,
+        }
+    }
+
+    /// Returns the model's thinking, if this is [`Block::Reasoning`].
+    pub fn thought(&self) -> Option<&Content> {
+        match self {
+            Self::Reasoning(content) => Some(content),
+            _ => None,
+        }
+    }
+
+    /// Returns the size of the block in bytes, in the form it would be sent in.
+    pub fn byte_len(&self) -> usize {
+        match self {
+            Self::Text(content) | Self::Reasoning(content) => content.byte_len(),
+            Self::Call(call) => call.byte_len(),
+        }
+    }
+}
+
 /// The role a [`Message`] is attributed to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -203,18 +329,23 @@ impl fmt::Display for Role {
 /// [`Projector`] every time a request is built. The context items are the state - see
 /// [`Context`].
 ///
-/// note: One content slot, one optional reasoning, and a flat list of tool calls - not an ordered
-/// sequence of typed blocks. That is a ceiling on what swapping the [`Projector`] can reach, and
-/// it is worth saying exactly where it falls rather than leaving somebody to find it. A dialect
-/// that puts tool results inside a user turn, or keeps thinking-only turns, or flattens the whole
-/// conversation into one string, is a projector away: each of those is a decision about which
-/// items become which messages, which is precisely what a projector decides. A dialect whose
-/// assistant turn is an *ordered* list of blocks - thinking, text, a tool call, more thinking
-/// before the next one - is not. There the order is itself the information, and there is nowhere
-/// in this struct to put it: a provider for such an API reassembles a conventional order
-/// (reasoning, then content, then calls) and is right until the model interleaves them. Lifting
-/// that means blocks in [`Content`], which is a change to what the whole context holds rather
-/// than to how it is projected.
+/// note: a turn is recorded one of two ways, and never both. The conventional one is these three
+/// slots - a content, an optional reasoning, a flat list of calls - which is the dialect most
+/// APIs speak. The other is [`Content::Blocks`] in the content slot, an ordered sequence of
+/// thinking, text and calls, for a dialect where the order is itself the information: thinking,
+/// a sentence, a call, more thinking before the next one. A turn recorded that way leaves
+/// [`Message::reasoning`] and [`Message::tool_calls`] empty, so that there is never a second
+/// account of it to disagree with the first, and [`Message::calls`] is what reads either.
+///
+/// note: which of the two a request carries is [`LinearProjector::send_blocks`], and that really
+/// is a decision a [`Projector`] gets to make now - a dialect that puts tool results inside a
+/// user turn, or keeps thinking-only turns, or flattens everything into one string, or wants the
+/// order, is a projector away. What a projector still cannot do is invent an order that was never
+/// recorded: a turn that arrived through a provider speaking the three-slot dialect has no order
+/// to carry, and flattening one that does is lossy and says so in [`Projection::repairs`].
+///
+/// [`LinearProjector::send_blocks`]: crate::LinearProjector::send_blocks
+/// [`Projection::repairs`]: crate::Projection::repairs
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     /// Who the message is attributed to.
@@ -281,6 +412,31 @@ impl Message {
         }
     }
 
+    /// Returns the tool calls this message carries, wherever they are recorded.
+    ///
+    /// note: this, rather than the [`Message::tool_calls`] field, is what a [`Provider`] should
+    /// read. A turn projected as [`Content::Blocks`] keeps its calls in the blocks, in the order
+    /// the model asked for them, and leaves that field empty; a provider reading the field
+    /// directly would send a request with the text of a turn and none of the calls in it, which
+    /// most APIs reject and which is very hard to see afterwards. Blocks win where there are
+    /// any - there is never both.
+    pub fn calls(&self) -> impl Iterator<Item = &ToolCall> {
+        let blocks = self.blocks();
+        let flat = match blocks {
+            Some(_) => None,
+            None => Some(&self.tool_calls[..]),
+        };
+
+        flat.into_iter()
+            .flatten()
+            .chain(blocks.into_iter().flatten().filter_map(Block::call))
+    }
+
+    /// Returns the ordered blocks of this message, if it is carrying any.
+    pub fn blocks(&self) -> Option<&[Block]> {
+        self.content.as_ref().and_then(Content::as_blocks)
+    }
+
     /// Creates a [`Role::Tool`] message answering the given call.
     pub fn tool_result(
         call: ToolCallId,
@@ -317,6 +473,22 @@ impl From<&str> for ToolCallId {
 impl fmt::Display for ToolCallId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+/// The bytes a JSON value serializes to.
+///
+/// note: it is walked to be measured, but it does not have to be *built*: this counts the bytes
+/// as they are written and throws them away. Token counting runs over every tool schema on every
+/// request, and rendering each one into a string that is immediately dropped is a cost worth not
+/// paying.
+fn json_len(value: &Value) -> usize {
+    let mut counted = Counting(0);
+    match serde_json::to_writer(&mut counted, value) {
+        Ok(()) => counted.0,
+        // a `Value` that will not serialize is not a thing that exists, but guessing is better
+        // than panicking in a size estimate
+        Err(_) => 0,
     }
 }
 
@@ -389,6 +561,22 @@ impl ToolCall {
     pub fn with_extra(mut self, extra: impl Into<Arc<Value>>) -> Self {
         self.extra = extra.into();
         self
+    }
+
+    /// Returns the size of the call in bytes: the tool's name, its arguments, and whatever the
+    /// provider attached to it.
+    ///
+    /// note: a call is not free and a turn whose text is empty is not a turn that costs nothing -
+    /// the model wrote the arguments, and they go out on every request that follows. This is the
+    /// figure [`TokenCounter::count_item`](crate::TokenCounter::count_item) has always added on
+    /// top of the content, said once so that a [`Block::Call`] can be measured the same way.
+    pub fn byte_len(&self) -> usize {
+        let extra = match self.extra.is_null() {
+            true => 0,
+            false => json_len(&self.extra),
+        };
+
+        self.tool.len() + json_len(&self.args) + extra
     }
 }
 
@@ -495,6 +683,52 @@ impl ModelResponse {
             usage: None,
             raw: None,
         }
+    }
+
+    /// Creates a response whose turn is an ordered sequence of blocks.
+    ///
+    /// note: the [`StopReason`] is derived rather than asked for, because with the blocks in hand
+    /// there is nothing to ask: a turn containing a call is a turn the model expects to be
+    /// answered. Override it afterwards where the provider said something else.
+    ///
+    /// note: [`ModelResponse::reasoning`] and [`ModelResponse::tool_calls`] are left empty, and
+    /// have to be: they are the other way of recording the same turn, and a response carrying
+    /// both would be two accounts of it. [`ModelResponse::calls`] reads whichever is in use.
+    pub fn blocks(blocks: impl IntoIterator<Item = Block>) -> Self {
+        let content = Content::blocks(blocks);
+        let stop = match content
+            .as_blocks()
+            .is_some_and(|b| b.iter().any(|b| b.call().is_some()))
+        {
+            true => StopReason::ToolUse,
+            false => StopReason::EndTurn,
+        };
+
+        Self {
+            content: Some(content),
+            reasoning: None,
+            tool_calls: Vec::new(),
+            stop,
+            usage: None,
+            raw: None,
+        }
+    }
+
+    /// Returns the tools the model asked for, wherever they are recorded.
+    ///
+    /// note: the kernel reads this rather than the [`ModelResponse::tool_calls`] field, so that a
+    /// provider which reports an ordered turn gets its calls gated, run and recorded like any
+    /// other. See [`Message::calls`].
+    pub fn calls(&self) -> impl Iterator<Item = &ToolCall> {
+        let blocks = self.content.as_ref().and_then(Content::as_blocks);
+        let flat = match blocks {
+            Some(_) => None,
+            None => Some(&self.tool_calls[..]),
+        };
+
+        flat.into_iter()
+            .flatten()
+            .chain(blocks.into_iter().flatten().filter_map(Block::call))
     }
 }
 

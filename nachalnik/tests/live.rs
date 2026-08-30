@@ -62,9 +62,9 @@ use std::{
 };
 
 use nachalnik::{
-    BoxError, BytesPerToken, Calibrating, Capability, Config, Content, ContextItem, ContextKind,
-    ContextState, Delta, Event, Grant, Kernel, OutputSink, Params, Record, Role, State, StopReason,
-    Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
+    Block, BoxError, BytesPerToken, Calibrating, Capability, Config, Content, ContextItem,
+    ContextKind, ContextState, Delta, Event, Grant, Kernel, LinearProjector, OutputSink, Params,
+    Record, Role, State, StopReason, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
     selectors::Selector,
     test::{AllowAll, DenyAll, LargestFirstCompactor},
 };
@@ -1136,4 +1136,185 @@ async fn an_interrupt_stops_a_stream_that_is_watching() {
     assert!(!kernel.state().is_busy());
     kernel.step().await.unwrap();
     assert!(!kernel.is_interrupted());
+}
+
+// ------------------------------------------------------------ an assistant turn with an order
+
+/// A turn no OpenAI-compatible model can produce, because the dialect cannot express it:
+/// thinking, a sentence, a call, another sentence after the call.
+///
+/// note: recorded by hand, and that is the point rather than a shortcut. What these tests are for
+/// is whether a *real* API accepts what this crate builds out of such a turn - flattened back
+/// into three slots by the default projector, and left as blocks by one told to send them - and
+/// there is no need for a provider that speaks a block dialect to find that out. The wire format
+/// on the other side is the same either way; what differs is whether the projector or the
+/// provider is the one that flattened it, and only one of those is under test here.
+fn ordered_turn(call: &ToolCall) -> ContextItem {
+    ContextItem::assistant(
+        Content::blocks([
+            Block::Reasoning(Content::text(
+                "the tool is the only place that word can come from",
+            )),
+            Block::Text(Content::text("Looking it up.")),
+            Block::Call(call.clone()),
+            Block::Text(Content::text("That should be the one.")),
+        ]),
+        Vec::new(),
+    )
+}
+
+#[tokio::test]
+async fn an_ordered_turn_is_a_request_a_real_api_accepts() {
+    let _serial = serialize().await;
+    let (kernel, _provider) = live!();
+
+    // registered so that the request declares a tool, which is what makes a tool message in the
+    // history legal; the model is free to call it as well, and gets the same word either way
+    kernel.add_tool(Secret::new("The secret code word is APRICOT."));
+
+    let asked = ToolCall::new("call_apricot", "secret", json!({}));
+    kernel.push(ContextItem::user(
+        "Use the secret tool and tell me the code word.",
+    ));
+    let turn = kernel.push(ordered_turn(&asked));
+    kernel.push(ContextItem::tool_result(
+        asked.id.clone(),
+        "secret",
+        "The secret code word is APRICOT.",
+        false,
+    ));
+
+    // the same context, projected both ways, against the same API
+    for send_blocks in [false, true] {
+        kernel.set_projector(Arc::new(LinearProjector {
+            send_blocks,
+            ..Default::default()
+        }));
+        kernel.push(ContextItem::user(
+            "What is the code word? Answer with the single word and nothing else.",
+        ));
+
+        let sent = kernel.preview_request().unwrap();
+        let assistant = sent
+            .messages
+            .iter()
+            .find(|message| message.role == Role::Assistant)
+            .unwrap_or_else(|| panic!("send_blocks: {send_blocks}, {:?}", sent.messages));
+        // wherever the projector put it, the call is in the request - and `calls()` is how a
+        // provider finds it, which is the whole of what keeps the two shapes interchangeable
+        assert_eq!(
+            assistant.calls().map(|call| &call.id).collect::<Vec<_>>(),
+            [&asked.id],
+            "send_blocks: {send_blocks}"
+        );
+        assert_eq!(assistant.blocks().is_some(), send_blocks);
+
+        let state = turn!(kernel);
+        assert!(
+            matches!(state, State::Finished { .. }),
+            "send_blocks: {send_blocks}, {state:?}"
+        );
+        // the API accepted a request built from a turn whose order was recorded, and the model
+        // read the result the call in it was answered with
+        assert!(
+            answer(&kernel).contains("apricot"),
+            "send_blocks: {send_blocks}, said: {}",
+            answer(&kernel)
+        );
+    }
+
+    // and none of that changed the record: the order is still in the context, whatever each
+    // request made of it
+    let recorded = kernel.item(turn).unwrap();
+    assert_eq!(
+        recorded
+            .content
+            .as_blocks()
+            .expect("still blocks")
+            .iter()
+            .map(Block::name)
+            .collect::<Vec<_>>(),
+        ["reasoning", "text", "call", "text"]
+    );
+}
+
+#[tokio::test]
+async fn flattening_an_ordered_turn_reports_what_it_cost() {
+    let _serial = serialize().await;
+    let (kernel, _provider) = live!();
+
+    kernel.add_tool(Secret::new("The secret code word is APRICOT."));
+    let asked = ToolCall::new("call_apricot", "secret", json!({}));
+    kernel.push(ContextItem::user("Use the secret tool."));
+    kernel.push(ordered_turn(&asked));
+    kernel.push(ContextItem::tool_result(
+        asked.id.clone(),
+        "secret",
+        "The secret code word is APRICOT.",
+        false,
+    ));
+    kernel.push(ContextItem::user("What is the code word?"));
+
+    // the default projector speaks the three-slot dialect, so the sentence that came *after* the
+    // call arrives before it. That is a real loss and it is on the record rather than quiet
+    let projection = kernel.project();
+    assert!(
+        projection
+            .repairs
+            .iter()
+            .any(|repair| repair.contains("flattened item")),
+        "{:?}",
+        projection.repairs
+    );
+
+    // and it is still a request the API takes
+    let state = turn!(kernel);
+    assert!(matches!(state, State::Finished { .. }), "{state:?}");
+}
+
+#[tokio::test]
+async fn a_reasoning_models_own_turn_comes_back_as_it_went_out() {
+    let _serial = serialize().await;
+    let (kernel, provider) = live!();
+
+    // two turns, so that the second request carries the first turn back. A reasoning model that
+    // signs what it produced - a `thought_signature` on the call, an encrypted item - rejects a
+    // request that returns it altered, so this is the round trip that a mock cannot check
+    kernel.add_tool(Secret::new("The secret code word is APRICOT."));
+    kernel.push(ContextItem::user(
+        "Use the secret tool, then tell me the code word.",
+    ));
+    turn!(kernel);
+
+    let Some(produced) = kernel
+        .items()
+        .into_iter()
+        .find(|item| item.calls().next().is_some())
+    else {
+        eprintln!("skipped: the model never called the tool");
+        return;
+    };
+    let carried: Vec<_> = produced
+        .calls()
+        .map(|call| (call.id.clone(), call.extra.clone()))
+        .collect();
+
+    kernel.push(ContextItem::user("And now say APRICOT again."));
+    let state = turn!(kernel);
+    assert!(matches!(state, State::Finished { .. }), "{state:?}");
+
+    // whatever the provider attached to each call went back out attached to the same call
+    let sent = provider.requests().pop().unwrap();
+    for (id, extra) in &carried {
+        let found = sent
+            .messages
+            .iter()
+            .flat_map(|message| message.calls())
+            .find(|call| &call.id == id)
+            .unwrap_or_else(|| panic!("the call {id} is still in the request"));
+        assert_eq!(&found.extra, extra, "{id} went back as it arrived");
+    }
+    if carried.iter().any(|(_, extra)| !extra.is_null()) {
+        eprintln!("this model signs its calls, and the signature survived the round trip");
+    }
 }

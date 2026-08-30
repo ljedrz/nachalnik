@@ -19,8 +19,8 @@ use crate::{
     error::{Error, Result},
     event::{DeltaSink, Event, OutputSink},
     model::{
-        Content, ModelInfo, ModelRequest, ModelResponse, Params, Provider, StopReason, ToolCall,
-        ToolCallId,
+        Block, Content, ModelInfo, ModelRequest, ModelResponse, Params, Provider, StopReason,
+        ToolCall, ToolCallId,
     },
     permissions::{
         AskAlways, Grant, GrantSource, PermissionId, PermissionPolicy, PermissionRequest, Verdict,
@@ -1390,10 +1390,14 @@ impl Kernel {
         // a model's tool calls are only useful if their identifiers are, and in practice they
         // sometimes are not (a streamed call whose first fragment carried no id, a provider that
         // numbers them all `0`)
-        self.repair_call_ids(&mut response.tool_calls);
+        self.repair_call_ids(&mut response);
 
         let response = Arc::new(response);
         *self.0.last_response.write() = Some(response.clone());
+        // gathered once, because a turn recorded as ordered blocks keeps its calls inside its
+        // content and `response.tool_calls` is empty for it; everything below wants the calls
+        // themselves rather than where they happen to be written down
+        let calls: Vec<ToolCall> = response.calls().cloned().collect();
 
         // note: the reasoning is recorded on the turn that produced it, so that it is counted
         // and prunable like everything else, and so that a provider whose API insists on seeing
@@ -1407,11 +1411,11 @@ impl Kernel {
         self.emit(Event::ModelFinished {
             stop: response.stop.clone(),
             usage: response.usage,
-            tool_calls: response.tool_calls.iter().map(|c| c.id.clone()).collect(),
+            tool_calls: calls.iter().map(|c| c.id.clone()).collect(),
             item,
         });
 
-        let to = if response.tool_calls.is_empty() {
+        let to = if calls.is_empty() {
             let to = State::Finished {
                 item,
                 stop: response.stop.clone(),
@@ -1419,7 +1423,7 @@ impl Kernel {
             self.transition(&mut self.0.machine.lock(), to.clone());
             to
         } else {
-            self.prepare_calls(&response.tool_calls).await
+            self.prepare_calls(&calls).await
         };
         restore.disarm();
 
@@ -1438,7 +1442,39 @@ impl Kernel {
     /// they exist - would otherwise produce a request carrying the same `tool_call_id` twice,
     /// and, worse, one in which pruning a single result silently leaves a call unanswered,
     /// because a set of identifiers cannot tell the two apart.
-    fn repair_call_ids(&self, calls: &mut [ToolCall]) {
+    ///
+    /// note: a turn recorded as ordered blocks keeps its calls in its content, so repairing one
+    /// means rewriting the sequence. That is only done when something actually needed repairing -
+    /// which is almost never - so the ordinary turn pays a walk over its own blocks and nothing
+    /// else.
+    fn repair_call_ids(&self, response: &mut ModelResponse) {
+        let Some(blocks) = response.content.as_ref().and_then(Content::as_blocks) else {
+            self.rename_calls(&mut response.tool_calls);
+            return;
+        };
+
+        let mut calls: Vec<ToolCall> = blocks.iter().filter_map(Block::call).cloned().collect();
+        if !self.rename_calls(&mut calls) {
+            return;
+        }
+
+        let mut renamed = calls.into_iter();
+        let rebuilt: Vec<Block> = blocks
+            .iter()
+            .map(|block| match block {
+                Block::Call(_) => match renamed.next() {
+                    Some(call) => Block::Call(call),
+                    // unreachable: as many went in as came out
+                    None => block.clone(),
+                },
+                _ => block.clone(),
+            })
+            .collect();
+        response.content = Some(Content::Blocks(rebuilt.into()));
+    }
+
+    /// Renames whatever needs renaming, returning whether anything did.
+    fn rename_calls(&self, calls: &mut [ToolCall]) -> bool {
         let mut repairs = Vec::new();
         {
             let mut seen = self.0.seen_calls.lock();
@@ -1480,9 +1516,12 @@ impl Kernel {
             }
         }
 
+        let repaired = !repairs.is_empty();
         for repair in repairs {
             self.emit(repair);
         }
+
+        repaired
     }
 
     /// Matches the model's calls to tools, asks the policy about each, and queues them.

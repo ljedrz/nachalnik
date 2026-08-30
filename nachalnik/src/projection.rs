@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{Context, Kernel};
 use crate::{
     context::{ContextId, ContextItem, ContextKind},
-    model::{Content, Message, Role, ToolCallId},
+    model::{Block, Content, Message, Role, ToolCall, ToolCallId},
 };
 
 /// An item that did not make it into the request, and why.
@@ -77,12 +77,13 @@ pub struct Projection {
 /// }
 /// ```
 ///
-/// note: What a projector decides is which items become which messages, and there is one dialect
-/// that is more than that: an assistant turn that is an ordered list of typed blocks, thinking
-/// interleaved between tool calls. [`Message`] has one content slot and cannot hold that order,
-/// so a provider for such an API reassembles a conventional one and is right until the model
-/// interleaves. See the note on [`Message`]; the fix is blocks in [`Content`], not a cleverer
-/// projector, and it is not made yet.
+/// note: What a projector decides is which items become which messages - and, for an assistant
+/// turn, which of the two shapes it goes out in. A turn can be a content slot, a reasoning slot
+/// and a flat list of calls, or it can be an ordered sequence of [`Block`]s where thinking, text
+/// and calls interleave and the order is part of the message;
+/// [`LinearProjector::send_blocks`] picks. What no projector can do is recover an order that was
+/// never recorded, which is why this is a property of [`Content`] rather than of the projection:
+/// a turn keeps its order from the wire, through the context, to the next request.
 pub trait Projector: Send + Sync {
     /// Projects the items - all of them, in insertion order, whatever their state - into the
     /// messages of a request.
@@ -95,6 +96,27 @@ pub trait Projector: Send + Sync {
     /// is for showing a person, not for matching on: `type_name` makes no stability promise.
     fn name(&self) -> &'static str {
         std::any::type_name::<Self>()
+    }
+}
+
+/// Puts several blocks' worth of content into the one slot a conventional message has.
+///
+/// note: one of them is carried through untouched, which matters more than it looks: a
+/// [`Content::Json`] thinking block is how a signed or encrypted one travels, and a provider that
+/// received it as a string of its own serialization could not send it back. Several can only be
+/// joined as text, which is why [`LinearProjector::send_blocks`] exists and why joining is
+/// reported.
+fn join(parts: Vec<&Content>) -> Option<Content> {
+    match parts.len() {
+        0 => None,
+        1 => Some(parts[0].clone()),
+        _ => Some(Content::text(
+            parts
+                .iter()
+                .map(|content| content.to_text())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )),
     }
 }
 
@@ -148,6 +170,26 @@ pub struct LinearProjector {
     /// purpose - they are the same promise to the model, made at two different limits, and a
     /// model that has learnt to read one reads the other.
     pub elision: &'static str,
+    /// Whether an assistant turn is projected as an ordered sequence of
+    /// [`Block`](crate::Block)s rather than as a content slot, a reasoning slot and a list of
+    /// calls.
+    ///
+    /// note: off by default, because this projector speaks the dialect in which a turn *is* those
+    /// three slots, and that is what every provider built against it reads. Turn it on for an API
+    /// whose assistant turn is a list of typed blocks - thinking, text, a tool call, more thinking
+    /// before the next one - where the order is part of the message.
+    ///
+    /// note: it applies to every assistant turn, not only to the ones that were recorded as
+    /// blocks. A turn recorded the conventional way is assembled into the conventional order -
+    /// thinking, then what was said, then what was asked for - which is the order a provider was
+    /// assuming anyway; so a context holding some of each projects to one shape rather than two.
+    ///
+    /// note: with it off, a turn recorded as blocks is flattened back into the three slots, and
+    /// where that loses something - two thinking blocks joined into one, a sentence that came
+    /// *after* a call - it says so in [`Projection::repairs`] rather than doing it quietly. That
+    /// is the honest version of what a provider used to have to do for itself, and the reason
+    /// this flag exists is that for a signed thinking block it is not good enough.
+    pub send_blocks: bool,
     /// Whether an assistant turn's reasoning is carried back into
     /// [`Message::reasoning`](crate::Message::reasoning).
     ///
@@ -164,6 +206,7 @@ impl Default for LinearProjector {
             label_references: true,
             repair_orphans: true,
             send_reasoning: true,
+            send_blocks: false,
             elision: "elided by nachalnik",
         }
     }
@@ -188,8 +231,11 @@ impl Projector for LinearProjector {
                 ContextKind::ToolResult { call, .. } => {
                     *answers.entry(call.clone()).or_default() += 1;
                 }
-                ContextKind::AssistantMessage { tool_calls, .. } => {
-                    for call in tool_calls {
+                ContextKind::AssistantMessage { .. } => {
+                    // `calls()` rather than the kind's own list: a turn recorded as ordered
+                    // blocks keeps its calls in its content, and pairing that found none there
+                    // would repair away every result it ever got
+                    for call in item.calls() {
                         *calls.entry(call.id.clone()).or_default() += 1;
                     }
                 }
@@ -250,34 +296,77 @@ impl Projector for LinearProjector {
                     tool_calls,
                     reasoning,
                 } => {
-                    let mut kept = Vec::with_capacity(tool_calls.len());
-                    for call in tool_calls {
-                        if !self.repair_orphans || claim(&mut answers, &call.id) {
-                            kept.push(call.clone());
-                        } else {
-                            projection.repairs.push(format!(
-                                "dropped the call `{}` ({}) from item {}: its result is not in the projection",
-                                call.id, call.tool, item.id
-                            ));
-                        }
-                    }
+                    let elided = item.state.is_elided();
 
-                    let content = match said.as_text() {
-                        Some("") => None,
-                        _ => Some(said),
+                    // the turn as one ordered sequence, whichever way it was recorded. For a
+                    // conventional one that is the order every provider has been assuming
+                    // anyway - what it thought, what it said, what it asked for - so flattening
+                    // it back below reproduces exactly what came in; for one recorded as blocks
+                    // it is the order the model actually produced, which is the whole point.
+                    // Doing it in two steps rather than four arms is what keeps the repair, the
+                    // elision and the skip rule from being written twice
+                    let recorded: Vec<Block> = match item.content.as_blocks() {
+                        Some(blocks) => blocks.to_vec(),
+                        None => {
+                            let mut assembled = Vec::with_capacity(tool_calls.len() + 2);
+                            assembled.extend(reasoning.clone().map(Block::Reasoning));
+                            // an empty text is no text at all - but an elided turn still gets
+                            // its marker, which is the whole of what elision leaves behind
+                            if elided || item.content.as_text() != Some("") {
+                                assembled.push(Block::Text(item.content.clone()));
+                            }
+                            assembled.extend(tool_calls.iter().cloned().map(Block::Call));
+
+                            assembled
+                        }
                     };
 
-                    if content.is_none() && kept.is_empty() {
+                    let mut kept: Vec<Block> = Vec::with_capacity(recorded.len());
+                    let mut marked = false;
+                    for block in recorded {
+                        match &block {
+                            Block::Call(call) => {
+                                if !self.repair_orphans || claim(&mut answers, &call.id) {
+                                    kept.push(block);
+                                } else {
+                                    projection.repairs.push(format!(
+                                        "dropped the call `{}` ({}) from item {}: its result is not in the projection",
+                                        call.id, call.tool, item.id
+                                    ));
+                                }
+                            }
+                            Block::Reasoning(_) if !self.send_reasoning => {}
+                            // an elided turn loses what it *said* and keeps everything else: the
+                            // calls still answer their results, so the turn keeps its shape
+                            Block::Text(_) if elided => {
+                                if !marked {
+                                    kept.push(Block::Text(said.clone()));
+                                    marked = true;
+                                }
+                            }
+                            _ => kept.push(block),
+                        }
+                    }
+                    // a turn recorded as blocks need not have had any text to mark
+                    if elided && !marked {
+                        kept.insert(0, Block::Text(said.clone()));
+                    }
+
+                    let calls: Vec<ToolCall> =
+                        kept.iter().filter_map(Block::call).cloned().collect();
+                    let spoke: Vec<&Content> = kept.iter().filter_map(Block::said).collect();
+
+                    if spoke.is_empty() && calls.is_empty() {
                         // note: a turn that is *nothing but* reasoning goes too, because this
                         // projector speaks the dialect in which an assistant message with no
                         // content is rejected. A provider whose API keeps thinking-only turns -
                         // and some do - wants a projector of its own; the reasoning is still in
                         // the context either way, which is why this says so out loud
-                        let reason = match reasoning {
-                            Some(_) => {
+                        let reason = match kept.is_empty() {
+                            false => {
                                 "an assistant turn with no content and no answered calls, so its reasoning goes with it"
                             }
-                            None => "an assistant turn with no content and no answered calls",
+                            true => "an assistant turn with no content and no answered calls",
                         };
                         projection.skipped.push(Skipped {
                             id: item.id,
@@ -286,9 +375,39 @@ impl Projector for LinearProjector {
                         continue;
                     }
 
-                    let reasoning = self.send_reasoning.then(|| reasoning.clone()).flatten();
+                    if self.send_blocks {
+                        projection.included.push(item.id);
+                        projection.messages.push(Message::assistant(
+                            Some(Content::Blocks(kept.into())),
+                            Vec::new(),
+                        ));
+                        continue;
+                    }
 
-                    Message::assistant(content, kept).with_reasoning(reasoning)
+                    // flattening into the three slots, and saying so where it costs something:
+                    // two thinking blocks joined into one is a signature destroyed, and a
+                    // sentence that came after a call arrives before it
+                    if item.content.as_blocks().is_some() {
+                        let thoughts = kept.iter().filter(|b| b.thought().is_some()).count();
+                        let interleaved = kept
+                            .iter()
+                            .skip_while(|block| block.call().is_none())
+                            .any(|block| block.call().is_none());
+                        if interleaved || spoke.len() > 1 || thoughts > 1 {
+                            projection.repairs.push(format!(
+                                "flattened item {} out of {} ordered block(s): this projector \
+                                 sends one content slot, one reasoning slot and a list of calls, \
+                                 so their order is not carried",
+                                item.id,
+                                kept.len(),
+                            ));
+                        }
+                    }
+
+                    let content = join(spoke);
+                    let reasoning = join(kept.iter().filter_map(Block::thought).collect());
+
+                    Message::assistant(content, calls).with_reasoning(reasoning)
                 }
                 ContextKind::ToolResult { call, tool, .. } => {
                     if self.repair_orphans && !claim(&mut calls, call) {

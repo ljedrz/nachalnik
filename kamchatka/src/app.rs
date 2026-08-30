@@ -364,12 +364,14 @@ impl App {
         for item in &items {
             match &item.kind {
                 ContextKind::UserMessage => self.say(Speaker::User, item.content.to_text()),
-                ContextKind::AssistantMessage { tool_calls, .. } => {
+                ContextKind::AssistantMessage { .. } => {
                     let text = item.content.to_text();
                     if !text.trim().is_empty() {
                         self.say(Speaker::Model, text);
                     }
-                    for call in tool_calls {
+                    // `calls()`, so a turn the provider recorded as ordered blocks reads back
+                    // with the tools it asked for rather than as bare text
+                    for call in item.calls() {
                         let args = one_line(&call.args.to_string());
                         self.say(Speaker::Call, format!("{}({args})", call.tool));
                     }

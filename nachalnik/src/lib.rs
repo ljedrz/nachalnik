@@ -156,6 +156,13 @@
 //!   [`ContextState::Elided`] is the third answer between in and out: the item stays in the
 //!   request as a short marker, so a tool result can stop costing what it holds without the
 //!   call that asked for it having to be taken off the record to keep the request valid.
+//! - An assistant turn is recorded the way the model produced it. Where a provider reports a
+//!   content slot, a reasoning slot and a list of calls, that is what the item holds; where it
+//!   reports an ordered sequence - thinking, a sentence, a call, more thinking before the next
+//!   one - the item holds [`Content::Blocks`], because the order is part of the message and a
+//!   context that flattened it on the way in could never project it back out.
+//!   [`LinearProjector::send_blocks`] decides which shape the next request goes out in, and
+//!   flattening says in [`Projection::repairs`] where it cost something.
 //! - [`Projection`] is what the context turns into on the wire, complete with what was left out
 //!   and why.
 //! - [`Event`] is everything that happens - including every state transition - broadcast live
@@ -207,7 +214,7 @@ pub use crate::{
     event::{Delta, DeltaSink, Event, OutputSink},
     kernel::{Kernel, State, StateChange},
     model::{
-        Content, Message, ModelInfo, ModelRequest, ModelResponse, Params, Provider, Role,
+        Block, Content, Message, ModelInfo, ModelRequest, ModelResponse, Params, Provider, Role,
         StopReason, ToolCall, ToolCallId, Usage,
     },
     permissions::{

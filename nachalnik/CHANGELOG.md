@@ -5,6 +5,49 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- `Content::Blocks`, and the `Block` enum it holds: an assistant turn as the *ordered* sequence
+  the model produced it in - thinking, a sentence, a tool call, another sentence after it. Some
+  APIs make that order part of the message, and a turn with one content slot, one reasoning slot
+  and a flat list of calls cannot express it however cleverly it is projected. It is a variant of
+  `Content` rather than a field on `Message` because content is the one thing a `ModelResponse`, a
+  `ContextItem` and a `Message` all carry, so the order survives the whole way from the wire, into
+  the context where it can be counted and pruned, and back out again; a field on `Message` would
+  have been a shape the context could not hold, and a projector cannot recover an order that was
+  never recorded.
+- `Message::calls`, `ModelResponse::calls` and `ContextItem::calls`: the tool calls a turn asked
+  for, wherever they are recorded. A turn is recorded *either* the conventional way *or* as
+  blocks, never both, so nothing can disagree - and these are what the kernel, the projector and a
+  provider should read. A provider reading the `tool_calls` field directly would send the words of
+  an ordered turn with none of the calls in it, which most APIs reject and which is very hard to
+  see afterwards.
+- `LinearProjector::send_blocks`, off by default: whether an assistant turn is projected as
+  blocks or flattened into the three slots this projector's dialect has. On, every assistant turn
+  goes out as blocks - a conventional one assembled into the conventional order - so a context
+  holding some of each projects to one shape rather than two. Off, a turn recorded as blocks is
+  flattened, and where that loses something (two thinking blocks joined into one, a sentence that
+  came after a call arriving before it) it is reported in `Projection::repairs` instead of being
+  done quietly. That is the honest version of the reassembly a provider used to have to do for
+  itself, and for a signed thinking block it is not good enough, which is why the flag exists.
+- `Block::name` / `call` / `said` / `thought` / `byte_len`, `Content::blocks` / `as_blocks`,
+  `Message::blocks`, `ModelResponse::blocks`, and `ToolCall::byte_len` - the last one says once
+  what a call costs, which `TokenCounter::count_item` has always added on top of the content.
+
+### changed
+
+- `Content::to_text` on blocks is what the turn *said* - the text blocks, joined with a newline -
+  and not what it costs: thinking is not something the model uttered, and a provider putting it in
+  a `content` field would be sending the model its own reasoning back as if it had. `byte_len`
+  counts all of it, calls included, and `truncate_to` measures against that, so a turn whose words
+  fit but whose calls do not is over the limit and the number it reports is everything that went.
+- `Kernel::repair_call_ids` repairs a call wherever it lives, rewriting the sequence when one is
+  inside a turn's blocks - and only when something actually needed repairing.
+- The OpenAI-compatible providers in `nachalnik-utils` and `kamchatka` render a message's calls
+  through `Message::calls`, so an ordered turn projected at them still goes out with its calls.
+
 ## [0.1.0] - 2026-08-29
 
 The first release: an agent loop as a state machine, with the context, the tools, the permissions
