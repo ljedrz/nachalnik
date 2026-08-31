@@ -245,11 +245,7 @@ async fn terminal() -> Result<()> {
         // a resumed session has a conversation in it already, and it would be strange to have to
         // read it out of the context pane one item at a time
         true => app.replay(),
-        false => app.say(
-            Speaker::Note,
-            "tab moves to the context · ctrl+t swaps it for the trace · ctrl+p shows the \
-             next request · F1 lists the keys",
-        ),
+        false => app.say(Speaker::Note, ui::GREETING),
     }
     if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
         app.say(Speaker::User, &message);

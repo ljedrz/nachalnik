@@ -34,6 +34,11 @@ minor bump may break you.
 
 ### fixed
 
+- The first line of a new session was wrong in both halves. `tab moves to the context` is
+  something tab has never done - on the chat tab there is nothing to move the focus to, so it
+  does nothing at all - and `ctrl+t swaps it for the trace` describes the second press, not the
+  first. It is `ui::GREETING` now, beside `HELP` and for the same reason: a test checks that the
+  keys it names do what it says they do, and that F1 lists every one of them.
 - `ctrl+p` in a session nobody had typed into yet answered with `the context projects to an empty
   request`. That is the runtime's own sentence for a rule it is enforcing correctly - `step`
   refuses to send a request with no messages - but it is the wrong answer to "what would go

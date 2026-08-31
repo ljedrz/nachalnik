@@ -28,6 +28,16 @@ use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::app::{App, Focus, Overlay, Page, Speaker, Tab};
 
+/// The first line of a session that is not being resumed.
+///
+/// note: `pub` for the same reason [`HELP`] is: so that a test can check that what somebody is
+/// told on their first screen is what the keys actually do. It used to open with `tab moves to
+/// the context`, which tab has never done - on the chat tab there is nothing to move the focus
+/// to, so it does nothing at all - and it went on to offer `ctrl+t` for the trace, which is two
+/// presses away rather than one. The first sentence anybody reads was wrong in both halves.
+pub const GREETING: &str = "ctrl+t opens the context, and again the trace · alt+1 comes back · \
+                            ctrl+p shows the next request · F1 lists the keys";
+
 /// What the keys do, shown by F1.
 ///
 /// note: `pub` so that a test can read it rather than trying to count things on a screen it does

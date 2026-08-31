@@ -3179,3 +3179,35 @@ async fn the_next_request_says_why_there_is_none_rather_than_reporting_a_fault()
     );
     assert!(screen.contains("not one of the 1 item(s)"), "{screen}");
 }
+
+#[tokio::test]
+async fn the_first_line_of_a_session_names_keys_that_do_what_it_says() {
+    let mut harness = Harness::new([]);
+    harness.app.say(Speaker::Note, ui::GREETING);
+    let screen = harness.screen();
+    assert!(screen.contains("ctrl+t"), "{screen}");
+
+    // it opened with `tab moves to the context`, which tab has never done: on the chat tab there
+    // is nothing to move the focus to
+    harness.press(KeyCode::Tab).await;
+    assert_eq!(harness.app.tab, Tab::Chat, "tab does not open a tab");
+
+    // what it names now is what happens, in the order it names it
+    harness.chord(KeyCode::Char('t')).await;
+    assert_eq!(harness.app.tab, Tab::Context);
+    harness.chord(KeyCode::Char('t')).await;
+    assert_eq!(harness.app.tab, Tab::Trace);
+    harness
+        .app
+        .on_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::ALT))
+        .await;
+    assert_eq!(harness.app.tab, Tab::Chat);
+
+    // and every key it names is one F1 lists, which is itself checked against the code
+    for key in ["ctrl+t", "alt+1", "ctrl+p", "F1"] {
+        assert!(
+            ui::HELP.contains(key) || ui::HELP.contains(&key.to_lowercase()),
+            "the greeting offers `{key}` and the help does not mention it"
+        );
+    }
+}
