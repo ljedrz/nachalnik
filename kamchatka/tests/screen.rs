@@ -161,6 +161,25 @@ impl Harness {
         panic!("`{needle}` is not on the screen");
     }
 
+    /// Which of the three working dots is the lit one.
+    fn dots(&mut self) -> usize {
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| ui::draw(frame, &mut self.app))
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+
+        let row = buffer.area.height - 1;
+        let dots: Vec<u16> = (0..buffer.area.width)
+            .filter(|x| buffer[(*x, row)].symbol() == "•")
+            .collect();
+        assert_eq!(dots.len(), 3, "three dots, or none at all");
+
+        dots.iter()
+            .position(|x| buffer[(*x, row)].fg == Color::Yellow)
+            .expect("one of them is lit")
+    }
+
     /// Draws at a given size.
     fn sized(&mut self, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -3210,4 +3229,43 @@ async fn the_first_line_of_a_session_names_keys_that_do_what_it_says() {
             "the greeting offers `{key}` and the help does not mention it"
         );
     }
+}
+
+#[tokio::test]
+async fn a_session_that_is_working_says_so_with_something_that_moves() {
+    let mut harness = Harness::new([]);
+
+    // nothing is happening, so nothing moves: the marker is not decoration on a resting line
+    assert!(!harness.screen().contains('•'), "{}", harness.screen());
+
+    harness.app.busy = true;
+    let lit = |harness: &mut Harness, ms: u64| -> usize {
+        harness.app.since = std::time::Instant::now()
+            .checked_sub(Duration::from_millis(ms))
+            .expect("a clock with some road behind it");
+        harness.dots()
+    };
+
+    // three dots, and which one is lit comes from the clock rather than from a frame counter -
+    // so it moves at the same rate whatever the screen is doing, and stops where it is if the
+    // screen stops being drawn at all, which is the one thing it is there to make visible
+    let first = lit(&mut harness, 0);
+    let second = lit(&mut harness, 300);
+    let third = lit(&mut harness, 600);
+    assert_ne!(first, second, "the lit dot did not move");
+    assert_ne!(second, third, "the lit dot did not move on");
+    assert_eq!(lit(&mut harness, 840), first, "and it goes round");
+
+    // a short turn stays clean; a long one says how long, because "is it hung?" is the question
+    // the marker raises and cannot answer on its own
+    harness.app.since = std::time::Instant::now();
+    assert!(!harness.screen().contains("0s ·"), "{}", harness.screen());
+    harness.app.since = std::time::Instant::now()
+        .checked_sub(Duration::from_secs(42))
+        .expect("a clock");
+    assert!(harness.screen().contains("42s"), "{}", harness.screen());
+
+    // and it goes when the work does
+    harness.app.busy = false;
+    assert!(!harness.screen().contains('•'), "{}", harness.screen());
 }

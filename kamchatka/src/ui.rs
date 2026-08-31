@@ -12,6 +12,8 @@
 //! a row per undecided thing: `ask` is what this policy does when nobody has told it anything, and
 //! a screenful of it buries the one line that says what can happen without stopping.
 
+use std::time::Duration;
+
 use nachalnik::{ContextKind, ContextState, Kernel, State, Verdict};
 use ratatui::{
     Frame,
@@ -920,13 +922,19 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
     let dim = quiet();
-    let mut spans = vec![match app.busy {
-        true => Span::styled(
-            format!(" {} ", state_name(&app.kernel)),
-            Style::default().fg(Color::Yellow),
-        ),
-        false => Span::styled(format!(" {} ", state_name(&app.kernel)), dim),
-    }];
+    let mut spans = match app.busy {
+        true => {
+            let mut working = vec![Span::styled(
+                format!(" {} ", state_name(&app.kernel)),
+                Style::default().fg(Color::Yellow),
+            )];
+            working.extend(waiting(app.since.elapsed()));
+            working.push(Span::raw(" "));
+
+            working
+        }
+        false => vec![Span::styled(format!(" {} ", state_name(&app.kernel)), dim)],
+    };
 
     let mut add = |text: String, style: Style| {
         spans.push(Span::styled("· ", dim));
@@ -1028,6 +1036,44 @@ fn shrink_host(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> {
             Span::styled(shortened, style)
         })
         .collect()
+}
+
+/// How long each of the three dots stays lit.
+const BLINK: Duration = Duration::from_millis(280);
+
+/// How long a wait has to last before the marker also says how long it has been.
+const AT_LENGTH: Duration = Duration::from_secs(5);
+
+/// Three dots with one of them lit, moving; and after a while, the seconds.
+///
+/// note: which dot is lit comes from the clock rather than from a frame counter, so it moves at
+/// the same speed whatever the screen is doing - and stops where it is if the screen stops being
+/// drawn at all. That is the point of it: `asking` on its own is the same word whether a request
+/// is in flight or the program is wedged, and the two were indistinguishable.
+///
+/// note: the seconds only after five of them. A turn that answers in two should not leave a
+/// number flickering on the line, and one that has been going for ninety should not make somebody
+/// guess at how long they have been waiting - which is the question the marker raises and cannot
+/// answer on its own.
+fn waiting(elapsed: Duration) -> Vec<Span<'static>> {
+    let lit = (elapsed.as_millis() / BLINK.as_millis()) as usize % 3;
+    let mut spans: Vec<Span<'static>> = (0..3)
+        .map(|n| {
+            Span::styled(
+                "•",
+                match n == lit {
+                    true => Style::default().fg(Color::Yellow).bold(),
+                    false => faint(),
+                },
+            )
+        })
+        .collect();
+
+    if elapsed >= AT_LENGTH {
+        spans.push(Span::styled(format!(" {}s", elapsed.as_secs()), quiet()));
+    }
+
+    spans
 }
 
 /// What the runtime is doing, in one word.

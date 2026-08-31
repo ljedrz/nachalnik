@@ -55,6 +55,17 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 the status line are under all of them, so a message can be sent from anywhere and the budget is
 always in view.
 
+```text
+ asking ••• 42s · gemini-3.6-flash @ generativelanguage… · ~13,204 tokens, 10.3% (128k)
+```
+
+While the runtime is working, three dots move under the word for what it is doing, and after five
+seconds they are joined by how long it has been. Which dot is lit comes from the clock rather than
+from a frame counter, so it stops where it is if the screen stops being drawn — `asking` on its
+own is the same word whether a request is in flight or the program is wedged, and the marker is
+there to tell the two apart. It is absent while the runtime is resting, including when it is
+waiting on **you**: nothing should suggest work is happening while a question sits unanswered.
+
 **chat** is the conversation, and every terminal agent has one. **context** is why this exists:
 
 ```text

@@ -199,6 +199,13 @@ pub enum Outcome {
 pub struct App {
     /// The runtime.
     pub kernel: Kernel,
+    /// When the runtime last started doing something, for the marker that says it still is.
+    ///
+    /// note: read at draw time rather than counted in frames, so the marker keeps time with the
+    /// world instead of with the redraw rate - and so that it stops dead if the screen stops
+    /// being drawn, which is the one thing it exists to make visible.
+    pub since: Instant,
+
     /// The policy, which the permission overlay teaches.
     pub policy: Arc<Careful>,
     /// The provider, for switching models - whichever dialect it speaks.
@@ -329,6 +336,7 @@ impl App {
             chosen: 0,
             grants: ratatui::widgets::ListState::default(),
             interrupting: false,
+            since: Instant::now(),
             typing: Instant::now(),
             typed_ahead: None,
             streamed: false,
@@ -488,6 +496,7 @@ impl App {
         }
 
         self.busy = true;
+        self.since = Instant::now();
         self.stepping = false;
         self.interrupting = false;
         let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
@@ -512,6 +521,7 @@ impl App {
         }
 
         self.busy = true;
+        self.since = Instant::now();
         self.stepping = true;
         self.interrupting = false;
         let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());

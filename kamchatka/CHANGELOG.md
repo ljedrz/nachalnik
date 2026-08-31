@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### added
 
+- A marker that says the runtime is still working: three dots under `asking` or `running`, one of
+  them lit and moving, joined after five seconds by how long it has been going. Which dot is lit
+  comes from the clock rather than from a frame counter, so it moves at a steady rate whatever the
+  screen is doing and stops where it is if the screen stops being drawn - `asking` on its own is
+  the same word whether a request is in flight or the program is wedged. Absent while the runtime
+  is resting, including while it waits on an answer from you.
 - `/load [PATH]`, the other half of `/save`. `kamchatka -r` was the only way back into a saved
   session and it is a restart, which is right for what it does - `Kernel::resume` is a constructor,
   and a second kernel built inside a running one would arrive with no provider, no policy, no
