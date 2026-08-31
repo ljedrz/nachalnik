@@ -5,6 +5,19 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- A permission question whose arguments were longer than the screen lost its answers. The box was
+  sized to its whole body and then clipped to what would fit, and what came last in the body was
+  the line saying `y` and `n` were keys - so an `amend` carrying a rewritten tool result, which is
+  as long as the result was, produced a question that could only be answered by guessing. It is
+  three regions now: the header and the answers hold their rows, and the arguments scroll between
+  them with `pgup` / `pgdn`, which until now moved the conversation hidden behind the box. Both
+  overlays also remember how far they really scrolled rather than how many times a key was
+  pressed, so four pages down past the end is no longer four pages back up before anything moves.
+
 ## [0.2.0] - 2026-08-30
 
 A second wire format, in which a turn keeps its order, and two tools an agent reads and manages

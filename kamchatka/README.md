@@ -282,6 +282,11 @@ asks for three things at once produces three questions and an "always" that did 
 would go back on itself one keystroke later. <kbd>y</kbd> is this call only; a `curl` allowed once
 runs with the network open for that command and no other.
 
+Arguments longer than the box get their own scrolling region between the header and the answers,
+with <kbd>pgup</kbd> and <kbd>pgdn</kbd> moving them; the answers stay where they are. An `amend`
+carrying a rewritten tool result is as long as the result was, and a question whose answers had
+been pushed off the bottom of the screen is one nobody can answer.
+
 Typing does not answer it. A question arrives on its own schedule, in the middle of whatever you
 happen to be typing, and its keys are ordinary letters — `a` grants a capability for the rest of
 the session and is also the third letter of "what". So a question waits for a pause in the typing

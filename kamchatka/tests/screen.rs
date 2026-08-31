@@ -1516,7 +1516,7 @@ async fn changing_a_permission_changes_what_happens_next() {
     harness.settle().await;
     assert!(matches!(
         harness.app.overlay,
-        Some(kamchatka::app::Overlay::Permission)
+        Some(kamchatka::app::Overlay::Permission { .. })
     ));
     // answering resumes the turn, so let it finish before starting another
     harness.answer(KeyCode::Char('n')).await;
@@ -2679,4 +2679,68 @@ async fn editing_an_elided_item_does_not_quietly_send_the_edit() {
         harness.app.kernel.preview_request().unwrap().messages
     );
     assert!(sent.contains("shorter wall"), "{sent}");
+}
+
+#[tokio::test]
+async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
+    // an `amend` that rewrites a tool result carries the replacement in its arguments, and the
+    // replacement is as long as the result was. Sized as one block, the box grew past the bottom
+    // of the screen and `centred` cut what was last in it - the answers
+    let long: String = (0..80)
+        .map(|i| format!("line {i} of a very long replacement"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "amend",
+            json!({ "action": "revise", "content": long }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("amend", "revised").with_capabilities([Capability::Custom("amend".into())]),
+    ));
+
+    harness.send("fix it").await;
+    harness.settle().await;
+
+    // the question, and every way of answering it, on a screen the arguments cannot fit on
+    let screen = harness.screen();
+    assert!(screen.contains("amend wants: amend"), "{screen}");
+    assert!(screen.contains("[y] once"), "{screen}");
+    assert!(screen.contains("[i] the exact JSON"), "{screen}");
+    // and it says how to see the part that did not fit
+    assert!(screen.contains("pgup / pgdn for the rest"), "{screen}");
+    assert!(screen.contains("line 0 of"), "{screen}");
+    assert!(!screen.contains("line 79 of"), "{screen}");
+
+    // pgdn moves the arguments rather than the conversation hidden behind them
+    harness.press(KeyCode::PageDown).await;
+    let screen = harness.screen();
+    assert!(!screen.contains("line 0 of"), "{screen}");
+    assert!(screen.contains("line 20 of"), "{screen}");
+    // the answers do not move with them
+    assert!(screen.contains("[y] once"), "{screen}");
+
+    // it stops at the end rather than counting presses: without the clamp, four pages down past
+    // the bottom is four pages back up before anything moves
+    for _ in 0..8 {
+        harness.press(KeyCode::PageDown).await;
+    }
+    let bottom = harness.screen();
+    assert!(bottom.contains("line 79 of"), "{bottom}");
+    harness.press(KeyCode::PageUp).await;
+    let screen = harness.screen();
+    assert_ne!(screen, bottom, "one page up moves");
+
+    // a box too small for the question is still a box somebody has to answer: the arguments go
+    // first, then the header, and the answers are the last thing standing
+    let tiny = harness.sized(30, 6);
+    assert!(tiny.contains("[y] once"), "{tiny}");
+
+    // and the question is still answerable after all that reading
+    harness.answer(KeyCode::Char('y')).await;
+    harness.settle().await;
+    assert!(harness.app.kernel.pending_permissions().is_empty());
 }

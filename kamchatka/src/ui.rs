@@ -87,6 +87,7 @@ pub const HELP: &str = "  THE TABS
   A TOOL IS WAITING TO RUN
     y / n               once / no
     esc                 no
+    pgup / pgdn         scroll arguments too long for the box
     a                   always, for everything the question names - and for
                         the calls already waiting behind it
     i                   the exact JSON, and the tool's own definition
@@ -249,8 +250,16 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_input(frame, app, input);
     draw_status(frame, app, status);
 
-    if let Some(overlay) = &app.overlay {
-        draw_overlay(frame, overlay, app);
+    if app.overlay.is_some() {
+        // what the frame could actually scroll to is what the keys work against from here on.
+        // Without the write-back, `scroll` counts presses rather than rows: ten pages down past
+        // the end of a short body is ten pages back up before anything moves
+        let at = draw_overlay(frame, app);
+        if let Some(Overlay::Text { scroll, .. } | Overlay::Permission { scroll }) =
+            &mut app.overlay
+        {
+            *scroll = at;
+        }
     }
 }
 
@@ -999,23 +1008,37 @@ fn state_name(kernel: &Kernel) -> &'static str {
 
 // ---------------------------------------------------------------------------------- the overlays
 
-fn draw_overlay(frame: &mut Frame, overlay: &Overlay, app: &App) {
-    match overlay {
-        Overlay::Text {
+/// Whatever is on top of everything else.
+///
+/// Returns how far down it really is, which is not always how far down it was asked to be.
+fn draw_overlay(frame: &mut Frame, app: &App) -> usize {
+    match &app.overlay {
+        Some(Overlay::Text {
             title,
             body,
             scroll,
-        } => panel(frame, &format!(" {title} "), body, *scroll, 100, 90),
-        Overlay::Permission => draw_permission(frame, app),
+        }) => panel(frame, &format!(" {title} "), body, *scroll, 100, 90),
+        Some(Overlay::Permission { scroll }) => draw_permission(frame, app, *scroll),
+        None => 0,
     }
 }
 
 /// A tool is waiting to be told whether it may run.
-fn draw_permission(frame: &mut Frame, app: &App) {
+///
+/// note: three regions rather than one paragraph, because the arguments are the only part with no
+/// bound on it. Sized as one block, an `amend` carrying eighty lines of replacement text pushed
+/// the answers off the bottom of the screen and left the box with no way to read the rest and no
+/// way to see that `y` was still a key - the question was unanswerable by anything except a guess.
+/// The answers are pinned to the bottom, and the arguments scroll between them and the header.
+///
+/// Returns the offset the arguments were really drawn at.
+fn draw_permission(frame: &mut Frame, app: &App, scroll: usize) -> usize {
     let Some(request) = app.kernel.pending_permissions().into_iter().next() else {
-        return;
+        return 0;
     };
     let waiting = app.kernel.pending_permissions().len();
+    /// How wide the box is, when the screen has that much to give it.
+    const WIDTH: u16 = 72;
 
     // what the policy will actually consult, not what the tool declared: `shell` reaching for the
     // network and `read` handed a path there is a rule about are both judged against something the
@@ -1029,39 +1052,84 @@ fn draw_permission(frame: &mut Frame, app: &App) {
         .collect();
     // two lines of options rather than one that wraps wherever it happens to run out: the answers
     // on the first, and the two that are about looking closer or giving up on the lot on the
-    // second
-    let body = format!(
-        "{} wants: {}\n\n{}\n\
-         [y] once   [a] always, for {}   [n] no\n\
-         [i] the exact JSON   [d] {}{}",
-        request.tool,
-        judged.join(", "),
-        readable(&request.args),
-        judged.join(" and "),
-        match waiting > 1 {
-            true => "drop them all",
-            false => "drop it",
-        },
-        match waiting > 1 {
-            true => format!("\n\n{} more after this one", waiting - 1),
-            false => String::new(),
-        }
-    );
+    // second. `more` joins them when there are arguments below the fold, rather than going on a
+    // line of its own: a line of its own costs the arguments two rows on the screen that made it
+    // necessary in the first place
+    let answers = |more: &str| {
+        format!(
+            "[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}{more}{}",
+            judged.join(" and "),
+            match waiting > 1 {
+                true => "drop them all",
+                false => "drop it",
+            },
+            match waiting > 1 {
+                true => format!("\n\n{} more after this one", waiting - 1),
+                false => String::new(),
+            }
+        )
+    };
 
-    // as tall as the question is, rather than a fixed box with a hole in it: the arguments are
-    // the part somebody has to actually read, and they are as long as they are
-    let area = centred(frame.area(), 72, wrapped(&body, 68, "").len() as u16 + 2);
+    // wrapped once, at the width the box will really have: measuring at a fixed 68 and drawing at
+    // whatever the screen allowed was already off by however much a narrow terminal took away
+    let style = Style::default().fg(Color::Yellow);
+    let block = Block::bordered()
+        .title(" a tool wants to run ")
+        .border_style(style)
+        .padding(ratatui::widgets::Padding::horizontal(1));
+    let columns = centred(frame.area(), WIDTH, 0).width.saturating_sub(4) as usize;
+    let head = wrapped(
+        &format!("{} wants: {}\n", request.tool, judged.join(", ")),
+        columns,
+        "",
+    );
+    let args = wrapped(&readable(&request.args), columns, "");
+    let mut foot = wrapped(&answers(""), columns, "");
+
+    // as tall as the question is, rather than a fixed box with a hole in it - but no taller than
+    // the screen, and it is `centred` that decides that, so what it would cut is worked out here
+    // rather than discovered as a missing line
+    let wanted = (head.len() + args.len() + foot.len()) as u16 + 2;
+    if wanted > frame.area().height {
+        foot = wrapped(&answers("   pgup / pgdn for the rest"), columns, "");
+    }
+    let area = centred(frame.area(), WIDTH, wanted);
+    let inner = block.inner(area);
+
+    // the answers get their rows first and the header what is left over, because a box too small
+    // for both is still answerable and is not still readable; the arguments get the remainder,
+    // and are the only region that can be asked to show less than it holds
+    let bottom = (foot.len() as u16).min(inner.height);
+    let top = (head.len() as u16).min(inner.height - bottom);
+    let [above, middle, below] = Layout::vertical([
+        Constraint::Length(top),
+        Constraint::Length(inner.height - top - bottom),
+        Constraint::Length(bottom),
+    ])
+    .areas(inner);
+    let at = scroll.min(args.len().saturating_sub(middle.height as usize));
 
     frame.render_widget(Clear, area);
+    frame.render_widget(block, area);
+    frame.render_widget(Paragraph::new(head.join("\n")), above);
     frame.render_widget(
-        Paragraph::new(wrapped(&body, area.width.saturating_sub(4) as usize, "").join("\n")).block(
-            Block::bordered()
-                .title(" a tool wants to run ")
-                .border_style(Style::default().fg(Color::Yellow))
-                .padding(ratatui::widgets::Padding::horizontal(1)),
-        ),
-        area,
+        Paragraph::new(args.join("\n")).scroll((at as u16, 0)),
+        middle,
     );
+    frame.render_widget(Paragraph::new(foot.join("\n")), below);
+
+    scrollbar(
+        frame,
+        area,
+        style,
+        Scrolled {
+            position: at,
+            total: args.len(),
+            area: middle,
+        },
+    );
+
+    at
 }
 
 /// Renders a tool's arguments so that a person can read them before saying yes to them.
@@ -1096,8 +1164,15 @@ fn readable(args: &serde_json::Value) -> String {
     out
 }
 
-/// A bordered box over the middle of the screen.
-fn panel(frame: &mut Frame, title: &str, body: &str, scroll: usize, columns: u16, percent: u16) {
+/// A bordered box over the middle of the screen; returns the offset it drew at.
+fn panel(
+    frame: &mut Frame,
+    title: &str,
+    body: &str,
+    scroll: usize,
+    columns: u16,
+    percent: u16,
+) -> usize {
     // no taller than it has anything to say: `/budget` is six lines, and a box that took nine
     // tenths of the screen to show them would be hiding the conversation for no reason
     let wanted = wrapped(body, columns.saturating_sub(4) as usize, "").len() as u16 + 2;
@@ -1141,6 +1216,8 @@ fn panel(frame: &mut Frame, title: &str, body: &str, scroll: usize, columns: u16
             area: inner,
         },
     );
+
+    at
 }
 
 /// Puts a blank line in, unless there is one there already or there is nothing to separate from.

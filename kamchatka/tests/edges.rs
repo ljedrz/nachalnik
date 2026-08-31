@@ -190,7 +190,7 @@ async fn a_permission_question_draws_at_every_size() {
 
     app.kernel.push(ContextItem::user("read the env"));
     let _ = tokio::time::timeout(Duration::from_secs(5), app.kernel.turn()).await;
-    app.overlay = Some(Overlay::Permission);
+    app.overlay = Some(Overlay::Permission { scroll: 0 });
 
     for width in 1..=60u16 {
         for height in 1..=20u16 {

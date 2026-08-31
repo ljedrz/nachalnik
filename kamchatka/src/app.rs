@@ -41,6 +41,9 @@ pub const SETTLING: Duration = Duration::from_millis(300);
 /// How much of a still-running tool's output the transcript holds on to.
 const LIVE_OUTPUT: usize = 8_000;
 
+/// How many lines `pgup` and `pgdn` move an overlay.
+const PAGE: usize = 20;
+
 /// Which half of the window the keys are talking to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
@@ -121,7 +124,10 @@ pub struct Traced {
 /// What is being shown over the top of everything else.
 pub enum Overlay {
     /// A tool wants to run, and somebody has to say so.
-    Permission,
+    Permission {
+        /// How far down its arguments are scrolled.
+        scroll: usize,
+    },
     /// Something long enough to need its own screen.
     Text {
         /// What it is.
@@ -505,7 +511,7 @@ impl App {
 
         self.say(Speaker::Note, format!("step → {told}"));
         if matches!(state, State::Deciding { .. }) {
-            self.overlay = Some(Overlay::Permission);
+            self.overlay = Some(Overlay::Permission { scroll: 0 });
         }
     }
 
@@ -524,7 +530,9 @@ impl App {
         let carry_on = ended && !self.interrupting;
         match outcome {
             Outcome::Failed(e) => self.say(Speaker::Error, e),
-            Outcome::Stopped(State::Deciding { .. }) => self.overlay = Some(Overlay::Permission),
+            Outcome::Stopped(State::Deciding { .. }) => {
+                self.overlay = Some(Overlay::Permission { scroll: 0 })
+            }
             // a turn that stops in `Idle` either ran out of requests or was asked to stop, and
             // the difference matters to whoever is reading the screen
             Outcome::Stopped(State::Idle) if !self.interrupting => {
@@ -1288,19 +1296,31 @@ impl App {
             Overlay::Text { scroll, .. } => match key.code {
                 KeyCode::Up => *scroll = scroll.saturating_sub(1),
                 KeyCode::Down => *scroll += 1,
-                KeyCode::PageUp => *scroll = scroll.saturating_sub(20),
-                KeyCode::PageDown => *scroll += 20,
+                KeyCode::PageUp => *scroll = scroll.saturating_sub(PAGE),
+                KeyCode::PageDown => *scroll += PAGE,
                 // a tool is still waiting to be told whether it may run, so closing whatever was
                 // being read goes back to the question rather than leaving it unanswered and
                 // unreachable - which is what happened after [i] showed the exact JSON
                 _ => {
                     self.overlay = match self.kernel.pending_permissions().is_empty() {
                         true => None,
-                        false => Some(Overlay::Permission),
+                        false => Some(Overlay::Permission { scroll: 0 }),
                     }
                 }
             },
-            Overlay::Permission => return self.permission_key(key).await,
+            // the arguments can be longer than the box has room for - an `amend` carrying a
+            // rewritten tool result is as long as the result - so the keys that scroll everything
+            // else scroll them here too. They are not answers, and returning `true` says so: a
+            // page read is not somebody typing, and must not put the settling window back
+            Overlay::Permission { scroll } => {
+                match key.code {
+                    KeyCode::PageUp => *scroll = scroll.saturating_sub(PAGE),
+                    KeyCode::PageDown => *scroll += PAGE,
+                    _ => return self.permission_key(key).await,
+                }
+
+                return true;
+            }
         }
 
         false
