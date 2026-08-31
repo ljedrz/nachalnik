@@ -124,6 +124,10 @@ pub const HELP: &str = "  THE TABS
                         this started with
     /params [KEY JSON]  show or set a model parameter
     /save [PATH]        the session log, and a snapshot to resume from
+    /load [PATH]        that snapshot's context, into the session you are in.
+                        What is here is archived unless it is pinned, and u
+                        twice puts it back (kamchatka -r PATH is the other
+                        answer to the same file: a fresh session from it)
     /quit               also /exit, /q";
 
 /// The selector language, shown by `/prune` with nothing to prune.

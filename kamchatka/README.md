@@ -618,8 +618,23 @@ Environment:
 That is `--help`, which lists the environment too rather than leaving three settings for the
 readme alone to mention.
 
-`/save` writes two files: a `.jsonl` of every event that happened, and a `.json` snapshot that
-`-r` picks the session back up from.
+`/save` writes two files: a `.jsonl` of every event that happened, and a `.json` snapshot of the
+context. The snapshot has two ways back in.
+
+`kamchatka -r PATH` starts a fresh session from it, which is the faithful one: the item numbers,
+the model parameters and what the token counter had learned all come back exactly as they were,
+because `Kernel::resume` is a constructor and builds the session around them.
+
+`/load PATH` brings it into the session you are already in, which is the useful one. It is a
+context operation and it plays by the same rule as the rest of them — nothing is destroyed. What
+was in the context is **archived**, keeping its numbers and its contents; anything **pinned**
+stays where it is, because a pin is you saying so and `--system` is pinned; the loaded items come
+in as new items with new numbers, and the conversation they were is read back onto the chat tab.
+<kbd>u</kbd> twice puts the whole thing back.
+
+That makes a checkpoint out of a file. `/save good`, let the agent go somewhere useless, `/load
+good`, and carry on from where it was still working — without losing the detour, which is sitting
+in the context marked `▫` if you want to read it.
 
 ## 🧪 the tests
 

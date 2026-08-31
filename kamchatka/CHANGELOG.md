@@ -9,6 +9,16 @@ minor bump may break you.
 
 ### added
 
+- `/load [PATH]`, the other half of `/save`. `kamchatka -r` was the only way back into a saved
+  session and it is a restart, which is right for what it does - `Kernel::resume` is a constructor,
+  and a second kernel built inside a running one would arrive with no provider, no policy, no
+  tools and none of the subscriptions the screen draws from. So this is a context operation
+  instead, and it follows the rule the rest of them do: nothing is destroyed. The current context
+  is archived, keeping its numbers and contents; pinned items stay, because a pin is the person
+  saying so and `--system` is pinned; the saved items come in as new items and are read back onto
+  the chat tab as the conversation they were; the parameters and the counter's calibration come
+  with them; and `u` twice puts it all back. A saved file is now a checkpoint you can return to
+  mid-session. Refused while a turn is running or a call is waiting to be answered.
 - <kbd>enter</kbd> on a context item opens a paged box instead of a single body, moved between
   with `←` and `→`. `to the model` is what the item puts into the next request - read out of the
   projection of the *whole* context, so a call the projector dropped or an ordered turn it

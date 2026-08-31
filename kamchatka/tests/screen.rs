@@ -2071,6 +2071,114 @@ async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
 }
 
 #[tokio::test]
+async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_there() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-load-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a place to write");
+    let saved = dir.join("before.json");
+
+    let mut first = Harness::new([ModelResponse::text("4817, noted")]);
+    first.send("remember 4817").await;
+    first.settle().await;
+    first
+        .send(&format!("/save {}", dir.join("before").display()))
+        .await;
+    assert!(saved.exists());
+
+    // a second session, with a conversation of its own already in it, and something pinned
+    let mut second = Harness::new([ModelResponse::text("nothing so far")]);
+    let pinned = second
+        .app
+        .kernel
+        .push(ContextItem::system("answer in Polish").pinned());
+    second.send("what do you remember").await;
+    second.settle().await;
+    let mine: Vec<_> = second.app.kernel.items().iter().map(|i| i.id).collect();
+
+    second.send(&format!("/load {}", saved.display())).await;
+
+    // what was here is set aside rather than dropped: same numbers, same contents, not going
+    for id in mine.iter().filter(|id| **id != pinned) {
+        let item = second.app.kernel.item(*id).expect("still there");
+        assert_eq!(item.state, ContextState::Archived, "[{id}] was dropped");
+        assert!(!item.content.to_text().is_empty());
+    }
+
+    // a pin is the person saying this stays, and `--system` is pinned: a load that archived it
+    // would answer a question about a saved conversation by revoking the session's instructions
+    let kept = second.app.kernel.item(pinned).expect("still there");
+    assert_eq!(kept.state, ContextState::Pinned, "the pin was overruled");
+
+    // and the loaded conversation is the one the next request would carry
+    let projected: Vec<String> = second
+        .app
+        .kernel
+        .project()
+        .messages
+        .iter()
+        .map(|message| {
+            message
+                .content
+                .as_ref()
+                .map(|c| c.to_text().into_owned())
+                .unwrap_or_default()
+        })
+        .collect();
+    assert!(
+        projected.iter().any(|text| text.contains("remember 4817")),
+        "{projected:?}"
+    );
+    assert!(
+        !projected
+            .iter()
+            .any(|text| text.contains("what do you remember")),
+        "{projected:?}"
+    );
+    assert!(
+        projected
+            .iter()
+            .any(|text| text.contains("answer in Polish")),
+        "{projected:?}"
+    );
+
+    // it is on the screen as the conversation it was, and it says what it did
+    let screen = second.screen();
+    assert!(screen.contains("remember 4817"), "{screen}");
+    assert!(screen.contains("loaded"), "{screen}");
+
+    // and nothing was destroyed to get here: two undos and it is as it was
+    assert!(second.app.kernel.undo());
+    assert!(second.app.kernel.undo());
+    for id in mine.iter().filter(|id| **id != pinned) {
+        let item = second.app.kernel.item(*id).expect("still there");
+        assert_eq!(item.state, ContextState::Active, "[{id}] did not come back");
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn loading_something_that_is_not_a_session_says_which_file_and_why() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-notasession-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a place to write");
+    let junk = dir.join("junk.json");
+    std::fs::write(&junk, "{\"nope\": true}").expect("written");
+
+    let mut harness = Harness::new([]);
+    harness.send(&format!("/load {}", junk.display())).await;
+    let screen = harness.screen();
+    assert!(screen.contains("is not a session"), "{screen}");
+    assert!(screen.contains("junk.json"), "{screen}");
+
+    harness
+        .send(&format!("/load {}", dir.join("absent.json").display()))
+        .await;
+    let screen = harness.screen();
+    assert!(screen.contains("could not read"), "{screen}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn a_resumed_session_is_read_back_as_the_conversation_it_was() {
     let mut first = Harness::new([ModelResponse::text("of course")]);
     first.send("hello there").await;

@@ -408,7 +408,27 @@ impl App {
     /// items it draws as a conversation are not all necessarily going to be sent.
     pub fn replay(&mut self) {
         let items = self.kernel.items();
-        for item in &items {
+        self.retell(&items);
+
+        let withheld = items.iter().filter(|item| !item.is_projected()).count();
+        self.say(
+            Speaker::Note,
+            format!(
+                "resumed session {}: {} items, ~{} tokens{}",
+                self.kernel.session_name(),
+                items.len(),
+                self.kernel.budget().context_tokens,
+                match withheld {
+                    0 => String::new(),
+                    n => format!(", {n} of which the pane says are not being sent"),
+                }
+            ),
+        );
+    }
+
+    /// Puts a run of context items on the transcript as the conversation they were.
+    fn retell(&mut self, items: &[Arc<ContextItem>]) {
+        for item in items {
             match &item.kind {
                 ContextKind::UserMessage => self.say(Speaker::User, item.content.to_text()),
                 ContextKind::AssistantMessage { .. } => {
@@ -446,21 +466,6 @@ impl App {
                 ),
             }
         }
-
-        let withheld = items.iter().filter(|item| !item.is_projected()).count();
-        self.say(
-            Speaker::Note,
-            format!(
-                "resumed session {}: {} items, ~{} tokens{}",
-                self.kernel.session_name(),
-                items.len(),
-                self.kernel.budget().context_tokens,
-                match withheld {
-                    0 => String::new(),
-                    n => format!(", {n} of which the pane says are not being sent"),
-                }
-            ),
-        );
     }
 
     /// Adds an event to the trace pane.
@@ -1876,6 +1881,10 @@ impl App {
                 self.say(Speaker::Note, format!("parameters: {params}"));
             }
             "save" => self.save(rest),
+            // note: not aliased `/resume`. `--resume` at startup is the *other* answer to the
+            // same file - a fresh session built around the snapshot - and two things a keystroke
+            // apart that differ in what happens to the context you already have is a trap
+            "load" => self.load(rest),
             other => self.say(
                 Speaker::Error,
                 format!("there is no `/{other}`; F1 lists what there is"),
@@ -2087,12 +2096,103 @@ impl App {
         self.preview("the budget", lines.join("\n\n"));
     }
 
+    /// Brings a saved session's context back, setting aside whatever is in this one.
+    ///
+    /// note: not a swap of the kernel. `Kernel::resume` is a constructor, and everything plugged
+    /// into a running one - the provider, the policy, the tools, the two introspection tools'
+    /// handle, the subscription this screen is drawing from - is wired to *this* kernel; a second
+    /// one built here would arrive with none of it. `kamchatka -r` is the swap, and it is a
+    /// restart because that is what a swap is.
+    ///
+    /// note: so this is a context operation, and it follows the rule every other one here does:
+    /// nothing is destroyed. What was in the context is archived rather than dropped, keeps its
+    /// numbers and its contents, and `u` twice puts the whole thing back - once for the items
+    /// that came in and once for the ones that were set aside. The loaded items are new items
+    /// and are numbered as such: they are what that session said, in this session.
+    fn load(&mut self, path: &str) {
+        if self.busy || !self.kernel.pending_permissions().is_empty() {
+            self.say(
+                Speaker::Error,
+                "not while a turn is running or a call is waiting to be answered",
+            );
+            return;
+        }
+
+        let file = match path {
+            "" => "session.json".to_owned(),
+            given if given.ends_with(".json") => given.to_owned(),
+            given => format!("{given}.json"),
+        };
+        let snapshot: nachalnik::Snapshot = match std::fs::read(&file)
+            .map_err(|e| format!("could not read {file}: {e}"))
+            .and_then(|bytes| {
+                serde_json::from_slice(&bytes).map_err(|e| format!("{file} is not a session: {e}"))
+            }) {
+            Ok(snapshot) => snapshot,
+            Err(e) => return self.say(Speaker::Error, e),
+        };
+        if snapshot.items.is_empty() {
+            self.say(Speaker::Error, format!("{file} holds no context"));
+            return;
+        }
+
+        // set aside first, so that the calls in the loaded turns are the only ones the projector
+        // can pair a loaded result with. Archived items are not projected, so an old copy of the
+        // same conversation cannot answer the new one's calls
+        //
+        // note: except what is pinned. A pin is the person saying this stays, and `--system` is
+        // pinned - a load that quietly archived the system instruction would be answering a
+        // question about a saved conversation by revoking the one thing the session was told to
+        // hold on to
+        let standing: Vec<_> = self
+            .kernel
+            .items()
+            .iter()
+            .filter(|item| item.is_projected() && item.state != ContextState::Pinned)
+            .map(|item| item.id)
+            .collect();
+        self.kernel.set_state(
+            standing.iter().copied(),
+            ContextState::Archived,
+            Some(format!("set aside for the session loaded from {file}")),
+        );
+
+        let ids = self.kernel.push_all(snapshot.items);
+        self.kernel.set_params(snapshot.params);
+        // what the counter had learned, which is the one piece of a seam's state a snapshot
+        // carries; without it the next few requests would be spent relearning what this file
+        // already knows
+        if let Some(calibration) = snapshot.calibration {
+            self.kernel.counter().recalibrate(calibration);
+        }
+
+        let loaded: Vec<_> = ids.iter().filter_map(|id| self.kernel.item(*id)).collect();
+        self.retell(&loaded);
+        self.say(
+            Speaker::Note,
+            format!(
+                "loaded {} items from session `{}` ({file}); {} of your own {} archived, \
+                 anything pinned stayed, and `u` twice puts the rest back",
+                loaded.len(),
+                snapshot.session,
+                standing.len(),
+                match standing.len() {
+                    1 => "was",
+                    _ => "were",
+                }
+            ),
+        );
+    }
+
     /// Writes the session log and a snapshot that can be resumed from, at a path somebody gave.
     ///
     /// note: Two files, because they answer different questions: the log says what happened, and
     /// the snapshot is what can be picked back up. An event names an item rather than carrying
     /// it, so the log alone cannot rebuild a context - keeping only one of them means losing
     /// either the story or the state.
+    ///
+    /// note: the snapshot is what `/load` reads back into a running session and what
+    /// `kamchatka -r` starts from.
     fn save(&mut self, path: &str) {
         // both extensions, so that `/save notes.jsonl` does not write `notes.jsonl.jsonl`
         let stem = match path {
@@ -2140,7 +2240,8 @@ impl App {
                 self.say(
                     Speaker::Note,
                     format!(
-                        "{} records in {log}, and a session in {state} (kamchatka -r {state})",
+                        "{} records in {log}, and a session in {state} (`/load {state}` brings \
+                         it back here, `kamchatka -r {state}` starts a session from it)",
                         records.len()
                     ),
                 );
