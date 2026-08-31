@@ -35,7 +35,10 @@ use nachalnik::{
 use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
-use crate::provider::{Endpoint, RETRIES, api_key, configured_limit, install_crypto, same_model};
+use crate::provider::{
+    Endpoint, PATIENCE, RETRIES, Silence, Vigil, api_key, configured_limit, install_crypto,
+    same_model,
+};
 
 /// How long a stream may say nothing before the provider looks up to check whether it has been
 /// asked to stop.
@@ -412,12 +415,17 @@ impl Provider for Gemini {
 
             let status = response.status();
             if status.is_success() {
+                // the budget belongs to a request, not to a session: without this an afternoon
+                // that had already ridden out four busy servers answered the fifth by giving up
+                // on the first try
+                self.attempts.store(0, Ordering::SeqCst);
                 break response;
             }
 
             let transient = status.as_u16() == 429 || status.is_server_error();
             let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
             if !transient || attempt >= RETRIES {
+                self.attempts.store(0, Ordering::SeqCst);
                 let body = response.text().await.unwrap_or_default();
                 return Err(format!("{status}: {body}").into());
             }
@@ -436,18 +444,42 @@ impl Provider for Gemini {
         let mut finish = None;
         let mut usage = None;
         let mut chunks = Vec::new();
+        let mut vigil = Vigil::new();
 
         loop {
             // without the timeout this sits in `chunk` until the server feels like talking, and a
             // request that stalls before its first byte leaves `esc` doing nothing whatever
             let bytes = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
-                Ok(Ok(Some(bytes))) => bytes,
+                Ok(Ok(Some(bytes))) => {
+                    if vigil.heard() {
+                        *self.notice.lock() = Some(format!("{model} is answering again"));
+                    }
+                    bytes
+                }
                 Ok(Ok(None)) => break,
                 Ok(Err(e)) => return Err(e.into()),
                 Err(_) => {
                     if deltas.is_interrupted() {
                         finish = Some("interrupted".to_owned());
                         break;
+                    }
+                    // note: a turn that asks for a tool makes two requests rather than one, which
+                    // is twice the chance of meeting a server in this state - and it is the shape
+                    // "it hangs whenever it uses a tool" really has
+                    match vigil.waited() {
+                        Silence::Enough => {
+                            return Err(format!(
+                                "{model} answered and then said nothing for {}s; giving up",
+                                PATIENCE.as_secs()
+                            )
+                            .into());
+                        }
+                        Silence::Worth(seconds) => {
+                            *self.notice.lock() = Some(format!(
+                                "{model} has said nothing for {seconds}s; esc gives up on it"
+                            ));
+                        }
+                        Silence::Ordinary => {}
                     }
                     continue;
                 }

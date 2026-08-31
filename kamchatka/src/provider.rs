@@ -11,7 +11,7 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use nachalnik::{
@@ -27,6 +27,87 @@ pub(crate) const RETRIES: usize = 4;
 /// How long a stream may say nothing before the provider looks up to check whether it has been
 /// asked to stop.
 const HEARTBEAT: Duration = Duration::from_millis(120);
+
+/// How long a stream may say nothing before the person watching is told about it.
+pub(crate) const QUIET: Duration = Duration::from_secs(10);
+
+/// How much longer it has to keep saying nothing before being mentioned again.
+pub(crate) const AGAIN: Duration = Duration::from_secs(30);
+
+/// How long it may say nothing before the request is given up on.
+pub(crate) const PATIENCE: Duration = Duration::from_secs(150);
+
+/// What a stream's silence has come to mean.
+pub(crate) enum Silence {
+    /// Long enough to be worth saying out loud, this many whole seconds in.
+    Worth(u64),
+    /// Long enough to stop waiting.
+    Enough,
+    /// Not long enough to be either.
+    Ordinary,
+}
+
+/// Watches the gap since the last byte of a stream.
+///
+/// note: [`HEARTBEAT`] only makes a stalled request *interruptible*. It wakes up, checks whether
+/// escape was pressed, and goes back to waiting - so a server that answers the connection and
+/// then goes quiet, which is exactly what an overloaded one does, left the status line reading
+/// `asking` for ever with nothing to tell it apart from a model that was simply thinking hard.
+/// This is the part that says so, and eventually the part that stops.
+pub(crate) struct Vigil {
+    /// When something last arrived.
+    last: Instant,
+    /// The silence already mentioned, in whole seconds; zero when there is nothing to mention.
+    said: u64,
+}
+
+impl Vigil {
+    /// Starts watching, now.
+    pub(crate) fn new() -> Self {
+        Self {
+            last: Instant::now(),
+            said: 0,
+        }
+    }
+
+    /// Something arrived; returns whether the quiet before it had been mentioned.
+    pub(crate) fn heard(&mut self) -> bool {
+        let mentioned = self.said > 0;
+        self.last = Instant::now();
+        self.said = 0;
+
+        mentioned
+    }
+
+    /// Nothing has arrived; what that has come to mean.
+    pub(crate) fn waited(&mut self) -> Silence {
+        self.judge(self.last.elapsed())
+    }
+
+    /// The same, for a silence of a given length.
+    ///
+    /// note: split out so that the rule can be tested without a socket and a wall clock. What is
+    /// left in `waited` is the clock reading, which has nothing in it to get wrong.
+    fn judge(&mut self, silent: Duration) -> Silence {
+        if silent >= PATIENCE {
+            return Silence::Enough;
+        }
+
+        // once, and then at intervals: a line a second for two and a half minutes would bury the
+        // conversation it was reporting on
+        let due = match self.said {
+            0 => QUIET.as_secs(),
+            said => said + AGAIN.as_secs(),
+        };
+        let seconds = silent.as_secs();
+        if seconds >= due {
+            self.said = seconds;
+            return Silence::Worth(seconds);
+        }
+
+        Silence::Ordinary
+    }
+}
 
 /// Any server that speaks the OpenAI chat-completions dialect, streamed.
 pub struct OpenAiCompatible {
@@ -387,12 +468,17 @@ impl Provider for OpenAiCompatible {
 
             let status = response.status();
             if status.is_success() {
+                // the budget belongs to a request, not to a session: without this an afternoon
+                // that had already ridden out four busy servers answered the fifth by giving up
+                // on the first try
+                self.attempts.store(0, Ordering::SeqCst);
                 break response;
             }
 
             let transient = status.as_u16() == 429 || status.is_server_error();
             let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
             if !transient || attempt >= RETRIES {
+                self.attempts.store(0, Ordering::SeqCst);
                 let body = response.text().await.unwrap_or_default();
                 return Err(format!("{status}: {body}").into());
             }
@@ -415,6 +501,7 @@ impl Provider for OpenAiCompatible {
         let mut usage = None;
         // every payload the server sent, verbatim
         let mut chunks = Vec::new();
+        let mut vigil = Vigil::new();
 
         loop {
             // the timeout is what makes a model that says nothing at all interruptible; without
@@ -422,13 +509,36 @@ impl Provider for OpenAiCompatible {
             // stalls before its first byte leaves `esc` doing nothing whatever. The same reason
             // the shell tool has one
             let bytes = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
-                Ok(Ok(Some(bytes))) => bytes,
+                Ok(Ok(Some(bytes))) => {
+                    if vigil.heard() {
+                        *self.notice.lock() =
+                            Some(format!("{} is answering again", self.model.lock()));
+                    }
+                    bytes
+                }
                 Ok(Ok(None)) => break,
                 Ok(Err(e)) => return Err(e.into()),
                 Err(_) => {
                     if deltas.is_interrupted() {
                         finish = Some("interrupted".to_owned());
                         break;
+                    }
+                    match vigil.waited() {
+                        Silence::Enough => {
+                            return Err(format!(
+                                "{} answered and then said nothing for {}s; giving up",
+                                self.model.lock(),
+                                PATIENCE.as_secs()
+                            )
+                            .into());
+                        }
+                        Silence::Worth(seconds) => {
+                            *self.notice.lock() = Some(format!(
+                                "{} has said nothing for {seconds}s; esc gives up on it",
+                                self.model.lock()
+                            ));
+                        }
+                        Silence::Ordinary => {}
                     }
                     continue;
                 }
@@ -742,4 +852,56 @@ pub async fn connect(model: impl Into<String>) -> Result<Arc<OpenAiCompatible>, 
     provider.probe().await;
 
     Ok(provider)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What the rule says about a silence of a given length, as a word.
+    fn judged(vigil: &mut Vigil, seconds: u64) -> &'static str {
+        match vigil.judge(Duration::from_secs(seconds)) {
+            Silence::Worth(_) => "said",
+            Silence::Enough => "gave up",
+            Silence::Ordinary => "waited",
+        }
+    }
+
+    #[test]
+    fn a_stream_that_goes_quiet_is_mentioned_once_and_then_occasionally() {
+        let mut vigil = Vigil::new();
+
+        // a gap short enough to be a model thinking is not news
+        assert_eq!(judged(&mut vigil, 0), "waited");
+        assert_eq!(judged(&mut vigil, QUIET.as_secs() - 1), "waited");
+
+        // the first one that is
+        assert_eq!(judged(&mut vigil, QUIET.as_secs()), "said");
+        // and not again a second later, or the report would bury the conversation it is about
+        assert_eq!(judged(&mut vigil, QUIET.as_secs() + 1), "waited");
+        assert_eq!(
+            judged(&mut vigil, QUIET.as_secs() + AGAIN.as_secs() - 1),
+            "waited"
+        );
+        assert_eq!(
+            judged(&mut vigil, QUIET.as_secs() + AGAIN.as_secs()),
+            "said"
+        );
+
+        // and eventually it stops waiting, which is the whole point: `asking` for ever was
+        // indistinguishable from a model that was still coming
+        assert_eq!(judged(&mut vigil, PATIENCE.as_secs()), "gave up");
+        assert_eq!(judged(&mut vigil, PATIENCE.as_secs() + 60), "gave up");
+    }
+
+    #[test]
+    fn a_stream_that_starts_talking_again_starts_the_count_over() {
+        let mut vigil = Vigil::new();
+        assert_eq!(judged(&mut vigil, QUIET.as_secs()), "said");
+
+        // it came back, and the quiet before it had been mentioned - so the next one is news
+        assert!(vigil.heard(), "the silence was reported, so its end is too");
+        assert!(!vigil.heard(), "an ordinary byte is not");
+        assert_eq!(judged(&mut vigil, QUIET.as_secs()), "said");
+    }
 }

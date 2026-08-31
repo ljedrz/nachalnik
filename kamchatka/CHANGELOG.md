@@ -34,6 +34,17 @@ minor bump may break you.
 
 ### fixed
 
+- A request that stalled sat at `asking` for ever without saying so. The heartbeat in both
+  providers only made a silent stream *interruptible* - it woke up, checked whether escape had
+  been pressed, and went back to waiting - so a server that answered the connection and then went
+  quiet, which is what an overloaded one does, was indistinguishable on screen from a model
+  thinking hard. A stream that has said nothing for ten seconds now says so, again every thirty
+  after that, says when it starts again, and is given up on at a hundred and fifty. A turn that
+  asks for a tool makes two requests rather than one, which is twice the exposure - and is the
+  shape "it hangs whenever it uses a tool" really has.
+- The retry budget for a busy server belonged to the session rather than to the request, so an
+  afternoon that had already ridden out four `503`s answered the fifth by giving up on the first
+  try.
 - The conversation stayed where it was scrolled to. Every fragment of a streamed answer set the
   window back to following the newest line, so scrolling up to re-read something during a long
   turn lasted exactly until the next fragment arrived - which is to say, not at all. Only a
