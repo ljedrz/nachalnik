@@ -3142,3 +3142,40 @@ async fn a_message_of_your_own_takes_you_back_to_the_bottom() {
     let screen = harness.screen();
     assert!(screen.contains("> what about this"), "{screen}");
 }
+
+#[tokio::test]
+async fn the_next_request_says_why_there_is_none_rather_than_reporting_a_fault() {
+    let mut harness = Harness::new([]);
+
+    // nothing has been said yet, and `the context projects to an empty request` is the runtime's
+    // sentence for a rule it is enforcing correctly - it reads as a malfunction to somebody who
+    // has simply not typed anything
+    harness.send("/request").await;
+    let screen = harness.screen();
+    assert!(screen.contains("nothing yet"), "{screen}");
+    assert!(!screen.contains("projects to an empty request"), "{screen}");
+    harness.press(KeyCode::Esc).await;
+
+    // a context that is not empty and still sends nothing is a different answer, and it is the
+    // one moment the list of what was left out is worth most - which is when it used to be
+    // dropped, because the error returned before the list was built
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("what about this"));
+    let id = harness.app.kernel.items()[0].id;
+    harness.app.kernel.set_state(
+        [id],
+        ContextState::Excluded,
+        Some("thought better of it".into()),
+    );
+    harness.drain();
+
+    harness.send("/request").await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("excluded: thought better of it"),
+        "{screen}"
+    );
+    assert!(screen.contains("not one of the 1 item(s)"), "{screen}");
+}

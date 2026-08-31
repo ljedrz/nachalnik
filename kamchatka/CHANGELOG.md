@@ -34,6 +34,14 @@ minor bump may break you.
 
 ### fixed
 
+- `ctrl+p` in a session nobody had typed into yet answered with `the context projects to an empty
+  request`. That is the runtime's own sentence for a rule it is enforcing correctly - `step`
+  refuses to send a request with no messages - but it is the wrong answer to "what would go
+  next?" when what happened is that nothing has been said, and it reads as a fault. It now says
+  there is nothing in the context yet and what puts something there. When the context is *not*
+  empty and still sends nothing, the list of what was left out and why goes above the answer -
+  which is the one moment that list is worth most, and exactly when it used to be thrown away,
+  because the error returned before the list was built. `/request` and `/payload` too.
 - A request that stalled sat at `asking` for ever without saying so. The heartbeat in both
   providers only made a silent stream *interruptible* - it woke up, checked whether escape had
   been pressed, and went back to waiting - so a server that answered the connection and then went

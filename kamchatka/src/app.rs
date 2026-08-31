@@ -1692,7 +1692,7 @@ impl App {
                 let body = match self.kernel.preview_payload() {
                     Ok(Some(payload)) => pretty(&payload),
                     Ok(None) => "this provider cannot render a request without sending it".into(),
-                    Err(e) => e.to_string(),
+                    Err(e) => nothing_to_send(&self.kernel, &e.to_string()),
                 };
                 self.preview("the payload, as it would go out", body);
             }
@@ -2318,15 +2318,10 @@ fn trace_line(event: &Event) -> (String, String) {
 
 /// The request the kernel would send, or what stopped it building one.
 fn request_preview(kernel: &Kernel) -> String {
-    let request = match kernel.preview_request() {
-        Ok(request) => serde_json::to_string_pretty(&request)
-            .unwrap_or_else(|e| format!("it will not serialize: {e}")),
-        Err(e) => return e.to_string(),
-    };
-
     // "why is that not in there?" is the question somebody opens this to answer, and the JSON on
     // its own can only say what *is* in there. The projection knows what it left out and what it
-    // had to change to keep the request valid, so both go above it
+    // had to change to keep the request valid, so both go above it - and above the reason there
+    // is no request at all, which is where they are worth most
     let projection = kernel.project();
     let mut header = String::new();
     for left_out in &projection.skipped {
@@ -2338,6 +2333,12 @@ fn request_preview(kernel: &Kernel) -> String {
     for repair in &projection.repairs {
         header.push_str(&format!("  repaired: {repair}\n"));
     }
+
+    let request = match kernel.preview_request() {
+        Ok(request) => serde_json::to_string_pretty(&request)
+            .unwrap_or_else(|e| format!("it will not serialize: {e}")),
+        Err(e) => nothing_to_send(kernel, &e.to_string()),
+    };
     if header.is_empty() {
         return request;
     }
@@ -2347,6 +2348,28 @@ fn request_preview(kernel: &Kernel) -> String {
         projection.included.len(),
         projection.skipped.len()
     )
+}
+
+/// Why there is no request to show, in a sentence somebody can do something about.
+///
+/// note: `the context projects to an empty request` is the runtime's own sentence and it is
+/// accurate - `step` refuses to send a request with no messages in it, and it says so in the
+/// vocabulary of the thing that refused. It is the wrong answer to "what would go next?" asked
+/// in a session nobody has typed into yet, where what happened is that nothing has been said and
+/// the projector is working perfectly. And when the context is *not* empty, this is the moment
+/// the list of what was left out is worth most - which is exactly when it used to be thrown away,
+/// because the error returned before the header was built.
+fn nothing_to_send(kernel: &Kernel, why: &str) -> String {
+    match kernel.items().len() {
+        0 => "nothing yet: there is nothing in the context to send. Whatever you type next goes \
+              in as an item, and this is where you will see what it turns into - as will \
+              --system, --file, -r and /load, which put things in before you type anything."
+            .to_owned(),
+        items => format!(
+            "{why}: not one of the {items} item(s) it holds is going. The list above says which \
+             and why; `space` on the context tab puts one back."
+        ),
+    }
 }
 
 /// The last part of a type's path, which is the part somebody reads.
