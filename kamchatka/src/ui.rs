@@ -26,7 +26,7 @@ use ratatui::{
 use tui_markdown::StyleSheet as _;
 use unicode_segmentation::UnicodeSegmentation as _;
 
-use crate::app::{App, Focus, Overlay, Speaker, Tab};
+use crate::app::{App, Focus, Overlay, Page, Speaker, Tab};
 
 /// What the keys do, shown by F1.
 ///
@@ -67,7 +67,9 @@ pub const HELP: &str = "  THE TABS
                         (on a ▫ archived row, either of those sends the whole
                          of an output the model was shown a shortened copy of)
     e                   change what it says; the old one stays, marked ~
-    enter               read the whole of what it says
+    enter               read the whole of it: what the model gets, what it
+                        says, and what it said before it was rewritten
+    left / right        move between those, while one is open
     u / U               undo / redo the last change to the context
 
   THE TRACE TAB, when it has the focus
@@ -1015,9 +1017,10 @@ fn draw_overlay(frame: &mut Frame, app: &App) -> usize {
     match &app.overlay {
         Some(Overlay::Text {
             title,
-            body,
+            pages,
+            page,
             scroll,
-        }) => panel(frame, &format!(" {title} "), body, *scroll, 100, 90),
+        }) => panel(frame, &format!(" {title} "), pages, *page, *scroll, 100, 90),
         Some(Overlay::Permission { scroll }) => draw_permission(frame, app, *scroll),
         None => 0,
     }
@@ -1165,17 +1168,34 @@ fn readable(args: &serde_json::Value) -> String {
 }
 
 /// A bordered box over the middle of the screen; returns the offset it drew at.
+///
+/// note: something with more than one face gets a strip of them along the top, drawn the way the
+/// window's own tabs are, because it is the same gesture: `←` and `→` move between them and the
+/// open one is the one in yellow. A single-page overlay - which is nearly all of them - looks
+/// exactly as it did before, strip and all absent.
 fn panel(
     frame: &mut Frame,
     title: &str,
-    body: &str,
+    pages: &[Page],
+    page: usize,
     scroll: usize,
     columns: u16,
     percent: u16,
 ) -> usize {
+    let Some(showing) = pages.get(page).or_else(|| pages.first()) else {
+        return 0;
+    };
+    // the strip, and the blank line under it that keeps it from reading as the first line of what
+    // it is labelling
+    let strip = match pages.len() > 1 {
+        true => 2,
+        false => 0,
+    };
+
     // no taller than it has anything to say: `/budget` is six lines, and a box that took nine
     // tenths of the screen to show them would be hiding the conversation for no reason
-    let wanted = wrapped(body, columns.saturating_sub(4) as usize, "").len() as u16 + 2;
+    let wanted =
+        wrapped(&showing.body, columns.saturating_sub(4) as usize, "").len() as u16 + 2 + strip;
     let area = centred(
         frame.area(),
         columns,
@@ -1187,23 +1207,34 @@ fn panel(
         .title(title)
         .border_style(Style::default().fg(Color::Cyan))
         .padding(ratatui::widgets::Padding::horizontal(1));
-    let inner = block.inner(area);
+    let outer = block.inner(area);
+    let [above, inner] = Layout::vertical([
+        Constraint::Length(strip.min(outer.height)),
+        Constraint::Min(0),
+    ])
+    .areas(outer);
 
-    let lines = wrapped(body, inner.width as usize, "");
+    let lines = wrapped(&showing.body, inner.width as usize, "");
     let at = scroll.min(lines.len().saturating_sub(inner.height as usize));
     let footer = format!(
-        " {}–{} of {} · any key closes ",
+        "{} {}–{} of {} · any key closes ",
+        match pages.len() > 1 {
+            true => " ← → the pages ·",
+            false => "",
+        },
         at + 1,
         (at + inner.height as usize).min(lines.len()),
         lines.len()
     );
 
     let total = lines.len();
+    frame.render_widget(block.title_bottom(footer), area);
+    if strip > 0 {
+        frame.render_widget(Paragraph::new(Line::from(tabs(pages, page))), above);
+    }
     frame.render_widget(
-        Paragraph::new(lines.join("\n"))
-            .scroll((at as u16, 0))
-            .block(block.title_bottom(footer)),
-        area,
+        Paragraph::new(lines.join("\n")).scroll((at as u16, 0)),
+        inner,
     );
 
     scrollbar(
@@ -1218,6 +1249,25 @@ fn panel(
     );
 
     at
+}
+
+/// The names of an overlay's faces, with the open one marked.
+fn tabs(pages: &[Page], page: usize) -> Vec<Span<'static>> {
+    let mut strip = Vec::with_capacity(pages.len() * 2);
+    for (n, of) in pages.iter().enumerate() {
+        if n > 0 {
+            strip.push(Span::styled("│", faint()));
+        }
+        strip.push(Span::styled(
+            format!(" {} ", of.name),
+            match n == page {
+                true => Style::default().fg(Color::Yellow).bold(),
+                false => quiet(),
+            },
+        ));
+    }
+
+    strip
 }
 
 /// Puts a blank line in, unless there is one there already or there is nothing to separate from.

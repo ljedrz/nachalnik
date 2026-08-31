@@ -197,8 +197,9 @@ words. Item 6 is `…`, elided: it is *in* the request, as a one-line marker say
 away, so the call on row 5 still has an answer and the model is not left reading a conversation in
 which it never asked for anything. What it holds is counted as held back rather than spent, and
 `space` spends it again on the way round. That key cycles how much of an item the model gets - all
-of it, a marker, nothing, all of it - and `p` pins it, `e` changes what it says, `enter` reads the
-whole of it, `u` undoes. The third is every event the runtime emits, as it happens, in
+of it, a marker, nothing, all of it - and `p` pins it, `e` changes what it says, `u` undoes. `enter` reads
+the whole of it, in pages `←` and `→` move between: what the request will actually contain for it,
+what the item itself holds, and what it said before something rewrote it. The third is every event the runtime emits, as it happens, in
 the same names the session log is made of. The fourth is the permission policy - every
 answer somebody has actually given, what it covers, and how many things are still a question -
 changed where it is read rather than one prompt at a time at the moment it is least convenient.

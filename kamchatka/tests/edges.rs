@@ -10,7 +10,7 @@
 use std::{sync::Arc, time::Duration};
 
 use kamchatka::{
-    app::{App, Overlay, Speaker, Tab},
+    app::{App, Overlay, Page, Speaker, Tab},
     provider::OpenAiCompatible,
     tools::Careful,
     ui,
@@ -143,7 +143,11 @@ fn every_tab_draws_scrolled_past_its_own_end() {
         app.chosen = scroll;
         app.overlay = Some(Overlay::Text {
             title: "the keys".to_owned(),
-            body: ui::HELP.to_owned(),
+            pages: vec![Page {
+                name: String::new(),
+                body: ui::HELP.to_owned(),
+            }],
+            page: 0,
             scroll,
         });
         for tab in Tab::ALL {
@@ -159,14 +163,35 @@ fn every_tab_draws_scrolled_past_its_own_end() {
 fn an_overlay_draws_at_every_size() {
     let mut app = app();
 
-    app.overlay = Some(Overlay::Text {
-        title: "the keys".to_owned(),
-        body: ui::HELP.to_owned(),
-        scroll: 0,
-    });
-    for width in 1..=60u16 {
-        for height in 1..=20u16 {
-            draw(&mut app, width, height);
+    // one page and several: the strip of names is a row the box only has when there is more than
+    // one of them, and a window one character tall has no row to give it
+    for names in [vec!["", "", ""], vec![""]] {
+        let pages: Vec<Page> = names
+            .iter()
+            .enumerate()
+            .map(|(n, _)| Page {
+                name: format!("page {n}"),
+                body: ui::HELP.to_owned(),
+            })
+            .collect();
+        for page in 0..pages.len() {
+            app.overlay = Some(Overlay::Text {
+                title: "the keys".to_owned(),
+                pages: pages
+                    .iter()
+                    .map(|of| Page {
+                        name: of.name.clone(),
+                        body: of.body.clone(),
+                    })
+                    .collect(),
+                page,
+                scroll: 0,
+            });
+            for width in 1..=60u16 {
+                for height in 1..=20u16 {
+                    draw(&mut app, width, height);
+                }
+            }
         }
     }
 }

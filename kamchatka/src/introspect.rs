@@ -964,7 +964,8 @@ impl Amend {
         let now = kernel.item(id).map(|item| item.tokens).unwrap_or_default();
         ToolOutput::new(format!(
             "[{id}] {} now says something else: ~{} tokens instead of ~{}. What it said before is \
-             on the trace as `context.replaced`, and one undo brings it back.\n{}",
+             on the trace as `context.replaced`, is on the context pane under `enter`, and one \
+             undo brings it back.\n{}",
             item.label,
             thousands(now),
             thousands(was),

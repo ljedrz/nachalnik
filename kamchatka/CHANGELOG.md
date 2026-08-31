@@ -7,6 +7,21 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- <kbd>enter</kbd> on a context item opens a paged box instead of a single body, moved between
+  with `←` and `→`. `to the model` is what the item puts into the next request - read out of the
+  projection of the *whole* context, so a call the projector dropped or an ordered turn it
+  flattened shows as the repair it is, and an item that is not going says so with the reason.
+  `as stored` is what the item holds. For an elided or an excluded item those are two different
+  answers, and the box opens on the first one rather than the second, because the gap between
+  them is what somebody pressed enter to find.
+- `v1`, `v2`, … pages: what an item said before it was rewritten, newest first, up to eight deep.
+  A terminal edit supersedes and leaves the old text a row of its own, but `amend revise`
+  replaces in place - deliberately, so the model keeps the number it refers to the item by - and
+  the old text then exists nowhere but the `context.replaced` event. `App` keeps what that event
+  carries, which is what the event carries content *for*. No change to the runtime.
+
 ### fixed
 
 - A permission question whose arguments were longer than the screen lost its answers. The box was

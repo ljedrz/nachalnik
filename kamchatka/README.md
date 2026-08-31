@@ -93,7 +93,8 @@ again.
 | <kbd>space</kbd> | cycle how much of it the model gets: all of it → a `…` marker → nothing → back |
 | <kbd>p</kbd> | pin it, so that the compactor is refused if it tries |
 | <kbd>e</kbd> | change what it says |
-| <kbd>enter</kbd> | read the whole of what it says |
+| <kbd>enter</kbd> | read the whole of it — see below |
+| <kbd>←</kbd> / <kbd>→</kbd> | move between its pages, while it is open |
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
 | <kbd>23G</kbd> | go to the item numbered 23 — the number `/prune` takes |
 
@@ -101,6 +102,36 @@ An oversized tool result is held as *two* items: the shortened copy the model wa
 whole of it beside it, marked `▫ archived` and not going. <kbd>space</kbd> or <kbd>p</kbd> on that
 row is how you say **send the whole thing** — it is the only way to say it, and the token count in
 the row is what it will cost you.
+
+<kbd>enter</kbd> opens the item, and an item has more than one honest answer to *what is this?*
+The box is paged, and <kbd>←</kbd> / <kbd>→</kbd> move between the pages:
+
+```text
+┌ [6] shell · tool_result · elided · 1,204 tokens ──────────────────────────┐
+│  to the model │ as stored │ v2 │ v1                                       │
+│                                                                           │
+│ role: tool                                                                │
+│ answers: shell                                                            │
+│                                                                           │
+│ [... compacted away ...]                                                  │
+└ ← → the pages · 1–6 of 6 · any key closes ────────────────────────────────┘
+```
+
+**`to the model`** is what this item puts into the next request, taken from the projection of the
+whole context rather than of the item alone — so a call the projector had to drop, or an ordered
+turn it had to flatten, shows up here as the repair it really is. An item that is not going says
+so, with the reason. That last one is not always visible from the row: a tool result whose call
+has been taken out reads as `· active` and costs what it costs, and the projector drops it anyway,
+because a result answering nothing is a request most providers reject. Its page says
+`nothing: this item is not in the request`, and the box opens on that page rather than on the
+text, since the projection rather than the state decides which of the two is the surprise. **`as stored`** is what the item itself holds, which for an elided or
+excluded one is not the same thing at all; that gap is the reason the pages exist, and it is why
+an item the model does not read in full opens on the first page instead of the second.
+
+**`v1`**, **`v2`** and so on are what it said before somebody rewrote it, newest first. A terminal
+edit supersedes, so the old text keeps a row of its own — but `amend` **replaces in place**, to
+keep the number the model refers to the item by, and the old text then exists nowhere except the
+`context.replaced` event. This reads it back off there, up to eight versions deep.
 
 <kbd>e</kbd> is the verb the others were missing. `space` and `p` decide whether the model reads an
 item; `e` decides **what** it reads. The prompt turns into an editor holding the item's text, and

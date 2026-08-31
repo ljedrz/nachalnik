@@ -2744,3 +2744,214 @@ async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
     harness.settle().await;
     assert!(harness.app.kernel.pending_permissions().is_empty());
 }
+
+#[tokio::test]
+async fn an_item_that_was_rewritten_can_still_be_read_as_it_was() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("the tool said 500"));
+    let id = harness.app.kernel.items()[0].id;
+    harness.drain();
+
+    // what `amend revise` does: replaced in place, keeping the number, so the old text exists
+    // nowhere except the event that announced it going
+    for said in ["the tool said 400", "the tool said 412"] {
+        harness
+            .app
+            .kernel
+            .replace(id, said)
+            .expect("the item is there");
+        harness.drain();
+    }
+
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Enter).await;
+
+    // it opens on what the item says now, which is what pressing enter always meant
+    let screen = harness.screen();
+    assert!(
+        screen.contains("to the model │ as stored │ v2 │ v1"),
+        "{screen}"
+    );
+    assert!(screen.contains("the tool said 412"), "{screen}");
+
+    // and the versions are one key away, newest first
+    harness.press(KeyCode::Right).await;
+    let screen = harness.screen();
+    assert!(screen.contains("version 2 of 3"), "{screen}");
+    assert!(screen.contains("the tool said 400"), "{screen}");
+
+    harness.press(KeyCode::Right).await;
+    let screen = harness.screen();
+    assert!(screen.contains("version 1 of 3"), "{screen}");
+    assert!(screen.contains("the tool said 500"), "{screen}");
+
+    // left goes back the way it came, and neither key closes the box
+    harness.press(KeyCode::Left).await;
+    let screen = harness.screen();
+    assert!(screen.contains("the tool said 400"), "{screen}");
+
+    // anything else still closes it
+    harness.press(KeyCode::Esc).await;
+    assert!(harness.app.overlay.is_none());
+}
+
+#[tokio::test]
+async fn an_item_the_model_does_not_read_in_full_is_shown_as_the_model_gets_it() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("a long and expensive thing"));
+    harness.app.kernel.push(ContextItem::user("and another"));
+    let items = harness.app.kernel.items();
+    let (elided, excluded) = (items[0].id, items[1].id);
+    harness.app.kernel.set_state(
+        [elided],
+        ContextState::Elided,
+        Some("summarised elsewhere".into()),
+    );
+    harness
+        .app
+        .kernel
+        .set_state([excluded], ContextState::Excluded, Some("stale".into()));
+    harness.drain();
+
+    // an elided item goes in as a marker: the screen and the request say different things about
+    // it, and the request's answer is the one somebody opened this to find
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Enter).await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("[... summarised elsewhere ...]"),
+        "{screen}"
+    );
+    assert!(!screen.contains("a long and expensive thing"), "{screen}");
+
+    // what it still says is on the next page along
+    harness.press(KeyCode::Left).await;
+    let screen = harness.screen();
+    assert!(screen.contains("a long and expensive thing"), "{screen}");
+
+    // an excluded one is not in the request at all, and says so with the reason
+    harness.press(KeyCode::Esc).await;
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Enter).await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("this item is not in the request"),
+        "{screen}"
+    );
+    assert!(screen.contains("excluded: stale"), "{screen}");
+}
+
+#[tokio::test]
+async fn an_edit_carries_what_the_item_used_to_say_to_the_item_that_replaced_it() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("the first draft"));
+    harness.drain();
+
+    // `e` supersedes rather than replaces, so the old item keeps its own row - but the new one is
+    // where somebody will be looking
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Char('e')).await;
+    harness.press(KeyCode::Char('!')).await;
+    harness.press(KeyCode::Enter).await;
+    harness.drain();
+
+    let new = harness.app.kernel.items().last().expect("the edit").id;
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Enter).await;
+    let screen = harness.screen();
+    assert!(screen.contains(&format!("[{new}]")), "{screen}");
+    assert!(screen.contains("│ v1"), "{screen}");
+    harness.press(KeyCode::Right).await;
+    let screen = harness.screen();
+    assert!(screen.contains("the first draft"), "{screen}");
+}
+
+#[tokio::test]
+async fn an_undone_rewrite_does_not_leave_the_same_text_on_two_pages() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user("what it says"));
+    let id = harness.app.kernel.items()[0].id;
+    harness.drain();
+    harness
+        .app
+        .kernel
+        .replace(id, "what it says instead")
+        .expect("the item is there");
+    harness.drain();
+    assert!(harness.app.kernel.undo());
+    harness.drain();
+
+    // the version that was put back is now the current one, and a page saying so twice says
+    // nothing
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Enter).await;
+    let screen = harness.screen();
+    assert!(screen.contains("what it says"), "{screen}");
+    assert!(!screen.contains("v1"), "{screen}");
+}
+
+#[tokio::test]
+async fn an_item_the_projector_drops_says_so_even_though_its_row_looks_healthy() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({ "where": "here" }))]),
+        ModelResponse::text("a bone"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("dig", "a bone")));
+    harness.send("dig").await;
+    harness.settle().await;
+    harness.tab(Tab::Context);
+
+    // a turn recorded in the conventional three slots keeps its calls in its kind rather than in
+    // its content, and reading only the content showed an empty box for a turn that was nothing
+    // but calls
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Enter).await;
+    let screen = harness.screen();
+    assert!(screen.contains(r#"dig({"where":"here"})"#), "{screen}");
+    harness.press(KeyCode::Esc).await;
+
+    // taking the turn out orphans its result, which the projector then has to drop - and nothing
+    // about the result's own row says so, because as far as its state goes it is going
+    let turn = harness.app.kernel.items()[1].id;
+    harness
+        .app
+        .kernel
+        .set_state([turn], ContextState::Excluded, Some("gone".into()));
+    harness.drain();
+
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Down).await;
+    let row = harness.screen();
+    assert!(
+        row.lines()
+            .any(|line| line.contains("tool_result") && line.contains(" · ")),
+        "the row still reads as active: {row}"
+    );
+
+    harness.press(KeyCode::Enter).await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("this item is not in the request"),
+        "{screen}"
+    );
+    assert!(screen.contains("orphaned tool result"), "{screen}");
+    // and what it holds is still one key away
+    harness.press(KeyCode::Right).await;
+    let screen = harness.screen();
+    assert!(screen.contains("a bone"), "{screen}");
+}

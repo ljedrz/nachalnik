@@ -14,8 +14,8 @@ use std::{
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    Block, Capability, ContextId, ContextItem, ContextKind, ContextState, Delta, Event, Grant,
-    GrantSource, Kernel, State, Verdict, selectors::Selector,
+    Block, Capability, Content, ContextId, ContextItem, ContextKind, ContextState, Delta, Event,
+    Grant, GrantSource, Kernel, Projection, State, Verdict, selectors::Selector,
 };
 use ratatui_textarea::{CursorMove, TextArea, WrapMode};
 use tokio::sync::mpsc::UnboundedSender;
@@ -43,6 +43,9 @@ const LIVE_OUTPUT: usize = 8_000;
 
 /// How many lines `pgup` and `pgdn` move an overlay.
 const PAGE: usize = 20;
+
+/// How many earlier versions of one item the viewer keeps.
+const VERSIONS: usize = 8;
 
 /// Which half of the window the keys are talking to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,11 +135,25 @@ pub enum Overlay {
     Text {
         /// What it is.
         title: String,
-        /// The thing itself.
-        body: String,
+        /// Its faces, in the order they are offered; almost everything has exactly one.
+        pages: Vec<Page>,
+        /// Which of them is on screen.
+        page: usize,
         /// How far down it is scrolled.
         scroll: usize,
     },
+}
+
+/// One face of whatever an overlay is showing.
+///
+/// note: a context item has more than one honest answer to "what is this?" - what the request
+/// will contain, what the item says, and what it said before somebody rewrote it - and picking
+/// one of them to show was how the viewer came to be quietly wrong about the other two.
+pub struct Page {
+    /// What to call it on the strip along the top.
+    pub name: String,
+    /// The thing itself.
+    pub body: String,
 }
 
 /// Who produced a line of the transcript.
@@ -186,6 +203,16 @@ pub struct App {
     pub policy: Arc<Careful>,
     /// The provider, for switching models - whichever dialect it speaks.
     pub provider: Arc<dyn Endpoint>,
+    /// What items used to say, oldest first, for the ones that have been rewritten.
+    ///
+    /// note: kept here rather than in the kernel because the kernel deliberately does not keep
+    /// it. A replacement is the one context operation that overwrites something, which is why
+    /// [`nachalnik::Event::ContextReplaced`] is the one event that carries content - so that a
+    /// client which wants the history can have it, and one that does not pays nothing. Before
+    /// this, an `amend` that rewrote a tool result left the old text nowhere a person could read
+    /// it: on the trace as a line of JSON, and in an undo window that closes.
+    versions: BTreeMap<ContextId, Vec<Content>>,
+
     /// The handle the two introspection tools reach the kernel through, while they are offered.
     ///
     /// note: it is here rather than in `main` because `/introspect` turns them on and off, and this is
@@ -276,6 +303,7 @@ impl App {
             kernel,
             policy,
             provider,
+            versions: BTreeMap::new(),
             introspect: None,
             // the terminal's own default, for a screen test that never spawns anything; the
             // program overwrites it with what a child process actually reported
@@ -677,6 +705,9 @@ impl App {
                     self.say(Speaker::Note, format!("{tool}: {reason}"));
                 }
             }
+            // the one event that carries content, and the only place the old text exists at all
+            // once the undo window closes; the viewer reads it back off `←` and `→`
+            Event::ContextReplaced { id, was, .. } => self.remember(id, was),
             Event::ToolStarted { .. } => self.streamed_bytes = 0,
             Event::ToolRequested { tool, args, .. } => {
                 self.close();
@@ -968,10 +999,19 @@ impl App {
         };
 
         match self.kernel.supersede(id, edited) {
-            Ok(new) => self.say(
-                Speaker::Note,
-                format!("[{id}] is now [{new}]; the old one is still there, marked superseded"),
-            ),
+            Ok(new) => {
+                // the old item keeps its own row, but the new one is where somebody will be
+                // looking, so what it used to say follows it there. Copied rather than moved:
+                // both rows are real, and both can answer "what did this say before?"
+                let history = self.versions.get(&id).cloned().unwrap_or_default();
+                self.versions.insert(new, history);
+                self.remember(new, old.content.clone());
+
+                self.say(
+                    Speaker::Note,
+                    format!("[{id}] is now [{new}]; the old one is still there, marked superseded"),
+                );
+            }
             Err(e) => self.say(Speaker::Error, e.to_string()),
         }
     }
@@ -1085,9 +1125,79 @@ impl App {
                     picked.state,
                     picked.tokens
                 );
-                self.preview(title, whole(&picked));
+                let (pages, at) = self.faces(&picked);
+                self.preview_pages(title, pages, at);
             }
             _ => {}
+        }
+    }
+
+    /// Every face of a context item worth reading, and which of them to open on.
+    ///
+    /// note: the default is what the item says, except when that is not what the model reads. An
+    /// elided item goes into the request as a marker, an excluded one does not go at all, and a
+    /// tool result whose call has been taken out is repaired away though nothing on its row says
+    /// so - all three are rows where the screen and the request disagree, and the disagreement is
+    /// what somebody pressed enter to find. So the projection decides this, not the state.
+    fn faces(&self, item: &ContextItem) -> (Vec<Page>, usize) {
+        let projection = self.kernel.project();
+        let reads_it = projection.included.contains(&item.id) && item.state.sends_content();
+        let mut pages = vec![
+            Page {
+                name: "to the model".into(),
+                body: projected(&projection, item.id),
+            },
+            Page {
+                name: "as stored".into(),
+                body: match item.meta.get("revised") {
+                    // who rewrote it and why, which `amend` records on the item itself; the trace
+                    // has the rest, and this is the line that sends somebody to it
+                    Some(revised) => format!(
+                        "rewritten by `{}`: {}\n\n{}",
+                        revised["by"].as_str().unwrap_or("something"),
+                        revised["reason"].as_str().unwrap_or("no reason given"),
+                        stored(item)
+                    ),
+                    None => stored(item),
+                },
+            },
+        ];
+
+        let history = self
+            .versions
+            .get(&item.id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        // an undo puts an old content back, and the version it restored is then the current one
+        // too; two identical pages side by side would be saying nothing twice
+        let keep = history.len() - usize::from(history.last() == Some(&item.content));
+        for (n, was) in history.iter().enumerate().take(keep).rev() {
+            pages.push(Page {
+                name: format!("v{}", n + 1),
+                body: format!(
+                    "version {} of {}, before it was rewritten\n\n{}",
+                    n + 1,
+                    keep + 1,
+                    whole(was)
+                ),
+            });
+        }
+
+        (pages, usize::from(reads_it))
+    }
+
+    /// Keeps what an item used to say, so that the viewer can still show it.
+    fn remember(&mut self, id: ContextId, was: Content) {
+        let versions = self.versions.entry(id).or_default();
+        if versions.last() == Some(&was) {
+            return;
+        }
+
+        versions.push(was);
+        // the oldest goes rather than the newest: a rewrite somebody is asking about is nearly
+        // always the last one, and a cap that dropped from that end would answer nothing
+        if versions.len() > VERSIONS {
+            versions.remove(0);
         }
     }
 
@@ -1293,11 +1403,26 @@ impl App {
         };
 
         match overlay {
-            Overlay::Text { scroll, .. } => match key.code {
+            Overlay::Text {
+                pages,
+                page,
+                scroll,
+                ..
+            } => match key.code {
                 KeyCode::Up => *scroll = scroll.saturating_sub(1),
                 KeyCode::Down => *scroll += 1,
                 KeyCode::PageUp => *scroll = scroll.saturating_sub(PAGE),
                 KeyCode::PageDown => *scroll += PAGE,
+                // reading another face of the same thing is not leaving it. Round rather than
+                // stop, so that two pages are one key apart in either direction
+                KeyCode::Left | KeyCode::Right if pages.len() > 1 => {
+                    let step = match key.code {
+                        KeyCode::Left => pages.len() - 1,
+                        _ => 1,
+                    };
+                    *page = (*page + step) % pages.len();
+                    *scroll = 0;
+                }
                 // a tool is still waiting to be told whether it may run, so closing whatever was
                 // being read goes back to the question rather than leaving it unanswered and
                 // unreachable - which is what happened after [i] showed the exact JSON
@@ -1463,9 +1588,22 @@ impl App {
 
     /// Puts something long on the screen.
     fn preview(&mut self, title: impl Into<String>, body: impl Into<String>) {
+        self.preview_pages(
+            title,
+            vec![Page {
+                name: String::new(),
+                body: body.into(),
+            }],
+            0,
+        );
+    }
+
+    /// The same, for something with more than one face; `at` is the one to open on.
+    fn preview_pages(&mut self, title: impl Into<String>, pages: Vec<Page>, at: usize) {
         self.overlay = Some(Overlay::Text {
             title: title.into(),
-            body: body.into(),
+            page: at.min(pages.len().saturating_sub(1)),
+            pages,
             scroll: 0,
         });
     }
@@ -2112,6 +2250,104 @@ fn pretty(value: &serde_json::Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|e| format!("it will not serialize: {e}"))
 }
 
+/// Exactly what one item puts into the next request, in the projector's own words.
+///
+/// note: the whole context is projected rather than the item on its own, because an item's
+/// message is not always a function of the item. A tool result whose call is missing is repaired
+/// away, and an item projected alone has no call anywhere - so a lone projection would report
+/// "the model gets nothing" about a result the model is about to read.
+///
+/// note: `included` and `messages` line up one for one under a projector that makes one message
+/// per item, which is the dialect this program speaks. One that merges them - and the `Projector`
+/// documentation offers exactly that as an example - has no per-item answer to give, and saying
+/// so is better than pointing confidently at the wrong message.
+fn projected(projection: &Projection, id: ContextId) -> String {
+    if let Some(left_out) = projection.skipped.iter().find(|item| item.id == id) {
+        return format!(
+            "nothing: this item is not in the request.\n\n  {}",
+            left_out.reason
+        );
+    }
+    let Some(at) = projection.included.iter().position(|other| *other == id) else {
+        return "nothing: the projector neither included this item nor said why.".to_owned();
+    };
+    if projection.included.len() != projection.messages.len() {
+        return format!(
+            "{} item(s) became {} message(s), so no one of them is this item's alone. \
+             ctrl+p shows the whole request.",
+            projection.included.len(),
+            projection.messages.len()
+        );
+    }
+
+    // what the projector had to change about this item to keep the request valid: a dropped call,
+    // an ordered turn flattened into slots. It is the answer to "why does this not look like what
+    // I am reading on the other page?", and it is only ever visible on ctrl+p otherwise
+    let mine: Vec<&str> = projection
+        .repairs
+        .iter()
+        .filter(|repair| repair.contains(&format!("item {id}")))
+        .map(String::as_str)
+        .collect();
+    let header = match mine.is_empty() {
+        true => String::new(),
+        false => format!("repaired: {}\n\n", mine.join("\nrepaired: ")),
+    };
+
+    format!("{header}{}", as_sent(&projection.messages[at]))
+}
+
+/// A projected message, laid out for reading.
+///
+/// note: not `to_string_pretty`. The JSON of a message writes every newline in its content out as
+/// `\n` on one enormous line, and the content is the whole of what this page is for - the same
+/// reason a permission question does not show somebody the JSON of what a tool is about to run.
+/// `ctrl+p` is still the byte-for-byte view, of this and of everything around it.
+fn as_sent(message: &nachalnik::Message) -> String {
+    let mut out = format!("role: {}", message.role);
+    if let Some(name) = &message.name {
+        out.push_str(&format!("\nanswers: {name}"));
+    }
+    out.push_str("\n\n");
+
+    match &message.content {
+        Some(content) => out.push_str(&whole(content)),
+        None => out.push_str("(no content)"),
+    }
+    if let Some(reasoning) = &message.reasoning {
+        out.push_str(&format!("\n\nreasoning:\n{}", whole(reasoning)));
+    }
+    for call in &message.tool_calls {
+        out.push_str(&format!("\n\n{}({})", call.tool, call.args));
+    }
+
+    out
+}
+
+/// The whole of what an item holds, including what its kind carries beside its content.
+///
+/// note: a turn recorded in the conventional three slots keeps its calls and its reasoning in the
+/// kind rather than in the content, so reading the content alone showed an empty box for a turn
+/// that was nothing but tool calls - which is most of them. One recorded as ordered blocks has
+/// all three in the content already, and `whole` lays those out in the order they were produced.
+fn stored(item: &ContextItem) -> String {
+    let mut out = whole(&item.content);
+    if let ContextKind::AssistantMessage {
+        tool_calls,
+        reasoning,
+    } = &item.kind
+    {
+        if let Some(reasoning) = reasoning {
+            out = format!("reasoning:\n{}\n\n{out}", whole(reasoning));
+        }
+        for call in tool_calls {
+            out.push_str(&format!("\n\n{}({})", call.tool, call.args));
+        }
+    }
+
+    out.trim().to_owned()
+}
+
 /// The whole of what an item says, including the parts `to_text` leaves out.
 ///
 /// note: for most items this is the content and nothing else. For a turn a provider recorded in
@@ -2119,9 +2355,9 @@ fn pretty(value: &serde_json::Value) -> String {
 /// wrong on this screen, where the whole point is to be shown what the item really holds. The
 /// thinking and the calls are read out where they happened, because between two calls is where
 /// the thinking that led to the second one belongs.
-fn whole(item: &ContextItem) -> String {
-    let Some(blocks) = item.content.as_blocks() else {
-        return item.content.to_text().into_owned();
+fn whole(content: &Content) -> String {
+    let Some(blocks) = content.as_blocks() else {
+        return content.to_text().into_owned();
     };
 
     blocks
