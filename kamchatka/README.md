@@ -218,11 +218,19 @@ and running that through a renderer would be inventing structure it never had.
 | key | what happens |
 | --- | --- |
 | <kbd>enter</kbd> / <kbd>alt+enter</kbd> | send / a new line |
+| <kbd>pgup</kbd> / <kbd>pgdn</kbd> | scroll the conversation |
+| <kbd>ctrl+e</kbd> | follow the newest again |
 | <kbd>tab</kbd> | move between the prompt and the open tab |
 | <kbd>ctrl+t</kbd> | the next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for one in particular |
 | <kbd>esc</kbd> | stop what is running, and keep what arrived |
 | <kbd>ctrl+c</kbd> | the same, and again to leave |
 | <kbd>F1</kbd> | all of them, including the slash commands |
+
+Where you leave the conversation is where it stays. A turn that writes four hundred lines used to
+pull the window down to the newest of them on every fragment, so anything it had said thirty
+seconds earlier was unreadable until the turn ended; now nothing but your own message moves it,
+and the line along the bottom says how much has arrived underneath. <kbd>ctrl+e</kbd> goes back to
+following, and so does scrolling down to the end.
 
 Stopping is cooperative rather than a killed process. The provider notices between fragments and
 returns the text it has; the shell tool kills the command — and everything the command started,

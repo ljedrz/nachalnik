@@ -24,6 +24,11 @@ minor bump may break you.
 
 ### fixed
 
+- The conversation stayed where it was scrolled to. Every fragment of a streamed answer set the
+  window back to following the newest line, so scrolling up to re-read something during a long
+  turn lasted exactly until the next fragment arrived - which is to say, not at all. Only a
+  message of your own moves it now; the chat tab's footer says how many lines have arrived
+  underneath, `ctrl+e` follows again, and so does scrolling down to the end.
 - A permission question whose arguments were longer than the screen lost its answers. The box was
   sized to its whole body and then clipped to what would fit, and what came last in the body was
   the line saying `y` and `n` were keys - so an `amend` carrying a rewritten tool result, which is

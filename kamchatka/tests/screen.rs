@@ -83,6 +83,13 @@ impl Harness {
             .await;
     }
 
+    /// Presses a key with control held.
+    async fn chord(&mut self, code: KeyCode) {
+        self.app
+            .on_key(KeyEvent::new(code, KeyModifiers::CONTROL))
+            .await;
+    }
+
     /// Types a line and sends it.
     async fn send(&mut self, line: &str) {
         for c in line.chars() {
@@ -2954,4 +2961,76 @@ async fn an_item_the_projector_drops_says_so_even_though_its_row_looks_healthy()
     harness.press(KeyCode::Right).await;
     let screen = harness.screen();
     assert!(screen.contains("a bone"), "{screen}");
+}
+
+#[tokio::test]
+async fn a_conversation_stays_where_somebody_scrolled_it_while_the_model_keeps_writing() {
+    let mut harness = Harness::new([]);
+    let write = |harness: &mut Harness, from: usize, to: usize| {
+        for n in from..to {
+            harness.app.on_event(Event::ModelDelta {
+                delta: Delta::Text(format!("line {n}\n\n")),
+            });
+        }
+    };
+
+    write(&mut harness, 0, 80);
+    let screen = harness.screen();
+    assert!(screen.contains("line 79"), "{screen}");
+
+    // scroll back to read something from further up
+    harness.press(KeyCode::PageUp).await;
+    harness.press(KeyCode::PageUp).await;
+    let read = harness.screen();
+    let anchor = read
+        .match_indices("line ")
+        .next()
+        .map(|(at, _)| {
+            read[at..]
+                .split_whitespace()
+                .take(2)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .expect("something is on the screen");
+    assert!(!read.contains("line 79"), "{read}");
+
+    // the model writes another eighty lines under it. Every fragment used to yank the window back
+    // to the newest of them, which made reading anything it had said earlier impossible until the
+    // turn was over
+    write(&mut harness, 80, 160);
+    let after = harness.screen();
+    assert!(after.contains(&anchor), "the view moved: {after}");
+    assert!(!after.contains("line 159"), "{after}");
+    // and the window says there is more underneath, rather than just stopping
+    assert!(after.contains("ctrl+e follows"), "{after}");
+
+    // ctrl+e is the way back down without paging through what arrived in between
+    harness.chord(KeyCode::Char('e')).await;
+    let back = harness.screen();
+    assert!(back.contains("line 159"), "{back}");
+
+    // and it keeps following from there
+    write(&mut harness, 160, 200);
+    let screen = harness.screen();
+    assert!(screen.contains("line 199"), "{screen}");
+}
+
+#[tokio::test]
+async fn a_message_of_your_own_takes_you_back_to_the_bottom() {
+    let mut harness = Harness::new([]);
+    for n in 0..80 {
+        harness.app.on_event(Event::ModelDelta {
+            delta: Delta::Text(format!("line {n}\n\n")),
+        });
+    }
+    harness.screen();
+    harness.press(KeyCode::PageUp).await;
+    harness.press(KeyCode::PageUp).await;
+    assert!(!harness.screen().contains("line 79"));
+
+    // typing something and sending it is somebody saying they are done reading back
+    harness.send("what about this").await;
+    let screen = harness.screen();
+    assert!(screen.contains("> what about this"), "{screen}");
 }

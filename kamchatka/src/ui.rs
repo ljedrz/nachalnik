@@ -52,7 +52,9 @@ pub const HELP: &str = "  THE TABS
   THE PROMPT, which is under every tab
     enter               send
     alt+enter           a new line
-    pgup / pgdn         scroll the conversation
+    pgup / pgdn         scroll the conversation; where you leave it is where
+                        it stays, however much arrives underneath
+    ctrl+e              follow the newest again
     (a message sent while a turn is running waits for the end of it, and
      then gets a turn of its own)
 
@@ -389,10 +391,29 @@ fn scrollbar(frame: &mut Frame, window: Rect, border: Style, scrolled: Scrolled)
 /// What the open tab has to say about itself, along the bottom.
 fn footer(app: &App) -> String {
     match app.tab {
-        Tab::Chat => match app.busy {
-            true => " esc stops it ".to_owned(),
-            false => " alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions ".to_owned(),
-        },
+        // note: a conversation somebody has scrolled back through stays where they left it, so
+        // this is the line that has to say there is more underneath - and how to get to it. Left
+        // out, "sticky" reads as "stuck": the window simply stops moving and nothing accounts
+        // for it
+        Tab::Chat => {
+            let mut parts = Vec::new();
+            if !app.follow {
+                parts.push(
+                    match app.rendered.saturating_sub(app.viewport + app.scroll) {
+                        0 => "ctrl+e follows the newest".to_owned(),
+                        n => format!("{} line(s) below · ctrl+e follows them", thousands(n)),
+                    },
+                );
+            }
+            if app.busy {
+                parts.push("esc stops it".to_owned());
+            }
+            if parts.is_empty() {
+                parts.push("alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions".into());
+            }
+
+            format!(" {} ", parts.join(" · "))
+        }
         Tab::Context => {
             // counted by whether the model is being shown what the item says, which is the
             // question this line is answering. An elided item is in the request and is not being

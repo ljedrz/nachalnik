@@ -340,6 +340,11 @@ impl App {
     // ------------------------------------------------------------------------ saying things
 
     /// Adds a finished entry to the transcript, ending whatever was still arriving.
+    ///
+    /// note: only the person's own line takes the view back to the bottom. Everything else that
+    /// arrives leaves the scroll where somebody put it - a model writing four hundred lines used
+    /// to yank the window back to the newest of them on every fragment, so reading anything it
+    /// had said thirty seconds ago was impossible until the turn ended.
     pub fn say(&mut self, speaker: Speaker, text: impl Into<String>) {
         self.close();
         self.transcript.push(Entry {
@@ -347,7 +352,9 @@ impl App {
             text: text.into(),
             open: false,
         });
-        self.follow = true;
+        if speaker == Speaker::User {
+            self.follow = true;
+        }
     }
 
     /// Appends to the open entry from this speaker, opening one if there is none.
@@ -376,7 +383,6 @@ impl App {
                 });
             }
         }
-        self.follow = true;
     }
 
     /// Closes whatever was still arriving, and drops it if it turned out to be nothing.
@@ -830,6 +836,11 @@ impl App {
             (KeyCode::Char('p'), true) => {
                 self.preview("the next request", request_preview(&self.kernel))
             }
+            // the way back down from wherever the reading got to, without paging through however
+            // much arrived in the meantime. Scrolling to the bottom does it too, and that is the
+            // gesture most people will find first; this is the one for a turn that wrote a
+            // thousand lines while somebody was looking at the twelfth
+            (KeyCode::Char('e'), true) => self.follow = true,
             (KeyCode::F(1), _) => self.preview("the keys", crate::ui::HELP),
             // the chat tab has nothing to move the focus to: the conversation is read, not
             // operated, and swallowing what somebody typed at it would be a trap
