@@ -161,6 +161,35 @@ impl Harness {
         panic!("`{needle}` is not on the screen");
     }
 
+    /// The screen with its line breaks undone: borders dropped, rows run together, runs of
+    /// spaces collapsed to one.
+    ///
+    /// note: for asserting on a *sentence* rather than on a line. A phrase that sits comfortably
+    /// on one row here wraps onto two on a machine whose temp directory is
+    /// `/var/folders/df/djsxfhc17x95674wsm_g8s980000gn/T` - which is macOS, and which is how
+    /// `is not a session` became `is not a` and then `session:` and a green test went red on
+    /// somebody else's CI. Anything whose text can contain a path belongs here rather than in
+    /// `screen`.
+    fn flat(&mut self) -> String {
+        let screen = self.screen();
+
+        screen
+            .replace(['│', '┌', '┐', '└', '┘', '─'], " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// The same again, with the spaces taken out too.
+    ///
+    /// note: for finding a *token* rather than a sentence. `wrapped` splits a chunk that will not
+    /// fit on a row of its own, so a path longer than the window is wide arrives as `…/jun` and
+    /// `k.json` and no amount of running the rows together puts it back. This is the view that
+    /// can still find it.
+    fn packed(&mut self) -> String {
+        self.flat().replace(' ', "")
+    }
+
     /// Which of the three working dots is the lit one.
     fn dots(&mut self) -> usize {
         let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
@@ -2054,8 +2083,13 @@ async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
         !dir.join("notes.jsonl.jsonl").exists(),
         "the extension should not have been doubled"
     );
-    let screen = harness.screen();
-    assert!(screen.contains("notes.json"), "{screen}");
+    // packed, because the note carries the path it wrote to and a long enough temp directory
+    // leaves the renderer no choice but to break the name across two rows
+    assert!(
+        harness.packed().contains("notes.json"),
+        "{}",
+        harness.screen()
+    );
 
     // the log is one record per line, and every line is a record
     let written = std::fs::read_to_string(&log).unwrap();
@@ -2080,11 +2114,7 @@ async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
 
     // saving again over the same files says so rather than replacing them in silence
     harness.send(&format!("/save {}", asked.display())).await;
-    assert!(
-        harness.screen().contains("replaced"),
-        "{}",
-        harness.screen()
-    );
+    assert!(harness.flat().contains("replaced"), "{}", harness.screen());
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -2160,7 +2190,7 @@ async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_t
     );
 
     // it is on the screen as the conversation it was, and it says what it did
-    let screen = second.screen();
+    let screen = second.flat();
     assert!(screen.contains("remember 4817"), "{screen}");
     assert!(screen.contains("loaded"), "{screen}");
 
@@ -2184,14 +2214,16 @@ async fn loading_something_that_is_not_a_session_says_which_file_and_why() {
 
     let mut harness = Harness::new([]);
     harness.send(&format!("/load {}", junk.display())).await;
-    let screen = harness.screen();
+    // flattened, because the message carries a path and a long enough one wraps the sentence
+    let screen = harness.flat();
     assert!(screen.contains("is not a session"), "{screen}");
-    assert!(screen.contains("junk.json"), "{screen}");
+    // the name, from the view that survives a path the renderer had to break mid-token
+    assert!(harness.packed().contains("junk.json"), "{screen}");
 
     harness
         .send(&format!("/load {}", dir.join("absent.json").display()))
         .await;
-    let screen = harness.screen();
+    let screen = harness.flat();
     assert!(screen.contains("could not read"), "{screen}");
 
     let _ = std::fs::remove_dir_all(&dir);
