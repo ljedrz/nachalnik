@@ -5,7 +5,7 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
-## [unreleased]
+## [0.3.0] - 2026-09-01
 
 ### added
 
@@ -61,6 +61,12 @@ minor bump may break you.
 
 ### changed
 
+- **Breaking, for the library:** `Overlay::Permission` is a struct variant carrying its own
+  `scroll`, and `Overlay::Text` holds `pages` and `page` where it held one `body`. Both follow
+  from the same discovery - that a box showing one thing had no way to admit there was more than
+  one - and neither is expressible without changing the shape somebody matches on. The library
+  exists so that the screen can be tested against a `TestBackend`; the program is the product, and
+  it is unaffected.
 - The trace says what its events carry. A third of them printed a dotted name against an empty
   line - including `context.replaced`, which holds the only surviving copy of what an item used to
   say, and `tool.repaired`, which is the kernel announcing that a provider reused a call
