@@ -345,6 +345,26 @@ fn draw_body(frame: &mut Frame, app: &mut App, area: Rect) {
     scrollbar(frame, area, edge, scrolled);
 }
 
+/// A gap worth reporting, as a word; `None` when it is too short to be news.
+///
+/// note: the threshold is what keeps this from being a column of numbers. Nearly everything in a
+/// session happens between one frame and the next, and a log that stamped all of it would be
+/// asking somebody to find the slow line by reading every line. What is left is the model
+/// thinking, a command running, and a provider that has gone quiet.
+fn waited_since(gap: Duration) -> Option<String> {
+    let millis = gap.as_millis();
+    match millis {
+        0..100 => None,
+        100..1_000 => Some(format!("+{millis}ms")),
+        1_000..60_000 => Some(format!("+{:.1}s", gap.as_secs_f64())),
+        _ => Some(format!(
+            "+{}m{:02}s",
+            gap.as_secs() / 60,
+            gap.as_secs() % 60
+        )),
+    }
+}
+
 /// How far through its content a tab is, and the rows it drew that content in.
 #[derive(Clone, Copy, Default)]
 struct Scrolled {
@@ -859,15 +879,40 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
 /// interesting part is not a log.
 fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
     const NAMES: usize = 22;
+    /// How wide the gap column is, including the space after it.
+    const GAP: usize = 8;
 
     let (width, height) = (inner.width as usize, inner.height as usize);
     let column = match width >= NAMES + 20 {
         true => NAMES,
         false => 0,
     };
+    // the clock only where there is room for it: a narrow window spends its columns on what
+    // happened rather than on when
+    let clock = width >= NAMES + 20 + GAP;
 
     let mut lines: Vec<Line> = Vec::new();
+    let mut before: Option<std::time::Instant> = None;
     for event in &app.trace {
+        // the gap to the line above rather than a wall clock, because the question somebody
+        // brings to a log is which step was slow, and a column of timestamps makes them do the
+        // subtraction. Blank under a tenth of a second, so the few that took real time are the
+        // only ones with anything in the column at all
+        let gap = match (clock, before.replace(event.at)) {
+            (true, Some(previous)) => waited_since(event.at.saturating_duration_since(previous)),
+            _ => None,
+        };
+        let stamp = match (clock, &gap) {
+            (false, _) => Vec::new(),
+            (true, Some(said)) => vec![Span::styled(
+                format!("{said:>7} "),
+                match said.ends_with('s') && !said.ends_with("ms") {
+                    true => Style::default().fg(Color::Yellow),
+                    false => faint(),
+                },
+            )],
+            (true, None) => vec![Span::raw(" ".repeat(GAP))],
+        };
         let colour = match () {
             _ if event.name.ends_with(".failed") => Color::Red,
             _ if event.name.starts_with("permission") => Color::Yellow,
@@ -880,18 +925,32 @@ fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
         let indent = " ".repeat(column.max(2));
         let mut detail = wrapped(&event.detail, width, &indent).into_iter();
 
+        let under = " ".repeat(match clock {
+            true => GAP,
+            false => 0,
+        });
         match (event.name.is_empty(), event.detail.is_empty()) {
             // a continuation: something the event before it had more to say about
-            (true, _) => lines.extend(detail.map(|line| Line::styled(line, said))),
-            (false, true) => lines.push(Line::styled(event.name.clone(), named)),
+            (true, _) => {
+                lines.extend(detail.map(|line| Line::styled(format!("{under}{line}"), said)))
+            }
+            (false, true) => lines.push(Line::from(
+                [stamp, vec![Span::styled(event.name.clone(), named)]].concat(),
+            )),
             (false, false) => {
                 // the first line of the detail sits beside the name, the rest under it
                 let first = detail.next().unwrap_or_default();
-                lines.push(Line::from(vec![
-                    Span::styled(format!("{:<column$}", event.name), named),
-                    Span::styled(first.trim_start().to_owned(), said),
-                ]));
-                lines.extend(detail.map(|line| Line::styled(line, said)));
+                lines.push(Line::from(
+                    [
+                        stamp,
+                        vec![
+                            Span::styled(format!("{:<column$}", event.name), named),
+                            Span::styled(first.trim_start().to_owned(), said),
+                        ],
+                    ]
+                    .concat(),
+                ));
+                lines.extend(detail.map(|line| Line::styled(format!("{under}{line}"), said)));
             }
         }
     }

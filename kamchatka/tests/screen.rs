@@ -3504,3 +3504,62 @@ async fn the_pane_says_what_an_item_costs_now_and_what_it_is_holding_back() {
     let gap = header.find("kind").expect("the kind column") - header.find("label").expect("label");
     assert!(gap < 20, "twenty columns of nothing: {header}");
 }
+
+#[tokio::test]
+async fn the_trace_says_what_each_event_carries_and_which_step_was_slow() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({ "where": "here" }))]),
+        ModelResponse::text("a bone"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("dig", "a bone")));
+    harness.send("dig").await;
+    harness.settle().await;
+
+    // the one event that carries content, and the only place the old text survives once the undo
+    // window closes. It printed its own name against an empty line
+    let id = harness.app.kernel.items()[0].id;
+    harness
+        .app
+        .kernel
+        .replace(id, "dig, please")
+        .expect("the item is there");
+    assert!(harness.app.kernel.undo());
+    harness.drain();
+
+    harness.tab(Tab::Trace);
+    let screen = harness.sized(110, 30);
+    assert!(screen.contains("context.replaced"), "{screen}");
+    assert!(screen.contains("it said: dig"), "{screen}");
+    assert!(screen.contains("context.undone"), "{screen}");
+    assert!(screen.contains("put back as they were"), "{screen}");
+
+    // and nothing in the pane is a name with nothing beside it
+    for line in screen.lines().filter(|line| line.contains('.')) {
+        let Some(name) = line.split_whitespace().find(|word| {
+            word.contains('.') && word.chars().all(|c| c.is_ascii_lowercase() || c == '.')
+        }) else {
+            continue;
+        };
+        let after = line.split_once(name).map(|(_, rest)| rest).unwrap_or("");
+        assert!(
+            after.trim_end_matches(['│', ' ', '█']).trim().len() > 1,
+            "`{name}` says nothing: {line}"
+        );
+    }
+
+    // the gap column: blank for the frame-to-frame majority, and there for the few that waited
+    harness.tab(Tab::Trace);
+    let last = harness.app.trace.len() - 1;
+    harness.app.trace[last].at = std::time::Instant::now()
+        .checked_add(Duration::from_secs(4))
+        .expect("a clock");
+    let screen = harness.sized(110, 30);
+    assert!(screen.contains("+4.0s"), "{screen}");
+
+    // and a window with no room for it spends its columns on what happened instead
+    let narrow = harness.sized(46, 30);
+    assert!(!narrow.contains("+4.0s"), "{narrow}");
+}

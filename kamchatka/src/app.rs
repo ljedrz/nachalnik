@@ -122,6 +122,12 @@ pub struct Traced {
     pub name: String,
     /// The rest of it.
     pub detail: String,
+    /// When it arrived.
+    ///
+    /// note: what a log is missing without a clock is the question people actually bring to one:
+    /// which step was slow. Kept as an instant rather than a rendered string because what the
+    /// pane shows is the gap to the line above, which is not a property of either line alone.
+    pub at: Instant,
 }
 
 /// What is being shown over the top of everything else.
@@ -484,6 +490,7 @@ impl App {
         self.trace.push_back(Traced {
             name: name.into(),
             detail: detail.into(),
+            at: Instant::now(),
         });
     }
 
@@ -2333,7 +2340,15 @@ fn trace_line(event: &Event) -> (String, String) {
             grant,
             source,
             ..
-        } => format!("{tool}: {grant}, by the {source:?}"),
+        } => format!(
+            "{tool}: {grant}, {}",
+            match source {
+                GrantSource::Policy => "by the policy in force",
+                GrantSource::User => "answered when it was asked about",
+                GrantSource::Cancellation => "the calls were dropped",
+                _ => "by something else",
+            }
+        ),
         Event::Compacted { report } => format!(
             "{} out, {} → {} tokens",
             report.removed.len(),
@@ -2341,7 +2356,76 @@ fn trace_line(event: &Event) -> (String, String) {
             report.tokens_after
         ),
         Event::ModelFailed { error } | Event::StepFailed { error } => one_line(error),
-        Event::ToolsChanged { tools } => format!("{} tools", tools.len()),
+        // note: everything below here used to fall through to the catch-all and print its own
+        // name against an empty line. Each of them carries something worth reading, and a log
+        // that names an event and then says nothing about it is the shape of a log nobody opens
+        Event::SessionStarted { session } => format!("session {session}"),
+        Event::SessionResumed {
+            session,
+            items,
+            tokens,
+        } => format!("session {session}: {items} items, ~{tokens} tokens"),
+        Event::SessionFinished => "nothing more will be recorded".to_owned(),
+        Event::Interrupted => "stopped; whatever had arrived is kept".to_owned(),
+        // the one event that carries content, because it is the only operation that overwrites
+        // something - so the first line of what went is worth the room
+        Event::ContextReplaced {
+            id,
+            tokens_before,
+            tokens_after,
+            was,
+        } => format!(
+            "[{id}] {tokens_before} → {tokens_after} tokens; it said: {}",
+            one_line(&was.to_text())
+        ),
+        Event::ContextUndone {
+            items,
+            removed,
+            changed,
+        } => format!(
+            "{items} items now; {} taken back out, {} put back as they were",
+            removed.len(),
+            changed.len()
+        ),
+        Event::ContextRedone {
+            items,
+            restored,
+            changed,
+        } => format!(
+            "{items} items now; {} back in, {} changed again",
+            restored.len(),
+            changed.len()
+        ),
+        Event::ContextAnnotated { id, meta } => format!("[{id}] {}", one_line(&meta.to_string())),
+        Event::ModelChanged { from, to } => format!(
+            "{} → {}",
+            from.as_ref().map(|i| i.model.as_str()).unwrap_or("none"),
+            to.as_ref().map(|i| i.model.as_str()).unwrap_or("none")
+        ),
+        Event::ModelParamsChanged { params } => match params.is_empty() {
+            true => "none; the provider's own defaults".to_owned(),
+            false => one_line(&serde_json::to_string(params).unwrap_or_default()),
+        },
+        // not the payload: `/payload` prints the whole of it, and a log line that tried would
+        // bury every other line in the pane
+        Event::ModelPayload { payload } => format!(
+            "{} bytes, rendered by the provider; /payload prints it",
+            payload.to_string().len()
+        ),
+        Event::ToolUnknown { tool, .. } => {
+            format!("`{tool}` was asked for and is not registered")
+        }
+        // a provider that does this is worth knowing about, which is why the kernel announces it
+        Event::ToolCallRepaired { call, was, reason } => match was.is_empty() {
+            true => format!("gave a call the identifier `{call}`: {reason}"),
+            false => format!("`{was}` → `{call}`: {reason}"),
+        },
+        // the names, not the count: `4 tools` is a number somebody has to go and look up, and
+        // this line exists because what the model is offered changed
+        Event::ToolsChanged { tools } => match tools.is_empty() {
+            true => "none; the model is offered no tools at all".to_owned(),
+            false => format!("{} offered: {}", tools.len(), tools.join(", ")),
+        },
         // a seam being swapped names what went out and what came in; the trace is where somebody
         // reading a session finds out that the thing projecting its requests changed half way
         Event::PolicyChanged { from, to }

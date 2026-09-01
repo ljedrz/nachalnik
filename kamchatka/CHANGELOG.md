@@ -46,6 +46,18 @@ minor bump may break you.
 
 ### changed
 
+- The trace says what its events carry. A third of them printed a dotted name against an empty
+  line - including `context.replaced`, which holds the only surviving copy of what an item used to
+  say, and `tool.repaired`, which is the kernel announcing that a provider reused a call
+  identifier. They all say something now, and a test refuses a name with nothing beside it.
+  `tools.changed` lists the tools rather than counting them, and `permission.decided` says who
+  answered in words rather than in a `Debug` of the source.
+- A column down the left of the trace holds the gap since the line above, blank under a tenth of a
+  second. A log with no clock cannot answer the question people bring to one - which step was slow
+  - and a column of timestamps would make them subtract to find out. Nearly everything happens
+  between one frame and the next, so what is left with a number beside it is the model thinking, a
+  command running, and however long somebody took to answer a question. It is dropped on a window
+  too narrow to spare the columns.
 - The context pane's token column reported what an item *held* under a heading that said what it
   cost, so an elided item claimed the nine thousand tokens it was no longer spending and the
   status line beside it disagreed by exactly that much. There are two columns now: `sending`, read

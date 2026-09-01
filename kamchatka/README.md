@@ -169,27 +169,37 @@ made of:
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
-│model.requested       6 messages, 4 tools, ~1579 tokens                                                       │
-│context.added         [7] assistant, 72 tokens                                                                │
-│model.finished        EndTurn, 1522 in / 19 out (reported)                                                    │
-│tool.requested        shell                                                                                   │
-│permission.requested  shell (3)                                                                               │
-│state.changed         requesting → deciding                                                                   │
-│context.recounted     1425 → 1377 tokens                                                                      │
-│permission.decided    shell: allow, by the User                                                               │
-│state.changed         deciding → ready                                                                        │
-│state.changed         ready → executing                                                                       │
-│tool.started          shell                                                                                   │
-│tool.output           shell, 12 bytes                                                                         │
-│context.added         [8] shell, 23 tokens                                                                    │
-│tool.finished         shell, 23 tokens                                                                        │
+│        model.requested       6 messages, 4 tools, ~1579 tokens                                                │
+│  +6.4s context.added         [7] assistant, 72 tokens                                                        │
+│        model.finished        EndTurn, 1522 in / 19 out (reported)                                            │
+│        tool.requested        shell                                                                           │
+│        permission.requested  shell (3)                                                                       │
+│        state.changed         requesting → deciding                                                           │
+│        context.recounted     1425 → 1377 tokens                                                              │
+│ +11.0s permission.decided    shell: allow, answered when it was asked about                                  │
+│        state.changed         deciding → ready                                                                │
+│        state.changed         ready → executing                                                               │
+│        tool.started          shell                                                                           │
+│  +1.3s tool.output           shell, 12 bytes                                                                 │
+│        context.added         [8] shell, 23 tokens                                                            │
+│        tool.finished         shell, 23 tokens                                                                │
 └──────────────────────────────────────────────────────────────────── 41 events · /save keeps them all ────────┘
 ```
 
 Every transition of the state machine is in there, and so is everything either side of it: what was
 requested, what was decided, what was added to the context and what it cost — down to the wiring,
 since plugging in a provider, a policy and each tool is itself an event and the screen subscribes
-before any of it happens. There is a test that the tab draws every event the session recorded.
+before any of it happens. Every event says what it carries: `context.replaced` shows the first line
+of what an item used to say, which is the one thing nothing else can recover; `tool.repaired` names
+the identifier a provider reused and what was wrong with it; `tools.changed` lists them rather than
+counting them. There is a test that the tab draws every event the session recorded, and another
+that none of them is a name with an empty line beside it.
+
+The column down the left is the gap since the line above, and it is blank under a tenth of a
+second. Nearly everything in a session happens between one frame and the next, so what is left
+with a number beside it is the model thinking, a command running, and the eleven seconds somebody
+spent deciding whether to allow a shell — which is the question people bring to a log, without
+having to subtract a column of timestamps to answer it.
 
 It is the same stream `/save` writes to a `.jsonl`, and reading it is how you find out that a
 permission question became a decision became a state change became a call. <kbd>tab</kbd> then
