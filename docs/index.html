@@ -233,8 +233,10 @@ footer a { color: var(--accent); }
   <span class="sec-no">01 / the premise</span>
   <div class="col stack">
     <h2>An agent can't normally see any of this</h2>
-    <p>Think about what a model actually knows about its own situation. It sees a list of messages. It does not see which of them the harness dropped, or shortened, or reordered on the way out. It cannot tell you what its own reasoning was three turns ago, because that was either thrown away or never handed back. It has no idea what any of it costs. And it certainly can't change any of it: if something in the context is wrong, the wrongness is permanent and the best it can do is work around it, forever, in every request that follows.</p>
-    <p>That last one is the interesting one. A confidently wrong note in an agent's context is a small disaster with no fix. It gets re-read on every turn, it never expires, and the model has no mechanism to say "hold on, that's not right" about its own memory.</p>
+    <p>Think about what a model actually knows about its own situation. It sees a list of messages. It does not see which of them the harness dropped, or shortened, or reordered on the way out. It has no idea what any of it costs. And it certainly can't change any of it: if something in the context is wrong, the wrongness is permanent and the best it can do is work around it, forever, in every request that follows.</p>
+    <p>Its own past thinking is worth being precise about, because it is the one part that is sometimes already solved. Qwen's chat template can carry earlier thinking blocks along instead of stripping them, several serving stacks have a switch for keeping them, and a few APIs hand signed reasoning back so it can be replayed. A model in one of those setups really can see what it thought three turns ago.</p>
+    <p>What it gets back, though, is <em>prose in the prompt</em>. More text in the same undifferentiated wall, re-read on every turn whether it is wanted or not. It is not addressable. There is no way to ask which turn a thought belongs to, to read one back on its own without the four turns around it, to find out what carrying it costs, or to drop the one that turned out to be wrong. Preserved thinking is thinking you cannot get away from.</p>
+    <p>And that last part is the interesting one. A confidently wrong note in an agent's context is a small disaster with no fix. An agent that keeps a notes file can of course edit the notes, but that is a document it will read again later, not the item sitting in the request it is answering now. Nothing reaches a tool result, or one of its own turns, or a note the harness put there before it started. That note gets re-read every turn, it never expires, and the model has no mechanism to say "hold on, that's not right" about its own memory.</p>
     <p>So I gave one the mechanism, and then I lied to it.</p>
   </div>
 </section>
@@ -355,7 +357,8 @@ The longest file in this repository is kamchatka/src/app.rs, at 2144 lines. Chec
 
   <div class="col stack" style="margin-top:26px">
     <p>I checked that against the recorded thinking on item 5. <strong>It is verbatim.</strong> Not a reconstruction, not a plausible-sounding paraphrase of what it might have thought. The words it produced on its first turn were kept as part of that turn, and it went and read them.</p>
-    <p>That is the part with no equivalent anywhere else. A model that can quote what it was thinking before it changed its mind is doing something that requires the thinking to have been kept as ordinary, addressable data, in the order it was produced, sitting in the same list as everything else.</p>
+    <p>Quoting its own earlier thinking is not, on its own, the remarkable part. Hand a model its old thinking blocks back in the prompt and it can quote them too, the way it can quote anything else you put in front of it.</p>
+    <p>The difference is the shape they came back in. That thought is a block on item 5, and item 5 has a number, a state, a size and a source. It was fetched on request, on its own, by a call that named it, without the four turns sitting around it. It cost what it cost and the pane says so. And item 5 could have been elided, or pruned, or rewritten, which is exactly what happened to item 2 a moment earlier. That is the whole distinction: not that the thinking survived, but that it survived as ordinary data with a handle on it, in the order it was produced, in the same list as everything else, subject to every operation everything else is subject to.</p>
   </div>
 </section>
 
@@ -401,7 +404,7 @@ kernel.replace(id, corrected);                  <span class="c">// what it says 
 kernel.set_state([id], ContextState::Elided, reason);
 kernel.undo();                                  <span class="c">// and nothing was destroyed</span></pre>
     </div>
-    <figcaption>Reading a turn's recorded thinking is a field on the item. Forking a context is <code>snapshot</code> and <code>resume</code>. Previewing a request is <code>preview_request</code>. All of it was already public, and none of it was added for this.</figcaption>
+    <figcaption>Forking a context is <code>snapshot</code> and <code>resume</code>. Previewing a request is <code>preview_request</code>. Pruning is <code>set_state</code>. Those were public long before any of this. One thing was not: a turn used to be recorded as a content slot, a reasoning slot and a flat list of calls, which throws away the order the model produced them in. Recording it as an ordered sequence instead went into the runtime in the same release as these tools, and it is the only part that did.</figcaption>
   </figure>
 
   <div class="col stack" style="margin-top:30px">
