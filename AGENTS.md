@@ -168,7 +168,7 @@ part of the change.
 - **Nothing is destroyed.** Removal is a state change. An excluded, archived or superseded item
   keeps its identifier, is still listed and inspectable, and comes back with a `set_state`, an
   `undo` or a `redo`. This holds for the output limit too: the whole of a truncated tool result is
-  archived beside the shortened copy the model is shown (`Config::keep_truncated_output`).
+  archived beside the truncated copy the model is shown (`Config::keep_truncated_output`).
 - **The previewed request is the request.** There is no step between `preview_request()` and the
   wire where the kernel adds anything of its own. The one thing that may still intervene is a
   `Compactor`, and it reports exactly what it did.

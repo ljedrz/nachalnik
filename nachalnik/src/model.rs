@@ -940,7 +940,7 @@ mod tests {
         );
 
         // and truncating one of them leaves the other whole, which is what lets the kernel keep
-        // an untruncated tool output beside the shortened copy for nothing
+        // an untruncated tool output beside the truncated copy for nothing
         let mut copy = copy;
         copy.truncate_to(100);
         assert_eq!(big.byte_len(), 1 << 20);

@@ -535,7 +535,7 @@ async fn output_limits_are_enforced_and_admitted() {
     kernel.step().await.unwrap();
     assert!(matches!(kernel.step().await.unwrap(), State::Idle));
 
-    // a truncated output is recorded twice: the whole of it, archived, and the shortened copy
+    // a truncated output is recorded twice: the whole of it, archived, and the truncated copy
     // the model is shown
     let results = tool_results(&kernel);
     assert_eq!(results.len(), 3, "two results, one of them a pair");

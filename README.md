@@ -173,14 +173,14 @@ $ cargo run -p kamchatka -- -f src/lib.rs "what does this crate do?"
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
-│  id  label                      kind                tokens  what it says, or why it is not being sent        │
-│  1 ▪ src/kernel.rs              reference            1,045  pub struct Kernel;                               │
-│  2 · user                       user_message             6  what does the kernel do?                         │
-│  3 · assistant                  assistant_message        7  asked for read                                   │
-│  4 - read                       tool_result             15  excluded: pruned at the terminal                 │
-│  5 · assistant                  assistant_message        7  asked for shell                                  │
-│  6 … shell                      tool_result          9,004  compaction: compacted to make room               │
-│  7 · assistant                  assistant_message       62  The kernel is a state machine with five states. …│
+│  id  label         kind               sending   held  what it says, or why it is not being sent            │
+│  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                    │
+│  2 · user          user_message             6         what does the kernel do?                              │
+│  3 · assistant     assistant_message        7         asked for read                                        │
+│  4 - read          tool_result              0     15  excluded: pruned at the terminal                      │
+│  5 · assistant     assistant_message        7         asked for shell                                       │
+│  6 … shell         tool_result             11  9,004  compaction: compacted to make room                    │
+│  7 · assistant     assistant_message       62         The kernel is a state machine with five states. …     │
 │                                                                                                              │
 └────────────────────────────────────────────────────────────────────────────── 7 items, 2 not going, 1 elided ┘
 ┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -205,7 +205,7 @@ answer somebody has actually given, what it covers, and how many things are stil
 changed where it is read rather than one prompt at a time at the moment it is least convenient.
 
 `ctrl+p` heads that request with everything the projector left out and why - `excluded: pruned by
-\`tool:shell:latest\``, `archived: the whole output; the model was shown a shortened copy`,
+\`tool:shell:latest\``, `archived: the whole output; the model was shown a truncated copy`,
 `dropped the call ... its result is not in the projection` - because "why is that not in there?"
 is the question this runtime exists to answer, and the JSON alone can only answer the other one.
 
@@ -345,7 +345,7 @@ so pruning cannot produce a request the provider will reject - and it says so in
 exactly the one you want to be able to ask about afterwards.
 
 **Nothing is destroyed, including by a limit.** A tool output over its limit is recorded twice:
-the whole of it, archived, and the shortened copy the model is shown. Putting the whole thing back
+the whole of it, archived, and the truncated copy the model is shown. Putting the whole thing back
 in front of the model is a `set_state` like any other, rather than a re-run of the tool. Keeping
 it costs a pointer rather than a copy: content, tool-call arguments and tool schemas are all
 shared, so pruning a four-megabyte tool result moves a pointer, projecting it into a request moves

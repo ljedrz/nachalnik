@@ -70,21 +70,28 @@ waiting on **you**: nothing should suggest work is happening while a question si
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
-│  id  label                      kind                tokens  what it says, or why it is not being sent        │
-│  1 ▪ src/kernel.rs              reference            1,045  pub struct Kernel;                               │
-│  2 · user                       user_message             6  what does the kernel do?                         │
-│  3 · assistant                  assistant_message        7  asked for read                                   │
-│  4 - read                       tool_result             15  excluded: pruned at the terminal                 │
-│  5 · assistant                  assistant_message        7  asked for shell                                  │
-│  6 … shell                      tool_result          9,004  compaction: compacted to make room               │
-│  7 · assistant                  assistant_message       62  The kernel is a state machine with five states. …│
+│  id  label         kind               sending   held  what it says, or why it is not being sent            │
+│  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                    │
+│  2 · user          user_message             6         what does the kernel do?                              │
+│  3 · assistant     assistant_message        7         asked for read                                        │
+│  4 - read          tool_result              0     15  excluded: pruned at the terminal                      │
+│  5 · assistant     assistant_message        7         asked for shell                                       │
+│  6 … shell         tool_result             11  9,004  compaction: compacted to make room                    │
+│  7 · assistant     assistant_message       62         The kernel is a state machine with five states. …     │
 │                                                                                                              │
 └────────────────────────────────────────────────────────────────────────────── 7 items, 2 not going, 1 elided ┘
 ```
 
 That is not a summary and not a debug view. It is the list of items the runtime is holding, in
 order, with what each one costs, whether it is going into the next request — and the column that
-matters most, what the model will actually read of it. Item 4 is marked `-` and says on its own
+matters most, what the model will actually read of it.
+
+**sending** is what an item puts into the next request; **held** is what it is keeping out of one.
+For most rows the first is everything and the second is blank. The two that differ are the ones
+worth finding: item 6 holds nine thousand tokens and spends eleven of them on the marker that
+replaced it, and item 4 spends nothing at all. The `sending` column adds up to the figure on the
+status line, and the `held` column to the `held back` beside it — which they did not, when the row
+reported what an item held under a heading that said what it cost. Item 4 is marked `-` and says on its own
 row why it is out, in the projector's words. Item 1 is `▪`, pinned, so the compactor will be
 refused if it comes for it. Nothing disappeared: things changed state, and the state is on screen.
 
@@ -109,7 +116,7 @@ again.
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
 | <kbd>23G</kbd> | go to the item numbered 23 — the number `/prune` takes |
 
-An oversized tool result is held as *two* items: the shortened copy the model was shown, and the
+An oversized tool result is held as *two* items: the truncated copy the model was shown, and the
 whole of it beside it, marked `▫ archived` and not going. <kbd>space</kbd> or <kbd>p</kbd> on that
 row is how you say **send the whole thing** — it is the only way to say it, and the token count in
 the row is what it will cost you.
@@ -203,7 +210,7 @@ why:
 ```text
 12 item(s) in, 4 out:
   [13] left out: an assistant turn with no content and no answered calls
-  [14] left out: archived: the whole output; the model was shown a shortened copy
+  [14] left out: archived: the whole output; the model was shown a truncated copy
   [15] left out: excluded: pruned by `tool:shell:latest`
   repaired: dropped the call `call_301842` (shell) from item 13: its result is not
             in the projection

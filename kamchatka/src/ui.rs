@@ -79,7 +79,7 @@ pub const HELP: &str = "  THE TABS
                         a … marker where it was, then nothing, then all of it
     p                   pin it, so that compaction cannot touch it
                         (on a ▫ archived row, either of those sends the whole
-                         of an output the model was shown a shortened copy of)
+                         of an output the model was shown a truncated copy of)
     e                   change what it says; the old one stays, marked ~
     enter               read the whole of it: what the model gets, what it
                         says, and what it said before it was rewritten
@@ -578,22 +578,33 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let width = inner.width as usize;
 
     // the columns give way from the right as the window narrows, so this works in eighty
-    let label = 26.min(width / 3);
+    //
+    // note: as wide as the widest label there is, rather than a fixed 26. Labels are `user`,
+    // `shell`, `summary` - a session whose longest is `read` was spending twenty columns on
+    // nothing, and the column those twenty belong to is the one saying what an item holds
+    let widest = items
+        .iter()
+        .map(|item| item.label.chars().count())
+        .max()
+        .unwrap_or(0);
+    let label = widest.clamp(5, 26).min(width / 3);
     let kind = if width >= 84 { 18 } else { 0 };
-    let counted = 4 + 2 + label + 1 + kind + 8 + 2;
+    let counted = 4 + 2 + label + 1 + kind + 8 + 7 + 2;
     let says = width.saturating_sub(counted);
+    let costs = app.costs();
 
     frame.render_widget(
         Paragraph::new(Line::styled(
             format!(
-                "  {:<4}{:<label$} {:<kind$}{:>8}  {}",
+                "  {:<4}{:<label$} {:<kind$}{:>8}{:>7}  {}",
                 "id",
                 "label",
                 match kind {
                     0 => "",
                     _ => "kind",
                 },
-                "tokens",
+                "sending",
+                "held",
                 match says >= 8 {
                     true => "what it says, or why it is not being sent",
                     false => "",
@@ -672,7 +683,26 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                     },
                     quiet(),
                 ),
-                Span::styled(format!("{:>8}  ", thousands(item.tokens)), style),
+                // what it costs in the next request, and what it is keeping out of it. For most
+                // items the first is everything and the second is blank; the two that differ are
+                // exactly the ones somebody opens this pane to find
+                Span::styled(
+                    format!(
+                        "{:>8}",
+                        thousands(costs.get(&item.id).copied().unwrap_or(0))
+                    ),
+                    style,
+                ),
+                Span::styled(
+                    format!(
+                        "{:>7}  ",
+                        match item.state.sends_content() {
+                            true => String::new(),
+                            false => thousands(item.tokens),
+                        }
+                    ),
+                    quiet(),
+                ),
                 Span::styled(clip(&tail, says), tail_style),
             ]))
         })

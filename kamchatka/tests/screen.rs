@@ -1957,7 +1957,7 @@ async fn what_a_person_reads_is_lighter_than_what_holds_it_together() {
     assert_eq!(reason, Color::Gray, "not the terminal's bright black");
 
     // the same for the header above it, and for the count along the bottom
-    let (header, _) = harness.style_of("tokens");
+    let (header, _) = harness.style_of("sending");
     assert_eq!(header, Color::Gray);
 
     // the rule down the left of a code block is not read, and stays out of the way
@@ -1998,7 +1998,7 @@ async fn a_tab_with_more_than_fits_says_so_down_its_border() {
     // it sits at the top, because that is where the list is
     let top = screen
         .lines()
-        .position(|line| line.contains("tokens"))
+        .position(|line| line.contains("sending"))
         .expect("the header row");
     assert_eq!(
         thumb[0],
@@ -3443,4 +3443,64 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             );
         }
     }
+}
+
+#[tokio::test]
+async fn the_pane_says_what_an_item_costs_now_and_what_it_is_holding_back() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("what does it do?"));
+    harness.app.kernel.push(ContextItem::file(
+        "src/parser.rs",
+        "fn parse() {}\n".repeat(20),
+    ));
+    let items = harness.app.kernel.items();
+    harness.app.kernel.set_state(
+        [items[1].id],
+        ContextState::Elided,
+        Some("compacted to make room".into()),
+    );
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    let screen = harness.screen();
+    let elided = screen
+        .lines()
+        .find(|line| line.contains("src/parser.rs"))
+        .expect("the item is listed");
+    let held = harness
+        .app
+        .kernel
+        .item(items[1].id)
+        .expect("still there")
+        .tokens;
+
+    // an elided item holds what it always held and costs what its marker costs, and the column
+    // headed `sending` used to show the first of those - answering a question nobody asked while
+    // the status line beside it answered the right one
+    let sending: Vec<usize> = elided
+        .split_whitespace()
+        .filter_map(|word| word.replace(',', "").parse().ok())
+        .collect();
+    assert!(
+        sending.contains(&held),
+        "the held column reports what it holds: {elided}"
+    );
+    assert!(
+        sending.iter().any(|n| *n > 0 && *n < held),
+        "and the sending column reports the marker, which is smaller: {elided}"
+    );
+
+    // the two columns are what the status line is made of: everything sending, and everything held
+    let sent: usize = harness.app.costs().values().sum();
+    let status = harness.screen();
+    assert!(status.contains(&format!("~{sent} tokens")), "{status}");
+    assert!(status.contains(&format!("{held} held back")), "{status}");
+
+    // and the label column is as wide as the widest label, not a fixed twenty-six
+    let header = screen.lines().nth(1).expect("the header row");
+    let gap = header.find("kind").expect("the kind column") - header.find("label").expect("label");
+    assert!(gap < 20, "twenty columns of nothing: {header}");
 }

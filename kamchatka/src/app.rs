@@ -1227,6 +1227,40 @@ impl App {
         }
     }
 
+    /// What each item really costs in the next request, by item.
+    ///
+    /// note: not [`ContextItem::tokens`], which is what an item *holds*. An elided one holds a
+    /// thousand tokens and costs the dozen its marker takes; an archived one holds whatever it
+    /// holds and costs nothing. A pane that showed the held figure under a column headed `tokens`
+    /// was answering a question nobody asked while the status line beside it answered the right
+    /// one, and the two disagreed by exactly the elided items.
+    ///
+    /// note: read out of the projection rather than worked out here, because what an elided item
+    /// costs is the marker the *projector* writes, in the brackets the projector chooses. A
+    /// client that computed it would be keeping a second copy of a decision that is not its own.
+    pub fn costs(&self) -> BTreeMap<ContextId, usize> {
+        let projection = self.kernel.project();
+        let counter = self.kernel.counter();
+        // `included` and `messages` line up one for one under a projector that makes a message
+        // per item; one that merges them has no per-item answer, and the item's own figure is a
+        // better guess than a number taken from the wrong message
+        let paired = projection.included.len() == projection.messages.len();
+
+        projection
+            .included
+            .iter()
+            .enumerate()
+            .map(|(at, id)| {
+                let cost = match paired {
+                    true => counter.count_message(&projection.messages[at]),
+                    false => self.kernel.item(*id).map(|item| item.tokens).unwrap_or(0),
+                };
+
+                (*id, cost)
+            })
+            .collect()
+    }
+
     /// Every capability that matters here, and what would happen if a tool asked for it.
     ///
     /// note: The union of two lists, because either on its own is misleading. What the policy has

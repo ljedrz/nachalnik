@@ -1714,7 +1714,7 @@ impl Kernel {
                 output.is_error,
             );
             item.state = ContextState::Archived;
-            item.note = Some("the whole output; the model was shown a shortened copy".to_owned());
+            item.note = Some("the whole output; the model was shown a truncated copy".to_owned());
 
             // the pair is one thing that happened, so it gets one checkpoint, taken here
             self.add_item(item, true)

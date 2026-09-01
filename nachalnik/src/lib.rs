@@ -152,7 +152,7 @@
 //! - [`Context`] is a list of identified [`ContextItem`]s. Nothing is ever silently dropped:
 //!   removal is a state change ([`Kernel::set_state`]), so a removed item can still be listed,
 //!   inspected, and restored - and that holds even for an output limit, which records the whole
-//!   of what a tool said beside the shortened copy the model is shown.
+//!   of what a tool said beside the truncated copy the model is shown.
 //!   [`ContextState::Elided`] is the third answer between in and out: the item stays in the
 //!   request as a short marker, so a tool result can stop costing what it holds without the
 //!   call that asked for it having to be taken off the record to keep the request valid.

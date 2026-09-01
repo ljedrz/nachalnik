@@ -46,6 +46,20 @@ minor bump may break you.
 
 ### changed
 
+- The context pane's token column reported what an item *held* under a heading that said what it
+  cost, so an elided item claimed the nine thousand tokens it was no longer spending and the
+  status line beside it disagreed by exactly that much. There are two columns now: `sending`, read
+  out of the projection so that an elided item costs what its marker costs and an archived one
+  costs nothing, and `held`, which is what it is keeping out of the request. They add up to the
+  two figures on the status line.
+- The label column is as wide as the widest label rather than a fixed twenty-six. A session whose
+  longest label is `read` was spending twenty columns on nothing, and they belong to the column
+  saying what an item holds.
+- One word per mechanism. An output limit **truncates** and a compactor **elides**, and both were
+  being called "shortened" - in the same pane, on adjacent rows. The archived half of a truncated
+  result now says `the model was shown a truncated copy`, and `Trim`'s summary says its results
+  were `elided`, which is the word on the row, the word `amend`'s `prune` takes, and the name of
+  the state itself.
 - The tool definitions are written for the thing that reads them. Every argument says what it is
   for - a bare `{"type": "string"}` left a model to guess whether a path was absolute, what `old`
   had to match exactly, what a `select` accepts, and a guess costs a turn each time. `read` and
