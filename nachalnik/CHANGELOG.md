@@ -18,6 +18,10 @@ minor bump may break you.
 
 ### changed
 
+- The truncation marker no longer names this crate. `[... 943 bytes truncated by nachalnik ...]`
+  was addressed to a reader who has never heard of it; what the model can use is that something
+  was cut, how much is missing, and that a limit rather than the tool did it - all of which say
+  "ask for less next time". It is `[... 943 bytes truncated by an output limit ...]`.
 - A refused call is told which *kind* of refusal it was. `the call was not permitted` is true and
   leaves open the only question a refused model can act on: a standing rule means the same call
   will meet the same answer, and an answer to *this* call means a different approach may well be

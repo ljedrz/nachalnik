@@ -117,7 +117,7 @@ fn truncating_blocks_says_how_much_of_the_whole_turn_went() {
     let mut content = Content::blocks(interleaved());
     let dropped = content.truncate_to(80).unwrap();
     assert!(content.byte_len() <= 80);
-    assert!(content.to_text().contains("truncated"));
+    assert!(content.to_text().contains("truncated by an output limit"));
     let kept = content.to_text().find("\n[...").expect("a note was added");
     assert_eq!(dropped, whole - kept);
 }

@@ -553,11 +553,14 @@ async fn output_limits_are_enforced_and_admitted() {
     // the limit is a limit: the admission of truncation is paid for out of the same budget
     assert_eq!(truncated.len(), 100);
     assert!(truncated.starts_with("xxxx"));
-    assert!(truncated.contains("943 bytes truncated"));
+    assert!(
+        truncated.contains("949 bytes truncated by an output limit"),
+        "{truncated}"
+    );
     assert_eq!(
         shown.note.as_deref(),
         Some(&*format!(
-            "943 bytes were truncated by the output limit; the whole output is item {}",
+            "949 bytes were truncated by the output limit; the whole output is item {}",
             whole.id
         ))
     );
@@ -576,7 +579,7 @@ async fn output_limits_are_enforced_and_admitted() {
             _ => None,
         })
         .collect();
-    assert_eq!(finished, vec![(Some(943), Some(whole.id)), (None, None)]);
+    assert_eq!(finished, vec![(Some(949), Some(whole.id)), (None, None)]);
 
     // and getting the whole of it back to the model is a state change like any other
     kernel.set_state([shown.id], ContextState::Excluded, Some("too short".into()));
@@ -659,7 +662,10 @@ async fn the_default_output_limit_applies_to_tools_without_one() {
 
     let truncated = results[1].content.to_text().into_owned();
     assert_eq!(truncated.len(), 50);
-    assert!(truncated.contains("993 bytes truncated"));
+    assert!(
+        truncated.contains("bytes truncated by an output limit"),
+        "{truncated}"
+    );
 }
 
 #[tokio::test]

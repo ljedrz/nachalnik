@@ -3376,3 +3376,71 @@ async fn a_call_refused_once_at_the_prompt_says_so_rather_than_naming_a_rule() {
         "{said}"
     );
 }
+
+#[tokio::test]
+async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
+    let harness = Harness::new([]);
+    for tool in kamchatka::tools::builtin(
+        kamchatka::tools::Shell {
+            workdir: std::path::PathBuf::from("/w"),
+            extra: Vec::new(),
+            policy: harness.app.policy.clone(),
+            confiner: Some(std::path::PathBuf::from("/self")),
+        },
+        kamchatka::sandbox::Reach {
+            workdir: std::path::PathBuf::from("/w"),
+            extra: Vec::new(),
+            confined: true,
+        },
+    ) {
+        harness.app.kernel.add_tool(tool);
+    }
+    let _offered = kamchatka::introspect::install(&harness.app.kernel);
+
+    for spec in harness.app.kernel.tool_specs() {
+        assert!(
+            !spec.description.trim().is_empty(),
+            "{} says nothing",
+            spec.id
+        );
+        // long enough to be useful, short enough to be read: the two that manage a context are
+        // five actions each and earn their length; a file tool that needed this much would be
+        // describing something it should not be doing
+        assert!(
+            spec.description.len() < 1_500,
+            "{} is {} chars",
+            spec.id,
+            spec.description.len()
+        );
+
+        // every argument says what it is for. A bare `{"type": "string"}` leaves a model to
+        // guess whether a path is absolute, what `old` has to match, what a `select` accepts -
+        // and a guess costs a turn each time
+        let properties = spec.schema["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{} has no object schema", spec.id));
+        for (name, field) in properties {
+            let said = field
+                .get("description")
+                .and_then(|text| text.as_str())
+                .is_some_and(|text| !text.trim().is_empty());
+            assert!(
+                said || field.get("enum").is_some(),
+                "`{}`'s `{name}` has nothing to say for itself",
+                spec.id
+            );
+        }
+
+        // and none of it is written in this program's own vocabulary. What reads these has never
+        // heard of the program, the crates it is built from, or a terminal somebody is sitting
+        // at; a word like that reads to a model as a thing it is supposed to recognise
+        let text = format!("{} {}", spec.description, spec.schema);
+        for insider in ["at the terminal", "nachalnik", "kamchatka", "the kernel"] {
+            assert!(
+                !text.contains(insider),
+                "`{}` says `{insider}` to a reader who has never heard of it",
+                spec.id
+            );
+        }
+    }
+}

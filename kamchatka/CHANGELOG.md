@@ -44,6 +44,22 @@ minor bump may break you.
   the old text then exists nowhere but the `context.replaced` event. `App` keeps what that event
   carries, which is what the event carries content *for*. No change to the runtime.
 
+### changed
+
+- The tool definitions are written for the thing that reads them. Every argument says what it is
+  for - a bare `{"type": "string"}` left a model to guess whether a path was absolute, what `old`
+  had to match exactly, what a `select` accepts, and a guess costs a turn each time. `read` and
+  `shell` admit that long output is cut off; `write` says it replaces the whole file and points at
+  `edit`; `shell` says it is confined **when it is**, because a command stopped by Landlock comes
+  back with an ordinary permission error and a model that cannot tell those apart spends its turns
+  trying `sudo`. The exit line reads `exit: 0` rather than `exit: exit status: 0`, and a non-zero
+  one says it is a failure.
+- Nothing a model reads is written in this program's own vocabulary any more: no `at the
+  terminal`, which is this codebase's idiom for "a person did it here" and reads to a model like a
+  state it should recognise. A test now holds every offered tool to all of it.
+- A path outside the sandbox told the model to restart the program with `--sandbox-allow`, which
+  is advice for somebody who can do that. It now says what the model can do instead.
+
 ### fixed
 
 - The first line of a new session was wrong in both halves. `tab moves to the context` is

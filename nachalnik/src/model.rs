@@ -127,6 +127,10 @@ impl Content {
     /// Truncates the content to at most `limit` bytes, appending a note stating how much was
     /// dropped; returns the number of bytes dropped, or `None` if nothing was.
     ///
+    /// note: the note names no crate and no program. What reads it is a model, which has never
+    /// heard of either, and the useful facts are that something was cut and that there is more
+    /// where it came from - both of which tell it to ask for less next time.
+    ///
     /// note: The note counts against the limit, so the result really is at most `limit` bytes -
     /// a limit that is not one would be a poor foundation for a budget. Where the note alone
     /// does not fit, the content is cut to the limit without one, and the truncation is reported
@@ -155,7 +159,7 @@ impl Content {
                 cut -= 1;
             }
             let dropped = whole - cut;
-            let note = format!("\n[... {dropped} bytes truncated by nachalnik ...]");
+            let note = format!("\n[... {dropped} bytes truncated by an output limit ...]");
 
             if cut + note.len() <= limit {
                 break (format!("{}{note}", &text[..cut]), dropped);
@@ -955,7 +959,7 @@ mod tests {
         let mut content = Content::text("każdy".repeat(50));
         content.truncate_to(60).unwrap();
         // the round trip is what proves it: invalid UTF-8 would not have got this far
-        assert!(content.to_text().contains("truncated"));
+        assert!(content.to_text().contains("truncated by an output limit"));
         assert!(content.byte_len() <= 60);
     }
 }

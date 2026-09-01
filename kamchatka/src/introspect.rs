@@ -759,7 +759,7 @@ impl Tool for Amend {
              forward through the changes *you* made with this tool. Nothing here destroys \
              anything: every item keeps its number and can be restored. A pinned item, a system \
              instruction and the turn you are speaking in are refused - they are not yours. A \
-             reason is required, and it is what the person at the terminal reads. Use \
+             reason is required, and it is what the person you are working with reads. Use \
              `introspect` to look first, `budget` especially.",
         )
         .with_schema(json!({
@@ -799,7 +799,7 @@ impl Tool for Amend {
                 },
                 "reason": {
                     "type": "string",
-                    "description": "why, in your own words; the person at the terminal reads this",
+                    "description": "why, in your own words; the person you work with reads this",
                 },
                 "steps": {
                     "type": "integer",
@@ -1079,7 +1079,7 @@ impl Amend {
         let mut out = match put_back.is_empty() {
             true => format!(
                 "there was nothing of yours to walk {direction}. `undo` and `redo` only move the \
-                 changes this tool made; the person at the terminal has an undo of their own, and \
+                 changes this tool made; the person you work with has an undo of their own, and \
                  it is not this one.\n"
             ),
             false => format!(
@@ -1168,7 +1168,7 @@ fn protected(
         return Some("a system instruction, which belongs to whoever started this session".into());
     }
     if item.state == ContextState::Pinned && !mine.contains(&item.id) {
-        return Some("pinned by the person at the terminal, and a pin is a promise".into());
+        return Some("pinned by the person you are working with, and a pin is a promise".into());
     }
     if own_turn == Some(item.id) {
         return Some("the assistant turn this very call is part of".into());

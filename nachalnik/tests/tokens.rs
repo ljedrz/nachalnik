@@ -72,7 +72,7 @@ fn truncating_structured_content_turns_it_into_text_rather_than_broken_json() {
         "a limit that is not a limit is no use in a budget"
     );
     assert!(
-        content.to_text().contains("bytes truncated by nachalnik"),
+        content.to_text().contains("truncated by an output limit"),
         "and it says so, in the content itself"
     );
 

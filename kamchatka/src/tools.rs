@@ -54,14 +54,23 @@ struct Read(Arc<Reach>);
 #[async_trait]
 impl Tool for Read {
     fn spec(&self) -> ToolSpec {
-        ToolSpec::new("read", "reads a file and returns its contents")
-            .with_schema(json!({
-                "type": "object",
-                "properties": { "path": { "type": "string" } },
-                "required": ["path"],
-            }))
-            .with_capabilities([Capability::Read])
-            .with_output_limit(32_000)
+        ToolSpec::new(
+            "read",
+            "reads a whole text file. Long files are cut off at the end; a shell command is the \
+             way to read part of one.",
+        )
+        .with_schema(json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "absolute, or relative to the working directory",
+                },
+            },
+            "required": ["path"],
+        }))
+        .with_capabilities([Capability::Read])
+        .with_output_limit(32_000)
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
@@ -83,16 +92,23 @@ struct Write(Arc<Reach>);
 #[async_trait]
 impl Tool for Write {
     fn spec(&self) -> ToolSpec {
-        ToolSpec::new("write", "creates or replaces a file")
-            .with_schema(json!({
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string" },
-                    "content": { "type": "string" },
+        ToolSpec::new(
+            "write",
+            "writes a whole file. An existing one is replaced entirely, so `edit` is the safer \
+             way to change part of one.",
+        )
+        .with_schema(json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "absolute, or relative to the working directory",
                 },
-                "required": ["path", "content"],
-            }))
-            .with_capabilities([Capability::Write])
+                "content": { "type": "string", "description": "the whole of the new file" },
+            },
+            "required": ["path", "content"],
+        }))
+        .with_capabilities([Capability::Write])
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
@@ -120,14 +136,22 @@ impl Tool for Edit {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "edit",
-            "replaces the first occurrence of `old` with `new` in a file",
+            "replaces the first occurrence of `old` with `new` in a file. Nothing is written if \
+             `old` is not there.",
         )
         .with_schema(json!({
             "type": "object",
             "properties": {
-                "path": { "type": "string" },
-                "old": { "type": "string" },
-                "new": { "type": "string" },
+                "path": {
+                    "type": "string",
+                    "description": "absolute, or relative to the working directory",
+                },
+                "old": {
+                    "type": "string",
+                    "description": "the exact text to replace, whitespace included; include \
+                                    enough of the surrounding lines to make it the only match",
+                },
+                "new": { "type": "string", "description": "what to put there instead" },
             },
             "required": ["path", "old", "new"],
         }))
@@ -197,13 +221,33 @@ pub struct Shell {
 #[async_trait]
 impl Tool for Shell {
     fn spec(&self) -> ToolSpec {
+        // note: the confinement is said out loud only when there is one. A command stopped by
+        // Landlock comes back with an ordinary permission error and nothing to distinguish it
+        // from a file that really is protected, and a model that cannot tell those apart spends
+        // its turns trying `sudo`
         ToolSpec::new(
             "shell",
-            "runs a command with `sh -c` and returns its output",
+            format!(
+                "runs one command with `sh -c` in the working directory and returns its exit \
+                 status, its output and its errors. Long output is cut off at the end. Nothing \
+                 is typed at it: a command that waits for input waits for ever.{}",
+                match self.confiner.is_some() {
+                    true =>
+                        " It runs confined: outside the working directory it can read this \
+                         machine's system paths and no more, and the network may be closed - so \
+                         a permission error there is the confinement rather than the command.",
+                    false => "",
+                }
+            ),
         )
         .with_schema(json!({
             "type": "object",
-            "properties": { "cmd": { "type": "string" } },
+            "properties": {
+                "cmd": {
+                    "type": "string",
+                    "description": "the command line, as a shell would read it",
+                },
+            },
             "required": ["cmd"],
         }))
         .with_capabilities([Capability::Shell])
@@ -308,16 +352,23 @@ impl Tool for Shell {
             },
             false => collecting_stderr.await.unwrap_or_default(),
         };
+        // note: not `ExitStatus`'s own `Display`, which renders `exit status: 0` and made the
+        // first line of every result read `exit: exit status: 0`. What a reader wants from this
+        // line is the number, and whether it means the command worked
         let status = match child.wait().await {
-            Ok(status) => status.to_string(),
-            Err(e) => format!("unknown ({e})"),
+            Ok(status) => match status.code() {
+                Some(0) => "exit: 0".to_owned(),
+                Some(code) => format!("exit: {code} (the command reported a failure)"),
+                None => format!("exit: {status} (the command was killed)"),
+            },
+            Err(e) => format!("exit: unknown ({e})"),
         };
         if let Some(scratch) = scratch {
             let _ = tokio::fs::remove_dir_all(scratch).await;
         }
 
         let text = format!(
-            "exit: {status}\n--- stdout ---\n{collected}\n--- stderr ---\n{errors}{}",
+            "{status}\n--- stdout ---\n{collected}\n--- stderr ---\n{errors}{}",
             match interrupted {
                 true => "\n\n[the command was stopped before it finished]",
                 false => "",

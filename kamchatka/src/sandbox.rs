@@ -210,9 +210,12 @@ impl Reach {
                     .is_ok_and(|allowed| resolved.starts_with(allowed))
             }) {
             true => Ok(resolved),
+            // note: written for the model, which is what reads it. It cannot restart this
+            // program or pass it a flag, so being told to is worse than being told nothing: what
+            // it can do is work inside the directory, or say what it needs and why
             false => Err(format!(
-                "{}: outside {}, which is as far as this agent reaches. Start it there, or pass \
-                 --sandbox-allow",
+                "{}: outside {}, which is as far as this session reaches. Work inside that \
+                 directory, or ask for this path to be opened up and say what you need it for.",
                 path.display(),
                 self.workdir.display()
             )),
