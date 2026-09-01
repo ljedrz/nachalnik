@@ -277,6 +277,90 @@ async fn the_budget_carries_the_providers_own_numbers_next_to_the_estimate() {
     );
 }
 
+/// A policy that refuses everything and says which rule did it.
+struct Fussy;
+
+#[nachalnik::async_trait]
+impl nachalnik::PermissionPolicy for Fussy {
+    async fn evaluate(&self, _request: &nachalnik::PermissionRequest) -> Verdict {
+        Verdict::Deny
+    }
+
+    fn why(&self, _call: &nachalnik::ToolCallId) -> Option<String> {
+        Some("`shell` is off for the whole of this session".to_owned())
+    }
+}
+
+#[tokio::test]
+async fn a_policy_that_knows_why_it_refused_can_tell_the_model() {
+    let (kernel, _) = inquisitive([
+        ModelResponse::tool_calls(vec![call("c1", "shell", json!({}))]),
+        ModelResponse::text("fine"),
+    ]);
+    kernel.set_policy(Arc::new(Fussy));
+    kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "it ran!").with_capabilities([Capability::Shell]),
+    ));
+    kernel.push(ContextItem::user("do it"));
+    kernel.turn().await.unwrap();
+
+    // the policy's own words, carried to the model rather than kept for a screen: a reason made
+    // of *this* policy's vocabulary is the one thing the kernel could never invent
+    let said = tool_results(&kernel)[0].content.to_text().into_owned();
+    assert!(
+        said.contains("`shell` is off for the whole of this session"),
+        "{said}"
+    );
+    assert!(
+        said.contains("a standing rule rather than an answer to this one call"),
+        "{said}"
+    );
+}
+
+#[tokio::test]
+async fn a_call_refused_by_whoever_was_asked_says_it_was_about_this_call() {
+    let (kernel, _) = inquisitive([
+        ModelResponse::tool_calls(vec![call("c1", "shell", json!({}))]),
+        ModelResponse::text("fine"),
+    ]);
+    kernel.set_policy(Arc::new(Fussy2));
+    kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "it ran!").with_capabilities([Capability::Shell]),
+    ));
+    kernel.push(ContextItem::user("do it"));
+
+    let State::Deciding { calls } = kernel.step().await.unwrap() else {
+        panic!("it should have stopped to ask")
+    };
+    kernel.decide(calls[0], Grant::Deny).unwrap();
+    kernel.turn().await.unwrap();
+
+    // the same refusal, and the opposite advice: nothing standing was decided here, so a
+    // different approach is worth trying. The policy's reason is not used, because the policy is
+    // not what refused it
+    let said = tool_results(&kernel)[0].content.to_text().into_owned();
+    assert!(said.contains("answer to this call"), "{said}");
+    assert!(
+        said.contains("an answer to this call rather than a standing rule"),
+        "{said}"
+    );
+    assert!(!said.contains("off for the whole"), "{said}");
+}
+
+/// The same, but it asks rather than refusing - so the answer comes from `decide`.
+struct Fussy2;
+
+#[nachalnik::async_trait]
+impl nachalnik::PermissionPolicy for Fussy2 {
+    async fn evaluate(&self, _request: &nachalnik::PermissionRequest) -> Verdict {
+        Verdict::Ask
+    }
+
+    fn why(&self, _call: &nachalnik::ToolCallId) -> Option<String> {
+        Some("`shell` is off for the whole of this session".to_owned())
+    }
+}
+
 #[tokio::test]
 async fn a_refused_call_does_not_run_but_the_model_is_told() {
     let (kernel, _) = inquisitive([
@@ -297,8 +381,21 @@ async fn a_refused_call_does_not_run_but_the_model_is_told() {
 
     let results = tool_results(&kernel);
     assert_eq!(results.len(), 1);
-    assert!(results[0].content.to_text().contains("not permitted"));
-    assert_ne!(results[0].content.to_text(), "it ran!");
+    let said = results[0].content.to_text();
+    assert!(said.contains("not permitted"), "{said}");
+    assert_ne!(said, "it ran!");
+
+    // and told *which kind* of refusal it was, because `not permitted` on its own leaves open
+    // the one question a refused model has to answer: is trying again worth anything? This one
+    // is a standing rule, so it is not
+    assert!(
+        said.contains("a standing rule rather than an answer to this one call"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("  "),
+        "no run-on spacing from a wrapped literal: {said}"
+    );
 
     let events = drain(&mut events);
     assert_eq!(count(&events, "tool.started"), 0, "it never started");

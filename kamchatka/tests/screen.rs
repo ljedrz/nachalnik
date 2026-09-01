@@ -3301,3 +3301,78 @@ async fn a_session_that_is_working_says_so_with_something_that_moves() {
     harness.app.busy = false;
     assert!(!harness.screen().contains('•'), "{}", harness.screen());
 }
+
+#[tokio::test]
+async fn a_refused_model_is_told_which_kind_of_refusal_it_was() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "shell",
+            json!({ "cmd": "cat /etc/shadow" }),
+        )]),
+        ModelResponse::text("understood"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "it ran!").with_capabilities([Capability::Shell]),
+    ));
+    // a standing rule rather than a moment's hesitation
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::Shell), Verdict::Deny);
+
+    harness.send("read the shadow file").await;
+    harness.settle().await;
+
+    // the result the model reads names the rule that did it, and says the rule is standing - so
+    // it can stop asking rather than rephrasing the same call. Before this the whole of what
+    // reached the model was `the call was not permitted`, and the reason was on the screen only
+    let result = harness
+        .app
+        .kernel
+        .items()
+        .into_iter()
+        .find(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
+        .expect("a refusal is a result like any other");
+    let said = result.content.to_text().into_owned();
+    assert!(said.contains("`shell`"), "it names what refused it: {said}");
+    assert!(
+        said.contains("a standing rule rather than an answer to this one call"),
+        "{said}"
+    );
+
+    // and the person is told too: handing the reason out once meant whichever asked first got it
+    let screen = harness.screen();
+    assert!(screen.contains("refused by"), "{screen}");
+}
+
+#[tokio::test]
+async fn a_call_refused_once_at_the_prompt_says_so_rather_than_naming_a_rule() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({ "where": "here" }))]),
+        ModelResponse::text("understood"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+    ));
+
+    harness.send("dig").await;
+    harness.settle().await;
+    harness.answer(KeyCode::Char('n')).await;
+    harness.settle().await;
+
+    // nothing standing was decided, so the model is told the opposite thing: this call was
+    // refused, and a different approach may well be allowed
+    let result = harness
+        .app
+        .kernel
+        .items()
+        .into_iter()
+        .find(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
+        .expect("a refusal is a result like any other");
+    let said = result.content.to_text().into_owned();
+    assert!(
+        said.contains("an answer to this call rather than a standing rule"),
+        "{said}"
+    );
+}

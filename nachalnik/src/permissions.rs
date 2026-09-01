@@ -185,6 +185,29 @@ pub trait PermissionPolicy: Send + Sync {
     /// question up to whoever is driving the kernel, which is usually what a client wants.
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict;
 
+    /// Why this policy refused a call, in words the model can act on; `None` when it has nothing
+    /// to add beyond the refusal itself.
+    ///
+    /// note: the kernel calls this only for a call it is about to refuse, and puts what comes
+    /// back into the tool result the model reads. Defaulted, because a policy with nothing to say
+    /// should implement nothing: the kernel still reports whether a refusal was a standing rule
+    /// or an answer to this one call, which is the part it knows on its own.
+    ///
+    /// note: the reason itself is emphatically not the kernel's. It is made of a policy's own
+    /// vocabulary - which capability, which path rule, which of several subjects actually did it
+    /// - and a kernel that invented one would be guessing at somebody else's decision. This is
+    /// the question, not the answer.
+    ///
+    /// note: what a refused agent most needs to know is whether trying again is worth anything,
+    /// and until this existed the answer was on the person's screen and nowhere else - a policy
+    /// that knew exactly why had no way to say so. A downstream policy needing a core change to
+    /// do an ordinary thing is the sign of a seam that is not finished.
+    fn why(&self, call: &ToolCallId) -> Option<String> {
+        let _ = call;
+
+        None
+    }
+
     /// What this is, for a client that wants to say which one is installed.
     ///
     /// note: The default is the implementing type's own path, which costs an implementor nothing

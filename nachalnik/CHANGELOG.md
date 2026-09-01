@@ -5,6 +5,26 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- `PermissionPolicy::why`, defaulted to `None`: the kernel asks a policy that is about to refuse
+  a call whether it has anything to say, and puts the answer into the tool result the model reads.
+  The reason is emphatically not the kernel's - it is made of a policy's own vocabulary, which
+  capability or which path rule actually did it, and a kernel that invented one would be guessing
+  at somebody else's decision. A downstream policy that knew exactly why had no way to say so, and
+  a policy needing a core change to do an ordinary thing is a seam that is not finished.
+
+### changed
+
+- A refused call is told which *kind* of refusal it was. `the call was not permitted` is true and
+  leaves open the only question a refused model can act on: a standing rule means the same call
+  will meet the same answer, and an answer to *this* call means a different approach may well be
+  allowed. Which of the two happened is the kernel's own knowledge, since it resolved the grant,
+  so it says so - and a model that cannot tell them apart rephrases at a rule that will never
+  move, or abandons an approach that was refused once.
+
 ## [0.2.0] - 2026-08-30
 
 An assistant turn can be the ordered sequence the model produced it in, rather than a content

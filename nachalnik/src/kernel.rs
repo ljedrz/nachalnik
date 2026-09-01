@@ -1677,9 +1677,9 @@ impl Kernel {
         call: ToolCall,
         grant: Option<(Grant, GrantSource)>,
     ) -> ToolOutput {
-        let (grant, _) = grant.expect("every claimed call has been decided");
+        let (grant, source) = grant.expect("every claimed call has been decided");
         if grant == Grant::Deny {
-            return ToolOutput::error("the call was not permitted");
+            return ToolOutput::error(refusal(source, self.policy().why(&call.id)));
         }
 
         self.emit(Event::ToolStarted {
@@ -1945,6 +1945,37 @@ impl Kernel {
         let counter = self.counter();
 
         tool_tokens(&self.tool_specs(), &*counter)
+    }
+}
+
+/// What a refused call is told, which is the policy's reason and the kernel's own account of
+/// what kind of refusal it was.
+///
+/// note: `the call was not permitted` on its own is true and close to useless. It leaves the one
+/// question a refused agent has to answer - is trying again worth anything? - entirely open, so
+/// a model refused by a standing rule will keep asking, and a model refused once by a person
+/// will give up on an approach that was never the problem. The kernel cannot know *why*; it does
+/// know which of those two happened, because it is the thing that resolved the grant.
+///
+/// note: written for a reader who has never heard of this runtime. No `at the terminal`, no
+/// `verdict`, no `grant`: a tool result is read by a model, and a sentence in a codebase's own
+/// idiom reads to one like a state it is supposed to recognise.
+fn refusal(source: GrantSource, why: Option<String>) -> String {
+    let reason = why.unwrap_or_else(|| "the permission policy refused it".to_owned());
+
+    match source {
+        // a standing rule: the same call will meet the same answer, and so will a paraphrase of
+        // it, so the useful move is a different approach or a question to whoever set the rule
+        GrantSource::Policy => format!(
+            "the call was not permitted: {reason}. That is a standing rule rather than an \
+             answer to this one call, so making the same call again will be refused the same way."
+        ),
+        // asked and answered: this call was refused, and nothing was said about the next one
+        GrantSource::User => "the call was not permitted: this call was refused when it was \
+                              asked about. That is an answer to this call rather than a standing \
+                              rule, so a different approach may well be allowed."
+            .to_owned(),
+        other => format!("the call was not permitted: {other:?}"),
     }
 }
 

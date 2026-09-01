@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### added
 
+- `Careful` hands its reason for a refusal to the model as well as to the screen, through the
+  runtime's new `PermissionPolicy::why`. It had written down which capability or path rule did it
+  since the day it was built, and nothing carried it any further than the transcript: what reached
+  the model was `the call was not permitted`, from which a standing `deny` and a one-off `n` are
+  indistinguishable. The reason is no longer handed out once, because there are two readers now
+  and whichever asked first used to get it.
 - A marker that says the runtime is still working: three dots under `asking` or `running`, one of
   them lit and moving, joined after five seconds by how long it has been going. Which dot is lit
   comes from the clock rather than from a frame counter, so it moves at a steady rate whatever the

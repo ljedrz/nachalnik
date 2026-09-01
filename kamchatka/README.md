@@ -307,11 +307,30 @@ network writes `curl` — so the row says which shell it reaches, and when.
 directly, and it takes effect on the next call. Answering "always" at a permission prompt writes to
 this same table — the prompt and the tab are one object, not two.
 
-`allow` runs with no question. `deny` never runs and never asks: the model gets `the call was not
-permitted` as a tool result it can read and work around, rather than a call that silently vanished.
-When the policy refuses on its own, the transcript says which stance did it — ``shell: refused by
-`network`, which this command reaches for`` — because "the call was not permitted" beside a
-`shell: allow` is true and useless.
+`allow` runs with no question. `deny` never runs and never asks: the model gets a tool result it
+can read and work around, rather than a call that silently vanished. The transcript says which
+stance did it — ``shell: refused by `network`, which this command reaches for`` — because "the
+call was not permitted" beside a `shell: allow` is true and useless.
+
+The model is told the same thing, and told which *kind* of refusal it was, which is the only part
+it can act on:
+
+```text
+the call was not permitted: refused by the rule for `**/.env`. That is a standing rule
+rather than an answer to this one call, so making the same call again will be refused
+the same way.
+```
+
+```text
+the call was not permitted: this call was refused when it was asked about. That is an
+answer to this call rather than a standing rule, so a different approach may well be
+allowed.
+```
+
+A model that cannot tell those apart does the wrong thing with either: it rephrases the same call
+at a rule that will never move, or it abandons an approach that was only refused once. The
+sentence comes from `Careful` and reaches the model through `PermissionPolicy::why`, so the
+person and the model read the same reason instead of the person reading it alone.
 
 ### the question itself
 

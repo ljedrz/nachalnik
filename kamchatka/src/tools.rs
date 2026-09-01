@@ -649,12 +649,15 @@ impl Careful {
         self.networked.lock().contains(call)
     }
 
-    /// Why the given call was refused, if this is what refused it; the answer is handed over once.
+    /// Why the given call was refused, if this is what refused it.
     ///
-    /// note: taken out rather than copied, because the one caller renders it and there is nothing
-    /// to be gained by holding it afterwards.
+    /// note: it used to be taken out rather than copied, on the grounds that the one caller
+    /// rendered it and nothing was gained by holding it. There are two callers now and they want
+    /// different things with it: the screen tells the person, and the kernel puts it into the
+    /// tool result the *model* reads - see [`PermissionPolicy::why`]. Handing it over once meant
+    /// whichever asked first got it and the other was told nothing.
     pub fn why(&self, call: &ToolCallId) -> Option<String> {
-        self.refusals.lock().remove(call)
+        self.refusals.lock().get(call).cloned()
     }
 
     /// The path rules, in the order they are read out.
@@ -674,6 +677,16 @@ impl Careful {
 
 #[async_trait]
 impl PermissionPolicy for Careful {
+    /// The reason this policy wrote down when it refused, handed to the kernel so that it reaches
+    /// the model rather than only the screen.
+    ///
+    /// note: the same sentence both of them read. A model told `refused by the rule for
+    /// `**/.env`` can do something with that - stop asking for it, ask what to use instead - and
+    /// one told only that a call was not permitted cannot tell a standing rule from a bad moment.
+    fn why(&self, call: &ToolCallId) -> Option<String> {
+        Careful::why(self, call)
+    }
+
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
         let verdict = self.verdict(request);
 

@@ -534,6 +534,15 @@ thing: a call the `PermissionPolicy` refused is never handed to `Tool::invoke`, 
 recorded as an event and as a tool result the model is told about. That is a decision point with a
 paper trail.
 
+The refusal says what kind it was, because that is the only question a refused model can act on:
+a standing rule means the same call will meet the same answer, and an answer to *this* call means
+a different approach may well be allowed. Which of the two it was is the kernel's own knowledge —
+it resolved the grant. *Why* is not, so the kernel asks: `PermissionPolicy::why` is defaulted to
+`None`, and whatever a policy returns goes into the tool result beside the kernel's account of it.
+A reason is built of a policy's own vocabulary — which capability, which path rule, which of
+several subjects actually did it — and a kernel that invented one would be guessing at somebody
+else's decision.
+
 Three things follow, and none of them is a bug:
 
 * **A `Capability` is a declaration, not a verified property.** A tool that declares `Read` and
