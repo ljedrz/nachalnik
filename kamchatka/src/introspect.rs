@@ -774,11 +774,21 @@ impl Tool for Amend {
                     "items": { "type": "integer" },
                     "description": "prune: the items to move. revise: exactly one item",
                 },
+                // note: the forms, with the variable part written as a placeholder. It listed
+                // examples - `tool:shell`, `kind:assistant_message` - and a model reading them as
+                // literals rather than as instances asked to prune `tool:shell` in a session with
+                // no shell. The closed sets are not spelled out here because `look` prints them
+                // in its own columns, which is a shorter way to learn them than a schema is
                 "select": {
                     "type": "string",
-                    "description": "prune: a class of items instead of `ids` - `all:tool_results`, \
-                                    `tool:shell`, `tool:shell:first`, `kind:assistant_message`, \
-                                    `state:excluded`, `file:src/x.rs`, `source:mcp`, or a number",
+                    "description": "prune: a class of items instead of `ids`. One of: an item \
+                                    number; `all`; `all:tool_results` (or files, diagnostics, \
+                                    selections, memories, instructions, system, user, model, \
+                                    compaction); `kind:<kind>` or `state:<state>`, taking the \
+                                    words `look` prints in those columns; `tool:<name>`, \
+                                    optionally `:first` or `:latest`; `source:<name>`; \
+                                    `file:<path>`; `label:<text>`. Anything else is read as a \
+                                    label.",
                 },
                 "state": {
                     "type": "string",

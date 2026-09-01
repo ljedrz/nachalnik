@@ -355,25 +355,29 @@ impl Tool for Shell {
         // note: not `ExitStatus`'s own `Display`, which renders `exit status: 0` and made the
         // first line of every result read `exit: exit status: 0`. What a reader wants from this
         // line is the number, and whether it means the command worked
-        let status = match child.wait().await {
-            Ok(status) => match status.code() {
+        //
+        // note: and whether it was stopped, which used to be a bracketed line after the standard
+        // error instead. An output limit cuts from the end, so a stopped command that had said
+        // more than the limit lost the one line explaining why its output stops mid-sentence -
+        // the truncation marker took its place, and the model was told the wrong thing about
+        // what it was reading. The first line survives anything
+        let waited = child.wait().await;
+        let status = match (interrupted, waited) {
+            (true, _) => "exit: stopped before it finished, at the request of the person you are \
+                          working with; what is below is what it had said by then"
+                .to_owned(),
+            (false, Ok(status)) => match status.code() {
                 Some(0) => "exit: 0".to_owned(),
                 Some(code) => format!("exit: {code} (the command reported a failure)"),
                 None => format!("exit: {status} (the command was killed)"),
             },
-            Err(e) => format!("exit: unknown ({e})"),
+            (false, Err(e)) => format!("exit: unknown ({e})"),
         };
         if let Some(scratch) = scratch {
             let _ = tokio::fs::remove_dir_all(scratch).await;
         }
 
-        let text = format!(
-            "{status}\n--- stdout ---\n{collected}\n--- stderr ---\n{errors}{}",
-            match interrupted {
-                true => "\n\n[the command was stopped before it finished]",
-                false => "",
-            }
-        );
+        let text = format!("{status}\n--- stdout ---\n{collected}\n--- stderr ---\n{errors}");
 
         Ok(ToolOutput::new(text))
     }

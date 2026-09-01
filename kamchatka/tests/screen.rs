@@ -941,6 +941,50 @@ async fn the_help_lists_the_keys_that_exist() {
     assert_eq!(seen.len(), commands.len(), "listed twice: {commands:?}");
     assert!(commands.contains(&"/seams"), "{commands:?}");
 
+    // and every form `amend`'s schema names to a model is one the selector language really takes.
+    // A schema that offered a form the parser refuses would be teaching a model to make a call
+    // that comes back as an error, which is the one thing a description is there to prevent
+    let offered = kamchatka::introspect::install(&harness.app.kernel);
+    let amend = harness.app.kernel.tool("amend").expect("installed");
+    let select = amend.spec().schema["properties"]["select"]["description"]
+        .as_str()
+        .expect("it says what it takes")
+        .to_owned();
+    drop(offered);
+
+    for form in [
+        "17",
+        "all",
+        "all:tool_results",
+        "kind:assistant_message",
+        "state:excluded",
+        "tool:grep",
+        "tool:grep:first",
+        "tool:grep:latest",
+        "source:mcp",
+        "file:src/x.rs",
+        "label:cargo test",
+    ] {
+        assert!(
+            form.parse::<nachalnik::selectors::Selector>().is_ok(),
+            "the schema offers `{form}` and the language refuses it"
+        );
+    }
+    // named as forms rather than as examples: a model that read `tool:shell` as a literal asked
+    // to prune it in a session with no shell in it
+    for prefix in [
+        "kind:<kind>",
+        "state:<state>",
+        "tool:<name>",
+        "source:<name>",
+        "file:<path>",
+    ] {
+        assert!(
+            select.contains(prefix),
+            "the schema does not name `{prefix}`: {select}"
+        );
+    }
+
     // any other key closes it
     harness.press(KeyCode::Esc).await;
     assert!(harness.app.overlay.is_none());
@@ -3643,4 +3687,19 @@ async fn a_table_is_only_a_table_where_one_was_written() {
     // ragged; a long one is cut to the columns the header declared
     assert!(screen.contains("│ a    │   b    │       │"), "{screen}");
     assert!(screen.contains("│ c    │   d    │     e │"), "{screen}");
+}
+
+#[tokio::test]
+async fn a_stopped_command_says_so_where_a_limit_cannot_cut_it() {
+    // an output limit cuts from the end, so a notice appended after the standard error is the
+    // first thing a long-running command loses - and it is the line that explains why the output
+    // stops mid-sentence. The first line survives anything
+    let interrupted = "exit: stopped before it finished, at the request of the person you are \
+                       working with; what is below is what it had said by then\n--- stdout ---\n";
+    let mut content = nachalnik::Content::text(format!("{interrupted}{}", "x".repeat(4_000)));
+    content.truncate_to(200).expect("it is over the limit");
+
+    let said = content.to_text();
+    assert!(said.contains("stopped before it finished"), "{said}");
+    assert!(said.contains("truncated by an output limit"), "{said}");
 }

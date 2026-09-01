@@ -46,6 +46,11 @@ minor bump may break you.
 
 ### fixed
 
+- A stopped `shell` command lost the line saying so. `[the command was stopped before it
+  finished]` was appended after the standard error, and an output limit cuts from the end - so
+  the one command that most often has more to say than the limit allows was also the one whose
+  explanation went, leaving output that stopped mid-sentence under a truncation marker with
+  nothing to say why. It is on the exit line now, first in the result, where nothing can cut it.
 - A markdown table wider than the window came apart. The renderer lays a table out at the width
   its contents want and hands back rows of box characters, and those were then wrapped like
   prose - so half a border arrived on the next line and the borders scattered across the pane.
