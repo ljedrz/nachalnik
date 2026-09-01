@@ -661,6 +661,8 @@ kamchatka [OPTIONS] [MESSAGE]...
       --sandbox-allow <PATH> a path outside the working directory the shell may also
                             read and write; may be repeated
       --no-sandbox          run the shell tool unconfined, reaching whatever you can
+      --forget-truncated    drop the whole of a shortened tool output instead of
+                            keeping it as an archived item you can still read
 
 Environment:
   KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY

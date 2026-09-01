@@ -3490,6 +3490,81 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
 }
 
 #[tokio::test]
+async fn a_figure_too_wide_for_its_column_does_not_run_into_the_one_beside_it() {
+    // `keep_truncated_output` archives the whole of what a tool produced, and what a tool can
+    // produce has no ceiling: one `grep` that wandered into a build directory archived 11MB, and
+    // the pane put `3,370,258` into a column budgeted at seven. `{:>7}` pads and never truncates,
+    // so the figure took nine columns, the `0` beside it lost its gap and read as `01,400,000`,
+    // and the two characters came off the far end of the row.
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("what does it do?"));
+    harness.app.kernel.push(
+        ContextItem::file("noise.log", "the command said something.\n".repeat(200_000))
+            .because("a grep that went into ./target"),
+    );
+    let items = harness.app.kernel.items();
+    let big = items[1].id;
+    harness
+        .app
+        .kernel
+        .set_state([big], ContextState::Archived, None);
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    let held = harness.app.kernel.item(big).expect("still there").tokens;
+    assert!(held >= 1_000_000, "the item should hold millions: {held}");
+
+    let screen = harness.screen();
+    let row = screen
+        .lines()
+        .find(|line| line.contains("noise.log"))
+        .expect("the item is listed")
+        .to_owned();
+
+    // the figure gives way, not the layout
+    for line in screen.lines() {
+        assert!(
+            line.chars().count() <= 100,
+            "a row ran past the screen: {line:?}"
+        );
+    }
+    // `thousands` is the pane's own, and not something an integration test can reach
+    let grouped = {
+        let digits = held.to_string();
+        let mut out = String::new();
+        for (i, c) in digits.chars().enumerate() {
+            if i > 0 && (digits.len() - i).is_multiple_of(3) {
+                out.push(',');
+            }
+            out.push(c);
+        }
+        out
+    };
+    assert!(
+        !row.contains(&grouped),
+        "the exact figure does not fit seven columns and should not be printed in full: {row}"
+    );
+    assert!(
+        row.contains("archived"),
+        "the column past the figures is still on the same row as the item: {row}"
+    );
+    assert!(
+        row.contains('M'),
+        "an abbreviated figure says how much is held: {row}"
+    );
+
+    // and what it is holding is still reported in full down on the status line, which has room
+    let status = harness.screen();
+    assert!(
+        status.contains(&format!("{grouped} held back")),
+        "the status line still says all of it: {status}"
+    );
+}
+
+#[tokio::test]
 async fn the_pane_says_what_an_item_costs_now_and_what_it_is_holding_back() {
     let mut harness = Harness::new([]);
     harness

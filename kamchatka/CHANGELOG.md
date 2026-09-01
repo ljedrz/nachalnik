@@ -5,6 +5,31 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- `--forget-truncated`, which drops the whole of a tool's output once it has been shortened rather
+  than keeping it as an archived item. The runtime has had the switch since it had the behaviour
+  and its documentation says when to reach for it - "when a tool can produce more than you are
+  willing to go on holding" - and nothing here reached it, so the answer for a terminal was always
+  yes. It is worth a flag because the cost is not in the session, it is in the file: `/save` writes
+  the snapshot, an archived output goes into it whole, and one `grep` that wandered into `./target`
+  put 11MB of build noise into every save of that session from then on. Keeping it is still the
+  default, because being able to open the item and read what the command actually said is the
+  point of the pane.
+
+### fixed
+
+- A figure too wide for its column stopped taking the columns from its neighbour. The `held`
+  column is seven wide, which stops at `999,999`, and `{:>7}` pads without truncating - so an item
+  holding 3,370,258 tokens printed all nine characters, ran into the `sending` figure beside it
+  (`0` and `1,400,000` arriving as `01,400,000`) and pushed two characters off the end of the row.
+  It is the one column where an unbounded number can turn up: what is being *sent* is bounded by
+  the window it is being sent to, and what is being *held* is whatever a tool actually produced.
+  The figure is abbreviated when it will not fit and exact whenever it will, which is almost
+  always; the status line goes on reporting the whole of it, where there is room.
+
 ## [0.3.0] - 2026-09-01
 
 ### added

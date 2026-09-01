@@ -105,6 +105,11 @@ struct Args {
     /// repeated.
     #[arg(long, value_name = "PATH")]
     sandbox_allow: Vec<std::path::PathBuf>,
+
+    /// Drop the whole of a tool's output once it has been shortened, rather than keeping it as an
+    /// archived item that can still be read.
+    #[arg(long)]
+    forget_truncated: bool,
 }
 
 fn main() -> Result<()> {
@@ -150,6 +155,11 @@ async fn terminal() -> Result<()> {
     let config = Config {
         max_requests_per_turn: (args.requests > 0).then_some(args.requests),
         parallel_tool_calls: args.parallel,
+        // what the runtime keeps is a decision about retention, and retention here is a file
+        // somebody has to store: `/save` writes the snapshot, and an archived output goes into it
+        // whole. One `grep` that wandered into `./target/` is 11MB of build noise nobody will
+        // read, and it is in every save of that session from then on
+        keep_truncated_output: !args.forget_truncated,
         ..Default::default()
     };
     let kernel = match &args.resume {

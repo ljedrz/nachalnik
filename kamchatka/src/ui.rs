@@ -722,7 +722,7 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                 Span::styled(
                     format!(
                         "{:>8}",
-                        thousands(costs.get(&item.id).copied().unwrap_or(0))
+                        fitted(costs.get(&item.id).copied().unwrap_or(0), 8)
                     ),
                     style,
                 ),
@@ -731,7 +731,7 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                         "{:>7}  ",
                         match item.state.sends_content() {
                             true => String::new(),
-                            false => thousands(item.tokens),
+                            false => fitted(item.tokens, 7),
                         }
                     ),
                     quiet(),
@@ -2232,6 +2232,24 @@ fn compact(n: usize) -> String {
         10_000..1_000_000 => format!("{}k", n / 1_000),
         1_000_000..10_000_000 => format!("{:.1}M", n as f64 / 1_000_000.0).replace(".0M", "M"),
         _ => format!("{}M", n / 1_000_000),
+    }
+}
+
+/// A token count for a column that cannot grow: the exact figure while it fits, [`compact`]'s
+/// abbreviation when it does not.
+///
+/// note: `held` is where an unbounded number can land. What is being *sent* is bounded by the
+/// window it is being sent to; what is being *held* is whatever a tool actually produced, since
+/// `keep_truncated_output` archives the whole of it - and a `grep` that wandered into a build
+/// directory holds millions. Seven columns stop at `999,999`, and a wider figure did not widen the
+/// column - `{:>7}` pads and never truncates, so it took the columns it needed from its
+/// neighbours: `0` and `1,400,000` arrived as `01,400,000`, and the row lost its last two
+/// characters to the clip. Precision is the right thing to give up instead, because nobody acts on
+/// the last three digits of something that is not going anywhere.
+fn fitted(n: usize, width: usize) -> String {
+    match thousands(n) {
+        exact if exact.len() <= width => exact,
+        _ => compact(n),
     }
 }
 
