@@ -44,6 +44,16 @@ minor bump may break you.
   the old text then exists nowhere but the `context.replaced` event. `App` keeps what that event
   carries, which is what the event carries content *for*. No change to the runtime.
 
+### fixed
+
+- A markdown table wider than the window came apart. The renderer lays a table out at the width
+  its contents want and hands back rows of box characters, and those were then wrapped like
+  prose - so half a border arrived on the next line and the borders scattered across the pane.
+  Tables are drawn here now, the way fenced blocks already were: the columns give when the window
+  is short, widest first and down to a floor, the cells wrap inside them with their inline styling
+  intact, and the delimiter row's colons decide which end of its column a cell sits at. A table
+  inside a fence is still a code block.
+
 ### changed
 
 - The trace says what its events carry. A third of them printed a dotted name against an empty

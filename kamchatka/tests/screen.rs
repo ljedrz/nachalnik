@@ -3563,3 +3563,84 @@ async fn the_trace_says_what_each_event_carries_and_which_step_was_slow() {
     let narrow = harness.sized(46, 30);
     assert!(!narrow.contains("+4.0s"), "{narrow}");
 }
+
+#[tokio::test]
+async fn a_table_too_wide_for_the_window_keeps_its_shape() {
+    let mut harness = Harness::new([]);
+    harness.app.say(
+        Speaker::Model,
+        "Here is a comparison:\n\n\
+         | seam | you provide | the kernel provides |\n\
+         | --- | --- | --- |\n\
+         | `Provider` | a model | the request, verbatim |\n\
+         | `Tool` | what it can do | the schema and the gating |\n\n\
+         and some text after it.\n",
+    );
+    harness.tab(Tab::Chat);
+
+    // wide enough: the box is drawn at the width its contents want, and the backticks are gone
+    let roomy = harness.sized(90, 20);
+    assert!(roomy.contains("│ seam     │ you provide    │"), "{roomy}");
+    assert!(
+        !roomy.contains('`'),
+        "inline code is styled, not spelled: {roomy}"
+    );
+
+    // too narrow: the columns give, not the borders. Every line of the table is the same width
+    // and has a border at each end - the markdown renderer's own table was wrapped like a
+    // sentence, so half of a border arrived on the next line and the whole thing came apart
+    let narrow = harness.sized(46, 24);
+    // the window's own frame taken off, so that what is left is the table's
+    let rows: Vec<String> = narrow
+        .lines()
+        .map(|line| {
+            let mut cells: Vec<char> = line.chars().collect();
+            cells.resize(46, ' ');
+
+            cells[1..45]
+                .iter()
+                .collect::<String>()
+                .trim_end()
+                .to_owned()
+        })
+        .collect();
+    let table: Vec<&String> = rows
+        .iter()
+        .filter(|line| line.starts_with(['┌', '│', '├', '└']))
+        .collect();
+    assert!(table.len() > 6, "the table is drawn: {narrow}");
+    for line in &table {
+        assert!(
+            line.ends_with(['┐', '│', '┤', '┘']),
+            "a row that does not close: {line:?} in {narrow}"
+        );
+        assert_eq!(
+            line.chars().count(),
+            table[0].chars().count(),
+            "a row of a different width: {line:?} in {narrow}"
+        );
+    }
+    // and nothing was lost to make it fit
+    assert!(narrow.contains("verbatim"), "{narrow}");
+    assert!(narrow.contains("gating"), "{narrow}");
+}
+
+#[tokio::test]
+async fn a_table_is_only_a_table_where_one_was_written() {
+    let mut harness = Harness::new([]);
+    harness.app.say(
+        Speaker::Model,
+        "```md\n| not | a | table |\n| --- | --- | --- |\n| it is | in | a fence |\n```\n\n\
+         | left | middle | right |\n| :--- | :----: | ----: |\n| a | b |\n| c | d | e | f |\n",
+    );
+    harness.tab(Tab::Chat);
+    let screen = harness.sized(80, 24);
+
+    // a table inside a fence is a code block, pipes and all
+    assert!(screen.contains("| not | a | table |"), "{screen}");
+
+    // the colons say which way a column reads, and a short row is squared up rather than left
+    // ragged; a long one is cut to the columns the header declared
+    assert!(screen.contains("│ a    │   b    │       │"), "{screen}");
+    assert!(screen.contains("│ c    │   d    │     e │"), "{screen}");
+}

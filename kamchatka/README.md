@@ -237,6 +237,13 @@ and colour, inline code gets told apart from prose, list continuations hang unde
 and a fenced block gets a rule down its left instead of a slab of background — which is the one
 thing a terminal cannot do without knowing what colour the theme is.
 
+Tables are drawn here rather than by the renderer, and for the same reason as the fenced blocks:
+the renderer lays one out at whatever width its contents want, and a row wider than the window was
+then wrapped like a sentence — so half a border arrived on the next line and the table came apart.
+A table is a fixed shape. What gives when it does not fit is the columns, widest first, and the
+cells wrap inside them with their inline styling intact; the colons in the delimiter row decide
+which end of its column a cell sits at.
+
 The parsing is [`tui-markdown`](https://crates.io/crates/tui-markdown); only the styling is this
 crate's. Nothing else on the screen is treated as markdown: a tool's output is what the tool said,
 and running that through a renderer would be inventing structure it never had.
