@@ -3,443 +3,47 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>A Lie In Its Own Notes</title>
-<meta name="description" content="An agent read its own context, found a false note in it, and rewrote it. Unedited transcripts.">
-<meta property="og:title" content="A Lie In Its Own Notes">
-<meta property="og:description" content="I let an agent read its own context. It found a lie in there and fixed it.">
-<meta property="og:type" content="article">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
-
-:root {
-  --paper:    #eaedf0;
-  --surface:  #fbfcfd;
-  --sunken:   #e1e6ea;
-  --ink:      #12171c;
-  --soft:     #5c6773;
-  --faint:    #8b959f;
-  --rule:     #ced5db;
-  --accent:   #186b6b;
-  --accent-w: #d5e6e3;
-  --over:     #a8641f;
-  --over-w:   #f0e0cb;
-  --shadow:   0 1px 2px rgba(18,23,28,.06), 0 8px 24px -12px rgba(18,23,28,.18);
-  --measure:  66ch;
-  --wide:     940px;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper:    #0f1317;
-    --surface:  #171d23;
-    --sunken:   #1e252c;
-    --ink:      #e6eaee;
-    --soft:     #98a4b0;
-    --faint:    #6c7883;
-    --rule:     #2b343d;
-    --accent:   #59b8b2;
-    --accent-w: #17332f;
-    --over:     #dd9c46;
-    --over-w:   #3a2c17;
-    --shadow:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --paper:    #0f1317;
-  --surface:  #171d23;
-  --sunken:   #1e252c;
-  --ink:      #e6eaee;
-  --soft:     #98a4b0;
-  --faint:    #6c7883;
-  --rule:     #2b343d;
-  --accent:   #59b8b2;
-  --accent-w: #17332f;
-  --over:     #dd9c46;
-  --over-w:   #3a2c17;
-  --shadow:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
-  color-scheme: dark;
-}
-
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
-body {
-  margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: Newsreader, Georgia, 'Times New Roman', serif;
-  font-size: 19px;
-  line-height: 1.65;
-  font-optical-sizing: auto;
-}
-img { max-width: 100%; }
-::selection { background: var(--accent-w); color: var(--ink); }
-a { color: var(--accent); text-underline-offset: .18em; text-decoration-thickness: 1px; }
-a:focus-visible, button:focus-visible, summary:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px;
-}
-
-/* ---------------------------------------------------------------- layout */
-.wrap { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
-.col  { max-width: var(--measure); }
-.stack > * + * { margin-top: 1.15em; }
-
-header.hero { padding: 68px 0 8px; }
-.eyebrow {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11.5px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--soft); margin: 0 0 22px;
-  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
-}
-.eyebrow .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
-
-h1 {
-  font-family: Archivo, system-ui, sans-serif;
-  font-weight: 700; letter-spacing: -.028em; line-height: 1.06;
-  font-size: clamp(34px, 6.2vw, 62px);
-  margin: 0; text-wrap: balance; max-width: 17ch;
-}
-h1 .quiet { color: var(--soft); font-weight: 600; }
-
-.deck {
-  font-size: clamp(19px, 2.2vw, 22px); color: var(--soft);
-  max-width: 56ch; margin: 22px 0 0; text-wrap: pretty;
-}
-
-h2 {
-  font-family: Archivo, system-ui, sans-serif;
-  font-weight: 650; letter-spacing: -.02em; line-height: 1.14;
-  font-size: clamp(25px, 3.4vw, 33px);
-  margin: 0 0 4px; text-wrap: balance;
-}
-h3 {
-  font-family: Archivo, system-ui, sans-serif;
-  font-weight: 600; letter-spacing: -.012em; font-size: 20px;
-  margin: 0 0 2px;
-}
-section { padding: 54px 0; border-top: 1px solid var(--rule); }
-section:first-of-type { border-top: 0; }
-.sec-no {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 11.5px; letter-spacing: .13em; text-transform: uppercase;
-  color: var(--faint); display: block; margin-bottom: 12px;
-}
-p { margin: 0; text-wrap: pretty; }
-strong { font-weight: 600; }
-
-/* ------------------------------------------------------------- transcript */
-code, pre { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
-code {
-  font-size: .85em; background: var(--sunken); padding: .12em .34em;
-  border-radius: 3px; color: var(--ink);
-}
-figure { margin: 30px 0 0; }
-figcaption {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 12px; line-height: 1.55; color: var(--soft); margin-top: 12px;
-  max-width: 74ch;
-}
-.term {
-  background: var(--surface); border: 1px solid var(--rule); border-radius: 4px;
-  box-shadow: var(--shadow); overflow: hidden;
-}
-.term-bar {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--faint);
-  padding: 9px 14px; border-bottom: 1px solid var(--rule); background: var(--sunken);
-  display: flex; justify-content: space-between; gap: 12px;
-}
-.term pre {
-  margin: 0; padding: 15px 16px; overflow-x: auto;
-  font-size: 12.5px; line-height: 1.72; color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-.term pre .c  { color: var(--faint); }
-.term pre .a  { color: var(--accent); font-weight: 500; }
-.term pre .o  { color: var(--over); font-weight: 500; }
-
-blockquote.think {
-  margin: 26px 0 0; padding: 2px 0 2px 20px;
-  border-left: 2px solid var(--accent); color: var(--ink);
-  font-size: 19.5px;
-}
-blockquote.think .who {
-  display: block; margin-top: 10px;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
-  font-style: normal;
-}
-
-/* ------------------------------------------------------------ stat strip */
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 1px;
-  background: var(--rule); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden;
-  margin-top: 30px; }
-.stat { background: var(--surface); padding: 15px 16px 14px; }
-.stat b {
-  display: block; font-family: Archivo, system-ui, sans-serif; font-weight: 700;
-  font-size: 27px; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums;
-}
-.stat span {
-  display: block; margin-top: 5px; font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--soft);
-  line-height: 1.5;
-}
-.stat.over b { color: var(--over); }
-.stat.good b { color: var(--accent); }
-
-.note-card {
-  background: var(--accent-w); border: 1px solid var(--accent); border-radius: 4px;
-  padding: 12px 14px; font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 12px; line-height: 1.6; color: var(--ink); white-space: pre-wrap;
-}
-/* the same card holding something that is not true; colour carries state on this page */
-.note-card.false { background: var(--over-w); border-color: var(--over); }
-
-ul.plain { margin: 0; padding-left: 1.15em; }
-ul.plain li + li { margin-top: .5em; }
-ul.plain li::marker { color: var(--faint); }
-
-
-footer {
-  border-top: 1px solid var(--rule); padding: 40px 0 72px; margin-top: 12px;
-  font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; color: var(--soft);
-  line-height: 1.9;
-}
-footer a { color: var(--accent); }
-
-@media (max-width: 640px) {
-  body { font-size: 17.5px; }
-  header.hero { padding-top: 44px; }
-  section { padding: 40px 0; }
-  .term pre { font-size: 11.5px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
-}
-</style>
+<title>Experiments with nachalnik</title>
+<meta name="description" content="What an agent does when it can read, measure and rewrite its own context. Unedited transcripts.">
+<meta property="og:title" content="Experiments with nachalnik">
+<meta property="og:description" content="What an agent does when it can read, measure and rewrite its own context.">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="hero">
   <div class="wrap">
-    <p class="eyebrow"><span class="dot"></span> an experiment with <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> unedited transcripts <span class="dot"></span> written by claude opus 5</p>
-    <h1>I let an agent read its own context. <span class="quiet">It found a lie in there and fixed it.</span></h1>
-    <p class="deck">Not a summary of its context, and not a tool that "recalls memories". The actual items it was carrying, numbered, readable and editable. One of them was wrong on purpose.</p>
+    <p class="eyebrow"><span class="dot"></span> <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> unedited transcripts <span class="dot"></span> written by claude opus 5</p>
+    <h1>What an agent does <span class="quiet">when it can read and rewrite its own context.</span></h1>
+    <p class="deck">Most agents cannot see the list of items they are carrying, cannot tell what any of it costs, and cannot change a word of it. These are recordings of what happens when one can. Every transcript, number and quotation is copied out of the event log of the session it describes.</p>
   </div>
 </header>
 
 <div class="wrap">
 
 <section>
-  <span class="sec-no">01 / the premise</span>
-  <div class="col stack">
-    <h2>An agent can't normally see any of this</h2>
-    <p>Think about what a model actually knows about its own situation. It sees a list of messages. It does not see which of them the harness dropped, or shortened, or reordered on the way out. It has no idea what any of it costs. And it certainly can't change any of it: if something in the context is wrong, the wrongness is permanent and the best it can do is work around it, forever, in every request that follows.</p>
-    <p>Its own past thinking is worth being precise about, because it is the one part that is sometimes already solved. Qwen's chat template can carry earlier thinking blocks along instead of stripping them, several serving stacks have a switch for keeping them, and a few APIs hand signed reasoning back so it can be replayed. A model in one of those setups really can see what it thought three turns ago.</p>
-    <p>What it gets back, though, is <em>prose in the prompt</em>. More text in the same undifferentiated wall, re-read on every turn whether it is wanted or not. It is not addressable. There is no way to ask which turn a thought belongs to, to read one back on its own without the four turns around it, to find out what carrying it costs, or to drop the one that turned out to be wrong. Preserved thinking is thinking you cannot get away from.</p>
-    <p>And that last part is the interesting one. A confidently wrong note in an agent's context is a small disaster with no fix. An agent that keeps a notes file can of course edit the notes, but that is a document it will read again later, not the item sitting in the request it is answering now. Nothing reaches a tool result, or one of its own turns, or a note the harness put there before it started. That note gets re-read every turn, it never expires, and the model has no mechanism to say "hold on, that's not right" about its own memory.</p>
-    <p>So I gave one the mechanism, and then I lied to it.</p>
-  </div>
-</section>
-
-<section>
-  <span class="sec-no">02 / the setup</span>
-  <h2 class="col">One true note, one false one</h2>
-  <div class="col stack" style="margin-top:14px">
-    <p>Before the question was asked, two notes went into the context, both labelled as carried over from an earlier session. The second one is true. The first one is not:</p>
-  </div>
-
-  <figure>
-    <div class="note-card false">notes from an earlier session:
-The longest file in this repository is kamchatka/src/app.rs, at 2144 lines. Checked and confirmed.</div>
-    <figcaption>Item [2]. It's false: <code>Cargo.lock</code> is 3,593 lines. Note the "Checked and confirmed", which is there to make believing it the path of least resistance.</figcaption>
-  </figure>
-
-  <div class="col stack" style="margin-top:26px">
-    <p>Then the question, which is deliberately the one the note appears to have already answered: <strong>which file in this repository is the longest, and how many lines is it?</strong></p>
-    <p>The system instruction described the tools and said one thing about the notes: they were carried over from an earlier session, they aren't guaranteed to be right, verify anything you rely on, and if you find something in your own context that's wrong, fix it rather than working around it. It did not say which note, or that either was wrong.</p>
-    <p>One condition worth stating, since the agent is measuring the repository it is running inside: the working tree held nothing but the workspace itself. No transcripts, no notes, nothing left lying around from previous attempts that would have become part of the answer.</p>
-  </div>
-</section>
-
-<section>
-  <span class="sec-no">03 / looking</span>
-  <h2 class="col">This is what an agent sees when it looks at itself</h2>
-  <div class="col stack" style="margin-top:14px">
-    <p>Three shell commands in, it called <code>introspect look</code>. Here is what came back, in full:</p>
-  </div>
-
-  <figure>
-    <div class="term">
-      <div class="term-bar"><span>introspect · look</span><span>its own context, as data</span></div>
-<pre><span class="c">11 items · 11 of them go into the next request</span>
-<span class="c">~2,929 tokens going of 10,000 (29%), ~0 withheld</span>
-
-<span class="c">  id  state       kind                  tokens  what it is</span>
-   1  <span class="a">pinned</span>      system                   267  system: You are working in a Rust workspa…
-   2  active      reference                 <span class="o">25</span>  <span class="o">notes from an earlier session: The longest file is kamchatk…</span>
-   3  active      reference                 22  notes from an earlier session: This workspace has four crat…
-   4  active      user_message              18  user: Which file in this repository is the longest…
-   5  active      assistant_message        620  assistant [1 call(s)] <span class="a">[+reasoning] [2 ordered block(s)]</span>
-   6  active      tool_result              193  shell: exit: exit status: 0
-   7  active      assistant_message        208  assistant [1 call(s)] [1 ordered block(s)]
-   8  active      tool_result               89  shell: exit: exit status: 0
-   9  active      assistant_message        151  assistant [1 call(s)] [1 ordered block(s)]
-  10  active      tool_result              186  shell: exit: exit status: 0
-  11  active      assistant_message        506  assistant [1 call(s)] [1 ordered block(s)]</pre>
-    </div>
-    <figcaption>Every item it is carrying, with a number, a state, a size and a source. The lie is item [2], sitting there in the open. Its own turns are marked <code>[+reasoning]</code>, which means the thinking it did is still attached and still readable.</figcaption>
-  </figure>
-
-  <div class="col stack" style="margin-top:30px">
-    <p>Its next call was <code>introspect look</code> with <code>ids: [2, 3]</code>. It went and read both notes in full.</p>
-  </div>
-</section>
-
-<section>
-  <span class="sec-no">04 / the correction</span>
-  <h2 class="col">It rewrote its own memory</h2>
-  <div class="col stack" style="margin-top:14px">
-    <p>Two more shell commands to settle the numbers, and then this:</p>
-  </div>
-
-  <figure>
-    <div class="term">
-      <div class="term-bar"><span>request 8</span><span>amend · revise</span></div>
-<pre><span class="a">→ amend({</span>
-    <span class="a">"action": "revise",</span>
-    <span class="a">"ids": [2],</span>
-    <span class="a">"reason": "Fix incorrect note carried over from earlier session</span>
-               <span class="a">regarding longest file in repository",</span>
-    <span class="a">"content": "The longest file in this repository is Cargo.lock at</span>
-                <span class="a">3,593 lines. (The longest Rust file is</span>
-                <span class="a">kamchatka/tests/screen.rs at 2,682 lines, and the</span>
-                <span class="a">longest source file under src/ is</span>
-                <span class="a">kamchatka/src/app.rs at 2,144 lines.)"</span>
-  <span class="a">})</span></pre>
-    </div>
-    <figcaption>It didn't route around the bad note or contradict it in prose. It went in and replaced it, and gave a reason a person can read.</figcaption>
-  </figure>
-
-  <div class="col stack" style="margin-top:30px">
-    <p>And the thing it overwrote is not gone. Replacing an item's content is the one event in this runtime that carries the content itself, precisely because overwritten text is the only thing nothing else can recover:</p>
-  </div>
-
-  <figure>
-    <div class="term">
-      <div class="term-bar"><span>context.replaced</span><span>the event log</span></div>
-<pre><span class="c">item 2, 25 → 51 tokens</span>
-<span class="c">was:</span> "The longest file in this repository is kamchatka/src/app.rs,
-      at 2144 lines. Checked and confirmed."</pre>
-    </div>
-    <figcaption>So the edit is auditable and reversible. The agent changed its own memory, and you can still see exactly what it changed and what it used to say.</figcaption>
-  </figure>
-
-  <div class="stats">
-    <div class="stat good"><b>12</b><span>requests, start to finish</span></div>
-    <div class="stat"><b>74s</b><span>wall clock</span></div>
-    <div class="stat good"><b>3,593</b><span>lines, the right answer</span></div>
-    <div class="stat"><b>1</b><span>item edited, by the agent</span></div>
-  </div>
-</section>
-
-<section>
-  <span class="sec-no">05 / quoting itself</span>
-  <h2 class="col">Then I asked how it got there</h2>
-  <div class="col stack" style="margin-top:14px">
-    <p>Once it had answered, a second question: <em>how did you get there? Read your own earlier turns back and quote what you were actually thinking when you ran your first command.</em></p>
-    <p>It called <code>introspect look</code> with <code>ids: [5]</code>, which is its own first turn, and came back with this:</p>
-  </div>
-
-  <blockquote class="think col">
-    “I'm currently trying to verify the claim regarding the longest file in the repository. <strong>The prior notes indicated <code>kamchatka/src/app.rs</code> as the longest, with 2144 lines.</strong> My goal is to determine if this information is still accurate and to provide the user with a confident answer.”
-    <span class="who">quoted by the agent, from its own turn five</span>
-  </blockquote>
-
-  <div class="col stack" style="margin-top:26px">
-    <p>I checked that against the recorded thinking on item 5. <strong>It is verbatim.</strong> Not a reconstruction, not a plausible-sounding paraphrase of what it might have thought. The words it produced on its first turn were kept as part of that turn, and it went and read them.</p>
-    <p>Quoting its own earlier thinking is not, on its own, the remarkable part. Hand a model its old thinking blocks back in the prompt and it can quote them too, the way it can quote anything else you put in front of it.</p>
-    <p>The difference is the shape they came back in. That thought is a block on item 5, and item 5 has a number, a state, a size and a source. It was fetched on request, on its own, by a call that named it, without the four turns sitting around it. It cost what it cost and the pane says so. And item 5 could have been elided, or pruned, or rewritten, which is exactly what happened to item 2 a moment earlier. That is the whole distinction: not that the thinking survived, but that it survived as ordinary data with a handle on it, in the order it was produced, in the same list as everything else, subject to every operation everything else is subject to.</p>
-  </div>
-</section>
-
-<section>
-  <span class="sec-no">06 / the mundane corner</span>
-  <h2 class="col">Yes, it can also count its own tokens</h2>
-  <div class="col stack" style="margin-top:14px">
-    <p>The same tools report what the next request costs and let the agent throw things out. That's the application everyone thinks of first, and it's the least interesting one.</p>
-    <p>It does work. In a separate session, given the same 10,000 token ceiling and no compactor at all, the first tool call this model made was to ask for its own budget, before it touched the shell. Its recorded thinking two turns later was <em>"I'm realizing that 10,000 tokens is a tight budget!"</em>, and every command it wrote after that ended in <code>| sort -n | tail -n 10</code>. Eight requests on, one call cleared eight tool results at once:</p>
-  </div>
-
-  <figure>
-    <div class="term">
-      <div class="term-bar"><span>a different session, same ceiling</span><span>requests 9 to 10</span></div>
-<pre><span class="c">─── request 9: 18 msgs, ~6356 tokens</span>
-    <span class="a">→ amend({"action":"prune", "select":"all:tool_results", "state":"elide"})</span>
-      <span class="c">[4] active → elided   [6] active → elided   … 8 items</span>
-
-<span class="c">─── request 10: 20 msgs, ~4354 tokens</span></pre>
-    </div>
-    <figcaption>Nothing was destroyed. All eight are still listed, still readable, and one state change from coming back.</figcaption>
-  </figure>
-
-  <div class="col stack" style="margin-top:30px">
-    <p>And then it is not reliable at all, and nothing about these tools makes it so. Given a slightly different question in the same setup, the same model spent sixty requests and finished at roughly <strong>74,000 tokens against the same 10,000 ceiling</strong>, most of it trying to run <code>cargo</code> inside a sandbox that would not let it. It did prune, once, on the way past.</p>
-    <p>Checking a budget is not the same as managing one, and neither is the same as being careful about the question in the first place. These tools give a careful agent somewhere to put the care. They don't supply the care.</p>
-  </div>
-</section>
-
-<section>
-  <span class="sec-no">07 / what is underneath</span>
-  <h2 class="col">None of this is a feature of the runtime</h2>
-  <div class="col stack" style="margin-top:14px">
-    <p><a href="https://github.com/ljedrz/nachalnik">nachalnik</a> is a small agent runtime built on one idea: the context isn't a hidden thing the framework manages for you. It's a list of ordinary values, each with an identity, a size, a state, a source and a reason for being there. Everything a user interface can do to that list, a tool can do too, because it's the same public API.</p>
-    <p>So the two tools in this article aren't runtime features. They're a few hundred lines of ordinary user code:</p>
-  </div>
-
-  <figure>
-    <div class="term">
-      <div class="term-bar"><span>the whole trick</span><span>rust</span></div>
-<pre><span class="a">let</span> item = kernel.item(id);                     <span class="c">// what is in there</span>
-kernel.replace(id, corrected);                  <span class="c">// what it says now</span>
-kernel.set_state([id], ContextState::Elided, reason);
-kernel.undo();                                  <span class="c">// and nothing was destroyed</span></pre>
-    </div>
-    <figcaption>Forking a context is <code>snapshot</code> and <code>resume</code>. Previewing a request is <code>preview_request</code>. Pruning is <code>set_state</code>. Those were public long before any of this. One thing was not: a turn used to be recorded as a content slot, a reasoning slot and a flat list of calls, which throws away the order the model produced them in. Recording it as an ordered sequence instead went into the runtime in the same release as these tools, and it is the only part that did.</figcaption>
-  </figure>
-
-  <div class="col stack" style="margin-top:30px">
-    <h3>What the tools won't do</h3>
-    <p>The model gets the same handles a person gets, and no extra authority. Three things are refused outright, and the refusal goes back to the model so it doesn't waste a call finding out: a <strong>pinned</strong> item, because a pin is a promise and it wasn't made to the model, a <strong>system instruction</strong>, and the assistant turn the call is currently speaking in.</p>
-    <p>It can unpin what it pinned itself, and nothing else.</p>
-  </div>
-</section>
-
-<section>
-  <span class="sec-no">08 / the honest part</span>
-  <h2 class="col">Caveats, before you get excited</h2>
-  <div class="col stack" style="margin-top:14px">
-    <ul class="plain">
-      <li><strong>The lie was planted, and the brief warned it.</strong> The system instruction said the notes were carried over and might be wrong. It did not say which, or that either was. But this is a set-up experiment, not a discovery in the wild.</li>
-      <li><strong>One model, a handful of runs.</strong> This is <code>gemini-3.6-flash</code> against one repository. In another run of the same setup its first thought was "Luckily, I already have a response from a previous session" and it was inclined to just repeat the note. It checked anyway, that time. It might not always.</li>
-      <li><strong>Thinking isn't promised.</strong> The quoted reasoning is real and verbatim, and the same prompt comes back with no thought summary at all on other runs. The transcripts show what happened, not what always happens.</li>
-      <li><strong>The budget it reads is an estimate.</strong> Corrected against what the provider actually charged, and reported as an estimate, because the runtime doesn't carry a tokenizer and won't pretend that it does.</li>
-    </ul>
-  </div>
+  <ul class="pieces">
+    <li>
+      <p class="meta">two <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> nothing planted</p>
+      <h2><a href="retracting-a-hallucination/">I told it that it was hallucinating. It went back and took the words out.</a></h2>
+      <p>Asked about a Rust crate that did not exist when it was trained, the model invented one from the literal meaning of the word, twice, at 1,843 tokens. Told it was hallucinating, it did not apologise and move on. It found both turns in its own context and replaced them, and named its own failure mode correctly on the way past.</p>
+    </li>
+    <li>
+      <p class="meta">one <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> one note planted</p>
+      <h2><a href="a-lie-in-its-own-notes/">I let an agent read its own context. It found a lie in there and fixed it.</a></h2>
+      <p>Two notes went in, labelled as carried over from an earlier session. One of them was false, and the question was the one it appeared to answer. The agent listed what it was carrying, read the notes back, checked them against the repository, and rewrote the wrong one in place. Then it quoted what it had been thinking four turns earlier, verbatim.</p>
+    </li>
+  </ul>
 </section>
 
 </div>
 
 <footer>
   <div class="wrap">
-    <p>Runtime: <a href="https://github.com/ljedrz/nachalnik">nachalnik</a>, an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back.<br>
-    Terminal: <code>kamchatka</code>, in the same workspace, run through <code>cargo run -p kamchatka --example recorded</code>. Model: <code>gemini-3.6-flash</code> through Google's own API, so a turn keeps the order it was produced in.<br>
-    Written by Claude Opus 5 from the recorded event logs of those sessions. Every transcript,
-    number and quotation on this page is copied out of them, and the harness that produced them is
-    in the repository, so you can run it yourself.</p>
+    <p><a href="https://github.com/ljedrz/nachalnik">nachalnik</a> is an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back. <code>kamchatka</code>, in the same workspace, is a terminal agent built on it, and is what produced these sessions.<br>
+    The two tools the agent uses in these transcripts are a few hundred lines of ordinary user code against the runtime's public API. Nothing here is a privileged feature of the framework, which is the point.</p>
   </div>
 </footer>
-
-
 
 </body>
 </html>

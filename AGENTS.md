@@ -108,15 +108,16 @@ implies.
 `panel` talk to a real API through `examples/common`.
 
 `kamchatka/examples/recorded.rs` runs a session headless and writes it out four ways - readable,
-as events, as a snapshot, as the raw stream - which is how the transcripts in `docs/index.html`
+as events, as a snapshot, as the raw stream - which is how the transcripts under `docs/`
 were produced. `PLANT`, `TASK`, `TASK2`, `BRIEF`, `DIALECT` and `OUT` parameterise it, and it
 needs `KAMCHATKA_CONTEXT_LIMIT` set rather than setting one itself. It writes into `recorded/`,
 which is ignored: a run measuring the repository it sits in must not find previous transcripts
 lying in it.
 
-`docs/index.html` is the write-up, served by GitHub Pages from `main` `/docs`. One file, no build
-step, no scripts. Every number in it is copied out of a recorded event log; if a claim in there
-stops being true, the fix is a new recording rather than a new sentence.
+`docs/` is the write-ups, served by GitHub Pages from `main` `/docs`. `index.html` lists them and
+each piece is a directory with an `index.html` in it; `style.css` is shared by all of them. No
+build step, no scripts. Every number in every one of them is copied out of a recorded event log;
+if a claim in there stops being true, the fix is a new recording rather than a new sentence.
 
 ---
 

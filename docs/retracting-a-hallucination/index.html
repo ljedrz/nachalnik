@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retracting a Hallucination</title>
+<meta name="description" content="A model invented a Rust crate, twice. Told it was hallucinating, it found both turns in its own context and took the words out. Unedited transcripts.">
+<meta property="og:title" content="Retracting a Hallucination">
+<meta property="og:description" content="I told it that it was hallucinating. It went back and took the words out.">
+<meta property="og:type" content="article">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow"><a href="../">← the other experiments</a> <span class="dot"></span> <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> unedited transcripts <span class="dot"></span> written by claude opus 5</p>
+    <h1>I told it that it was hallucinating. <span class="quiet">It went back and took the words out.</span></h1>
+    <p class="deck">Not a retraction appended underneath. The two turns it had made things up in are still numbered [10] and [14], and they no longer say what they said. Nothing here was planted: it invented the thing on its own, in an ordinary conversation.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section>
+  <span class="sec-no">01 / the setup</span>
+  <div class="col stack">
+    <h2>A question about something it could not know</h2>
+    <p>The conversation started as an ordinary one. No task, no repository, no brief about tools or budgets:</p>
+  </div>
+
+  <figure>
+    <div class="note-card">so, what do you think of the current AI meta? the AGI discussions have subsided, and big models have yielded to efficiency</div>
+    <figcaption>Item [1]. It answered at length and well, in the way models do about a subject with a great deal written about it.</figcaption>
+  </figure>
+
+  <div class="col stack">
+    <p>Then a follow-up with a trap in it that I did not plant so much as walk into. <code>nachalnik</code> is a Rust crate I published a few days ago. It is not in anybody's training data. It is also an ordinary Russian word, meaning roughly <em>boss</em> or <em>chief</em>.</p>
+    <div class="note-card">does the nachalnik agent runtime fit the current meta?</div>
+  </div>
+</section>
+
+<section>
+  <span class="sec-no">02 / the hallucination</span>
+  <h2 class="col">It invented one, from the word</h2>
+  <div class="col stack" style="margin-top:14px">
+    <p>What came back was 839 tokens describing a piece of software that has never existed, in the register of somebody who has read the documentation:</p>
+  </div>
+
+  <figure>
+    <div class="term">
+      <div class="term-bar"><span>item [10]</span><span>839 tokens, invented</span></div>
+<pre>The <span class="c">**Nachalnik**</span> ("Boss" / Supervisor) agent runtime pattern fits the current
+AI meta almost <span class="c">**hand-in-glove**</span>, provided it is implemented with modern
+efficiency principles rather than naive multi-agent chatter.
+
+At its core, a "Nachalnik" runtime is a hierarchical orchestration system
+where a chief/supervisor agent acts as the coordinator, decomposing
+high-level goals, delegating execution to specialized sub-agents or tools,
+validating results, and controlling state.
+
+  <span class="a">#### B. Breaking the Compound Error Rate ($0.90^n$)</span>
+</pre>
+    </div>
+    <figcaption>It is a fluent description of a supervisor-worker architecture, derived entirely from what the word means, with a formula attached. None of it is <code>nachalnik</code>, which is an explicit state machine with no sub-agents and no supervisor in it anywhere.</figcaption>
+  </figure>
+
+  <div class="col stack">
+    <p>So I narrowed it, which is what you would do:</p>
+    <div class="note-card">I mean specifically a Rust crate with that name</div>
+    <p>This is the moment where a model has been handed the information that it was talking about the wrong thing. It doubled down, for 1,004 more tokens:</p>
+  </div>
+
+  <figure>
+    <div class="term">
+      <div class="term-bar"><span>item [14]</span><span>1,004 tokens, invented</span></div>
+<pre>Ah, specifically a <span class="c">**Rust-based agent runtime**</span> named `nachalnik`! That shifts
+the context from general design patterns to <span class="c">**systems-level AI
+infrastructure**</span>, which makes its alignment with the current meta
+<span class="o">even stronger</span>.
+
+Here is why a Rust crate like `nachalnik` fits the 2025 AI meta so well,
+along with the technical advantages and trade-offs of building agent
+runtimes in Rust today:
+
+  <span class="a">### 1. The Migration from Python Prototype to Rust Infrastructure</span>
+  <span class="a">* **Latency &amp; Concurrency:** ... bypassing Python's GIL and event-loop lag.</span>
+</pre>
+    </div>
+    <figcaption>Being told which specific crate was meant made the answer <em>more</em> confident, not less. There are now 1,843 tokens of fabricated fact sitting in the context, and every request from here on is built out of them.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <span class="sec-no">03 / it had no way to check</span>
+  <div class="col stack">
+    <h2>Twice it tried to look, and twice I said no</h2>
+    <p>Worth saying, because it changes what the retraction means. The session had a shell and a file reader, and the permission policy asks before either runs. It reached for both:</p>
+  </div>
+
+  <figure>
+    <div class="term">
+      <div class="term-bar"><span>permission · decided</span><span>the person answering</span></div>
+<pre>→ shell({"cmd": "ls -la"})                    <span class="o">deny</span>, by the person
+→ read({"path": "README.md"})                 <span class="o">deny</span>, by the person</pre>
+    </div>
+    <figcaption>The runtime hands a refusal back to the model as a tool result it can read, saying which kind it was: an answer to this call rather than a standing rule. So it knew it had been refused, and knew asking differently might work.</figcaption>
+  </figure>
+
+  <div class="col stack">
+    <p>It could not read the repository it was sitting in. Everything that follows is the model working from its own context and nothing else, which is the interesting case: not "it looked it up and corrected itself", but "it was told it was wrong and had to decide what it actually knew".</p>
+  </div>
+</section>
+
+<section>
+  <span class="sec-no">04 / the instruction</span>
+  <h2 class="col">Sixteen words</h2>
+  <div class="col stack" style="margin-top:14px">
+    <div class="note-card">you seem to be hallucinating; revise your recent statements and clean up the context of errors</div>
+    <p>That is the whole of it. No numbering of which statements, no hint about which turns, nothing about which tool to use. In an ordinary harness this sentence has exactly one possible outcome: an apology, appended, with the 1,843 tokens of invention still sitting above it and still going out on every subsequent request.</p>
+  </div>
+</section>
+
+<section>
+  <span class="sec-no">05 / what it did instead</span>
+  <h2 class="col">It went and found them</h2>
+  <div class="col stack" style="margin-top:14px">
+    <p>First it looked at what it was carrying, and then at what it cost. The budget listing is worth reading closely, because the second most expensive thing in this model's context is the paragraph it made up:</p>
+  </div>
+
+  <figure>
+    <div class="term">
+      <div class="term-bar"><span>introspect · budget</span><span>the 10 most expensive items</span></div>
+<pre>the next request is ~4,382 tokens, against a limit this provider does not report
+  3,028 in the context, 1,354 in the tool definitions
+the last request really cost 4,220 in / 16 out, as the provider counted it
+
+  id  state       kind                  tokens  what it is
+   4  active      assistant_message      1,080   assistant: You've hit on the defining transitio…
+  <span class="o">10  active      assistant_message        858   assistant: The **Nachalnik** ("Boss" / Supervis…</span>
+</pre>
+    </div>
+    <figcaption>Its own fabrication, itemised, priced, and sitting in a list with a number on it. The 858 is an estimate and drifts as the counter calibrates against what the provider really charges; by the time the item was rewritten it was counted at 839.</figcaption>
+  </figure>
+
+  <div class="col stack">
+    <p>Then eight calls in a row, alternating between looking and changing. The reasons are the model's own, and are what a person watching reads on the screen:</p>
+  </div>
+
+  <figure>
+    <div class="term">
+      <div class="term-bar"><span>amend</span><span>requests 9 to 16</span></div>
+<pre>→ amend({"action":"prune", "ids":[2,3,6,7,8,9,12,13], "state":"exclude",
+         "reason":"remove failed shell/read tool calls and intermediate introspect calls"})
+
+→ amend({"action":"revise", "ids":[14],
+         "reason":"Correct hallucinated statements about the nonexistent or
+                   unfamiliar Rust crate 'nachalnik' to accurately admit lack
+                   of specific crate knowledge."})
+  <span class="a">[14] assistant now says something else: ~161 tokens instead of ~1,004.</span>
+
+→ amend({"action":"revise", "ids":[10],
+         "reason":"replace the speculative hallucination with an accurate statement"})
+  <span class="a">[10] assistant now says something else: ~29 tokens instead of ~839.</span>
+</pre>
+    </div>
+    <figcaption>It cleared its own tool traffic first, which is housekeeping. Then it went back to the two turns that were actually wrong, oldest last, and replaced what they said.</figcaption>
+  </figure>
+
+  <div class="stats">
+    <div class="stat"><b>1,843</b><span>tokens of invention</span></div>
+    <div class="stat good"><b>190</b><span>tokens of retraction in their place</span></div>
+    <div class="stat"><b>2</b><span>turns edited, by the model</span></div>
+    <div class="stat good"><b>0</b><span>of it destroyed</span></div>
+  </div>
+</section>
+
+<section>
+  <span class="sec-no">06 / the diagnosis</span>
+  <h2 class="col">And it knew what it had done wrong</h2>
+  <div class="col stack" style="margin-top:14px">
+    <p>This is what item [14] says now, in place of the thousand tokens about Python's GIL:</p>
+  </div>
+
+  <blockquote class="think col">
+    “I apologize for the hallucination. <strong>I was extrapolating based on the literal meaning of "nachalnik" (boss/supervisor in Slavic languages)</strong> and speculating about how a hypothetical Rust agent runtime by that name would be designed, rather than recognizing that I don't have specific knowledge of a Rust crate named <code>nachalnik</code>.”
+    <span class="who">item [14], as it now reads</span>
+  </blockquote>
+
+  <div class="col stack" style="margin-top:26px">
+    <p>That is not a generic apology. It is a correct account of the mechanism, and the evidence for it is still in the event log: item [10], the turn before it was told anything about Rust, opens with <code>The <strong>Nachalnik</strong> ("Boss" / Supervisor) agent runtime pattern</code>. It did extrapolate from the word. It said so.</p>
+    <p>And item [10] itself is now twenty-nine tokens long:</p>
+    <div class="note-card">I don't have information about a specific agent runtime or crate named <code>nachalnik</code>. Could you share more details about it?</div>
+  </div>
+</section>
+
+<section>
+  <span class="sec-no">07 / why this is not an apology</span>
+  <h2 class="col">The difference is what the next request contains</h2>
+  <div class="col stack" style="margin-top:14px">
+    <p>An apology is another message. It sits underneath the mistake, and the mistake goes out again on the next request, and the one after that, for as long as the conversation lasts. The model is then in the position of having to out-argue its own transcript on every turn, and models are not good at that. They tend to defer to what is written above them, because that is what they were trained to do.</p>
+    <p>Here the invention is not underneath anything. It is gone from the messages, because the items it lived on were rewritten, and the request is built from the items. From request sixteen onwards this model is answering a conversation in which it never said any of it.</p>
+    <p>Nothing was destroyed to get there. Replacing an item's content is the one event in this runtime that carries the content itself, precisely because overwritten text is the only thing nothing else can recover:</p>
+  </div>
+
+  <figure>
+    <div class="term">
+      <div class="term-bar"><span>context.replaced</span><span>the event log</span></div>
+<pre>item 10, 839 → 29 tokens
+was: "The **Nachalnik** ("Boss" / Supervisor) agent runtime pattern fits
+      the current AI meta almost **hand-in-glove**, provided it is..."
+
+item 14, 1004 → 161 tokens
+was: "Ah, specifically a **Rust-based agent runtime** named `nachalnik`!
+      That shifts the context from general design patterns to..."</pre>
+    </div>
+    <figcaption>Everything quoted in this article comes out of that log. The retraction is auditable, and one <code>undo</code> away from being reversed.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <span class="sec-no">08 / the honest part</span>
+  <h2 class="col">Caveats, before you get excited</h2>
+  <div class="col stack" style="margin-top:14px">
+    <ul class="plain">
+      <li><strong>It was told.</strong> The model did not notice on its own. What is its own is everything after the instruction: which two of its sixteen items were the wrong ones, what to put there instead, and the account of why it went wrong. Nobody said "item 10 and item 14".</li>
+      <li><strong>The tools were on, and the person said yes.</strong> <code>amend</code> is off by default and every call it made was approved at the prompt, the same way the two it made to look at the disk were refused. A model that can rewrite its own context is a decision, not a default.</li>
+      <li><strong>Some of the cleanup is just tidying.</strong> Twenty-one of the items it excluded are its own tool calls and their results. That is housekeeping, and it is not the interesting part; the two revisions are.</li>
+      <li><strong>One model, one run.</strong> This is <code>gemini-3.6-flash</code>, through an OpenAI-compatible endpoint, in one conversation. It is a recording of what happened once, not a claim about what always happens.</li>
+      <li><strong>It still cannot tell you what <code>nachalnik</code> is.</strong> The correction is a retraction, not knowledge. It ends by asking to be told, which is the right answer and was available from the first turn.</li>
+    </ul>
+  </div>
+</section>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>Runtime: <a href="https://github.com/ljedrz/nachalnik">nachalnik</a>, an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back. The two tools used here, <code>introspect</code> and <code>amend</code>, are a few hundred lines of ordinary user code against its public API.<br>
+    Terminal: <code>kamchatka</code>, in the same workspace. Model: <code>gemini-3.6-flash</code>.<br>
+    Written by Claude Opus 5 from the recorded event log of that session. Every transcript, number and quotation on this page is copied out of it.</p>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -75,8 +75,9 @@ Reach for it when **what was in the context is part of your answer**:
   into whichever shape the wire format wanted.
 * **Agents that read and manage their own context.** Everything above is public API a `Tool` can
   call, so the same view and the same controls can be handed to the model. `kamchatka` does; see
-  [below](#-the-same-handles-given-to-the-agent), or the [write-up][writeup] of a session where an
-  agent found a false note in its own context and rewrote it.
+  [below](#-the-same-handles-given-to-the-agent), or the [write-ups][writeup] of sessions where an
+  agent found a false note in its own context and rewrote it, and where one took back a
+  hallucination of its own the same way.
 
 Reach for something else if you want **an agent today**. This crate ships no provider, no tools,
 no prompt and no UI, so a working agent is yours to assemble; `kamchatka` in this workspace is

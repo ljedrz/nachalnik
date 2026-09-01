@@ -435,8 +435,9 @@ with one reason — and the model is told, rather than left waiting on calls tha
 
 `--introspect`, or `/introspect` at any point, offers two more tools. They are off by default,
 because a model that can rewrite its own context is a decision rather than a default. There is a
-[write-up](https://ljedrz.github.io/nachalnik/) of a session where an agent used them to find a
-false note in its own context and correct it.
+[write-up](https://ljedrz.github.io/nachalnik/) of two sessions: one where an agent found a
+false note in its own context and corrected it, and one where it took back a hallucination of its
+own by rewriting the two turns it had made things up in.
 
 **`introspect`** reads. `look` lists every item it is carrying — what each one is, what it costs,
 whether it is going into the next request and why not if it is not — and reads any of them in
