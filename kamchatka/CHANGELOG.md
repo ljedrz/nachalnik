@@ -9,6 +9,20 @@ minor bump may break you.
 
 ### added
 
+- `look` hands back a long item as its start and its end rather than the whole of it, and
+  `whole: true` asks for all of it. Reading an item copies that item into the context, so a model
+  asking to see a 9,000-token tool result *in order to decide whether to keep it* pays very nearly
+  what keeping it costs. One did exactly that, twice, and finished a correct clean-up 7,688 tokens
+  heavier than it started - it identified 9,324 tokens of genuine rubbish, removed them, and spent
+  17,142 finding out. The sample keeps both ends, because what tells build noise from something
+  worth keeping is usually visible at the edges, and it names the bytes it left out. Recovering an
+  archived output whole is still possible, which is why this is an argument rather than a cap.
+- A prune that made the request *bigger* says so. An elided item leaves a marker carrying the
+  reason given for eliding it, and on a short item that reason costs more than the content did: a
+  live session elided twenty-two items and added 162 tokens. Both figures were already printed and
+  a careful reader could work it out; three models in a row did not, and one went on to elide
+  everything it had.
+
 - The requests say which program made them, where the endpoint keeps a ranking of programs.
   OpenRouter builds an app's page against the `HTTP-Referer` it is sent and names it from
   `X-OpenRouter-Title`; without them a session is anonymous traffic, and [the crate's own

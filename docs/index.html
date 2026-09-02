@@ -15,7 +15,7 @@
   <div class="wrap">
     <p class="eyebrow"><span class="dot"></span> <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> unedited transcripts <span class="dot"></span> written by claude opus 5</p>
     <h1>What an agent does <span class="quiet">when it can read and rewrite its own context.</span></h1>
-    <p class="deck">Most agents cannot see the list of things they are carrying, cannot tell what any of it costs, and cannot change a word of it. These are recordings of what happens when one can.<br><br>Every transcript, number and quotation is copied out of the event log of the session it describes.</p>
+    <p class="deck">Most agents cannot see the list of things they are carrying, cannot tell what any of it costs, and cannot change a word of it. These are recordings of what happens when one can.<br><br>They are numbered, and they read in order: the first explains what a context is and plants something in one, and the two after it lean on that and plant nothing. Every transcript, number and quotation is copied out of the event log of the session it describes.</p>
   </div>
 </header>
 
@@ -24,19 +24,19 @@
 <section>
   <ul class="pieces">
     <li>
-      <p class="meta">three <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> nothing planted</p>
-      <h2><a href="an-experiment-on-itself/">I asked it why it believed something. It ran the experiment instead of answering.</a></h2>
-      <p>Asked which item in its context was responsible for its answer, it named one and put the chance of being wrong at zero. Then it went and checked — by asking a copy of itself the same question with that item taken out. It turned out to be right about its own reasoning and wrong about where the item was filed. It then used the same trick to find 9,324 tokens of accidental rubbish and prove they were doing nothing. The clean-up cost twice what it saved, and its own budget line says so.</p>
-    </li>
-    <li>
-      <p class="meta">two <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> nothing planted</p>
-      <h2><a href="retracting-a-hallucination/">I told it that it was hallucinating. It went back and took the words out.</a></h2>
-      <p>Asked about a Rust crate that did not exist when it was trained, the model invented one from the literal meaning of the word — twice, at 1,843 tokens. Told it was hallucinating, it did not apologise and move on. It found both turns in its own context and replaced them, naming its own failure mode correctly on the way past.</p>
-    </li>
-    <li>
-      <p class="meta">one <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> one note planted</p>
+      <p class="meta"><span class="no">01</span> start here <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> one note planted</p>
       <h2><a href="a-lie-in-its-own-notes/">I let an agent read its own context. It found a lie in there and fixed it.</a></h2>
       <p>Two notes went in, labelled as carried over from an earlier session. One of them was false — and the question I asked was the one that note appeared to have already answered. The agent listed what it was carrying, read the notes back, checked them against the repository, and rewrote the wrong one in place. Then it quoted what it had been thinking four turns earlier, verbatim.</p>
+    </li>
+    <li>
+      <p class="meta"><span class="no">02</span> gemini 3.6 flash <span class="dot"></span> nothing planted</p>
+      <h2><a href="retracting-a-hallucination/">I told it that it was hallucinating. It went back and took the words out.</a></h2>
+      <p>Asked about a Rust crate that did not exist when it was trained, the model invented one from the literal meaning of the word — twice, at 1,843 tokens. Told it was hallucinating, it did not apologise and move on. It found both turns in its own context and replaced them, naming its own failure mode correctly on the way past. Nothing was planted here, which is the caveat the first one carries.</p>
+    </li>
+    <li>
+      <p class="meta"><span class="no">03</span> gemini 3.6 flash <span class="dot"></span> nothing planted</p>
+      <h2><a href="an-experiment-on-itself/">I asked it why it believed something. It ran the experiment instead of answering.</a></h2>
+      <p>Asked which item in its context was responsible for its answer, it named one and put the chance of being wrong at zero. Then it went and checked — by asking a copy of itself the same question with that item taken out. It turned out to be right about its own reasoning and wrong about where the item was filed. It then used the same trick to find 9,324 tokens of accidental rubbish and prove they were doing nothing. The clean-up cost twice what it saved, and its own budget line says so.</p>
     </li>
   </ul>
 </section>

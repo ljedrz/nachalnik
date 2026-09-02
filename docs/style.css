@@ -223,6 +223,13 @@ footer a { color: var(--accent); }
 
 .pieces p { margin: 0; color: var(--soft); font-size: 17px; line-height: 1.55; }
 
+/* the reading order, which is not the order they were written in: the first is the introduction
+   and the later ones lean on it */
+.pieces .no {
+  font-size: 15px; font-weight: 700; letter-spacing: .06em;
+  color: var(--accent); margin-right: 9px;
+}
+
 .pieces .meta {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 11.5px; letter-spacing: .04em; text-transform: lowercase;

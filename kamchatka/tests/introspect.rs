@@ -105,6 +105,85 @@ async fn look_lists_every_item_with_its_state_and_why() {
 }
 
 #[tokio::test]
+async fn eliding_something_small_says_that_it_cost_more_than_it_saved() {
+    // an elided item leaves a marker carrying the reason given for eliding it, so on a short item
+    // the marker is the more expensive of the two. A live session elided twenty-two of them and
+    // added 162 tokens doing it; both numbers were on the screen and it did not notice
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "amend",
+        json!({
+            "action": "prune",
+            "ids": [1],
+            "state": "elide",
+            "reason": "a reason long enough to outweigh the four words it is replacing, which is                        the ordinary case for a short item rather than a contrived one",
+        }),
+    )]));
+
+    kernel.push(ContextItem::user("what does it do?"));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("more than before, not less"), "{said}");
+    assert!(said.contains("marker"), "and why: {said}");
+}
+
+#[tokio::test]
+async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for() {
+    // the trap this closes: reading an item copies it into the context, so asking to see a big
+    // tool result in order to decide whether to keep it costs about what keeping it costs. A live
+    // session did that twice and finished an honest clean-up heavier than the waste it removed
+    let long = format!("HEAD-MARKER\n{}\nTAIL-MARKER", "noise line\n".repeat(2_000));
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call("c1", "introspect", json!({ "action": "look", "ids": [1] })),
+        call(
+            "c2",
+            "introspect",
+            json!({ "action": "look", "ids": [1], "whole": true }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::file("noise.log", long.clone()));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let results: Vec<String> = kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "introspect")
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(results.len(), 2, "both calls answered");
+    let (sampled, whole) = (&results[0], &results[1]);
+
+    // a sample keeps both ends, so the shape of the thing is still legible
+    assert!(sampled.contains("HEAD-MARKER"), "{sampled:.400}");
+    assert!(
+        sampled.contains("TAIL-MARKER"),
+        "the end is worth seeing too"
+    );
+    assert!(
+        sampled.contains("bytes not shown"),
+        "and it says what it left out"
+    );
+    assert!(
+        sampled.contains("whole"),
+        "and how to get it: {sampled:.400}"
+    );
+    assert!(
+        sampled.len() < long.len() / 2,
+        "the point is that it is smaller: {} vs {}",
+        sampled.len(),
+        long.len()
+    );
+
+    // and asking for it costs what it costs, which is the caller's decision to make
+    assert!(whole.contains(&long), "the whole of it, when asked for");
+    assert!(!whole.contains("bytes not shown"), "{whole:.200}");
+}
+
+#[tokio::test]
 async fn look_with_ids_reads_the_whole_item_and_its_reasoning() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",

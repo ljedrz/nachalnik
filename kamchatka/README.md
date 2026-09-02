@@ -450,8 +450,11 @@ false note in its own context and corrected it, and one where it took back a hal
 own by rewriting the two turns it had made things up in.
 
 **`introspect`** reads. `look` lists every item it is carrying — what each one is, what it costs,
-whether it is going into the next request and why not if it is not — and reads any of them in
-full, block by block, including what it was thinking when it produced them. `request` shows the
+whether it is going into the next request and why not if it is not — and reads any of them back,
+block by block, including what it was thinking when it produced them. A long one comes back as its
+start and its end: reading an item copies it into the context, so seeing all of a 9,000-token tool
+result in order to decide whether to keep it costs about what keeping it costs. `whole: true` asks
+for it anyway. `request` shows the
 request about to go out, message by message, with what the projector left out and what it had to
 repair.
 

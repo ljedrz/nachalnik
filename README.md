@@ -419,7 +419,7 @@ Everything above is public API. A `Tool` can call all of it — so `kamchatka --
 the model two more tools, and neither of them needed a line added to the runtime.
 
 **`introspect` reads.** `look` lists what is being carried, and reads any of it back block by
-block. `budget` reports what the next request costs against the limit, and which items are the
+block — a long item as its start and its end, since reading one copies it into the context. `budget` reports what the next request costs against the limit, and which items are the
 expensive ones. `request` shows what is about to be sent. `draft` and `fork` answer on a throwaway
 copy of the context, so an answer can be read before it is given.
 

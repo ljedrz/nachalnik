@@ -107,8 +107,10 @@ impl Tool for Introspect {
             "introspect",
             "reads your own state, so you can check it before you act on it. `look` lists every \
              item in your context - what it is, what it costs, whether it is going into the next \
-             request and why not if it is not - and with `ids` reads any of them in full, block \
-             by block, including what you were thinking when you produced them. `budget` is what \
+             request and why not if it is not - and with `ids` reads any of them back, block by \
+             block, including what you were thinking when you produced them. A long one comes \
+             back as its start and its end, because reading an item copies it into your context; \
+             `whole` if you need all of it anyway. `budget` is what \
              the next request costs against what there is, what the last one really cost, and \
              which items are the expensive ones - read it before deciding what to give up. \
              `request` shows the request you are about to send, message by message, with what the \
@@ -152,7 +154,11 @@ impl Tool for Introspect {
         let kernel = self.reach.kernel()?;
 
         match action(&call.args)? {
-            "look" => Ok(ToolOutput::new(look(&kernel, &ids(&call.args, "ids")))),
+            "look" => Ok(ToolOutput::new(look(
+                &kernel,
+                &ids(&call.args, "ids"),
+                call.args["whole"].as_bool().unwrap_or(false),
+            ))),
             "budget" => Ok(ToolOutput::new(budget(&kernel, &self.pinned.lock()))),
             "request" => Ok(ToolOutput::new(request(&kernel))),
             "draft" => branch(&kernel, None, &[], &output).await,
@@ -180,12 +186,12 @@ impl Tool for Introspect {
 }
 
 /// The context, item by item, or the whole of the named ones.
-fn look(kernel: &Kernel, ids: &[ContextId]) -> String {
+fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
     let items = kernel.items();
     if !ids.is_empty() {
         return ids
             .iter()
-            .map(|id| full(&items, *id))
+            .map(|id| full(&items, *id, whole))
             .collect::<Vec<_>>()
             .join("\n");
     }
@@ -235,8 +241,9 @@ fn look(kernel: &Kernel, ids: &[ContextId]) -> String {
     }
 
     out.push_str(
-        "\n`look` with `ids` reads any of these in full, including the reasoning recorded on an \
-         assistant turn.\n",
+        "\n`look` with `ids` reads any of these back, including the reasoning recorded on an \
+         assistant turn; a long one arrives as its start and its end unless you ask for the \
+         `whole` of it.\n",
     );
 
     out
@@ -272,7 +279,42 @@ fn row(item: &ContextItem) -> String {
 }
 
 /// The whole of one item, or the fact that there is no such item.
-fn full(items: &[Arc<ContextItem>], id: ContextId) -> String {
+/// How much of an item's content `look` shows either side of the gap before it is asked for the
+/// whole thing.
+///
+/// note: reading an item copies that item into the context. So asking to see a 9,000-token tool
+/// result in order to decide whether to keep it costs very nearly what keeping it costs - a live
+/// session did exactly that, twice, and finished an honest clean-up 7,688 tokens heavier than it
+/// started. A head and a tail is enough to tell build noise from something worth keeping, and the
+/// whole thing is still one argument away for the times it is really wanted.
+const SAMPLE: usize = 1_500;
+
+/// An item's content: whole if it is small or if it was asked for, a head and a tail otherwise.
+fn sampled(text: &str, whole: bool) -> String {
+    if whole || text.len() <= SAMPLE * 2 {
+        return text.to_owned();
+    }
+
+    // on a character boundary, so that a cut through a multi-byte character does not panic
+    let mut head = SAMPLE;
+    while !text.is_char_boundary(head) {
+        head -= 1;
+    }
+    let mut tail = text.len() - SAMPLE;
+    while !text.is_char_boundary(tail) {
+        tail += 1;
+    }
+
+    format!(
+        "{}\n[... {} bytes not shown. Asking for an item copies it into your context, so reading \
+         all of this costs about what carrying it costs; `whole: true` if you need it anyway ...]\n{}",
+        &text[..head],
+        thousands(tail - head),
+        &text[tail..],
+    )
+}
+
+fn full(items: &[Arc<ContextItem>], id: ContextId, whole: bool) -> String {
     let Some(item) = items.iter().find(|item| item.id == id) else {
         return format!("[{id}] there is no such item\n");
     };
@@ -324,7 +366,10 @@ fn full(items: &[Arc<ContextItem>], id: ContextId) -> String {
     if let Some(reasoning) = item.reasoning() {
         out.push_str(&format!("  --- reasoning ---\n{}\n", reasoning.to_text()));
     }
-    out.push_str(&format!("  --- content ---\n{}\n", item.content.to_text()));
+    out.push_str(&format!(
+        "  --- content ---\n{}\n",
+        sampled(&item.content.to_text(), whole)
+    ));
 
     out
 }
@@ -1210,16 +1255,32 @@ fn own_turn(kernel: &Kernel, call: &ToolCallId) -> Option<ContextId> {
 }
 
 /// What the next request costs now, beside what it cost before the change.
+///
+/// note: it says so when the change made the request *bigger*, which is not a rare accident. An
+/// elided item is replaced by a marker carrying the reason somebody gave for eliding it, and on a
+/// short item that reason is the larger of the two - a live session elided twenty-two items and
+/// added 162 tokens doing it. Both numbers were already here and a model reading them carefully
+/// could work it out; none of them did, and one went on to elide everything it had.
 fn cost(kernel: &Kernel, before: usize) -> String {
     let budget = kernel.budget();
+    let now = budget.used();
     format!(
-        "the next request is now ~{} tokens{}, from ~{}.\n",
-        thousands(budget.used()),
+        "the next request is now ~{} tokens{}, from ~{}.{}\n",
+        thousands(now),
         budget
             .limit
             .map(|limit| format!(" of {}", thousands(limit)))
             .unwrap_or_default(),
         thousands(before),
+        match now > before {
+            true => format!(
+                " That is {} more than before, not less: what an elided item leaves behind is a \
+                 marker carrying your reason for eliding it, and on a short item that costs more \
+                 than the content did.",
+                thousands(now - before)
+            ),
+            false => String::new(),
+        },
     )
 }
 
