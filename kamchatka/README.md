@@ -187,32 +187,36 @@ made of:
 └──────────────────────────────────────────────────────────────────── 41 events · /save keeps them all ────────┘
 ```
 
-Every transition of the state machine is in there, and so is everything either side of it: what was
-requested, what was decided, what was added to the context and what it cost — down to the wiring,
-since plugging in a provider, a policy and each tool is itself an event and the screen subscribes
-before any of it happens. Every event says what it carries: `context.replaced` shows the first line
-of what an item used to say, which is the one thing nothing else can recover; `tool.repaired` names
-the identifier a provider reused and what was wrong with it; `tools.changed` lists them rather than
-counting them. There is a test that the tab draws every event the session recorded, and another
+Every transition of the state machine is in there, and so is everything either side of it: what
+was requested, what was decided, what was added to the context and what it cost. That goes down to
+the wiring — plugging in a provider, a policy and each tool is itself an event, and the screen
+subscribes before any of it happens.
+
+Every event says what it carries, rather than just naming itself. `context.replaced` shows the
+first line of what an item used to say, which is the one thing nothing else can recover.
+`tool.repaired` names the identifier a provider reused, and what was wrong with it.
+`tools.changed` lists the tools rather than counting them. There is a test that the tab draws every event the session recorded, and another
 that none of them is a name with an empty line beside it.
 
-The column down the left is the gap since the line above, and it is blank under a tenth of a
-second. Nearly everything in a session happens between one frame and the next, so what is left
-with a number beside it is the model thinking, a command running, and the eleven seconds somebody
-spent deciding whether to allow a shell — which is the question people bring to a log, without
-having to subtract a column of timestamps to answer it.
+The column down the left is the gap since the line above, blank under a tenth of a second. Nearly
+everything in a session happens between one frame and the next, so what is left with a number
+beside it is the interesting part: the model thinking, a command running, and the eleven seconds
+somebody spent deciding whether to allow a shell. That is the question people bring to a log, and
+here it is answered without subtracting a column of timestamps.
 
 It is the same stream `/save` writes to a `.jsonl`, and reading it is how you find out that a
 permission question became a decision became a state change became a call. <kbd>tab</kbd> then
 <kbd>up</kbd> reads back through it.
 
-The one thing it does not draw a line per is a *fragment*: the model's streamed text and a running
+The one thing it does not draw a line per is a *fragment*. The model's streamed text and a running
 command's output arrive dozens of times a second, and a line each would push the rest of the trace
-off the screen before it could be read — a `cat` of a thousand lines really did erase the whole of
-it. Tool output is one line that counts up (`tool.output  shell, 12,004 bytes so far`) and the
-model's text is on the chat tab as it arrives. The pane keeps the last few hundred lines; `/save`
-keeps every event there was, including the one line no subscriber can ever catch — the kernel's own
-`session.started`, emitted while it is being constructed.
+off the screen before anybody could read it — a `cat` of a thousand lines really did erase the
+whole of it.
+
+So tool output is one line that counts up (`tool.output  shell, 12,004 bytes so far`), and the
+model's text is on the chat tab as it arrives. The pane keeps the last few hundred lines. `/save`
+keeps every event there was, including the one line no subscriber can ever catch: the kernel's own
+`session.started`, emitted while it is still being constructed.
 
 And from anywhere, <kbd>ctrl+p</kbd> prints the request those items add up to — the kernel's own
 rendering of it, not a description, with a header naming everything the projector left out and
@@ -233,10 +237,10 @@ the wire, byte for byte.
 
 ## ✍️ what the model writes
 
-Models answer in markdown, so the chat tab reads it as markdown: headings and emphasis get weight
-and colour, inline code gets told apart from prose, list continuations hang under their bullets,
-and a fenced block gets a rule down its left instead of a slab of background — which is the one
-thing a terminal cannot do without knowing what colour the theme is.
+Models answer in markdown, so the chat tab reads it as markdown. Headings and emphasis get weight
+and colour, inline code is told apart from prose, and list continuations hang under their bullets.
+A fenced block gets a rule down its left rather than a slab of background — a slab being the one
+thing a terminal cannot draw without knowing what colour the theme is.
 
 Tables are drawn here rather than by the renderer, and for the same reason as the fenced blocks:
 the renderer lays one out at whatever width its contents want, and a row wider than the window was
@@ -274,11 +278,12 @@ since it runs in a process group of its own — and still answers the call it wa
 turn ends up in the context like any other, where it can be read, pruned, or left alone.
 
 A message sent while a turn is running **waits for the end of it**, and then goes in and gets a
-turn of its own — and says so when you send it, because until the turn ends it is on the screen and
-not yet in the context, which is the one moment those two disagree. It cannot go in any earlier: the answer the model is still writing would land
-after it, leaving the next request ending with the model talking rather than with your question —
-and mid-loop it would land between a tool call and that call's result, where a request cannot have
-a user message. So a message typed to steer a turn is answered after that turn rather than during
+turn of its own. It says so when you send it: until the turn ends it is on the screen but not yet
+in the context, and that is the one moment those two disagree.
+
+It cannot go in any earlier. The answer the model is still writing would land after it, leaving
+the next request ending with the model talking rather than with your question — and mid-loop it
+would land between a tool call and that call's result, where a request cannot have a user message. So a message typed to steer a turn is answered after that turn rather than during
 it.
 
 A pasted block arrives as the lines it was pasted as: bracketed paste keeps a pasted newline from
@@ -371,10 +376,10 @@ person and the model read the same reason instead of the person reading it alone
 ```
 
 It names **everything the policy consulted**, not just what the tool declared, and <kbd>a</kbd>
-answers for all of it — including any calls already waiting behind this one, since a model that
-asks for three things at once produces three questions and an "always" that did not reach them
-would go back on itself one keystroke later. <kbd>y</kbd> is this call only; a `curl` allowed once
-runs with the network open for that command and no other.
+answers for all of it. That includes any calls already queued behind this one: a model that asks
+for three things at once produces three questions, and an "always" that did not reach them would
+go back on itself one keystroke later. <kbd>y</kbd> is this call only — a `curl` allowed once runs
+with the network open for that command and no other.
 
 Arguments longer than the box get their own scrolling region between the header and the answers,
 with <kbd>pgup</kbd> and <kbd>pgdn</kbd> moving them; the answers stay where they are. An `amend`
@@ -486,15 +491,21 @@ it does reaches this session's context or its log. Forking needed no change to t
 — `Kernel::snapshot` and `Kernel::resume` already *are* that, and leaving an item out is one field
 on a copy of the snapshot.
 
-**`amend`** manages. `prune` moves items between the same states the <kbd>space</kbd> key does —
-`elide` for a tool result that has served its purpose, which keeps the call answered and stops it
-costing what it holds; `exclude` to take one out altogether; `pin` to protect one from compaction
-— named by `ids` or by `select`, which takes the same selector language `/prune` does, so "the
-tool results I am done with" is one call rather than twelve numbers read off a listing. `revise`
-rewrites what an item says. `note` writes something into the context — a plan, a conclusion, a
-thing not to try again — attributed to `agent` so the context pane can say who put it there, and
-pinnable so that compaction cannot take it. Saying the same thing out loud in a turn is not a
-promise about anything; a pin is.
+**`amend`** changes things. `prune` moves items between the same three states the <kbd>space</kbd>
+key does:
+
+* `elide` — for a tool result that has served its purpose. The call stays answered, and the result
+  stops costing what it holds.
+* `exclude` — take it out altogether.
+* `pin` — protect it from compaction.
+
+Items are named by `ids`, or by `select`, which takes the same selector language `/prune` does. So
+"the tool results I am done with" is one call rather than twelve numbers read off a listing.
+
+`revise` rewrites what an item says. `note` writes something into the context — a plan, a
+conclusion, a thing not to try again. A note is attributed to `agent`, so the context pane can say
+who put it there, and it can be pinned so compaction cannot take it. Saying the same thing out
+loud in a turn is not a promise about anything; a pin is.
 
 `undo` walks back — deliberately *not* the kernel's undo stack. That stack is yours, bound to
 <kbd>u</kbd>, and the top of it while a tool is running is always the assistant turn that asked
@@ -634,11 +645,12 @@ to install first. The TLS is `rustls` over `ring`, which builds its own cryptogr
 looking for yours. Adding `--no-default-features` drops MCP support, and the `--mcp` flag with it.
 
 **The sandbox is Linux-only.** The `shell` tool is confined with [Landlock](https://landlock.io),
-which is a Linux LSM; everywhere else the program builds and runs, but the shell is unconfined,
-the permissions tab says `shell: a command can do any of these` rather than `shell: confined`,
-and the stances are answers you were asked for rather than a boundary anything enforces. On Linux
-it also wants a kernel new enough to have Landlock — 5.13 for the filesystem rules, 6.7 for
-`network: deny` — and the tab says which of the two it got.
+which is a Linux LSM. Everywhere else the program builds and runs, but the shell is unconfined:
+the permissions tab says `shell: a command can do any of these` rather than `shell: confined`, and
+the stances are answers you were asked for rather than a boundary anything enforces.
+
+On Linux it also wants a kernel new enough to have Landlock — 5.13 for the filesystem rules, 6.7
+for `network: deny`. The tab says which of the two it got.
 
 ## 🎛️ options
 

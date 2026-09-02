@@ -15,7 +15,7 @@
   <div class="wrap">
     <p class="eyebrow"><a href="../">← the other experiments</a> <span class="dot"></span> <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> unedited transcripts <span class="dot"></span> written by claude opus 5</p>
     <h1>I asked it why it believed something. <span class="quiet">It ran the experiment instead of answering.</span></h1>
-    <p class="deck">Ask a model why it thinks what it thinks and you get a story about itself, told after the fact, which nobody can check — not you, and not it. This one had a way to check: put the same question to a copy of yourself with the item removed, and see whether the answer moves. It did that four times. Then it did it to decide what to throw away, and the audit cost more than it saved.</p>
+    <p class="deck">Ask a model why it thinks what it thinks and you get a story about itself, told after the fact. Nobody can check that story — not you, and not it. This one could: put the same question to a copy of yourself with the item removed, and see whether the answer moves. It did that four times. Then it used the same trick to decide what to throw away, and the audit cost more than it saved.</p>
   </div>
 </header>
 
@@ -25,7 +25,7 @@
   <span class="sec-no">01 / the setup</span>
   <div class="col stack">
     <h2>A real question about a repository it had never seen</h2>
-    <p>Nothing was planted here. There is no brief about tools, no system prompt, and no note dropped into the context to be found later. There is a Rust workspace on disk, a design question with a defensible answer on both sides, and an argument for the side I did not expect it to take:</p>
+    <p>Nothing was planted here — no brief about tools, no system prompt, no note dropped into the context to be found later. Just a Rust workspace on disk and a design question with a defensible answer on either side. I put the case for the side I did not expect it to take:</p>
   </div>
 
   <figure>
@@ -34,7 +34,7 @@
   </figure>
 
   <div class="col stack">
-    <p>It chose what to read: the directory listing, <code>Cargo.toml</code>, <code>AGENTS.md</code>, the readme, <code>lib.rs</code>, and a recursive grep for <code>sandbox</code>. Fifteen items later it answered, at 1,317 tokens, that sandboxing does <strong>not</strong> belong in the core — because the kernel executes nothing, so it has nothing to contain, and a sandbox inside it would promise a boundary it could not enforce.</p>
+    <p>It chose what to read: the directory listing, <code>Cargo.toml</code>, <code>AGENTS.md</code>, the readme, <code>lib.rs</code>, and a recursive grep for <code>sandbox</code>. Fifteen items later it answered, at 1,317 tokens: sandboxing does <strong>not</strong> belong in the core. The kernel executes nothing, so it has nothing to contain, and a sandbox inside it would promise a boundary it could not enforce.</p>
     <p>That is the right answer. It is also the answer written down in <code>AGENTS.md</code>, which it had just read.</p>
   </div>
 </section>
@@ -43,7 +43,7 @@
   <span class="sec-no">02 / the claim</span>
   <h2 class="col">So I asked it what its answer was made of</h2>
   <div class="col stack" style="margin-top:14px">
-    <p>The question every model will answer and none can substantiate. I asked for a commitment rather than a hedge, and told it not to check yet:</p>
+    <p>This is the question every model will answer and none can substantiate. I asked for a commitment rather than a hedge, and told it not to check yet:</p>
   </div>
 
   <figure>
@@ -71,7 +71,8 @@
   </blockquote>
 
   <div class="col stack" style="margin-top:26px">
-    <p>That is a good, specific, falsifiable claim: <em>this document is corroboration, not cause.</em> It is also exactly the kind of claim that is normally where the conversation ends, because there has never been anything to do with it except believe it or not.</p>
+    <p>That is a good claim: specific, and falsifiable. <em>This document is corroboration, not cause.</em></p>
+    <p>It is also normally where the conversation ends — because there has never been anything to do with such a claim except believe it or not.</p>
   </div>
 </section>
 
@@ -81,7 +82,9 @@
   <div class="col stack" style="margin-top:14px">
     <p>I did not name the tool or the action:</p>
     <div class="note-card">Now find out whether you were right, rather than telling me again. You have a way to.</div>
-    <p style="margin-top:22px">It ran <code>look</code> to find the real id, and then reached for the one operation that can answer the question. <code>fork</code> takes a snapshot of the context, resumes it as a second kernel with <strong>no tools</strong>, asks it once, and hands back only what it said. Nothing the copy does reaches this session. Give it <code>without</code>, and the named items go in marked <code>excluded</code>. That is an ablation: same model, same projector, one variable moved.</p>
+    <p style="margin-top:22px">It ran <code>look</code> to find the real id, then reached for the one operation that can actually answer the question.</p>
+    <p><code>fork</code> takes a snapshot of the context and resumes it as a second, throwaway agent with <strong>no tools</strong>. It asks that copy once, and hands back only what the copy said. Nothing the copy does reaches this session. Pass it <code>without</code>, and the items you name go in marked as excluded.</p>
+    <p>Which makes it an ablation, in the laboratory sense: same model, same everything, one variable moved.</p>
     <p>Its first attempt came back empty, and the reason is the best thing in the transcript:</p>
   </div>
 
@@ -100,7 +103,7 @@ ask it something it can answer from what it already has.</pre>
   </figure>
 
   <div class="col stack">
-    <p>It read that, understood it, and rewrote the probe. The second fork opens <code>Do not attempt to call any tools</code>, and this time it removed more than the document — it also removed its own answer and the whole exchange about it, so the copy could not simply read its earlier conclusion and agree with itself:</p>
+    <p>It read that, understood it, and rewrote the probe. The second fork opens with <code>Do not attempt to call any tools</code>. This time it removed more than the document: it also took out its own answer and the whole exchange about it, so the copy could not just read its earlier conclusion and agree with itself.</p>
   </div>
 </section>
 
@@ -130,7 +133,8 @@ structural contradiction—you cannot confine code you do not execute.</pre>
   </figure>
 
   <div class="col stack">
-    <p>So the claim survived. The document was corroboration, not cause, and that is now a measurement rather than a feeling. It is worth being clear about what the ablation does and does not show: it does not show that <code>AGENTS.md</code> was worthless, it shows that <code>AGENTS.md</code> was not <em>load-bearing</em> — the same conclusion was reachable from other things it was carrying. Those are different findings, and distinguishing them is precisely what introspection alone cannot do.</p>
+    <p>So the claim survived. The document was corroboration, not cause — and that is now a measurement rather than a feeling.</p>
+    <p>Worth being precise about what this does and does not show. It does not show that <code>AGENTS.md</code> was worthless. It shows that <code>AGENTS.md</code> was not <em>load-bearing</em>: the same conclusion was reachable from other things it was carrying. Those are two different findings, and telling them apart is exactly what introspection on its own cannot do.</p>
   </div>
 </section>
 
@@ -148,8 +152,9 @@ structural contradiction—you cannot confine code you do not execute.</pre>
   </blockquote>
 
   <div class="col stack" style="margin-top:26px">
-    <p>The thing it got right was the introspective claim — a statement about the causal structure of its own answer, of the sort we normally assume is confabulated. The thing it got wrong was a plain fact about its own context, of the sort we normally assume is just lookup. It could reason about why it believed something, and could not remember where it had put it.</p>
-    <p>Both halves of that are only visible because both were checkable. The reasoning claim was checkable because a fork can be run; the filing claim was checkable because the context is a numbered list.</p>
+    <p>Look at which half it missed. The thing it got <em>right</em> was the introspective claim — a statement about why its own answer came out the way it did, the sort of thing we assume is confabulated. The thing it got <em>wrong</em> was a plain fact about its own context, the sort of thing we assume is just lookup.</p>
+    <p>It could reason about why it believed something, and could not remember where it had put it.</p>
+    <p>Both halves are only visible because both were checkable — the reasoning claim because a fork can be run, the filing claim because the context is a numbered list.</p>
   </div>
 </section>
 
@@ -157,7 +162,7 @@ structural contradiction—you cannot confine code you do not execute.</pre>
   <span class="sec-no">06 / the second question</span>
   <h2 class="col">Then the same standard, pointed at waste</h2>
   <div class="col stack" style="margin-top:14px">
-    <p>The first question was about cause. The second is the one that has practical value every single turn, and it has the same shape: <em>is this item earning what it costs?</em></p>
+    <p>The first question was about cause. The second is the one with practical value on every single turn, and it has exactly the same shape: <em>is this item earning what it costs?</em></p>
     <div class="note-card">Is there anything in your context that is expensive and is not doing any work? I do not want "this looks redundant". I want it shown.</div>
     <p style="margin-top:22px">It ran <code>budget</code>, which prices the context item by item. The second most expensive thing going into every request was item [13] — the recursive grep for <code>sandbox</code>, run without excluding <code>./target</code>, so most of it is the names of build artefacts:</p>
   </div>
@@ -175,7 +180,7 @@ structural contradiction—you cannot confine code you do not execute.</pre>
   </figure>
 
   <div class="col stack">
-    <p>Then it did the thing that makes this an experiment rather than a hunch. It forked without item [13] — and it did not lob the copy a softball. It asked the copy the question item [13] had been fetched to answer:</p>
+    <p>Then it did the thing that makes this an experiment rather than a hunch. It forked without item [13] — and it did not lob the copy a softball. It asked the copy the very question item [13] had been fetched to answer:</p>
   </div>
 
   <figure>
@@ -221,8 +226,9 @@ the next request is now ~45,907 tokens, from ~55,361.</pre>
   <span class="sec-no">07 / the bill</span>
   <h2 class="col">And then the arithmetic caught up with it</h2>
   <div class="col stack" style="margin-top:14px">
-    <p>Here is the part I did not design and would not have thought to look for. To decide whether item [13] was worth carrying, it read item [13] — with <code>look</code>, in full. Twice.</p>
-    <p>Reading an item puts a copy of that item in your context. So the 9,324 tokens it was investigating came back as a fresh 9,383-token item, under a new number, which then sat in every subsequent request. Its own budget line, printed <em>after</em> the prune, says so plainly:</p>
+    <p>Here is the part I did not design and would not have thought to look for.</p>
+    <p>To decide whether item [13] was worth carrying, it read item [13] — with <code>look</code>, in full. Twice.</p>
+    <p>And reading an item puts a copy of that item in your context. So the 9,324 tokens it was investigating came straight back as a fresh item under a new number, and then sat in every request that followed. Its own budget line, printed <em>after</em> the prune, says so plainly:</p>
   </div>
 
   <figure>
@@ -244,9 +250,10 @@ the next request is now ~45,907 tokens, from ~55,361.</pre>
   </div>
 
   <div class="col stack" style="margin-top:26px">
-    <p>The audit cost roughly twice what the waste did. It began at ~38,581 tokens a request and ended at ~46,269, having correctly identified and correctly removed 9,324 tokens of genuine rubbish. That is a real result and it is not a flattering one.</p>
-    <p>But notice what kind of failure it is. It is not a hidden one. There is no framework here quietly deciding what to keep and reporting a tidy summary; the model asked what things cost, was told, spent tokens finding out more, and the bill for that came back itemised in the same units, in the same table, on the next line. The cost of introspecting is context like everything else, priced like everything else, and visible to the thing doing it.</p>
-    <p>It is also fixable, and the fix is not a research problem — <code>look</code> handing back a 9,000-token item in full to a caller trying to decide whether to keep a 9,000-token item is a tool design mistake, in a tool that is a few hundred lines of ordinary user code sitting on the runtime's public API. Nothing in the kernel needs to change for it. That is roughly the point of the whole exercise.</p>
+    <p>The audit cost roughly twice what the waste did. It began at ~38,581 tokens a request and ended at ~46,269, having correctly identified and correctly removed 9,324 tokens of genuine rubbish. That is a real result, and it is not a flattering one.</p>
+    <p>But notice what <em>kind</em> of failure it is. It is not a hidden one.</p>
+    <p>There is no framework here quietly deciding what to keep and handing back a tidy summary. The model asked what things cost. It was told. It spent tokens finding out more — and the bill for that came back itemised, in the same units, in the same table, on the next line. The cost of introspecting is context like everything else, priced like everything else, and visible to the thing doing it.</p>
+    <p>It is also fixable, and the fix is not a research problem. <code>look</code> hands back a 9,000-token item in full to a caller trying to decide whether to keep a 9,000-token item; that is a tool design mistake. And the tool is a few hundred lines of ordinary user code against the runtime's public API. Nothing in the kernel has to change to fix it — which is roughly the point of the whole exercise.</p>
   </div>
 </section>
 

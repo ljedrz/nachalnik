@@ -5,8 +5,8 @@
 [![CI](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml/badge.svg)](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml)
 
 **An agent runtime in which the context, the tools, the permissions and the requests are explicit
-state you can read, change and put back - rather than decisions taken inside a framework and
-reported to you afterwards.**
+state — state you can read, change and put back.** Not decisions taken inside a framework and
+reported to you afterwards.
 
 > The agent is not the boss. You are.
 
@@ -281,11 +281,11 @@ worth - it is the provider's account of itself, exactly like a tool's declared c
 the kernel has nothing to check it against. Render once and send what you rendered; a preview that
 has quietly stopped matching is worse than none.
 
-A reasoning model's own thinking is treated the same way: it is recorded on the turn that
-produced it, counted like everything else, and offered back to the provider in
-`Message::reasoning`, because some APIs verify a signed thinking block against the turn it came
-from and a runtime that dropped it could not talk to them. It is never separated from its turn,
-and `LinearProjector::send_reasoning` decides whether it goes back out.
+A reasoning model's own thinking is treated the same way. It is recorded on the turn that produced
+it, counted like everything else, and offered back to the provider in `Message::reasoning` — some
+APIs verify a signed thinking block against the turn it came from, and a runtime that dropped it
+could not talk to them. It is never separated from its turn, and `LinearProjector::send_reasoning`
+decides whether it goes back out.
 
 A projector decides which items become which messages, and — for an assistant turn — which of two
 shapes it goes out in. Tool results inside a user turn, thinking-only turns kept rather than
@@ -338,12 +338,13 @@ kernel.redo();
 `set_state` says what it did to each identifier - `changed`, `unchanged`, `unknown` - because
 "there is no item 12" and "item 12 was already pruned" are different things to tell somebody.
 
-Excluding an item removes it from the *projection*, not from the record: it keeps its identifier,
-is still listed and inspectable, and comes back with another `set_state`, an `undo`, or a `redo`.
+Excluding an item removes it from the *projection*, not from the record. It keeps its identifier,
+stays listed and inspectable, and comes back with another `set_state`, an `undo`, or a `redo`.
+
 The default projector also drops the other half of a tool call/result pair when one side is gone,
-so pruning cannot produce a request the provider will reject - and it says so in
-`Projection::repairs` *and* in the session log, because a request the kernel quietly adjusted is
-exactly the one you want to be able to ask about afterwards.
+so pruning cannot produce a request the provider will reject. It says so in `Projection::repairs`
+*and* in the session log — a request the kernel quietly adjusted being exactly the one you want to
+be able to ask about afterwards.
 
 **Nothing is destroyed, including by a limit.** A tool output over its limit is recorded twice:
 the whole of it, archived, and the truncated copy the model is shown. Putting the whole thing back
@@ -417,12 +418,14 @@ on the piece it arrived on, unread.
 Everything above is public API. A `Tool` can call all of it — so `kamchatka --introspect` offers
 the model two more tools, and neither of them needed a line added to the runtime.
 
-`introspect` reads: `look` lists what is being carried and reads any of it back block by block,
-`budget` reports the next request against the limit and which items are the expensive ones,
-`request` shows what is about to be sent, and `draft` and `fork` answer on a throwaway copy of the
-context — so an answer can be read before it is given. `amend` manages: `prune` elides, excludes
-or pins items by id or by selector, `revise` rewrites one, `note` writes something down where
-compaction cannot reach it, and `undo` walks back the changes *it* made.
+**`introspect` reads.** `look` lists what is being carried, and reads any of it back block by
+block. `budget` reports what the next request costs against the limit, and which items are the
+expensive ones. `request` shows what is about to be sent. `draft` and `fork` answer on a throwaway
+copy of the context, so an answer can be read before it is given.
+
+**`amend` changes.** `prune` elides, excludes or pins items by id or by selector. `revise`
+rewrites one. `note` writes something down where compaction cannot reach it. And `undo` walks back
+the changes *it* made.
 
 Given a 10,000-token limit, no compactor, and a mundane question about a repository, one model's
 first move was to look before it moved:
@@ -623,11 +626,11 @@ counter.changed    context.recounted   step.failed        permission.requested
 compactor.changed  context.compacted                      permission.decided
 ```
 
-Every one of them carries what a client needs to render it without inferring anything: an undo
-names the items it took back and the ones it reverted, a request names the items it left out and
-why, and a seam being swapped names what went out and what came in - because "the projector was
-replaced" leaves a reader of the log unable to say what was projecting the requests either side of
-that line, which is the question a log is for.
+Every one of them carries what a client needs to render it without inferring anything. An undo
+names the items it took back and the ones it reverted. A request names the items it left out, and
+why. A seam being swapped names what went out and what came in — because "the projector was
+replaced" leaves a reader unable to say what was projecting the requests on either side of that
+line, and that is the question a log is for.
 
 `Kernel::subscribe` is the live stream; `Kernel::history` is the complete, append-only session
 log (both written under one lock, so their order agrees). Records are plain `serde` types, so
@@ -782,20 +785,24 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
 
 ### 🧪 tests
 
-`cargo test -p nachalnik` runs 126 offline tests: the context model, the selectors, the state
-machine (including that a second concurrent `step` is refused and that a dropped one does not
-wedge the kernel), the loop, permissions, projection and tool-call repair, token counting and
-calibration, compaction, and the session log - including that the log's account of an item's
-states is in the order they were applied, which two threads changing one item is enough to
-break. A replaced `Projector` gets its own test, because a seam nothing has ever been swapped
+`cargo test -p nachalnik` runs 126 offline tests, covering the context model, the selectors, the
+state machine, the loop, permissions, projection and tool-call repair, token counting and
+calibration, compaction, and the session log.
+
+Two of those are worth naming. The state machine is tested for refusing a second concurrent
+`step`, and for a dropped one not wedging the kernel. The log is tested for reporting an item's
+states in the order they were applied — which two threads changing one item is enough to break.
+A replaced `Projector` gets a test of its own, because a seam nothing has ever been swapped
 through is a claim rather than a seam.
 
-`cargo test --workspace` runs 269 in all: those, the two live suites below (25, which skip
-themselves when there is no key), the bridge's 23 - which stand a real MCP server up rather than
-mocking one - and `kamchatka`'s 95: seventy that draw its screen and read the characters back,
-thirteen that drive it at every window size with every key, nine that try to escape its sandbox
-and report what the kernel refused, two on streaming, and one that puts a socket in front of it
-that answers and then goes silent.
+`cargo test --workspace` runs 269 in all — those 126, plus:
+
+* **25** in the two live suites below, which skip themselves when there is no key.
+* **23** in the MCP bridge, which stand a real server up rather than mocking one.
+* **95** in `kamchatka`: seventy draw its screen and read the characters back, thirteen drive it
+  at every window size with every key, nine try to escape its sandbox and report what the kernel
+  refused, two cover streaming, and one puts a socket in front of it that answers and then goes
+  silent.
 
 Every count and every percentage in this file was measured at the commit it was written for,
 against a real API where it says so. They are here because a claim with a number in it can be
@@ -819,20 +826,26 @@ $ NACHALNIK_API_KEY=... \
   cargo test --test live -- --test-threads=1 --nocapture
 ```
 
-It skips itself when there is no key (and reads only `OPENROUTER_API_KEY` /
-`NACHALNIK_API_KEY`, never a stray `OPENAI_API_KEY`), defaults to a small free model, costs
-about thirty requests per run, waits out momentary upstream rate limits, and skips rather than
-fails when a free-tier key has spent its daily allowance. Twenty tests cover: a plain turn,
-the provider's own context limit, a system instruction, a labelled reference, streamed fragments
-adding up to the answer, a tool call whose result the model reads back, a paused-and-resumed
-permission decision, a refused call the model is told about, a *pruned* tool exchange still
-producing a request the API accepts, an *elided* one still answering the call that asked for it,
-a truncated tool result, compaction before a request, an
-opaque parameter reaching the model, a mid-session model swap, a whole session round-tripping
-through `serde`, the recorded payload being the one that actually went out, a step abandoned
-mid-request leaving the kernel usable, a turn interrupted between requests, an interrupt stopping
-a stream that is already arriving, and the calibrating counter being told what a real request
-cost.
+It skips itself when there is no key. It reads only `OPENROUTER_API_KEY` / `NACHALNIK_API_KEY`,
+never a stray `OPENAI_API_KEY`; it defaults to a small free model; it costs about thirty requests
+a run; it waits out momentary upstream rate limits; and it skips rather than fails when a
+free-tier key has spent its daily allowance.
+
+Twenty tests, in five groups:
+
+* **On the wire.** A plain turn, the provider's own context limit, a system instruction, a
+  labelled reference, streamed fragments adding up to the answer, an opaque parameter reaching
+  the model, and the recorded payload being the one that actually went out.
+* **Tools.** A call whose result the model reads back, a refused call the model is told about,
+  and a truncated result.
+* **A context somebody has edited.** A *pruned* tool exchange still producing a request the API
+  accepts, an *elided* one still answering the call that asked for it, and compaction before a
+  request.
+* **Interruption.** A step abandoned mid-request leaving the kernel usable, a turn interrupted
+  between requests, and an interrupt stopping a stream that is already arriving.
+* **Across a session.** A paused-and-resumed permission decision, a mid-session model swap, a
+  whole session round-tripping through `serde`, and the calibrating counter being told what a
+  real request cost.
 
 `kamchatka` has a live suite of its own - five tests, the same key, `KAMCHATKA_` rather than
 `NACHALNIK_` - because the keys are what build those requests and drawing the screen can only say

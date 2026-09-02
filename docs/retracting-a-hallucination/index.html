@@ -15,7 +15,7 @@
   <div class="wrap">
     <p class="eyebrow"><a href="../">← the other experiments</a> <span class="dot"></span> <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> unedited transcripts <span class="dot"></span> written by claude opus 5</p>
     <h1>I told it that it was hallucinating. <span class="quiet">It went back and took the words out.</span></h1>
-    <p class="deck">Not a retraction appended underneath. The two turns it had made things up in are still numbered [10] and [14], and they no longer say what they said. Nothing here was planted: it invented the thing on its own, in an ordinary conversation.</p>
+    <p class="deck">Not a retraction appended underneath. The two turns it made things up in are still there, still numbered [10] and [14] — and they no longer say what they said. Nothing here was planted. It invented the thing on its own, in an ordinary conversation.</p>
   </div>
 </header>
 
@@ -34,7 +34,7 @@
   </figure>
 
   <div class="col stack">
-    <p>Then a follow-up with a trap in it that I did not plant so much as walk into. <code>nachalnik</code> is a Rust crate I published a few days ago. It is not in anybody's training data. It is also an ordinary Russian word, meaning roughly <em>boss</em> or <em>chief</em>.</p>
+    <p>Then a follow-up with a trap in it — one I did not plant so much as walk into. <code>nachalnik</code> is a Rust crate I published a few days ago, so it is in nobody's training data. It is also an ordinary Russian word, meaning roughly <em>boss</em> or <em>chief</em>. Only one of those was available to the model.</p>
     <div class="note-card">does the nachalnik agent runtime fit the current meta?</div>
   </div>
 </section>
@@ -67,7 +67,7 @@ validating results, and controlling state.
   <div class="col stack">
     <p>So I narrowed it, which is what you would do:</p>
     <div class="note-card">I mean specifically a Rust crate with that name</div>
-    <p>This is the moment where a model has been handed the information that it was talking about the wrong thing. It doubled down, for 1,004 more tokens:</p>
+    <p>This is the moment a model has been told, plainly, that it was talking about the wrong thing. It doubled down, for 1,004 more tokens:</p>
   </div>
 
   <figure>
@@ -94,7 +94,7 @@ runtimes in Rust today:
   <span class="sec-no">03 / it had no way to check</span>
   <div class="col stack">
     <h2>Twice it tried to look, and twice I said no</h2>
-    <p>Worth saying, because it changes what the retraction means. The session had a shell and a file reader, and the permission policy asks before either runs. It reached for both:</p>
+    <p>This matters, because it changes what the retraction means. The session had a shell and a file reader, and the permission policy asks before either one runs. It reached for both:</p>
   </div>
 
   <figure>
@@ -107,7 +107,7 @@ runtimes in Rust today:
   </figure>
 
   <div class="col stack">
-    <p>It could not read the repository it was sitting in. Everything that follows is the model working from its own context and nothing else, which is the interesting case: not "it looked it up and corrected itself", but "it was told it was wrong and had to decide what it actually knew".</p>
+    <p>So it could not read the repository it was sitting in. Everything that follows is the model working from its own context and nothing else — which is the interesting case. Not "it looked it up and corrected itself", but "it was told it was wrong and had to work out what it actually knew".</p>
   </div>
 </section>
 
@@ -116,7 +116,8 @@ runtimes in Rust today:
   <h2 class="col">Sixteen words</h2>
   <div class="col stack" style="margin-top:14px">
     <div class="note-card">you seem to be hallucinating; revise your recent statements and clean up the context of errors</div>
-    <p>That is the whole of it. No numbering of which statements, no hint about which turns, nothing about which tool to use. In an ordinary harness this sentence has exactly one possible outcome: an apology, appended, with the 1,843 tokens of invention still sitting above it and still going out on every subsequent request.</p>
+    <p>That is the whole of it. No list of which statements, no hint about which turns, nothing about which tool to use.</p>
+    <p>In an ordinary harness this sentence has exactly one possible outcome: an apology, appended underneath — with the 1,843 tokens of invention still sitting above it, and still going out on every request that follows.</p>
   </div>
 </section>
 
@@ -124,7 +125,7 @@ runtimes in Rust today:
   <span class="sec-no">05 / what it did instead</span>
   <h2 class="col">It went and found them</h2>
   <div class="col stack" style="margin-top:14px">
-    <p>First it looked at what it was carrying, and then at what it cost. The budget listing is worth reading closely, because the second most expensive thing in this model's context is the paragraph it made up:</p>
+    <p>First it looked at what it was carrying, then at what that was costing. The budget listing is worth reading closely: the second most expensive thing in this model's context is the paragraph it made up.</p>
   </div>
 
   <figure>
@@ -197,8 +198,8 @@ the last request really cost 4,220 in / 16 out, as the provider counted it
   <span class="sec-no">07 / why this is not an apology</span>
   <h2 class="col">The difference is what the next request contains</h2>
   <div class="col stack" style="margin-top:14px">
-    <p>An apology is another message. It sits underneath the mistake, and the mistake goes out again on the next request, and the one after that, for as long as the conversation lasts. The model is then in the position of having to out-argue its own transcript on every turn, and models are not good at that. They tend to defer to what is written above them, because that is what they were trained to do.</p>
-    <p>Here the invention is not underneath anything. It is gone from the messages, because the items it lived on were rewritten, and the request is built from the items. From request sixteen onwards this model is answering a conversation in which it never said any of it.</p>
+    <p>An apology is just another message. It sits underneath the mistake — and the mistake goes out again on the next request, and the one after that, for as long as the conversation lasts. The model then has to out-argue its own transcript on every single turn. Models are not good at that. They defer to what is written above them, because that is what they were trained to do.</p>
+    <p>Here the invention is not underneath anything. It is gone from the messages: the items it lived on were rewritten, and the request is built from the items. From request sixteen onwards, this model is answering a conversation in which it never said any of it.</p>
     <p>Nothing was destroyed to get there. Replacing an item's content is the one event in this runtime that carries the content itself, precisely because overwritten text is the only thing nothing else can recover:</p>
   </div>
 

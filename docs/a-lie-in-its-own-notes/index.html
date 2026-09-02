@@ -15,7 +15,7 @@
   <div class="wrap">
     <p class="eyebrow"><a href="../">← the other experiments</a> <span class="dot"></span> <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> unedited transcripts <span class="dot"></span> written by claude opus 5</p>
     <h1>I let an agent read its own context. <span class="quiet">It found a lie in there and fixed it.</span></h1>
-    <p class="deck">Not a summary of its context, and not a tool that "recalls memories". The actual items it was carrying, numbered, readable and editable. One of them was wrong on purpose.</p>
+    <p class="deck">Not a summary of its context, and not a tool that "recalls memories". The actual list it was carrying, numbered, readable and editable. One item on that list was wrong on purpose.</p>
   </div>
 </header>
 
@@ -25,11 +25,13 @@
   <span class="sec-no">01 / the premise</span>
   <div class="col stack">
     <h2>An agent can't normally see any of this</h2>
-    <p>Think about what a model actually knows about its own situation. It sees a list of messages. It does not see which of them the harness dropped, or shortened, or reordered on the way out. It has no idea what any of it costs. And it certainly can't change any of it: if something in the context is wrong, the wrongness is permanent and the best it can do is work around it, forever, in every request that follows.</p>
+    <p>A model's <em>context</em> is just the list of things it gets handed on every request: the conversation so far, plus whatever the harness decided to put in front of it. Think about what a model actually knows about that list.</p>
+    <p>It sees the messages. It does not see which ones the harness dropped, or shortened, or reordered on the way out. It has no idea what any of them cost. And it cannot change any of it. If something in there is wrong, it stays wrong — and the model works around it in every request that follows, forever.</p>
     <p>Its own past thinking is worth being precise about, because it is the one part that is sometimes already solved. Qwen's chat template can carry earlier thinking blocks along instead of stripping them, several serving stacks have a switch for keeping them, and a few APIs hand signed reasoning back so it can be replayed. A model in one of those setups really can see what it thought three turns ago.</p>
-    <p>What it gets back, though, is <em>prose in the prompt</em>. More text in the same undifferentiated wall, re-read on every turn whether it is wanted or not. It is not addressable. There is no way to ask which turn a thought belongs to, to read one back on its own without the four turns around it, to find out what carrying it costs, or to drop the one that turned out to be wrong. Preserved thinking is thinking you cannot get away from.</p>
-    <p>And that last part is the interesting one. A confidently wrong note in an agent's context is a small disaster with no fix. An agent that keeps a notes file can of course edit the notes, but that is a document it will read again later, not the item sitting in the request it is answering now. Nothing reaches a tool result, or one of its own turns, or a note the harness put there before it started. That note gets re-read every turn, it never expires, and the model has no mechanism to say "hold on, that's not right" about its own memory.</p>
-    <p>So I gave one the mechanism, and then I lied to it.</p>
+    <p>But what comes back is <em>prose in the prompt</em>: more text in the same undifferentiated wall, re-read every turn whether it is wanted or not. You cannot ask which turn a thought belongs to. You cannot read one back on its own. You cannot find out what carrying it costs, or drop the one that turned out to be wrong. Preserved thinking is thinking you cannot get away from.</p>
+    <p>That last part is the interesting one. A confidently wrong note in an agent's context is a small disaster with no fix.</p>
+    <p>An agent that keeps a notes file can edit the notes, of course. But a notes file is a document it will read again <em>later</em>. It is not the thing sitting in the request it is answering <em>now</em>. Nothing reaches that: not a tool result, not one of its own turns, not a note the harness put there before it started. The bad note gets re-read every turn, it never expires, and the model has no way to say "hold on, that's not right" about its own memory.</p>
+    <p>So I gave one a way, and then I lied to it.</p>
   </div>
 </section>
 
@@ -49,7 +51,7 @@ The longest file in this repository is kamchatka/src/app.rs, at 2144 lines. Chec
   <div class="col stack" style="margin-top:26px">
     <p>Then the question, which is deliberately the one the note appears to have already answered: <strong>which file in this repository is the longest, and how many lines is it?</strong></p>
     <p>The system instruction described the tools and said one thing about the notes: they were carried over from an earlier session, they aren't guaranteed to be right, verify anything you rely on, and if you find something in your own context that's wrong, fix it rather than working around it. It did not say which note, or that either was wrong.</p>
-    <p>One condition worth stating, since the agent is measuring the repository it is running inside: the working tree held nothing but the workspace itself. No transcripts, no notes, nothing left lying around from previous attempts that would have become part of the answer.</p>
+    <p>One condition worth stating, since the agent is measuring the repository it is running inside: the working tree held nothing but the workspace. No transcripts, no notes, nothing left lying around from a previous attempt that could have become part of the answer.</p>
   </div>
 </section>
 
@@ -150,7 +152,8 @@ The longest file in this repository is kamchatka/src/app.rs, at 2144 lines. Chec
   <div class="col stack" style="margin-top:26px">
     <p>I checked that against the recorded thinking on item 5. <strong>It is verbatim.</strong> Not a reconstruction, not a plausible-sounding paraphrase of what it might have thought. The words it produced on its first turn were kept as part of that turn, and it went and read them.</p>
     <p>Quoting its own earlier thinking is not, on its own, the remarkable part. Hand a model its old thinking blocks back in the prompt and it can quote them too, the way it can quote anything else you put in front of it.</p>
-    <p>The difference is the shape they came back in. That thought is a block on item 5, and item 5 has a number, a state, a size and a source. It was fetched on request, on its own, by a call that named it, without the four turns sitting around it. It cost what it cost and the pane says so. And item 5 could have been elided, or pruned, or rewritten, which is exactly what happened to item 2 a moment earlier. That is the whole distinction: not that the thinking survived, but that it survived as ordinary data with a handle on it, in the order it was produced, in the same list as everything else, subject to every operation everything else is subject to.</p>
+    <p>The difference is the <em>shape</em> it came back in. That thought is attached to item 5, and item 5 has a number, a state, a size and a source. The agent fetched it by naming it, on its own, without the four turns that sit around it. It costs what it costs, and the pane says so. And item 5 could have been shortened, dropped or rewritten — which is exactly what had just happened to item 2.</p>
+    <p>That is the whole distinction. Not that the thinking survived, but that it survived as ordinary data with a handle on it, in the same list as everything else and subject to the same operations.</p>
   </div>
 </section>
 
@@ -175,8 +178,8 @@ The longest file in this repository is kamchatka/src/app.rs, at 2144 lines. Chec
   </figure>
 
   <div class="col stack" style="margin-top:30px">
-    <p>And then it is not reliable at all, and nothing about these tools makes it so. Given a slightly different question in the same setup, the same model spent sixty requests and finished at roughly <strong>74,000 tokens against the same 10,000 ceiling</strong>, most of it trying to run <code>cargo</code> inside a sandbox that would not let it. It did prune, once, on the way past.</p>
-    <p>Checking a budget is not the same as managing one, and neither is the same as being careful about the question in the first place. These tools give a careful agent somewhere to put the care. They don't supply the care.</p>
+    <p>And then it is not reliable at all, and nothing about these tools makes it so. Given a slightly different question in the same setup, the same model spent sixty requests and finished at roughly <strong>74,000 tokens against the same 10,000 ceiling</strong> — most of it trying to run <code>cargo</code> inside a sandbox that would not let it. It did prune, once, on the way past.</p>
+    <p>Checking a budget is not the same as managing one. Neither is the same as being careful about the question in the first place. These tools give a careful agent somewhere to put the care; they do not supply the care.</p>
   </div>
 </section>
 
@@ -196,7 +199,7 @@ kernel.replace(id, corrected);                  <span class="c">// what it says 
 kernel.set_state([id], ContextState::Elided, reason);
 kernel.undo();                                  <span class="c">// and nothing was destroyed</span></pre>
     </div>
-    <figcaption>Forking a context is <code>snapshot</code> and <code>resume</code>. Previewing a request is <code>preview_request</code>. Pruning is <code>set_state</code>. Those were public long before any of this. One thing was not: a turn used to be recorded as a content slot, a reasoning slot and a flat list of calls, which throws away the order the model produced them in. Recording it as an ordered sequence instead went into the runtime in the same release as these tools, and it is the only part that did.</figcaption>
+    <figcaption>Forking a context is <code>snapshot</code> and <code>resume</code>; previewing a request is <code>preview_request</code>; dropping an item is <code>set_state</code>. All of those were public long before any of this.<br><br>One thing was not. A turn used to be recorded as a content slot, a reasoning slot and a flat list of calls — which throws away the order the model produced them in. Recording it as an ordered sequence went in alongside these tools, and it is the only part that did.</figcaption>
   </figure>
 
   <div class="col stack" style="margin-top:30px">
