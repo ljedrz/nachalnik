@@ -833,3 +833,64 @@ async fn eliding_a_tool_result_keeps_the_call_that_asked_for_it() {
         "which says it was compacted"
     );
 }
+
+#[test]
+fn a_result_follows_the_call_it_answers_whatever_lands_between_them() {
+    // the failure this closes: a tool that writes something into the context - `amend note`, in
+    // kamchatka - pushes its item while the turn that called it is still collecting results. The
+    // item lands between the assistant message and the results, and every OpenAI-compatible API
+    // refuses the request: "an assistant message with 'tool_calls' must be followed by tool
+    // messages responding to each 'tool_call_id'". Five of seven live runs died this way, each
+    // one immediately after the model had written down all ten of its correct findings
+    let kernel = kernel();
+    kernel.push(ContextItem::user("go"));
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![
+            nachalnik::ToolCall::new("c1", "amend", json!({})),
+            nachalnik::ToolCall::new("c2", "shell", json!({})),
+        ],
+    ));
+    // what the tool wrote, pushed the moment it ran and so before the second result exists
+    kernel.push(ContextItem::memory("q1", "Cargo.lock is 3593 lines"));
+    kernel.push(ContextItem::tool_result(
+        "c1".into(),
+        "amend",
+        "written down",
+        false,
+    ));
+    kernel.push(ContextItem::tool_result(
+        "c2".into(),
+        "shell",
+        "3593",
+        false,
+    ));
+
+    let roles: Vec<&str> = kernel
+        .project()
+        .messages
+        .iter()
+        .map(|message| message.role.as_str())
+        .collect();
+    assert_eq!(
+        roles,
+        vec!["user", "assistant", "tool", "tool", "user"],
+        "the results have to reach the wire before anything else the turn produced"
+    );
+
+    // and it is a repair like any other: moving somebody's item is not something to do quietly
+    let projection = kernel.project();
+    assert_eq!(
+        projection.included.len(),
+        5,
+        "nothing was dropped to achieve it"
+    );
+    assert!(
+        projection
+            .repairs
+            .iter()
+            .any(|said| said.contains("held item")),
+        "the move is on the record: {:?}",
+        projection.repairs
+    );
+}

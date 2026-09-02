@@ -5,6 +5,20 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- `LinearProjector` keeps a tool result next to the call it answers. An item pushed into the
+  context while a turn was still collecting its results - a note a tool writes on the model's
+  behalf, mid-turn - was projected in the position it arrived in, between the assistant message
+  and the results. Every OpenAI-compatible API refuses that request outright, naming the
+  `tool_call_id` that went unanswered, and the whole session dies. It is provider-dependent, so it
+  was silent: Google's API accepts the sequence and so does at least one OpenRouter upstream,
+  which is why three published transcripts never showed it. Five of seven live runs died on it,
+  each immediately after the model had written down ten correct findings. Whatever arrives
+  mid-turn is now held until the turn has been answered and listed in `Projection::repairs`.
+
 ## [0.2.1] - 2026-09-01
 
 ### added

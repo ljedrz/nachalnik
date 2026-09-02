@@ -247,6 +247,14 @@ impl Projector for LinearProjector {
             }
         }
 
+        /// Puts back whatever was held out of a turn, in the order it arrived.
+        fn flush(projection: &mut Projection, held: &mut Vec<(ContextId, Message)>) {
+            for (id, message) in held.drain(..) {
+                projection.included.push(id);
+                projection.messages.push(message);
+            }
+        }
+
         /// Claims one of the remaining counterparts for a call identifier, if there is one left.
         fn claim(remaining: &mut HashMap<ToolCallId, usize>, id: &ToolCallId) -> bool {
             match remaining.get_mut(id) {
@@ -257,6 +265,11 @@ impl Projector for LinearProjector {
                 _ => false,
             }
         }
+
+        // what arrived in the middle of a turn, and how many of that turn's calls are still
+        // waiting to be answered
+        let mut held: Vec<(ContextId, Message)> = Vec::new();
+        let mut outstanding = 0usize;
 
         for item in items {
             if !item.is_projected() {
@@ -442,9 +455,40 @@ impl Projector for LinearProjector {
                 }
             };
 
+            // a result has to reach the wire immediately after the call it answers: an
+            // OpenAI-compatible API refuses the whole request otherwise, naming the
+            // `tool_call_id` that went unanswered, and a tool that writes into the context - a
+            // note the model asks for while the rest of its calls are still running - lands
+            // exactly there. So anything that is not a result waits until the turn has had them
+            match &item.kind {
+                ContextKind::ToolResult { .. } => outstanding = outstanding.saturating_sub(1),
+                ContextKind::AssistantMessage { .. } => {
+                    // a new turn ends the last one, whatever is still unanswered in it
+                    flush(&mut projection, &mut held);
+                    // `calls()` rather than the kind's own list: with `send_blocks` a turn keeps
+                    // its calls in its content, and the repair above may have taken some down
+                    outstanding = message.calls().count();
+                }
+                _ if outstanding > 0 => {
+                    projection.repairs.push(format!(
+                        "held item {} back until the turn it landed in had its results: a tool \
+                         result has to follow the call it answers",
+                        item.id
+                    ));
+                    held.push((item.id, message));
+                    continue;
+                }
+                _ => {}
+            }
+
             projection.included.push(item.id);
             projection.messages.push(message);
+            if outstanding == 0 {
+                flush(&mut projection, &mut held);
+            }
         }
+        // a turn whose results never arrived still must not swallow what came after it
+        flush(&mut projection, &mut held);
 
         projection
     }
