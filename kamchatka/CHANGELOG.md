@@ -17,6 +17,15 @@ minor bump may break you.
   retried: an address with nothing behind it is an answer, and making a typo take four doublings
   to report helps nobody.
 
+- A request that has not been answered yet is watched the way a stream already was: `esc` stops
+  it, the silence is reported at ten seconds and then at intervals, and it gives up after 150.
+  Only the *stream* was watched before, so all of that began at the first byte - and a server
+  that accepted the connection and then went away never sent one. The status line read `asking`
+  and nothing else could be done; the longest measured case held the terminal for eighteen
+  minutes, waiting for the operating system to notice. Giving up now says which of the two
+  happened, because a model that hung up mid-answer and one that never spoke are not the same
+  problem.
+
 ### added
 
 - Every session is written out when it ends, to a temporary directory, and the path is the last
