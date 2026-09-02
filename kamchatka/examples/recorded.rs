@@ -132,8 +132,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ) {
         kernel.add_tool(tool);
     }
-    let _introspect = introspect::install(&kernel);
-    eprintln!("shell: {confinement}, model: {model}, budget: {budget}, ordered: {ordered}");
+    // the control arm of a comparison is the same model, on the same task, with no way to see or
+    // change what it is carrying: `INTROSPECT=off` is what takes its hands away
+    let introspecting = std::env::var("INTROSPECT").as_deref() != Ok("off");
+    let _introspect = introspecting.then(|| introspect::install(&kernel));
+    eprintln!(
+        "shell: {confinement}, model: {model}, budget: {budget}, ordered: {ordered}, \
+         introspect: {introspecting}"
+    );
 
     let brief = std::env::var("BRIEF").unwrap_or_else(|_| BRIEF.to_owned());
     kernel.push(ContextItem::system(brief).pinned());
