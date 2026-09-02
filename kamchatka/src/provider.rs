@@ -7,6 +7,7 @@
 
 use std::{
     env,
+    future::Future,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -530,49 +531,6 @@ impl OpenAiCompatible {
             .or_else(|| entry["inputTokenLimit"].as_u64())
             .map(|limit| limit as usize)
     }
-
-    /// Sends the request, watching the wait for an answer the way the stream itself is watched.
-    ///
-    /// note: `&mut sending` rather than `sending`. Handing `timeout` the future itself would drop
-    /// it 120ms later and cancel the request that had just been made; borrowing it stops polling
-    /// for that round and leaves the connection standing. The loop is the one the stream runs,
-    /// for the same three reasons - `esc` is heard, the silence is said out loud, and it ends -
-    /// and it is here because everything before the first byte had none of them. A server that
-    /// accepted the connection and then went away held the terminal for eighteen minutes with
-    /// `asking` on the status line and no way to take it back.
-    async fn watched(&self, body: &Value, deltas: &DeltaSink) -> Result<reqwest::Response, Unsent> {
-        let sending = self
-            .attributed(
-                self.client
-                    .post(format!("{}/chat/completions", self.endpoint()))
-                    .bearer_auth(&self.api_key),
-            )
-            .json(body)
-            .send();
-        let mut sending = std::pin::pin!(sending);
-        let mut vigil = Vigil::new();
-
-        loop {
-            if let Ok(sent) = tokio::time::timeout(HEARTBEAT, &mut sending).await {
-                return sent.map_err(Unsent::Transport);
-            }
-
-            if deltas.is_interrupted() {
-                return Err(Unsent::Interrupted);
-            }
-
-            match vigil.waited() {
-                Silence::Enough => return Err(Unsent::Silent),
-                Silence::Worth(seconds) => {
-                    *self.notice.lock() = Some(format!(
-                        "{} has not answered for {seconds}s; esc gives up on it",
-                        self.model.lock()
-                    ));
-                }
-                Silence::Ordinary => {}
-            }
-        }
-    }
 }
 
 #[async_trait]
@@ -631,11 +589,28 @@ impl Provider for OpenAiCompatible {
     ) -> Result<ModelResponse, BoxError> {
         let body = self.render(&request).expect("this provider always renders");
 
+        // read once, and used for every line said about this request: a name that changed halfway
+        // through would make one wait look like two
+        let model = self.model.lock().clone();
+
         // a free tier answers "busy" often enough that not retrying makes the whole thing look
         // broken when it is not. Waiting and trying again is the *provider's* business: the
         // kernel must not silently send a request twice behind a caller's back
         let mut response = loop {
-            let response = match self.watched(&body, &deltas).await {
+            let response = match watched(
+                self.attributed(
+                    self.client
+                        .post(format!("{}/chat/completions", self.endpoint()))
+                        .bearer_auth(&self.api_key),
+                )
+                .json(&body)
+                .send(),
+                &deltas,
+                &model,
+                &self.notice,
+            )
+            .await
+            {
                 Ok(response) => response,
                 // a connection that timed out is a busy server wearing different clothes, and it
                 // used to be the one thing here that was not waited out: a 429 got four tries and
@@ -649,12 +624,11 @@ impl Provider for OpenAiCompatible {
                     let wait = Duration::from_secs(1 << attempt);
                     if attempt >= RETRIES {
                         self.attempts.store(0, Ordering::SeqCst);
-                        return Err(reason.giving_up(&self.model.lock()));
+                        return Err(reason.giving_up(&model));
                     }
 
                     *self.notice.lock() = Some(format!(
-                        "{} {}; trying again in {}s",
-                        self.model.lock(),
+                        "{model} {}; trying again in {}s",
                         reason.what_happened(),
                         wait.as_secs()
                     ));
@@ -663,7 +637,7 @@ impl Provider for OpenAiCompatible {
                 }
                 // nobody is owed an error for being obeyed
                 Err(Unsent::Interrupted) => return Ok(interrupted()),
-                Err(reason) => return Err(reason.giving_up(&self.model.lock())),
+                Err(reason) => return Err(reason.giving_up(&model)),
             };
 
             let status = response.status();
@@ -1015,7 +989,7 @@ impl Endpoint for OpenAiCompatible {
 }
 
 /// Why a request never became a response.
-enum Unsent {
+pub(crate) enum Unsent {
     /// The transport gave up on it.
     Transport(reqwest::Error),
     /// Nothing came back at all, for [`PATIENCE`].
@@ -1026,7 +1000,7 @@ enum Unsent {
 
 impl Unsent {
     /// Whether sending it again is worth anything.
-    fn worth_waiting_out(&self) -> bool {
+    pub(crate) fn worth_waiting_out(&self) -> bool {
         match self {
             Self::Transport(e) => worth_waiting_out(e),
             // the same thing the transport's own timeout means, arrived at by counting rather
@@ -1037,7 +1011,7 @@ impl Unsent {
     }
 
     /// What happened, as the middle of a sentence whose subject is the model.
-    fn what_happened(&self) -> &'static str {
+    pub(crate) fn what_happened(&self) -> &'static str {
         match self {
             // worth telling apart: one of them hung up, the other never spoke
             Self::Transport(_) => "did not answer in time",
@@ -1047,7 +1021,7 @@ impl Unsent {
     }
 
     /// The error to end the turn with, once there is no patience left to spend.
-    fn giving_up(self, model: &str) -> BoxError {
+    pub(crate) fn giving_up(self, model: &str) -> BoxError {
         match self {
             Self::Transport(e) => e.into(),
             Self::Silent => format!(
@@ -1064,7 +1038,7 @@ impl Unsent {
 ///
 /// note: not an error. Somebody asked for this, and a red line on the screen for doing as asked
 /// reads as a bug in the program rather than as an answer to the key that was pressed.
-fn interrupted() -> ModelResponse {
+pub(crate) fn interrupted() -> ModelResponse {
     ModelResponse {
         content: None,
         reasoning: None,
@@ -1072,6 +1046,48 @@ fn interrupted() -> ModelResponse {
         stop: StopReason::Other("interrupted".to_owned()),
         usage: None,
         raw: None,
+    }
+}
+
+/// Waits for a request to be answered, watching the wait the way the stream itself is watched.
+///
+/// note: `&mut sending` rather than `sending`. Handing `timeout` the future itself would drop it
+/// 120ms later and cancel the request that had just been made; borrowing it stops polling for
+/// that round and leaves the connection standing. The loop is the one the stream runs, for the
+/// same three reasons - `esc` is heard, the silence is said out loud, and it ends - and it is
+/// here because everything before the first byte had none of them. A server that accepted the
+/// connection and then went away held the terminal for eighteen minutes with `asking` on the
+/// status line and no way to take it back.
+///
+/// note: free rather than a method, because [`Gemini`](crate::gemini::Gemini) sends its requests
+/// down a different URL with a different header and needs exactly this in front of them.
+pub(crate) async fn watched(
+    sending: impl Future<Output = reqwest::Result<reqwest::Response>>,
+    deltas: &DeltaSink,
+    model: &str,
+    notice: &Mutex<Option<String>>,
+) -> Result<reqwest::Response, Unsent> {
+    let mut sending = std::pin::pin!(sending);
+    let mut vigil = Vigil::new();
+
+    loop {
+        if let Ok(sent) = tokio::time::timeout(HEARTBEAT, &mut sending).await {
+            return sent.map_err(Unsent::Transport);
+        }
+
+        if deltas.is_interrupted() {
+            return Err(Unsent::Interrupted);
+        }
+
+        match vigil.waited() {
+            Silence::Enough => return Err(Unsent::Silent),
+            Silence::Worth(seconds) => {
+                *notice.lock() = Some(format!(
+                    "{model} has not answered for {seconds}s; esc gives up on it"
+                ));
+            }
+            Silence::Ordinary => {}
+        }
     }
 }
 

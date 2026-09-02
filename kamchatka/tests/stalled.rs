@@ -130,3 +130,31 @@ async fn a_model_that_never_answers_at_all_can_still_be_stopped() {
         "a request that was never answered should not have produced any text"
     );
 }
+
+#[tokio::test]
+async fn the_other_dialect_is_watched_the_same_way() {
+    // the two providers in this crate send their requests down different URLs with different
+    // headers, and the watching was written into one of them. This one's `send` was a bare `?`:
+    // a stall got neither the doubling a busy server gets nor any of the noticing a stream gets
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(kamchatka::gemini::Gemini::new(
+        "deaf",
+        deaf_server().await,
+        "no key needed",
+    )));
+    kernel.push(ContextItem::user("are you there?"));
+
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.turn().await }
+    });
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    kernel.interrupt();
+
+    tokio::time::timeout(Duration::from_secs(5), running)
+        .await
+        .expect("the interrupt should reach this dialect too")
+        .expect("the turn is not a panic")
+        .expect("an interrupted request is not a failed one");
+}

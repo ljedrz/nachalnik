@@ -36,8 +36,8 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::provider::{
-    Endpoint, PATIENCE, RETRIES, Silence, Vigil, api_key, configured_limit, install_crypto,
-    same_model,
+    Endpoint, PATIENCE, RETRIES, Silence, Unsent, Vigil, api_key, configured_limit, install_crypto,
+    interrupted, same_model, watched,
 };
 
 /// How long a stream may say nothing before the provider looks up to check whether it has been
@@ -403,15 +403,45 @@ impl Provider for Gemini {
         // the same bargain the other provider makes: waiting and trying again is the provider's
         // business, because the kernel must not send a request twice behind a caller's back
         let mut response = loop {
-            let response = self
-                .client
-                .post(format!(
-                    "{base}/models/{model}:streamGenerateContent?alt=sse"
-                ))
-                .header("x-goog-api-key", &self.api_key)
-                .json(&body)
-                .send()
-                .await?;
+            let response = match watched(
+                self.client
+                    .post(format!(
+                        "{base}/models/{model}:streamGenerateContent?alt=sse"
+                    ))
+                    .header("x-goog-api-key", &self.api_key)
+                    .json(&body)
+                    .send(),
+                &deltas,
+                &model,
+                &self.notice,
+            )
+            .await
+            {
+                Ok(response) => response,
+                // this used to be a bare `?`: a stall got neither the doubling a 429 gets nor
+                // any of the watching the stream gets, so a server that took the connection and
+                // went away ended the turn whenever the operating system noticed - and said
+                // nothing at all in the meantime
+                Err(reason) if reason.worth_waiting_out() => {
+                    let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                    let wait = Duration::from_secs(1 << attempt);
+                    if attempt >= RETRIES {
+                        self.attempts.store(0, Ordering::SeqCst);
+                        return Err(reason.giving_up(&model));
+                    }
+
+                    *self.notice.lock() = Some(format!(
+                        "{model} {}; trying again in {}s",
+                        reason.what_happened(),
+                        wait.as_secs()
+                    ));
+                    tokio::time::sleep(wait).await;
+                    continue;
+                }
+                // nobody is owed an error for being obeyed
+                Err(Unsent::Interrupted) => return Ok(interrupted()),
+                Err(reason) => return Err(reason.giving_up(&model)),
+            };
 
             let status = response.status();
             if status.is_success() {
@@ -535,14 +565,7 @@ impl Provider for Gemini {
 
         if chunks.is_empty() {
             if finish.as_deref() == Some("interrupted") || deltas.is_interrupted() {
-                return Ok(ModelResponse {
-                    content: None,
-                    reasoning: None,
-                    tool_calls: Vec::new(),
-                    stop: StopReason::Other("interrupted".to_owned()),
-                    usage: None,
-                    raw: None,
-                });
+                return Ok(interrupted());
             }
 
             let payload: Value = serde_json::from_str(&buffer).unwrap_or(Value::Null);

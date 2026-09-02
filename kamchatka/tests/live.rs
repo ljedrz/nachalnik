@@ -36,6 +36,15 @@ use serde_json::json;
 /// A model small enough to be free and able to call a tool.
 const DEFAULT_MODEL: &str = "gemini-3.5-flash-lite";
 
+/// The model this run is actually pointed at.
+///
+/// note: `/models` marks the one in use, so a test that filters the list has to filter for
+/// whatever that is. Naming [`DEFAULT_MODEL`] instead passed only while nobody overrode it, and
+/// then reported a different model on the list as a broken list.
+fn model_in_use() -> String {
+    std::env::var("KAMCHATKA_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned())
+}
+
 /// One at a time, so a free tier's rate limit is not what is under test.
 static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -117,6 +126,15 @@ async fn send(
     finished: &mut tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
     line: &str,
 ) {
+    // a turn that stopped to ask something is still open, and the app swallows anything typed
+    // into it on purpose - the message would land between a call and its result. Waiting on an
+    // outcome that cannot come reports the model as slow ninety seconds later, which is a
+    // description of neither the cause nor the fix
+    assert!(
+        !matches!(app.kernel.state(), State::Deciding { .. }),
+        "a permission prompt is open, so {line:?} would go nowhere: allow what the tool needs"
+    );
+
     if app.focus != Focus::Input {
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .await;
@@ -426,7 +444,8 @@ async fn models_lists_what_the_endpoint_actually_serves() {
     let _serial = SERIAL.lock().await;
     let (mut app, _finished) = live!();
 
-    for c in "/models flash-lite".chars() {
+    let model = model_in_use();
+    for c in format!("/models {model}").chars() {
         app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
             .await;
     }
@@ -439,11 +458,11 @@ async fn models_lists_what_the_endpoint_actually_serves() {
         "it says what to do with the list: {screen}"
     );
     assert!(
-        screen.contains("gemini-3.5-flash-lite"),
+        screen.contains(&model),
         "and the list has real ids on it: {screen}"
     );
     assert!(
-        screen.contains("▸ gemini-3.5-flash-lite"),
+        screen.contains(&format!("▸ {model}")),
         "with the one in use marked: {screen}"
     );
     assert!(
@@ -483,10 +502,16 @@ fn gemini() -> Option<(
 
     let policy = Arc::new(Careful::new());
     policy.set(&Subject::Capability(Capability::Read), Verdict::Allow);
-    policy.set(
-        &Subject::Capability(Capability::Custom("introspect".into())),
-        Verdict::Allow,
-    );
+    // both of them: `install` offers `introspect` and `amend`, and a model that takes the second
+    // offer used to stop the turn to ask. The turn then sat in `Deciding` with the prompt open,
+    // the next message was swallowed the way the app swallows anything typed at one, and the
+    // wire format this file exists to check never got its second request
+    for capability in ["introspect", "amend"] {
+        policy.set(
+            &Subject::Capability(Capability::Custom(capability.into())),
+            Verdict::Allow,
+        );
+    }
     kernel.set_policy(policy.clone());
     kernel.add_tool(Arc::new(Secret));
     let introspect = kamchatka::introspect::install(&kernel);

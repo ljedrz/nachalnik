@@ -25,6 +25,9 @@ minor bump may break you.
   minutes, waiting for the operating system to notice. Giving up now says which of the two
   happened, because a model that hung up mid-answer and one that never spoke are not the same
   problem.
+  Google's dialect gets all of this too: its `send` was a bare `?`, so a stall there got neither
+  the doubling nor the noticing, and ended the turn whenever the operating system got round to
+  it.
 
 ### added
 
