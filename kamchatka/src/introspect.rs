@@ -841,6 +841,13 @@ impl Tool for Amend {
             "note" => Ok(self.note(&kernel, call, reason)),
             "undo" => Ok(self.walk(&kernel, call, reason, true)),
             "redo" => Ok(self.walk(&kernel, call, reason, false)),
+            // a word that names a *state* is not a typo, it is somebody looking in the right
+            // tool at the wrong level: `restore` is what `prune` puts an item back to, and two
+            // models in a row spent a call each being told it does not exist before giving up
+            other if state_of(other).is_some() => Ok(ToolOutput::error(format!(
+                "`{other}` is a `state`, not an `action`: \
+                 {{\"action\":\"prune\",\"ids\":[…],\"state\":\"{other}\",\"reason\":\"…\"}}"
+            ))),
             other => Ok(ToolOutput::error(unknown(
                 other,
                 &["prune", "revise", "note", "undo", "redo"],

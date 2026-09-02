@@ -487,10 +487,41 @@ async fn an_action_nobody_implements_is_named_rather_than_guessed_at() {
     kernel.turn().await.expect("the turn failed");
 
     // `elide` is a state, not an action, and a tool that quietly did the nearest thing would be
-    // teaching the model an argument that does not exist
+    // teaching the model an argument that does not exist. So it is refused - but a word this tool
+    // does know, at another level, is worth saying so about: two live models in a row spent a
+    // call each on `restore` and were told only that no such thing existed
     let said = answered(&kernel);
-    assert!(said.contains("there is no `elide`"), "{said}");
-    assert!(said.contains("prune"), "{said}");
+    assert!(
+        said.contains("`elide` is a `state`, not an `action`"),
+        "{said}"
+    );
+    assert!(
+        said.contains("\"action\":\"prune\""),
+        "the way out is spelled: {said}"
+    );
+    assert!(said.contains("\"state\":\"elide\""), "{said}");
+    assert_eq!(kernel.items()[0].state, ContextState::Active);
+}
+
+#[tokio::test]
+async fn an_action_that_is_no_part_of_this_tool_gets_the_list_of_the_ones_that_are() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "amend",
+        json!({ "action": "delete", "ids": [1], "reason": "it is enormous" }),
+    )]));
+
+    kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    // nothing in here is called `delete` at any level, so there is nowhere to point: the answer
+    // is the list, and pointedly not a suggestion, since `delete` is the one thing this tool
+    // will not do to anything
+    let said = answered(&kernel);
+    assert!(said.contains("there is no `delete`"), "{said}");
+    assert!(said.contains("prune") && said.contains("revise"), "{said}");
     assert_eq!(kernel.items()[0].state, ContextState::Active);
 }
 

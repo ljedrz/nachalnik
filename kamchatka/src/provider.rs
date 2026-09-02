@@ -24,6 +24,13 @@ use serde_json::{Value, json};
 /// How many times a request is retried when the server says it is busy.
 pub(crate) const RETRIES: usize = 4;
 
+/// The longest a server may ask to be left alone before this stops waiting and says so.
+///
+/// note: for the difference between a busy server and one that has said no until tomorrow. A
+/// per-minute limit answers `Retry-After: 5`; a spent daily quota answers with the seconds until
+/// midnight, and sitting through four doublings to discover that wastes the turn and the wait.
+const LINGER: Duration = Duration::from_secs(60);
+
 /// How long a stream may say nothing before the provider looks up to check whether it has been
 /// asked to stop.
 const HEARTBEAT: Duration = Duration::from_millis(120);
@@ -137,6 +144,45 @@ struct PartialCall {
     args: String,
     /// Whatever the provider attached to the call, which it will want back verbatim.
     extra: Value,
+    /// The number the provider filed this call under, if it used one. Not a position: see the
+    /// note where the fragments are gathered.
+    slot: Option<u64>,
+}
+
+/// What to say about a request the server refused: its own sentence, rather than its envelope.
+///
+/// note: a spent quota came back as six hundred characters of JSON - the message, the remedy, the
+/// rate-limit headers, and the account's `user_id` - and all of it went into the transcript and
+/// into the session log, which is a file people send each other. What a reader needs is the
+/// sentence. Nobody needs an identifier for their account written into it.
+fn complaint(status: reqwest::StatusCode, body: &str) -> String {
+    let clipped = || {
+        let short: String = body.trim().chars().take(300).collect();
+        match short.is_empty() {
+            true => format!("{status}"),
+            false => format!("{status}: {short}"),
+        }
+    };
+
+    let Ok(value) = serde_json::from_str::<Value>(body) else {
+        return clipped();
+    };
+    let Some(message) = value["error"]["message"].as_str() else {
+        return clipped();
+    };
+
+    let mut said = format!("{status}: {}", message.trim());
+    // the upstream's own words, where the wrapper is only reporting that something upstream
+    // failed - "Provider returned error" on its own names neither the provider nor the problem
+    if let Some(raw) = value["error"]["metadata"]["raw"]
+        .as_str()
+        .map(str::trim)
+        .filter(|raw| !raw.is_empty() && !message.contains(*raw))
+    {
+        said.push_str(" - ");
+        said.push_str(&raw.chars().take(300).collect::<String>());
+    }
+    said
 }
 
 /// Installs the cryptography `rustls` will use, and says nothing if it is already installed.
@@ -475,15 +521,31 @@ impl Provider for OpenAiCompatible {
                 break response;
             }
 
+            // the server's own answer to "when?", where it gives one. Guessing at a doubling is
+            // for a server that did not say
+            let asked = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.trim().parse::<u64>().ok())
+                .map(Duration::from_secs);
+
             let transient = status.as_u16() == 429 || status.is_server_error();
             let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
-            if !transient || attempt >= RETRIES {
+            let wait = asked.unwrap_or(Duration::from_secs(1 << attempt));
+            if !transient || attempt >= RETRIES || wait > LINGER {
                 self.attempts.store(0, Ordering::SeqCst);
                 let body = response.text().await.unwrap_or_default();
-                return Err(format!("{status}: {body}").into());
+                let mut said = complaint(status, &body);
+                if transient && wait > LINGER {
+                    said.push_str(&format!(
+                        " - it asked to be left for {}s, which is longer than this waits",
+                        wait.as_secs()
+                    ));
+                }
+                return Err(said.into());
             }
 
-            let wait = Duration::from_secs(1 << attempt);
             *self.notice.lock() = Some(format!(
                 "{} answered {}; trying again in {}s",
                 self.model.lock(),
@@ -609,18 +671,40 @@ impl Provider for OpenAiCompatible {
                     // identifier decides when there is no index, and a fragment with neither
                     // continues whatever came last
                     let at = match requested["index"].as_u64() {
-                        Some(index) => index as usize,
+                        // note: the index says which call a fragment belongs to. It is *not* a
+                        // position in the list: minimax numbers its calls from one, and using it
+                        // as a slot left an unfilled call at zero, which the kernel then reported
+                        // as a repaired identifier and a tool with no name - a wasted round trip
+                        // and an error the model had to read. So an index is looked up, and a
+                        // number never seen before starts a new call at the end
+                        Some(index) => match calls.iter().position(|call| call.slot == Some(index))
+                        {
+                            Some(at) => at,
+                            None => {
+                                calls.push(PartialCall {
+                                    slot: Some(index),
+                                    ..PartialCall::default()
+                                });
+                                calls.len() - 1
+                            }
+                        },
                         None => match requested["id"].as_str().filter(|id| !id.is_empty()) {
-                            Some(id) => calls
-                                .iter()
-                                .position(|call| call.id == id)
-                                .unwrap_or(calls.len()),
-                            None => calls.len().saturating_sub(1),
+                            Some(id) => match calls.iter().position(|call| call.id == id) {
+                                Some(at) => at,
+                                None => {
+                                    calls.push(PartialCall::default());
+                                    calls.len() - 1
+                                }
+                            },
+                            None => match calls.is_empty() {
+                                true => {
+                                    calls.push(PartialCall::default());
+                                    0
+                                }
+                                false => calls.len() - 1,
+                            },
                         },
                     };
-                    while calls.len() <= at {
-                        calls.push(PartialCall::default());
-                    }
                     let call = &mut calls[at];
 
                     if let Some(id) = requested["id"].as_str() {
@@ -892,6 +976,59 @@ mod tests {
         // indistinguishable from a model that was still coming
         assert_eq!(judged(&mut vigil, PATIENCE.as_secs()), "gave up");
         assert_eq!(judged(&mut vigil, PATIENCE.as_secs() + 60), "gave up");
+    }
+
+    /// The two shapes a rate limit actually arrived in, copied out of a real session.
+    ///
+    /// note: `concat!` rather than a raw string over several lines. A raw string keeps the
+    /// backslash *and* the newline, so a fixture written that way is not JSON, `complaint` falls
+    /// through to clipping it, and the test passes without ever reaching the code it is about.
+    #[test]
+    fn a_refused_request_is_reported_in_the_server_s_own_words_and_no_more() {
+        let status = reqwest::StatusCode::TOO_MANY_REQUESTS;
+
+        // a spent daily quota: one useful sentence, wrapped in the rate-limit headers and the
+        // account's identifier, neither of which belongs in a file somebody will send on
+        let daily = concat!(
+            r#"{"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits"#,
+            r#" to unlock 1000 free model requests per day","code":429,"metadata":{"headers":"#,
+            r#"{"X-RateLimit-Remaining":"0"},"limit_source":"openrouter_free_tier_daily"}},"#,
+            r#""user_id":"user_3GBJq3JdBGGCK0OiVeXg1v8GYfW"}"#,
+        );
+        assert!(
+            serde_json::from_str::<Value>(daily).is_ok(),
+            "the fixture has to be the shape the server actually sends"
+        );
+        let said = complaint(status, daily);
+        assert!(said.contains("free-models-per-day"), "{said}");
+        assert!(
+            !said.contains("user_"),
+            "the account is nobody's business: {said}"
+        );
+        assert!(!said.contains("X-RateLimit"), "{said}");
+        assert!(said.len() < daily.len() / 2, "and it is shorter: {said}");
+
+        // an upstream one, where the wrapper's own message names neither the provider nor the
+        // problem, and the sentence worth reading is underneath it
+        let upstream = concat!(
+            r#"{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"#,
+            r#""z-ai/glm-5.2:free is temporarily rate-limited upstream.","provider_name":"#,
+            r#""Decart"}}}"#,
+        );
+        assert!(serde_json::from_str::<Value>(upstream).is_ok());
+        let said = complaint(status, upstream);
+        assert!(said.contains("Provider returned error"), "{said}");
+        assert!(said.contains("temporarily rate-limited upstream"), "{said}");
+
+        // something that is not JSON at all still says what happened
+        let plain = complaint(status, "<html>gateway timeout</html>");
+        assert!(
+            plain.contains("429") && plain.contains("gateway timeout"),
+            "{plain}"
+        );
+
+        // and so does nothing at all
+        assert!(complaint(status, "").contains("429"));
     }
 
     #[test]

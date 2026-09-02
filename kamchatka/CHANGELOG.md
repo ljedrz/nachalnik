@@ -31,6 +31,29 @@ minor bump may break you.
 
 ### fixed
 
+- A tool call numbered from one left a phantom call at zero. The streamed `index` says which call
+  a fragment belongs to; it is not a position in a list, and using it as one meant a first call at
+  `index: 1` pushed an empty `PartialCall` into slot zero that nothing ever filled. That reached
+  the kernel with no identifier and no name, was assigned one by the repair path, and came back to
+  the model as `tool.unknown` for a tool called `""` - a wasted round trip every turn and an error
+  it had to read and work around. Found by pointing this at `minimax/minimax-m3`, which numbers
+  its calls from one. An index is looked up now rather than indexed into, so any base works, and
+  so does a provider that skips a number.
+- A refused request no longer copies the server's whole envelope into the transcript. A spent
+  daily quota came back as six hundred characters of JSON - the message, the remedy, the
+  rate-limit headers, and the account's `user_id` - and all of it went on the screen and into the
+  session log, which is a file people send each other. What is reported now is the server's own
+  sentence, plus the upstream's where the wrapper only says that something upstream failed, and
+  the account identifier is not in it.
+- `Retry-After` is honoured where the server sends one, instead of always doubling. The two are
+  not the same question: a per-minute limit answers `5`, and a spent daily quota answers with the
+  seconds until midnight. Past a minute this stops rather than sitting through four doublings to
+  discover the answer will not change, and says how long it was asked to wait.
+- `amend` points a state-named action at the argument it belongs to. `restore` is what `prune`
+  puts an item back to, and `there is no ``restore``` was true of the action list and useless to a
+  model holding the right tool at the wrong level - two live models in a row spent a call each on
+  it and gave up. A word this tool knows anywhere now comes back with the call that would have
+  worked. A word it does not know still gets the list.
 - A figure too wide for its column stopped taking the columns from its neighbour. The `held`
   column is seven wide, which stops at `999,999`, and `{:>7}` pads without truncating - so an item
   holding 3,370,258 tokens printed all nine characters, ran into the `sending` figure beside it

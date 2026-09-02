@@ -89,6 +89,44 @@ const INDEXED: &str = concat!(
     "data: [DONE]\n\n",
 );
 
+/// MiniMax, which numbers its calls from one.
+///
+/// note: found by pointing this at `minimax/minimax-m3` on OpenRouter. The index says which call
+/// a fragment belongs to; it does not say where in a list to put it. Read as a position, a first
+/// call at index 1 left an unfilled call at index 0 - no identifier and no name - which the kernel
+/// repaired and then reported as `tool.unknown` for a tool called "". One wasted round trip per
+/// turn, and an error the model had to read and work around.
+const FROM_ONE: &str = concat!(
+    "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call_a\",",
+    "\"type\":\"function\",\"function\":{\"name\":\"write\",\"arguments\":\"\"}}]},",
+    "\"index\":0}]}\n\n",
+    "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,",
+    "\"function\":{\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}]},\"index\":0}]}\n\n",
+    "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":2,\"id\":\"call_b\",",
+    "\"type\":\"function\",\"function\":{\"name\":\"read\",\"arguments\":\"\"}}]},",
+    "\"index\":0}]}\n\n",
+    "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":2,",
+    "\"function\":{\"arguments\":\"{\\\"path\\\":\\\"b.txt\\\"}\"}}]},\"index\":0}]}\n\n",
+    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\",\"index\":0}]}\n\n",
+    "data: [DONE]\n\n",
+);
+
+#[tokio::test]
+async fn calls_numbered_from_one_do_not_leave_an_empty_call_at_zero() {
+    let response = answered(FROM_ONE).await;
+
+    let named: Vec<&str> = response
+        .tool_calls
+        .iter()
+        .map(|call| call.tool.as_str())
+        .collect();
+    assert_eq!(named, ["write", "read"], "{:?}", response.tool_calls);
+    assert_eq!(response.tool_calls[0].id.0, "call_a");
+    assert_eq!(response.tool_calls[1].id.0, "call_b");
+    assert_eq!(response.tool_calls[0].args["path"], "a.txt");
+    assert_eq!(response.tool_calls[1].args["path"], "b.txt");
+}
+
 #[tokio::test]
 async fn two_calls_with_no_index_between_them_are_still_two_calls() {
     let response = answered(NO_INDEX).await;
