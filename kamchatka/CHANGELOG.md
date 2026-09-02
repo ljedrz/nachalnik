@@ -52,6 +52,13 @@ minor bump may break you.
   it had to read and work around. Found by pointing this at `minimax/minimax-m3`, which numbers
   its calls from one. An index is looked up now rather than indexed into, so any base works, and
   so does a provider that skips a number.
+- The same treatment for an error that arrives *mid-stream*, which is a different shape and was
+  missed the first time. A refused request nests its sentence under `error`; a stream that fails
+  halfway sends the object on its own with `message` at the top, and that path printed the whole
+  thing. Found with `inception/mercury-2.5-preview`, whose upstream answers a question it does not
+  like with a 502 whose message is the refusal - so the screen and the session log got
+  `{"code":502,"message":"...","metadata":{"error_type":"provider_unavailable"}}` where one
+  sentence would do. One function reads both shapes now.
 - A refused request no longer copies the server's whole envelope into the transcript. A spent
   daily quota came back as six hundred characters of JSON - the message, the remedy, the
   rate-limit headers, and the account's `user_id` - and all of it went on the screen and into the

@@ -180,25 +180,39 @@ fn ranks_apps(host: &str) -> bool {
 /// into the session log, which is a file people send each other. What a reader needs is the
 /// sentence. Nobody needs an identifier for their account written into it.
 fn complaint(status: reqwest::StatusCode, body: &str) -> String {
-    let clipped = || {
-        let short: String = body.trim().chars().take(300).collect();
-        match short.is_empty() {
-            true => format!("{status}"),
-            false => format!("{status}: {short}"),
+    match serde_json::from_str::<Value>(body)
+        .ok()
+        .as_ref()
+        .and_then(said)
+    {
+        Some(said) => format!("{status}: {said}"),
+        None => {
+            let short: String = body.trim().chars().take(300).collect();
+            match short.is_empty() {
+                true => format!("{status}"),
+                false => format!("{status}: {short}"),
+            }
         }
-    };
+    }
+}
 
-    let Ok(value) = serde_json::from_str::<Value>(body) else {
-        return clipped();
+/// The sentence inside an error object, wherever the server put it.
+///
+/// note: two shapes, both seen on the same endpoint in the same afternoon. A refused request
+/// nests it under `error`; a stream that fails halfway sends the object on its own, with `message`
+/// at the top. Reading only the first left the second one printing its whole envelope, which is
+/// the thing this function exists to stop.
+fn said(value: &Value) -> Option<String> {
+    let error = match value.get("error").filter(|error| !error.is_null()) {
+        Some(nested) => nested,
+        None => value,
     };
-    let Some(message) = value["error"]["message"].as_str() else {
-        return clipped();
-    };
+    let message = error["message"].as_str()?.trim();
 
-    let mut said = format!("{status}: {}", message.trim());
+    let mut said = message.chars().take(400).collect::<String>();
     // the upstream's own words, where the wrapper is only reporting that something upstream
     // failed - "Provider returned error" on its own names neither the provider nor the problem
-    if let Some(raw) = value["error"]["metadata"]["raw"]
+    if let Some(raw) = error["metadata"]["raw"]
         .as_str()
         .map(str::trim)
         .filter(|raw| !raw.is_empty() && !message.contains(*raw))
@@ -206,7 +220,7 @@ fn complaint(status: reqwest::StatusCode, body: &str) -> String {
         said.push_str(" - ");
         said.push_str(&raw.chars().take(300).collect::<String>());
     }
-    said
+    Some(said)
 }
 
 /// Installs the cryptography `rustls` will use, and says nothing if it is already installed.
@@ -690,7 +704,14 @@ impl Provider for OpenAiCompatible {
                 // these APIs report an upstream failure - a rate limit, a dead provider - as an
                 // error object rather than an HTTP status, sometimes mid-stream
                 if let Some(error) = chunk.get("error").filter(|e| !e.is_null()) {
-                    return Err(format!("{error}").into());
+                    // the same treatment the refused-request path gets: this one arrives as a
+                    // bare object with `message` at the top rather than nested under `error`, and
+                    // printing it whole put the provider's entire envelope on the screen
+                    return Err(match said(error) {
+                        Some(said) => said,
+                        None => format!("{error}").chars().take(300).collect(),
+                    }
+                    .into());
                 }
 
                 if let Some(reported) = chunk.get("usage").filter(|u| !u.is_null()) {
@@ -1119,6 +1140,37 @@ mod tests {
 
         // and so does nothing at all
         assert!(complaint(status, "").contains("429"));
+    }
+
+    /// The shape a stream that fails halfway sends, which is not the shape a refused request
+    /// sends. Copied out of a live session against `inception/mercury-2.5-preview`.
+    #[test]
+    fn an_error_that_arrives_mid_stream_is_read_the_same_way() {
+        let midstream = concat!(
+            r#"{"code":502,"message":"Upstream error from Inception: I'm sorry, but I can't"#,
+            r#" share details of my architecture or training process.","metadata":"#,
+            r#"{"error_type":"provider_unavailable"}}"#,
+        );
+        let value: Value =
+            serde_json::from_str(midstream).expect("the shape it actually arrives in");
+
+        // `message` at the top, with no `error` around it - read only the nested one and this
+        // whole envelope went to the screen
+        let sentence = said(&value).expect("there is a sentence in there");
+        assert!(
+            sentence.starts_with("Upstream error from Inception"),
+            "{sentence}"
+        );
+        assert!(!sentence.contains("error_type"), "{sentence}");
+        assert!(!sentence.contains('{'), "no envelope: {sentence}");
+
+        // and the nested shape still reads, so one function serves both paths
+        let nested: Value = serde_json::from_str(r#"{"error":{"message":"nested"}}"#).unwrap();
+        assert_eq!(said(&nested).as_deref(), Some("nested"));
+
+        // something with no sentence in it at all has nothing to hand back
+        let empty: Value = serde_json::from_str(r#"{"code":502}"#).unwrap();
+        assert_eq!(said(&empty), None);
     }
 
     #[test]
