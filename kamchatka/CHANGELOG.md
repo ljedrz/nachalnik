@@ -44,6 +44,21 @@ minor bump may break you.
 
 ### fixed
 
+- Both readmes said the sandbox reaches further than it does. "Nothing outside that directory is
+  reachable either way" and "nothing outside the working directory is readable or writable at all"
+  are true of writing and false of reading: the system paths - `/usr`, `/etc`, `/bin`, `/lib`,
+  `/proc` and the rest - are readable on purpose, because a command that cannot read `/usr/bin`
+  cannot be a command, and `sandbox.rs` has said so in a note since it was written. Two live
+  sessions read `/etc/passwd` through a confined shell with nothing refusing them, which is
+  correct behaviour and was documented as impossible. A claim about what a sandbox stops is the
+  last place to be loose, so both now say what is writable, what is readable, and give the two
+  commands that show where the line is: `cat /etc/passwd` works, `cat ~/.ssh/id_rsa` does not.
+  The file tools are unaffected - they refuse `/etc/passwd` by their own code, and always did.
+- A test pins that boundary from both sides now. The one that sounded like it covered the claim
+  reaches for `/home/*/.bashrc`, which is outside the system paths and so was never the case in
+  question; it keeps its assertion and loses its name, and the case it appeared to cover has a
+  test of its own.
+
 - A tool call numbered from one left a phantom call at zero. The streamed `index` says which call
   a fragment belongs to; it is not a position in a list, and using it as one meant a first call at
   `index: 1` pushed an empty `PartialCall` into slot zero that nothing ever filled. That reached

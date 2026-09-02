@@ -111,11 +111,35 @@ fn a_command_can_read_and_write_inside_the_working_directory() {
 }
 
 #[test]
-fn a_command_cannot_read_outside_it() {
+fn the_system_directories_are_readable_and_that_is_where_the_line_is() {
     if !enforced() {
         return;
     }
-    // something that certainly exists and certainly is not in the working directory
+    // a command that cannot read `/usr/bin` cannot be a command at all, so `SYSTEM` is readable
+    // on purpose and what is interesting is what is *writable*. It gets a test of its own because
+    // the readme claimed "nothing outside that directory is reachable either way", which two live
+    // sessions disproved by reading `/etc/passwd` through this with nothing refusing them - and
+    // the test that sounded like it covered the claim reaches for a home directory, which is not
+    // in `SYSTEM` and so was never the case in question
+    let (ok, said) = run(&sandbox(workdir("system"), true, false), "cat /etc/passwd");
+    assert!(ok, "the system directories are readable on purpose: {said}");
+    assert!(said.contains("root:"), "{said}");
+
+    // readable, and no more than that
+    let (wrote, said) = run(
+        &sandbox(workdir("system"), true, false),
+        "touch /etc/kamchatka-probe",
+    );
+    assert!(!wrote, "a system directory is not writable: {said}");
+}
+
+#[test]
+fn a_command_cannot_read_private_files_outside_it() {
+    if !enforced() {
+        return;
+    }
+    // outside the working directory *and* outside the system paths, which is the part somebody
+    // installing this actually cares about
     let (ok, said) = run(
         &sandbox(workdir("read"), true, false),
         "cat /home/*/.bashrc",

@@ -578,7 +578,9 @@ rather than a helper standing in front of it. So:
 ```text
 network: deny  ->  connect() is refused by the kernel
 write:   deny  ->  the working directory is read-only
-               ->  nothing outside the working directory is readable or writable at all
+               ->  nothing outside the working directory is writable at all, and
+                   nothing is readable outside it and the system directories,
+                   which a command needs in order to be a command
 ```
 
 Which is the difference that matters. A policy that refuses a command because it contains the word

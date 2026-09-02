@@ -40,9 +40,13 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 
 > **The permissions are enforced, and it is still a demonstration rather than a hardened agent.**
 > The `shell` tool runs under [Landlock](https://landlock.io): `network: deny` is refused by the
-> kernel at `connect()`, `write: deny` makes the working directory read-only, and nothing outside
-> that directory is reachable either way. The three file tools are held to the same boundary by
-> their own code. The permissions tab says which you have — `shell: confined`, or
+> kernel at `connect()`, and `write: deny` makes the working directory read-only. Nothing outside
+> that directory is **writable**, and nothing outside it is readable either — with one deliberate
+> exception, which is that the system directories (`/usr`, `/etc`, `/bin`, `/lib`, `/proc` and the
+> rest) are readable, because a command that cannot read `/usr/bin` cannot be a command. So
+> `cat /etc/passwd` works and `cat ~/.ssh/id_rsa` does not. The three file tools are held to the
+> same boundary by their own code, and to a tighter one: they refuse `/etc/passwd` too.
+> The permissions tab says which you have — `shell: confined`, or
 > `shell: a command can do any of these` where Landlock is not available. `--sandbox-allow PATH`
 > opens up more and `--no-sandbox` turns it off. Within the boundary the file tools are finer than
 > a capability: `read` is allowed, and `read .env` is a question, because a path rule can tighten
