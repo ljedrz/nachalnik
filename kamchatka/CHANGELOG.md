@@ -9,6 +9,19 @@ minor bump may break you.
 
 ### added
 
+- The requests say which program made them, where the endpoint keeps a ranking of programs.
+  OpenRouter builds an app's page against the `HTTP-Referer` it is sent and names it from
+  `X-OpenRouter-Title`; without them a session is anonymous traffic, and [the crate's own
+  page](https://openrouter.ai/docs/app-attribution) is the thing that goes missing. What is sent
+  is the project's URL and the word `kamchatka` - not the key, not the model, not a syllable of
+  what anybody asked - and it is sent **only to OpenRouter**, because `KAMCHATKA_BASE_URL` points
+  this at anything and a `HTTP-Referer` volunteered to somebody's own machine is something they
+  did not ask to send. The host is matched on its authority rather than by looking for the name in
+  the address, so `openrouter.ai.example.com` is not it. `KAMCHATKA_NO_ATTRIBUTION` turns it off:
+  a program that names its user's tooling to a third party should say so and let them stop it.
+  The library type takes it as `OpenAiCompatible::on_behalf_of` and defaults to none, so anything
+  built on the crate is not quietly filed under this one.
+
 - <kbd>f</kbd> on the context tab lists only what the next request carries. After a compaction most
   of the pane is items the model will never read again - archived originals, elided markers, the
   superseded halves of rewrites - and reading past them to find the conversation is the thing the

@@ -683,6 +683,7 @@ Environment:
                            ollama; OpenRouter by default, or Google's own v1beta
                            with --gemini
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
+  KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter
 ```
 
 That is `--help`, which lists the environment too rather than leaving three settings for the

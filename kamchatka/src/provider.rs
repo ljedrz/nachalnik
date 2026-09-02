@@ -134,6 +134,21 @@ pub struct OpenAiCompatible {
     attempts: AtomicUsize,
     /// What the last retry was about, for the status line; the terminal has no stderr to spare.
     notice: Mutex<Option<String>>,
+    /// Who to say these requests are on behalf of, where the endpoint asks. Set once, at
+    /// construction: it is a property of the program making the request, not of the session.
+    attribution: Option<Attribution>,
+}
+
+/// The app a request is being made on behalf of, for an endpoint that keeps a ranking of them.
+///
+/// note: the URL is an identifier rather than a link anybody follows - OpenRouter keeps the app's
+/// page against it - so it wants to be the project's own address and to stay the same.
+#[derive(Clone, Debug)]
+pub struct Attribution {
+    /// The app's own URL, which is what the ranking is kept against.
+    pub url: String,
+    /// What to call it on the page.
+    pub title: String,
 }
 
 /// A tool call being assembled from streamed fragments.
@@ -147,6 +162,15 @@ struct PartialCall {
     /// The number the provider filed this call under, if it used one. Not a position: see the
     /// note where the fragments are gathered.
     slot: Option<u64>,
+}
+
+/// Whether an endpoint is one that keeps a ranking of the apps calling it.
+///
+/// note: on the authority rather than on the whole address, so a self-hosted path or a regional
+/// subdomain still counts, and `openrouter.ai.example.com` does not.
+fn ranks_apps(host: &str) -> bool {
+    let host = host.split(':').next().unwrap_or(host);
+    host == "openrouter.ai" || host.ends_with(".openrouter.ai")
 }
 
 /// What to say about a request the server refused: its own sentence, rather than its envelope.
@@ -211,7 +235,39 @@ impl OpenAiCompatible {
             context_limit: Mutex::new(configured_limit()),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
+            attribution: None,
         }
+    }
+
+    /// Says which app these requests are being made on behalf of.
+    ///
+    /// note: off unless a caller asks for it, and sent only to the endpoint that reads it. The
+    /// headers name the program, never the person running it or what they asked - but a
+    /// `HTTP-Referer` volunteered to whatever address somebody has pointed this at is still
+    /// something they did not ask to send, and `KAMCHATKA_BASE_URL` points it at anything.
+    pub fn on_behalf_of(mut self, url: impl Into<String>, title: impl Into<String>) -> Self {
+        self.attribution = Some(Attribution {
+            url: url.into(),
+            title: title.into(),
+        });
+        self
+    }
+
+    /// Adds the app headers, if there are any and this is somewhere that reads them.
+    fn attributed(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        let Some(app) = self
+            .attribution
+            .as_ref()
+            .filter(|_| ranks_apps(&self.host()))
+        else {
+            return request;
+        };
+        // `X-OpenRouter-Title` is the current name; `X-Title` is the one it replaced and is still
+        // accepted. Neither the categories nor the visibility header is sent: an unrecognised
+        // category is refused, and the default visibility is the point of attribution
+        request
+            .header(reqwest::header::REFERER, &app.url)
+            .header("X-OpenRouter-Title", &app.title)
     }
 
     /// Where the requests are going.
@@ -505,9 +561,11 @@ impl Provider for OpenAiCompatible {
         // kernel must not silently send a request twice behind a caller's back
         let mut response = loop {
             let response = self
-                .client
-                .post(format!("{}/chat/completions", self.endpoint()))
-                .bearer_auth(&self.api_key)
+                .attributed(
+                    self.client
+                        .post(format!("{}/chat/completions", self.endpoint()))
+                        .bearer_auth(&self.api_key),
+                )
                 .json(&body)
                 .send()
                 .await?;
@@ -930,9 +988,24 @@ pub fn base_url() -> String {
     env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_owned())
 }
 
+/// The project these requests are made on behalf of, where the endpoint keeps a ranking of apps.
+///
+/// note: the URL is the identifier the ranking is kept against, so it is the project's address
+/// rather than a page about this crate, and it does not change. What goes out is the name of the
+/// program and nothing else - not the key, not the model, not a word of what was asked - and it
+/// goes only to OpenRouter. `KAMCHATKA_NO_ATTRIBUTION` turns it off, because a program that talks
+/// about somebody to a third party should say so and let them stop it.
+const APP_URL: &str = "https://github.com/ljedrz/nachalnik";
+const APP_TITLE: &str = "kamchatka";
+
 /// Builds a provider from the environment, asking the endpoint what the model's limit is.
 pub async fn connect(model: impl Into<String>) -> Result<Arc<OpenAiCompatible>, BoxError> {
-    let provider = Arc::new(OpenAiCompatible::new(model, base_url(), api_key()?));
+    let mut provider = OpenAiCompatible::new(model, base_url(), api_key()?);
+    if env::var_os("KAMCHATKA_NO_ATTRIBUTION").is_none() {
+        provider = provider.on_behalf_of(APP_URL, APP_TITLE);
+    }
+
+    let provider = Arc::new(provider);
     provider.probe().await;
 
     Ok(provider)
@@ -976,6 +1049,23 @@ mod tests {
         // indistinguishable from a model that was still coming
         assert_eq!(judged(&mut vigil, PATIENCE.as_secs()), "gave up");
         assert_eq!(judged(&mut vigil, PATIENCE.as_secs() + 60), "gave up");
+    }
+
+    #[test]
+    fn only_the_endpoint_that_reads_the_app_headers_is_sent_them() {
+        // the ones that are
+        assert!(ranks_apps("openrouter.ai"));
+        assert!(ranks_apps("openrouter.ai:443"));
+        assert!(ranks_apps("api.openrouter.ai"));
+
+        // and the ones that are not. The last is the reason this matches on the authority rather
+        // than looking for the name anywhere in the address: a suffix test on the whole URL would
+        // have sent an unrelated host the name of the program calling it
+        assert!(!ranks_apps("localhost:11434"));
+        assert!(!ranks_apps("generativelanguage.googleapis.com"));
+        assert!(!ranks_apps("openrouter.ai.example.com"));
+        assert!(!ranks_apps("notopenrouter.ai"));
+        assert!(!ranks_apps(""));
     }
 
     /// The two shapes a rate limit actually arrived in, copied out of a real session.

@@ -49,7 +49,8 @@ Environment:
   KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY
   KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
                            OpenRouter by default, or Google's own v1beta with --gemini
-  KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say"
+  KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
+  KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter"
 )]
 struct Args {
     /// A first message, sent as soon as it starts.
