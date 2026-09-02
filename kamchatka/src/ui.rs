@@ -135,7 +135,8 @@ pub const HELP: &str = "  THE TABS
     /provider [URL [ID]] show or switch the address the requests go to, and
                         the model with it; also /endpoint. The key is the one
                         this started with
-    /params [KEY JSON]  show or set a model parameter
+    /params [KEY JSON]  show or set a model parameter, and what else this model
+                        takes. One it does not take is sent and ignored
     /save [PATH]        the session log, and a snapshot to resume from
     /load [PATH]        that snapshot's context, into the session you are in.
                         What is here is archived unless it is pinned, and u

@@ -1983,8 +1983,53 @@ impl App {
                         }
                     }
                 }
-                let params = serde_json::to_string(&self.kernel.params()).unwrap_or_default();
-                self.say(Speaker::Note, format!("parameters: {params}"));
+                let params = self.kernel.params();
+                let json = serde_json::to_string(&params).unwrap_or_default();
+                self.say(Speaker::Note, format!("parameters: {json}"));
+
+                // an empty list means the endpoint published none, not that the model takes none;
+                // ollama and a bare OpenAI-compatible proxy both say nothing here, and inventing
+                // a restriction out of their silence would be worse than saying nothing back
+                let Some(info) = self
+                    .kernel
+                    .model_info()
+                    .filter(|it| !it.parameters.is_empty())
+                else {
+                    return;
+                };
+                let takes = |key: &str| info.parameters.iter().any(|name| name == key);
+
+                // the failure worth naming: a parameter the model does not take is not refused.
+                // It is sent, it is ignored, and the run it was supposed to change is the same
+                // run it would have been - a `seed` that buys no reproducibility, silently
+                let ignored: Vec<&str> = params
+                    .keys()
+                    .map(String::as_str)
+                    .filter(|key| !takes(key))
+                    .collect();
+                if !ignored.is_empty() {
+                    self.say(
+                        Speaker::Error,
+                        format!(
+                            "{} does not list {}: sent, and ignored",
+                            info.model,
+                            ignored.join(", ")
+                        ),
+                    );
+                }
+
+                let spare: Vec<&str> = info
+                    .parameters
+                    .iter()
+                    .map(String::as_str)
+                    .filter(|name| !params.contains_key(*name))
+                    .collect();
+                if !spare.is_empty() {
+                    self.say(
+                        Speaker::Note,
+                        format!("{} also takes: {}", info.model, spare.join(", ")),
+                    );
+                }
             }
             "save" => self.save(rest),
             // note: not aliased `/resume`. `--resume` at startup is the *other* answer to the

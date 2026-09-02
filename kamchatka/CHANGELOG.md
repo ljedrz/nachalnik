@@ -9,6 +9,13 @@ minor bump may break you.
 
 ### added
 
+- `/params` shows what else the model takes, and names any you have set that it does not. A
+  parameter a model does not accept is not refused - it is sent, ignored, and nothing says so, so
+  a `seed` set for a reproducible run buys no reproducibility and looks exactly like one that
+  worked. Two models compared one session apart differed by eight of them. The list is read from
+  the same listing entry the context limit already comes from, so it costs no extra round trip,
+  and an endpoint that publishes nothing is read as silence rather than as a prohibition.
+
 - A `prune` that hides items while the agent has written nothing down says so. A run gathered
   ~19,400 tokens of evidence across seventeen tool results, said nothing in any of its own seven
   turns, elided all seventeen in one call, and then answered all ten questions from a context that

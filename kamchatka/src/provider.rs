@@ -129,6 +129,9 @@ pub struct OpenAiCompatible {
     api_key: String,
     model: Mutex<String>,
     context_limit: Mutex<Option<usize>>,
+    /// The parameter names the listing said this model takes, where it said anything. Learnt from
+    /// the same entry the context limit comes from, which is already being fetched and read.
+    parameters: Mutex<Vec<String>>,
     /// How many times this provider has backed off, so that a busy server cannot be retried
     /// forever by a session that keeps making new requests.
     attempts: AtomicUsize,
@@ -247,6 +250,7 @@ impl OpenAiCompatible {
             api_key: api_key.into(),
             model: Mutex::new(model.into()),
             context_limit: Mutex::new(configured_limit()),
+            parameters: Mutex::new(Vec::new()),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
             attribution: None,
@@ -398,6 +402,7 @@ impl OpenAiCompatible {
     pub async fn set_model(&self, model: impl Into<String>) {
         *self.model.lock() = model.into();
         *self.context_limit.lock() = configured_limit();
+        self.parameters.lock().clear();
         self.probe().await;
         self.say_if_the_model_is_not_there().await;
     }
@@ -414,9 +419,10 @@ impl OpenAiCompatible {
     /// context is is measured against this number. An unknown limit is reported as unknown rather
     /// than guessed at, which is the honest answer but not a useful one.
     pub async fn probe(&self) {
-        if self.context_limit.lock().is_some() {
-            return;
-        }
+        // a limit somebody set for themselves is a decision about what to measure against; it is
+        // not a statement about which parameters the model takes, so the listing is still worth
+        // reading. Only the limit is left alone
+        let settled = self.context_limit.lock().is_some();
 
         let base = self.endpoint();
         let mut limit = self.listed_limit(&format!("{base}/models"), true).await;
@@ -435,7 +441,9 @@ impl OpenAiCompatible {
             limit = self.loaded_limit(root).await;
         }
 
-        *self.context_limit.lock() = limit;
+        if !settled {
+            *self.context_limit.lock() = limit;
+        }
     }
 
     /// Asks ollama what context length the model is actually being served with.
@@ -507,6 +515,15 @@ impl OpenAiCompatible {
             same_model(listed, &model)
         })?;
 
+        // the same entry carries what the model will accept, and reading it here costs nothing:
+        // the round trip has already happened
+        if let Some(listed) = entry["supported_parameters"].as_array() {
+            *self.parameters.lock() = listed
+                .iter()
+                .filter_map(|name| name.as_str().map(str::to_owned))
+                .collect();
+        }
+
         entry["context_length"]
             .as_u64()
             .or_else(|| entry["top_provider"]["context_length"].as_u64())
@@ -522,6 +539,7 @@ impl Provider for OpenAiCompatible {
             context_limit: *self.context_limit.lock(),
             tool_calling: true,
             reasoning: true,
+            parameters: self.parameters.lock().clone(),
             ..ModelInfo::new("openai-compatible", self.model.lock().clone())
         }
     }

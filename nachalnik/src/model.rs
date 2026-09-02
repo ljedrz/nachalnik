@@ -829,6 +829,14 @@ pub struct ModelInfo {
     pub tool_calling: bool,
     /// Whether the model exposes reasoning.
     pub reasoning: bool,
+    /// The names of the [`Params`] this model accepts, where the provider publishes them.
+    ///
+    /// note: empty means "not published", never "takes none" - an endpoint that says nothing
+    /// about its parameters is the common case, and a caller that read an empty list as a
+    /// prohibition would be inventing a restriction the provider never stated. What it is for is
+    /// the opposite mistake: a parameter set for a model that does not take it is accepted, sent
+    /// and ignored in silence, and this is the only thing that can say so.
+    pub parameters: Vec<String>,
 }
 
 impl ModelInfo {
@@ -842,6 +850,7 @@ impl ModelInfo {
             max_output_tokens: None,
             tool_calling: false,
             reasoning: false,
+            parameters: Vec::new(),
         }
     }
 }

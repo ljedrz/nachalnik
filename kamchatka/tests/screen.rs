@@ -3866,3 +3866,58 @@ async fn a_stopped_command_says_so_where_a_limit_cannot_cut_it() {
     assert!(said.contains("stopped before it finished"), "{said}");
     assert!(said.contains("truncated by an output limit"), "{said}");
 }
+
+#[tokio::test]
+async fn params_says_what_this_model_takes_and_what_it_will_quietly_ignore() {
+    // the failure this closes: a parameter the model does not take is not refused. It is sent,
+    // ignored, and nothing says so - a `seed` set for reproducibility against a model with no
+    // `seed` buys none, and the run looks exactly like one that worked. Two models a session
+    // apart differ by eight of these
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .set_provider(Arc::new(ScriptedProvider::new([]).with_info(ModelInfo {
+            parameters: vec!["temperature".to_owned(), "top_p".to_owned()],
+            ..ModelInfo::new("scripted", "a/model")
+        })));
+
+    harness.send("/params seed 42").await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("does not list seed"),
+        "the one that will do nothing is named: {screen}"
+    );
+    assert!(
+        screen.contains("also takes: temperature, top_p"),
+        "and so is what it would have taken instead: {screen}"
+    );
+
+    // one that *is* listed draws no complaint, and drops out of what is left to try
+    harness.send("/params temperature 0.2").await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("also takes: top_p"),
+        "a parameter already set is not still on offer: {screen}"
+    );
+    assert!(
+        !screen.contains("does not list temperature"),
+        "and it is not complained about: {screen}"
+    );
+}
+
+#[tokio::test]
+async fn an_endpoint_that_publishes_no_parameters_is_not_read_as_forbidding_them() {
+    // ollama and a bare OpenAI-compatible proxy both say nothing about parameters. Silence is
+    // not a prohibition, and a warning invented out of it would be worse than no warning
+    let mut harness = Harness::new([]);
+
+    harness.send("/params seed 42").await;
+    let screen = harness.screen();
+    assert!(screen.contains("parameters:"), "{screen}");
+    assert!(
+        !screen.contains("does not list"),
+        "nothing is claimed about a model that said nothing: {screen}"
+    );
+    assert!(!screen.contains("also takes"), "{screen}");
+}

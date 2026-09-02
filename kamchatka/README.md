@@ -611,6 +611,22 @@ is the whole of what makes the answers comparable. `/seams` names the six replac
 what is in each of them right now, asked of the kernel rather than restated from what this program
 set up at startup.
 
+`/params KEY JSON` sets one model parameter and `/params` shows them — with what else this model
+takes, where the endpoint publishes it. The reason it does the second thing is that a parameter a
+model does *not* take is not refused: it is sent, ignored, and nothing anywhere says so, which
+makes a `seed` set for a reproducible run buy no reproducibility and look exactly like one that
+worked. Two models one session apart differed by eight of these. The runtime invents none of them
+— only what you set is sent — and a listing that publishes nothing is read as silence rather than
+as a prohibition, because ollama and a bare proxy both say nothing here:
+
+```text
+parameters: {"seed":42}
+upstage/solar-pro4 does not list seed: sent, and ignored
+upstage/solar-pro4 also takes: frequency_penalty, include_reasoning, max_tokens,
+presence_penalty, reasoning, response_format, structured_outputs, temperature, tool_choice,
+tools, top_p
+```
+
 ## 📏 the number in the status line is a guess, and says so
 
 Nothing here has the model's tokenizer, so the figure the status line leads with is an estimate —

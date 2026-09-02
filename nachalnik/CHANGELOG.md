@@ -7,6 +7,14 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- `ModelInfo::parameters`: the names of the `Params` a model accepts, where the provider publishes
+  them. Empty means "not published", never "takes none" - a provider that says nothing is the
+  common case, and reading its silence as a prohibition would invent a restriction it never
+  stated. What it is for is the opposite mistake: a parameter set for a model that does not take
+  it is accepted, sent and ignored in silence.
+
 ### fixed
 
 - `LinearProjector` keeps a tool result next to the call it answers. An item pushed into the
