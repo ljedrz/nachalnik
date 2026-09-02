@@ -13,7 +13,7 @@ minor bump may break you.
   OpenRouter builds an app's page against the `HTTP-Referer` it is sent and names it from
   `X-OpenRouter-Title`; without them a session is anonymous traffic, and [the crate's own
   page](https://openrouter.ai/docs/app-attribution) is the thing that goes missing. What is sent
-  is the project's URL and the word `kamchatka` - not the key, not the model, not a syllable of
+  is this crate's own directory and the word `kamchatka` - not the key, not the model, not a syllable of
   what anybody asked - and it is sent **only to OpenRouter**, because `KAMCHATKA_BASE_URL` points
   this at anything and a `HTTP-Referer` volunteered to somebody's own machine is something they
   did not ask to send. The host is matched on its authority rather than by looking for the name in

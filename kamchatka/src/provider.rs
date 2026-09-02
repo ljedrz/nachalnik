@@ -1011,12 +1011,22 @@ pub fn base_url() -> String {
 
 /// The project these requests are made on behalf of, where the endpoint keeps a ranking of apps.
 ///
-/// note: the URL is the identifier the ranking is kept against, so it is the project's address
-/// rather than a page about this crate, and it does not change. What goes out is the name of the
-/// program and nothing else - not the key, not the model, not a word of what was asked - and it
-/// goes only to OpenRouter. `KAMCHATKA_NO_ATTRIBUTION` turns it off, because a program that talks
-/// about somebody to a third party should say so and let them stop it.
-const APP_URL: &str = "https://github.com/ljedrz/nachalnik";
+/// note: this crate's own directory rather than the repository root, because the identifier
+/// should name the thing making the requests. `nachalnik` is the runtime and makes none - it owns
+/// no client and no provider - and a page called `kamchatka` that resolved to the library would
+/// leave a visitor to find the program inside it. It also keeps the identifier free for anything
+/// else in this workspace that ever calls out.
+///
+/// note: `HEAD` rather than a branch name. This is a primary key: OpenRouter builds the app's
+/// page against it, so changing it later does not rename the app, it starts a new one and orphans
+/// what the old one had. `tree/master/...` would have been that change waiting to happen the day
+/// the default branch is renamed.
+///
+/// note: what goes out is the name of the program and nothing else - not the key, not the model,
+/// not a word of what was asked - and it goes only to OpenRouter. `KAMCHATKA_NO_ATTRIBUTION`
+/// turns it off, because a program that names its user's tooling to a third party should say so
+/// and let them stop it.
+const APP_URL: &str = "https://github.com/ljedrz/nachalnik/tree/HEAD/kamchatka";
 const APP_TITLE: &str = "kamchatka";
 
 /// Builds a provider from the environment, asking the endpoint what the model's limit is.
