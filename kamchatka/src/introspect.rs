@@ -837,8 +837,12 @@ impl Tool for Amend {
                 },
                 "state": {
                     "type": "string",
+                    // note: the five worth naming. `unelide`, `unpin`, `include` and the rest
+                    // are accepted and deliberately not listed - an enum of eleven words, six of
+                    // them the same word, is a harder thing to read than one of five
                     "enum": ["elide", "exclude", "archive", "pin", "restore"],
-                    "description": "prune: where they go",
+                    "description": "prune: where they go. `restore` is the way back from any of \
+                                    the others, including a pin you set yourself",
                 },
                 "content": {
                     "type": "string",
@@ -933,8 +937,16 @@ impl Amend {
             });
         }
         let Some(state) = state_of(call.args["state"].as_str().unwrap_or_default()) else {
+            // what each one does rather than only what it is called: the choice between `elide`
+            // and `exclude` is the one that decides whether a tool call keeps its answer, and a
+            // list of five words does not help anybody make it
             return ToolOutput::error(
-                "`state` must be one of exclude, elide, archive, pin, restore",
+                "`state` must be one of:\n  \
+                 elide    - replace what it says with a marker; a tool call keeps its answer\n  \
+                 exclude  - take it out of the request; a tool call loses its answer too\n  \
+                 archive  - keep it, do not send it, and stop counting it against the budget\n  \
+                 pin      - protect it from compaction\n  \
+                 restore  - put it back the way it was",
             );
         };
 
@@ -975,6 +987,12 @@ impl Amend {
             out.push_str(&format!(": {}", numbers(&changed.changed)));
         }
         out.push('\n');
+        // the way back, at the moment it becomes worth knowing. A session that elided twenty-two
+        // items spent its next two calls guessing at an `action` called `restore` and then gave
+        // up; the reversal is a `state`, and six words here are cheaper than that
+        if !changed.changed.is_empty() && !state.sends_content() {
+            out.push_str("back: the same ids with `state: \"restore\"`, or `undo` for all of it\n");
+        }
         if !changed.unchanged.is_empty() {
             out.push_str(&format!(
                 "{} were already: {}\n",
@@ -1215,7 +1233,13 @@ fn state_of(word: &str) -> Option<ContextState> {
         "elide" | "elided" => ContextState::Elided,
         "archive" | "archived" => ContextState::Archived,
         "pin" | "pinned" => ContextState::Pinned,
-        "restore" | "active" => ContextState::Active,
+        // there is one way back and a great many words for it. Four states hide an item or hold
+        // it, and undoing any of them is the same move - so `unpin` and `unelide` are not
+        // separate operations to be refused for not existing, they are this one spelled the way
+        // somebody thought of it
+        "restore" | "active" | "include" | "unelide" | "unexclude" | "unarchive" | "unpin" => {
+            ContextState::Active
+        }
         _ => return None,
     })
 }

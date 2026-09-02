@@ -17,6 +17,19 @@ minor bump may break you.
   17,142 finding out. The sample keeps both ends, because what tells build noise from something
   worth keeping is usually visible at the edges, and it names the bytes it left out. Recovering an
   archived output whole is still possible, which is why this is an argument rather than a cap.
+- Hiding an item says how to get it back, on the line where it says what it did. `amend` has one
+  way back from all four of the states that hide or hold an item, and it is a `state` called
+  `restore` rather than an `action` - which a session that had just elided twenty-two items could
+  not find. It asked for an `action` called `restore` twice, was told no such thing existed, and
+  gave up with its whole context hidden. Six words on the line that hid them is cheaper than that,
+  and it names `undo` too, which is the better answer when the whole call was the mistake.
+- `state` takes any of the words for putting something back. There is exactly one such state and
+  a great many spellings, so `unelide`, `unexclude`, `unarchive`, `unpin`, `include` and `active`
+  all reach it. They are accepted and deliberately left out of the schema's `enum`: a list of
+  eleven words, six of them the same word, is harder to read than a list of five.
+- The error for an unrecognised `state` says what each one *does* rather than only what it is
+  called. Choosing between `elide` and `exclude` is the decision that settles whether a tool call
+  keeps its answer, and five bare words never helped anybody make it.
 - A prune that made the request *bigger* says so. An elided item leaves a marker carrying the
   reason given for eliding it, and on a short item that reason costs more than the content did: a
   live session elided twenty-two items and added 162 tokens. Both figures were already printed and

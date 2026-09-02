@@ -105,6 +105,56 @@ async fn look_lists_every_item_with_its_state_and_why() {
 }
 
 #[tokio::test]
+async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
+    // the failure this closes: a session elided twenty-two items, then spent two calls asking for
+    // an `action` called `restore`, was told no such thing existed, and gave up. The reversal is
+    // a `state`, and the moment worth saying so is the one where something has just been hidden
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "amend",
+            json!({"action": "prune", "ids": [1], "state": "elide", "reason": "done with it"}),
+        ),
+        // not a word the schema lists, and unambiguous: there is one state that is "put it back"
+        call(
+            "c2",
+            "amend",
+            json!({"action": "prune", "ids": [1], "state": "unelide", "reason": "wanted it after all"}),
+        ),
+    ]));
+
+    kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said: Vec<String> = kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "amend")
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(said.len(), 2, "{said:?}");
+
+    assert!(said[0].contains("now elided"), "{}", said[0]);
+    assert!(
+        said[0].contains("restore"),
+        "the way back is on the line: {}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("undo"),
+        "and so is the bigger hammer: {}",
+        said[0]
+    );
+
+    // `unelide` is not in the enum and means exactly one thing
+    assert_eq!(kernel.items()[0].state, ContextState::Active, "{}", said[1]);
+
+    // and putting something back does not then advertise a way back from that
+    assert!(!said[1].contains("back:"), "{}", said[1]);
+}
+
+#[tokio::test]
 async fn eliding_something_small_says_that_it_cost_more_than_it_saved() {
     // an elided item leaves a marker carrying the reason given for eliding it, so on a short item
     // the marker is the more expensive of the two. A live session elided twenty-two of them and
