@@ -905,6 +905,19 @@ impl Tool for Amend {
     }
 }
 
+/// Whether anything the agent wrote down for itself is still going into the request.
+///
+/// A note is the one thing in a context that is there because the agent decided a finding was
+/// worth keeping. If none is, then everything the agent knows is in items it did not choose, and
+/// hiding those is the whole of what it knew.
+fn wrote_anything_down(kernel: &Kernel) -> bool {
+    kernel.items().iter().any(|item| {
+        matches!(item.kind, ContextKind::Reference)
+            && item.source == "agent"
+            && item.state.sends_content()
+    })
+}
+
 impl Amend {
     /// Moves items to a state, refusing the ones that are not the model's to move.
     fn prune(&self, kernel: &Kernel, call: &ToolCall, reason: &str) -> ToolOutput {
@@ -992,6 +1005,16 @@ impl Amend {
         // up; the reversal is a `state`, and six words here are cheaper than that
         if !changed.changed.is_empty() && !state.sends_content() {
             out.push_str("back: the same ids with `state: \"restore\"`, or `undo` for all of it\n");
+            // the failure this closes: a run gathered nineteen thousand tokens of evidence across
+            // seventeen tool results, said nothing in its own turns, elided all seventeen at once,
+            // and then answered all ten questions from nothing - confidently, and wrong on every
+            // one. The tool told it what it had saved and nothing about what it had just spent
+            if !wrote_anything_down(kernel) {
+                out.push_str(
+                    "you have no notes: what those items said survives only in what you have \
+                     already said. `note` writes a finding down where pruning cannot reach it.\n",
+                );
+            }
         }
         if !changed.unchanged.is_empty() {
             out.push_str(&format!(

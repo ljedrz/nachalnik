@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### added
 
+- A `prune` that hides items while the agent has written nothing down says so. A run gathered
+  ~19,400 tokens of evidence across seventeen tool results, said nothing in any of its own seven
+  turns, elided all seventeen in one call, and then answered all ten questions from a context that
+  no longer held any of it - confidently, and wrong on every one, inventing a crate and seven enum
+  variants. The tool had told it what it saved (`~19,380` down to `~2,453`) and nothing about what
+  it had just spent. It now adds one line naming `note` as the thing that would have kept a
+  finding, and says nothing once a note is in context.
+
 - `look` hands back a long item as its start and its end rather than the whole of it, and
   `whole: true` asks for all of it. Reading an item copies that item into the context, so a model
   asking to see a 9,000-token tool result *in order to decide whether to keep it* pays very nearly

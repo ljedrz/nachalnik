@@ -906,3 +906,72 @@ async fn a_fork_is_told_it_cannot_act() {
     assert!(instructions.contains("no tools here"), "{instructions}");
     assert!(asked.tools.is_empty(), "and really has none");
 }
+
+#[tokio::test]
+async fn hiding_everything_while_holding_no_notes_says_what_that_costs() {
+    // the failure this closes: a run gathered nineteen thousand tokens across seventeen tool
+    // results, said nothing in its own turns, elided all seventeen in one call, and answered from
+    // an empty context - inventing all ten answers. `prune` reported the tokens it had given back
+    // and nothing about the evidence it had just taken away
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "amend",
+            json!({"action": "prune", "select": "all:tool_results", "state": "elide",
+                   "reason": "done with these"}),
+        ),
+        // a note, and then the same wipe again: with something of its own kept, the warning has
+        // nothing to warn about
+        call(
+            "c2",
+            "amend",
+            json!({"action": "note", "label": "q1", "content": "Cargo.lock is 3593 lines",
+                   "pin": true, "reason": "keeping the finding"}),
+        ),
+        call(
+            "c3",
+            "amend",
+            json!({"action": "prune", "ids": [2], "state": "elide", "reason": "done with it"}),
+        ),
+    ]));
+
+    kernel.push(ContextItem::tool_result(
+        ToolCallId::from("c0"),
+        "shell",
+        "3593 Cargo.lock",
+        false,
+    ));
+    kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said: Vec<String> = kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "amend")
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(said.len(), 3, "{said:?}");
+
+    assert!(
+        said[0].contains("no notes"),
+        "a wipe with nothing written down should say so: {}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("`note`"),
+        "and should name the thing that would have helped: {}",
+        said[0]
+    );
+    // once it has kept something of its own, the same move is no longer the same move
+    assert!(
+        !said[2].contains("no notes"),
+        "a note is in context, so there is nothing to warn about: {}",
+        said[2]
+    );
+    assert!(
+        said[2].contains("now elided"),
+        "and the prune still happened: {}",
+        said[2]
+    );
+}
