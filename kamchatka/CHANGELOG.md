@@ -7,6 +7,16 @@ minor bump may break you.
 
 ## [unreleased]
 
+### fixed
+
+- A request that stalls is waited out, the way a busy server already was. A 429 or a 5xx got four
+  tries and a doubling; a connection that timed out got `?` and took the session with it - which
+  is the same event wearing different clothes. Eleven of fourteen runs against one upstream died
+  this way while the same model answered a single request in six seconds; run one at a time they
+  all passed, so what they had met was load, not a wall. A refused connection is deliberately not
+  retried: an address with nothing behind it is an answer, and making a typo take four doublings
+  to report helps nobody.
+
 ### added
 
 - Every session is written out when it ends, to a temporary directory, and the path is the last

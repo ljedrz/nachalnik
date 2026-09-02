@@ -592,7 +592,7 @@ impl Provider for OpenAiCompatible {
         // broken when it is not. Waiting and trying again is the *provider's* business: the
         // kernel must not silently send a request twice behind a caller's back
         let mut response = loop {
-            let response = self
+            let sent = self
                 .attributed(
                     self.client
                         .post(format!("{}/chat/completions", self.endpoint()))
@@ -600,7 +600,35 @@ impl Provider for OpenAiCompatible {
                 )
                 .json(&body)
                 .send()
-                .await?;
+                .await;
+
+            let response = match sent {
+                Ok(response) => response,
+                // a connection that timed out is a busy server wearing different clothes, and it
+                // used to be the one thing here that was not waited out: a 429 got four tries and
+                // a doubling, a stall got none. Eleven of fourteen runs against one upstream died
+                // this way while the same model answered a single request in six seconds. A
+                // refused connection is *not* this - it is a definite answer, usually an address
+                // with nothing behind it, and making a typo take four doublings to report helps
+                // nobody
+                Err(e) if worth_waiting_out(&e) => {
+                    let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                    let wait = Duration::from_secs(1 << attempt);
+                    if attempt >= RETRIES {
+                        self.attempts.store(0, Ordering::SeqCst);
+                        return Err(e.into());
+                    }
+
+                    *self.notice.lock() = Some(format!(
+                        "{} did not answer in time; trying again in {}s",
+                        self.model.lock(),
+                        wait.as_secs()
+                    ));
+                    tokio::time::sleep(wait).await;
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            };
 
             let status = response.status();
             if status.is_success() {
@@ -957,6 +985,16 @@ impl Endpoint for OpenAiCompatible {
     }
 }
 
+/// Whether a request that never got an answer is worth sending again.
+///
+/// note: a timeout only. Everything else a transport can fail with is either a decision - nothing
+/// listening on that address, a name that does not resolve - or a bug in what was built, and
+/// neither improves by being repeated. `is_timeout` walks the source chain, so a stall reported
+/// as hyper's `Io(TimedOut)` several layers down still counts.
+fn worth_waiting_out(e: &reqwest::Error) -> bool {
+    e.is_timeout()
+}
+
 /// Translates a kernel message into the wire format.
 fn to_wire(message: &Message) -> Value {
     let mut wire = json!({ "role": message.role.as_str() });
@@ -1210,5 +1248,57 @@ mod tests {
         assert!(vigil.heard(), "the silence was reported, so its end is too");
         assert!(!vigil.heard(), "an ordinary byte is not");
         assert_eq!(judged(&mut vigil, QUIET.as_secs()), "said");
+    }
+
+    /// A socket that accepts and then says nothing, so a request to it stalls the way a loaded
+    /// upstream does rather than being refused.
+    async fn black_hole() -> std::net::SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = listener.local_addr().expect("its address");
+        tokio::spawn(async move {
+            // held open, never answered: accepting and dropping would be a reset, which is a
+            // different thing entirely
+            let mut held = Vec::new();
+            while let Ok((socket, _)) = listener.accept().await {
+                held.push(socket);
+            }
+        });
+
+        at
+    }
+
+    #[tokio::test]
+    async fn a_stalled_request_is_waited_out_and_a_refused_one_is_not() {
+        // the failure this closes: a 429 got four tries and a doubling; a connection that stalled
+        // got none, and took the session with it. Eleven of fourteen runs against one upstream
+        // died this way while the same model answered a single request in six seconds
+        install_crypto();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_millis(250))
+            .build()
+            .expect("a client");
+
+        let stalled = client
+            .get(format!("http://{}/", black_hole().await))
+            .send()
+            .await
+            .expect_err("nothing ever answers there");
+        assert!(
+            worth_waiting_out(&stalled),
+            "a stall is a busy server, and this is the error a busy one produces: {stalled:?}"
+        );
+
+        // port 9 is discard: the connection is refused rather than left hanging
+        let refused = client
+            .get("http://127.0.0.1:9/")
+            .send()
+            .await
+            .expect_err("nothing is listening");
+        assert!(
+            !worth_waiting_out(&refused),
+            "an address with nothing behind it is an answer, not a delay: {refused:?}"
+        );
     }
 }
