@@ -1,0 +1,21 @@
+<!-- kamchatka: a K drawn as a commit graph.
+     The stem is the trunk, the upper arm is a branch leaving it and the lower arm is one
+     rejoining, which is why they meet the stem at different heights rather than at one point -
+     that offset is the whole idea, and a K whose arms meet in the middle is just a K.
+     The four rings are commits. Colours are the site's own accent on its own ink. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"
+     role="img" aria-label="kamchatka">
+  <title>kamchatka</title>
+  <rect width="256" height="256" rx="58" fill="#0e1a1a"/>
+  <g fill="none" stroke="#59b8b2" stroke-width="17" stroke-linecap="round">
+    <path d="M77 57 V199"/>
+    <path d="M77 116 L 176 54"/>
+    <path d="M176 202 L 77 139"/>
+  </g>
+  <g fill="#0e1a1a" stroke="#59b8b2" stroke-width="10">
+    <circle cx="77" cy="57" r="17"/>
+    <circle cx="77" cy="199" r="17"/>
+    <circle cx="176" cy="54" r="17"/>
+    <circle cx="176" cy="202" r="17"/>
+  </g>
+</svg>
