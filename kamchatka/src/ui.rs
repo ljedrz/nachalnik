@@ -81,6 +81,7 @@ pub const HELP: &str = "  THE TABS
                         (on a ▫ archived row, either of those sends the whole
                          of an output the model was shown a truncated copy of)
     e                   change what it says; the old one stays, marked ~
+    f                   list only what the next request carries, or everything
     enter               read the whole of it: what the model gets, what it
                         says, and what it said before it was rewritten
     left / right        move between those, while one is open
@@ -601,9 +602,15 @@ fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
 /// that matters: a list of labels and numbers tells you an item exists, and this tells you what
 /// the model is actually being told.
 fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
-    let items = app.kernel.items();
+    let items = app.listed();
+    let held_back = app.kernel.items().len() - items.len();
     if items.is_empty() {
-        frame.render_widget(Paragraph::new("nothing here yet").style(quiet()), area);
+        // the two empties are not the same, and the second one has a way out of it
+        let empty = match held_back {
+            0 => "nothing here yet".to_owned(),
+            n => format!("nothing is being sent; {n} item(s) are hidden, and `f` lists them again"),
+        };
+        frame.render_widget(Paragraph::new(empty).style(quiet()), area);
         return Scrolled::default();
     }
 
@@ -638,9 +645,13 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                 },
                 "sending",
                 "held",
-                match says >= 8 {
-                    true => "what it says, or why it is not being sent",
-                    false => "",
+                match (says >= 8, app.sending_only) {
+                    (false, _) => String::new(),
+                    (true, false) => "what it says, or why it is not being sent".to_owned(),
+                    // the count belongs on the header rather than in a note, because it is a
+                    // property of what is on the screen and it stops being true when the toggle does
+                    (true, true) =>
+                        format!("what it says · {held_back} not being sent, hidden by f"),
                 }
             ),
             quiet(),

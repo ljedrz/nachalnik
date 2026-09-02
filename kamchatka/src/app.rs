@@ -246,8 +246,12 @@ pub struct App {
     pub input: TextArea<'static>,
     /// Which pane the keys go to.
     pub focus: Focus,
-    /// Which context item is picked out.
+    /// Which of the listed context items is picked out; an index into [`App::listed`], which is
+    /// not the whole context when `sending_only` is on.
     pub selected: usize,
+    /// Whether the context tab lists only what the next request carries, leaving out everything
+    /// that has been pruned, archived or superseded.
+    pub sending_only: bool,
     /// Where the context pane is scrolled to, which it keeps between frames.
     pub list: ratatui::widgets::ListState,
     /// What is on top, if anything.
@@ -326,6 +330,7 @@ impl App {
             input,
             focus: Focus::Input,
             selected: 0,
+            sending_only: false,
             list: ratatui::widgets::ListState::default(),
             overlay: None,
             scroll: 0,
@@ -1051,8 +1056,14 @@ impl App {
 
     /// Keys that belong to the context pane.
     fn context_key(&mut self, key: KeyEvent, count: &str) {
-        let items = self.kernel.items();
+        // what is on the screen, not what is in the context: with `f` on, the rows between two
+        // items are gone and moving by one row has to mean the next row somebody can see
+        let items = self.listed();
         if items.is_empty() {
+            // there is nothing to pick, but the key that puts the rows back must still work
+            if matches!(key.code, KeyCode::Char('f')) {
+                self.sending_only = false;
+            }
             return;
         }
         self.selected = self.selected.min(items.len() - 1);
@@ -1077,8 +1088,16 @@ impl App {
                 self.selected = match count.parse::<u64>() {
                     Ok(id) => match items.iter().position(|item| item.id.0 == id) {
                         Some(at) => at,
+                        // there is a difference between an item that does not exist and one this
+                        // tab is not currently showing, and only one of them is somebody's typo
                         None => {
-                            self.say(Speaker::Note, format!("there is no item [{id}]"));
+                            let note = match self.kernel.items().iter().any(|i| i.id.0 == id) {
+                                true => {
+                                    format!("item [{id}] is not being sent; `f` lists it again")
+                                }
+                                false => format!("there is no item [{id}]"),
+                            };
+                            self.say(Speaker::Note, note);
                             self.selected
                         }
                     },
@@ -1134,6 +1153,22 @@ impl App {
                     _ => ContextState::Pinned,
                 };
                 self.kernel.set_state([picked.id], to, None);
+            }
+            // a view, not a change: nothing is touched and nothing is logged. After a compaction
+            // most of the list is items the model will never read again, and reading past them to
+            // find the conversation is the thing this tab is for
+            //
+            // note: the selection follows the item rather than the row number, because the rows
+            // under it have just moved. If what was picked is one of the ones now hidden, the
+            // nearest row that is still there gets it
+            KeyCode::Char('f') => {
+                let was = picked.id;
+                self.sending_only = !self.sending_only;
+                let now = self.listed();
+                self.selected = match now.iter().position(|item| item.id == was) {
+                    Some(at) => at,
+                    None => self.selected.min(now.len().saturating_sub(1)),
+                };
             }
             KeyCode::Char('u') => {
                 let note = match self.kernel.undo() {
@@ -1266,6 +1301,26 @@ impl App {
                 (*id, cost)
             })
             .collect()
+    }
+
+    /// The context items the tab is showing: all of them, or only the ones carrying content into
+    /// the next request.
+    ///
+    /// note: the predicate is `sends_content`, which is exactly the set with a figure in the
+    /// `held` column - so the toggle has one rule a person can hold in their head: it hides every
+    /// row that is holding something back. That does leave out elided items, which do go into the
+    /// request as a marker and do cost the marker's few tokens; showing them would be defensible
+    /// on "what am I sending", but the reason somebody reaches for this is that half the list is
+    /// wreckage after a compaction, and an elided row is wreckage.
+    pub fn listed(&self) -> Vec<Arc<ContextItem>> {
+        let items = self.kernel.items();
+        match self.sending_only {
+            false => items,
+            true => items
+                .into_iter()
+                .filter(|item| item.state.sends_content())
+                .collect(),
+        }
     }
 
     /// Every capability that matters here, and what would happen if a tool asked for it.

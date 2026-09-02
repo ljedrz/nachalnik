@@ -111,6 +111,7 @@ again.
 | <kbd>space</kbd> | cycle how much of it the model gets: all of it → a `…` marker → nothing → back |
 | <kbd>p</kbd> | pin it, so that the compactor is refused if it tries |
 | <kbd>e</kbd> | change what it says |
+| <kbd>f</kbd> | list only what the next request carries, or everything again |
 | <kbd>enter</kbd> | read the whole of it — see below |
 | <kbd>←</kbd> / <kbd>→</kbd> | move between its pages, while it is open |
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |

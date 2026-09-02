@@ -3490,6 +3490,94 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
 }
 
 #[tokio::test]
+async fn f_lists_only_what_the_next_request_carries_and_keeps_the_item_it_was_on() {
+    // after a compaction most of the pane is items the model will never read again, and reading
+    // past them to find the conversation is the thing this tab is for
+    let mut harness = Harness::new([]);
+    for text in ["first question", "second question", "third question"] {
+        harness.app.kernel.push(ContextItem::user(text));
+    }
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("dropped.rs", "fn gone() {}\n"));
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("kept.rs", "fn here() {}\n"));
+    let items = harness.app.kernel.items();
+    let (second, dropped) = (items[1].id, items[3].id);
+    harness.app.kernel.set_state(
+        [items[0].id, dropped],
+        ContextState::Elided,
+        Some("compacted to make room".into()),
+    );
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    let all = harness.screen();
+    assert_eq!(
+        harness.app.listed().len(),
+        5,
+        "everything is listed to begin with"
+    );
+    assert!(all.contains("dropped.rs"), "{all}");
+    assert_eq!(
+        all.matches("compacted to make room").count(),
+        2,
+        "both pruned rows say why they are not being sent: {all}"
+    );
+
+    // stand on an item that survives the filter, so the selection has somewhere to stay
+    harness.app.selected = 1;
+    assert_eq!(harness.app.listed()[1].id, second);
+
+    harness.press(KeyCode::Char('f')).await;
+    let sending = harness.screen();
+    assert!(
+        !sending.contains("dropped.rs") && !sending.contains("compacted to make room"),
+        "the pruned rows are gone: {sending}"
+    );
+    assert!(
+        sending.contains("kept.rs") && sending.contains("second question"),
+        "and everything still being sent is there: {sending}"
+    );
+    assert!(
+        sending.contains("2 not being sent"),
+        "the header says how many it is holding back: {sending}"
+    );
+
+    // the rows underneath moved, so the selection follows the item rather than the row number
+    assert_eq!(
+        harness.app.listed()[harness.app.selected].id,
+        second,
+        "still on the item it was on"
+    );
+
+    // and asking for one of the hidden ones by number says so, rather than "there is no item"
+    harness.press(KeyCode::Char('4')).await;
+    harness.press(KeyCode::Char('G')).await;
+    let note = harness
+        .app
+        .transcript
+        .last()
+        .map(|entry| entry.text.clone())
+        .unwrap_or_default();
+    assert!(
+        note.contains(&format!("item [{}] is not being sent", dropped.0)),
+        "a hidden item is not a missing one: {note:?}"
+    );
+
+    harness.press(KeyCode::Char('f')).await;
+    let back = harness.screen();
+    assert!(back.contains("dropped.rs"), "f puts them back: {back}");
+    assert!(
+        !back.contains("not being sent, hidden by f"),
+        "and the header goes back to what it was: {back}"
+    );
+}
+
+#[tokio::test]
 async fn a_figure_too_wide_for_its_column_does_not_run_into_the_one_beside_it() {
     // `keep_truncated_output` archives the whole of what a tool produced, and what a tool can
     // produce has no ceiling: one `grep` that wandered into a build directory archived 11MB, and

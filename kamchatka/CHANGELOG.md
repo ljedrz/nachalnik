@@ -9,6 +9,16 @@ minor bump may break you.
 
 ### added
 
+- <kbd>f</kbd> on the context tab lists only what the next request carries. After a compaction most
+  of the pane is items the model will never read again - archived originals, elided markers, the
+  superseded halves of rewrites - and reading past them to find the conversation is the thing the
+  tab is for. The rule is one anybody can hold in their head: it hides every row with a figure in
+  the `held` column. Nothing is changed and nothing is logged, because it is a view; the header
+  says how many rows are missing and which key brings them back, and the selection follows the item
+  it was on rather than the row number, since the rows underneath have just moved. Asking for a
+  hidden item by number says it is hidden rather than that it does not exist, which are two
+  different answers and only one of them is somebody's typo.
+
 - `--forget-truncated`, which drops the whole of a tool's output once it has been shortened rather
   than keeping it as an archived item. The runtime has had the switch since it had the behaviour
   and its documentation says when to reach for it - "when a tool can produce more than you are
