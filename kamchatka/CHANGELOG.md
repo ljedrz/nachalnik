@@ -9,6 +9,15 @@ minor bump may break you.
 
 ### added
 
+- Every session is written out when it ends, to a temporary directory, and the path is the last
+  thing printed - the way `/save` writes it, and without anybody having had to think of it.
+  `--no-record` turns it off. The old condition was backwards: a session that ended badly is the
+  one worth reading afterwards, and it was the one that left nothing. Nine runs against a provider
+  that timed out left empty files and no way to see how far any of them had got. A session is now
+  named `kamchatka-<seconds>` rather than a counter that restarts at 1 with the process, which is
+  fine as an identity and useless as a filename; a resumed session keeps the name in its snapshot,
+  so carrying on writes back to the same pair of files.
+
 - `/params` shows what else the model takes, and names any you have set that it does not. A
   parameter a model does not accept is not refused - it is sent, ignored, and nothing says so, so
   a `seed` set for a reproducible run buys no reproducibility and looks exactly like one that

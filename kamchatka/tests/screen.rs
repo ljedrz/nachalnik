@@ -3921,3 +3921,49 @@ async fn an_endpoint_that_publishes_no_parameters_is_not_read_as_forbidding_them
     );
     assert!(!screen.contains("also takes"), "{screen}");
 }
+
+#[tokio::test]
+async fn a_session_can_be_written_without_anybody_having_asked() {
+    // the failure this closes: the record existed only if somebody typed `/save`, which is the
+    // wrong condition - a session that ended badly is the one worth reading, and it was the one
+    // that left nothing behind. Nine runs against a provider that timed out left empty files, so
+    // there was no way to see how far any of them had got
+    let harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("something to keep"));
+
+    let dir = std::env::temp_dir().join(format!("kamchatka-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("the directory");
+    let log = dir.join("s.jsonl").display().to_string();
+    let state = dir.join("s.json").display().to_string();
+
+    // the writer the program calls on its way out, where `say` has nowhere left to put a sentence
+    let records = harness
+        .app
+        .write_session(&log, &state)
+        .expect("it should have written");
+    assert!(records > 0, "a session with a turn in it has records");
+
+    let written = std::fs::read_to_string(&log).expect("the log is there");
+    assert_eq!(
+        written.lines().count(),
+        records,
+        "the count it reports is the count it wrote"
+    );
+    // and the snapshot is the thing `-r` takes, not merely a file that exists
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(&state).expect("the snapshot is there"))
+            .expect("the snapshot parses");
+    let resumed = Kernel::resume(Config::default(), snapshot);
+    assert!(
+        resumed
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("something to keep")),
+        "what was in the session is in the session that comes back"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -585,6 +585,24 @@ now rather than a 404 on the next request. Both matter for different reasons: co
 models is one address and two names, while comparing a hosted model with the one running on this
 machine is two addresses. A comparison that cannot see the address is a comparison of names.
 
+Every session is written out when it ends, whether or not it ended well, and the last thing
+printed is where:
+
+```text
+kamchatka-1788373510 · 9 events recorded
+9 records in /tmp/kamchatka/kamchatka-1788373510.jsonl, and a session in
+/tmp/kamchatka/kamchatka-1788373510.json
+`kamchatka -r /tmp/kamchatka/kamchatka-1788373510.json` carries on from it
+```
+
+The condition used to be "somebody typed `/save`", which is exactly backwards: a session that
+ended badly is the one worth reading afterwards, and it was the one that left nothing. Nine runs
+against a provider that timed out left empty files and no way to see how far any of them had got.
+A resumed session keeps its name, so carrying on writes back to the same pair rather than
+scattering a lineage across files. It is a temporary directory because this is a safety net and
+not an archive — `/save PATH` is still how a session goes somewhere it will be next week — and
+`--no-record` turns it off for anyone who would rather a transcript did not outlive the terminal.
+
 `/models [FILTER]` is what makes `/model` usable, because the ids belong to the endpoint rather
 than to the model: the same thing is `google/gemini-3.5-flash` at one address and
 `gemini-3.5-flash` at another, and after a `/provider` there was no way to find out which without
@@ -699,6 +717,8 @@ kamchatka [OPTIONS] [MESSAGE]...
       --no-sandbox          run the shell tool unconfined, reaching whatever you can
       --forget-truncated    drop the whole of a shortened tool output instead of
                             keeping it as an archived item you can still read
+      --no-record           do not write the session out when it ends; it goes to a
+                            temporary directory otherwise, named on the way out
 
 Environment:
   KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY

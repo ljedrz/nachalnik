@@ -2344,6 +2344,30 @@ impl App {
     ///
     /// note: the snapshot is what `/load` reads back into a running session and what
     /// `kamchatka -r` starts from.
+    /// Writes the event log and a resumable snapshot, and says how many records that was.
+    ///
+    /// note: separate from `save` because the last write of a session happens after the terminal
+    /// has been restored, where `say` has nowhere to put a sentence. Both go through here so that
+    /// what `/save` produces and what a session leaves behind on its way out are the same pair of
+    /// files, written the same way.
+    pub fn write_session(&self, log: &str, state: &str) -> Result<usize, String> {
+        let records: Vec<String> = self
+            .kernel
+            .history()
+            .iter()
+            .filter_map(|record| serde_json::to_string(record).ok())
+            .collect();
+        // named, because "No such file or directory" on its own leaves somebody guessing which
+        // one; `-r` says which file it could not read and this should match it
+        std::fs::write(log, records.join("\n") + "\n")
+            .map_err(|e| format!("could not write {log}: {e}"))?;
+        let snapshot = serde_json::to_vec_pretty(&self.kernel.snapshot())
+            .map_err(|e| format!("could not render the session: {e}"))?;
+        std::fs::write(state, snapshot).map_err(|e| format!("could not write {state}: {e}"))?;
+
+        Ok(records.len())
+    }
+
     fn save(&mut self, path: &str) {
         // both extensions, so that `/save notes.jsonl` does not write `notes.jsonl.jsonl`
         let stem = match path {
@@ -2363,25 +2387,10 @@ impl App {
             .filter(|path| std::path::Path::new(path).exists())
             .collect();
 
-        let records: Vec<String> = self
-            .kernel
-            .history()
-            .iter()
-            .filter_map(|record| serde_json::to_string(record).ok())
-            .collect();
-        // named, because "No such file or directory" on its own leaves somebody guessing which
-        // one; `-r` says which file it could not read and this should match it
-        let written = std::fs::write(&log, records.join("\n") + "\n")
-            .map_err(|e| format!("could not write {log}: {e}"))
-            .and_then(|()| {
-                let snapshot = serde_json::to_vec_pretty(&self.kernel.snapshot())
-                    .map_err(|e| format!("could not render the session: {e}"))?;
-                std::fs::write(&state, snapshot)
-                    .map_err(|e| format!("could not write {state}: {e}"))
-            });
+        let written = self.write_session(&log, &state);
 
         match written {
-            Ok(()) => {
+            Ok(records) => {
                 if !replacing.is_empty() {
                     self.say(
                         Speaker::Note,
@@ -2391,9 +2400,8 @@ impl App {
                 self.say(
                     Speaker::Note,
                     format!(
-                        "{} records in {log}, and a session in {state} (`/load {state}` brings \
-                         it back here, `kamchatka -r {state}` starts a session from it)",
-                        records.len()
+                        "{records} records in {log}, and a session in {state} (`/load {state}` \
+                         brings it back here, `kamchatka -r {state}` starts a session from it)"
                     ),
                 );
             }

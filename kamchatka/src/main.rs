@@ -101,6 +101,10 @@ struct Args {
     /// Offer the model the two tools that read and change its own context: `introspect` and `amend`.
     #[arg(long)]
     introspect: bool,
+    /// Do not write the session out when it ends. It is written to a temporary directory
+    /// otherwise, and the path is the last thing printed.
+    #[arg(long)]
+    no_record: bool,
 
     /// A path outside the working directory the shell tool may also read and write. May be
     /// repeated.
@@ -154,6 +158,18 @@ async fn terminal() -> Result<()> {
     .context("could not reach the model")?;
 
     let config = Config {
+        // the default is a counter that restarts at 1 with the process, which is fine as an
+        // identity and useless as a filename: every session would write over the last one's
+        // record. A resumed session keeps the name in its snapshot, so carrying on appends to
+        // the same session rather than starting a second one that looks unrelated
+        session_name: args.resume.is_none().then(|| {
+            let started = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|since| since.as_secs())
+                .unwrap_or_default();
+
+            format!("kamchatka-{started}")
+        }),
         max_requests_per_turn: (args.requests > 0).then_some(args.requests),
         parallel_tool_calls: args.parallel,
         // what the runtime keeps is a decision about retention, and retention here is a file
@@ -283,8 +299,43 @@ async fn terminal() -> Result<()> {
         app.kernel.session_name(),
         app.kernel.history().len()
     );
+    // the record was only ever written if somebody thought to type `/save`, which is exactly the
+    // wrong condition: a session that ended badly is the one worth reading afterwards, and it was
+    // the one that left nothing. Nine runs against a provider that timed out left no trace of how
+    // far any of them had got
+    if !args.no_record {
+        match record(&app) {
+            Ok((records, log, state)) => println!(
+                "{records} records in {log}, and a session in {state}\n\
+                 `kamchatka -r {state}` carries on from it"
+            ),
+            Err(e) => eprintln!("the session was not written: {e}"),
+        }
+    }
 
     outcome
+}
+
+/// Writes the session where nobody has to have asked for it, and says where that was.
+///
+/// note: a temporary directory, because this is a safety net rather than an archive - `/save`
+/// remains the way to put a session somewhere it will still be next week. `--no-record` turns it
+/// off for anyone who would rather a transcript did not outlive the terminal.
+fn record(app: &App) -> Result<(usize, String, String)> {
+    let mut dir = std::env::temp_dir();
+    dir.push("kamchatka");
+    std::fs::create_dir_all(&dir).with_context(|| format!("could not make {}", dir.display()))?;
+
+    let stem = dir.join(app.kernel.session_name());
+    let (log, state) = (
+        format!("{}.jsonl", stem.display()),
+        format!("{}.json", stem.display()),
+    );
+    let records = app
+        .write_session(&log, &state)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    Ok((records, log, state))
 }
 
 /// Draws, waits for whichever of the three things happens first, and does it again.

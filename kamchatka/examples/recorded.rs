@@ -160,8 +160,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // granted once and recorded as such
     let started = std::time::Instant::now();
     let mut follow_up = std::env::var("TASK2").ok();
+    // a turn that fails used to take the recording with it: `?` here skipped the write below, so
+    // the runs worth reading afterwards - nine in a row against a provider that timed out - were
+    // exactly the ones that left an empty file. The error is still the exit code; it just waits
+    // until the record is on disk
+    let mut failed = None;
     loop {
-        match kernel.turn().await? {
+        let turn = match kernel.turn().await {
+            Ok(state) => state,
+            Err(e) => {
+                eprintln!("the turn failed: {e}");
+                failed = Some(e);
+                break;
+            }
+        };
+        match turn {
             State::Deciding { .. } => {
                 for pending in kernel.pending_permissions() {
                     kernel.decide(pending.id, Grant::Allow)?;
@@ -187,7 +200,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    write(&kernel, budget, &mut events, started.elapsed())
+    write(&kernel, budget, &mut events, started.elapsed())?;
+    match failed {
+        Some(e) => Err(e.into()),
+        None => Ok(()),
+    }
 }
 
 /// Writes the exchange out three ways: to read, to check, and to replay.
