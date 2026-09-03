@@ -1,6 +1,6 @@
 [package]
 name = "nachalnik"
-version = "0.2.1"
+version = "0.3.0"
 description = "A minimal, transparent agent runtime: context, tools, permissions and execution as explicit, user-controllable state."
 documentation = "https://docs.rs/nachalnik"
 readme = "README.md"

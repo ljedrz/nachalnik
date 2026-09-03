@@ -1,6 +1,6 @@
 [package]
 name = "nachalnik-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Model Context Protocol (MCP) servers as tools for the nachalnik agent runtime: a tool somebody else wrote, as a Tool like any other."
 documentation = "https://docs.rs/nachalnik-mcp"
 readme = "README.md"

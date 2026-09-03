@@ -1,6 +1,6 @@
 [package]
 name = "kamchatka"
-version = "0.3.0"
+version = "0.4.0"
 description = "A terminal LLM agent built on nachalnik: the context, the budget and every decision, on screen."
 documentation = "https://docs.rs/kamchatka"
 readme = "README.md"
