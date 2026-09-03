@@ -613,11 +613,35 @@ fn to_wire(message: &Message) -> Value {
 }
 
 /// What the provider said a request cost.
+///
+/// note: `reasoning_tokens` is read from `completion_tokens_details` where a server sends it, and
+/// otherwise *inferred* from the residual: `total_tokens` minus the prompt and completion counts.
+/// Google's OpenAI-compatible endpoint omits the details object altogether and reports a total
+/// that is larger than its parts - measured, 19 in and 5 out against a total of 151 - so the
+/// thinking a reasoning model is billed for exists in that dialect only as the difference. Read
+/// literally, its usage says a request cost 24 tokens when it cost 151, and anything reporting
+/// what a run cost would be out by a factor of twenty.
+///
+/// note: it is an inference, and it is a safe one in exactly one direction. A server whose total
+/// is the sum of its parts yields zero and changes nothing, which is every non-reasoning
+/// dialect; a negative residual is discarded rather than trusted. What it must not be read as is
+/// a *reported* figure - it is this crate's arithmetic about somebody else's numbers, which is
+/// why it says so here.
 fn usage_of(reported: &Value) -> Usage {
+    let input = reported["prompt_tokens"].as_u64();
+    let output = reported["completion_tokens"].as_u64();
+    let residual = || {
+        let total = reported["total_tokens"].as_u64()?;
+        total.checked_sub(input.unwrap_or_default() + output.unwrap_or_default())
+    };
+
     Usage {
-        input_tokens: reported["prompt_tokens"].as_u64(),
-        output_tokens: reported["completion_tokens"].as_u64(),
-        reasoning_tokens: reported["completion_tokens_details"]["reasoning_tokens"].as_u64(),
+        input_tokens: input,
+        output_tokens: output,
+        reasoning_tokens: reported["completion_tokens_details"]["reasoning_tokens"]
+            .as_u64()
+            .or_else(residual)
+            .filter(|tokens| *tokens > 0),
         cached_input_tokens: reported["prompt_tokens_details"]["cached_tokens"].as_u64(),
     }
 }
