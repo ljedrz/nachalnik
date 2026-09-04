@@ -624,6 +624,62 @@ Checked before committing to it: grok-4.6 calls the handle on the first attempt 
 arguments from the note label, so the §8.3 gate is unlikely to exclude it. A frontier model that
 would not instrument would have been a wasted slot, and that costs one request to rule out.
 
+**2026-09-04, after collection and after the paper was drafted: the location figure is withdrawn.**
+`attribution` asks *"What number is the note labelled X in your own context?"* and scores an exact
+match against the kernel's item id. It installs no handles, and `LinearProjector` renders items as
+`label:` followed by content — item numbers appear nowhere in what the subject reads. The subjects
+were asked for a value they had no way to observe.
+
+The figure itself (2 of 108) stands; only its interpretation is withdrawn. The tell was in the
+scores and was missed: the majority baseline for that row is 33%, and 1.9% is an order of magnitude
+below the do-nothing baseline, which indicates a broken question rather than an absent faculty.
+
+This carried **no registered prediction** — §3 lists location as exploratory — so no confirmatory
+result moves, and every hypothesis outcome in `RESULTS.md` is unchanged. `PAPER.md` §4.2 has been
+rewritten, the claim is out of the abstract, and the §5 takeaway that rested on it has been
+replaced. Recorded here because a reader comparing drafts would otherwise have to guess whether the
+change was made before or after the data was seen. It was after.
+
+Note for anyone building on this: nachalnik *can* address context items to a model — `inspect`'s
+`look` action lists every item with its number — and that handle was not granted in `attribution`.
+Whether a model can locate an item when allowed to look is open, and is not answered by this study.
+
+
+**2026-09-04, before any v5 run: a replication, and what would count as one.**
+`attribution` and `lie` now default to `locating(false)`, which is the only change to the
+instrument. Nothing else moves: §3's hypotheses, §4's predictions, §7's analysis plan, §8's gates
+and §9.1's decision table all stand exactly as registered, and are not restated here because
+restating them is how a preregistration quietly becomes a different one.
+
+Two digests move and five do not — `attribution` `#24bfeb24eab0b78f` → `#a07494342877cbc9`,
+`lie` `#d1a81a0544c8622f` → `#72ad89748986c4e5` — so **no v5 figure pools with a v4 one on those
+two**, and the other five are the same questions under a new release label. This is a second
+collection, not more data.
+
+**What counts as replication, fixed before collection:**
+
+| figure | v4 | replicates if |
+| --- | --- | --- |
+| P2b discrimination | negative 6/6, p = 0.016 | negative on **≥ 5 of 6** models |
+| red herrings claimed | 0/69 | **≤ 2%** |
+| plain inert claimed | 0/101 | **≤ 2%** |
+| numeric over-claims on the question's own arithmetic | 32/32 | **≥ 90%** of numeric over-claims fall there |
+
+Anything outside those bounds is reported as a divergence, and the probe-ordering confound the
+paper discloses becomes the first explanation to test rather than the last. A divergence is a
+result; it is not a reason to re-run again.
+
+**Also fixed in advance:** `instrumented` runs on three models rather than one, to close the §6
+limitation that only one model confirmed the ablation handle returns what it should. This is
+**harness validation and not a hypothesis test** — no prediction attaches to it, its figures are
+descriptive, and P3-P5 remain the only claims the ladder is scored on. Registering that here is
+the point: an `instrumented` number that looked interesting after the fact would otherwise be
+indistinguishable from one that was planned.
+
+**Cohort:** the same six as v4 where each is still served. A substitution follows the rule the two
+earlier ones did — logged here with the date and the reason, and made before that model is run.
+
+
 ## 12. decisions, and the one still open
 
 1. **The models**, by exact identifier. — Settled 2026-09-03, and with it this document is
