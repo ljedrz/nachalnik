@@ -25,6 +25,21 @@ use serde_json::{Value, json};
 /// How many HTTP attempts one request gets before it gives up.
 const ATTEMPTS: u32 = 5;
 
+/// How long one request may take, generation included, before it is treated as hung.
+///
+/// note: ten minutes, and it was three. Three was far too short: reqwest's timeout spans the whole
+/// request, so on a reasoning model asked for a long answer it fires *during generation* and
+/// surfaces as `error decoding response body` - indistinguishable, from the outside, from a
+/// network that dropped. Measured on `deepseek/deepseek-v4-flash-0731` through OpenRouter, which
+/// spent 16,754 output tokens on one question and tripped it six times in one run.
+///
+/// note: the retry beside it makes that failure expensive rather than fatal, which is worse than
+/// it sounds. **Every attempt is billed** - a provider that generated nine thousand tokens and
+/// then lost the connection has still generated them - so a request that reliably exceeds the
+/// timeout is paid for five times and fails anyway. This is here to catch a socket with nobody on
+/// the other end; bounding how hard a model may think is `max_tokens`' job.
+const PATIENCE: Duration = Duration::from_secs(600);
+
 /// How long a stream may say nothing before the provider looks up to check whether it has been
 /// asked to stop.
 const HEARTBEAT: Duration = Duration::from_millis(120);
@@ -98,9 +113,20 @@ impl OpenAiCompatible {
     /// available". Every client in here comes from this function, so this is the one place it has
     /// to happen; the second call loses the race and says so, which is not an error.
     pub fn client() -> reqwest::Client {
+        Self::client_with(PATIENCE)
+    }
+
+    /// The same, with a timeout of the caller's choosing.
+    ///
+    /// note: worth choosing deliberately, because reqwest's timeout covers the *whole* request -
+    /// connect, generate and body - so it is an upper bound on how long a model may think and not
+    /// only on how long a dead socket may hang. Set it below what the work takes and every long
+    /// answer arrives as `error decoding response body`, which looks like a network fault and is
+    /// not one.
+    pub fn client_with(timeout: Duration) -> reqwest::Client {
         let _ = rustls::crypto::ring::default_provider().install_default();
         reqwest::Client::builder()
-            .timeout(Duration::from_secs(180))
+            .timeout(timeout)
             .build()
             .expect("a default client is buildable")
     }
@@ -252,6 +278,38 @@ impl OpenAiCompatible {
     }
 
     /// Parses a whole (non-streamed) answer.
+    /// Waits out a transport failure if there are attempts left, and gives up if there are not.
+    ///
+    /// note: `Ok(None)` means "try again"; the caller continues its loop. Written as a helper
+    /// rather than twice inline because the two call sites - a request that never landed and a
+    /// body that stopped arriving - want identical behaviour and drifted apart the first time
+    /// they were written out separately.
+    async fn wait_out<T>(
+        &self,
+        outcome: Result<T, reqwest::Error>,
+        attempt: u32,
+        last: &mut String,
+        why: &str,
+    ) -> Result<Option<T>, BoxError> {
+        match outcome {
+            Ok(value) => Ok(Some(value)),
+            Err(e) if attempt + 1 < ATTEMPTS => {
+                let wait = Duration::from_secs(2u64.pow(attempt));
+                // on stderr, so that it never lands in output somebody is piping somewhere
+                eprintln!(
+                    "  {} is {why}; waiting {}s",
+                    self.model.lock(),
+                    wait.as_secs()
+                );
+                *last = e.to_string();
+                tokio::time::sleep(wait).await;
+
+                Ok(None)
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
     fn parse(&self, body: &Value) -> ModelResponse {
         let choice = &body["choices"][0];
         let message = &choice["message"];
@@ -510,13 +568,26 @@ impl Provider for OpenAiCompatible {
         for attempt in 0..ATTEMPTS {
             self.attempts.fetch_add(1, SeqCst);
 
-            let response = self
+            // note: a connection that fails, or a body that stops arriving halfway, is exactly
+            // as transient as the 503 below and was the one case this loop did not cover - it
+            // bailed on the first occurrence and took the caller's whole run with it. Measured
+            // against OpenRouter: `error decoding response body`, twelve requests into a run,
+            // once. Retried on the same schedule as a busy model, and given up on in the same
+            // way, so a caller sees one behaviour for "the network did not hold" rather than two
+            let sent = self
                 .client
                 .post(format!("{}/chat/completions", self.base_url))
                 .bearer_auth(&self.api_key)
                 .json(&body)
                 .send()
-                .await?;
+                .await;
+            let response = match self
+                .wait_out(sent, attempt, &mut last, "unreachable")
+                .await?
+            {
+                Some(response) => response,
+                None => continue,
+            };
 
             let status = response.status();
             if streaming && status.is_success() {
@@ -524,7 +595,14 @@ impl Provider for OpenAiCompatible {
             }
 
             let headers = response.headers().clone();
-            let text = response.text().await?;
+            let body_text = response.text().await;
+            let text = match self
+                .wait_out(body_text, attempt, &mut last, "cut off mid-answer")
+                .await?
+            {
+                Some(text) => text,
+                None => continue,
+            };
             let payload: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
             let error = body_error(&payload);
 

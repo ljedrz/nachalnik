@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["nachalnik", "nachalnik-mcp", "nachalnik-utils", "kamchatka"]
+members = ["nachalnik", "nachalnik-mcp", "nachalnik-utils", "nachalnik-eval", "kamchatka"]
 
 # what every crate in here agrees on; a member opts in with `edition.workspace = true`
 [workspace.package]

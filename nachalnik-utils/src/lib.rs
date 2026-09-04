@@ -5,11 +5,12 @@
 //! different directions, and fixed twice whenever they needed fixing at all. Neither of them is
 //! what this workspace is *about*, so neither of them should be written twice.
 //!
-//! note: It is a dev-dependency of `nachalnik` and nothing else, which is what lets it stay at
-//! `0.0.0` and unpublished: cargo strips dev-dependencies from a published manifest, so a crate
-//! that is only ever dev-depended on never has to exist on the registry. A *normal* dependency
-//! could not do this - `cargo package` refuses a dependency with no version - which is why
-//! `kamchatka`, being published, still carries a provider of its own.
+//! note: It is a dev-dependency of `nachalnik` and of `nachalnik-eval`, and of nothing else,
+//! which is what lets it stay at `0.0.0` and unpublished: cargo strips dev-dependencies from a
+//! published manifest, so a crate that is only ever dev-depended on never has to exist on the
+//! registry. A *normal* dependency could not do this - `cargo package` refuses a dependency with
+//! no version - which is why `kamchatka`, being published and being a binary, still carries a
+//! provider of its own, and why `nachalnik-eval`'s runner is an example rather than one.
 
 #![deny(unsafe_code)]
 #![deny(missing_docs)]

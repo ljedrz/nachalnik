@@ -50,11 +50,13 @@ Two rules decide most questions before they are asked:
 | `nachalnik` | the runtime. Five dependencies, no `unsafe`, no network, no prompt. Meant to stay boring. | yes |
 | `nachalnik-mcp` | MCP servers as `Tool`s. Deliberately outside the core: speaking MCP means spawning processes and reading notifications in the background, which the runtime promises not to do. | yes |
 | `kamchatka` | a terminal agent built on the runtime; the proof that the seams hold under a real client. | yes |
-| `nachalnik-utils` | the OpenAI-compatible provider the examples and the live suite share. **Never published, permanently `0.0.0`, dev-dependency only** - cargo strips dev-dependencies from a published manifest, which is the whole trick. Nothing may depend on it normally. | no |
+| `nachalnik-eval` | a benchmark for model introspection: elicit a claim about a context, move the thing it was about on a copy, and score the claim against what happened. No provider, no network, four dependencies. | yes |
+| `nachalnik-utils` | the OpenAI-compatible provider the examples, the live suites and `nachalnik-eval`'s `bench` example share. **Never published, permanently `0.0.0`, dev-dependency only** - cargo strips dev-dependencies from a published manifest, which is the whole trick. Nothing may depend on it normally. | no |
 
-`nachalnik-mcp` was written with **no change to the runtime at all**. That remains the test of
-whether a seam is real: if a downstream crate needs a core change to do an ordinary thing, the
-seam is wrong, not the crate.
+`nachalnik-mcp` was written with **no change to the runtime at all**, and so were
+`kamchatka`'s introspection tools and `nachalnik-eval`. That remains the test of whether a seam is
+real: if a downstream crate needs a core change to do an ordinary thing, the seam is wrong, not
+the crate.
 
 ---
 
@@ -104,8 +106,42 @@ are two tools rather than one with a mode argument because a `ToolSpec` declares
 once: looking and rewriting have to be separately grantable or the grant delivers more than it
 implies.
 
+`nachalnik-eval/src` is the third instance of the same test, and the one that is furthest from
+the runtime's own concerns: `subject.rs` (a `Kernel` plus "ask, and wait for the turn to end"),
+`probe.rs` (a question whose answer shape is declared, so a reading can parse it without a judge
+model), `intervene.rs` and `fork.rs` (a frozen `Snapshot`, a `ContextState` moved on a copy of it,
+and the copy run once with no tools), `trial.rs` (an append-only record, the way `Session` is,
+plus `Act` - what a subject *did*), `score.rs` (the arithmetic, computed *from* the record),
+`experiment.rs` (one trait method, a runner, and `Instrument`), and `suite/` (the seven
+experiments, the two dossiers, `script.rs`, and `handles.rs`).
+
+**What the crate is for is a ladder, and it is easy to miss the top of it.** `attribution`,
+`recursion`, `lie`, `privilege` and `feedback` measure introspection *by report* - ask a model
+what its answer rests on, and score the answer. That is all any harness can do. `instrumented`
+and `repair` measure introspection *by experiment*: `suite/handles.rs` installs two tools a
+subject can call, one that forks its own context and ablates an item and one that rewrites it, and
+the argument is the difference between what a model *says* and what it finds out. Those two
+experiments are the reason this crate is on this runtime rather than beside it. The runbook and the methods document belong to a study rather than
+to the instrument, and live in whichever repository ran it.
+
+The one place it departs from the runtime's rules is prompt text, and the departure is contained:
+everything above `suite/` does not know what a question is about, and the two tool descriptions
+are prompt text too and are hashed like the rest. Four decisions decide whether a figure means
+anything at all - the control condition is a *copy* rather than the live session, both arms are
+blinded to the exchange in which the subject already answered, every claim is elicited before any
+copy is run (`tests/harness.rs` asserts the ordering), and accuracy is never reported without the
+majority baseline beside it.
+
+`Instrument` is the part to be careful with. Every `Outcome` carries a stated version and an
+FNV-1a digest over every sentence the experiment says, and `tests/machinery.rs` pins all seven. If
+that test fails, a question changed and every run recorded before the change measured something
+else. Adding a template nothing existing reads is safe and leaves the other digests alone; editing
+one is not.
+
 `nachalnik/examples`: `transparency` and `compaction` need no key and run in CI; `compare` and
-`panel` talk to a real API through `examples/common`.
+`panel` talk to a real API through `examples/common`. `nachalnik-eval/examples/bench.rs` runs the
+introspection suite against any OpenAI-compatible endpoint and writes the whole record out as
+JSON; a local ollama works and costs nothing.
 
 `kamchatka/examples/recorded.rs` runs a session headless and writes it out four ways - readable,
 as events, as a snapshot, as the raw stream - which is how the first two transcripts under `docs/`
@@ -148,15 +184,28 @@ It reads `OPENROUTER_API_KEY` or `NACHALNIK_API_KEY` (never a stray `OPENAI_API_
 `NACHALNIK_BASE_URL`, `NACHALNIK_TEST_MODEL` and `NACHALNIK_CONTEXT_LIMIT` to point it elsewhere -
 Google AI Studio's OpenAI-compatible endpoint and a local ollama both work. It skips rather than
 fails without a key, or when a free tier has spent its allowance. `kamchatka` reads
-`KAMCHATKA_API_KEY` / `KAMCHATKA_MODEL` / `KAMCHATKA_BASE_URL` instead.
+`KAMCHATKA_API_KEY` / `KAMCHATKA_MODEL` / `KAMCHATKA_BASE_URL` instead. `nachalnik-eval` reads the
+`NACHALNIK_` ones, since it talks through the same provider:
+
+```console
+$ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
+    cargo run -p nachalnik-eval --example bench -- -m granite4.2:3b --json run.json
+```
+
+Its own live suite is two tests and about twenty requests; the whole four-experiment suite is
+about sixty, which is the `bench` example's job rather than `cargo test`'s.
 
 Test files: `nachalnik/tests/` is `kernel`, `context`, `state`, `session`, `tokens`,
-`concurrency`, `blocks`, `live`. `kamchatka/tests/` draws the screen and reads the characters back
-(`screen`), drives the introspection tools through the real loop (`introspect`), serves a recorded
-Gemini stream off a socket and checks what goes back out (`gemini`), runs real commands
-under a real ruleset (`sandbox`), and answers three sockets: one
-that goes silent mid-stream (`stalled`) and two that serve the shapes a streamed tool call arrives
-in (`streaming`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at
+`concurrency`, `blocks`, `live`. `nachalnik-eval/tests/` is `machinery` (the readings, the
+arithmetic and the pinned instrument digests), `harness` (the whole loop against a provider whose
+causal structure the test wrote - the only way to check that the harness recovers an influence
+nobody told it about, and, since the rulebook can emit tool calls, the only way to check the
+handles without paying a model to use them) and `live`. `kamchatka/tests/` draws the screen and reads the
+characters back (`screen`), drives the introspection tools through the real loop (`introspect`),
+serves a recorded Gemini stream off a socket and checks what goes back out (`gemini`), runs real
+commands under a real ruleset (`sandbox`), and answers three sockets: one that goes silent
+mid-stream (`stalled`) and two that serve the shapes a streamed tool call arrives in
+(`streaming`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at
 every tab with nothing to act on, and both scrolled past their own ends - a frame that panics takes
 the session with it, which is the one failure this program cannot report. `nachalnik-mcp/tests/`
 stands a real MCP server up rather than mocking one.

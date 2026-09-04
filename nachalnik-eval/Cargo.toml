@@ -1,0 +1,36 @@
+[package]
+name = "nachalnik-eval"
+version = "0.1.0"
+description = "A benchmark for model introspection: elicit a claim about its own state, intervene, and measure whether the claim was true."
+documentation = "https://docs.rs/nachalnik-eval"
+readme = "README.md"
+categories = ["development-tools::testing", "asynchronous"]
+# note: `metacognition` is what the literature calls this and nobody searches the registry for
+# it; `introspection` is the word people arrive by. `eval` buys the crowd that is looking for a
+# harness rather than for a runtime.
+keywords = ["llm", "ai", "eval", "introspection", "nachalnik"]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nachalnik.workspace = true
+
+async-trait.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# the scripted provider and the off-the-shelf policies, for the tests that must not touch a
+# network. The same self-referential trick `nachalnik` uses on itself: a feature turned on for
+# this crate's tests and off for its users
+nachalnik = { workspace = true, features = ["test"] }
+# the OpenAI-compatible provider the live suite and the `bench` example talk through. A
+# dev-dependency, and only ever a dev-dependency: cargo strips those from a published manifest,
+# which is what lets that crate stay unpublished at 0.0.0
+nachalnik-utils.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

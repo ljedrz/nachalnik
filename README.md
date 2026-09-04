@@ -468,6 +468,14 @@ functions a user interface calls. What decides which of it a *model* may do is t
 item, a system instruction, and the assistant turn the call is speaking in are refused, and the
 refusal is handed back to the model. The agent is not the boss.
 
+The same handles point the other way, too. Ask a model why it thinks what it thinks and you get a
+story about itself that nobody can check - but a claim about a *numbered* item in a context that
+can be snapshotted, edited and resumed is a claim with an experiment attached to it.
+**[`nachalnik-eval`][nachalnik-eval]** is that experiment, run to a schedule: the model commits to
+a claim, the harness moves the thing the claim was about on a throwaway copy, and the two are
+compared - with the majority baseline printed beside every accuracy, because a battery of
+counterfactuals in which nothing ever moves is one where *no* scores a hundred percent.
+
 ---
 
 ### 🎯 a budget that corrects itself
@@ -864,7 +872,8 @@ the API accepts, and asks the endpoint what models it serves.
 | **[`nachalnik`][nachalnik]** | the runtime. Five dependencies, no `unsafe`, no network, no prompt. This is the part that matters, and it is meant to stay boring. |
 | **[`nachalnik-mcp`][nachalnik-mcp]** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`kamchatka`][kamchatka]** | a terminal agent built on the runtime - the thing you actually run, and the demonstration that the seams hold up under one. |
-| `nachalnik-utils` | never published, permanently `0.0.0`. The OpenAI-compatible provider this crate's own examples and live tests talk through, so that scaffolding is written once rather than three times. A *dev*-dependency, which is the whole trick: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
+| **[`nachalnik-eval`][nachalnik-eval]** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared - so *"why do you think that?"* stops being unfalsifiable. |
+| `nachalnik-utils` | never published, permanently `0.0.0`. The OpenAI-compatible provider the workspace's examples and live tests talk through, so that scaffolding is written once rather than four times. A *dev*-dependency, which is the whole trick: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
 
 The bridge is deliberately *not* in the core. Speaking MCP means spawning processes, opening
 sockets and reading notifications in the background, and the runtime promises to do none of those;
@@ -877,7 +886,9 @@ to a server, tools arriving and leaving are `add_tool` and `remove_tool`, a stru
 `Content::Json`. The introspection tools above are the second instance of the same test, and a
 harder one: forking a context is `snapshot` and `resume`, previewing a request is
 `preview_request`, pruning is `set_state`, and reading the budget is `budget` - all of it already
-public, none of it added for the purpose. And it pushed back on one thing worth knowing about: MCP tool annotations are
+public, none of it added for the purpose. `nachalnik-eval` is the third, and the one furthest from
+anything the runtime was designed for: it turns those same handles around and uses them to *test*
+a model rather than to serve one. And the bridge pushed back on one thing worth knowing about: MCP tool annotations are
 *hints*, the specification says a client should never make tool-use decisions on hints from an
 untrusted server, so the bridge believes none of them by default. Its tests include a server
 offering a tool called `delete_everything` that claims to be read-only.
@@ -917,6 +928,7 @@ Licensed under the MIT License ([LICENSE-MIT][license]).
 [nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
 [writeup]: https://ljedrz.github.io/nachalnik/
 [nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
+[nachalnik-eval]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-eval
 [ex-compare]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compare.rs
 [ex-panel]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/panel.rs
 [ex-transparency]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/transparency.rs
