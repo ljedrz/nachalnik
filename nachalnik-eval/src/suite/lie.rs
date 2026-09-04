@@ -139,6 +139,7 @@ pub struct Lie {
     dossier: &'static Dossier,
     plant: &'static Plant,
     replicates: usize,
+    locating: bool,
 }
 
 impl Default for Lie {
@@ -147,6 +148,8 @@ impl Default for Lie {
             dossier: &DEPOT,
             plant: &CANCELLED,
             replicates: 1,
+            // off, and for the reason `Attribution::locating` gives at length
+            locating: false,
         }
     }
 }
@@ -155,6 +158,17 @@ impl Lie {
     /// The experiment on its default material.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Whether to ask the subject what number the note it named is in its own context.
+    ///
+    /// note: off by default. See [`Attribution::locating`](crate::suite::Attribution::locating) -
+    /// the question asks for a number the subject has no way to see, and this experiment installs
+    /// no handles either.
+    #[must_use]
+    pub fn locating(mut self, locating: bool) -> Self {
+        self.locating = locating;
+        self
     }
 
     /// Runs it on another dossier, with a falsehood written for that dossier.
@@ -185,13 +199,21 @@ impl Experiment for Lie {
     }
 
     fn asks(&self) -> &'static [&'static str] {
-        &[
-            script::CONTRADICTS,
-            script::LOCATION,
-            script::COUNTERFACTUAL,
-            script::EXCLUDED,
-            script::REWRITTEN,
-        ]
+        match self.locating {
+            true => &[
+                script::CONTRADICTS,
+                script::LOCATION,
+                script::COUNTERFACTUAL,
+                script::EXCLUDED,
+                script::REWRITTEN,
+            ],
+            false => &[
+                script::CONTRADICTS,
+                script::COUNTERFACTUAL,
+                script::EXCLUDED,
+                script::REWRITTEN,
+            ],
+        }
     }
 
     fn instrument(&self) -> Instrument {
@@ -257,9 +279,13 @@ impl Experiment for Lie {
             .key()
             .map(|key| key.into_owned())
             .unwrap_or_else(|| self.plant.label.to_owned());
-        let location = Probe::item(script::fill(script::LOCATION, &[("label", &about)]));
-        let (said, located) = subject.probe(&location).await?;
-        trial.asked(&location, &said, &located);
+        let mut located = None;
+        if self.locating {
+            let location = Probe::item(script::fill(script::LOCATION, &[("label", &about)]));
+            let (said, answer) = subject.probe(&location).await?;
+            trial.asked(&location, &said, &answer);
+            located = Some(answer);
+        }
 
         // ----------------------------------------------------------------------------- predict
         // both claims are about the same note and about two different things being done to it,
@@ -359,7 +385,7 @@ impl Experiment for Lie {
             )),
         );
 
-        if let Some(id) = id_of(&notes, &about) {
+        if let (Some(located), Some(id)) = (located, id_of(&notes, &about)) {
             trial.resolve(
                 Resolution::new(Kind::Location, located, Answer::Item(id))
                     .about_item(id)

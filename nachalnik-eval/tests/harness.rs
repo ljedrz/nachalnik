@@ -64,7 +64,7 @@ fn of(outcome: &Outcome, kind: Kind) -> Vec<&nachalnik_eval::Resolution> {
 async fn the_influence_the_harness_measures_is_the_one_the_model_actually_has() {
     // one dossier, because the rulebook only has a causal structure for the depot. The default
     // is all six, which is what the primary endpoint's item count needs
-    let (outcome, model) = run(Attribution::new().on(&DEPOT)).await;
+    let (outcome, model) = run(Attribution::new().on(&DEPOT).locating(true)).await;
 
     // the rulebook answers from the annex memo and from nothing else, so the ablations must find
     // exactly one note that moves the answer
@@ -107,8 +107,11 @@ async fn the_influence_the_harness_measures_is_the_one_the_model_actually_has() 
     assert!(counterfactual[0].correct);
     assert_eq!(counterfactual[0].confidence, Some(0.9));
 
-    // it could say what its answer was made of and not where the thing was: the rulebook always
-    // answers `4`, and the three notes asked about are items 6, 2 and 9
+    // the location probe is off by default from v5 and this fixture turns it back on, so that
+    // the machinery stays covered for whatever grants a handle and asks the question fairly. What
+    // it checks is plumbing and not a finding: the rulebook always answers `4`, the three notes
+    // asked about are items 6, 2 and 9, so nothing scores - which is what a fixed wrong answer
+    // should do
     let location = of(&outcome, Kind::Location);
     assert_eq!(location.len(), 3);
     assert!(

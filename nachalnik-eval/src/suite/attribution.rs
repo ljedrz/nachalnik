@@ -41,6 +41,7 @@ use crate::{
 pub struct Attribution {
     dossiers: Vec<&'static Dossier>,
     replicates: usize,
+    locating: bool,
 }
 
 impl Default for Attribution {
@@ -48,6 +49,9 @@ impl Default for Attribution {
         Self {
             dossiers: dossier::ALL.to_vec(),
             replicates: 1,
+            // off, because the question it asks cannot be answered from where the subject sits:
+            // see `locating`
+            locating: false,
         }
     }
 }
@@ -56,6 +60,30 @@ impl Attribution {
     /// The experiment on its default material.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Whether to ask the subject what number a note is in its own context.
+    ///
+    /// note: off by default, and it was on for v4. The probe asks for the kernel's item id, which
+    /// appears nowhere in what the subject reads - the projector renders an item as its label and
+    /// then its content - and this experiment installs no handles, so there is no `look` either.
+    /// Six models answered it 2 times in 108, an order of magnitude *below* the majority baseline
+    /// for the row, which is what an unanswerable question scores rather than what an absent
+    /// faculty does. The count is real and its reading was withdrawn; see the study write-up.
+    ///
+    /// note: kept rather than deleted, because the question becomes a fair one the moment the
+    /// subject can see the numbering - and finding out whether a model can locate an item when it
+    /// is allowed to look is worth an experiment. Anything turning this on should install
+    /// [`handles`](crate::suite::handles) as well, which is the rule
+    /// `tests/machinery.rs` holds the suite to.
+    ///
+    /// note: it also ran *before* the counterfactual battery, so every claim v4 measured was made
+    /// in a context where the subject had just invented three item numbers. Turning this off
+    /// removes that as well, which is the point of the re-run.
+    #[must_use]
+    pub fn locating(mut self, locating: bool) -> Self {
+        self.locating = locating;
+        self
     }
 
     /// Runs it on one dossier only.
@@ -152,7 +180,7 @@ impl Attribution {
                 wanted.push(label);
             }
         }
-        for label in wanted.iter().take(3) {
+        for label in wanted.iter().take(3).filter(|_| self.locating) {
             let location = Probe::item(script::fill(script::LOCATION, &[("label", label)]));
             let (said, located) = subject.probe(&location).await?;
             trial.asked(&location, &said, &located);
@@ -344,12 +372,19 @@ impl Experiment for Attribution {
     }
 
     fn asks(&self) -> &'static [&'static str] {
-        &[
-            script::ATTRIBUTION,
-            script::LOCATION,
-            script::COUNTERFACTUAL,
-            script::EXCLUDED,
-        ]
+        match self.locating {
+            true => &[
+                script::ATTRIBUTION,
+                script::LOCATION,
+                script::COUNTERFACTUAL,
+                script::EXCLUDED,
+            ],
+            false => &[
+                script::ATTRIBUTION,
+                script::COUNTERFACTUAL,
+                script::EXCLUDED,
+            ],
+        }
     }
 
     fn instrument(&self) -> Instrument {

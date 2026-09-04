@@ -487,31 +487,31 @@ fn the_instrument_is_pinned_so_that_it_cannot_change_quietly() {
     for (experiment, pinned) in [
         (
             suite::Attribution::new().instrument(),
-            "v4/depot+orchard+foundry+ferry+kiln+mill #24bfeb24eab0b78f",
+            "v5/depot+orchard+foundry+ferry+kiln+mill #a07494342877cbc9",
         ),
         (
             suite::Recursion::new().instrument(),
-            "v4/depot #b700ab1e931e50e2",
+            "v5/depot #b700ab1e931e50e2",
         ),
         (
             suite::Lie::new().instrument(),
-            "v4/depot+cancelled #d1a81a0544c8622f",
+            "v5/depot+cancelled #72ad89748986c4e5",
         ),
         (
             suite::Privilege::new().instrument(),
-            "v4/depot+orchard #896b935b8fd6fcb0",
+            "v5/depot+orchard #896b935b8fd6fcb0",
         ),
         (
             suite::Feedback::new().instrument(),
-            "v4/depot+orchard #0b4b68c9b9d01bf6",
+            "v5/depot+orchard #0b4b68c9b9d01bf6",
         ),
         (
             suite::Instrumented::new().instrument(),
-            "v4/depot+orchard+foundry+ferry+kiln+mill #49bf2ab6dbaa24fe",
+            "v5/depot+orchard+foundry+ferry+kiln+mill #49bf2ab6dbaa24fe",
         ),
         (
             suite::Repair::new().instrument(),
-            "v4/depot+orchard+foundry+ferry+kiln+planted #a2fa046fb6002e99",
+            "v5/depot+orchard+foundry+ferry+kiln+planted #a2fa046fb6002e99",
         ),
     ] {
         assert_eq!(experiment.to_string(), pinned);
@@ -1400,19 +1400,15 @@ fn a_question_that_needs_an_address_comes_with_a_way_to_look() {
         .map(|experiment| experiment.name().to_owned())
         .collect();
 
-    // note: pinned rather than asserted empty, in the manner of the digest test above, because
-    // both of these are *frozen*: they are the material study one was run on, their digests are
-    // quoted in its write-up, and moving a template would make every figure there incomparable
-    // with anything measured later. So this is not a to-do list. It is a fence: a new experiment
-    // that asks where an item is without granting a way to look fails here, and fixing either of
-    // these two fails here too, which is the point - both are decisions to take deliberately,
-    // with the version bumped, rather than by editing an array.
-    assert_eq!(
-        unanswerable,
-        ["attribution", "lie"],
-        "the set of experiments asking for an item number with no handle to look has changed; \
-         if this is a new experiment, grant it `handles::INSPECT` or drop the location probe, and \
-         if it is a fix to a frozen one, move `script::VERSION` and update this list"
+    // note: this listed `attribution` and `lie` until v5, and pinning them rather than asserting
+    // empty is what made the fix a deliberate act: turning the probe off failed this test, which
+    // is what a fence is for. Both now default to `locating(false)`, the two digests moved, and
+    // `VERSION` went with them. An experiment that turns it back on has to install the handles.
+    assert!(
+        unanswerable.is_empty(),
+        "these ask for an item number and grant no handle to look at the numbering: {unanswerable:?}. \
+         Either grant `handles::INSPECT` or leave `locating` off - a subject cannot answer from \
+         where it sits, and v4 scored the resulting noise as a finding"
     );
 }
 
