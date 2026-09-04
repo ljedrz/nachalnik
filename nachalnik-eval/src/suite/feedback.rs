@@ -199,23 +199,24 @@ impl Experiment for Feedback {
          second battery of the same shape over fresh material"
     }
 
+    fn asks(&self) -> &'static [&'static str] {
+        &[
+            script::COUNTERFACTUAL,
+            script::EXCLUDED,
+            script::TOLD,
+            script::TOLD_LINE,
+            script::TOLD_TALLY,
+            script::SAID_DIFFERENT,
+            script::SAID_SAME,
+            script::SAID_NEITHER,
+            script::DID_DIFFER,
+            script::DID_AGREE,
+            script::DID_NEITHER,
+        ]
+    }
+
     fn instrument(&self) -> Instrument {
-        instrument(
-            &[self.first, self.second],
-            &[
-                script::COUNTERFACTUAL,
-                script::EXCLUDED,
-                script::TOLD,
-                script::TOLD_LINE,
-                script::TOLD_TALLY,
-                script::SAID_DIFFERENT,
-                script::SAID_SAME,
-                script::SAID_NEITHER,
-                script::DID_DIFFER,
-                script::DID_AGREE,
-                script::DID_NEITHER,
-            ],
-        )
+        instrument(&[self.first, self.second], self.asks())
     }
 
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()> {

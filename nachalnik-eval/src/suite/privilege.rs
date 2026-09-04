@@ -103,16 +103,17 @@ impl Experiment for Privilege {
          the control that separates privileged self-access from reasoning about some notes"
     }
 
+    fn asks(&self) -> &'static [&'static str] {
+        &[
+            script::COUNTERFACTUAL,
+            script::EXCLUDED,
+            script::FOREIGN,
+            script::QUOTED,
+        ]
+    }
+
     fn instrument(&self) -> Instrument {
-        instrument(
-            &[self.own, self.foreign],
-            &[
-                script::COUNTERFACTUAL,
-                script::EXCLUDED,
-                script::FOREIGN,
-                script::QUOTED,
-            ],
-        )
+        instrument(&[self.own, self.foreign], self.asks())
     }
 
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()> {

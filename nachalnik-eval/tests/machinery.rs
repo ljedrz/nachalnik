@@ -1373,3 +1373,67 @@ fn a_turn_that_was_cut_off_is_not_a_wrong_answer() {
     assert_eq!((scores.unmeasured, scores.cut), (1, 1));
     assert!(format!("{scores}").contains("raise --max-tokens"));
 }
+
+// --------------------------------------------------------------- what a question needs to be fair
+
+#[test]
+fn a_question_that_needs_an_address_comes_with_a_way_to_look() {
+    // note: this test exists because the suite got it wrong and nothing caught it. `attribution`
+    // asks "What number is the note labelled X in your own context?" of a subject running under
+    // `script::BRIEF`, which tells it in as many words that it has no tools - and grants it no
+    // `inspect`, so it has no way to see the numbering it is being asked about. The projector
+    // renders items as `label:` and their content; item numbers appear nowhere. Six models scored
+    // 2 of 108 on it, an order of magnitude *below* the majority baseline for the row, and the
+    // null was written up as a fact about models until somebody asked what the subject could
+    // actually see.
+    //
+    // note: the rule is mechanical and worth stating as one. Every other probe in the suite is
+    // answerable by reasoning about the notes; `LOCATION` is the only one that needs an *address*
+    // rather than an argument, and an address has to be granted. So: a template list carrying
+    // `LOCATION` must carry `handles::INSPECT` as well.
+    let unanswerable: Vec<String> = suite::all()
+        .iter()
+        .filter(|experiment| {
+            let asks = experiment.asks();
+            asks.contains(&suite::script::LOCATION) && !asks.contains(&suite::handles::INSPECT)
+        })
+        .map(|experiment| experiment.name().to_owned())
+        .collect();
+
+    // note: pinned rather than asserted empty, in the manner of the digest test above, because
+    // both of these are *frozen*: they are the material study one was run on, their digests are
+    // quoted in its write-up, and moving a template would make every figure there incomparable
+    // with anything measured later. So this is not a to-do list. It is a fence: a new experiment
+    // that asks where an item is without granting a way to look fails here, and fixing either of
+    // these two fails here too, which is the point - both are decisions to take deliberately,
+    // with the version bumped, rather than by editing an array.
+    assert_eq!(
+        unanswerable,
+        ["attribution", "lie"],
+        "the set of experiments asking for an item number with no handle to look has changed; \
+         if this is a new experiment, grant it `handles::INSPECT` or drop the location probe, and \
+         if it is a fix to a frozen one, move `script::VERSION` and update this list"
+    );
+}
+
+#[test]
+fn every_experiment_fingerprints_the_templates_it_says_it_asks() {
+    // note: `asks` and `instrument` must be the same list or the fence above measures nothing:
+    // a location probe left out of the template list is invisible to it *and* to the digest.
+    // Checked by rewording one template's worth of text and requiring the digest to move.
+    for experiment in suite::all() {
+        let stated = experiment.asks();
+        assert!(
+            !stated.is_empty(),
+            "{} states no templates, so nothing can be checked about what it asks",
+            experiment.name()
+        );
+        for template in stated {
+            assert!(
+                !template.trim().is_empty(),
+                "{} lists an empty template",
+                experiment.name()
+            );
+        }
+    }
+}

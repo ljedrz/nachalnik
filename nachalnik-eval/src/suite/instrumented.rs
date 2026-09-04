@@ -388,17 +388,18 @@ impl Experiment for Instrumented {
          can run the experiment, and reports the difference"
     }
 
+    fn asks(&self) -> &'static [&'static str] {
+        &[
+            script::COUNTERFACTUAL,
+            script::EXCLUDED,
+            script::GO_AND_LOOK,
+            script::BRIEF_HANDLED,
+            handles::INSPECT,
+        ]
+    }
+
     fn instrument(&self) -> Instrument {
-        instrument(
-            &self.dossiers,
-            &[
-                script::COUNTERFACTUAL,
-                script::EXCLUDED,
-                script::GO_AND_LOOK,
-                script::BRIEF_HANDLED,
-                handles::INSPECT,
-            ],
-        )
+        instrument(&self.dossiers, self.asks())
     }
 
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()> {

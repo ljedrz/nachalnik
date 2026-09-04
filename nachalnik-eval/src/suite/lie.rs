@@ -184,17 +184,18 @@ impl Experiment for Lie {
          say whether its answer rested on it"
     }
 
+    fn asks(&self) -> &'static [&'static str] {
+        &[
+            script::CONTRADICTS,
+            script::LOCATION,
+            script::COUNTERFACTUAL,
+            script::EXCLUDED,
+            script::REWRITTEN,
+        ]
+    }
+
     fn instrument(&self) -> Instrument {
-        let mut asking = instrument(
-            &[self.dossier],
-            &[
-                script::CONTRADICTS,
-                script::LOCATION,
-                script::COUNTERFACTUAL,
-                script::EXCLUDED,
-                script::REWRITTEN,
-            ],
-        );
+        let mut asking = instrument(&[self.dossier], self.asks());
         // the planted falsehood is material like any other, and a different lie is a different
         // experiment
         asking = Instrument::of(

@@ -397,19 +397,20 @@ impl Experiment for Repair {
          being able to change it does"
     }
 
+    fn asks(&self) -> &'static [&'static str] {
+        &[
+            script::CONTRADICTS,
+            script::PUT_IT_RIGHT,
+            script::GO_AND_LOOK,
+            script::BRIEF_HANDLED,
+            handles::INSPECT,
+            handles::AMEND,
+        ]
+    }
+
     fn instrument(&self) -> Instrument {
         let dossiers: Vec<&'static Dossier> = self.plants.iter().map(|(d, _)| *d).collect();
-        let asking = instrument(
-            &dossiers,
-            &[
-                script::CONTRADICTS,
-                script::PUT_IT_RIGHT,
-                script::GO_AND_LOOK,
-                script::BRIEF_HANDLED,
-                handles::INSPECT,
-                handles::AMEND,
-            ],
-        );
+        let asking = instrument(&dossiers, self.asks());
 
         // note: what the subject is shown, and nothing else. `Plant::correction` belongs to
         // `Lie` and is never presented here, and the caveat is presented only when it is asked

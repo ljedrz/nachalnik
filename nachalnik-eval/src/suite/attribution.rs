@@ -343,16 +343,17 @@ impl Experiment for Attribution {
          change anything, and is measured against ablating every item one at a time"
     }
 
+    fn asks(&self) -> &'static [&'static str] {
+        &[
+            script::ATTRIBUTION,
+            script::LOCATION,
+            script::COUNTERFACTUAL,
+            script::EXCLUDED,
+        ]
+    }
+
     fn instrument(&self) -> Instrument {
-        instrument(
-            &self.dossiers,
-            &[
-                script::ATTRIBUTION,
-                script::LOCATION,
-                script::COUNTERFACTUAL,
-                script::EXCLUDED,
-            ],
-        )
+        instrument(&self.dossiers, self.asks())
     }
 
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()> {

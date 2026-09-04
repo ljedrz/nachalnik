@@ -94,11 +94,12 @@ impl Experiment for Recursion {
          of the copy's - with a copy actually run at every level"
     }
 
+    fn asks(&self) -> &'static [&'static str] {
+        &[script::COUNTERFACTUAL, script::EXCLUDED, script::DEEPER]
+    }
+
     fn instrument(&self) -> Instrument {
-        instrument(
-            &[self.dossier],
-            &[script::COUNTERFACTUAL, script::EXCLUDED, script::DEEPER],
-        )
+        instrument(&[self.dossier], self.asks())
     }
 
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()> {

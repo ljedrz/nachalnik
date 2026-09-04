@@ -126,6 +126,17 @@ pub trait Experiment: Send + Sync {
         Instrument::unstated()
     }
 
+    /// The question templates it puts to a subject.
+    ///
+    /// note: the same list [`Experiment::instrument`] fingerprints, so the two cannot drift: a
+    /// template missing from here is missing from the digest, and the digest tests would catch
+    /// it. Declared separately because a question's *text* decides what a subject needs in order
+    /// to answer it, and that is checkable before a run rather than after - see
+    /// `a_question_that_needs_an_address_comes_with_a_way_to_look` in `tests/machinery.rs`.
+    fn asks(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// Runs it.
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()>;
 }
