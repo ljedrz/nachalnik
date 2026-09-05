@@ -99,8 +99,8 @@ context is `snapshot` and `resume`, previewing a request is `preview_request`, p
 $ cargo test --workspace
 ```
 
-461 tests, of which 34 are live suites that skip themselves when there is no API key: 188 in
-`kamchatka`, 175 in `nachalnik`, 72 in `nachalnik-eval`, 25 in `nachalnik-mcp` and one in
+463 tests, of which 34 are live suites that skip themselves when there is no API key: 188 in
+`kamchatka`, 175 in `nachalnik`, 72 in `nachalnik-eval`, 25 in `nachalnik-mcp` and three in
 `nachalnik-utils`. Each crate's readme says what its own cover.
 
 The live suites are the only way to check the things a mock cannot - that the requests this

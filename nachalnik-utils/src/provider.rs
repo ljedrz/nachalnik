@@ -69,6 +69,9 @@ struct PartialCall {
     args: String,
     /// Whatever the provider attached to the call, which it will want back verbatim.
     extra: Value,
+    /// The number the provider filed this call under, if it used one. Not a position: see the
+    /// note where the fragments are gathered.
+    slot: Option<u64>,
 }
 
 impl OpenAiCompatible {
@@ -328,10 +331,13 @@ impl OpenAiCompatible {
                 .into_iter()
                 .flatten()
                 .map(|call| {
-                    let args: Value = serde_json::from_str(
-                        call["function"]["arguments"].as_str().unwrap_or("{}"),
-                    )
-                    .unwrap_or_else(|_| json!({}));
+                    // a model that produces invalid JSON gets to see that it did - the same
+                    // answer the streamed path gives. Handing it `{}` instead was this file
+                    // disagreeing with itself twelve lines apart, and meant a call arrived with
+                    // no arguments and nothing anywhere to say why
+                    let written = call["function"]["arguments"].as_str().unwrap_or("{}");
+                    let args: Value = serde_json::from_str(written)
+                        .unwrap_or_else(|_| json!({ "_unparsed": written }));
 
                     ToolCall::new(
                         call["id"].as_str().unwrap_or_default(),
@@ -435,11 +441,50 @@ impl OpenAiCompatible {
                 }
 
                 for requested in delta["tool_calls"].as_array().into_iter().flatten() {
-                    let index = requested["index"].as_u64().unwrap_or(0) as usize;
-                    while calls.len() <= index {
-                        calls.push(PartialCall::default());
-                    }
-                    let call = &mut calls[index];
+                    // note: OpenAI numbers the calls in a message and streams each one's arguments
+                    // in fragments, so the index is what says which call a fragment belongs to.
+                    // Google's compatible endpoint sends no index at all - one whole call per
+                    // chunk, each with an identifier of its own - and taking that for index zero
+                    // folds every call in a turn into the first: the names run together into
+                    // `writewritewrite` and the model is told there is no such tool. So the
+                    // identifier decides when there is no index, and a fragment with neither
+                    // continues whatever came last
+                    let at = match requested["index"].as_u64() {
+                        // note: the index says which call a fragment belongs to. It is *not* a
+                        // position in the list: minimax numbers its calls from one, and using it
+                        // as a slot leaves an unfilled call at zero, which the kernel then reports
+                        // as a repaired identifier and a tool with no name - a wasted round trip
+                        // and an error the model has to read. So an index is looked up, and a
+                        // number never seen before starts a new call at the end
+                        Some(index) => match calls.iter().position(|call| call.slot == Some(index))
+                        {
+                            Some(at) => at,
+                            None => {
+                                calls.push(PartialCall {
+                                    slot: Some(index),
+                                    ..PartialCall::default()
+                                });
+                                calls.len() - 1
+                            }
+                        },
+                        None => match requested["id"].as_str().filter(|id| !id.is_empty()) {
+                            Some(id) => match calls.iter().position(|call| call.id == id) {
+                                Some(at) => at,
+                                None => {
+                                    calls.push(PartialCall::default());
+                                    calls.len() - 1
+                                }
+                            },
+                            None => match calls.is_empty() {
+                                true => {
+                                    calls.push(PartialCall::default());
+                                    0
+                                }
+                                false => calls.len() - 1,
+                            },
+                        },
+                    };
+                    let call = &mut calls[at];
 
                     if let Some(id) = requested["id"].as_str() {
                         call.id = id.to_owned();
