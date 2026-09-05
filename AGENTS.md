@@ -288,7 +288,8 @@ README and the crate docs in longer form:
   restriction that does not exist - which is why `kamchatka`'s permissions tab says so.
 - **Confinement lives where the process is spawned.** `kamchatka` puts its `shell` tool under
   Landlock by re-executing itself in a mode that restricts itself and then `exec`s the command, so
-  `network: deny` is a refused `connect` and the working directory is the edge of the world. The
+  `network: deny` is a refused TCP `connect` - Landlock has no UDP right, and the readmes say so -
+  and the working directory is the edge of the world. The
   `exec` is load-bearing rather than tidy: a helper standing in front of the command is what a
   stopped call would kill instead of the command. The three file tools run
   in-process and are held to the same boundary by their own code, which is weaker in kind and said

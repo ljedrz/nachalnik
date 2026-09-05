@@ -39,8 +39,9 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 ```
 
 > **The permissions are enforced, and it is still a demonstration rather than a hardened agent.**
-> The `shell` tool runs under [Landlock](https://landlock.io): `network: deny` is refused by the
-> kernel at `connect()`, and `write: deny` makes the working directory read-only. Nothing outside
+> The `shell` tool runs under [Landlock](https://landlock.io): `network: deny` is a TCP `connect()`
+> refused by the kernel — TCP being the whole of what Landlock can refuse, so a UDP datagram still
+> goes out — and `write: deny` makes the working directory read-only. Nothing outside
 > that directory is **writable**, and nothing outside it is readable either — with one deliberate
 > exception, which is that the system directories (`/usr`, `/etc`, `/bin`, `/lib`, `/proc` and the
 > rest) are readable, because a command that cannot read `/usr/bin` cannot be a command. So
@@ -690,8 +691,9 @@ which is a Linux LSM. Everywhere else the program builds and runs, but the shell
 the permissions tab says `shell: a command can do any of these` rather than `shell: confined`, and
 the stances are answers you were asked for rather than a boundary anything enforces.
 
-On Linux it also wants a kernel new enough to have Landlock — 5.13 for the filesystem rules, 6.7
-for `network: deny`. The tab says which of the two it got.
+On Linux it also wants a kernel new enough to have Landlock — 5.13 for the filesystem rules, 6.2
+for the one that refuses `truncate()`, and 6.7 for `network: deny`. The tab says how much of it the
+kernel took: `confined`, or `partly confined` where some of it is older than the machine.
 
 ## 🎛️ options
 

@@ -13,6 +13,13 @@
 //! live model, refused a `curl`, reached the same page with `python3 -c "import urllib.request"`
 //! on its very next call; under this, that call gets `Permission denied` from the kernel.
 //!
+//! note: and it is TCP that it buys, because TCP is what Landlock has: `ConnectTcp` and `BindTcp`
+//! are its only two network access rights. A confined command can still send a UDP datagram, which
+//! is enough to put bytes in a DNS query, and AF_UNIX is only reachable at all from a kernel that
+//! has ABI 9. So `no network` here means no TCP, and it is written that way everywhere it is shown
+//! rather than rounded up to something this cannot do. What still holds against the rest is the
+//! filesystem: a command that cannot read a file has nothing to send.
+//!
 //! note: it is applied by re-executing *this program* in a mode that confines itself and then runs
 //! the command. The alternative is `Command::pre_exec`, which is `unsafe`, and this workspace does
 //! not have any. The child is deliberately not a `tokio` program: Landlock restricts the calling
@@ -36,6 +43,9 @@ pub const EXEC_FLAG: &str = "--confine-and-run";
 /// note: read is not a stance here. A command that cannot read `/usr/bin` cannot run at all, so
 /// the system directories are always readable and the interesting question is what is *writable*
 /// and whether the network is reachable - which are the two stances a person actually changes.
+///
+/// note: "the network" is TCP. Landlock has two network access rights and both are TCP; a UDP
+/// datagram still goes out. See the note at the top of this module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sandbox {
     /// The directory a command may work in; everything outside it is out of reach.
@@ -132,7 +142,8 @@ impl fmt::Display for Sandbox {
             ", the system directories read-only, {}",
             match self.network {
                 true => "the network reachable",
-                false => "no network",
+                // TCP is the whole of what Landlock can refuse; see the note at the top
+                false => "no TCP",
             }
         )
     }

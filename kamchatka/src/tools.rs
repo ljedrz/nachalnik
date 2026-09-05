@@ -234,8 +234,8 @@ impl Tool for Shell {
                 match self.confiner.is_some() {
                     true =>
                         " It runs confined: outside the working directory it can read this \
-                         machine's system paths and no more, and the network may be closed - so \
-                         a permission error there is the confinement rather than the command.",
+                         machine's system paths and no more, and TCP may be closed - so a \
+                         permission error there is the confinement rather than the command.",
                     false => "",
                 }
             ),

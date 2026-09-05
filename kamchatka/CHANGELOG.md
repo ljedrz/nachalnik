@@ -36,6 +36,14 @@ minor bump may break you.
   there was no way back. A permission rule that silently fails to match is the worst way for one to
   be wrong, and `*credentials*.json` is not an exotic thing to write.
 
+### changed
+
+- `network: deny` is described as what Landlock actually refuses, which is TCP. `ConnectTcp` and
+  `BindTcp` are its only two network access rights, so a confined command can still send a UDP
+  datagram - enough to put bytes in a DNS query - and AF_UNIX needs a kernel from 2026 to reach at
+  all. The screen, the tool's own description to the model and both readmes now say TCP rather than
+  "the network". Nothing about the confinement changed; what it was described as did.
+
 ## [0.4.0] - 2026-09-05
 
 ### fixed
