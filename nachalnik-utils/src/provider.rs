@@ -353,7 +353,13 @@ impl OpenAiCompatible {
         mut response: reqwest::Response,
         deltas: &DeltaSink,
     ) -> Result<ModelResponse, BoxError> {
-        let mut buffer = String::new();
+        // bytes rather than a `String`, because a chunk boundary is not a character boundary. A
+        // multi-byte character split across two reads used to be decoded twice, lossily, and
+        // arrived as two replacement characters that then went into the context, the transcript
+        // and any record made of it: `zażółć` came back `za\u{fffd}\u{fffd}ółć`. Held as bytes, the
+        // tail of a split character waits in here for the rest of itself, and only whole lines
+        // are decoded
+        let mut buffer: Vec<u8> = Vec::new();
         let mut text = String::new();
         let mut reasoning = String::new();
         let mut calls: Vec<PartialCall> = Vec::new();
@@ -378,9 +384,9 @@ impl OpenAiCompatible {
                     continue;
                 }
             };
-            buffer.push_str(&String::from_utf8_lossy(&bytes));
+            buffer.extend_from_slice(&bytes);
 
-            while let Some(end) = buffer.find('\n') {
+            while let Some(end) = buffer.iter().position(|byte| *byte == b'\n') {
                 // somebody asked to stop. Whatever has been parsed is kept and the rest of the
                 // socket is abandoned; the check is here, before the next fragment, so that a
                 // fragment is never read and then thrown away
@@ -389,7 +395,8 @@ impl OpenAiCompatible {
                     break;
                 }
 
-                let line = buffer[..end].trim().to_owned();
+                // a whole line, so whatever multi-byte characters it holds are all here
+                let line = String::from_utf8_lossy(&buffer[..end]).trim().to_owned();
                 buffer.drain(..=end);
 
                 let Some(data) = line.strip_prefix("data:") else {
@@ -470,6 +477,7 @@ impl OpenAiCompatible {
             }
 
             // the response was not a stream at all; an error body is the usual reason
+            let buffer = String::from_utf8_lossy(&buffer);
             let payload: Value = serde_json::from_str(&buffer).unwrap_or(Value::Null);
             return match payload.get("error").filter(|e| !e.is_null()) {
                 Some(error) => Err(format!("{error}").into()),

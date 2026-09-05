@@ -17,3 +17,11 @@ reqwest.workspace = true
 rustls.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["time"] }
+
+[dev-dependencies]
+nachalnik = { workspace = true, features = ["test"] }
+reqwest.workspace = true
+rustls.workspace = true
+# `net` and `io-util` for the one test that needs a real socket: a server that breaks a stream at
+# a chosen byte, which is the only way to reach the assembly inside `respond`
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread"] }
