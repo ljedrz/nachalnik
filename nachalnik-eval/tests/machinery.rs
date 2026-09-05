@@ -1433,3 +1433,82 @@ fn every_experiment_fingerprints_the_templates_it_says_it_asks() {
         }
     }
 }
+
+#[test]
+fn a_bare_confidence_of_one_is_read_as_certainty_and_that_is_a_choice() {
+    // note: pinned rather than fixed. `CONFIDENCE:` is asked for on a 0-100 scale, and the reader
+    // treats anything at or below 1.0 as a fraction - so a subject answering `1` meaning "one
+    // percent" is recorded as certain. Both readings are defensible for a bare `1` and neither is
+    // knowable from the line alone.
+    //
+    // note: it never happened. Across both collections every confidence recorded is between 33
+    // and 100 and none is a bare 0 or 1, so no figure in the study depends on which way this
+    // goes. It is pinned here so that changing it is a decision somebody takes on purpose: the
+    // digest covers the *questions* and not the reading of the answers, so a quiet edit here
+    // would change what old records mean without moving any fingerprint.
+    let claim = |said: &str| Probe::new("q", Reading::Claim).read(said);
+
+    assert_eq!(
+        claim("ANSWER: yes\nCONFIDENCE: 1"),
+        Answer::Claim {
+            yes: true,
+            confidence: Some(1.0)
+        },
+        "a bare 1 reads as certainty, not as one percent"
+    );
+    assert_eq!(
+        claim("ANSWER: yes\nCONFIDENCE: 0.9"),
+        Answer::Claim {
+            yes: true,
+            confidence: Some(0.9)
+        },
+        "a fraction is taken as written"
+    );
+    assert_eq!(
+        claim("ANSWER: yes\nCONFIDENCE: 90"),
+        Answer::Claim {
+            yes: true,
+            confidence: Some(0.9)
+        },
+        "a percentage is divided"
+    );
+    assert_eq!(
+        claim("ANSWER: yes\nCONFIDENCE: 150"),
+        Answer::Claim {
+            yes: true,
+            confidence: Some(1.0)
+        },
+        "and one over a hundred is clamped rather than refused"
+    );
+    // a claim with no readable confidence is still a claim: it is scored for accuracy and left
+    // out of the calibration figures, which is what `Scores::scored` counts
+    assert_eq!(
+        claim("ANSWER: no\nCONFIDENCE:"),
+        Answer::Claim {
+            yes: false,
+            confidence: None
+        },
+    );
+}
+
+#[test]
+fn an_answer_naming_two_of_the_options_commits_to_neither() {
+    // note: the reading requires a unique match, so a subject hedging across two options is
+    // unreadable rather than scored on whichever came first in the list - and an option that is
+    // a prefix of a longer word is not a match at all
+    let among = ["kirov", "omsk", "ufa"].map(str::to_owned).to_vec();
+    let choice = |said: &str| Probe::new("q", Reading::Choice(among.clone())).read(said);
+
+    assert_eq!(choice("ANSWER: omsk"), Answer::Choice("omsk".to_owned()));
+    assert_eq!(choice("ANSWER: kirov or omsk"), Answer::Unreadable);
+    assert_eq!(
+        choice("it is not kirov\nANSWER: ufa"),
+        Answer::Choice("ufa".to_owned()),
+        "the tagged line is read on its own, so prose above it cannot outvote it"
+    );
+    assert_eq!(
+        choice("ANSWER: kirovsk"),
+        Answer::Unreadable,
+        "an option inside a longer word is not that option"
+    );
+}
