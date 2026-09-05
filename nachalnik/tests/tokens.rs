@@ -369,3 +369,44 @@ async fn corrected_figures_reach_the_context_only_when_asked_for() {
         "and it does when the user says so"
     );
 }
+
+/// A counter that charges for a message's framing keeps that opinion through `Calibrating`.
+///
+/// note: `count_message` is the one the budget is counted over, and the one a real tokenizer
+/// overrides precisely to add the per-message overhead an estimate cannot see. It used to be the
+/// one method `Calibrating` did not delegate, so wrapping such a counter silently threw the
+/// override away and counted the parts instead.
+#[test]
+fn calibrating_keeps_a_wrapped_counter_s_opinion_about_messages() {
+    /// Ten tokens of framing on every message, on top of what the content costs.
+    struct Framed;
+
+    impl TokenCounter for Framed {
+        fn count(&self, content: &Content) -> usize {
+            content.byte_len()
+        }
+
+        fn count_message(&self, message: &nachalnik::Message) -> usize {
+            10 + message.content.as_ref().map_or(0, |c| self.count(c))
+        }
+    }
+
+    let message = nachalnik::Message::user("abcd");
+    assert_eq!(Framed.count_message(&message), 14);
+
+    let wrapped = Calibrating::new(Framed);
+    assert_eq!(
+        wrapped.count_message(&message),
+        14,
+        "with nothing learned, the wrapper is the counter it wraps"
+    );
+
+    // and once it has learned something, the opinion is scaled rather than discarded
+    wrapped.observe(1_000, 2_000);
+    assert_eq!(wrapped.calibration().scale, 2.0);
+    assert_eq!(
+        wrapped.count_message(&message),
+        28,
+        "the framing is doubled with everything else, not counted away"
+    );
+}

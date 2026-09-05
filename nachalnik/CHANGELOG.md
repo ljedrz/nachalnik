@@ -25,6 +25,12 @@ minor bump may break you.
   change by one token. Under `send_blocks` it was worse than an accounting error: a signed
   thinking block went out beside a marker that is not the words it was signed over, which is the
   thing binding `Part::extra` to its block exists to prevent.
+- `Calibrating` scales a wrapped counter's `count_message` instead of discarding it. It delegated
+  `count_schema` and `count_item` and not this one, so the default implementation ran on the
+  wrapper and counted the parts - and `count_message` is both the method the budget is counted
+  over and the one a real tokenizer overrides, precisely to charge for the per-message framing an
+  estimate cannot see. A counter charging ten tokens a message reported four for a message it
+  counts as fourteen.
 - `Kernel::turn` cannot swallow an interrupt. Both it and the `step` it called cleared the flag,
   so one landing between the two checks was spent on a step that transitioned nothing - and the
   turn, handed back an ordinary resting state, went round and sent the next request anyway, with

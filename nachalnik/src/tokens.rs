@@ -295,14 +295,21 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
         self.corrected(self.inner.count(content))
     }
 
-    // both of these are delegated rather than left to the default implementations, so that a
-    // wrapped counter with opinions of its own keeps them and only has them scaled
+    // all three are delegated rather than left to the default implementations, so that a wrapped
+    // counter with opinions of its own keeps them and only has them scaled. `count_message` is
+    // the one it would hurt most to lose: it is what the budget is counted over, and a real
+    // tokenizer overrides it precisely to charge for the per-message framing an estimate cannot
+    // see
     fn count_schema(&self, schema: &Arc<Value>) -> usize {
         self.corrected(self.inner.count_schema(schema))
     }
 
     fn count_item(&self, item: &ContextItem) -> usize {
         self.corrected(self.inner.count_item(item))
+    }
+
+    fn count_message(&self, message: &Message) -> usize {
+        self.corrected(self.inner.count_message(message))
     }
 
     fn calibration(&self) -> Option<Calibration> {
