@@ -224,6 +224,69 @@ async fn a_permission_question_draws_at_every_size() {
     }
 }
 
+/// The same sweep, with text that is not ASCII.
+///
+/// note: every other sweep in here draws English. A terminal's arithmetic is in *columns* and its
+/// strings are in bytes, and the three ways that goes wrong - a cut through a multi-byte
+/// character, a double-width character counted as one column, a grapheme cluster split down the
+/// middle - all need a character wider or longer than one byte to show up at all. So: Polish,
+/// Japanese, fullwidth Latin, a combining acute, an emoji made of four codepoints and a zero-width
+/// joiner, and the widest ligature in Unicode, through the wrapper, the markdown renderer, the
+/// syntax highlighter, the table layout and the item viewer.
+#[tokio::test]
+async fn every_size_with_text_that_is_not_ascii() {
+    use nachalnik::ModelResponse;
+
+    const AWKWARD: &str = "zażółć gęślą jaźń — 大丈夫ですか？ 🇵🇱🧑‍🚀 e\u{0301}kki ﷽\n\
+         a-really-quite-long-unbroken-token-ｆｕｌｌｗｉｄｔｈ-日本語日本語日本語-🧑‍🚀🧑‍🚀🧑‍🚀\n\
+         \n```rust\nfn główna() { println!(\"zażółć — 大丈夫\"); } // ﷽ komentarz\n```\n\
+         | kolumna | ｗｉｄｅ |\n| --- | --- |\n| zażółć | 大丈夫 |\n\
+         - punkt pierwszy z bardzo długą treścią 大丈夫ですか\n  1. zagnieżdżony 🧑‍🚀\n";
+
+    let kernel = Kernel::new(Config::default());
+    let policy = Arc::new(Careful::new());
+    kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse::text(
+        AWKWARD,
+    )])));
+    kernel.set_policy(policy.clone());
+    kernel.add_tool(Arc::new(ConstTool::new("read", AWKWARD)));
+    let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
+    std::mem::forget(keep);
+    let provider = Arc::new(OpenAiCompatible::new("模型", "http://127.0.0.1:1", ""));
+    let mut app = App::new(kernel, policy, provider, outcomes);
+
+    app.kernel.push(ContextItem::user(AWKWARD));
+    app.kernel
+        .push(ContextItem::file("ścieżka/日本語.rs", AWKWARD));
+    let _ = tokio::time::timeout(Duration::from_secs(5), app.kernel.turn()).await;
+
+    for tab in [Tab::Chat, Tab::Context, Tab::Trace, Tab::Permissions] {
+        app.tab = tab;
+        for width in 1..=48u16 {
+            for height in [1u16, 2, 7, 24] {
+                draw(&mut app, width, height);
+            }
+        }
+    }
+
+    // and the pane that reads one item in full, where the wrapping is done again
+    app.tab = Tab::Chat;
+    app.overlay = Some(Overlay::Text {
+        title: "ścieżka/日本語.rs".to_owned(),
+        pages: vec![Page {
+            name: "sending".to_owned(),
+            body: AWKWARD.to_owned(),
+        }],
+        page: 0,
+        scroll: 0,
+    });
+    for width in 1..=48u16 {
+        for height in [1u16, 2, 7, 24] {
+            draw(&mut app, width, height);
+        }
+    }
+}
+
 /// Every key this program looks at, pressed at every tab, in a session with nothing in it.
 ///
 /// note: an empty context is the state a program is in for the first few seconds of its life and
