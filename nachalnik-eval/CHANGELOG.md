@@ -5,7 +5,7 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
-## [unreleased]
+## [0.1.0] - 2026-09-05
 
 ### pooling a sweep, and the sign test that makes a claim about models
 

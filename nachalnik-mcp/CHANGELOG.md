@@ -5,7 +5,7 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
-## [unreleased]
+## [0.3.0] - 2026-09-05
 
 Nothing changed in this crate. It moves to track `nachalnik` 0.3.0, whose `ModelInfo` grew a field
 and is therefore a minor bump; the bridge builds against it untouched, which is the result that
