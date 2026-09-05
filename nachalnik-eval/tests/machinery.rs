@@ -1512,3 +1512,46 @@ fn an_answer_naming_two_of_the_options_commits_to_neither() {
         "an option inside a longer word is not that option"
     );
 }
+
+#[tokio::test]
+async fn the_policy_that_grants_two_handles_grants_only_those_two() {
+    use nachalnik::{Capability, PermissionId, PermissionPolicy, PermissionRequest, Verdict};
+    use nachalnik_eval::suite::handles::Granted;
+
+    let asking = |capabilities: Vec<Capability>| PermissionRequest {
+        id: PermissionId(1),
+        call: nachalnik::ToolCallId("c1".to_owned()),
+        tool: "whatever".to_owned(),
+        capabilities,
+        args: std::sync::Arc::new(serde_json::json!({})),
+    };
+    let verdict = |capabilities: Vec<Capability>| async move {
+        Granted.evaluate(&asking(capabilities)).await
+    };
+
+    // the two the handles declare
+    assert_eq!(
+        verdict(vec![Capability::Custom("introspect".to_owned())]).await,
+        Verdict::Allow
+    );
+    assert_eq!(
+        verdict(vec![Capability::Custom("amend".to_owned())]).await,
+        Verdict::Allow
+    );
+
+    // and nothing else, including the one a tool gets by saying nothing. `ToolSpec::new` leaves a
+    // tool with no capabilities at all, and `all` over an empty list is `true` - so a shell that
+    // forgot to declare itself used to be granted by the policy whose whole point is that it
+    // grants exactly two things
+    assert_eq!(verdict(Vec::new()).await, Verdict::Deny);
+    assert_eq!(verdict(vec![Capability::Shell]).await, Verdict::Deny);
+    assert_eq!(
+        verdict(vec![
+            Capability::Custom("introspect".to_owned()),
+            Capability::Shell,
+        ])
+        .await,
+        Verdict::Deny,
+        "one of the two beside something else is still something else"
+    );
+}

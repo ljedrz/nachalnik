@@ -5,6 +5,17 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- `Granted` no longer grants a tool that declares nothing. It checked that every capability a call
+  needed was one of its two, and `all` over an empty list is `true` - so a tool built with
+  `ToolSpec::new` and never told what it needs was allowed by the policy whose whole point is that
+  it allows exactly `introspect` and `amend`. The supplied handles both declare theirs, so nothing
+  an experiment in `suite` does changes; what changes is what happens to a subject carrying a tool
+  somebody else registered.
+
 ## [0.1.0] - 2026-09-05
 
 ### pooling a sweep, and the sign test that makes a claim about models

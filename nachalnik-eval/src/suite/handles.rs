@@ -77,7 +77,12 @@ impl PermissionPolicy for Granted {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
         let mine = |capability: &Capability| matches!(capability, Capability::Custom(name) if name == "introspect" || name == "amend");
 
-        match request.capabilities.iter().all(mine) {
+        // note: the emptiness is checked as well as the contents, because `all` over an empty
+        // list is `true`. A tool that declares nothing - which is what `ToolSpec::new` leaves
+        // you with until you say otherwise - would otherwise be *granted* by the policy whose
+        // whole point is that it grants exactly two things. A capability list is a claim, and
+        // this one says nothing at all, so it is not one of the two
+        match !request.capabilities.is_empty() && request.capabilities.iter().all(mine) {
             true => Verdict::Allow,
             false => Verdict::Deny,
         }
