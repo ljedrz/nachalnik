@@ -49,6 +49,12 @@ says what was displaced instead of assuming nothing was. `without_prefix()` turn
 off, which is worth it for a single server and is how one server's `read` quietly becomes the
 other's when there are two.
 
+Where the two together are over the limit it is the *prefix* that gives way, because the tool's
+own name is the half that tells one of a server's tools from another. A server with a
+sixty-two-character name would otherwise have every one of its tools arrive under the same
+identifier.
+
+
 ---
 
 ### 📄 what comes back

@@ -15,6 +15,15 @@ minor bump may break you.
   guess at. Guessing wrong compiles into an error about two types with the same name, and an SDK
   bump here was a silent break for anyone who had guessed right.
 
+### fixed
+
+- A tool's own name is no longer what gets cut when a prefixed identifier is over the limit. Names
+  are rewritten to `[a-zA-Z0-9_-]`, sixty-four of them, and the pair was truncated from the end -
+  so a server with a sixty-two-character name had every one of its tools arrive under the same
+  identifier, each quietly replacing the last, with only `Installed::replaced` to say so. The
+  prefix gives way instead, and is dropped rather than shortened to nothing when there is no room
+  at all.
+
 ## [0.3.0] - 2026-09-05
 
 Nothing changed in this crate. It moves to track `nachalnik` 0.3.0, whose `ModelInfo` grew a field

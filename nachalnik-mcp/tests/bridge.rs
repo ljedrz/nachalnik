@@ -205,6 +205,52 @@ async fn what_the_server_said_about_itself_is_available() {
     assert!(server.info().is_some(), "the handshake carried its info");
 }
 
+/// A name is rewritten to what model providers accept - `[a-zA-Z0-9_-]`, sixty-four of them - and
+/// it is the *prefix* that gives way when the two together will not fit. The tool's own name is
+/// the half that tells one of a server's tools from another; cutting the tail off the pair cuts
+/// exactly that, and every tool on the server would arrive under one identifier, each quietly
+/// replacing the last.
+#[tokio::test]
+async fn a_server_with_an_unreasonable_name_still_offers_distinct_tools() {
+    let (server, _) = bench("a server whose name is not short at all, really, truly, no").await;
+
+    let ids: Vec<String> = server
+        .tools()
+        .await
+        .unwrap()
+        .iter()
+        .map(|tool| tool.spec().id)
+        .collect();
+
+    assert!(
+        ids.iter().all(|id| id.chars().count() <= 64),
+        "a provider will not take these: {ids:?}"
+    );
+    assert!(
+        ids.iter().all(|id| id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')),
+        "the spaces and commas had to go: {ids:?}"
+    );
+
+    let distinct: std::collections::BTreeSet<&String> = ids.iter().collect();
+    assert_eq!(
+        distinct.len(),
+        ids.len(),
+        "every tool the server offers is still reachable: {ids:?}"
+    );
+    assert!(
+        ids.iter().any(|id| id.ends_with("__delete_everything")),
+        "the tool's own name is what survives: {ids:?}"
+    );
+
+    // and installing them puts every one in, with nothing displaced
+    let kernel = kernel();
+    let installed = server.install(&kernel).await.unwrap();
+    assert_eq!(installed.added.len(), ids.len());
+    assert!(installed.replaced.is_empty(), "{:?}", installed.replaced);
+}
+
 #[tokio::test]
 async fn a_single_server_can_offer_its_tools_unprefixed() {
     let (server, _) = bench("files").await;

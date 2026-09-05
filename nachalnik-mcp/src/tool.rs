@@ -222,12 +222,18 @@ pub(crate) fn spec_of(
         .with_capabilities(trust.capabilities(server, tool.annotations.as_ref()))
 }
 
+/// What a model provider will accept in a tool's name: `[a-zA-Z0-9_-]`, and no more than this
+/// many of them.
+const LIMIT: usize = 64;
+
+/// What separates a server's name from its tool's.
+const SEPARATOR: &str = "__";
+
 /// Makes an identifier a model provider will accept.
 ///
-/// note: The common restriction is `[a-zA-Z0-9_-]`, up to sixty-four characters, and an MCP server
-/// is under no obligation to have heard of it. Rewriting a name can produce a collision, which is
-/// why [`Server::install`](crate::Server::install) reports what it displaced rather than assuming
-/// it displaced nothing.
+/// note: An MCP server is under no obligation to have heard of the restriction. Rewriting a name
+/// can produce a collision, which is why [`Server::install`](crate::Server::install) reports what
+/// it displaced rather than assuming it displaced nothing.
 pub(crate) fn sanitize(name: &str) -> String {
     let mut out: String = name
         .chars()
@@ -237,7 +243,7 @@ pub(crate) fn sanitize(name: &str) -> String {
                 false => '_',
             },
         )
-        .take(64)
+        .take(LIMIT)
         .collect();
 
     if out.is_empty() {
@@ -248,9 +254,23 @@ pub(crate) fn sanitize(name: &str) -> String {
 }
 
 /// A tool from an MCP server, as the kernel will know it.
+///
+/// note: where the two together are over the limit, it is the *prefix* that gives way. The tool's
+/// own name is the half that tells one of a server's tools from another, and cutting the tail off
+/// the pair cuts exactly that: a server whose name is sixty-two characters long would otherwise
+/// have every one of its tools arrive under the same identifier, each quietly replacing the last.
+/// A prefix that has no room left is dropped rather than shortened to nothing.
 pub(crate) fn tool_id(prefix: Option<&str>, remote: &str) -> String {
-    match prefix {
-        Some(prefix) => sanitize(&format!("{prefix}__{remote}")),
-        None => sanitize(remote),
+    let remote = sanitize(remote);
+    let Some(prefix) = prefix else {
+        return remote;
+    };
+
+    let room = LIMIT.saturating_sub(remote.chars().count() + SEPARATOR.len());
+    let prefix: String = sanitize(prefix).chars().take(room).collect();
+
+    match prefix.is_empty() {
+        true => remote,
+        false => format!("{prefix}{SEPARATOR}{remote}"),
     }
 }
