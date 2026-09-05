@@ -543,3 +543,62 @@ async fn a_session_of_ordered_turns_resumes_as_one() {
             .contains(&ToolCallId::from("c1"))
     );
 }
+
+// --------------------------------------------------------------- what the two shapes must share
+
+/// The shape of a request is not the projector's only job: a tool result has to reach the wire
+/// immediately after the call it answers, and an item that lands mid-turn has to wait its turn.
+/// That held for the conventional shape and not for this one, because the branch that sends
+/// ordered blocks used to push its message and skip the bookkeeping underneath.
+#[test]
+fn an_ordered_turn_holds_back_what_landed_in_the_middle_of_it() {
+    let items: Vec<Arc<ContextItem>> = [
+        ContextItem::user("what is the weather?"),
+        ContextItem::assistant(
+            Content::blocks([
+                Block::text("Checking Warsaw."),
+                Block::Call(call("c1", "echo", json!({ "city": "Warsaw" }))),
+            ]),
+            Vec::new(),
+        ),
+        // what a tool wrote on the model's behalf, pushed while the turn was still collecting
+        ContextItem::memory("q1", "Warsaw is in Poland"),
+        ContextItem::tool_result(ToolCallId::from("c1"), "echo", "sunny", false),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, mut item)| {
+        item.id = nachalnik::ContextId(index as u64 + 1);
+        Arc::new(item)
+    })
+    .collect();
+
+    for send_blocks in [false, true] {
+        let projection = LinearProjector {
+            send_blocks,
+            ..Default::default()
+        }
+        .project(&items);
+
+        let roles: Vec<&str> = projection
+            .messages
+            .iter()
+            .map(|message| message.role.as_str())
+            .collect();
+        assert_eq!(
+            roles,
+            ["user", "assistant", "tool", "user"],
+            "send_blocks: {send_blocks} - every OpenAI-compatible API refuses a request in which \
+             something else sits between a call and its result"
+        );
+        assert_eq!(projection.included.len(), 4, "and nothing was dropped");
+        assert!(
+            projection
+                .repairs
+                .iter()
+                .any(|said| said.contains("held item")),
+            "send_blocks: {send_blocks} - moving somebody's item is on the record: {:?}",
+            projection.repairs
+        );
+    }
+}

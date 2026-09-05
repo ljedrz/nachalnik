@@ -5,6 +5,19 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- `LinearProjector` holds a mid-turn item back under `send_blocks` too. The branch that sends an
+  assistant turn as ordered blocks pushed its message and skipped the bookkeeping at the foot of
+  the loop - which is the only place a turn's outstanding calls are counted and the only place the
+  held items are flushed. So with that flag on, the repair released in 0.3.0 never fired at all,
+  and an item pushed into the context while a turn was still collecting its results went out
+  between the call and its answer: the request every OpenAI-compatible API refuses outright,
+  naming the `tool_call_id` that went unanswered. Both shapes now fall through to the same
+  bookkeeping, and a test drives the fixture through both.
+
 ## [0.3.0] - 2026-09-05
 
 ### added

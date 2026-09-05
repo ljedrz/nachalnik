@@ -392,52 +392,52 @@ impl Projector for LinearProjector {
                         continue;
                     }
 
+                    // note: whichever shape it goes out in, the message falls through to the
+                    // bookkeeping at the foot of the loop rather than being pushed here. It has
+                    // to: that is where a turn's outstanding calls are counted, and a turn that
+                    // skipped it would leave whatever landed mid-turn sitting between the call
+                    // and its result - the request every OpenAI-compatible API refuses
                     if self.send_blocks {
-                        projection.included.push(item.id);
-                        projection.messages.push(Message::assistant(
-                            Some(Content::Blocks(kept.into())),
-                            Vec::new(),
-                        ));
-                        continue;
-                    }
-
-                    // flattening into the three slots, and saying so where it costs something:
-                    // two thinking blocks joined into one is a signature destroyed, and a
-                    // sentence that came after a call arrives before it
-                    if item.content.as_blocks().is_some() {
-                        let thoughts = kept.iter().filter(|b| b.thought().is_some()).count();
-                        let interleaved = kept
-                            .iter()
-                            .skip_while(|block| block.call().is_none())
-                            .any(|block| block.call().is_none());
-                        // a signature on a text or a thinking part has nowhere to go in a
-                        // conventional message, and going missing is the thing it is most
-                        // important to say out loud: it is what an API rejects the next request
-                        // over, and the reason it went is that this projector was asked for a
-                        // shape that cannot hold it
-                        let signed = kept
-                            .iter()
-                            .filter_map(Block::part)
-                            .any(|part| !part.extra.is_null());
-                        if interleaved || spoke.len() > 1 || thoughts > 1 || signed {
-                            let also = match signed {
-                                true => ", and what the provider had attached to them",
-                                false => "",
-                            };
-                            projection.repairs.push(format!(
-                                "flattened item {} out of {} ordered block(s): this projector \
-                                 sends one content slot, one reasoning slot and a list of calls, \
-                                 so their order is not carried{also}",
-                                item.id,
-                                kept.len(),
-                            ));
+                        Message::assistant(Some(Content::Blocks(kept.into())), Vec::new())
+                    } else {
+                        // flattening into the three slots, and saying so where it costs
+                        // something: two thinking blocks joined into one is a signature
+                        // destroyed, and a sentence that came after a call arrives before it
+                        if item.content.as_blocks().is_some() {
+                            let thoughts = kept.iter().filter(|b| b.thought().is_some()).count();
+                            let interleaved = kept
+                                .iter()
+                                .skip_while(|block| block.call().is_none())
+                                .any(|block| block.call().is_none());
+                            // a signature on a text or a thinking part has nowhere to go in a
+                            // conventional message, and going missing is the thing it is most
+                            // important to say out loud: it is what an API rejects the next
+                            // request over, and the reason it went is that this projector was
+                            // asked for a shape that cannot hold it
+                            let signed = kept
+                                .iter()
+                                .filter_map(Block::part)
+                                .any(|part| !part.extra.is_null());
+                            if interleaved || spoke.len() > 1 || thoughts > 1 || signed {
+                                let also = match signed {
+                                    true => ", and what the provider had attached to them",
+                                    false => "",
+                                };
+                                projection.repairs.push(format!(
+                                    "flattened item {} out of {} ordered block(s): this projector \
+                                     sends one content slot, one reasoning slot and a list of \
+                                     calls, so their order is not carried{also}",
+                                    item.id,
+                                    kept.len(),
+                                ));
+                            }
                         }
+
+                        let content = join(spoke);
+                        let reasoning = join(kept.iter().filter_map(Block::thought).collect());
+
+                        Message::assistant(content, calls).with_reasoning(reasoning)
                     }
-
-                    let content = join(spoke);
-                    let reasoning = join(kept.iter().filter_map(Block::thought).collect());
-
-                    Message::assistant(content, calls).with_reasoning(reasoning)
                 }
                 ContextKind::ToolResult { call, tool, .. } => {
                     if self.repair_orphans && !claim(&mut calls, call) {
