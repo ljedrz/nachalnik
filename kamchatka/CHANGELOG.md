@@ -35,6 +35,9 @@ minor bump may break you.
   hit, so `a*bc` refused `abcbc`: the `bc` it found was the one the star should have swallowed and
   there was no way back. A permission rule that silently fails to match is the worst way for one to
   be wrong, and `*credentials*.json` is not an exotic thing to write.
+- The session written on the way out goes into a `0700` directory. It holds a whole conversation
+  and every byte of output every tool produced, written without anybody asking for it, and under an
+  ordinary umask that was a world-readable file in a directory everyone on the machine could list.
 
 ### changed
 
@@ -43,6 +46,7 @@ minor bump may break you.
   datagram - enough to put bytes in a DNS query - and AF_UNIX needs a kernel from 2026 to reach at
   all. The screen, the tool's own description to the model and both readmes now say TCP rather than
   "the network". Nothing about the confinement changed; what it was described as did.
+- `--requests 0` says in `--help` that it means no limit at all, which it has always done.
 
 ## [0.4.0] - 2026-09-05
 

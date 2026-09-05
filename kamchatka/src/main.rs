@@ -82,7 +82,7 @@ struct Args {
     #[arg(long, value_name = "COMMAND")]
     mcp: Vec<String>,
 
-    /// How many requests one turn may make before it stops and asks.
+    /// How many requests one turn may make before it stops and asks; `0` is no limit at all.
     #[arg(long, value_name = "N", default_value_t = 8)]
     requests: usize,
 
@@ -321,10 +321,23 @@ async fn terminal() -> Result<()> {
 /// note: a temporary directory, because this is a safety net rather than an archive - `/save`
 /// remains the way to put a session somewhere it will still be next week. `--no-record` turns it
 /// off for anyone who would rather a transcript did not outlive the terminal.
+///
+/// note: and the directory is the user's own, `0700`. What goes in it is a whole conversation and
+/// every byte of output every tool produced, written without anybody asking for it; under the
+/// default umask that is a world-readable file in a directory everyone on the machine can list.
+/// Nobody would type `/save /tmp/everyone/notes.jsonl`, and this should not do it for them.
 fn record(app: &App) -> Result<(usize, String, String)> {
     let mut dir = std::env::temp_dir();
     dir.push("kamchatka");
     std::fs::create_dir_all(&dir).with_context(|| format!("could not make {}", dir.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        // it may already exist from an earlier run, made before this did it; either way, this is
+        // the run that is about to write a transcript into it
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    }
 
     let stem = dir.join(app.kernel.session_name());
     let (log, state) = (

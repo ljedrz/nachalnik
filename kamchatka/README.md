@@ -603,6 +603,9 @@ A resumed session keeps its name, so carrying on writes back to the same pair ra
 scattering a lineage across files. It is a temporary directory because this is a safety net and
 not an archive — `/save PATH` is still how a session goes somewhere it will be next week — and
 `--no-record` turns it off for anyone who would rather a transcript did not outlive the terminal.
+The directory is `0700`: what goes in it is a whole conversation and every byte every tool
+produced, written without anybody asking, and under an ordinary umask that would be a
+world-readable file on a shared machine.
 
 `/models [FILTER]` is what makes `/model` usable, because the ids belong to the endpoint rather
 than to the model: the same thing is `google/gemini-3.5-flash` at one address and
@@ -707,7 +710,8 @@ kamchatka [OPTIONS] [MESSAGE]...
   -s, --system <TEXT>       a system instruction; the runtime ships none of its own
   -r, --resume <PATH>       carry on from a session written by /save
       --mcp <COMMAND>       an MCP server to run, as `[name=]command`; may be repeated
-      --requests <N>        how many requests one turn may make            [default: 8]
+      --requests <N>        how many requests one turn may make; 0 is no
+                            limit at all                                  [default: 8]
       --compact <FRACTION>  how full the context may get; 1 never compacts [default: 0.8]
       --parallel            run the model's tool calls at the same time
       --gemini              talk to Google's own API rather than an OpenAI-compatible
