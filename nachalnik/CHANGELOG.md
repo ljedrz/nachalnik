@@ -31,6 +31,9 @@ minor bump may break you.
   over and the one a real tokenizer overrides, precisely to charge for the per-message framing an
   estimate cannot see. A counter charging ten tokens a message reported four for a message it
   counts as fourteen.
+- `Selector` knows `state:elided`. The state a `Compactor` is told to prefer was the one state a
+  client could not name: `state:elided` was a parse error, and a `Selector::State` holding it
+  printed as a string that would not parse back.
 - `Kernel::turn` cannot swallow an interrupt. Both it and the `step` it called cleared the flag,
   so one landing between the two checks was spent on a step that transitioned nothing - and the
   turn, handed back an ordinary resting state, went round and sent the next request anyway, with

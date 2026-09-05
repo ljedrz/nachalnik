@@ -55,7 +55,8 @@ impl std::error::Error for SelectorError {}
 /// all:tool_results       the same, spelled out
 /// source:helix           every item from a source with that name, extensions included
 /// kind:assistant_message every item of that kind
-/// state:excluded         every item in that state
+/// state:elided           every item in that state; also active, excluded, pinned, archived,
+///                        superseded
 /// file:src/parser.rs     the file with that path
 /// tool:grep              every result produced by the `grep` tool
 /// tool:grep:latest       the most recent one; also: tool:grep:first
@@ -256,6 +257,7 @@ fn state_by_name(name: &str) -> Option<ContextState> {
         "active" => ContextState::Active,
         "excluded" => ContextState::Excluded,
         "pinned" => ContextState::Pinned,
+        "elided" => ContextState::Elided,
         "archived" => ContextState::Archived,
         "superseded" => ContextState::Superseded,
         _ => return None,
@@ -335,6 +337,7 @@ mod tests {
             "source:file",
             "kind:tool_result",
             "state:excluded",
+            "state:elided",
             "label:cargo test",
             "file:src/foo.rs",
             "tool:grep",
