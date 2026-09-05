@@ -31,6 +31,15 @@ pub enum Intervention {
     /// the copy reads a conversation in which the call was never made. An elided one still
     /// answers its call, so only the content is gone, and what changed is what was being tested
     /// rather than the shape of the turn.
+    ///
+    /// note: and this one is *visible to the copy*. An elided item is projected as a marker made
+    /// of its note, which this sets to `left out of this copy` - so the treated arm reads
+    /// `[... left out of this copy ...]` where the control reads nothing of the kind. That is a
+    /// difference between the two arms besides the one being tested, and a model that notices it
+    /// knows it is being measured. Use it when the shape of the turn is what has to be held
+    /// constant, and know what it costs; [`Intervention::Without`] leaves no trace in the request
+    /// at all, which is why it is what the supplied experiments use and what
+    /// [`Ablation::blind_to`](crate::Ablation::blind_to) applies.
     Elided(Vec<ContextId>),
     /// One item says something else.
     Revised {

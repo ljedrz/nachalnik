@@ -16,6 +16,17 @@ minor bump may break you.
   an experiment in `suite` does changes; what changes is what happens to a subject carrying a tool
   somebody else registered.
 
+### changed
+
+- `Intervention::Elided` says that it is visible to the copy. An elided item is projected as a
+  marker made of its note, and this sets that note - so the treated arm reads
+  `[... left out of this copy ...]` where the control reads nothing of the kind, which is a
+  difference between the arms besides the one under test. Nothing in `suite` uses it, and the
+  documentation now says why `Without` is what an ablation should reach for.
+
+note: no question changed, so `script::VERSION` is where it was and every digest in `tests/machinery.rs`
+is unmoved. A run against this is comparable with a run against 0.1.0.
+
 ## [0.1.0] - 2026-09-05
 
 ### pooling a sweep, and the sign test that makes a claim about models
