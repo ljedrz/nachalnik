@@ -1218,6 +1218,7 @@ dependencies = [
  "landlock",
  "nachalnik",
  "nachalnik-mcp",
+ "nachalnik-utils",
  "parking_lot",
  "ratatui",
  "ratatui-textarea",

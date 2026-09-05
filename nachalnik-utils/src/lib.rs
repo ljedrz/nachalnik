@@ -15,6 +15,7 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 
+pub mod conformance;
 pub mod provider;
 
 pub use provider::{OpenAiCompatible, models, out_of_quota, providers};

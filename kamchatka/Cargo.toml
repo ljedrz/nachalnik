@@ -88,6 +88,10 @@ landlock = "0.4"
 # the screen is tested by drawing it: a scripted provider answers, and the frame that comes out
 # is asserted against
 nachalnik = { workspace = true, features = ["selectors", "test"] }
+# the provider conformance suite, which both of this crate's providers have to pass. A
+# *dev*-dependency, which is what lets an unpublished crate be depended on by a published one:
+# cargo strips these from the manifest it uploads
+nachalnik-utils.workspace = true
 # `net` for the one test that needs a real socket: a server that answers and then says nothing,
 # which is the shape a stalled model has and the one a mock cannot imitate
 tokio = { workspace = true, features = ["net"] }

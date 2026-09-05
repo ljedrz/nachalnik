@@ -99,9 +99,16 @@ context is `snapshot` and `resume`, previewing a request is `preview_request`, p
 $ cargo test --workspace
 ```
 
-463 tests, of which 34 are live suites that skip themselves when there is no API key: 188 in
+460 tests, of which 34 are live suites that skip themselves when there is no API key: 185 in
 `kamchatka`, 175 in `nachalnik`, 72 in `nachalnik-eval`, 25 in `nachalnik-mcp` and three in
 `nachalnik-utils`. Each crate's readme says what its own cover.
+
+Three of those three-and-a-bit are the provider conformance suite. This workspace has one
+OpenAI-compatible provider written twice and a Gemini one that shares 41% of its lines with the
+nearer of them, and they cannot be merged - `kamchatka` is published and `nachalnik-utils` never
+will be. So they share the *questions* instead: every provider is asked the same eight through a
+real socket, each question is a bug that actually happened to one of them, and a question added
+applies to all three without any of them being edited.
 
 The live suites are the only way to check the things a mock cannot - that the requests this
 workspace builds are accepted by a real API, and that a real model's answers survive the round trip
