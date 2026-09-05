@@ -296,7 +296,22 @@ pub fn confine(sandbox: &Sandbox, scratch: &Path) -> Confinement {
         path_beneath_rules,
     };
 
-    let abi = ABI::V1;
+    // note: V3 rather than V1, for `Truncate`. An access right the ruleset does not *handle* is
+    // not restricted at all, and truncation is not covered by V1's `WriteFile`: `truncate(2)`
+    // takes a path and never opens the file, so a confined command could zero any file it could
+    // name - `os.truncate('/home/you/.bashrc', 0)` came back with nothing to say and a file of
+    // nought bytes. Handling it costs nothing here, since `from_all` grants it again on every
+    // writable path. V2's `Refer` comes with it and is the more permissive of the two: with it
+    // unhandled the kernel refuses every cross-directory rename outright, and with it granted a
+    // `mv` between two directories of the working directory is allowed, which is what anybody
+    // would expect of a shell in there.
+    //
+    // note: not V5's `IoctlDev` - `/dev` is granted reading and writing rather than the whole of
+    // `from_all`, so handling it would deny ioctls on `/dev/null` and on a terminal to every
+    // ordinary command - and not V9's `ResolveUnix`, which is the one that would close AF_UNIX
+    // and needs a kernel from 2026. On a kernel older than 6.2 the rights below V3 still apply
+    // and the status comes back `Partial`, which is said out loud rather than rounded up.
+    let abi = ABI::V3;
     let Ok(mut ruleset) = Ruleset::default().handle_access(AccessFs::from_all(abi)) else {
         return Confinement::Unavailable;
     };

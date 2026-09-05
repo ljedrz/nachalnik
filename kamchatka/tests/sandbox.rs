@@ -187,6 +187,61 @@ fn a_command_cannot_write_outside_it() {
     assert!(said_tmp.contains("scratch"), "{said_tmp}");
 }
 
+/// Truncation is a write, and it does not go through `open`.
+///
+/// note: `truncate(2)` takes a path and never opens the file, so `WriteFile` does not cover it -
+/// the kernel has a right of its own for it, from ABI 3. An access right the ruleset does not
+/// *handle* is not restricted at all, so with the ruleset built on ABI 1 this call came back with
+/// nothing to say and a file outside the working directory of nought bytes. GNU `truncate(1)`
+/// opens the file and so was refused all along, which is exactly why nothing noticed.
+#[test]
+fn a_command_cannot_truncate_a_file_outside_the_working_directory() {
+    if !enforced() {
+        return;
+    }
+    let dir = workdir("truncate");
+    let outside =
+        std::env::temp_dir().join(format!("kamchatka-outside-{}.txt", std::process::id()));
+    std::fs::write(&outside, "the whole of it").expect("a file outside");
+
+    let (_, said) = run(
+        &sandbox(dir, true, false),
+        &format!(
+            "python3 -c \"import os;os.truncate('{}',0)\" 2>&1 || echo refused",
+            outside.display()
+        ),
+    );
+
+    assert_eq!(
+        std::fs::read_to_string(&outside).ok().as_deref(),
+        Some("the whole of it"),
+        "a file outside the working directory was emptied: {said}"
+    );
+    let _ = std::fs::remove_file(&outside);
+}
+
+/// And it still works where it is supposed to, which is what handling the right rather than
+/// leaving it out costs: `from_all` grants it again on every writable path.
+#[test]
+fn a_command_can_truncate_a_file_inside_it() {
+    if !enforced() {
+        return;
+    }
+    let dir = workdir("truncate-inside");
+    let (ok, said) = run(
+        &sandbox(dir.clone(), true, false),
+        "python3 -c \"import os;os.truncate('inside.txt',0)\" 2>&1",
+    );
+
+    assert!(ok, "{said}");
+    assert_eq!(
+        std::fs::metadata(dir.join("inside.txt"))
+            .map(|m| m.len())
+            .ok(),
+        Some(0)
+    );
+}
+
 #[test]
 fn a_refused_write_stance_makes_the_working_directory_read_only() {
     if !enforced() {

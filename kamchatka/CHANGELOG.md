@@ -17,6 +17,13 @@ minor bump may break you.
   ever been anything else. It depends only on where the network happened to break the stream, so
   every language with diacritics and every typographic dash was a coin toss. The buffer holds bytes
   now and only whole lines are decoded.
+- A confined command cannot truncate a file outside the working directory. The Landlock ruleset was
+  built on ABI 1, and an access right a ruleset does not *handle* is not restricted at all -
+  truncation has had a right of its own since ABI 3, because `truncate(2)` takes a path and never
+  opens the file, so `WriteFile` does not cover it. `os.truncate('/home/you/.bashrc', 0)` came back
+  with nothing to say and a file of nought bytes. GNU `truncate(1)` opens the file and so was
+  refused all along, which is why nothing noticed. The ruleset asks for ABI 3, which brings `Refer`
+  with it and so also allows a `mv` between two directories of the working directory.
 
 ## [0.4.0] - 2026-09-05
 
