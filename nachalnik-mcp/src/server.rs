@@ -160,6 +160,12 @@ impl Server {
     /// user's decision and a server offering forty documents is not an argument. Each one is a
     /// [`ContextKind::Reference`] labelled with its URI, so it arrives in the request saying where
     /// it came from.
+    ///
+    /// note: a resource with no text in it - an image, a binary blob - is *named* rather than
+    /// dropped, exactly as a tool result's non-text blocks are. A list that quietly came back one
+    /// shorter than the server's would leave a caller unable to say whether a document had been
+    /// missed or had never been offered; the marker costs a line, and pushing it is optional like
+    /// everything else here.
     pub async fn resources(&self) -> Result<Vec<ContextItem>> {
         let listed = self
             .running
@@ -186,12 +192,21 @@ impl Server {
                     _ => None,
                 })
                 .collect();
-            if text.is_empty() {
-                continue;
-            }
+
+            // a blob cannot go into a text context; saying what was there beats a gap in the list
+            let content = match text.is_empty() {
+                true => format!(
+                    "[a resource with no text ({}), not carried into the context]",
+                    resource
+                        .mime_type
+                        .as_deref()
+                        .unwrap_or("no media type given")
+                ),
+                false => text.join("\n"),
+            };
 
             items.push(
-                ContextItem::new(ContextKind::Reference, "mcp", uri, text.join("\n"))
+                ContextItem::new(ContextKind::Reference, "mcp", uri, content)
                     .because(format!("a resource offered by the `{}` server", self.name)),
             );
         }

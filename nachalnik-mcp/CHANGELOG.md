@@ -23,6 +23,12 @@ minor bump may break you.
   identifier, each quietly replacing the last, with only `Installed::replaced` to say so. The
   prefix gives way instead, and is dropped rather than shortened to nothing when there is no room
   at all.
+- A resource with no text in it is named rather than dropped. `Server::resources` returned one
+  item fewer than the server offered and said nothing about it, which left a caller unable to tell
+  a missed document from one that was never offered - and disagreed with what this crate does
+  everywhere else, since a tool result's image and audio blocks have always been named. It arrives
+  as `[a resource with no text (image/png), not carried into the context]`, and pushing it is
+  optional like everything else here.
 
 ## [0.3.0] - 2026-09-05
 

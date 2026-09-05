@@ -54,7 +54,6 @@ own name is the half that tells one of a server's tools from another. A server w
 sixty-two-character name would otherwise have every one of its tools arrive under the same
 identifier.
 
-
 ---
 
 ### 📄 what comes back
@@ -69,7 +68,9 @@ identifier.
 A picture cannot go into a text context. Saying what was there is a better answer than a gap.
 
 Resources are read on request and handed back as `ContextItem`s for you to push or not - a server
-offering forty documents is not an argument for putting forty documents in a context.
+offering forty documents is not an argument for putting forty documents in a context. A resource
+with no text in it is named the same way, rather than quietly leaving the list one item shorter
+than the server's.
 
 ---
 

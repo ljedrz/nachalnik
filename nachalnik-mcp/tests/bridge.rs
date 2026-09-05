@@ -114,10 +114,13 @@ impl ServerHandler for Bench {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        Ok(ListResourcesResult::with_all_items(vec![Resource::new(
-            "file:///notes.md",
-            "notes",
-        )]))
+        let mut logo = Resource::new("file:///logo.png", "logo");
+        logo.mime_type = Some("image/png".to_owned());
+
+        Ok(ListResourcesResult::with_all_items(vec![
+            Resource::new("file:///notes.md", "notes"),
+            logo,
+        ]))
     }
 
     async fn read_resource(
@@ -125,11 +128,12 @@ impl ServerHandler for Bench {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
-        Ok(ReadResourceResult::new(vec![ResourceContents::text(
-            "remember the milk",
-            request.uri,
-        )])
-        .into())
+        let contents = match request.uri.ends_with(".png") {
+            true => ResourceContents::blob("iVBORw0KGgo=", request.uri),
+            false => ResourceContents::text("remember the milk", request.uri),
+        };
+
+        Ok(ReadResourceResult::new(vec![contents]).into())
     }
 }
 
@@ -525,13 +529,22 @@ async fn resources_arrive_as_items_to_push_or_not() {
 
     let items = server.resources().await.unwrap();
 
-    assert_eq!(items.len(), 1);
+    assert_eq!(items.len(), 2);
     assert_eq!(items[0].label, "file:///notes.md");
     assert_eq!(items[0].source, "mcp");
     assert_eq!(items[0].content.to_text(), "remember the milk");
     assert!(
         items[0].included_because.is_some(),
         "an item in a context says why it is there"
+    );
+
+    // the blob is named rather than dropped, the same way a tool result's image blocks are. A
+    // list that came back one shorter than the server's would leave a caller unable to say
+    // whether a document had been missed or had never been offered
+    assert_eq!(items[1].label, "file:///logo.png");
+    assert_eq!(
+        items[1].content.to_text(),
+        "[a resource with no text (image/png), not carried into the context]"
     );
 
     // and nothing was pushed anywhere: a server offering documents is not an argument
