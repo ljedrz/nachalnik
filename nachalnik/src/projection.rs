@@ -201,6 +201,13 @@ pub struct LinearProjector {
     /// whereas a provider that needs it - a reasoning model whose API verifies a signed thinking
     /// block against the turn it belongs to - cannot invent it. Turn it off to keep reasoning in
     /// the record without spending it on every subsequent request.
+    ///
+    /// note: an elided turn's thinking goes whatever this says. Eliding is the user (or a
+    /// [`Compactor`](crate::Compactor)) saying the turn is no longer to be read, and a marker
+    /// that still cost every token the model had thought would make
+    /// [`ContextState::Elided`](crate::ContextState::Elided) free nothing at all. The signature
+    /// is the sharper half of it: a thinking block verified against the words it was produced
+    /// with must not go out beside a marker that replaced them.
     pub send_reasoning: bool,
 }
 
@@ -352,7 +359,14 @@ impl Projector for LinearProjector {
                                     ));
                                 }
                             }
-                            Block::Reasoning(_) if !self.send_reasoning => {}
+                            // an elided turn's thinking goes with its words. Keeping it
+                            // would mean a turn whose content is a one-line marker still
+                            // costing every token it ever thought - so eliding a turn would
+                            // free nothing, and a compactor would watch the total refuse to
+                            // move and elide it again. Worse under `send_blocks`: a signed
+                            // thinking block would go out beside a marker that is not the
+                            // words it was signed over
+                            Block::Reasoning(_) if elided || !self.send_reasoning => {}
                             // an elided turn loses what it *said* and keeps everything else: the
                             // calls still answer their results, so the turn keeps its shape
                             Block::Text(_) if elided => {

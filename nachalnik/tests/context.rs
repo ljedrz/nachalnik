@@ -894,3 +894,34 @@ fn a_result_follows_the_call_it_answers_whatever_lands_between_them() {
         projection.repairs
     );
 }
+
+/// An elided turn stops costing what it thought. Without that, eliding an assistant turn frees
+/// nothing - the marker replacing the words is a line, and the reasoning behind it can be
+/// thousands of tokens - so a compactor would watch the budget refuse to move and elide again,
+/// while `tokens_withheld` claimed those tokens were being kept from the model.
+#[tokio::test]
+async fn eliding_a_turn_stops_it_costing_what_it_thought() {
+    let kernel = kernel();
+    kernel.push(ContextItem::user("why?"));
+    let turn = kernel.push(
+        ContextItem::assistant("a short answer", Vec::new())
+            .with_reasoning(Some(nachalnik::Content::text("X".repeat(4_000)))),
+    );
+
+    let before = kernel.budget().context_tokens;
+    kernel.set_state(
+        [turn],
+        ContextState::Elided,
+        Some("compacted to make room".into()),
+    );
+    let after = kernel.budget().context_tokens;
+
+    assert!(
+        after * 10 < before,
+        "the request costs {after} where it cost {before}: a marker, not a marker plus the \
+         thinking behind it"
+    );
+    // and the two ledgers agree about it: what the item is holding is on the withheld side
+    let withheld = kernel.with_context(|context| context.tokens_withheld());
+    assert!(withheld >= before - after, "{withheld} withheld");
+}

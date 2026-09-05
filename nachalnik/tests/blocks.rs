@@ -602,3 +602,77 @@ fn an_ordered_turn_holds_back_what_landed_in_the_middle_of_it() {
         );
     }
 }
+
+/// Eliding a turn takes its thinking with its words - whatever `send_reasoning` says. Keeping it
+/// would leave a one-line marker still costing every token the model had thought, so eliding a
+/// turn would free nothing at all; and here it would be worse than that, since a signed thinking
+/// block would go out beside a marker that is not the words it was signed over.
+#[tokio::test]
+async fn eliding_an_ordered_turn_takes_its_thinking_with_the_words() {
+    let kernel = kernel_with(interleaved());
+    kernel.turn().await.expect("the turn ran");
+    let turn = turn(&kernel);
+
+    let projector = LinearProjector {
+        send_blocks: true,
+        ..Default::default()
+    };
+    let before = project(&kernel, projector);
+    assert!(
+        thinking(&before).any(|said| said.contains("the user wants both cities")),
+        "the turn thought something to begin with"
+    );
+
+    kernel.set_state(
+        [turn.id],
+        ContextState::Elided,
+        Some("said too much".into()),
+    );
+    let after = project(&kernel, projector);
+    assert_eq!(
+        thinking(&after).count(),
+        0,
+        "an elided turn is not one whose reasoning the model still reads"
+    );
+    // the shape survives, which is the whole point of eliding rather than excluding
+    let assistant = after
+        .messages
+        .iter()
+        .find(|message| message.role == Role::Assistant)
+        .unwrap();
+    assert_eq!(assistant.calls().count(), 2);
+
+    // and the flattened shape drops it too, where it would otherwise land in `Message::reasoning`
+    let flat = project(&kernel, LinearProjector::default());
+    assert!(
+        flat.messages
+            .iter()
+            .all(|message| message.reasoning.is_none()),
+        "{:?}",
+        flat.messages
+    );
+}
+
+/// What every assistant message in a projection thought, wherever it is recorded.
+fn thinking(projection: &nachalnik::Projection) -> impl Iterator<Item = String> + '_ {
+    projection
+        .messages
+        .iter()
+        .flat_map(|message| {
+            let ordered = message
+                .blocks()
+                .into_iter()
+                .flatten()
+                .filter_map(Block::thought)
+                .map(|part| part.content.to_text().into_owned())
+                .collect::<Vec<_>>();
+            let flat = message
+                .reasoning
+                .as_ref()
+                .map(|content| content.to_text().into_owned());
+
+            ordered.into_iter().chain(flat)
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+}

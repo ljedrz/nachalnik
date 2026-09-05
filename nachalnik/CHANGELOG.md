@@ -17,6 +17,14 @@ minor bump may break you.
   between the call and its answer: the request every OpenAI-compatible API refuses outright,
   naming the `tool_call_id` that went unanswered. Both shapes now fall through to the same
   bookkeeping, and a test drives the fixture through both.
+- Eliding an assistant turn takes its thinking with its words. It did not, so a turn whose content
+  had become a one-line marker went on costing every token the model had thought - eliding it
+  freed nothing, `tokens_withheld` claimed those tokens were being kept from the model while they
+  were still in the request, and a compactor would have watched the total refuse to move and
+  elided it again. Measured on a turn with 4,000 bytes of reasoning, the projected budget did not
+  change by one token. Under `send_blocks` it was worse than an accounting error: a signed
+  thinking block went out beside a marker that is not the words it was signed over, which is the
+  thing binding `Part::extra` to its block exists to prevent.
 
 ## [0.3.0] - 2026-09-05
 

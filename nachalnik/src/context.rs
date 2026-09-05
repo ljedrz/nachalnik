@@ -107,6 +107,10 @@ pub enum ContextState {
     /// projector supplies only the brackets around it. The content itself is untouched, so
     /// restoring is [`Kernel::set_state`] back to [`ContextState::Active`] and nothing was copied
     /// or destroyed to get here.
+    ///
+    /// note: for an assistant turn, the thinking goes with the words - see
+    /// [`LinearProjector::send_reasoning`](crate::LinearProjector::send_reasoning). What stays is
+    /// the shape: the turn is still there, and its calls still answer their results.
     Elided,
     /// Not included; kept for the record, and not expected to come back.
     Archived,
