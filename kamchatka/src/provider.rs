@@ -1375,6 +1375,23 @@ mod tests {
         at
     }
 
+    /// An address on which nothing is listening, and which says so.
+    ///
+    /// note: bound and then dropped rather than a well-known port assumed to be free. This was
+    /// `127.0.0.1:9` - discard - and it failed on a CI host whose firewall *drops* packets to a
+    /// reserved port instead of refusing them, which turns "nothing is listening" into a timeout
+    /// and so into the one answer this half of the test needs it not to give. A port the OS has
+    /// just handed out and taken back is refused rather than filtered.
+    async fn nobody_home() -> std::net::SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = listener.local_addr().expect("its address");
+        drop(listener);
+
+        at
+    }
+
     #[tokio::test]
     async fn a_stalled_request_is_waited_out_and_a_refused_one_is_not() {
         // the failure this closes: a 429 got four tries and a doubling; a connection that stalled
@@ -1396,12 +1413,24 @@ mod tests {
             "a stall is a busy server, and this is the error a busy one produces: {stalled:?}"
         );
 
-        // port 9 is discard: the connection is refused rather than left hanging
-        let refused = client
-            .get("http://127.0.0.1:9/")
+        // note: its own client, with room to spare. A refusal comes back in microseconds, so the
+        // only thing a long timeout changes is whether a loaded machine can turn one into a
+        // timeout before it arrives - and a timeout is precisely the answer that would make this
+        // assertion mean the opposite of what it says
+        let patient = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .expect("a client");
+        let refused = patient
+            .get(format!("http://{}/", nobody_home().await))
             .send()
             .await
             .expect_err("nothing is listening");
+        assert!(
+            !refused.is_timeout(),
+            "this host neither answered nor refused, so there is nothing here to tell apart; \
+             a firewall that drops rather than refuses will do this: {refused:?}"
+        );
         assert!(
             !worth_waiting_out(&refused),
             "an address with nothing behind it is an answer, not a delay: {refused:?}"
