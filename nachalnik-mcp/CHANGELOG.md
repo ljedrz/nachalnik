@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- `rmcp` is re-exported. `Server::connect` is generic over its transports and `Server::info` hands
+  back an `Arc<rmcp::model::ServerPeerInfo>`, so a caller has to be able to name those types - and
+  to name the version this crate is actually holding, which a separate dependency line could only
+  guess at. Guessing wrong compiles into an error about two types with the same name, and an SDK
+  bump here was a silent break for anyone who had guessed right.
+
 ## [0.3.0] - 2026-09-05
 
 Nothing changed in this crate. It moves to track `nachalnik` 0.3.0, whose `ModelInfo` grew a field

@@ -53,6 +53,20 @@ pub use crate::{
     tool::Trust,
 };
 
+/// The MCP SDK this bridge is built on, re-exported.
+///
+/// note: not a convenience. [`Server::connect`] is generic over `rmcp`'s transports and
+/// [`Server::info`] hands back one of its types, so without this a caller cannot name what those
+/// two deal in without adding `rmcp` themselves *and* guessing the version - and a version that
+/// did not match would fail to compile with an error about two types that have the same name.
+/// Re-exporting says which one this crate is holding, and makes an SDK bump visible here rather
+/// than in somebody's build.
+///
+/// note: [`Server::spawn`] takes a `tokio::process::Command`, which is not re-exported: anything
+/// driving this runtime already has `tokio`, and re-exporting the whole of it to hand out one
+/// type would be a strange thing for a bridge to do.
+pub use rmcp;
+
 use std::fmt;
 
 /// The result of talking to an MCP server.

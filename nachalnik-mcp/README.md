@@ -67,6 +67,16 @@ offering forty documents is not an argument for putting forty documents in a con
 
 ---
 
+### 🔌 the SDK
+
+`rmcp` is re-exported. `Server::connect` is generic over its transports and `Server::info` hands
+back one of its types, so a caller needs to be able to name them - and to name the *same* version
+this crate is holding, which a separate dependency line can only guess at. `Server::spawn` takes a
+`tokio::process::Command`, which is not re-exported: anything driving this runtime already has
+`tokio`.
+
+---
+
 ### 🧪 tests
 
 `cargo test -p nachalnik-mcp` stands up a real MCP server *in the test process* and talks to it

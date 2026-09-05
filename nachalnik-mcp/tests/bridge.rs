@@ -187,6 +187,16 @@ async fn a_server_becomes_tools_the_kernel_can_offer() {
     assert_eq!(spec.schema["properties"]["text"]["type"], "string");
 }
 
+/// The SDK is re-exported, so a caller can name what `connect` and `info` deal in without adding
+/// `rmcp` themselves and guessing at a version that has to match this crate's exactly.
+#[tokio::test]
+async fn the_sdk_this_bridge_holds_is_reachable_through_it() {
+    let (server, _) = bench("files").await;
+
+    let info: Option<Arc<nachalnik_mcp::rmcp::model::ServerPeerInfo>> = server.info();
+    assert!(info.is_some(), "the handshake said something");
+}
+
 #[tokio::test]
 async fn what_the_server_said_about_itself_is_available() {
     let (server, _) = bench("files").await;
