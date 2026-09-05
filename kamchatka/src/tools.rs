@@ -8,7 +8,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Stdio,
     sync::Arc,
     time::Duration,
@@ -470,40 +470,78 @@ const SUSPECT: &[&str] = &[
 /// it. Anything else is matched against the file name, with `*` standing for any run of
 /// characters. That is less than a glob crate would give and it is what these rules need; a
 /// pattern language nobody can predict is worse on a permissions screen than a small one.
+///
+/// note: the path is read as a [`Path`] rather than split on `/`, so that the name a rule is
+/// matched against is the name the file will actually be opened under. It is the same string
+/// [`Reach::allows`](crate::sandbox::Reach::allows) resolves, and the two used to disagree about
+/// the simplest thing there is: `.env/` has no last component when it is split on slashes, so no
+/// rule matched it, while resolving it produced `.env` and read it. A trailing slash, a `.` in the
+/// middle, a doubled separator - none of them changes which file is meant, and none of them may
+/// change which rule applies.
+///
+/// note: what this cannot see is a *symlink*. A rule is about a name, and a name that resolves
+/// somewhere else resolves after this has answered. The boundary that does not care about names
+/// is the sandbox, which is the kernel's - see [`crate::sandbox`].
 pub fn path_matches(pattern: &str, path: &str) -> bool {
     let path = path.replace('\\', "/");
+    let path = Path::new(&path);
+
     if let Some(directory) = pattern.strip_suffix('/') {
-        return path.split('/').any(|part| part == directory);
+        return path
+            .components()
+            .any(|component| component.as_os_str() == directory);
     }
 
-    let name = path.rsplit('/').next().unwrap_or(&path);
-    let mut rest = name;
-    let mut parts = pattern.split('*');
-    let Some(first) = parts.next() else {
-        return false;
-    };
-    let Some(after) = rest.strip_prefix(first) else {
-        return false;
-    };
-    rest = after;
+    match path.file_name().and_then(|name| name.to_str()) {
+        Some(name) => glob(pattern, name),
+        None => false,
+    }
+}
 
-    let mut last = None;
-    for part in parts {
-        last = Some(part);
-        if part.is_empty() {
-            continue;
+/// Whether a name matches a pattern in which `*` stands for any run of characters.
+///
+/// note: it backtracks, which the first version did not: it walked the pattern's literals with
+/// `find` and took the first hit, so `a*bc` refused `abcbc` - the `bc` it found was the one the
+/// star should have swallowed, and there was no way back. A permission rule that silently fails to
+/// match is the worst way for one to be wrong, and `*credentials*.json` is not an exotic thing to
+/// write.
+///
+/// note: over bytes rather than characters. Both sides are `str`, so equal bytes are equal
+/// characters, and a `*` landing mid-character can only ever be a position the match moves past.
+fn glob(pattern: &str, name: &str) -> bool {
+    let (pattern, name) = (pattern.as_bytes(), name.as_bytes());
+    let (mut p, mut n) = (0, 0);
+    // where the last `*` was, and how much of the name it has been asked to swallow so far
+    let (mut star, mut swallowed) = (None, 0);
+
+    while n < name.len() {
+        match pattern.get(p) {
+            Some(b'*') => {
+                star = Some(p);
+                swallowed = n;
+                p += 1;
+            }
+            Some(c) if *c == name[n] => {
+                p += 1;
+                n += 1;
+            }
+            _ => match star {
+                Some(at) => {
+                    p = at + 1;
+                    swallowed += 1;
+                    n = swallowed;
+                }
+                None => return false,
+            },
         }
-        match rest.find(part) {
-            Some(at) => rest = &rest[at + part.len()..],
-            None => return false,
-        }
     }
 
-    // a pattern with no `*` has to have consumed the whole name; one ending in `*` need not
-    match last {
-        None => rest.is_empty(),
-        Some(part) => part.is_empty() || rest.is_empty(),
+    // whatever is left of the pattern has to be stars, which match the empty rest
+    while pattern.get(p) == Some(&b'*') {
+        p += 1;
     }
+
+    p == pattern.len()
 }
 
 /// Everything is a question until the person at the terminal answers one - including reading, and

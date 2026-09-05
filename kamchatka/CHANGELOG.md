@@ -24,6 +24,17 @@ minor bump may break you.
   with nothing to say and a file of nought bytes. GNU `truncate(1)` opens the file and so was
   refused all along, which is why nothing noticed. The ruleset asks for ABI 3, which brings `Refer`
   with it and so also allows a `mv` between two directories of the working directory.
+- A credential rule is about the file that gets opened. The rules were matched against the raw
+  argument by splitting it on `/` and taking the last piece, while the file was opened at a
+  *resolved* path - and the two disagreed about the simplest thing there is. `read` with a `path`
+  of `.env/` matched no rule and opened `.env`, so in a session where somebody had answered
+  `always` to an ordinary read, the whole list of credential patterns came off with a trailing
+  slash. The path is read as a `Path` now, so a trailing slash, a doubled separator and a `.` in
+  the middle all name the file they name.
+- The pattern matcher backtracks. It walked a pattern's literals with `find` and took the first
+  hit, so `a*bc` refused `abcbc`: the `bc` it found was the one the star should have swallowed and
+  there was no way back. A permission rule that silently fails to match is the worst way for one to
+  be wrong, and `*credentials*.json` is not an exotic thing to write.
 
 ## [0.4.0] - 2026-09-05
 
