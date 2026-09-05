@@ -469,7 +469,12 @@ impl Provider for Gemini {
             tokio::time::sleep(wait).await;
         };
 
-        let mut buffer = String::new();
+        // bytes rather than a `String`, because a chunk boundary is not a character boundary. A
+        // multi-byte character split across two reads used to be decoded twice, lossily, and
+        // arrived as two replacement characters that then went into the context, the transcript
+        // and the session log: `zażółć` came back `za\u{fffd}\u{fffd}ółć`. Held as bytes, the tail of
+        // a split character waits in here for the rest of itself, and only whole lines are decoded
+        let mut buffer: Vec<u8> = Vec::new();
         let mut partial: Vec<Partial> = Vec::new();
         let mut finish = None;
         let mut usage = None;
@@ -514,15 +519,16 @@ impl Provider for Gemini {
                     continue;
                 }
             };
-            buffer.push_str(&String::from_utf8_lossy(&bytes));
+            buffer.extend_from_slice(&bytes);
 
-            while let Some(end) = buffer.find('\n') {
+            while let Some(end) = buffer.iter().position(|byte| *byte == b'\n') {
                 if deltas.is_interrupted() {
                     finish = Some("interrupted".to_owned());
                     break;
                 }
 
-                let line = buffer[..end].trim().to_owned();
+                // a whole line, so whatever multi-byte characters it holds are all here
+                let line = String::from_utf8_lossy(&buffer[..end]).trim().to_owned();
                 buffer.drain(..=end);
 
                 let Some(data) = line.strip_prefix("data:") else {
@@ -568,6 +574,7 @@ impl Provider for Gemini {
                 return Ok(interrupted());
             }
 
+            let buffer = String::from_utf8_lossy(&buffer);
             let payload: Value = serde_json::from_str(&buffer).unwrap_or(Value::Null);
             return match payload.get("error").filter(|e| !e.is_null()) {
                 Some(error) => Err(format!("{error}").into()),

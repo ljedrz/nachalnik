@@ -5,6 +5,19 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- A multi-byte character split across two reads of a stream is no longer destroyed. Both providers
+  assembled the response by decoding each chunk off the socket as it arrived, lossily, so a
+  character whose bytes straddled a chunk boundary was decoded twice - once with its tail missing
+  and once with its head - and became two replacement characters. `zażółć` came back `za??ółć`,
+  and it then went into the context, the transcript and the session log with nothing to say it had
+  ever been anything else. It depends only on where the network happened to break the stream, so
+  every language with diacritics and every typographic dash was a coin toss. The buffer holds bytes
+  now and only whole lines are decoded.
+
 ## [0.4.0] - 2026-09-05
 
 ### fixed
