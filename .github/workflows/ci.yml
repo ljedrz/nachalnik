@@ -80,8 +80,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-features --all-targets --locked
 
-  # note: what a crate is on the registry is not what the working tree is - a readme that is a
-  # symlink, a path dependency that has to become a version, a file `git` never tracked. This
+  # note: what a crate is on the registry is not what the working tree is - a path dependency that
+  # has to become a version, a symlinked licence, a file `git` never tracked. This
   # packages all four and builds each from its own tarball, with the members that are being
   # published unpacked into a temporary registry so the ones above them are built against what
   # would really be uploaded rather than against the directory next door.

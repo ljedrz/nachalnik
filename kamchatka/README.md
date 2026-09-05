@@ -786,4 +786,4 @@ MIT.
 
 [nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
 [nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
-[protection]: https://github.com/ljedrz/nachalnik/blob/HEAD/README.md#-what-it-does-and-does-not-protect-you-from
+[protection]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/README.md#-what-it-does-and-does-not-protect-you-from
