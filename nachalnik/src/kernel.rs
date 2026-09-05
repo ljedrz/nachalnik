@@ -505,10 +505,12 @@ impl Kernel {
     /// call, a [`Tool`] that checks [`OutputSink::is_interrupted`] can do the same - and in the
     /// serial case the kernel does not start the calls that had not begun.
     ///
-    /// note: The flag is cleared by whichever transition attempt acts on it, so it can never
-    /// outlive the thing it was meant to stop. What it never does is discard work: a partial
-    /// answer and a half-finished tool result are recorded like any other, because the whole
-    /// point of a context you can see is that you get to decide what to do with them.
+    /// note: The flag is cleared by the transition attempt that acts on it - [`Kernel::step`],
+    /// including the one [`Kernel::turn`] is in the middle of making - so it can never outlive the
+    /// thing it was meant to stop, and there is only ever one reader of it. What it never does is
+    /// discard work: a partial answer and a half-finished tool result are recorded like any other,
+    /// because the whole point of a context you can see is that you get to decide what to do with
+    /// them.
     pub fn interrupt(&self) -> bool {
         let already = self.0.interrupted.swap(true, SeqCst);
         if !already {
@@ -1252,18 +1254,29 @@ impl Kernel {
     /// are two of them. That is deliberate: [`State::Ready`] is a checkpoint at which the model
     /// has said what it wants and nothing has happened yet.
     pub async fn step(&self) -> Result<State> {
+        self.step_once().await.map(|(state, _)| state)
+    }
+
+    /// One transition, and whether it was spent acknowledging an interrupt rather than making
+    /// one.
+    ///
+    /// note: [`Kernel::turn`] needs to be told, and cannot work it out. Both used to clear the
+    /// flag, so an interrupt that landed between the two checks was consumed by the step -
+    /// which returned the state unchanged, leaving `turn` to see an ordinary resting state and
+    /// go round again. The stop was on the event log and the next request went out anyway.
+    async fn step_once(&self) -> Result<(State, bool)> {
         // somebody asked to stop. One transition attempt is spent acknowledging it, which is
         // also what keeps the flag from outliving the request it was meant for: a client that
         // drives `step` itself has no `turn` to consume it
         if self.0.interrupted.swap(false, SeqCst) {
-            return Ok(self.state());
+            return Ok((self.state(), true));
         }
 
         let claim = {
             let mut machine = self.0.machine.lock();
             match machine.state.clone() {
                 state if state.is_busy() => return Err(Error::Busy),
-                State::Deciding { calls } => return Ok(State::Deciding { calls }),
+                State::Deciding { calls } => return Ok((State::Deciding { calls }, false)),
                 State::Ready { calls } => {
                     let prepared = std::mem::take(&mut machine.pending);
                     self.transition(&mut machine, State::Executing { calls });
@@ -1283,8 +1296,8 @@ impl Kernel {
         };
 
         match claim {
-            Claim::Request => self.request().await,
-            Claim::Execute(prepared) => self.execute(prepared).await,
+            Claim::Request => self.request().await.map(|state| (state, false)),
+            Claim::Execute(prepared) => self.execute(prepared).await.map(|state| (state, false)),
         }
     }
 
@@ -1298,11 +1311,11 @@ impl Kernel {
         let mut requests = 0;
 
         loop {
-            // somebody asked to stop; the step that just finished was recorded in full, and the
-            // flag is cleared so that the next `turn` is not surprised by it
-            if self.0.interrupted.swap(false, SeqCst) {
-                return Ok(self.state());
-            }
+            // note: this loop does not read the interrupt flag itself. It used to, and the step
+            // it then called read it again - so an interrupt landing between the two was spent
+            // on a step that transitioned nothing, and this loop, seeing an ordinary resting
+            // state come back, went round and sent the next request anyway. One reader, checked
+            // in one place, is what makes that window not exist rather than merely narrow
 
             // the next step will send a request, so it counts against the budget
             if matches!(self.state(), State::Idle | State::Finished { .. }) {
@@ -1317,8 +1330,15 @@ impl Kernel {
                 requests += 1;
             }
 
-            match self.step().await? {
-                state @ (State::Finished { .. } | State::Deciding { .. }) => return Ok(state),
+            // an interrupt the step acknowledged is one this loop must not step past: it was
+            // asked to stop, and the step it just spent doing so transitioned nothing
+            let (state, acknowledged) = self.step_once().await?;
+            if acknowledged {
+                return Ok(state);
+            }
+
+            match state {
+                State::Finished { .. } | State::Deciding { .. } => return Ok(state),
                 _ => continue,
             }
         }
@@ -1913,13 +1933,10 @@ impl Kernel {
         }
     }
 
-    /// Projects the context, and returns the projection together with what the items that made
-    /// it into it are estimated to cost.
+    /// Projects the context and reports what the projection costs.
     ///
     /// note: Both [`Kernel::budget`] and the request builder go through here, so that the number
-    /// a client is shown is the number that is about to be sent. Summing the projected *items*
-    /// instead would quietly count the ones the projector then repairs away.
-    /// Projects the context and reports what the projection costs.
+    /// a client is shown is the number that is about to be sent.
     ///
     /// note: counted over the messages that came out, not over the items that went in. They are
     /// not the same figure: a reference is labelled on its way out, and an elided item is a marker

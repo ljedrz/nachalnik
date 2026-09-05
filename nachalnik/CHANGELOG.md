@@ -25,6 +25,11 @@ minor bump may break you.
   change by one token. Under `send_blocks` it was worse than an accounting error: a signed
   thinking block went out beside a marker that is not the words it was signed over, which is the
   thing binding `Part::extra` to its block exists to prevent.
+- `Kernel::turn` cannot swallow an interrupt. Both it and the `step` it called cleared the flag,
+  so one landing between the two checks was spent on a step that transitioned nothing - and the
+  turn, handed back an ordinary resting state, went round and sent the next request anyway, with
+  `turn.interrupted` already on the log saying it had been asked to stop. The step is now the only
+  reader of the flag and reports back whether it acted on it.
 
 ## [0.3.0] - 2026-09-05
 

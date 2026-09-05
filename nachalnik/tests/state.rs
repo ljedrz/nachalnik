@@ -747,3 +747,35 @@ async fn a_step_spends_one_attempt_acknowledging_an_interrupt() {
     ));
     assert_eq!(provider.requests().len(), 1);
 }
+
+#[tokio::test]
+async fn a_turn_reads_the_interrupt_in_one_place() {
+    let (kernel, provider) = permissive([
+        ModelResponse::text("first"),
+        ModelResponse::text("second"),
+        ModelResponse::text("third"),
+    ]);
+    kernel.push(ContextItem::user("go"));
+
+    // the flag is read by the transition attempt that acts on it, and by nothing else. Both
+    // `turn` and the step it calls used to read it, so an interrupt landing between the two was
+    // spent on a step that transitioned nothing - and the turn, handed back an ordinary resting
+    // state, went round and sent the next request anyway
+    kernel.interrupt();
+    assert_eq!(kernel.turn().await.unwrap(), State::Idle);
+    assert!(
+        provider.requests().is_empty(),
+        "an interrupted turn does not talk to the model"
+    );
+    assert!(
+        !kernel.is_interrupted(),
+        "and the flag is spent, not sticky"
+    );
+
+    // which leaves the turn exactly where it was, ready to be asked again
+    assert!(matches!(
+        kernel.turn().await.unwrap(),
+        State::Finished { .. }
+    ));
+    assert_eq!(provider.requests().len(), 1);
+}
