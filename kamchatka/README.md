@@ -719,6 +719,14 @@ Read-only rather than `--sandbox-allow`, because a model that can *replace* the 
 about to run is not the trade anybody meant to make. The same goes for `~/.nvm`, `~/.pyenv`,
 `~/.rbenv` and the rest.
 
+**Git needs no flag.** It used to: under Landlock `access(2)` still answers from the file's own
+permissions, so git asked whether `~/.gitconfig` was readable, was told yes, opened it, got
+`EACCES` and took the *unreadable configuration* branch — `fatal: unknown error occurred while
+reading the configuration files`, and every git command in the session dead. A confined command is
+now handed `GIT_CONFIG_GLOBAL` pointing at nothing when its configuration is out of reach, so git
+gets the *no configuration* case, which it handles. Pass `--sandbox-read ~/.gitconfig` if you want
+your identity and aliases in there too.
+
 ## 🎛️ options
 
 ```text

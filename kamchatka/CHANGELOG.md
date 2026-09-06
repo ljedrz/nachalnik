@@ -9,6 +9,17 @@ minor bump may break you.
 
 ### fixed
 
+- Git is no longer killed outright by a configuration it cannot read. Under Landlock, `access(2)`
+  still answers from the file's own permissions, so git asked whether `~/.gitconfig` was readable,
+  was told yes, opened it, got `EACCES`, and took the *unreadable configuration* branch rather
+  than the *no configuration* branch: `fatal: unknown error occurred while reading the
+  configuration files`, exit 128, and every git command in a confined session dead - `git log`,
+  `git diff`, `git status`, all of them. A missing file is fine and an unreadable one is not, and
+  a command has no way to tell git which it has. A confined command whose global configuration is
+  out of reach is now handed `GIT_CONFIG_GLOBAL` pointing at nothing, which is the case git
+  handles. One that is in reach is left alone, so an identity and aliases that could be read still
+  are, and a `GIT_CONFIG_GLOBAL` somebody set is never overwritten.
+
 - A multi-byte character split across two reads of a stream is no longer destroyed. Both providers
   assembled the response by decoding each chunk off the socket as it arrived, lossily, so a
   character whose bytes straddled a chunk boundary was decoded twice - once with its tail missing

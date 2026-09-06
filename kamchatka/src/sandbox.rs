@@ -141,6 +141,65 @@ impl Sandbox {
             cmd,
         ))
     }
+
+    /// Whether a confined command could open this path for reading.
+    ///
+    /// note: reading rather than writing, because every use of this is about a command that was
+    /// refused one. A path under a read-only root answers `true` here and is still unwritable.
+    ///
+    /// note: resolved on both sides, so that a symlink and a `../` are the same question they are
+    /// for [`Reach::allows`]. A path that is not there resolves through its parent - which is the
+    /// common case, since a command that named a file it could not open often could not `stat`
+    /// its directory either.
+    fn reaches(&self, path: &Path) -> bool {
+        let resolved = resolve(path);
+
+        SYSTEM
+            .iter()
+            .map(PathBuf::from)
+            .chain(std::iter::once(self.workdir.clone()))
+            .chain(self.extra.iter().cloned())
+            .chain(self.readable.iter().cloned())
+            .any(|allowed| match allowed.canonicalize() {
+                Ok(allowed) => resolved.starts_with(allowed),
+                Err(_) => false,
+            })
+    }
+
+    /// What to hand a confined command as `GIT_CONFIG_GLOBAL`; `None` leaves git its own defaults.
+    ///
+    /// note: git is the one program where being out of reach is fatal rather than inconvenient,
+    /// and the reason is a trap worth writing down: under Landlock, `access(2)` still answers
+    /// from the file's own permissions. So git asks whether `~/.gitconfig` is readable, is told
+    /// yes, opens it, gets `EACCES`, and takes the *unreadable configuration* branch rather than
+    /// the *no configuration* branch - `fatal: unknown error occurred while reading the
+    /// configuration files`, and every git command in the session is dead. A missing file is
+    /// fine; an unreadable one is not, and a confined command cannot tell git which it has.
+    ///
+    /// note: only when one of them is actually out of reach, and only when nobody set the
+    /// variable already. Git reads a person's aliases and identity out of these, and quietly
+    /// throwing them away for a command that could have had them would be its own bug.
+    fn git_config_global(&self) -> Option<PathBuf> {
+        if std::env::var_os("GIT_CONFIG_GLOBAL").is_some() {
+            return None;
+        }
+
+        let (mine, missed): (Vec<PathBuf>, Vec<PathBuf>) = global_git_config()
+            .into_iter()
+            .filter(|path| path.is_file())
+            .partition(|path| self.reaches(path));
+
+        match missed.is_empty() {
+            true => None,
+            // the reachable one if there is one, so that a person who opened up `~/.gitconfig`
+            // and left `~/.config/git/config` behind keeps the half they asked for
+            false => Some(
+                mine.into_iter()
+                    .next()
+                    .unwrap_or_else(|| "/dev/null".into()),
+            ),
+        }
+    }
 }
 
 /// The deepest existing part of a path, resolved, with whatever is left over joined back on.
@@ -178,6 +237,22 @@ fn resolve(path: &Path) -> PathBuf {
             },
         }
     }
+}
+
+/// Where git looks for a person's own configuration, in the order it reads them.
+fn global_git_config() -> Vec<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let xdg = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home.as_ref().map(|home| home.join(".config")));
+
+    [
+        xdg.map(|xdg| xdg.join("git").join("config")),
+        home.map(|home| home.join(".gitconfig")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 impl fmt::Display for Sandbox {
@@ -556,6 +631,13 @@ pub fn run_if_asked() -> Option<i32> {
         .arg(&cmd)
         .current_dir(&sandbox.workdir)
         .env("TMPDIR", &scratch);
+    // note: only when there is a ruleset in force. Unconfined, git can read its own configuration
+    // and pointing it elsewhere would take a person's identity and aliases away for nothing
+    if confinement.is_confined()
+        && let Some(global) = sandbox.git_config_global()
+    {
+        command.env("GIT_CONFIG_GLOBAL", global);
+    }
 
     #[cfg(unix)]
     let code = {

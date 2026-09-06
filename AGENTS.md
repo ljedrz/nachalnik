@@ -296,6 +296,12 @@ README and the crate docs in longer form:
   to be. `#![deny(unsafe_code)]` is why it is a re-exec rather than `Command::pre_exec`.
 - **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it
   can fail and the permissions tab draws it. Never let it degrade silently.
+- **`access(2)` does not know about Landlock.** It answers from the file's own permissions, so a
+  program that probes before it opens is told yes and then refused - and lands in whichever branch
+  it keeps for a *corrupt* file rather than a *missing* one. Git does exactly this with
+  `~/.gitconfig` and dies with `fatal: unknown error occurred while reading the configuration
+  files`. Anything the confinement puts out of reach may need to be told it is not there rather
+  than left to find out.
 - **Do not add a check that implies more than it delivers.** `reaches_the_network` is allowed to
   exist because its documentation is exact about what it misses, and because refusing up front with
   a reason is kinder than letting a command run and fail. It is no longer what stands between the

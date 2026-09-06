@@ -568,3 +568,102 @@ fn a_path_opened_for_reading_is_not_a_path_that_can_be_written() {
         "default = stable",
     );
 }
+
+/// Git is handed a configuration it can read, because an unreadable one is fatal to it.
+///
+/// note: the trap this exists for is that `access(2)` under Landlock still answers from the file's
+/// own permissions. Git asks whether `~/.gitconfig` is readable, is told yes, opens it, gets
+/// `EACCES`, and takes the *unreadable configuration* branch rather than the *no configuration*
+/// branch: `fatal: unknown error occurred while reading the configuration files`, exit 128, and
+/// every git command in the session dead. Not a warning - a coding agent that cannot run `git log`.
+#[test]
+fn git_is_not_killed_by_a_configuration_it_cannot_read() {
+    if !enforced() {
+        return;
+    }
+    if Command::new("git").arg("--version").output().is_err() {
+        eprintln!("skipped: no git here");
+        return;
+    }
+
+    // a home of its own, out of reach like the real one, with a configuration in it that exists.
+    // A file that is merely absent is not the case that breaks git
+    let home = workdir("git-home");
+    std::fs::write(home.join(".gitconfig"), "[user]\n\tname = someone\n").expect("a configuration");
+
+    let dir = workdir("git-repo");
+    for args in [
+        vec!["init", "-q"],
+        vec![
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "one",
+        ],
+    ] {
+        let done = Command::new("git")
+            .args(&args)
+            .current_dir(&dir)
+            .env("HOME", &home)
+            .output()
+            .expect("git runs");
+        assert!(
+            done.status.success(),
+            "{}",
+            String::from_utf8_lossy(&done.stderr)
+        );
+    }
+
+    let confined = Sandbox {
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: false,
+    };
+    let child = Command::new(program())
+        .args(confined.argv("git log -n 1 --oneline"))
+        .env("HOME", &home)
+        .env_remove("GIT_CONFIG_GLOBAL")
+        .output()
+        .expect("the binary under test is built");
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&child.stdout),
+        String::from_utf8_lossy(&child.stderr)
+    );
+    let _ = std::fs::remove_dir_all(kamchatka::sandbox::scratch_for(std::process::id()));
+
+    assert!(
+        child.status.success(),
+        "git should still run confined: {said}"
+    );
+    assert!(said.contains("one"), "{said}");
+    assert!(
+        !said.contains("fatal"),
+        "an unreadable configuration is not git's problem to solve: {said}"
+    );
+
+    // ... and opened up, it is git's own configuration again rather than nothing
+    let mut opened = confined.clone();
+    opened.readable = vec![home.join(".gitconfig")];
+    let child = Command::new(program())
+        .args(opened.argv("git config --get user.name"))
+        .env("HOME", &home)
+        .env_remove("GIT_CONFIG_GLOBAL")
+        .output()
+        .expect("the binary under test is built");
+    let said = String::from_utf8_lossy(&child.stdout).into_owned();
+    let _ = std::fs::remove_dir_all(kamchatka::sandbox::scratch_for(std::process::id()));
+
+    assert_eq!(
+        said.trim(),
+        "someone",
+        "a configuration in reach is not thrown away"
+    );
+}
