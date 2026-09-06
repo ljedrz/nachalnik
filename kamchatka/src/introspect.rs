@@ -134,6 +134,16 @@ impl Tool for Introspect {
                     "items": { "type": "integer" },
                     "description": "look: read these items in full instead of listing all of them",
                 },
+                // note: declared, because the tool reads it, the description tells the model to
+                // use it, and `look`'s own last line and the marker in a sampled item both end by
+                // telling it to ask for the `whole` of one. An argument named in three places and
+                // absent from the schema is one a model following the schema cannot pass, and one
+                // an endpoint validating against the schema will refuse outright
+                "whole": {
+                    "type": "boolean",
+                    "description": "look: read the named items entire, rather than as a start and \
+                                    an end. It costs what carrying them costs",
+                },
                 "question": {
                     "type": "string",
                     "description": "fork: what to ask the copy",

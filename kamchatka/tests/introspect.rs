@@ -194,6 +194,16 @@ async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for(
         ),
     ]));
 
+    // an argument the tool reads and its own output tells the model to use is one the schema has
+    // to declare: a model following the schema cannot pass it otherwise, and an endpoint
+    // validating against the schema refuses the call outright
+    let spec = kernel.tool("introspect").expect("it is installed").spec();
+    assert_eq!(
+        spec.schema["properties"]["whole"]["type"], "boolean",
+        "`whole` is read, and advertised in three places: {}",
+        spec.schema
+    );
+
     kernel.push(ContextItem::file("noise.log", long.clone()));
     kernel.push(ContextItem::user("go"));
     kernel.turn().await.expect("the turn failed");

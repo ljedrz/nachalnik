@@ -36,6 +36,12 @@ minor bump may break you.
   not cannot be unlinked, which leaves the command with no temporary directory rather than with
   somebody else's.
 
+- `introspect` declares the `whole` argument it reads. The tool read it, its description told the
+  model to use it, and both `look`'s last line and the marker in a sampled item ended by telling
+  the model to ask for the `whole` of an item - while the schema declared four properties, none of
+  them that one. A model following the schema could not pass it, and an endpoint validating
+  against the schema would have refused the call.
+
 - A long answer keeps its beginning. The transcript bounded a *still arriving* entry at eight
   thousand bytes and replaced whatever came before it with `[...]` - which is right for a `find /`
   and wrong for a message. A model writing a long answer had its first paragraphs eaten while it
