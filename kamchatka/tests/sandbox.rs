@@ -667,3 +667,110 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
         "a configuration in reach is not thrown away"
     );
 }
+
+/// A refusal that was the confinement says so, and one that was not says nothing.
+#[test]
+fn a_permission_error_says_when_the_confinement_caused_it() {
+    let confined = Sandbox {
+        workdir: PathBuf::from("/w"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: false,
+    };
+
+    // the shape the live session produced, down to the quotes rustup wraps the path in
+    let note = confined
+        .note_for(
+            "error: could not read settings file: '/home/someone/.rustup/settings.toml': \
+             Permission denied (os error 13)\n",
+        )
+        .expect("the path is out of reach, so this is the confinement");
+    assert!(
+        note.contains("/home/someone/.rustup/settings.toml"),
+        "the useful part is which path: {note}"
+    );
+    assert!(
+        note.contains("/w"),
+        "and what it could have used instead: {note}"
+    );
+
+    // a path this reaches was refused by its own permissions, and a hedge about the sandbox would
+    // send a model looking for a boundary that had nothing to do with it
+    assert_eq!(
+        confined.note_for("cat: /etc/shadow: Permission denied\n"),
+        None
+    );
+
+    // nothing refused, nothing to say
+    assert_eq!(confined.note_for("ls: no such file\n"), None);
+
+    // refused, and naming no path this can pick out: the general answer rather than silence
+    let note = confined
+        .note_for("bind: Permission denied\n")
+        .expect("something was refused");
+    assert!(note.contains("confined"), "{note}");
+
+    // ... and a path that has been opened up is not the confinement either. A real directory,
+    // because a root that is not there is not one this opens up - the same answer `Reach::allows`
+    // gives, and for the same reason
+    let opened_up = workdir("opened-up");
+    let mut opened = confined.clone();
+    opened.readable = vec![opened_up.clone()];
+    assert_eq!(
+        opened.note_for(&format!(
+            "error: could not read settings file: '{}/settings.toml': Permission denied \
+             (os error 13)\n",
+            opened_up.display()
+        )),
+        None,
+    );
+}
+
+/// ... and the `shell` tool actually puts it in front of the model.
+#[tokio::test]
+async fn the_shell_tool_accounts_for_a_refusal_it_caused() {
+    if !enforced() {
+        return;
+    }
+    // outside the working directory and outside the system paths, readable by whoever runs this,
+    // so that the only thing standing between the command and the file is the ruleset
+    let elsewhere = workdir("out-of-reach");
+    let secret = elsewhere.join("secret.txt");
+    std::fs::write(&secret, "hunter2").expect("something to be refused");
+
+    let kernel = confined_agent(
+        &workdir("accounted"),
+        [
+            ModelResponse::tool_calls(vec![call(
+                "1",
+                "shell",
+                json!({ "cmd": format!("cat {}", secret.display()) }),
+            )]),
+            ModelResponse::text("done"),
+        ],
+    );
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn runs");
+
+    let said = kernel
+        .items()
+        .into_iter()
+        .find(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .expect("the shell answered");
+
+    assert!(said.contains("Permission denied"), "{said}");
+    assert!(
+        said.contains(&secret.display().to_string())
+            && said.contains("outside what this session reaches"),
+        "the model has no other way to tell a boundary from a protected file: {said}"
+    );
+    // and near the top, where an output limit cutting from the end cannot take it
+    let (status, rest) = said.split_once('\n').expect("a status line");
+    assert!(status.starts_with("exit: 1"), "{status}");
+    assert!(
+        rest.starts_with('['),
+        "the note comes before the output: {said}"
+    );
+}

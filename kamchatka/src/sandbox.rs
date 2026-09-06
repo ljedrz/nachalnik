@@ -166,6 +166,69 @@ impl Sandbox {
             })
     }
 
+    /// What to add to a confined command's output when a permission error in it was this
+    /// confinement rather than the file's own permissions; `None` when nothing suggests it was.
+    ///
+    /// note: the whole reason this exists. Landlock refuses an `open` with `EACCES`, which is
+    /// what a command reports when a file is somebody else's - so a model is handed
+    /// `Permission denied (os error 13)` and has no way at all to tell a boundary from a
+    /// protected file. A live session spent six calls hunting for a `cargo` that was never
+    /// missing: it was `~/.rustup` that was out of reach, and nothing in front of the model said
+    /// so. The tool's description says a permission error out here is the confinement; a
+    /// sentence at the point of failure, naming the path, is what that description was for.
+    ///
+    /// note: three answers rather than two, and the third one is the point. A refusal that names
+    /// a path *within* reach was the file's own permissions - `/etc/shadow` is refused under this
+    /// and would be refused without it - and saying "this may have been the sandbox" there would
+    /// be a hedge that sends a model looking for a boundary that had nothing to do with it. So a
+    /// refusal whose paths are all reachable gets nothing said about it at all.
+    ///
+    /// note: the general sentence is for the refusal that names no path this can find. Standard
+    /// error is arbitrary text and picking paths out of it is a guess; what is *not* a guess is
+    /// that this command ran confined and something was refused, which is worth one line.
+    ///
+    /// note: it says "below" because [`Shell`](crate::tools::Shell) puts it under the status line
+    /// and above the output. That is not where it reads best - beside the message would be - but
+    /// an output limit cuts from the end, and a note accounting for a permission error is worth
+    /// nothing if the truncation takes the note and leaves the error.
+    pub fn note_for(&self, stderr: &str) -> Option<String> {
+        let refusals: Vec<&str> = stderr.lines().filter(|line| refused(line)).collect();
+        if refusals.is_empty() {
+            return None;
+        }
+
+        let mentioned: Vec<String> = refusals.iter().flat_map(|line| paths_in(line)).collect();
+        // `Vec::dedup` drops only neighbours, and a path is usually named by two lines that are
+        // not next to each other - a warning and the failure it led to
+        let mut named: Vec<&String> = Vec::new();
+        for path in &mentioned {
+            if !self.reaches(Path::new(path)) && !named.contains(&path) {
+                named.push(path);
+            }
+        }
+        named.truncate(3);
+
+        match (named.is_empty(), mentioned.is_empty()) {
+            // every path it named is one this reaches, so the refusal is the file's own
+            (true, false) => None,
+            (true, true) => Some(format!(
+                "[this command ran confined - {self} - so a permission error below may be that \
+                 boundary rather than the file's own permissions.]"
+            )),
+            (false, _) => Some(format!(
+                "[{} is outside what this session reaches, so the permission error below is the \
+                 confinement rather than the file's own permissions. This command runs with \
+                 {self}. Work inside the working directory, or say what you need the path for \
+                 and ask for it to be opened up.]",
+                named
+                    .iter()
+                    .map(|path| path.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )),
+        }
+    }
+
     /// What to hand a confined command as `GIT_CONFIG_GLOBAL`; `None` leaves git its own defaults.
     ///
     /// note: git is the one program where being out of reach is fatal rather than inconvenient,
@@ -237,6 +300,32 @@ fn resolve(path: &Path) -> PathBuf {
             },
         }
     }
+}
+
+/// Whether a line of standard error looks like something was refused permission.
+///
+/// note: three spellings because three layers write them: a C program's `strerror`, Rust's
+/// `io::Error` display, and the errno name itself. All three are the same refusal.
+fn refused(line: &str) -> bool {
+    line.contains("Permission denied") || line.contains("os error 13") || line.contains("EACCES")
+}
+
+/// The absolute paths a line of standard error mentions.
+///
+/// note: a token that is absolute once the punctuation a message wraps one in has been taken off.
+/// Stripped *first* and tested afterwards, because the message that sent anybody here reads
+/// `could not read settings file: '/home/you/.rustup/settings.toml': Permission denied`, where the
+/// token is `'/home/...':` and does not start with a slash at all.
+///
+/// note: it misses a path with a space in it, which is the right way round: a caller that gets
+/// nothing says something general instead, and one that gets a wrong path would say something
+/// false.
+fn paths_in(line: &str) -> Vec<String> {
+    line.split_whitespace()
+        .map(|token| token.trim_matches(|c: char| "'\"`,;:.()[]<>".contains(c)))
+        .filter(|token| token.starts_with('/') && token.len() > 1)
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Where git looks for a person's own configuration, in the order it reads them.

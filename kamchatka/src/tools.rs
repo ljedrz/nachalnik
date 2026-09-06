@@ -280,20 +280,25 @@ impl Tool for Shell {
 
         // what the command may reach, which is a different question from whether it may run: the
         // kernel answered that one before this was called
-        let mut command = match &self.confiner {
-            Some(me) => {
-                let sandbox = Sandbox::of(
-                    &self.policy,
-                    self.workdir.clone(),
-                    self.extra.clone(),
-                    self.readable.clone(),
-                    self.policy.was_granted_the_network(&call.id),
-                );
+        //
+        // note: kept rather than built and dropped, because it is also what can tell afterwards
+        // whether a permission error in the output was this boundary; see `Sandbox::note_for`
+        let sandbox = self.confiner.is_some().then(|| {
+            Sandbox::of(
+                &self.policy,
+                self.workdir.clone(),
+                self.extra.clone(),
+                self.readable.clone(),
+                self.policy.was_granted_the_network(&call.id),
+            )
+        });
+        let mut command = match (&self.confiner, &sandbox) {
+            (Some(me), Some(sandbox)) => {
                 let mut command = tokio::process::Command::new(me);
                 command.args(sandbox.argv(cmd));
                 command
             }
-            None => {
+            _ => {
                 let mut command = tokio::process::Command::new("sh");
                 command.arg("-c").arg(cmd).current_dir(&self.workdir);
                 command
@@ -399,7 +404,18 @@ impl Tool for Shell {
             let _ = tokio::fs::remove_dir_all(scratch).await;
         }
 
-        let text = format!("{status}\n--- stdout ---\n{collected}\n--- stderr ---\n{errors}");
+        // note: under the status line rather than beside the message it explains, for the same
+        // reason the status line says whether the command was stopped: an output limit cuts from
+        // the end, and a note accounting for a permission error is worth nothing if the
+        // truncation takes the note and leaves the error. The top of the output survives anything
+        let note = match sandbox
+            .as_ref()
+            .and_then(|sandbox| sandbox.note_for(&errors))
+        {
+            Some(note) => format!("{note}\n"),
+            None => String::new(),
+        };
+        let text = format!("{status}\n{note}--- stdout ---\n{collected}\n--- stderr ---\n{errors}");
 
         Ok(ToolOutput::new(text))
     }

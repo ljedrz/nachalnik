@@ -62,6 +62,15 @@ minor bump may break you.
   replace the toolchain it was about to run; this is the flag that was missing. The three file
   tools honour it too: `read` reaches a read-only path and `write` and `edit` are refused with a
   message that says which of the two it is.
+- A permission error from a confined command says when the confinement caused it. Landlock refuses
+  an `open` with `EACCES`, which is the same thing the kernel says about a file that is somebody
+  else's, so `Permission denied (os error 13)` gave a model no way at all to tell a boundary from
+  a protected file - and the tool description saying so in general did not stop one spending six
+  calls on it. A refused command that names a path outside its reach now gets a line naming that
+  path and what the command can reach instead, directly under the status line, where an output
+  limit cutting from the end cannot take it. A refusal that names only paths the command *can*
+  reach gets nothing: `cat /etc/shadow` is refused with or without a sandbox, and hedging about it
+  would send a model looking for a boundary that had nothing to do with it.
 
 ### changed
 

@@ -296,6 +296,14 @@ README and the crate docs in longer form:
   to be. `#![deny(unsafe_code)]` is why it is a re-exec rather than `Command::pre_exec`.
 - **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it
   can fail and the permissions tab draws it. Never let it degrade silently.
+- **A boundary the refused party cannot see is a boundary it will walk into repeatedly.** Landlock
+  refuses an `open` with `EACCES`, which is exactly what the kernel says about a file that belongs
+  to somebody else - so a confined command is handed a permission error indistinguishable from an
+  ordinary one, and a model that cannot tell the two apart spends its turns on `sudo`. Saying it
+  in the tool description is not enough; a live session ignored one and spent six calls hunting for
+  a `cargo` that was never missing. Say it at the point of failure, name the path, and say nothing
+  where the refusal was not yours - a hedge on `cat /etc/shadow` sends a model looking for a
+  boundary that had nothing to do with it. `Sandbox::note_for` is the shape.
 - **`access(2)` does not know about Landlock.** It answers from the file's own permissions, so a
   program that probes before it opens is told yes and then refused - and lands in whichever branch
   it keeps for a *corrupt* file rather than a *missing* one. Git does exactly this with

@@ -727,6 +727,19 @@ now handed `GIT_CONFIG_GLOBAL` pointing at nothing when its configuration is out
 gets the *no configuration* case, which it handles. Pass `--sandbox-read ~/.gitconfig` if you want
 your identity and aliases in there too.
 
+**A permission error says where it came from.** When a confined command is refused a path outside
+its reach, the tool result names it:
+
+```
+exit: 1 (the command reported a failure)
+[/home/you/.rustup/settings.toml is outside what this session reaches, so the permission error
+below is the confinement rather than the file's own permissions. …]
+```
+
+A refusal that names only paths the command *can* reach gets no such line: `cat /etc/shadow` is
+refused with or without a sandbox, and hedging about it would send a model looking for a boundary
+that had nothing to do with it.
+
 ## 🎛️ options
 
 ```text
