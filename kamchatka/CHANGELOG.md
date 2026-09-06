@@ -9,6 +9,15 @@ minor bump may break you.
 
 ### fixed
 
+- `Trim` stops asking once there is nothing left to elide. Its candidates were the projected tool
+  results, and an elided item *is* projected - as a marker - so every item a pass had already
+  elided came back as a candidate on the next one. The plan was therefore never empty, never
+  `None`, and its summary went into the context before every single request from then on: a
+  compactor adding a line and burning one of the person's sixteen undos per request, growing the
+  thing it exists to shrink, for as long as the session lasted. A pinned `--file` bigger than the
+  target is enough to get there, and six passes over one took the context from three items to
+  eight. It looks at what an item is *sending* now.
+
 - A long answer keeps its beginning. The transcript bounded a *still arriving* entry at eight
   thousand bytes and replaced whatever came before it with `[...]` - which is right for a `find /`
   and wrong for a message. A model writing a long answer had its first paragraphs eaten while it
@@ -86,13 +95,6 @@ minor bump may break you.
   would send a model looking for a boundary that had nothing to do with it.
 
 ### changed
-
-- `network: deny` is described as what Landlock actually refuses, which is TCP. `ConnectTcp` and
-  `BindTcp` are its only two network access rights, so a confined command can still send a UDP
-  datagram - enough to put bytes in a DNS query - and AF_UNIX needs a kernel from 2026 to reach at
-  all. The screen, the tool's own description to the model and both readmes now say TCP rather than
-  "the network". Nothing about the confinement changed; what it was described as did.
-- `--requests 0` says in `--help` that it means no limit at all, which it has always done.
 
 ## [0.4.0] - 2026-09-05
 

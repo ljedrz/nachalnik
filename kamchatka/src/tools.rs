@@ -980,9 +980,17 @@ impl Compactor for Trim {
         let target = (budget.limit? as f64 * self.target) as usize;
 
         // oldest first, because the results a conversation has moved past are the ones it is
-        // least likely to want back
+        // least likely to want back.
+        //
+        // note: `sends_content` rather than `is_projected`, and the difference is the whole of
+        // this compactor's behaviour once it has been round once. An elided item *is* projected -
+        // as a marker - so with `is_projected` every item this pass had already elided came back
+        // as a candidate on the next one. The plan was never empty, so it was never `None`, so a
+        // summary went into the context before every single request from then on: a compactor
+        // growing the context by a line and burning an undo per request, for as long as the
+        // session lasted. It takes only a pinned file bigger than the target to get there
         let candidates = items.iter().filter(|item| {
-            item.is_projected() && matches!(item.kind, ContextKind::ToolResult { .. })
+            item.state.sends_content() && matches!(item.kind, ContextKind::ToolResult { .. })
         });
 
         let mut used = budget.used();

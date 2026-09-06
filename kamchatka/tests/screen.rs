@@ -2849,6 +2849,66 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
     );
 }
 
+/// A second pass with nothing left to elide is not a pass. `Trim` runs before every request, so a
+/// pass that answers with a plan whatever the state of the context adds a summary and burns an
+/// undo on every one of them - and the context it is meant to shrink grows for the rest of the
+/// session.
+#[tokio::test]
+async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
+    use kamchatka::tools::Trim;
+    use nachalnik::{Budget, Compactor};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    // a pinned file bigger than the target is all it takes: the pass can never get under it,
+    // however much it elides, so it is asked again on the next request and the one after
+    kernel.push(ContextItem::file("big.rs", "x".repeat(4_000)).pinned());
+    kernel.push(ContextItem::tool_result(
+        nachalnik::ToolCallId::from("c1"),
+        "shell",
+        "y".repeat(400),
+        false,
+    ));
+
+    let trim = Trim {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    let budget = || Budget {
+        limit: Some(1_000),
+        ..kernel.budget()
+    };
+
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("the context is over the threshold");
+    assert_eq!(plan.elide.len(), 1);
+    assert_eq!(kernel.apply_compaction(plan).elided.len(), 1);
+
+    let (items, undo) = (kernel.items().len(), kernel.with_context(|c| c.undo_len()));
+    assert!(
+        trim.should_compact(&budget()),
+        "still over the threshold, which is the case this is about"
+    );
+    for _ in 0..5 {
+        if let Some(plan) = trim.plan(&kernel.items(), &budget()).await {
+            kernel.apply_compaction(plan);
+        }
+    }
+    assert_eq!(
+        kernel.items().len(),
+        items,
+        "five more passes and the context grew"
+    );
+    assert_eq!(
+        kernel.with_context(|c| c.undo_len()),
+        undo,
+        "and spent the person's undo doing it"
+    );
+}
+
 /// Editing an elided item leaves it elided: the row says a marker is being sent, and an edit that
 /// came back `Active` would be sending the new text against what the screen says.
 #[tokio::test]
