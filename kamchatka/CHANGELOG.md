@@ -9,6 +9,29 @@ minor bump may break you.
 
 ### fixed
 
+- The budget no longer charges for thinking this dialect cannot send. `LinearProjector`'s
+  `send_reasoning` is on by default - correctly, since a provider that does not want an assistant
+  turn's reasoning ignores the field - but `to_wire` here has never put it on the wire at all, and
+  cannot: most endpoints speaking the OpenAI-compatible dialect reject a message carrying a field
+  they do not know, and there is no agreed name for that one. The budget is counted over the
+  messages the projector produced, so every turn of reasoning in the context was in the estimate
+  and in none of the requests. Measured on one ordinary turn with 3.4KB of thinking, the estimate
+  charged 928 tokens where the request carried 73.
+
+  `Calibrating` cannot take this out, which is why it went unnoticed for so long and why it looks
+  worst where it is read most. The wedge grows with the number of reasoning turns the context is
+  holding, while the correction is a single multiplier learned cumulatively over the whole
+  session - so the scale is a blend dominated by the earlier, thinner requests, and a long session
+  drifts steadily high while a short one looks fine. One reported at `~93,663 tokens` against
+  `82,381 really` was out by roughly thirteen turns' worth.
+
+  The projection is now the provider's own answer - `Endpoint::projection`, beside the `to_wire`
+  that has to honour it - rather than a second decision made from the same flag in `main.rs`,
+  which is how the two came apart. Gemini's answer is unchanged in substance and now says so in
+  its own file: it sends the ordering *and* the thinking, as a part marked `thought`. Nothing
+  changes on the wire for either. The turn keeps its reasoning in the record, on the context tab
+  and prunable, exactly as before.
+
 - `/load` puts every token figure on one scale. A snapshot carries what its counter had learnt,
   and reading one in moves the correction under everything already counted - but the load counted
   the items it brought *first* and applied the correction afterwards, which is the reverse of the

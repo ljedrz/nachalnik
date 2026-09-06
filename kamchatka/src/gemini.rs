@@ -29,8 +29,8 @@ use std::{
 };
 
 use nachalnik::{
-    Block, BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse, Part,
-    Provider, Role, StopReason, ToolCall, ToolCallId, Usage, async_trait,
+    Block, BoxError, Content, DeltaSink, LinearProjector, Message, ModelInfo, ModelRequest,
+    ModelResponse, Part, Provider, Role, StopReason, ToolCall, ToolCallId, Usage, async_trait,
 };
 use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
@@ -627,6 +627,17 @@ impl Endpoint for Gemini {
 
     fn model(&self) -> String {
         self.model.lock().clone()
+    }
+
+    /// Both of the things the conventional dialect cannot take. This one's whole point is that
+    /// the shape of a turn is an order, and flattening it into three slots on the way out would
+    /// undo, one request later, the ordering that was recorded on the way in; and it takes a
+    /// turn's thinking back as a part marked `thought`, which for a signed one it has to.
+    fn projection(&self) -> LinearProjector {
+        LinearProjector {
+            send_blocks: true,
+            ..Default::default()
+        }
     }
 
     async fn models(&self) -> Vec<String> {

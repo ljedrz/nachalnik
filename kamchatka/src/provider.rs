@@ -16,8 +16,8 @@ use std::{
 };
 
 use nachalnik::{
-    BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse, Provider,
-    StopReason, ToolCall, ToolCallId, Usage, async_trait,
+    BoxError, Content, DeltaSink, LinearProjector, Message, ModelInfo, ModelRequest, ModelResponse,
+    Provider, StopReason, ToolCall, ToolCallId, Usage, async_trait,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -934,6 +934,26 @@ pub trait Endpoint: Provider {
 
     /// Which model is being asked.
     fn model(&self) -> String;
+
+    /// The projection this dialect can carry.
+    ///
+    /// note: it is answered here, beside the `to_wire` that has to honour it, because the two
+    /// were decided in different places and drifted. The budget is counted over the messages the
+    /// projector produced - which is what makes it the size of the request rather than the size
+    /// of the context - so a projector that hands over something the wire format then drops does
+    /// not merely waste the effort. It charges the person for bytes that never leave the process,
+    /// and goes on doing it for as long as those messages are in the context.
+    fn projection(&self) -> LinearProjector {
+        LinearProjector {
+            // note: `to_wire` has never put an assistant turn's thinking on the wire, and cannot:
+            // most endpoints speaking this dialect reject a message carrying a field they do not
+            // know, and there is no agreed name for that one. So sending it was never on offer -
+            // only paying for it was. The turn keeps its reasoning either way: it is in the
+            // record, on the context tab, and prunable like everything else.
+            send_reasoning: false,
+            ..Default::default()
+        }
+    }
 
     /// Just the authority of [`Endpoint::endpoint`] - `openrouter.ai`, `localhost:11434` - for
     /// the status line, which has no room for the rest of it.

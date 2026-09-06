@@ -205,8 +205,9 @@ reads the characters back (`screen`), drives the introspection tools through the
 (`introspect`), serves a recorded Gemini stream off a socket and checks what goes back out
 (`gemini`), runs real commands under a real ruleset (`sandbox`), asks the policy its own questions
 rather than reading the answers off the screen (`policy`), checks what is volunteered to an
-endpoint about this program and to which one (`attribution`), and answers two sockets that go
-silent, one before the first byte and one mid-stream (`stalled`). `edges` is the sweep: every tab
+endpoint about this program and to which one (`attribution`), answers two sockets that go silent,
+one before the first byte and one mid-stream (`stalled`), and holds each dialect's projection
+against what its own `to_wire` carries (`projection`). `edges` is the sweep: every tab
 at every window size from 1x1 up, every key at every tab with nothing to act on, and both scrolled
 past their own ends - a frame that panics takes the session with it, which is the one failure this
 program cannot report. `nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one

@@ -18,7 +18,7 @@ use crossterm::{
     event::{DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent, EventStream},
     execute,
 };
-use nachalnik::{Config, ContextItem, Event, Kernel, LinearProjector};
+use nachalnik::{Config, ContextItem, Event, Kernel};
 use ratatui::DefaultTerminal;
 use tokio::sync::{broadcast::error::RecvError, mpsc};
 use tokio_stream::StreamExt;
@@ -203,15 +203,10 @@ async fn terminal() -> Result<()> {
     let policy = Arc::new(tools::Careful::new());
     kernel.set_provider(provider.clone());
     kernel.set_policy(policy.clone());
-    // the projector is what decides the shape of a turn on the wire, and this dialect's whole
-    // point is that the shape is an order. Sending the three conventional slots to it would
-    // flatten every turn on the way out, one request after recording the order on the way in
-    if args.gemini {
-        kernel.set_projector(Arc::new(LinearProjector {
-            send_blocks: true,
-            ..Default::default()
-        }));
-    }
+    // the projector decides the shape of a turn on the wire, so the provider that owns that wire
+    // is the thing asked what it can carry - rather than this deciding a second time from the
+    // same flag, which is how the two came apart in the first place
+    kernel.set_projector(Arc::new(provider.projection()));
     if args.compact < 1.0 {
         kernel.set_compactor(Some(Arc::new(tools::Trim {
             threshold: args.compact,

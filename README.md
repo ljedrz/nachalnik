@@ -99,7 +99,7 @@ context is `snapshot` and `resume`, previewing a request is `preview_request`, p
 $ cargo test --workspace
 ```
 
-480 tests, of which 34 are live suites that skip themselves when there is no API key: 200 in
+482 tests, of which 34 are live suites that skip themselves when there is no API key: 202 in
 `kamchatka`, 180 in `nachalnik`, 72 in `nachalnik-eval`, 25 in `nachalnik-mcp` and three in
 `nachalnik-utils`. Each crate's readme says what its own cover.
 
