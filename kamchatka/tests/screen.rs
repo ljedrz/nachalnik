@@ -2363,6 +2363,84 @@ async fn a_loaded_session_hands_over_the_identifiers_it_already_used() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Every figure on the screen has to be on one scale. A snapshot carries what its counter had
+/// learnt, and reading it in moves the correction under everything already counted - so the load
+/// has to count the items it brings *under* that correction and bring the rest onto it, or the
+/// `held` column and the `sending` column beside it are answering in different units.
+#[tokio::test]
+async fn a_loaded_session_puts_every_figure_on_one_scale() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-loadscale-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a place to write");
+    let saved = dir.join("taught.json");
+
+    // a session whose provider charged twice what was estimated, so its counter learnt a scale
+    let first = Kernel::new(Config::default());
+    first.set_provider(Arc::new(ScriptedProvider::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(4_000),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }])));
+    first.push(ContextItem::file("big.rs", "x".repeat(8_000)));
+    first.push(ContextItem::user("go"));
+    first.turn().await.expect("the turn ran");
+
+    let snapshot = first.snapshot();
+    let learned = snapshot.calibration.expect("it learnt something");
+    assert!(
+        learned.scale > 1.5,
+        "the fixture must move the scale: {learned:?}"
+    );
+    std::fs::write(
+        &saved,
+        serde_json::to_vec(&snapshot).expect("it serializes"),
+    )
+    .expect("written");
+
+    // read into a session that has learnt nothing of its own
+    let mut second = Harness::new([]);
+    second
+        .app
+        .kernel
+        .push(ContextItem::file("mine.rs", "y".repeat(400)));
+    second.send(&format!("/load {}", saved.display())).await;
+
+    // the figures on the screen are what a recount would make them, which is the definition of
+    // their being on the current scale
+    let shown = second
+        .app
+        .kernel
+        .with_context(|c| (c.tokens(), c.tokens_withheld()));
+    second.app.kernel.recount();
+    let settled = second
+        .app
+        .kernel
+        .with_context(|c| (c.tokens(), c.tokens_withheld()));
+    assert_eq!(
+        shown, settled,
+        "a recount would move what the pane is showing"
+    );
+
+    // including the items that were here before the load and are now set aside: they were counted
+    // on the old scale, and `held back` adds them to the loaded ones
+    let mine = second
+        .app
+        .kernel
+        .items()
+        .into_iter()
+        .find(|item| item.label == "mine.rs")
+        .expect("still there");
+    assert_eq!(mine.state, ContextState::Archived);
+    assert!(
+        mine.tokens as f64 > 100.0 * learned.scale * 0.9,
+        "the archived item is still on the old scale: {} tokens",
+        mine.tokens
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn loading_something_that_is_not_a_session_says_which_file_and_why() {
     let dir = std::env::temp_dir().join(format!("kamchatka-notasession-{}", std::process::id()));

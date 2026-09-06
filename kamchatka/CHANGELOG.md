@@ -9,6 +9,17 @@ minor bump may break you.
 
 ### fixed
 
+- `/load` puts every token figure on one scale. A snapshot carries what its counter had learnt,
+  and reading one in moves the correction under everything already counted - but the load counted
+  the items it brought *first* and applied the correction afterwards, which is the reverse of the
+  ordering `Kernel::resume` documents and warns about. So every loaded item carried a figure from
+  whatever scale this session happened to be on, while the budget beside it is projected live and
+  was already on the loaded one: a context that really came to 3,998 tokens read 2,002, and the
+  `held` column disagreed with the `sending` column on the same row by exactly the correction. It
+  recalibrates before it counts now, and recounts afterwards so that the items set aside by the
+  load come onto the new scale too - loudly, as `context.recounted`, which is what the runtime
+  makes that a thing somebody asks for rather than something it does quietly.
+
 - `/budget`'s two halves answer the same question. The tokens it reports as held back come from
   `tokens_withheld`, which counts an elided item - it is in the request as a marker and is not
   sending what it holds - and the count beside them came from what is not *projected*, which does
