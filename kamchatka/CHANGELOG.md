@@ -52,6 +52,11 @@ minor bump may break you.
 
 ### added
 
+- <kbd>ctrl+home</kbd> and <kbd>ctrl+end</kbd> go to the beginning of the conversation and to the
+  end of it, the second one following the newest again from there. Control is held because
+  <kbd>home</kbd> and <kbd>end</kbd> belong to the prompt, which is under every tab - a line editor
+  whose <kbd>home</kbd> moved something else would be a trap.
+
 - `--sandbox-read PATH` opens a path outside the working directory for reading and no more, next
   to `--sandbox-allow`, which opens one for reading and writing. What sends most people here is a
   toolchain: `$HOME` is not a system directory, `cargo` is a rustup shim that reads

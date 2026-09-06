@@ -868,6 +868,14 @@ impl App {
             // gesture most people will find first; this is the one for a turn that wrote a
             // thousand lines while somebody was looking at the twelfth
             (KeyCode::Char('e'), true) => self.follow = true,
+            // the two ends of the conversation, one key each. With control held, because the
+            // prompt is under every tab and `home` and `end` are its own - a prompt whose keys
+            // moved something else while somebody was editing a line would be the trap
+            (KeyCode::Home, true) => {
+                self.scroll = 0;
+                self.follow = false;
+            }
+            (KeyCode::End, true) => self.follow = true,
             (KeyCode::F(1), _) => self.preview("the keys", crate::ui::HELP),
             // the chat tab has nothing to move the focus to: the conversation is read, not
             // operated, and swallowing what somebody typed at it would be a trap

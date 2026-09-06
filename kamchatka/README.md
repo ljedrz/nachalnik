@@ -265,6 +265,8 @@ and running that through a renderer would be inventing structure it never had.
 | --- | --- |
 | <kbd>enter</kbd> / <kbd>alt+enter</kbd> | send / a new line |
 | <kbd>pgup</kbd> / <kbd>pgdn</kbd> | scroll the conversation |
+| <kbd>ctrl+home</kbd> / <kbd>ctrl+end</kbd> | the beginning of the conversation / the end of it |
+| <kbd>home</kbd> / <kbd>end</kbd> | the prompt's own, as in any other line editor |
 | <kbd>ctrl+e</kbd> | follow the newest again |
 | <kbd>tab</kbd> | move between the prompt and the open tab |
 | <kbd>ctrl+t</kbd> | the next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for one in particular |
@@ -276,7 +278,10 @@ Where you leave the conversation is where it stays. A turn that writes four hund
 pull the window down to the newest of them on every fragment, so anything it had said thirty
 seconds earlier was unreadable until the turn ended; now nothing but your own message moves it,
 and the line along the bottom says how much has arrived underneath. <kbd>ctrl+e</kbd> goes back to
-following, and so does scrolling down to the end.
+following, and so does scrolling down to the end. <kbd>ctrl+home</kbd> and <kbd>ctrl+end</kbd> are
+the two ends of it in one key; control is held because <kbd>home</kbd> and <kbd>end</kbd> belong to
+the prompt, which is under every tab, and a line editor whose <kbd>home</kbd> moved something else
+would be a trap.
 
 Stopping is cooperative rather than a killed process. The provider notices between fragments and
 returns the text it has; the shell tool kills the command — and everything the command started,

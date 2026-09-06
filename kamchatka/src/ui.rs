@@ -66,7 +66,10 @@ pub const HELP: &str = "  THE TABS
     alt+enter           a new line
     pgup / pgdn         scroll the conversation; where you leave it is where
                         it stays, however much arrives underneath
-    ctrl+e              follow the newest again
+    ctrl+home           the beginning of the conversation
+    ctrl+end            the end of it, and following the newest again
+    ctrl+e              follow the newest again, from wherever you are
+    home / end          the prompt's own, as in any other line editor
     (a message sent while a turn is running waits for the end of it, and
      then gets a turn of its own)
 

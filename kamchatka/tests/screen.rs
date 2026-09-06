@@ -3969,3 +3969,66 @@ async fn a_session_can_be_written_without_anybody_having_asked() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// `ctrl+home` and `ctrl+end` are the two ends of the conversation; `home` and `end` are the
+/// prompt's own, as they are everywhere else.
+#[tokio::test]
+async fn the_two_ends_of_the_conversation_are_one_key_each() {
+    let mut harness = Harness::new([]);
+    for n in 0..120 {
+        harness.app.on_event(Event::ModelDelta {
+            delta: Delta::Text(format!("line {n}\n\n")),
+        });
+    }
+    let screen = harness.screen();
+    assert!(screen.contains("line 119"), "{screen}");
+
+    harness.chord(KeyCode::Home).await;
+    let top = harness.screen();
+    assert!(top.contains("line 0"), "{top}");
+    assert!(!top.contains("line 119"), "{top}");
+    // and it stays there while more arrives, like every other way of scrolling back
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Text("line 120\n\n".to_owned()),
+    });
+    let still = harness.screen();
+    assert!(still.contains("line 0"), "{still}");
+
+    harness.chord(KeyCode::End).await;
+    let bottom = harness.screen();
+    assert!(bottom.contains("line 120"), "{bottom}");
+    // ... and follows from there, which is what `ctrl+e` does and what the bottom means
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Text("line 121\n\n".to_owned()),
+    });
+    assert!(harness.screen().contains("line 121"));
+
+    // on their own they are the prompt's, and the conversation does not move
+    harness.chord(KeyCode::Home).await;
+    harness.screen();
+    for c in "a question".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Char('!')).await;
+    let typed = harness.screen();
+    assert!(
+        typed.contains("line 0"),
+        "home moved the conversation: {typed}"
+    );
+    assert!(
+        typed.contains("!a question"),
+        "home is the start of the line being typed: {typed}"
+    );
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Char('?')).await;
+    let typed = harness.screen();
+    assert!(
+        typed.contains("line 0"),
+        "end moved the conversation: {typed}"
+    );
+    assert!(
+        typed.contains("!a question?"),
+        "and end is the end of it: {typed}"
+    );
+}
