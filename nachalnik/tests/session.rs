@@ -141,6 +141,60 @@ async fn a_resumed_session_does_not_reuse_an_identifier() {
     assert_eq!(ids, sorted, "identifiers are unique and in order: {ids:?}");
 }
 
+/// The same protection, for the client that reads a snapshot *into* a session it is already
+/// running rather than resuming from it. It keeps the kernel it has, so nothing has told that
+/// kernel about the identifiers the items it is pushing already carry.
+#[tokio::test]
+async fn a_merged_snapshot_can_declare_the_identifiers_it_brings() {
+    let snapshot = worked_session().await.snapshot();
+    assert!(snapshot.used_calls.iter().any(|c| c.0 == "c1"));
+
+    // a live session, and the saved conversation pushed into it item by item
+    let (live, _) = permissive([
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("done"),
+    ]);
+    live.add_tool(Arc::new(ConstTool::new("peek", "ok")));
+    live.push_all(snapshot.items);
+
+    let mut events = live.subscribe();
+    assert_eq!(live.reserve_calls(snapshot.used_calls.clone()), 1);
+    assert_eq!(
+        live.reserve_calls(snapshot.used_calls),
+        0,
+        "and saying it twice reserves nothing twice"
+    );
+    let reserved = std::iter::from_fn(|| events.try_recv().ok())
+        .filter(|event| matches!(event, Event::ToolCallsReserved { reserved: 1 }))
+        .count();
+    assert_eq!(reserved, 1, "the one that did something is on the log");
+
+    // the provider now offers `c1` again, as one that numbers from zero every turn would
+    live.push(ContextItem::user("again"));
+    live.turn().await.unwrap();
+
+    let repaired = std::iter::from_fn(|| events.try_recv().ok()).any(|event| {
+        matches!(event, Event::ToolCallRepaired { reason, .. } if reason.contains("session"))
+    });
+    assert!(
+        repaired,
+        "an identifier the merged session brought was reused"
+    );
+
+    // which is the point: the request that follows does not carry one `tool_call_id` twice
+    let sent: Vec<String> = live
+        .preview_request()
+        .unwrap()
+        .messages
+        .iter()
+        .flat_map(|message| message.calls().map(|c| c.id.0.clone()).collect::<Vec<_>>())
+        .collect();
+    let mut unique = sent.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(sent.len(), unique.len(), "{sent:?}");
+}
+
 #[tokio::test]
 async fn a_fork_is_a_resume_under_another_name() {
     let kernel = worked_session().await;

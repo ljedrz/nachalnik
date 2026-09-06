@@ -7,6 +7,18 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- `Kernel::reserve_calls`, and the `Event::ToolCallsReserved` it announces. `Kernel::resume` has
+  always taken `Snapshot::used_calls`, which covers a session picked back up in another process;
+  the other way of reading a snapshot had nothing. A client that merges one *into* a session it is
+  already running keeps the kernel it has, so the turns it pushes arrive carrying identifiers that
+  kernel never issued - and the next response is then free to hand one of them back, with the
+  repair having nothing to compare it against and the request that follows carrying the same
+  `tool_call_id` twice. `kamchatka`'s `/load` is exactly that client, and it could not do anything
+  about it from out there: a downstream crate needing a core change to do an ordinary thing is the
+  sign of a seam that is not finished.
+
 ### fixed
 
 - A compaction pass that moves nothing takes no checkpoint. Every other operation here has

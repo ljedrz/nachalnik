@@ -323,6 +323,18 @@ pub enum Event {
         /// What was wrong with it.
         reason: String,
     },
+    /// Tool call identifiers were declared spoken for without the kernel having issued them; see
+    /// [`Kernel::reserve_calls`].
+    ///
+    /// note: the count rather than the identifiers, because that is what a reader of a log needs:
+    /// a `tool.repaired` a hundred lines further down says a provider reused an identifier from
+    /// earlier in the session, and this is the line that says where "earlier in the session" came
+    /// from.
+    #[serde(rename = "tool.reserved")]
+    ToolCallsReserved {
+        /// How many of them the kernel had not already been told about.
+        reserved: usize,
+    },
     /// A tool started running.
     #[serde(rename = "tool.started")]
     ToolStarted {
@@ -449,6 +461,7 @@ impl Event {
             Self::ToolRequested { .. } => "tool.requested",
             Self::ToolUnknown { .. } => "tool.unknown",
             Self::ToolCallRepaired { .. } => "tool.repaired",
+            Self::ToolCallsReserved { .. } => "tool.reserved",
             Self::ToolStarted { .. } => "tool.started",
             Self::ToolOutput { .. } => "tool.output",
             Self::ToolFinished { .. } => "tool.finished",

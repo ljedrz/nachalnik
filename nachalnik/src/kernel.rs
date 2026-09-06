@@ -367,6 +367,37 @@ impl Kernel {
         kernel
     }
 
+    /// Tells the kernel that these tool call identifiers are already spoken for, and returns how
+    /// many of them it had not already been told about.
+    ///
+    /// note: [`Kernel::resume`] does this from [`Snapshot::used_calls`], and for a session picked
+    /// back up in another process that is the whole story. This is for the other way of reading a
+    /// snapshot: a client that merges one *into* a session it is already running keeps the kernel
+    /// it has, so the turns it pushes arrive carrying identifiers this kernel never issued.
+    /// Without this the next response is free to hand one of them back, the repair has nothing to
+    /// compare it against, and the request that follows carries the same `tool_call_id` twice -
+    /// which most providers reject, and which is very hard to see afterwards. See
+    /// [`Event::ToolCallRepaired`].
+    ///
+    /// note: identifiers and nothing else. What they belonged to is not the kernel's business,
+    /// and one reserved for an item that is later pruned stays reserved, because an identifier is
+    /// never reused - not even by an item [`Kernel::undo`] took away.
+    pub fn reserve_calls(&self, calls: impl IntoIterator<Item = ToolCallId>) -> usize {
+        let reserved = {
+            let mut seen = self.0.seen_calls.lock();
+            let before = seen.len();
+            seen.extend(calls);
+
+            seen.len() - before
+        };
+
+        if reserved != 0 {
+            self.emit(Event::ToolCallsReserved { reserved });
+        }
+
+        reserved
+    }
+
     /// Returns everything a later [`Kernel::resume`] needs to carry on from here.
     ///
     /// note: Cheap enough to take after every turn, and worth it: this is the only thing that
