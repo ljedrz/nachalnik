@@ -40,6 +40,13 @@ fn a_credential_rule_is_about_the_file_that_gets_opened() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("sub")).expect("a temporary directory");
     std::fs::write(dir.join(".env"), "TOKEN=hunter2").expect("something worth protecting");
+    // note: a temporary directory is usually reached by a name that is not where it is - `/var` is
+    // a symlink to `/private/var` on macOS, and Windows hands out an 8.3 short name for a profile
+    // directory. What `allows` answers with is the path the file will be opened at, so that is the
+    // name to expect it under. The reach is handed the name as it came, which is the one a person
+    // would have typed, and on Windows is the only form of it that `..` and a forward slash still
+    // mean anything in: a `\\?\` path goes to the system unnormalized.
+    let opened_at = dir.canonicalize().expect("the directory was just made");
 
     let reach = Reach {
         workdir: dir.clone(),
@@ -55,7 +62,7 @@ fn a_credential_rule_is_about_the_file_that_gets_opened() {
     for spelling in [".env", "./.env", ".env/", ".env//", "sub/../.env", ".env/."] {
         assert_eq!(
             reach.allows(spelling, Access::Reading).as_deref(),
-            Ok(dir.join(".env").as_path()),
+            Ok(opened_at.join(".env").as_path()),
             "`{spelling}` is a way of naming the same file"
         );
         assert!(
@@ -132,6 +139,9 @@ fn the_rules_are_about_names_and_a_symlink_is_not_one() {
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(dir.join(".env"), dir.join("notes.txt")).expect("a symlink");
+        // the same two names for one directory as above: the reach is given the one it was
+        // reached by, and answers with the one the file is at
+        let opened_at = dir.canonicalize().expect("the directory was just made");
 
         assert!(
             !path_matches(".env*", "notes.txt"),
@@ -147,7 +157,7 @@ fn the_rules_are_about_names_and_a_symlink_is_not_one() {
         };
         assert_eq!(
             reach.allows("notes.txt", Access::Reading).as_deref(),
-            Ok(dir.join(".env").as_path()),
+            Ok(opened_at.join(".env").as_path()),
         );
     }
 
