@@ -348,6 +348,22 @@ README and the crate docs in longer form:
   seams on a screen (`/seams` in `kamchatka`). It is for showing a person, not for matching on.
 - **Changelogs** are per crate (`nachalnik/`, `nachalnik-mcp/`, `kamchatka/`), Keep a Changelog
   format, and are expected to be current before a release rather than reconstructed after one.
+- **A version moves as soon as something above it needs API the registry does not have.**
+  `cargo package --workspace` builds each member from its own tarball, and a tarball carries
+  version requirements rather than path dependencies - so `kamchatka` is resolved against whatever
+  `nachalnik` the registry has, unless the requirement names one it does not. Bumping to a version
+  that is not published yet is what makes cargo reach for the crate next door, and the `package`
+  job is the only thing in CI that notices: everything else builds the workspace, where the path
+  dependency always wins. Every time this has happened it is the one that has said so, and it has
+  happened on every runtime bump so far. Bump in a commit of its own that names what made it
+  necessary, and check whether the crates in between have to follow - a *minor* moves the floor
+  under `nachalnik-mcp` and the bridge has to be re-cut against it, a *patch* does not, since a
+  published `^0.3.0` resolves to `0.3.1` on its own and a release with nothing behind it is not
+  one.
+- **A release is its own commit and it only dates the changelogs.** No code moves in it; the
+  version numbers moved when they had to. It is the commit that gets tagged - annotated,
+  `<crate>-v<version>` per crate that moved, plus a workspace `v<version>` taking the runtime's
+  number - and the bump commits before it are deliberately left untagged.
 - **Commit messages** are `crate: what changed, in one lowercase line`, followed by prose
   explaining what was wrong, what was decided, and what was checked - including what was
   deliberately *not* done and why. Read `git log` before writing one; the bar is high and
@@ -383,6 +399,16 @@ README and the crate docs in longer form:
 - MCP tool annotations are hints from a server that may not be trusted. `Trust` believes none of
   them by default, and the bridge's tests include a `delete_everything` that claims to be
   read-only. Do not "fix" that.
+- **`cargo package` lies to you the second time you run it on an unpublished version.** It unpacks
+  the tarball it has just built into `~/.cargo/registry/src/` under that name and version, and
+  builds an rlib for it in `target/`. A registry crate is immutable by assumption, so neither is
+  invalidated when the same version number packages different bytes: change the runtime, package
+  again, and the second run compiles the first run's code. What that looks like is
+  `no method named ... found for struct Kernel` against a tarball which demonstrably contains the
+  method - before believing the compiler, read it out of the tarball cargo is actually resolving:
+  `tar -xzOf target/package/tmp-registry/nachalnik-0.3.1.crate nachalnik-0.3.1/src/kernel.rs`.
+  `cargo clean -p nachalnik` is the fix. CI has one run on a fresh machine and never sees this,
+  which is exactly why it costs an afternoon here instead.
 
 ---
 
