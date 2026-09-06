@@ -12,7 +12,9 @@ use kamchatka::{
     sandbox::{Access, Reach},
     tools::{Careful, Subject, path_matches},
 };
-use nachalnik::{Capability, PermissionId, PermissionRequest, ToolCall, Verdict};
+use nachalnik::{
+    Capability, PermissionId, PermissionPolicy, PermissionRequest, ToolCall, ToolCallId, Verdict,
+};
 use serde_json::json;
 
 /// What the policy would answer about `read`ing this path.
@@ -185,4 +187,62 @@ fn the_reach_refuses_what_is_outside_it() {
     );
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The two per-call notes the policy keeps are bounded, and the bound drops the oldest rather than
+/// all of them. Both used to be emptied outright once they got past thirty-two, which throws away
+/// the entry most likely to be wanted: an answer is written down when the person gives it and read
+/// when the call runs, so the live one is among the newest.
+#[test]
+fn a_full_policy_forgets_the_oldest_answer_rather_than_every_answer() {
+    let policy = Careful::new();
+
+    // more granted calls than it will hold, oldest first
+    for n in 0..200 {
+        policy.grant_the_network(&ToolCallId::from(format!("call_{n}").as_str()));
+    }
+    assert!(
+        policy.was_granted_the_network(&ToolCallId::from("call_199")),
+        "the newest grant is the one about to be used"
+    );
+    assert!(
+        !policy.was_granted_the_network(&ToolCallId::from("call_0")),
+        "and it is still bounded"
+    );
+
+    // saying the same one twice is not two of them
+    for _ in 0..200 {
+        policy.grant_the_network(&ToolCallId::from("call_199"));
+    }
+    assert!(policy.was_granted_the_network(&ToolCallId::from("call_198")));
+}
+
+/// The same for the refusals, which is where it bites: a refusal the model reads is written down
+/// when the policy answers and read when the kernel builds the tool result.
+#[tokio::test]
+async fn a_refusal_is_still_accounted_for_after_a_great_many_of_them() {
+    let policy = Careful::new();
+    policy.set(&Subject::Capability(Capability::Network), Verdict::Deny);
+
+    for n in 0..200 {
+        let call = ToolCall::new(
+            format!("call_{n}"),
+            "shell",
+            json!({ "cmd": "curl https://example.com" }),
+        );
+        let request = PermissionRequest {
+            id: PermissionId(n),
+            call: call.id.clone(),
+            tool: "shell".to_owned(),
+            capabilities: vec![Capability::Shell],
+            args: call.args.clone(),
+        };
+        assert_eq!(policy.evaluate(&request).await, Verdict::Deny);
+    }
+
+    let latest = policy
+        .why(&ToolCallId::from("call_199"))
+        .expect("the refusal just made is the one the model is about to read");
+    assert!(latest.contains("network"), "{latest}");
+    assert_eq!(policy.why(&ToolCallId::from("call_0")), None);
 }

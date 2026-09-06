@@ -6,7 +6,7 @@
 //! [`Compactor`] whose plan is applied in the open and can be undone.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, VecDeque},
     fmt,
     path::{Path, PathBuf},
     process::Stdio,
@@ -621,7 +621,7 @@ pub struct Careful {
     /// sandbox has to know or the command runs with the network cut and fails in a way that
     /// contradicts what the person was just told. A stance is what the tab draws; this is the
     /// answer to a question, which the tab never sees.
-    networked: Mutex<BTreeSet<ToolCallId>>,
+    networked: Mutex<VecDeque<ToolCallId>>,
     /// Why the last few refusals were refused, by the call they refused.
     ///
     /// note: the policy is the only thing that knows this, and nothing carries it out: the
@@ -630,8 +630,17 @@ pub struct Careful {
     /// exactly the `shell: allow` / `network: deny` pair, and a refusal nobody can account for is
     /// the one thing this program is not for. So it is written down here, where it is known, and
     /// [`Careful::why`] hands it out.
-    refusals: Mutex<BTreeMap<ToolCallId, String>>,
+    refusals: Mutex<VecDeque<(ToolCallId, String)>>,
 }
+
+/// How many of each of the two per-call notes above are kept.
+///
+/// note: a queue rather than a map, and the oldest goes rather than all of them. Both of these
+/// used to be cleared outright when they got past thirty-two, which is a bound that throws away
+/// the entry it is most likely to need: an answer is written down when the person gives it and
+/// read when the call runs, so the live one is among the newest. Sixty-four is past what one turn
+/// can produce, and the linear scan over that is nothing beside spawning a process.
+const REMEMBERED: usize = 64;
 
 impl Default for Careful {
     fn default() -> Self {
@@ -656,8 +665,8 @@ impl Careful {
                     .map(|pattern| ((*pattern).to_owned(), Verdict::Ask))
                     .collect(),
             ),
-            networked: Mutex::new(BTreeSet::new()),
-            refusals: Mutex::new(BTreeMap::new()),
+            networked: Mutex::new(VecDeque::new()),
+            refusals: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -769,15 +778,18 @@ impl Careful {
     /// Records that a person, asked about this call, allowed it - and that it reaches the network.
     pub fn grant_the_network(&self, call: &ToolCallId) {
         let mut networked = self.networked.lock();
-        if networked.len() > 32 {
-            networked.clear();
+        if networked.iter().any(|known| known == call) {
+            return;
         }
-        networked.insert(call.clone());
+        if networked.len() == REMEMBERED {
+            networked.pop_front();
+        }
+        networked.push_back(call.clone());
     }
 
     /// Whether [`Careful::grant_the_network`] was told about this call.
     pub fn was_granted_the_network(&self, call: &ToolCallId) -> bool {
-        self.networked.lock().contains(call)
+        self.networked.lock().iter().any(|known| known == call)
     }
 
     /// Why the given call was refused, if this is what refused it.
@@ -788,7 +800,11 @@ impl Careful {
     /// tool result the *model* reads - see [`PermissionPolicy::why`]. Handing it over once meant
     /// whichever asked first got it and the other was told nothing.
     pub fn why(&self, call: &ToolCallId) -> Option<String> {
-        self.refusals.lock().get(call).cloned()
+        self.refusals
+            .lock()
+            .iter()
+            .find(|(known, _)| known == call)
+            .map(|(_, why)| why.clone())
     }
 
     /// The path rules, in the order they are read out.
@@ -837,18 +853,25 @@ impl PermissionPolicy for Careful {
                 })
                 .collect();
 
+            let why = match blamed.is_empty() {
+                true => "the policy refused it".to_owned(),
+                false => format!("refused by {}", blamed.join(" and ")),
+            };
+
+            // nobody is obliged to read these; a session that never does should not grow a queue
             let mut refusals = self.refusals.lock();
-            // nobody is obliged to read these; a session that never does should not grow a map
-            if refusals.len() > 32 {
-                refusals.clear();
+            match refusals
+                .iter_mut()
+                .find(|(known, _)| known == &request.call)
+            {
+                Some(known) => known.1 = why,
+                None => {
+                    if refusals.len() == REMEMBERED {
+                        refusals.pop_front();
+                    }
+                    refusals.push_back((request.call.clone(), why));
+                }
             }
-            refusals.insert(
-                request.call.clone(),
-                match blamed.is_empty() {
-                    true => "the policy refused it".to_owned(),
-                    false => format!("refused by {}", blamed.join(" and ")),
-                },
-            );
         }
 
         verdict

@@ -42,6 +42,11 @@ minor bump may break you.
   them that one. A model following the schema could not pass it, and an endpoint validating
   against the schema would have refused the call.
 
+- The policy's two per-call notes drop the oldest rather than all of them. Both the calls a person
+  granted the network to and the reasons refusals were refused were emptied outright once they got
+  past thirty-two, which throws away exactly the entry most likely to be wanted: each is written
+  down when the policy answers and read when the call runs, so the live one is among the newest.
+
 - `amend`'s `note` does not spend two of the person's undos to write one thing down. Pinning it
   was a second state change after the push, which is the arithmetic `revise` already keeps its own
   account out of the note to avoid; the item is pinned as it is written, and `because` was already
