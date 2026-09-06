@@ -16,9 +16,9 @@ minor bump may break you.
   whatever scale this session happened to be on, while the budget beside it is projected live and
   was already on the loaded one: a context that really came to 3,998 tokens read 2,002, and the
   `held` column disagreed with the `sending` column on the same row by exactly the correction. It
-  recalibrates before it counts now, and recounts afterwards so that the items set aside by the
-  load come onto the new scale too - loudly, as `context.recounted`, which is what the runtime
-  makes that a thing somebody asks for rather than something it does quietly.
+  goes through `Kernel::recalibrate` now, before it counts: the front door applies the correction
+  and recounts, which is what brings the items the load sets aside - and which `held back` adds to
+  the loaded ones - onto the same scale, loudly, as `context.recounted`.
 
 - `/budget`'s two halves answer the same question. The tokens it reports as held back come from
   `tokens_withheld`, which counts an elided item - it is in the request as a marker and is not

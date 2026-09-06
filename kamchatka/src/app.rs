@@ -2342,14 +2342,16 @@ impl App {
         // carries; without it the next few requests would be spent relearning what this file
         // already knows.
         //
-        // note: before the items are counted rather than after, which is the ordering
-        // `Kernel::resume` documents and for its reason. Counting first and correcting afterwards
-        // gave every loaded item a figure from the scale this session happened to be on, while
-        // the budget beside it is projected live and so was already on the loaded one: a context
-        // that really came to 3,998 tokens read 2,002, and the `held` column disagreed with the
-        // `sending` column on the same row by exactly the correction
+        // note: `Kernel::recalibrate` rather than reaching through to the counter, and before the
+        // items are counted rather than after. Counting first and correcting afterwards gave every
+        // loaded item a figure from the scale this session happened to be on, while the budget
+        // beside it is projected live and so was already on the loaded one: a context that really
+        // came to 3,998 tokens read 2,002, and the `held` column disagreed with the `sending`
+        // column on the same row by exactly the correction. The front door also recounts, which is
+        // what brings the items already here - the ones the load is about to set aside, and which
+        // `held back` adds to the loaded ones - onto the same scale
         if let Some(calibration) = snapshot.calibration {
-            self.kernel.counter().recalibrate(calibration);
+            self.kernel.recalibrate(calibration);
         }
 
         let ids = self.kernel.push_all(snapshot.items);
@@ -2360,12 +2362,6 @@ impl App {
         // the same fact, said to a kernel that is already running
         self.kernel.reserve_calls(snapshot.used_calls);
         self.kernel.set_params(snapshot.params);
-        // and the items that were here before the load were counted on the old scale, so they are
-        // brought onto the new one too - loudly, as `context.recounted`, which is the whole reason
-        // the runtime makes this a thing somebody asks for rather than something it does quietly.
-        // Without it the archived half of the pane is on one scale and the loaded half on another,
-        // and `held back` adds the two together
-        self.kernel.recount();
 
         let loaded: Vec<_> = ids.iter().filter_map(|id| self.kernel.item(*id)).collect();
         self.retell(&loaded);
