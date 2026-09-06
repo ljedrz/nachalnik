@@ -26,6 +26,16 @@ minor bump may break you.
   `tool_call_id` twice. `kamchatka` could not do anything about this from out here, so the
   runtime grew `Kernel::reserve_calls` for it.
 
+- The `shell` tool's temporary directory is never made *through* whatever is already at its name.
+  It has to be predictable - it is named after the confined process so that the one which spawned
+  it can remove it afterwards - and `create_dir_all` was satisfied by anything it found there,
+  including a symlink. The ruleset grants that directory everything a writable root gets and hands
+  it over as `TMPDIR`, so a link left in `/tmp` by another account would have opened up whatever
+  it pointed at. It is created exclusively now, at `0700`; something of this program's own left by
+  a run whose process identifier has come round again is removed and remade, and something that is
+  not cannot be unlinked, which leaves the command with no temporary directory rather than with
+  somebody else's.
+
 - A long answer keeps its beginning. The transcript bounded a *still arriving* entry at eight
   thousand bytes and replaced whatever came before it with `[...]` - which is right for a `find /`
   and wrong for a message. A model writing a long answer had its first paragraphs eaten while it
@@ -103,6 +113,17 @@ minor bump may break you.
   would send a model looking for a boundary that had nothing to do with it.
 
 ### changed
+
+- `sandbox::confine` takes an `Option<&Path>` for the scratch directory, and `sandbox::make_scratch`
+  is the thing that makes one. A path that cannot be opened makes the ruleset fail to build, which
+  comes back `Unavailable` - a command running *unconfined* because its temporary directory was not
+  there - so the one case where there is no scratch has to be sayable rather than inferred.
+- `network: deny` is described as what Landlock actually refuses, which is TCP. `ConnectTcp` and
+  `BindTcp` are its only two network access rights, so a confined command can still send a UDP
+  datagram - enough to put bytes in a DNS query - and AF_UNIX needs a kernel from 2026 to reach at
+  all. The screen, the tool's own description to the model and both readmes now say TCP rather than
+  "the network". Nothing about the confinement changed; what it was described as did.
+- `--requests 0` says in `--help` that it means no limit at all, which it has always done.
 
 ## [0.4.0] - 2026-09-05
 

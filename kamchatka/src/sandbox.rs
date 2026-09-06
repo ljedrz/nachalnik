@@ -536,10 +536,15 @@ const SYSTEM: &[&str] = &[
 /// `write` stance mean nothing at all. That last one is not hypothetical: it is what the test for
 /// the read-only case caught on the first run.
 ///
+/// note: and it is an [`Option`], because [`make_scratch`] is allowed to fail and this must not
+/// paper over it. A path that cannot be opened makes `add_rules` fail, which would come back
+/// `Unavailable` - a *command running unconfined* because its temporary directory was not there.
+/// No scratch means no `TMPDIR` and a confinement that still holds.
+///
 /// note: `/dev` gets reading and writing of files and nothing else, because `/dev/null` is not
 /// optional and creating things in `/dev` is not something a shell command needs to do.
 #[cfg(target_os = "linux")]
-pub fn confine(sandbox: &Sandbox, scratch: &Path) -> Confinement {
+pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     use landlock::{
         ABI, Access, AccessFs, AccessNet, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus,
         path_beneath_rules,
@@ -574,7 +579,7 @@ pub fn confine(sandbox: &Sandbox, scratch: &Path) -> Confinement {
 
     let writable: Vec<PathBuf> = std::iter::once(sandbox.workdir.clone())
         .filter(|_| sandbox.writable)
-        .chain(std::iter::once(scratch.to_path_buf()))
+        .chain(scratch.map(Path::to_path_buf))
         .chain(sandbox.extra.iter().cloned())
         .collect();
     let readable: Vec<PathBuf> = SYSTEM
@@ -612,7 +617,7 @@ pub fn confine(sandbox: &Sandbox, scratch: &Path) -> Confinement {
 
 /// The same, where there is no Landlock.
 #[cfg(not(target_os = "linux"))]
-pub fn confine(_sandbox: &Sandbox, _scratch: &Path) -> Confinement {
+pub fn confine(_sandbox: &Sandbox, _scratch: Option<&Path>) -> Confinement {
     Confinement::Unsupported
 }
 
@@ -625,6 +630,47 @@ pub fn confine(_sandbox: &Sandbox, _scratch: &Path) -> Confinement {
 /// job - see [`crate::tools::Shell`] - and this is the one place that spells the name.
 pub fn scratch_for(pid: u32) -> PathBuf {
     std::env::temp_dir().join(format!("kamchatka-{pid}"))
+}
+
+/// Makes that directory, and only if this process is the one that made it; `None` if it could not
+/// be.
+///
+/// note: exclusively, and never through whatever happens to be there already. The name has to be
+/// predictable - it is how the process that spawned this one finds it again - and a predictable
+/// name in a directory anybody can write to is a name somebody else can get to first.
+/// `create_dir_all` was happy with anything it found, a symlink included, and the ruleset grants
+/// the *resolved* path everything a writable root gets: a link left in `/tmp` by another account
+/// would have opened up whatever it pointed at, and `TMPDIR` would have sent the command there.
+///
+/// note: what is already there and *ours* is a different matter, and much the commoner one, since
+/// process identifiers come round again. That is removed and remade, so a command does not inherit
+/// the leavings of whatever held the number last. `/tmp` is sticky, so an entry belonging to
+/// somebody else cannot be unlinked and the retry fails - which is the answer that leaves the
+/// command with no temporary directory rather than with theirs.
+///
+/// note: `0700`, for the same reason [`crate::app::App::write_session`]'s directory is. What a
+/// command puts in here is whatever it was working on, written without anybody asking for it;
+/// under the default umask a fresh directory is one everyone on the machine can read.
+///
+/// note: nothing is said about a failure, because there is nowhere honest to say it. A confined
+/// command's standard error goes to the model, and this program's own bookkeeping does not belong
+/// in it. What the model gets instead is the truth at the point it matters: no `TMPDIR`, a `/tmp`
+/// that is not writable, and [`Sandbox::note_for`] on the permission error that follows.
+pub fn make_scratch(path: &Path) -> Option<PathBuf> {
+    if std::fs::create_dir(path).is_err() {
+        // ours from a run whose identifier has come round, or somebody else's; only the first can
+        // be unlinked, and `/tmp` being sticky is what makes that true rather than hopeful
+        let _ = std::fs::remove_dir_all(path).or_else(|_| std::fs::remove_file(path));
+        std::fs::create_dir(path).ok()?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+    }
+
+    Some(path.to_path_buf())
 }
 
 /// Whether a confinement would hold here, asked without running anything.
@@ -696,12 +742,11 @@ pub fn run_if_asked() -> Option<i32> {
     let (sandbox, cmd) = Sandbox::from_argv(&argv)?;
 
     // a temporary directory of this run's own, made before anything is restricted and handed to
-    // the command as `TMPDIR`; see the note on `confine`. Whoever spawned this removes it again,
-    // being the only one of the two processes that can
-    let scratch = scratch_for(std::process::id());
-    let _ = std::fs::create_dir_all(&scratch);
+    // the command as `TMPDIR`; see the notes on `confine` and `make_scratch`. Whoever spawned this
+    // removes it again, being the only one of the two processes that can
+    let scratch = make_scratch(&scratch_for(std::process::id()));
 
-    let confinement = confine(&sandbox, &scratch);
+    let confinement = confine(&sandbox, scratch.as_deref());
     if std::env::var_os(REPORT_VAR).is_some() {
         eprintln!(
             "{REPORT}{}",
@@ -715,11 +760,10 @@ pub fn run_if_asked() -> Option<i32> {
     }
 
     let mut command = std::process::Command::new("sh");
-    command
-        .arg("-c")
-        .arg(&cmd)
-        .current_dir(&sandbox.workdir)
-        .env("TMPDIR", &scratch);
+    command.arg("-c").arg(&cmd).current_dir(&sandbox.workdir);
+    if let Some(scratch) = &scratch {
+        command.env("TMPDIR", scratch);
+    }
     // note: only when there is a ruleset in force. Unconfined, git can read its own configuration
     // and pointing it elsewhere would take a person's identity and aliases away for nothing
     if confinement.is_confined()

@@ -454,6 +454,70 @@ async fn a_command_takes_its_temporary_directory_with_it() {
     );
 }
 
+/// The scratch directory is never made *through* whatever is already at its name. Its name has to
+/// be predictable - it is how the process that spawned the confined one finds it again - and the
+/// ruleset grants the resolved path everything a writable root gets, so a link left there by
+/// somebody else would have opened up whatever it pointed at and `TMPDIR` would have sent the
+/// command into it.
+///
+/// note: the link here belongs to this test, so it is unlinked and the directory made in its
+/// place; what stops one belonging to *somebody else* being unlinked is `/tmp` being sticky, and
+/// there is no second account here to write that with. What this checks is the half that can be:
+/// whatever the name pointed at is not what the command gets.
+#[test]
+fn the_scratch_directory_is_never_somebody_elses() {
+    use kamchatka::sandbox::make_scratch;
+
+    let root = workdir("scratch-name");
+    let (elsewhere, path) = (root.join("elsewhere"), root.join("kamchatka-0"));
+    std::fs::create_dir_all(&elsewhere).expect("somewhere to point at");
+    std::fs::write(elsewhere.join("secret.txt"), "hunter2").expect("something in it");
+
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&elsewhere, &path).expect("a link where the scratch goes");
+    #[cfg(not(unix))]
+    std::fs::create_dir(&path).expect("a directory where the scratch goes");
+
+    let made = make_scratch(&path).expect("it is this test's own, so it gives way");
+    assert_eq!(made, path);
+    assert!(
+        !std::fs::symlink_metadata(&path)
+            .expect("it is there")
+            .is_symlink(),
+        "the scratch is still the link somebody else planted"
+    );
+    assert_eq!(
+        std::fs::read_dir(&path).expect("a directory").count(),
+        0,
+        "and the command was handed a directory with things already in it"
+    );
+    assert!(
+        elsewhere.join("secret.txt").exists(),
+        "what the link pointed at was opened up rather than left alone"
+    );
+
+    // and it is the user's own, for the same reason a written session is: what a command leaves in
+    // here is whatever it was working on, and a fresh directory under the default umask is one
+    // everyone on the machine can read
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let mode = std::fs::metadata(&path).expect("it is there").permissions();
+        assert_eq!(mode.mode() & 0o777, 0o700, "{:o}", mode.mode());
+    }
+
+    // a directory left by a run whose process identifier has come round again is the common case,
+    // and the command must not inherit its leavings
+    std::fs::write(path.join("stale.txt"), "from the last run").expect("a leftover");
+    assert_eq!(make_scratch(&path).as_ref(), Some(&path));
+    assert_eq!(
+        std::fs::read_dir(&path).expect("a directory").count(),
+        0,
+        "the leftovers of the last run were handed to this one"
+    );
+}
+
 #[tokio::test]
 async fn a_stopped_command_stops_and_says_so_at_once() {
     if !enforced() {
