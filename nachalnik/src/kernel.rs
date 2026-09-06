@@ -1011,6 +1011,12 @@ impl Kernel {
     /// Applies a compaction plan, returning (and broadcasting) a report of what it did.
     ///
     /// note: Pinned items in the plan are refused, and listed in [`CompactionReport::refused`].
+    ///
+    /// note: a pass that turns out to move nothing takes no checkpoint, like every other
+    /// operation here. That is not a nicety about a hand-written plan: a [`Compactor`] is asked
+    /// before every request, and one whose every candidate is pinned or already elided answers
+    /// with a plan on every one of them - so a checkpoint spent here would cost an undo per
+    /// request, and [`Kernel::redo`] would be unreachable for the rest of the session.
     pub fn apply_compaction(&self, plan: CompactionPlan) -> CompactionReport {
         let counter = self.counter();
         let CompactionPlan {
@@ -1032,8 +1038,11 @@ impl Kernel {
         {
             let mut context = self.0.context.write();
             let tokens_before = context.tokens();
-            context.checkpoint();
 
+            // what the plan comes to is worked out before anything moves, because the checkpoint
+            // has to be taken before the first change and must not be taken at all if there is
+            // not going to be one
+            let mut removing = Vec::new();
             for id in remove {
                 let Some(item) = context.item(id) else {
                     continue;
@@ -1048,25 +1057,11 @@ impl Kernel {
                 if pinned {
                     refused.push(entry);
                 } else if projected {
-                    let note = Some(format!("compaction: {reason}"));
-                    if let Some(from) = context.set_state(id, ContextState::Excluded, note.clone())
-                    {
-                        announcements.push(Event::ContextChanged {
-                            id,
-                            from,
-                            to: ContextState::Excluded,
-                            note,
-                        });
-                    }
-                    removed.push(entry);
+                    removing.push(entry);
                 }
             }
 
-            // note: the note is set from the pass's reason rather than kept, as the removals
-            // above do - a note says why an item is in the state it is in, and the one it may
-            // already be carrying answers a different question ("4,096 bytes were truncated by
-            // the output limit"), which would be a strange thing to hand the model as the reason
-            // it cannot see this any more
+            let mut eliding = Vec::new();
             for id in elide {
                 let Some(item) = context.item(id) else {
                     continue;
@@ -1084,14 +1079,42 @@ impl Kernel {
                 if !item.is_projected() || item.state.is_elided() {
                     continue;
                 }
+                eliding.push(entry);
+            }
 
+            if !removing.is_empty() || !eliding.is_empty() || summary.is_some() {
+                context.checkpoint();
+            }
+
+            for entry in removing {
+                let note = Some(format!("compaction: {reason}"));
+                if let Some(from) =
+                    context.set_state(entry.id, ContextState::Excluded, note.clone())
+                {
+                    announcements.push(Event::ContextChanged {
+                        id: entry.id,
+                        from,
+                        to: ContextState::Excluded,
+                        note,
+                    });
+                }
+                removed.push(entry);
+            }
+
+            // note: the note is set from the pass's reason rather than kept, as the removals
+            // above do - a note says why an item is in the state it is in, and the one it may
+            // already be carrying answers a different question ("4,096 bytes were truncated by
+            // the output limit"), which would be a strange thing to hand the model as the reason
+            // it cannot see this any more
+            for entry in eliding {
                 // the reason as it was written, with no `compaction:` in front of it: unlike a
                 // removal's note this one is read by the model, in the brackets the projector
                 // puts round it, and a client showing it has already said `elided` in the row
                 let note = Some(reason.clone());
-                if let Some(from) = context.set_state(id, ContextState::Elided, note.clone()) {
+                if let Some(from) = context.set_state(entry.id, ContextState::Elided, note.clone())
+                {
                     announcements.push(Event::ContextChanged {
-                        id,
+                        id: entry.id,
                         from,
                         to: ContextState::Elided,
                         note,

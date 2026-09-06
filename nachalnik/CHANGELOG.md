@@ -9,6 +9,15 @@ minor bump may break you.
 
 ### fixed
 
+- A compaction pass that moves nothing takes no checkpoint. Every other operation here has
+  followed that rule and been tested for it; `apply_compaction` checkpointed before it knew
+  whether the plan amounted to anything, so a pass whose every candidate was pinned or already
+  elided spent one of the sixteen undos a person has. The sharper half is the redo: `checkpoint`
+  discards the redo stack, so an undone change became unreachable - and since a `Compactor` is
+  asked before *every* request, a compactor in that state took the redo away on every one of them
+  for the rest of the session. The plan is now worked out before anything moves and the checkpoint
+  is taken only if something will.
+
 - `LinearProjector` holds a mid-turn item back under `send_blocks` too. The branch that sends an
   assistant turn as ordered blocks pushed its message and skipped the bookkeeping at the foot of
   the loop - which is the only place a turn's outstanding calls are counted and the only place the

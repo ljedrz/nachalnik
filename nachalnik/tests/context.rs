@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    BytesPerToken, Config, ContextId, ContextItem, ContextState, Event, Kernel, TokenCounter,
+    BytesPerToken, CompactionPlan, Config, ContextId, ContextItem, ContextState, Event, Kernel,
+    TokenCounter,
     selectors::Selector,
     test::{ConstTool, EchoTool},
 };
@@ -385,6 +386,83 @@ fn an_operation_that_does_nothing_does_not_spend_an_undo() {
     // so the one undo available still reverts the exclusion, as the user would expect
     assert!(kernel.undo());
     assert_eq!(kernel.item(a).unwrap().state, ContextState::Active);
+}
+
+/// The same rule, for the one operation that used to be exempt from it. A `Compactor` is asked
+/// before every request, so a pass that moves nothing is not an odd hand-written plan - it is what
+/// a compactor whose every candidate is pinned or already elided answers with, every time.
+#[test]
+fn a_compaction_that_moves_nothing_does_not_spend_an_undo() {
+    let kernel = kernel();
+    let pinned = kernel.push(ContextItem::file("src/a.rs", "a".repeat(400)).pinned());
+    let elided = kernel.push(ContextItem::file("src/b.rs", "b".repeat(400)));
+    kernel.set_state([elided], ContextState::Elided, Some("already gone".into()));
+
+    let depth = kernel.with_context(|c| c.undo_len());
+
+    // a plan naming nothing at all
+    let report = kernel.apply_compaction(CompactionPlan {
+        reason: "nothing to do".into(),
+        ..CompactionPlan::default()
+    });
+    assert!(report.removed.is_empty() && report.elided.is_empty());
+    assert_eq!(kernel.with_context(|c| c.undo_len()), depth);
+
+    // one whose every candidate is refused, and one naming only what is already a marker
+    let report = kernel.apply_compaction(CompactionPlan {
+        remove: vec![pinned],
+        elide: vec![pinned, elided],
+        reason: "an overzealous compactor".into(),
+        ..CompactionPlan::default()
+    });
+    assert_eq!(report.refused.len(), 2, "the pin is refused for both");
+    assert!(report.elided.is_empty(), "and the marker is already one");
+    assert_eq!(
+        kernel.with_context(|c| c.undo_len()),
+        depth,
+        "a pass that moved nothing spent an undo"
+    );
+
+    // and the redo the person still had is still theirs. This is the sharper half: `checkpoint`
+    // discards the redo stack, so a pass that did nothing used to make an undone change
+    // unreachable - before every request, for the rest of the session
+    assert!(kernel.undo());
+    assert_eq!(kernel.with_context(|c| c.redo_len()), 1);
+    kernel.apply_compaction(CompactionPlan {
+        reason: "still nothing to do".into(),
+        ..CompactionPlan::default()
+    });
+    assert_eq!(
+        kernel.with_context(|c| c.redo_len()),
+        1,
+        "an empty pass threw away the redo"
+    );
+    assert!(kernel.redo());
+}
+
+/// And a pass that *does* move something is still one operation, whichever of the three it did.
+#[test]
+fn a_compaction_that_moves_something_is_one_undo() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a".repeat(400)));
+    let b = kernel.push(ContextItem::file("src/b.rs", "b".repeat(400)));
+
+    let depth = kernel.with_context(|c| c.undo_len());
+    let report = kernel.apply_compaction(CompactionPlan {
+        remove: vec![a],
+        elide: vec![b],
+        summary: Some(ContextItem::summary("two items went")),
+        reason: "the context was full".into(),
+    });
+    assert_eq!(report.removed.len(), 1);
+    assert_eq!(report.elided.len(), 1);
+    assert!(report.summary.is_some());
+    assert_eq!(kernel.with_context(|c| c.undo_len()), depth + 1);
+
+    assert!(kernel.undo());
+    assert_eq!(kernel.item(a).unwrap().state, ContextState::Active);
+    assert_eq!(kernel.item(b).unwrap().state, ContextState::Active);
+    assert_eq!(kernel.items().len(), 2, "the summary went with them");
 }
 
 #[test]
