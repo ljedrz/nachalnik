@@ -1109,12 +1109,18 @@ impl Amend {
         let pin = call.args["pin"].as_bool().unwrap_or(false);
 
         let before = kernel.budget().used();
-        let id = kernel.push(
-            ContextItem::new(ContextKind::Reference, "agent", label, content.to_owned())
-                .because(reason.to_owned()),
-        );
+        // pinned as it is written rather than pinned afterwards: a push and a state change are two
+        // checkpoints on the *person's* undo stack, and writing one note is one thing the model
+        // did. It is the same reason `revise` puts its own account in the metadata instead of the
+        // note, and `because` is already carrying the sentence a second checkpoint would have been
+        // spent on
+        let mut item = ContextItem::new(ContextKind::Reference, "agent", label, content.to_owned())
+            .because(reason.to_owned());
         if pin {
-            kernel.set_state([id], ContextState::Pinned, Some(reason.to_owned()));
+            item = item.pinned();
+        }
+        let id = kernel.push(item);
+        if pin {
             self.note_pin(id, ContextState::Pinned);
         }
         // the way back from having written it is to put it away; nothing here destroys anything,

@@ -42,6 +42,11 @@ minor bump may break you.
   them that one. A model following the schema could not pass it, and an endpoint validating
   against the schema would have refused the call.
 
+- `amend`'s `note` does not spend two of the person's undos to write one thing down. Pinning it
+  was a second state change after the push, which is the arithmetic `revise` already keeps its own
+  account out of the note to avoid; the item is pinned as it is written, and `because` was already
+  carrying the reason.
+
 - A long answer keeps its beginning. The transcript bounded a *still arriving* entry at eight
   thousand bytes and replaced whatever came before it with `[...]` - which is right for a `find /`
   and wrong for a message. A model writing a long answer had its first paragraphs eaten while it

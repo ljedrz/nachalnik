@@ -821,6 +821,45 @@ async fn a_class_of_items_can_be_pruned_without_naming_each_one() {
     assert!(answers[1].contains("state:excluded"), "{answers:?}");
 }
 
+/// Pinning a note costs the person nothing. The undo stack behind the `u` key is theirs, and a
+/// note written and *then* pinned was a push and a state change - two checkpoints for one thing
+/// the model did, which is the arithmetic `revise` keeps its own account out of the note to avoid.
+#[tokio::test]
+async fn pinning_a_note_is_not_a_second_thing_to_undo() {
+    let written = |pin: bool| async move {
+        let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+            "c1",
+            "amend",
+            json!({
+                "action": "note", "label": "the plan", "content": "read the tests first",
+                "pin": pin, "reason": "so it outlives this turn",
+            }),
+        )]));
+        kernel.push(ContextItem::user("what is your plan?"));
+        kernel.turn().await.expect("the turn ran");
+
+        (
+            kernel.with_context(|c| c.undo_len()),
+            kernel
+                .items()
+                .into_iter()
+                .find(|item| item.label == "the plan")
+                .expect("it was written down")
+                .state,
+        )
+    };
+
+    let (loose, loose_state) = written(false).await;
+    let (pinned, pinned_state) = written(true).await;
+
+    assert_eq!(loose_state, ContextState::Active);
+    assert_eq!(pinned_state, ContextState::Pinned);
+    assert_eq!(
+        pinned, loose,
+        "the pin cost the person an undo of their own"
+    );
+}
+
 #[tokio::test]
 async fn a_note_is_written_down_where_compaction_cannot_reach_it() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
@@ -848,6 +887,11 @@ async fn a_note_is_written_down_where_compaction_cannot_reach_it() {
     assert!(written.content.to_text().contains("do not touch the lexer"));
     // attributed to whoever wrote it, so "who put these tokens in here?" has an answer
     assert_eq!(written.source, "agent");
+    // and the reason is on it, which is what a second state change used to be spent putting there
+    assert_eq!(
+        written.included_because.as_deref(),
+        Some("so it outlives this turn")
+    );
     assert_eq!(
         written.included_because.as_deref(),
         Some("so it outlives this turn")
