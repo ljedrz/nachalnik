@@ -200,15 +200,25 @@ Test files: `nachalnik/tests/` is `kernel`, `context`, `state`, `session`, `toke
 arithmetic and the pinned instrument digests), `harness` (the whole loop against a provider whose
 causal structure the test wrote - the only way to check that the harness recovers an influence
 nobody told it about, and, since the rulebook can emit tool calls, the only way to check the
-handles without paying a model to use them) and `live`. `kamchatka/tests/` draws the screen and reads the
-characters back (`screen`), drives the introspection tools through the real loop (`introspect`),
-serves a recorded Gemini stream off a socket and checks what goes back out (`gemini`), runs real
-commands under a real ruleset (`sandbox`), and answers three sockets: one that goes silent
-mid-stream (`stalled`) and two that serve the shapes a streamed tool call arrives in
-(`streaming`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at
-every tab with nothing to act on, and both scrolled past their own ends - a frame that panics takes
-the session with it, which is the one failure this program cannot report. `nachalnik-mcp/tests/`
-stands a real MCP server up rather than mocking one.
+handles without paying a model to use them) and `live`. `kamchatka/tests/` draws the screen and
+reads the characters back (`screen`), drives the introspection tools through the real loop
+(`introspect`), serves a recorded Gemini stream off a socket and checks what goes back out
+(`gemini`), runs real commands under a real ruleset (`sandbox`), asks the policy its own questions
+rather than reading the answers off the screen (`policy`), checks what is volunteered to an
+endpoint about this program and to which one (`attribution`), and answers two sockets that go
+silent, one before the first byte and one mid-stream (`stalled`). `edges` is the sweep: every tab
+at every window size from 1x1 up, every key at every tab with nothing to act on, and both scrolled
+past their own ends - a frame that panics takes the session with it, which is the one failure this
+program cannot report. `nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one
+(`bridge`), and `foreign` runs one written in another language.
+
+The shapes a *stream* arrives in are not tested per provider any more, because there are three
+providers and the questions are the same three times. `nachalnik-utils/src/conformance.rs` is the
+suite: every provider in the workspace is asked the same questions through a real socket, each one
+a bug that actually happened to one of them, and a question added applies to all three without any
+of them being edited. `kamchatka/tests/conformance.rs` holds this crate's two to it and
+`nachalnik-utils/tests/` holds its own, beside `whole_answers` - what a provider makes of a model
+that writes arguments no parser will take.
 
 ---
 

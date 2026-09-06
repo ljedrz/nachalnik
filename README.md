@@ -99,8 +99,8 @@ context is `snapshot` and `resume`, previewing a request is `preview_request`, p
 $ cargo test --workspace
 ```
 
-460 tests, of which 34 are live suites that skip themselves when there is no API key: 185 in
-`kamchatka`, 175 in `nachalnik`, 72 in `nachalnik-eval`, 25 in `nachalnik-mcp` and three in
+476 tests, of which 34 are live suites that skip themselves when there is no API key: 198 in
+`kamchatka`, 178 in `nachalnik`, 72 in `nachalnik-eval`, 25 in `nachalnik-mcp` and three in
 `nachalnik-utils`. Each crate's readme says what its own cover.
 
 Three of those three-and-a-bit are the provider conformance suite. This workspace has one

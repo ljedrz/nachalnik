@@ -497,7 +497,7 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
 
 ### 🧪 tests
 
-`cargo test -p nachalnik` runs 152 offline tests - 147 unit and integration, 5 doc - covering the
+`cargo test -p nachalnik` runs 155 offline tests - 150 unit and integration, 5 doc - covering the
 context model, the selectors, the state machine, the loop, permissions, projection and tool-call
 repair, token counting and calibration, compaction, and the session log. Three are worth naming:
 the state machine is tested for refusing a second concurrent `step` and for a dropped one not
