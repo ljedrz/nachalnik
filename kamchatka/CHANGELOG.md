@@ -18,6 +18,14 @@ minor bump may break you.
   target is enough to get there, and six passes over one took the context from three items to
   eight. It looks at what an item is *sending* now.
 
+- A loaded session hands over the tool call identifiers it already used. `/load` pushes a
+  snapshot's turns into the running kernel and dropped `used_calls` on the floor, so the kernel
+  had never heard of the identifiers those turns carry - and a provider that numbers its calls
+  from zero every turn, which is the reason the repair exists at all, would hand one straight
+  back. Nothing would have repaired it and the next request would have answered one
+  `tool_call_id` twice. `kamchatka` could not do anything about this from out here, so the
+  runtime grew `Kernel::reserve_calls` for it.
+
 - A long answer keeps its beginning. The transcript bounded a *still arriving* entry at eight
   thousand bytes and replaced whatever came before it with `[...]` - which is right for a `find /`
   and wrong for a message. A model writing a long answer had its first paragraphs eaten while it

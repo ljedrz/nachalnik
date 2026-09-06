@@ -2330,6 +2330,12 @@ impl App {
         );
 
         let ids = self.kernel.push_all(snapshot.items);
+        // the turns just pushed carry call identifiers this kernel never issued, and nothing else
+        // would tell it so: a provider that numbers its calls from zero every turn would hand one
+        // of them back, the kernel would have nothing to compare it against, and the next request
+        // would carry the same `tool_call_id` twice. `-r` gets this from `Kernel::resume`; this is
+        // the same fact, said to a kernel that is already running
+        self.kernel.reserve_calls(snapshot.used_calls);
         self.kernel.set_params(snapshot.params);
         // what the counter had learned, which is the one piece of a seam's state a snapshot
         // carries; without it the next few requests would be spent relearning what this file
@@ -2549,6 +2555,11 @@ fn trace_line(event: &Event) -> (String, String) {
             true => format!("gave a call the identifier `{call}`: {reason}"),
             false => format!("`{was}` → `{call}`: {reason}"),
         },
+        // and this is the line that says where a repair further down got "earlier in the session"
+        // from, in a session that read somebody else's
+        Event::ToolCallsReserved { reserved } => {
+            format!("{reserved} identifier(s) a loaded session had already used")
+        }
         // the names, not the count: `4 tools` is a number somebody has to go and look up, and
         // this line exists because what the model is offered changed
         Event::ToolsChanged { tools } => match tools.is_empty() {

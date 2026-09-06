@@ -2249,6 +2249,86 @@ async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_t
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A loaded conversation brings tool call identifiers this kernel never issued, and the kernel has
+/// to be told: `-r` gets them from `Kernel::resume`, and until this there was nothing that said
+/// the same thing to a session already running. A provider that numbers its calls from zero every
+/// turn - and they exist, which is why the repair exists - would hand one straight back, and the
+/// next request would carry the same `tool_call_id` twice.
+#[tokio::test]
+async fn a_loaded_session_hands_over_the_identifiers_it_already_used() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-loadcalls-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a place to write");
+    let saved = dir.join("worked.json");
+
+    // a session with a real tool exchange in it, which is the only way an identifier gets used
+    let first = Kernel::new(Config::default());
+    first.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("call_0", "peek", json!({}))]),
+        ModelResponse::text("done"),
+    ])));
+    first.set_policy(Arc::new(nachalnik::test::AllowAll));
+    first.add_tool(Arc::new(ConstTool::new("peek", "ok")));
+    first.push(ContextItem::user("look"));
+    first.turn().await.expect("the turn ran");
+    std::fs::write(
+        &saved,
+        serde_json::to_vec(&first.snapshot()).expect("a session serializes"),
+    )
+    .expect("written");
+
+    let mut second = Harness::new([
+        ModelResponse::tool_calls(vec![call("call_0", "peek", json!({}))]),
+        ModelResponse::text("done"),
+    ]);
+    second
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("peek", "ok")));
+    second
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::Read), Verdict::Allow);
+    second.send(&format!("/load {}", saved.display())).await;
+
+    // the loaded turn's identifier is now this kernel's own, and saying so is on the trace
+    assert!(
+        second
+            .app
+            .kernel
+            .snapshot()
+            .used_calls
+            .iter()
+            .any(|used| used.0 == "call_0"),
+        "the loaded identifiers were dropped on the floor"
+    );
+    second.drain();
+    second.tab(Tab::Trace);
+    assert!(second.flat().contains("tool.reserved"), "{}", second.flat());
+
+    // so when the provider offers it again, the kernel repairs it rather than letting the request
+    // answer one call twice
+    second.tab(Tab::Chat);
+    second.send("and again").await;
+    second.settle().await;
+
+    let sent: Vec<String> = second
+        .app
+        .kernel
+        .preview_request()
+        .expect("a request")
+        .messages
+        .iter()
+        .flat_map(|message| message.calls().map(|c| c.id.0.clone()).collect::<Vec<_>>())
+        .collect();
+    let mut unique = sent.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(sent.len(), unique.len(), "{sent:?}");
+    assert!(sent.len() > 1, "both calls should be in it: {sent:?}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn loading_something_that_is_not_a_session_says_which_file_and_why() {
     let dir = std::env::temp_dir().join(format!("kamchatka-notasession-{}", std::process::id()));
