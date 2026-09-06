@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### fixed
 
+- `/budget`'s two halves answer the same question. The tokens it reports as held back come from
+  `tokens_withheld`, which counts an elided item - it is in the request as a marker and is not
+  sending what it holds - and the count beside them came from what is not *projected*, which does
+  not. So the one command whose whole job is to say what the next request costs and what it does
+  not read `held back: 9,004 tokens in 0 items the projector is not sending`: a count of nothing
+  against the figure it was supposed to account for, and a clause that is untrue of an elided item
+  besides. It is the same conflation `Trim` was making, in the place it is most read.
+
 - `Trim` stops asking once there is nothing left to elide. Its candidates were the projected tool
   results, and an elided item *is* projected - as a marker - so every item a pass had already
   elided came back as a candidate on the next one. The plan was therefore never empty, never

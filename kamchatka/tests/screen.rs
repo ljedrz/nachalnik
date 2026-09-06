@@ -522,6 +522,40 @@ async fn the_budget_puts_the_estimate_beside_what_was_really_charged() {
     );
 }
 
+/// The token figure and the count in one sentence have to be answering the same question. An
+/// elided item is projected - as a marker - and is not sending what it holds, so a count of what
+/// is *not projected* put nothing beside nine thousand tokens.
+#[tokio::test]
+async fn the_budget_counts_the_items_the_tokens_it_reports_belong_to() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user("go"));
+    let elided = harness.app.kernel.push(ContextItem::tool_result(
+        nachalnik::ToolCallId::from("c1"),
+        "shell",
+        "y".repeat(9_000),
+        false,
+    ));
+    harness
+        .app
+        .kernel
+        .set_state([elided], ContextState::Elided, Some("compacted".into()));
+
+    harness.send("/budget").await;
+    let screen = harness.flat();
+
+    assert!(
+        !screen.contains("in 0 item"),
+        "a count of nothing beside the tokens it is supposed to account for: {screen}"
+    );
+    assert!(screen.contains("in 1 item(s)"), "{screen}");
+    // and an elided item *is* sent, as a marker, so the sentence must not say it is not
+    assert!(
+        !screen.contains("the projector is not sending"),
+        "an elided item is in the request: {screen}"
+    );
+    assert!(screen.contains("elided to a marker"), "{screen}");
+}
+
 #[tokio::test]
 async fn what_a_tool_wants_to_write_is_shown_as_the_lines_it_would_write() {
     let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(

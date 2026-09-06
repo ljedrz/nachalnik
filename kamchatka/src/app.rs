@@ -2198,11 +2198,17 @@ impl App {
         let withheld = self
             .kernel
             .with_context(|context| context.tokens_withheld());
+        // note: `sends_content` rather than `is_projected`, because the figure beside it is
+        // `tokens_withheld` and that is the question *it* answers. An elided item is projected -
+        // as a marker - and is not sending what it holds, so counting the ones that are not
+        // projected put a count of nothing beside nine thousand tokens: the two halves of one
+        // sentence answering two different questions, in the command whose whole job is to say
+        // what the next request costs and what it does not
         let out = self
             .kernel
             .items()
             .iter()
-            .filter(|item| !item.is_projected())
+            .filter(|item| !item.state.sends_content())
             .count();
 
         let mut lines = vec![format!(
@@ -2220,8 +2226,11 @@ impl App {
             None => "the limit: unknown, so there is nothing to measure against".to_owned(),
         });
         if withheld != 0 {
+            // and "not sending" is not what an elided item has done either: it is in the request,
+            // as a line saying it used to be something else
             lines.push(format!(
-                "held back: {} tokens in {out} items the projector is not sending",
+                "held back: {} tokens in {out} item(s) the model is not being shown - excluded, \
+                 archived, or elided to a marker",
                 thousands(withheld)
             ));
         }
