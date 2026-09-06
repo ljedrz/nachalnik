@@ -7,6 +7,14 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- `Cohort::is_unanimous` says what it checks. Its line read "whether the agreement reaches the
+  significance the preregistration asks of it", and it does not: it is unanimity, and three models
+  agreeing is unanimous and `p = 0.125`. The type's own note has always said that the cohort size
+  is a registered decision for exactly this reason, so the method's line was the one place the
+  crate overstated a claim - in the one method a model-level claim would be read off.
+
 ### fixed
 
 - `Granted` no longer grants a tool that declares nothing. It checked that every capability a call

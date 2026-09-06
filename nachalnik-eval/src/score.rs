@@ -1124,7 +1124,12 @@ impl Cohort {
         self.measurable > 0
     }
 
-    /// Whether the agreement reaches the significance the preregistration asks of it.
+    /// Whether every model that could be measured went the registered way.
+    ///
+    /// note: unanimity, and not on its own the significance the preregistration asks for -
+    /// [`Cohort::p_value`] is that, and it needs the cohort to be big enough as well. Three models
+    /// agreeing is `0.125` and answers this `true`, which is why the cohort size is a registered
+    /// decision rather than whatever a budget allowed; see the note on the type.
     pub fn is_unanimous(&self) -> bool {
         self.measurable > 0 && self.agreed == self.measurable
     }
