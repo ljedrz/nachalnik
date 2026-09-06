@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 
 use kamchatka::{
-    sandbox::Reach,
+    sandbox::{Access, Reach},
     tools::{Careful, Subject, path_matches},
 };
 use nachalnik::{Capability, PermissionId, PermissionRequest, ToolCall, Verdict};
@@ -42,6 +42,7 @@ fn a_credential_rule_is_about_the_file_that_gets_opened() {
     let reach = Reach {
         workdir: dir.clone(),
         extra: Vec::new(),
+        readable: Vec::new(),
         confined: true,
     };
     // the moment the credential list exists for: somebody has answered `always` to an ordinary
@@ -51,7 +52,7 @@ fn a_credential_rule_is_about_the_file_that_gets_opened() {
 
     for spelling in [".env", "./.env", ".env/", ".env//", "sub/../.env", ".env/."] {
         assert_eq!(
-            reach.allows(spelling).as_deref(),
+            reach.allows(spelling, Access::Reading).as_deref(),
             Ok(dir.join(".env").as_path()),
             "`{spelling}` is a way of naming the same file"
         );
@@ -139,10 +140,11 @@ fn the_rules_are_about_names_and_a_symlink_is_not_one() {
         let reach = Reach {
             workdir: dir.clone(),
             extra: Vec::new(),
+            readable: Vec::new(),
             confined: true,
         };
         assert_eq!(
-            reach.allows("notes.txt").as_deref(),
+            reach.allows("notes.txt", Access::Reading).as_deref(),
             Ok(dir.join(".env").as_path()),
         );
     }
@@ -159,23 +161,28 @@ fn the_reach_refuses_what_is_outside_it() {
     let reach = Reach {
         workdir: dir.clone(),
         extra: Vec::new(),
+        readable: Vec::new(),
         confined: true,
     };
 
     for outside in ["/etc/passwd", "../outside.txt", "sub/../../outside.txt"] {
-        assert!(reach.allows(outside).is_err(), "{outside}");
+        assert!(reach.allows(outside, Access::Reading).is_err(), "{outside}");
     }
     // including one that does not exist yet, which is most of what `write` is handed
-    assert!(reach.allows("sub/../../new.txt").is_err());
-    assert!(reach.allows("sub/new.txt").is_ok());
+    assert!(reach.allows("sub/../../new.txt", Access::Reading).is_err());
+    assert!(reach.allows("sub/new.txt", Access::Reading).is_ok());
 
     // and with the confinement off, nothing is refused
     let open = Reach {
         workdir: dir.clone(),
         extra: Vec::new(),
+        readable: Vec::new(),
         confined: false,
     };
-    assert_eq!(open.allows("/etc/passwd"), Ok(PathBuf::from("/etc/passwd")));
+    assert_eq!(
+        open.allows("/etc/passwd", Access::Reading),
+        Ok(PathBuf::from("/etc/passwd"))
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }

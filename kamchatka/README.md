@@ -49,7 +49,8 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 > same boundary by their own code, and to a tighter one: they refuse `/etc/passwd` too.
 > The permissions tab says which you have — `shell: confined`, or
 > `shell: a command can do any of these` where Landlock is not available. `--sandbox-allow PATH`
-> opens up more and `--no-sandbox` turns it off. Within the boundary the file tools are finer than
+> opens up more, `--sandbox-read PATH` opens it up for reading only, and `--no-sandbox` turns it
+> off. Within the boundary the file tools are finer than
 > a capability: `read` is allowed, and `read .env` is a question, because a path rule can tighten
 > what a capability allows. It is one LSM, not a container; see
 > [what it does and does not protect you from][protection].
@@ -698,6 +699,26 @@ On Linux it also wants a kernel new enough to have Landlock — 5.13 for the fil
 for the one that refuses `truncate()`, and 6.7 for `network: deny`. The tab says how much of it the
 kernel took: `confined`, or `partly confined` where some of it is older than the machine.
 
+### 🧰 a toolchain lives in your home directory
+
+`$HOME` is not a system directory, so a confined command cannot read it — and most toolchains keep
+their real installation there. `cargo` is a rustup shim, rustup reads `~/.rustup/settings.toml`
+before it does anything at all, and a model asked to build a Rust project therefore gets
+
+```
+error: could not read settings file: '/home/you/.rustup/settings.toml': Permission denied
+```
+
+which looks exactly like a missing compiler. Hand it the toolchain, for reading and no more:
+
+```
+kamchatka --sandbox-read ~/.rustup --sandbox-read ~/.cargo -m …
+```
+
+Read-only rather than `--sandbox-allow`, because a model that can *replace* the toolchain it is
+about to run is not the trade anybody meant to make. The same goes for `~/.nvm`, `~/.pyenv`,
+`~/.rbenv` and the rest.
+
 ## 🎛️ options
 
 ```text
@@ -718,8 +739,10 @@ kamchatka [OPTIONS] [MESSAGE]...
                             one, so a turn keeps the order it was produced in
       --introspect          offer the model the two tools that read and manage its own
                             context; /introspect turns them on and off while it runs
-      --sandbox-allow <PATH> a path outside the working directory the shell may also
+      --sandbox-allow <PATH> a path outside the working directory the tools may also
                             read and write; may be repeated
+      --sandbox-read <PATH> a path outside the working directory the tools may read
+                            but not change; may be repeated
       --no-sandbox          run the shell tool unconfined, reaching whatever you can
       --forget-truncated    drop the whole of a shortened tool output instead of
                             keeping it as an archived item you can still read

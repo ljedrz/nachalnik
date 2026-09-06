@@ -119,6 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reach = sandbox::Reach {
         workdir: std::env::current_dir()?,
         extra: Vec::new(),
+        readable: Vec::new(),
         confined: true,
     };
     for tool in tools::builtin(
@@ -126,6 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             policy: policy.clone(),
             workdir: reach.workdir.clone(),
             extra: reach.extra.clone(),
+            readable: reach.readable.clone(),
             confiner: confinement.is_confined().then(|| program.clone()),
         },
         reach,

@@ -21,7 +21,7 @@ use nachalnik::{
 };
 use parking_lot::Mutex;
 
-use crate::sandbox::{Reach, Sandbox};
+use crate::sandbox::{Access, Reach, Sandbox};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
@@ -74,7 +74,7 @@ impl Tool for Read {
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
-        let path = match self.0.allows(arg(&call.args, "path")?) {
+        let path = match self.0.allows(arg(&call.args, "path")?, Access::Reading) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -113,7 +113,7 @@ impl Tool for Write {
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         let (path, content) = (arg(&call.args, "path")?, arg(&call.args, "content")?);
-        let path = match self.0.allows(path) {
+        let path = match self.0.allows(path, Access::Writing) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -160,7 +160,7 @@ impl Tool for Edit {
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         let (old, new) = (arg(&call.args, "old")?, arg(&call.args, "new")?);
-        let path = match self.0.allows(arg(&call.args, "path")?) {
+        let path = match self.0.allows(arg(&call.args, "path")?, Access::Writing) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -203,8 +203,10 @@ pub struct Shell {
     pub policy: Arc<Careful>,
     /// The directory a command may work in.
     pub workdir: PathBuf,
-    /// Extra paths the user asked to open up.
+    /// Extra paths the user asked to open up, read-write.
     pub extra: Vec<PathBuf>,
+    /// Extra paths the user asked to open up for reading only.
+    pub readable: Vec<PathBuf>,
     /// The binary that knows how to confine itself and run a command; `None` runs `sh` directly.
     ///
     /// note: a path settled once at startup rather than `current_exe()` per call, for two
@@ -225,6 +227,20 @@ impl Tool for Shell {
         // Landlock comes back with an ordinary permission error and nothing to distinguish it
         // from a file that really is protected, and a model that cannot tell those apart spends
         // its turns trying `sudo`
+        // note: and the paths that were opened up are named, because a model told only about
+        // "the working directory and the system paths" has no reason to try `~/.rustup` even
+        // when somebody opened it for exactly that
+        let opened: Vec<String> = self
+            .extra
+            .iter()
+            .map(|path| format!("{} read-write", path.display()))
+            .chain(
+                self.readable
+                    .iter()
+                    .map(|path| format!("{} read-only", path.display())),
+            )
+            .collect();
+
         ToolSpec::new(
             "shell",
             format!(
@@ -232,11 +248,16 @@ impl Tool for Shell {
                  status, its output and its errors. Long output is cut off at the end. Nothing \
                  is typed at it: a command that waits for input waits for ever.{}",
                 match self.confiner.is_some() {
-                    true =>
+                    true => format!(
                         " It runs confined: outside the working directory it can read this \
-                         machine's system paths and no more, and TCP may be closed - so a \
+                         machine's system paths{} and no more, and TCP may be closed - so a \
                          permission error there is the confinement rather than the command.",
-                    false => "",
+                        match opened.is_empty() {
+                            true => String::new(),
+                            false => format!(", and {},", opened.join(" and ")),
+                        }
+                    ),
+                    false => String::new(),
                 }
             ),
         )
@@ -265,6 +286,7 @@ impl Tool for Shell {
                     &self.policy,
                     self.workdir.clone(),
                     self.extra.clone(),
+                    self.readable.clone(),
                     self.policy.was_granted_the_network(&call.id),
                 );
                 let mut command = tokio::process::Command::new(me);

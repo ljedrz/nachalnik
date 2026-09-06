@@ -3428,12 +3428,14 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
         kamchatka::tools::Shell {
             workdir: std::path::PathBuf::from("/w"),
             extra: Vec::new(),
+            readable: Vec::new(),
             policy: harness.app.policy.clone(),
             confiner: Some(std::path::PathBuf::from("/self")),
         },
         kamchatka::sandbox::Reach {
             workdir: std::path::PathBuf::from("/w"),
             extra: Vec::new(),
+            readable: Vec::new(),
             confined: true,
         },
     ) {

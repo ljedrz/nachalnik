@@ -39,6 +39,19 @@ minor bump may break you.
   and every byte of output every tool produced, written without anybody asking for it, and under an
   ordinary umask that was a world-readable file in a directory everyone on the machine could list.
 
+### added
+
+- `--sandbox-read PATH` opens a path outside the working directory for reading and no more, next
+  to `--sandbox-allow`, which opens one for reading and writing. What sends most people here is a
+  toolchain: `$HOME` is not a system directory, `cargo` is a rustup shim that reads
+  `~/.rustup/settings.toml` before it does anything at all, and a confined `cargo build` therefore
+  failed with `could not read settings file: Permission denied` - which looks exactly like a
+  missing compiler. A live model spent six calls hunting for one that was installed the whole
+  time. `--sandbox-allow ~/.rustup` would have fixed it and handed the model the ability to
+  replace the toolchain it was about to run; this is the flag that was missing. The three file
+  tools honour it too: `read` reaches a read-only path and `write` and `edit` are refused with a
+  message that says which of the two it is.
+
 ### changed
 
 - `network: deny` is described as what Landlock actually refuses, which is TCP. `ConnectTcp` and

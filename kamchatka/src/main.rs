@@ -106,10 +106,14 @@ struct Args {
     #[arg(long)]
     no_record: bool,
 
-    /// A path outside the working directory the shell tool may also read and write. May be
-    /// repeated.
+    /// A path outside the working directory the tools may also read and write. May be repeated.
     #[arg(long, value_name = "PATH")]
     sandbox_allow: Vec<std::path::PathBuf>,
+
+    /// A path outside the working directory the tools may read but not change. May be repeated.
+    /// A toolchain is the usual one: `cargo` cannot start without `~/.rustup`.
+    #[arg(long, value_name = "PATH")]
+    sandbox_read: Vec<std::path::PathBuf>,
 
     /// Drop the whole of a tool's output once it has been shortened, rather than keeping it as an
     /// archived item that can still be read.
@@ -223,6 +227,7 @@ async fn terminal() -> Result<()> {
     let reach = sandbox::Reach {
         workdir: std::env::current_dir()?,
         extra: args.sandbox_allow.clone(),
+        readable: args.sandbox_read.clone(),
         confined: !args.no_sandbox,
     };
     for tool in tools::builtin(
@@ -230,6 +235,7 @@ async fn terminal() -> Result<()> {
             policy: policy.clone(),
             workdir: reach.workdir.clone(),
             extra: reach.extra.clone(),
+            readable: reach.readable.clone(),
             // only when it would actually confine anything. A binary that has been replaced since
             // this one started, or a kernel with no Landlock, is a `shell` that runs unconfined
             // and a permissions tab that says so - rather than one whose every command comes back

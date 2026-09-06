@@ -52,6 +52,14 @@ pub struct Sandbox {
     pub workdir: PathBuf,
     /// Extra paths the user asked for, read-write.
     pub extra: Vec<PathBuf>,
+    /// Extra paths the user asked for, readable and no more.
+    ///
+    /// note: separate from `extra` rather than a flag on it, because the two are asked for by
+    /// different flags for different reasons and a command may hold both at once. What sends
+    /// most people here is a toolchain: `cargo` cannot start without `~/.rustup`, and a model
+    /// that can *replace* the toolchain it is about to run is a worse trade than the one anybody
+    /// meant to make.
+    pub readable: Vec<PathBuf>,
     /// Whether the working directory is writable, or only readable.
     pub writable: bool,
     /// Whether the command may open a TCP connection.
@@ -64,10 +72,17 @@ impl Sandbox {
     /// note: the network is reachable only if the stance is an outright `allow`, or if this
     /// particular call was allowed by a person who was asked about it. A stance of `ask` that
     /// nobody has been asked about yet is not permission.
-    pub fn of(policy: &Careful, workdir: PathBuf, extra: Vec<PathBuf>, granted: bool) -> Self {
+    pub fn of(
+        policy: &Careful,
+        workdir: PathBuf,
+        extra: Vec<PathBuf>,
+        readable: Vec<PathBuf>,
+        granted: bool,
+    ) -> Self {
         Self {
             workdir,
             extra,
+            readable,
             // a refusal of `write` reaches the shell too; anything short of a refusal leaves the
             // working directory writable, because a shell that cannot write in it is not one
             // anybody can work with
@@ -93,6 +108,8 @@ impl Sandbox {
             OsString::from(self.extra.len().to_string()),
         ];
         argv.extend(self.extra.iter().map(|path| path.clone().into()));
+        argv.push(OsString::from(self.readable.len().to_string()));
+        argv.extend(self.readable.iter().map(|path| path.clone().into()));
         argv.push(cmd.into());
 
         argv
@@ -109,17 +126,57 @@ impl Sandbox {
         let network = argv.next()? == "net";
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
         let extra: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
+        let count: usize = argv.next()?.to_str()?.parse().ok()?;
+        let readable: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
         let cmd = argv.next()?.clone();
 
         Some((
             Self {
                 workdir,
                 extra,
+                readable,
                 writable,
                 network,
             },
             cmd,
         ))
+    }
+}
+
+/// The deepest existing part of a path, resolved, with whatever is left over joined back on.
+///
+/// note: a file about to be created has no canonical form of its own, and a path handed to
+/// `write` is usually one of those. It is resolved through its parent instead, because a file
+/// cannot be created outside a directory it is not in.
+///
+/// note: one function rather than two, so that [`Reach::allows`] and [`Sandbox::reaches`] cannot
+/// come to different answers about the same path - which is the whole substance of both.
+fn resolve(path: &Path) -> PathBuf {
+    let mut existing = path;
+    let mut rest = PathBuf::new();
+    loop {
+        match existing.canonicalize() {
+            // note: joined only when there is something to join. `Path::join("")` appends a
+            // separator, and `/w/local.txt/` is a directory that is not there - which is how a
+            // plain `./local.txt` came back `Not a directory` the first time this ran
+            Ok(resolved) if rest.as_os_str().is_empty() => break resolved,
+            Ok(resolved) => break resolved.join(&rest),
+            Err(_) => match (existing.file_name(), existing.parent()) {
+                (Some(name), Some(parent)) => {
+                    // note: and the same guard here, for the same reason. Without it every path
+                    // that does not exist yet came back with a separator on the end, so `write`
+                    // could create no file at all: `notes.txt/` is a directory, and the tool
+                    // reported `Is a directory (os error 21)` for a file it had just been asked
+                    // to make
+                    rest = match rest.as_os_str().is_empty() {
+                        true => PathBuf::from(name),
+                        false => Path::new(name).join(&rest),
+                    };
+                    existing = parent;
+                }
+                _ => break path.to_path_buf(),
+            },
+        }
     }
 }
 
@@ -136,6 +193,9 @@ impl fmt::Display for Sandbox {
         )?;
         for path in &self.extra {
             write!(f, ", {} read-write", path.display())?;
+        }
+        for path in &self.readable {
+            write!(f, ", {} read-only", path.display())?;
         }
         write!(
             f,
@@ -161,10 +221,26 @@ impl fmt::Display for Sandbox {
 pub struct Reach {
     /// The directory the tools may work in.
     pub workdir: PathBuf,
-    /// Extra paths the user opened up.
+    /// Extra paths the user opened up, read-write.
     pub extra: Vec<PathBuf>,
+    /// Extra paths the user opened up for reading only.
+    pub readable: Vec<PathBuf>,
     /// Whether to hold them to it at all; `--no-sandbox` turns this off.
     pub confined: bool,
+}
+
+/// What a tool is about to do with a path, which is what decides whether a read-only path is in
+/// reach for it.
+///
+/// note: an argument rather than two methods, so that every call site says which it is. The
+/// distinction only exists because of `--sandbox-read`, and a default would put it back where it
+/// was: `write` quietly allowed somewhere only `read` was meant to go.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Access {
+    /// Opening it and no more.
+    Reading,
+    /// Creating, changing or replacing it.
+    Writing,
 }
 
 impl Reach {
@@ -174,7 +250,7 @@ impl Reach {
     /// as a plain absolute path. A path that does not exist yet - which is most of what `write` is
     /// handed - is resolved through its parent, because a file cannot be created outside a
     /// directory it is not in.
-    pub fn allows(&self, path: &str) -> Result<PathBuf, String> {
+    pub fn allows(&self, path: &str, doing: Access) -> Result<PathBuf, String> {
         let path = PathBuf::from(path);
         if !self.confined {
             return Ok(path);
@@ -184,37 +260,12 @@ impl Reach {
             true => path.clone(),
             false => self.workdir.join(&path),
         };
-        // the deepest part that exists, plus whatever is left over: a file about to be created has
-        // no canonical form of its own
-        let mut existing = absolute.as_path();
-        let mut rest = PathBuf::new();
-        let resolved = loop {
-            match existing.canonicalize() {
-                // note: joined only when there is something to join. `Path::join("")` appends a
-                // separator, and `/w/local.txt/` is a directory that is not there - which is how
-                // a plain `./local.txt` came back `Not a directory` the first time this ran
-                Ok(resolved) if rest.as_os_str().is_empty() => break resolved,
-                Ok(resolved) => break resolved.join(&rest),
-                Err(_) => match (existing.file_name(), existing.parent()) {
-                    (Some(name), Some(parent)) => {
-                        // note: and the same guard here, for the same reason. Without it every
-                        // path that does not exist yet came back with a separator on the end, so
-                        // `write` could create no file at all: `notes.txt/` is a directory, and
-                        // the tool reported `Is a directory (os error 21)` for a file it had just
-                        // been asked to make
-                        rest = match rest.as_os_str().is_empty() {
-                            true => PathBuf::from(name),
-                            false => Path::new(name).join(&rest),
-                        };
-                        existing = parent;
-                    }
-                    _ => break absolute.clone(),
-                },
-            }
-        };
+        let resolved = resolve(&absolute);
 
+        let readable = matches!(doing, Access::Reading);
         match std::iter::once(&self.workdir)
             .chain(self.extra.iter())
+            .chain(self.readable.iter().filter(|_| readable))
             .any(|allowed| {
                 allowed
                     .canonicalize()
@@ -224,6 +275,26 @@ impl Reach {
             // note: written for the model, which is what reads it. It cannot restart this
             // program or pass it a flag, so being told to is worse than being told nothing: what
             // it can do is work inside the directory, or say what it needs and why
+            // note: a path opened for reading and asked for in writing gets its own answer.
+            // Telling a model that `~/.rustup` is "outside what this session reaches" when it has
+            // just read a file there is a contradiction it cannot do anything with, and the
+            // useful fact - that this one is read-only - is one this knows
+            false
+                if !readable
+                    && self.readable.iter().any(|allowed| {
+                        allowed
+                            .canonicalize()
+                            .is_ok_and(|allowed| resolved.starts_with(allowed))
+                    }) =>
+            {
+                Err(format!(
+                    "{}: opened for reading only, so it cannot be changed. Write inside {} \
+                     instead, or ask for this path to be opened up for writing and say what you \
+                     need it for.",
+                    path.display(),
+                    self.workdir.display()
+                ))
+            }
             false => Err(format!(
                 "{}: outside {}, which is as far as this session reaches. Work inside that \
                  directory, or ask for this path to be opened up and say what you need it for.",
@@ -284,7 +355,10 @@ impl fmt::Display for Confinement {
 }
 
 /// The directories a command has to be able to read before it can be a command at all.
-#[cfg(target_os = "linux")]
+///
+/// note: not behind a `cfg`, because [`Sandbox::reaches`] answers on every platform and a
+/// constant that a portable method names cannot be one. Off Linux nothing is confined, so
+/// nothing asks.
 const SYSTEM: &[&str] = &[
     "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/proc", "/sys", "/run",
 ];
@@ -343,6 +417,7 @@ pub fn confine(sandbox: &Sandbox, scratch: &Path) -> Confinement {
         .iter()
         .map(PathBuf::from)
         .chain(std::iter::once(sandbox.workdir.clone()))
+        .chain(sandbox.readable.iter().cloned())
         .collect();
 
     let restricted = ruleset
@@ -396,6 +471,7 @@ pub fn available(program: &Path) -> Confinement {
     let sandbox = Sandbox {
         workdir: std::env::temp_dir(),
         extra: Vec::new(),
+        readable: Vec::new(),
         writable: true,
         network: false,
     };

@@ -75,6 +75,7 @@ fn sandbox(workdir: PathBuf, writable: bool, network: bool) -> Sandbox {
     Sandbox {
         workdir,
         extra: Vec::new(),
+        readable: Vec::new(),
         writable,
         network,
     }
@@ -288,30 +289,41 @@ fn a_refused_network_is_refused_by_the_kernel_rather_than_by_reading_the_command
 
 #[test]
 fn the_file_tools_are_held_to_the_same_boundary() {
-    use kamchatka::sandbox::Reach;
+    use kamchatka::sandbox::{Access, Reach};
 
     let dir = workdir("reach").canonicalize().expect("it exists");
     let reach = Reach {
         workdir: dir.clone(),
         extra: vec![PathBuf::from("/usr/share")],
+        readable: Vec::new(),
         confined: true,
     };
 
     // inside, by any spelling. `./` is in here because the first live run of this came back
     // `Not a directory`: an empty remainder joined onto a resolved path appends a separator
-    assert_eq!(reach.allows("inside.txt"), Ok(dir.join("inside.txt")));
-    assert_eq!(reach.allows("./inside.txt"), Ok(dir.join("inside.txt")));
-    assert_eq!(reach.allows("."), Ok(dir.clone()));
+    assert_eq!(
+        reach.allows("inside.txt", Access::Reading),
+        Ok(dir.join("inside.txt"))
+    );
+    assert_eq!(
+        reach.allows("./inside.txt", Access::Reading),
+        Ok(dir.join("inside.txt"))
+    );
+    assert_eq!(reach.allows(".", Access::Reading), Ok(dir.clone()));
     assert!(
         reach
-            .allows(dir.join("inside.txt").to_str().unwrap())
+            .allows(dir.join("inside.txt").to_str().unwrap(), Access::Reading)
             .is_ok()
     );
     // ... including one that is not there yet, which is most of what `write` is handed. Compared
     // as strings, deliberately: a `PathBuf` compares by component, so a separator on the end of
     // one is invisible to `assert_eq!` and visible to every `fs` call there is. That is how a
     // `write` which could not create a single file went on passing a test that asserted `Ok`
-    let name = |path: &str| reach.allows(path).map(PathBuf::into_os_string);
+    let name = |path: &str| {
+        reach
+            .allows(path, Access::Reading)
+            .map(PathBuf::into_os_string)
+    };
     assert_eq!(
         name("not-there-yet.txt"),
         Ok(dir.join("not-there-yet.txt").into_os_string()),
@@ -326,34 +338,61 @@ fn the_file_tools_are_held_to_the_same_boundary() {
         Ok(dir.join("sub/dir/new.txt").into_os_string())
     );
     // ... and the whole of what that is for
-    let made = reach.allows("not-there-yet.txt").expect("it is inside");
+    let made = reach
+        .allows("not-there-yet.txt", Access::Reading)
+        .expect("it is inside");
     std::fs::write(&made, "made").expect("a file about to be created can be created");
 
     // outside, by every spelling somebody would reach for
-    assert!(reach.allows("/etc/passwd").is_err());
+    assert!(reach.allows("/etc/passwd", Access::Reading).is_err());
     assert!(
-        reach.allows("../../../etc/passwd").is_err(),
+        reach
+            .allows("../../../etc/passwd", Access::Reading)
+            .is_err(),
         "`..` is resolved, not matched"
     );
-    assert!(reach.allows("/etc/../etc/passwd").is_err());
+    assert!(reach.allows("/etc/../etc/passwd", Access::Reading).is_err());
 
     // ... including through a symlink, which is why the path is resolved rather than compared
     let link = dir.join("out");
     std::os::unix::fs::symlink("/etc", &link).expect("a symlink");
     assert!(
-        reach.allows(link.join("passwd").to_str().unwrap()).is_err(),
+        reach
+            .allows(link.join("passwd").to_str().unwrap(), Access::Reading)
+            .is_err(),
         "a symlink out is still out"
     );
 
     // what was opened up on purpose
-    assert!(reach.allows("/usr/share/anything").is_ok());
+    assert!(reach.allows("/usr/share/anything", Access::Reading).is_ok());
+    assert!(reach.allows("/usr/share/anything", Access::Writing).is_ok());
+
+    // ... and what was opened up for reading and no more. The two answers differ only here, which
+    // is why `allows` takes what the tool is about to do rather than defaulting to one of them
+    let readable = Reach {
+        readable: vec![PathBuf::from("/usr/lib")],
+        ..reach.clone()
+    };
+    assert!(
+        readable
+            .allows("/usr/lib/anything", Access::Reading)
+            .is_ok()
+    );
+    let refused = readable
+        .allows("/usr/lib/anything", Access::Writing)
+        .expect_err("a read-only path is not writable");
+    assert!(
+        refused.contains("reading only"),
+        "a model that has just read a file there cannot use \"outside what this session \
+         reaches\": {refused}"
+    );
 
     // ... and none of it applies when nobody asked for it
     let open = Reach {
         confined: false,
         ..reach
     };
-    assert!(open.allows("/etc/passwd").is_ok());
+    assert!(open.allows("/etc/passwd", Access::Reading).is_ok());
 }
 
 /// A kernel whose one tool is the confined `shell`, answering with a fixed script.
@@ -369,6 +408,7 @@ fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse
         policy: Arc::new(Careful::new()),
         workdir: workdir.to_path_buf(),
         extra: Vec::new(),
+        readable: Vec::new(),
         confiner: Some(program()),
     }));
 
@@ -464,6 +504,7 @@ fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
     let sandbox = Sandbox {
         workdir: PathBuf::from("/tmp/work dir"),
         extra: vec![PathBuf::from("/opt/one"), PathBuf::from("/opt/two")],
+        readable: vec![PathBuf::from("/opt/three")],
         writable: false,
         network: true,
     };
@@ -475,4 +516,55 @@ fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
     assert_eq!(cmd, "echo 'hello world'; ls");
     assert!(Sandbox::from_argv(&[]).is_none());
     assert!(Sandbox::from_argv(&["--help".into()]).is_none());
+}
+
+/// A path opened for reading is readable and is not writable.
+///
+/// note: what sends most people here is a toolchain. `cargo` is a rustup shim, rustup keeps its
+/// settings under `$HOME`, and `$HOME` is not a system directory - so a confined `cargo --version`
+/// came back `could not read settings file: Permission denied` and a live model spent six calls
+/// hunting for a compiler that was installed all along. Opening `~/.rustup` read-*write* would
+/// have fixed that and handed the model the ability to replace the toolchain it was about to run.
+#[test]
+fn a_path_opened_for_reading_is_not_a_path_that_can_be_written() {
+    if !enforced() {
+        return;
+    }
+    let outside = workdir("read-only-extra");
+    std::fs::write(outside.join("settings.toml"), "default = stable").expect("something to read");
+
+    let mut sandbox = sandbox(workdir("read-only-home"), true, false);
+    sandbox.readable = vec![outside.clone()];
+
+    let (ok, said) = run(
+        &sandbox,
+        &format!("cat {}/settings.toml", outside.display()),
+    );
+    assert!(ok, "a read-only path is readable: {said}");
+    assert!(said.contains("default = stable"), "{said}");
+
+    let (ok, said) = run(
+        &sandbox,
+        &format!("echo mine > {}/settings.toml", outside.display()),
+    );
+    assert!(!ok, "a read-only path is not writable: {said}");
+    assert!(said.contains("Permission denied"), "{said}");
+    assert_eq!(
+        std::fs::read_to_string(outside.join("settings.toml")).expect("it is still there"),
+        "default = stable",
+    );
+
+    // and truncation, which does not go through `open` and needs its own right to refuse
+    let (ok, said) = run(
+        &sandbox,
+        &format!(
+            "python3 -c \"import os; os.truncate('{}/settings.toml', 0)\"",
+            outside.display()
+        ),
+    );
+    assert!(!ok, "a read-only path cannot be truncated either: {said}");
+    assert_eq!(
+        std::fs::read_to_string(outside.join("settings.toml")).expect("it is still there"),
+        "default = stable",
+    );
 }
