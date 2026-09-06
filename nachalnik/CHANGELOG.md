@@ -9,6 +9,15 @@ minor bump may break you.
 
 ### added
 
+- `Kernel::recalibrate`: the front door for `TokenCounter::recalibrate`, which recounts. A
+  correction changes what is counted *from then on*, exactly as `observe` does, so applying one to
+  a context that is already counted leaves every stored figure on the old scale while everything
+  projected is on the new one - two budgets for the same bytes, which is what a snapshot's
+  calibration exists to avoid. `Kernel::resume` sidesteps it by recalibrating before the items are
+  counted; anything reading a `Snapshot::calibration` into a session that is already running had
+  no such route and had to know the ordering rule. It recounts for the reason `set_counter` does,
+  and does nothing at all for a counter that does not learn or a correction already in force.
+
 - `Kernel::reserve_calls`, and the `Event::ToolCallsReserved` it announces. `Kernel::resume` has
   always taken `Snapshot::used_calls`, which covers a session picked back up in another process;
   the other way of reading a snapshot had nothing. A client that merges one *into* a session it is

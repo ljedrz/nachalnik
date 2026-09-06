@@ -27,7 +27,7 @@ use crate::{
     },
     projection::{LinearProjector, Projection, Projector},
     session::{Record, Session, Snapshot},
-    tokens::{BytesPerToken, Calibrating, TokenCounter},
+    tokens::{BytesPerToken, Calibrating, Calibration, TokenCounter},
     tool::{Tool, ToolOutput, ToolSpec},
 };
 
@@ -721,6 +721,38 @@ impl Kernel {
     /// Returns the token counter.
     pub fn counter(&self) -> Arc<dyn TokenCounter> {
         self.0.counter.read().clone()
+    }
+
+    /// Tells the counter what a previous one had learned, recounts, and returns what it knew
+    /// before.
+    ///
+    /// note: the front door for [`TokenCounter::recalibrate`], and it exists because reaching
+    /// past the kernel for it is a trap. A correction changes what is counted *from then on*,
+    /// like [`TokenCounter::observe`] - so a caller who applies one to a context that is already
+    /// counted has every stored figure on the old scale and every projected figure on the new
+    /// one, which is two budgets for the same bytes. [`Kernel::resume`] avoids it by
+    /// recalibrating before the items are counted; anything reading a
+    /// [`Snapshot::calibration`] into a session that is already running wants this instead.
+    ///
+    /// note: it recounts for the same reason [`Kernel::set_counter`] does. What changed is what
+    /// the kernel's numbers mean, and leaving the old ones to be read is the quiet rewrite this
+    /// crate does not do - so the correction is applied and the figures are brought into line, out
+    /// loud, as [`Event::ContextRecounted`].
+    ///
+    /// note: `None`, and nothing done at all, when the counter does not learn. The kernel only
+    /// ever offers back what a counter gave it, which is the rule [`TokenCounter::calibration`]
+    /// states; a counter that never changes its mind has nothing to be told and nothing to
+    /// recount for. A correction identical to the one in force is not a change either, and takes
+    /// no recount.
+    pub fn recalibrate(&self, calibration: Calibration) -> Option<Calibration> {
+        let counter = self.counter();
+        let previous = counter.calibration()?;
+        counter.recalibrate(calibration);
+        if previous != calibration {
+            self.recount();
+        }
+
+        Some(previous)
     }
 
     /// Sets (or, with `None`, removes) the compactor, returning the previous one.

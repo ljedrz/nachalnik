@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    BytesPerToken, Calibrating, Config, Content, ContextItem, ContextKind, Kernel, ModelResponse,
-    State, TokenCounter, Usage,
+    BytesPerToken, Calibrating, Calibration, Config, Content, ContextItem, ContextKind, Kernel,
+    ModelResponse, State, TokenCounter, Usage,
     test::{AllowAll, ConstTool, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -409,4 +409,63 @@ fn calibrating_keeps_a_wrapped_counter_s_opinion_about_messages() {
         28,
         "the framing is doubled with everything else, not counted away"
     );
+}
+
+/// A correction applied to a context that is already counted leaves every stored figure on the old
+/// scale while everything projected is on the new one - two budgets for the same bytes, which is
+/// the thing a snapshot's calibration exists to avoid. The front door does both halves.
+#[test]
+fn recalibrating_brings_the_figures_that_are_already_counted_with_it() {
+    let kernel = kernel();
+    kernel.set_counter(Arc::new(Calibrating::new(BytesPerToken::default())));
+    let item = kernel.push(ContextItem::file("big.rs", "x".repeat(4_000)));
+    let before = kernel.item(item).unwrap().tokens;
+
+    let mut events = kernel.subscribe();
+    let previous = kernel.recalibrate(Calibration {
+        scale: 2.0,
+        observations: 3,
+        estimated: 1_000,
+        reported: 2_000,
+    });
+    assert_eq!(previous.map(|c| c.scale), Some(1.0), "what it knew before");
+
+    // the stored figure moved with the correction, rather than waiting for somebody to notice
+    assert_eq!(kernel.item(item).unwrap().tokens, before * 2);
+    // and the two halves of the budget agree, which is the whole point
+    assert_eq!(
+        kernel.with_context(|c| c.tokens()),
+        kernel.item(item).unwrap().tokens
+    );
+    // out loud: a rewrite of recorded numbers is not something this crate does quietly
+    let said: Vec<String> = std::iter::from_fn(|| events.try_recv().ok())
+        .map(|event| event.name().to_owned())
+        .collect();
+    assert!(said.contains(&"context.recounted".to_owned()), "{said:?}");
+}
+
+/// And it does nothing at all when there is nothing to do, so a client that offers a snapshot's
+/// calibration to a counter that never learnt anything does not spend a recount saying so.
+#[test]
+fn recalibrating_a_counter_that_does_not_learn_does_nothing() {
+    let plain = kernel();
+    // the default is `Calibrating`, so this is the case of a counter swapped for a plain one
+    plain.set_counter(Arc::new(BytesPerToken::default()));
+    let item = plain.push(ContextItem::file("big.rs", "x".repeat(4_000)));
+    let before = plain.item(item).unwrap().tokens;
+
+    let mut events = plain.subscribe();
+    assert_eq!(plain.recalibrate(Calibration::default()), None);
+    assert_eq!(plain.item(item).unwrap().tokens, before);
+    assert!(events.try_recv().is_err(), "it announced something");
+
+    // nor when the correction offered is the one already in force
+    let learning = kernel();
+    learning.push(ContextItem::file("big.rs", "x".repeat(4_000)));
+    let mut events = learning.subscribe();
+    assert_eq!(
+        learning.recalibrate(Calibration::default()),
+        Some(Calibration::default())
+    );
+    assert!(events.try_recv().is_err(), "it recounted for nothing");
 }

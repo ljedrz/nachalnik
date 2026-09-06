@@ -125,6 +125,12 @@ pub trait TokenCounter: Send + Sync {
     /// note: The default does nothing, and a counter that does not implement
     /// [`TokenCounter::calibration`] never sees this called - the kernel only offers back what a
     /// counter gave it.
+    ///
+    /// note: it changes what is counted from here on and not what has already been counted,
+    /// exactly as [`TokenCounter::observe`] does. So a caller reaching for this directly has to
+    /// either apply it before the items are counted, as [`Kernel::resume`] does, or recount
+    /// afterwards - and [`Kernel::recalibrate`] is the one that does both, which is why it is the
+    /// front door and this is the seam behind it.
     fn recalibrate(&self, calibration: Calibration) {
         let _ = calibration;
     }
