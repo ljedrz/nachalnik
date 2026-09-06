@@ -283,6 +283,12 @@ the two ends of it in one key; control is held because <kbd>home</kbd> and <kbd>
 the prompt, which is under every tab, and a line editor whose <kbd>home</kbd> moved something else
 would be a trap.
 
+**Nothing said is shortened to fit.** However long an answer is, the whole of it is on the chat tab
+and can be scrolled back through. A tool's output while it is still running is the one exception,
+and only while it is running: a command that produces megabytes is bounded on screen, the whole of
+it goes into the context, and the finished result is shown as its first few lines with the rest one
+keystroke away on the context tab.
+
 Stopping is cooperative rather than a killed process. The provider notices between fragments and
 returns the text it has; the shell tool kills the command — and everything the command started,
 since it runs in a process group of its own — and still answers the call it was given. The partial

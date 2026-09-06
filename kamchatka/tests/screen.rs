@@ -3970,6 +3970,57 @@ async fn a_session_can_be_written_without_anybody_having_asked() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// A long answer keeps its beginning.
+///
+/// note: a live session lost the top of one. The transcript bounded a *still arriving* entry at
+/// eight thousand bytes and replaced whatever came before with `[...]`, which is right for a
+/// `find /` and wrong for everything else - a model writing a long answer had its first paragraphs
+/// eaten while it was still writing the last, and nothing ever put them back: the finished item is
+/// read off the kernel only for a provider that did not stream.
+#[tokio::test]
+async fn a_long_answer_is_not_shortened_while_it_arrives() {
+    let mut harness = Harness::new([]);
+    for n in 0..400 {
+        harness.app.on_event(Event::ModelDelta {
+            delta: Delta::Text(format!("this is sentence number {n} of a long answer.\n\n")),
+        });
+    }
+
+    let said = &harness
+        .app
+        .transcript
+        .last()
+        .expect("the model said something")
+        .text;
+    assert!(said.len() > 16_000, "the test is not testing anything");
+    assert!(
+        said.contains("sentence number 0 of"),
+        "the beginning of the answer is gone"
+    );
+    assert!(said.contains("sentence number 399 of"), "and so is the end");
+    assert!(!said.contains("[...]"), "nothing was cut: {}", &said[..80]);
+
+    // ... and it is all there to be scrolled back through
+    harness.screen();
+    harness.chord(KeyCode::Home).await;
+    let top = harness.screen();
+    assert!(top.contains("sentence number 0 of"), "{top}");
+}
+
+/// The same for a person's own message, however long it is.
+#[tokio::test]
+async fn a_long_message_of_your_own_is_not_shortened_either() {
+    let mut harness = Harness::new([]);
+    let long = format!(
+        "here is a question: {}",
+        "and some more of it. ".repeat(600)
+    );
+    harness.app.say(kamchatka::app::Speaker::User, long.clone());
+
+    let said = &harness.app.transcript.last().expect("it is there").text;
+    assert_eq!(said, &long);
+}
+
 /// `ctrl+home` and `ctrl+end` are the two ends of the conversation; `home` and `end` are the
 /// prompt's own, as they are everywhere else.
 #[tokio::test]

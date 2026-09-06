@@ -39,6 +39,10 @@ const TRACE_DEPTH: usize = 400;
 pub const SETTLING: Duration = Duration::from_millis(300);
 
 /// How much of a still-running tool's output the transcript holds on to.
+///
+/// note: a tool's output and nothing else. A command can produce megabytes and the whole of it is
+/// in the context either way, one keystroke from being read - but a *message* is never shortened
+/// on the way to the screen, however long it is. See [`App::append`].
 const LIVE_OUTPUT: usize = 8_000;
 
 /// How many lines `pgup` and `pgdn` move an overlay.
@@ -377,20 +381,29 @@ impl App {
     }
 
     /// Appends to the open entry from this speaker, opening one if there is none.
+    ///
+    /// note: the bound is on a tool's output and on nothing else, which it did not used to be. A
+    /// `find /` should not be able to fill the transcript up, and the whole of it is in the
+    /// context either way - but a model writing a long answer had its first paragraphs eaten
+    /// while it was still writing the last one, and nothing ever put them back: the finished item
+    /// is read back off the kernel only for a provider that did not stream. A message is what
+    /// somebody came here to read. It is never shortened.
     fn append(&mut self, speaker: Speaker, fragment: &str) {
         match self.transcript.last_mut() {
             Some(entry) if entry.open && entry.speaker == speaker => {
                 entry.text.push_str(fragment);
-                // a tool that produces megabytes should not be able to fill this up; the whole
-                // of it is in the context either way, one keystroke from being read
-                if entry.text.len() > LIVE_OUTPUT {
+                if speaker == Speaker::Result && entry.text.len() > LIVE_OUTPUT {
                     let cut = entry
                         .text
                         .char_indices()
                         .nth(entry.text.chars().count() - LIVE_OUTPUT / 2)
                         .map(|(at, _)| at)
                         .unwrap_or(0);
-                    entry.text = format!("[...]\n{}", &entry.text[cut..]);
+                    entry.text = format!(
+                        "[... the earlier output is not repeated here; the whole of it is in the \
+                         context ...]\n{}",
+                        &entry.text[cut..]
+                    );
                 }
             }
             _ => {

@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### fixed
 
+- A long answer keeps its beginning. The transcript bounded a *still arriving* entry at eight
+  thousand bytes and replaced whatever came before it with `[...]` - which is right for a `find /`
+  and wrong for a message. A model writing a long answer had its first paragraphs eaten while it
+  was still writing the last one, and nothing ever put them back: the finished item is read off the
+  kernel only for a provider that did not stream, so what was lost stayed lost for the rest of the
+  session. The bound is now on a tool's output and on nothing else. Nothing anybody said is
+  shortened on the way to the screen, however long it is.
+
 - Git is no longer killed outright by a configuration it cannot read. Under Landlock, `access(2)`
   still answers from the file's own permissions, so git asked whether `~/.gitconfig` was readable,
   was told yes, opened it, got `EACCES`, and took the *unreadable configuration* branch rather
