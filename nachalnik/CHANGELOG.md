@@ -7,6 +7,20 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- `ModelResponse::thinking`, which reads what the model thought wherever it is recorded - the same
+  accessor `ContextItem::thinking` has had all along, on the type a turn arrives as rather than the
+  one it is kept as. A turn is recorded one of two ways - the `reasoning` field, or a
+  `Block::Reasoning` among ordered blocks - and which one a caller gets is a property of whichever
+  provider it happens to be talking to. Both `calls` accessors read both, and a context item reads
+  both; a `ModelResponse` in hand was the one place left where asking what the model thought meant
+  reading a field, and being right on one dialect only.
+
+  An iterator of `Content`, because that is the shape of the two accessors beside it. Found while
+  writing a conformance case asserting that a stream cut mid-thought keeps the thinking: it did
+  keep it, in blocks, where the assertion was not looking.
+
 ### fixed
 
 - A `CompactionReport`'s two totals are the projected ones its documentation always said they

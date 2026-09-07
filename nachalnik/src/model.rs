@@ -812,6 +812,35 @@ impl ModelResponse {
             .flatten()
             .chain(blocks.into_iter().flatten().filter_map(Block::call))
     }
+
+    /// Returns what the model thought, wherever it is recorded.
+    ///
+    /// note: the same accessor [`ContextItem::thinking`](crate::ContextItem::thinking) has had all
+    /// along, on the type a turn arrives as rather than the one it is kept as. A turn is recorded
+    /// one of two ways - the [`ModelResponse::reasoning`] field, or a [`Block::Reasoning`] among
+    /// ordered blocks - and which one a caller gets is a property of whichever provider it happens
+    /// to be talking to. [`ModelResponse::calls`] has read both since ordered turns existed, and a
+    /// context item reads both; a `ModelResponse` in hand was the one place left where asking what
+    /// the model thought meant reading a field and being right on one dialect only.
+    ///
+    /// note: an iterator of [`Content`], because that is what the two accessors beside it are.
+    /// One shape per question: a provider writing a conformance case, a client showing somebody a
+    /// turn, and a kernel recording one should not each need a different call.
+    pub fn thinking(&self) -> impl Iterator<Item = &Content> {
+        let blocks = self.content.as_ref().and_then(Content::as_blocks);
+        let flat = match blocks {
+            Some(_) => None,
+            None => self.reasoning.as_ref(),
+        };
+
+        flat.into_iter().chain(
+            blocks
+                .into_iter()
+                .flatten()
+                .filter_map(Block::thought)
+                .map(|part| &part.content),
+        )
+    }
 }
 
 /// The identity and capabilities of the model behind a [`Provider`], as reported by it.
