@@ -10,10 +10,19 @@
 //! ```
 //!
 //! note: `screen.rs` drives the same keys against a scripted model and asserts what is drawn.
-//! This file exists for the one thing that cannot answer: whether the request the keys produced
-//! is a request a real API accepts. The state cycle on the context tab rewrites the messages -
-//! eliding a tool result replaces its content, pruning one takes the call down as well - and
-//! "the projection is well formed" is a claim only a server can settle.
+//! This file exists for the two things that cannot answer. The first is whether the request the
+//! keys produced is a request a real API accepts: the state cycle on the context tab rewrites the
+//! messages - eliding a tool result replaces its content, excluding one takes the call down as
+//! well - and "the projection is well formed" is a claim only a server can settle. The second is
+//! whether the sentences these tools write are ones a model can act on, which is the last section
+//! below; a scripted provider agrees with every refusal it is handed.
+//!
+//! note: three fixtures, three sections, and the environment says which endpoint each is pointed
+//! at. `KAMCHATKA_BASE_URL` and `KAMCHATKA_TEST_MODEL` move the first and the last; the middle one
+//! has `KAMCHATKA_GEMINI_*` of its own and skips without them, so a run pointed at some other
+//! provider does not send that provider's key to Google. `KAMCHATKA_TEST_DEADLINE` is how long a
+//! turn gets, and `KAMCHATKA_CONTEXT_LIMIT` has to be small for the compaction case to have
+//! anything to do.
 
 use std::{sync::Arc, time::Duration};
 
@@ -26,7 +35,7 @@ use kamchatka::{
     ui,
 };
 use nachalnik::{
-    Block, BoxError, Capability, Config, Content, ContextKind, ContextState, Kernel,
+    Block, BoxError, Capability, Config, Content, ContextItem, ContextKind, ContextState, Kernel,
     LinearProjector, OutputSink, Role, State, Tool, ToolCall, ToolOutput, ToolSpec, Verdict,
     async_trait,
 };
@@ -43,6 +52,24 @@ const DEFAULT_MODEL: &str = "gemini-3.5-flash-lite";
 /// then reported a different model on the list as a broken list.
 fn model_in_use() -> String {
     std::env::var("KAMCHATKA_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned())
+}
+
+/// Where the requests go, which is Google's OpenAI-compatible shim unless told otherwise.
+fn base_url() -> String {
+    std::env::var("KAMCHATKA_BASE_URL")
+        .unwrap_or_else(|_| "https://generativelanguage.googleapis.com/v1beta/openai".to_owned())
+}
+
+/// Just the host of it, which is what the status line has room to draw.
+fn host() -> String {
+    let url = base_url();
+    let after_scheme = url.split_once("://").map_or(&*url, |(_, rest)| rest);
+
+    after_scheme
+        .split('/')
+        .next()
+        .unwrap_or_default()
+        .to_owned()
 }
 
 /// One at a time, so a free tier's rate limit is not what is under test.
@@ -84,8 +111,7 @@ fn live() -> Option<(
     let key = std::env::var("KAMCHATKA_API_KEY")
         .or_else(|_| std::env::var("NACHALNIK_API_KEY"))
         .ok()?;
-    let base = std::env::var("KAMCHATKA_BASE_URL")
-        .unwrap_or_else(|_| "https://generativelanguage.googleapis.com/v1beta/openai".to_owned());
+    let base = base_url();
     let model = std::env::var("KAMCHATKA_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
 
     let kernel = Kernel::new(Config::default());
@@ -149,12 +175,27 @@ async fn send(
     app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .await;
 
-    // longer than the scripted suite's deadline, because a real model is on the other end
-    let outcome = tokio::time::timeout(Duration::from_secs(90), finished.recv())
+    let outcome = tokio::time::timeout(deadline(), finished.recv())
         .await
         .expect("the turn should have finished")
         .expect("the channel outlives the turn");
     app.on_outcome(outcome);
+}
+
+/// How long a turn is given before the test calls the model too slow.
+///
+/// note: longer than the scripted suite's, because a real model is on the other end, and settable
+/// because how much longer is a property of the endpoint rather than of anything here. Ninety
+/// seconds is ample against a paid provider and not always enough against a free tier: one run
+/// took eight minutes for the suite and reported two of its own timeouts as failures of the
+/// program.
+fn deadline() -> Duration {
+    Duration::from_secs(
+        std::env::var("KAMCHATKA_TEST_DEADLINE")
+            .ok()
+            .and_then(|it| it.parse().ok())
+            .unwrap_or(90),
+    )
 }
 
 /// What the model last said, as text.
@@ -353,9 +394,13 @@ async fn the_status_line_reports_a_real_endpoint_and_a_corrected_budget() {
     send(&mut app, &mut finished, "Say the single word: ready.").await;
 
     // wide enough for all of it: the address is there
+    //
+    // note: the host is read back out of the environment rather than named here. Naming Google's
+    // passed only while nobody set `KAMCHATKA_BASE_URL` - which the doc at the top of this file
+    // tells them to - and then reported a correctly drawn OpenRouter address as a missing one
     let status = status_line(&mut app, 140);
     assert!(
-        status.contains("@ generativelanguage.googleapis.com"),
+        status.contains(&format!("@ {}", host())),
         "the address is on the screen: {status}"
     );
     assert!(
@@ -364,8 +409,18 @@ async fn the_status_line_reports_a_real_endpoint_and_a_corrected_budget() {
     );
 
     // and where it does not fit, the address is what gives way rather than the figures
+    //
+    // note: "gave way" rather than "went", because how far it has to give depends on how long
+    // this endpoint's host is. `generativelanguage.googleapis.com` is dropped outright at this
+    // width and `openrouter.ai` is merely shortened, and a test that demanded the first reported
+    // the correct handling of the second as a failure. What must hold either way is the ladder's
+    // whole point: the figures and the key hint are still on the line. `edges.rs` pins the rungs
+    // themselves, at widths it chooses rather than widths a provider's name decides
     let narrow = status_line(&mut app, 100);
-    assert!(!narrow.contains('@'), "the address gave way: {narrow}");
+    assert!(
+        !narrow.contains(&format!("@ {}", host())),
+        "the address gave way: {narrow}"
+    );
     assert!(
         narrow.contains("really") && narrow.contains("F1"),
         "and the figures did not: {narrow}"
@@ -480,17 +535,27 @@ async fn models_lists_what_the_endpoint_actually_serves() {
 ///
 /// note: its own environment variables, because the suite above is usually pointed at the shim
 /// through `KAMCHATKA_BASE_URL` and this one must not follow it there - the whole subject is what
-/// the shim cannot say.
+/// the shim cannot say. `KAMCHATKA_GEMINI_API_KEY` is one of them, so that a run pointed at some
+/// other provider skips these rather than sending that provider's key to Google.
 fn gemini() -> Option<(
     App,
     Arc<Kernel>,
     tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
 )> {
-    let key = std::env::var("KAMCHATKA_API_KEY")
-        .or_else(|_| std::env::var("NACHALNIK_API_KEY"))
-        .ok()?;
     let base = std::env::var("KAMCHATKA_GEMINI_BASE_URL")
         .unwrap_or_else(|_| kamchatka::gemini::DEFAULT_BASE_URL.to_owned());
+    // a key belongs to the endpoint it was given for. The one above is borrowed only when it was
+    // plausibly Google's - an unset base URL, or one pointing there - because otherwise this sent
+    // an OpenRouter key to `generativelanguage.googleapis.com` and reported the 400 that came back
+    // as three broken tests about turn order
+    let key = std::env::var("KAMCHATKA_GEMINI_API_KEY")
+        .or_else(|_| match base_url().contains("googleapis.com") {
+            true => {
+                std::env::var("KAMCHATKA_API_KEY").or_else(|_| std::env::var("NACHALNIK_API_KEY"))
+            }
+            false => Err(std::env::VarError::NotPresent),
+        })
+        .ok()?;
     let model =
         std::env::var("KAMCHATKA_GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.6-flash".to_owned());
 
@@ -744,4 +809,587 @@ async fn the_introspection_tools_read_an_ordered_turn() {
         "a real request has been charged for by now: {budget}"
     );
     assert!(budget.contains("most expensive item(s)"), "{budget}");
+}
+
+// ------------------------------------------- the tools, and what a model does with what they say
+
+/// The same terminal with the real file tools behind it, in a directory of its own.
+///
+/// note: a third fixture, because a third question. The suite at the top asks whether the request
+/// a keystroke produced is one a server accepts; this one asks whether the *sentences these tools
+/// write* are ones a model can act on. A refusal, a shortened result and a permission question are
+/// all text aimed at a reader nobody here can interview, and the only way to find out that the
+/// reader loops on it is to watch one do so - which is how four of the notes in this section got
+/// written.
+fn agent(
+    dir: &std::path::Path,
+) -> Option<(
+    App,
+    Limits,
+    tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
+)> {
+    let key = std::env::var("KAMCHATKA_API_KEY")
+        .or_else(|_| std::env::var("NACHALNIK_API_KEY"))
+        .ok()?;
+
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(OpenAiCompatible::new(model_in_use(), base_url(), key));
+    kernel.set_provider(provider.clone());
+
+    let policy = Arc::new(Careful::new());
+    for capability in [
+        Capability::Read,
+        Capability::Write,
+        Capability::Edit,
+        Capability::Shell,
+    ] {
+        policy.set(&Subject::Capability(capability), Verdict::Allow);
+    }
+    kernel.set_policy(policy.clone());
+
+    let limits = Limits::new();
+    let reach = kamchatka::sandbox::Reach {
+        workdir: dir.to_path_buf(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        // on, so that a relative path is resolved against `workdir` the way it is in the program,
+        // where `workdir` *is* the process directory. Off, `Reach` hands back what it was given
+        // and a relative path goes to the process directory instead - which in a test run is the
+        // repository, so every file the test had just written came back absent
+        confined: true,
+    };
+    for tool in kamchatka::tools::builtin(
+        kamchatka::tools::Shell {
+            policy: policy.clone(),
+            workdir: reach.workdir.clone(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            // no Landlock: what is under test is what the tools say, and a session that cannot
+            // start a confined child would report that as every one of these failing
+            confiner: None,
+            limits: limits.clone(),
+        },
+        reach,
+        limits.clone(),
+    ) {
+        kernel.add_tool(tool);
+    }
+
+    let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
+    let mut app = App::new(kernel, policy, provider, limits.clone(), outcomes);
+    app.confinement = kamchatka::sandbox::Confinement::Unsupported;
+
+    Some((app, limits, finished))
+}
+
+/// The same, with `introspect` and `amend` offered as well.
+fn introspecting(
+    dir: &std::path::Path,
+    ask_about_amend: bool,
+) -> Option<(
+    App,
+    Limits,
+    tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
+)> {
+    let (mut app, limits, finished) = agent(dir)?;
+    for capability in ["introspect", "amend"] {
+        let verdict = match ask_about_amend && capability == "amend" {
+            true => Verdict::Ask,
+            false => Verdict::Allow,
+        };
+        app.policy.set(
+            &Subject::Capability(Capability::Custom(capability.into())),
+            verdict,
+        );
+    }
+    app.introspect = Some(kamchatka::introspect::install(&app.kernel, limits.clone()));
+
+    Some((app, limits, finished))
+}
+
+macro_rules! agent {
+    ($dir:expr) => {
+        match agent($dir) {
+            Some(it) => it,
+            None => {
+                eprintln!("no key in the environment; skipping");
+                return;
+            }
+        }
+    };
+}
+
+macro_rules! introspecting {
+    ($dir:expr, $ask:expr) => {
+        match introspecting($dir, $ask) {
+            Some(it) => it,
+            None => {
+                eprintln!("no key in the environment; skipping");
+                return;
+            }
+        }
+    };
+}
+
+/// A directory of its own, so that a `read` cannot wander into the repository.
+fn workdir(name: &str) -> std::path::PathBuf {
+    // the process id in the name, so that two models being run against this at once do not each
+    // clear the other's files out from under it
+    let dir = std::env::temp_dir().join(format!("kamchatka-live-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a directory");
+
+    // resolved, because `Reach` canonicalises what it is handed and compares: on a machine whose
+    // temporary directory is a symlink, an uncanonicalised `workdir` reaches nothing
+    dir.canonicalize().expect("it exists")
+}
+
+/// Types a line and presses enter, without waiting for anything.
+async fn type_line(app: &mut App, line: &str) {
+    if app.focus != Focus::Input {
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .await;
+    }
+    for c in line.chars() {
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+            .await;
+    }
+    app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .await;
+}
+
+/// Sends a slash command, which produces no turn to wait for.
+async fn command(app: &mut App, line: &str) {
+    app.show(Tab::Chat);
+    type_line(app, line).await;
+}
+
+/// Every tool result in the context, as text.
+fn results(app: &App) -> Vec<String> {
+    app.kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect()
+}
+
+/// The screen with the line breaks taken out, for asserting on text that wrapped.
+fn flat(app: &mut App) -> String {
+    draw(app).replace('\n', " ")
+}
+
+// -------------------------------------------------------------- what the model is told about `~`
+
+/// A `~` comes back as a sentence about `~`, never as a missing file - which is the whole point
+/// of refusing it in words rather than letting it join onto the working directory and fail.
+///
+/// note: what a given model then *does* is printed rather than asserted. It is worth watching -
+/// three of the four wording changes in this area were written after reading it - but a test that
+/// failed when a model chose to explain the refusal to the user instead of acting on it would be
+/// a test of the model, and this suite cannot fix one of those.
+#[tokio::test]
+async fn a_tilde_comes_back_as_a_sentence_about_tildes() {
+    let _serial = SERIAL.lock().await;
+    let dir = workdir("tilde");
+    std::fs::write(dir.join("notes.txt"), "the first line says PELICAN\n").expect("a file");
+    let (mut app, _limits, mut finished) = agent!(&dir);
+
+    send(
+        &mut app,
+        &mut finished,
+        "Read the file `~/notes.txt`. Use exactly that path, with the tilde, for your first \
+         read call. The file is in your working directory. Then tell me the word the first \
+         line says.",
+    )
+    .await;
+
+    let seen = results(&app);
+    println!("  tool results:");
+    for result in &seen {
+        println!("    {}", result.lines().next().unwrap_or_default());
+    }
+    let refused: Vec<_> = seen
+        .iter()
+        .filter(|r| r.contains("`~` is not expanded here"))
+        .collect();
+    assert!(
+        !refused.is_empty(),
+        "the model was told to use one and something answered it: {seen:?}"
+    );
+    // the `access(2)` trap in its second form, and the thing this must never do again
+    assert!(
+        !seen
+            .iter()
+            .any(|r| r.starts_with('~') && r.contains("No such file")),
+        "a tilde came back as a missing file: {seen:?}"
+    );
+
+    println!(
+        "  refused {} time(s); recovered: {}",
+        refused.len(),
+        answer(&app).to_uppercase().contains("PELICAN")
+    );
+}
+
+// ----------------------------------------------------------------------- a limit, and raising it
+
+/// A shortened result says so where the model reads it, the whole is kept, and `/limit` changes
+/// what the next call is cut at.
+#[tokio::test]
+async fn a_shortened_read_is_reported_and_the_limit_can_be_raised() {
+    let _serial = SERIAL.lock().await;
+    let dir = workdir("limit");
+    let mut big = String::from("FIRST LINE: OSPREY\n");
+    for i in 0..200 {
+        big.push_str(&format!(
+            "line {i}: routine filler of no interest at all.\n"
+        ));
+    }
+    big.push_str("LAST LINE: PELICAN\n");
+    std::fs::write(dir.join("big.txt"), &big).expect("a file");
+
+    let (mut app, limits, mut finished) = agent!(&dir);
+    limits.set("read", 600);
+
+    send(
+        &mut app,
+        &mut finished,
+        "Read the file big.txt with the read tool. Tell me the very last line of the file, and \
+         say plainly whether you received the whole file or only part of it.",
+    )
+    .await;
+
+    let said = answer(&app);
+    println!("  with read cut at 600 bytes, it said: {said}");
+    let short = app
+        .kernel
+        .items()
+        .into_iter()
+        .find(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .expect("a result");
+    println!("  because: {:?}", short.included_because);
+    assert!(
+        short
+            .included_because
+            .as_deref()
+            .unwrap_or_default()
+            .contains("output limit"),
+        "the fact is on the item the model was shown: {short:?}"
+    );
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| matches!(item.state, ContextState::Archived)),
+        "and the whole of it was kept"
+    );
+
+    // raising it does not recover that result, and does not need to: this is for the next call
+    command(&mut app, "/limit read 64000").await;
+    assert!(
+        flat(&mut app).contains("read"),
+        "the command said something: {}",
+        flat(&mut app)
+    );
+    assert_eq!(limits.of("read"), Some(64_000));
+
+    send(
+        &mut app,
+        &mut finished,
+        "Read big.txt again now, and tell me the very last line.",
+    )
+    .await;
+    println!("  with read cut at 64,000 bytes, it said: {}", answer(&app));
+    // asserted on the result rather than on the answer, because whether the model bothers to read
+    // it again is the model's business - one asked the person for a way to get the tail instead,
+    // which is a fair thing to do and not a fact about the limit
+    let whole = results(&app)
+        .into_iter()
+        .rev()
+        .find(|result| result.contains("LAST LINE: PELICAN"));
+    match whole {
+        Some(_) => println!("  and the read that followed came back whole"),
+        None => println!("  the model did not read it again, so nothing was cut this time either"),
+    }
+    assert!(
+        !results(&app)
+            .iter()
+            .skip_while(|r| !r.contains("truncated"))
+            .skip(1)
+            .any(|r| r.contains("truncated")),
+        "nothing was cut after the limit was raised: {:?}",
+        results(&app)
+    );
+}
+
+// ------------------------------------------------- an item the projector repairs away, on screen
+
+/// The whole of a shortened output, put back beside the copy the model was shown, is `Active` and
+/// not in the request. The pane has to say that rather than charge it `0`, and the request that
+/// comes out of it has to be one a real API still accepts.
+#[tokio::test]
+async fn the_whole_of_a_cut_output_put_back_is_shown_as_left_out() {
+    let _serial = SERIAL.lock().await;
+    let dir = workdir("going");
+    std::fs::write(
+        dir.join("big.txt"),
+        "OSPREY\n".repeat(400) + "LAST LINE: PELICAN\n",
+    )
+    .expect("a file");
+
+    let (mut app, limits, mut finished) = agent!(&dir);
+    limits.set("read", 600);
+    send(
+        &mut app,
+        &mut finished,
+        "Read big.txt with the read tool and say how many lines you got.",
+    )
+    .await;
+
+    let archived = app
+        .kernel
+        .items()
+        .into_iter()
+        .find(|item| matches!(item.state, ContextState::Archived))
+        .expect("the whole was kept");
+    app.kernel
+        .set_state([archived.id], ContextState::Active, None);
+
+    // two results now answer one call, and the projector drops one of them
+    let going = app.going();
+    let dropped: Vec<_> = app
+        .kernel
+        .items()
+        .into_iter()
+        .filter(|item| item.state.sends_content() && !going.sends_content(item))
+        .collect();
+    println!("  repaired away: {} item(s)", dropped.len());
+    for item in &dropped {
+        println!(
+            "    [{}] {} · {:?}",
+            item.id,
+            item.state,
+            going.left_out.get(&item.id)
+        );
+    }
+    assert_eq!(dropped.len(), 1, "exactly one of the pair is dropped");
+    assert!(
+        going.left_out.contains_key(&dropped[0].id),
+        "and the pane has the projector's reason for it"
+    );
+
+    app.show(Tab::Context);
+    let screen = flat(&mut app);
+    assert!(
+        screen.contains("already has a result") || screen.contains("second result"),
+        "which is what the row says: {screen}"
+    );
+
+    // and the request that shape produces is still one the endpoint accepts
+    send(&mut app, &mut finished, "Say the single word: ready.").await;
+    assert!(
+        matches!(app.kernel.state(), State::Finished { .. }),
+        "{:?}",
+        app.kernel.state()
+    );
+}
+
+// ----------------------------------------------------------- the question names what it is about
+
+/// The permission question for `amend` says which item it would change.
+#[tokio::test]
+async fn the_question_about_a_real_amend_names_the_item() {
+    let _serial = SERIAL.lock().await;
+    let dir = workdir("about");
+    let (mut app, _limits, mut finished) = introspecting!(&dir, true);
+    app.kernel.push(
+        ContextItem::file(
+            "secrets.txt",
+            "a file of no interest whatsoever.\n".repeat(20),
+        )
+        .because("named on the command line"),
+    );
+
+    // the turn stops at the question rather than finishing, so this cannot wait on an outcome
+    type_line(
+        &mut app,
+        "First use the introspect tool with action `look` to see your context. Then use the \
+         amend tool once to elide the item called secrets.txt, naming it by its number in \
+         `ids`, with any reason you like. Do nothing else.",
+    )
+    .await;
+    let asked = tokio::time::timeout(Duration::from_secs(180), async {
+        loop {
+            if let Some(request) = app.kernel.pending_permissions().into_iter().next() {
+                return Some(request);
+            }
+            if let Ok(outcome) = finished.try_recv() {
+                app.on_outcome(outcome);
+                if app.kernel.pending_permissions().is_empty() {
+                    return None;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("something happened");
+
+    let Some(request) = asked else {
+        panic!(
+            "the model never called amend; it said: {}",
+            answer(&app).chars().take(400).collect::<String>()
+        );
+    };
+    let about = app.about(&request);
+    println!("  args: {}", request.args);
+    println!("  about: {about:?}");
+    assert!(!about.is_empty(), "the question names the items");
+    assert!(
+        about[0].contains("secrets.txt"),
+        "by what the row calls them: {about:?}"
+    );
+
+    let screen = flat(&mut app);
+    assert!(
+        screen.contains("secrets.txt"),
+        "and it is on the screen with the question: {screen}"
+    );
+}
+
+// ----------------------------------------------------------------- five moves, five action names
+
+/// Each move is an action named for what it leaves behind, so a model that reads the schema can
+/// ask for one without being told twice that `restore` is not a thing.
+#[tokio::test]
+async fn a_real_model_asks_for_the_moves_by_name() {
+    let _serial = SERIAL.lock().await;
+    let dir = workdir("actions");
+    let (mut app, _limits, mut finished) = introspecting!(&dir, false);
+    app.kernel.push(ContextItem::file(
+        "notes.txt",
+        "PELICAN is the code word.\n",
+    ));
+
+    send(
+        &mut app,
+        &mut finished,
+        "Using the amend tool, do exactly two things: first pin the context item called \
+         notes.txt, then write a note that says the code word is PELICAN. Then stop.",
+    )
+    .await;
+
+    for result in results(&app) {
+        println!("    amend said: {}", result.replace('\n', " · "));
+    }
+    let refused: Vec<String> = results(&app)
+        .into_iter()
+        .filter(|r| r.contains("is not one of") || r.contains("unknown"))
+        .collect();
+    assert!(
+        refused.is_empty(),
+        "nothing was refused as unknown: {refused:?}"
+    );
+
+    let items = app.kernel.items();
+    let pinned = items
+        .iter()
+        .any(|i| i.label.contains("notes.txt") && matches!(i.state, ContextState::Pinned));
+    let noted = items
+        .iter()
+        .find(|i| i.content.to_text().to_uppercase().contains("PELICAN") && i.id.0 > 1);
+    println!("  notes.txt pinned: {pinned}");
+    println!("  a note was written: {}", noted.is_some());
+    assert!(pinned || noted.is_some(), "at least one of the two landed");
+}
+
+// --------------------------------------------------------------- compaction against a real limit
+
+/// The compactor fires against a real budget, and what it leaves is a request the endpoint takes.
+///
+/// note: needs `KAMCHATKA_CONTEXT_LIMIT` set small, because a provider that reports 262,144 will
+/// not reach a threshold inside a test.
+#[tokio::test]
+async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
+    let _serial = SERIAL.lock().await;
+    if std::env::var("KAMCHATKA_CONTEXT_LIMIT").is_err() {
+        eprintln!("no context limit set; skipping");
+        return;
+    }
+    let dir = workdir("trim");
+    std::fs::write(dir.join("big.txt"), "OSPREY is a bird.\n".repeat(600)).expect("a file");
+
+    let (mut app, _limits, mut finished) = agent!(&dir);
+    app.kernel
+        .set_compactor(Some(Arc::new(kamchatka::tools::Trim {
+            threshold: 0.5,
+            target: 0.3,
+        })));
+
+    send(
+        &mut app,
+        &mut finished,
+        "Read big.txt with the read tool, then say the single word: ready.",
+    )
+    .await;
+    send(
+        &mut app,
+        &mut finished,
+        "Read big.txt again with the read tool, then say the single word: ready.",
+    )
+    .await;
+
+    let budget = app.kernel.budget();
+    println!(
+        "  {} of {:?} used, {:.0}%",
+        budget.used(),
+        budget.limit,
+        budget.fraction_used().unwrap_or_default() * 100.0
+    );
+    let elided: Vec<_> = app
+        .kernel
+        .items()
+        .into_iter()
+        .filter(|item| item.state.is_elided())
+        .collect();
+    for item in &elided {
+        println!("    elided [{}] {} · {:?}", item.id, item.label, item.note);
+    }
+    assert!(!elided.is_empty(), "the compactor fired");
+    assert!(
+        elided
+            .iter()
+            .all(|item| item.note.as_deref().unwrap_or_default().contains("%")),
+        "and each marker carries the reason it gave"
+    );
+
+    // the shape it left has to be one a real endpoint still accepts
+    send(&mut app, &mut finished, "Say the single word: ready.").await;
+    assert!(
+        matches!(app.kernel.state(), State::Finished { .. }),
+        "{:?}",
+        app.kernel.state()
+    );
+
+    // and `/budget` has to account for the same request the compactor just changed, with the
+    // figures a real provider reported rather than the counter's guess
+    command(&mut app, "/budget").await;
+    let panel = flat(&mut app);
+    println!(
+        "  /budget: {}",
+        panel
+            .split("  ")
+            .filter(|piece| piece.contains("token") || piece.contains("cach"))
+            .collect::<Vec<_>>()
+            .join(" | ")
+    );
+    assert!(
+        !panel.contains("0 items out"),
+        "the report counts what it moved: {panel}"
+    );
+    assert!(
+        panel.contains("really") || panel.contains("charged"),
+        "and says what was really charged: {panel}"
+    );
 }
