@@ -3955,7 +3955,7 @@ async fn the_pane_says_what_an_item_costs_now_and_what_it_is_holding_back() {
     );
 
     // the two columns are what the status line is made of: everything sending, and everything held
-    let sent: usize = harness.app.costs().values().sum();
+    let sent: usize = harness.app.going().costs.values().sum();
     let status = harness.screen();
     assert!(status.contains(&format!("~{sent} tokens")), "{status}");
     assert!(status.contains(&format!("{held} held back")), "{status}");

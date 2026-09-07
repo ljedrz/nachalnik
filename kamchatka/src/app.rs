@@ -15,7 +15,7 @@ use std::{
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
     Block, Capability, Content, ContextId, ContextItem, ContextKind, ContextState, Delta, Event,
-    Grant, GrantSource, Kernel, Projection, State, Verdict, selectors::Selector,
+    Grant, GrantSource, Kernel, PermissionRequest, Projection, State, Verdict, selectors::Selector,
 };
 use ratatui_textarea::{CursorMove, TextArea, WrapMode};
 use tokio::sync::mpsc::UnboundedSender;
@@ -193,6 +193,32 @@ pub struct Entry {
     pub text: String,
     /// Whether more of it is still arriving.
     pub open: bool,
+}
+
+/// What the next request does with each context item.
+///
+/// note: the two halves are one answer, taken from one projection, because they have to agree:
+/// every item is either in the request for some number of tokens or out of it for a reason, and a
+/// screen that worked the two out separately would have rows that are neither.
+pub struct Going {
+    /// What each item in the request costs it.
+    pub costs: BTreeMap<ContextId, usize>,
+    /// Why each item that is not in the request was left out, in the projector's own words.
+    pub left_out: BTreeMap<ContextId, String>,
+}
+
+impl Going {
+    /// Whether this item's own content is going into the request.
+    ///
+    /// note: two conditions rather than [`ContextState::sends_content`], and the second is the
+    /// one that bites. An item may be in a state that sends content and still not be in the
+    /// request, because a projector repairs a request to keep it valid - a second result for a
+    /// call that already has one is dropped, which is what putting the whole of a truncated
+    /// output back beside the short copy produces. Anything asking "is this item's content going"
+    /// asks here, so that the columns, the reason beside them and `/budget` cannot drift apart.
+    pub fn sends_content(&self, item: &ContextItem) -> bool {
+        item.state.sends_content() && self.costs.contains_key(&item.id)
+    }
 }
 
 /// What the kernel's task reports when it stops.
@@ -1304,7 +1330,7 @@ impl App {
         }
     }
 
-    /// What each item really costs in the next request, by item.
+    /// What the next request does with each item: what it costs, or why it is not in it.
     ///
     /// note: not [`ContextItem::tokens`], which is what an item *holds*. An elided one holds a
     /// thousand tokens and costs the dozen its marker takes; an archived one holds whatever it
@@ -1315,7 +1341,16 @@ impl App {
     /// note: read out of the projection rather than worked out here, because what an elided item
     /// costs is the marker the *projector* writes, in the brackets the projector chooses. A
     /// client that computed it would be keeping a second copy of a decision that is not its own.
-    pub fn costs(&self) -> BTreeMap<ContextId, usize> {
+    ///
+    /// note: and `left_out` comes from the projection for a sharper reason than tidiness. Whether
+    /// an item is going cannot be read off its *state*: a projector repairs a request to keep it
+    /// valid, and an item it repairs away is `Active`, holding everything it holds, and not in the
+    /// request. Restoring the whole of a truncated output beside the copy the model was shown
+    /// makes one - the pair answer one call, so the whole takes the call and the short copy is
+    /// dropped. A pane keyed on the state then had that row claiming to send its content, showing
+    /// `0` for it, and accounting for none of what it was holding: three wrong answers about one
+    /// item, from asking the item instead of asking the request.
+    pub fn going(&self) -> Going {
         let projection = self.kernel.project();
         let counter = self.kernel.counter();
         // `included` and `messages` line up one for one under a projector that makes a message
@@ -1323,38 +1358,116 @@ impl App {
         // better guess than a number taken from the wrong message
         let paired = projection.included.len() == projection.messages.len();
 
-        projection
-            .included
-            .iter()
-            .enumerate()
-            .map(|(at, id)| {
-                let cost = match paired {
-                    true => counter.count_message(&projection.messages[at]),
-                    false => self.kernel.item(*id).map(|item| item.tokens).unwrap_or(0),
-                };
+        Going {
+            costs: projection
+                .included
+                .iter()
+                .enumerate()
+                .map(|(at, id)| {
+                    let cost = match paired {
+                        true => counter.count_message(&projection.messages[at]),
+                        false => self.kernel.item(*id).map(|item| item.tokens).unwrap_or(0),
+                    };
 
-                (*id, cost)
+                    (*id, cost)
+                })
+                .collect(),
+            // the projector's own words, rather than a second copy of them assembled out here
+            // from the state and the note - which is what this was, and which had no answer at
+            // all for an item the projector had repaired away
+            left_out: projection
+                .skipped
+                .into_iter()
+                .map(|skipped| (skipped.id, skipped.reason))
+                .collect(),
+        }
+    }
+
+    /// The context items a pending call names, described the way a row on the context tab is.
+    ///
+    /// note: `ids: [22]` is a true account of the arguments and a useless one to be asked about.
+    /// The question covers a tool that rewrites and hides pieces of the context, the overlay is
+    /// covering the list those numbers refer to, and the answer is `y` or `n` - so somebody being
+    /// asked whether item 22 may be elided has to already know what item 22 is. Naming them turns
+    /// the question into one that can be answered on what is on the screen.
+    ///
+    /// note: only for the two tools this program installs itself, and only because it knows what
+    /// their arguments mean. `ids` on somebody else's tool is somebody else's vocabulary, and
+    /// guessing at it would put a confident description of the wrong thing in front of a decision.
+    /// Nothing here reaches the policy: it is the same arguments, read out.
+    pub fn about(&self, request: &PermissionRequest) -> Vec<String> {
+        if !matches!(request.tool.as_str(), "introspect" | "amend") {
+            return Vec::new();
+        }
+
+        let items = self.kernel.items();
+        let named: Vec<ContextId> = match request.args["select"].as_str() {
+            // a selector is opaque in a way a number is not: `all:tool_results` is the argument
+            // most worth expanding, because nobody can count them off the screen it is covering
+            Some(select) => match select.parse::<Selector>() {
+                Ok(selector) => selector.matches(&items),
+                Err(_) => return Vec::new(),
+            },
+            None => request.args["ids"]
+                .as_array()
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(|id| id.as_u64())
+                        .map(ContextId)
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
+        if named.is_empty() {
+            return Vec::new();
+        }
+
+        let going = self.going();
+        named
+            .iter()
+            .take(8)
+            .map(|id| match items.iter().find(|item| item.id == *id) {
+                None => format!("[{id}] there is no such item"),
+                Some(item) => format!(
+                    "[{id}] {} · {} · {} · {} tokens{}",
+                    item.label,
+                    item.kind.name(),
+                    item.state,
+                    thousands(item.tokens),
+                    match going.left_out.contains_key(id) {
+                        true => " · not in the next request",
+                        false => "",
+                    }
+                ),
             })
+            .chain((named.len() > 8).then(|| format!("… and {} more", named.len() - 8)))
             .collect()
     }
 
     /// The context items the tab is showing: all of them, or only the ones carrying content into
     /// the next request.
     ///
-    /// note: the predicate is `sends_content`, which is exactly the set with a figure in the
-    /// `held` column - so the toggle has one rule a person can hold in their head: it hides every
-    /// row that is holding something back. That does leave out elided items, which do go into the
-    /// request as a marker and do cost the marker's few tokens; showing them would be defensible
-    /// on "what am I sending", but the reason somebody reaches for this is that half the list is
-    /// wreckage after a compaction, and an elided row is wreckage.
+    /// note: the predicate is [`Going::sends_content`], which is exactly the set with a figure in
+    /// the `held` column - so the toggle has one rule a person can hold in their head: it hides
+    /// every row that is holding something back. That does leave out elided items, which do go
+    /// into the request as a marker and do cost the marker's few tokens; showing them would be
+    /// defensible on "what am I sending", but the reason somebody reaches for this is that half
+    /// the list is wreckage after a compaction, and an elided row is wreckage.
+    ///
+    /// note: `Going`'s rather than the state's own, because a row the projector repaired away is
+    /// holding everything it holds and would have survived this filter as though it were going -
+    /// which is the one row somebody with the toggle on would most want to see the truth about.
     pub fn listed(&self) -> Vec<Arc<ContextItem>> {
         let items = self.kernel.items();
         match self.sending_only {
             false => items,
-            true => items
-                .into_iter()
-                .filter(|item| item.state.sends_content())
-                .collect(),
+            true => {
+                let going = self.going();
+                items
+                    .into_iter()
+                    .filter(|item| going.sends_content(item))
+                    .collect()
+            }
         }
     }
 
@@ -2768,6 +2881,14 @@ fn as_sent(message: &nachalnik::Message) -> String {
 /// all three in the content already, and `whole` lays those out in the order they were produced.
 fn stored(item: &ContextItem) -> String {
     let mut out = whole(&item.content);
+    // note: why the item is here at all, which outlives every state it passes through and is
+    // therefore the only place a fact about what it holds can be kept. `introspect`'s own item
+    // view has printed this all along and it was always empty, because nothing set it; the pair
+    // an output limit leaves behind is the first thing that does, and this is where the person
+    // reads what the model reads there
+    if let Some(because) = &item.included_because {
+        out = format!("it is here because: {because}\n\n{out}");
+    }
     if let ContextKind::AssistantMessage {
         tool_calls,
         reasoning,

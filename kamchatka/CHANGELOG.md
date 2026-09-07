@@ -35,12 +35,52 @@ minor bump may break you.
   while the behaviour was fixed in none - `nachalnik-utils` carried a paragraph claiming it retried
   a body that stopped arriving, naming this exact error. It never did.
 
+- A row the projector repaired away says what it is holding. Putting the whole of a truncated tool
+  result back beside the copy the model was shown - which is the intended way to send the whole -
+  made the row *below* it drop to `0`. The pair answer one call, so the whole takes the call and
+  the short copy is dropped: correct, and the request was right the whole time. What was wrong is
+  that three of the four places reporting on it disagreed. The row claimed to be sending its
+  content, showed `0` for what that cost, and accounted for none of the 8,583 tokens it was
+  holding; `/budget` and the status line said nothing was held back at all; and `f`, whose whole
+  job is to hide rows that are holding something back, kept it.
+
+  One conflation, for the third time: whether an item is going cannot be read off its *state*. An
+  item a projector repairs away to keep a request valid is `Active`, holding everything it holds,
+  and not in the request - a fourth way of not being sent, after excluded, archived and elided,
+  and the only one `ContextState` cannot express. `App::costs` became `App::going`, which carries
+  what each item costs *and* why each item that is not in the request was left out, both read off
+  one projection; `Going::sends_content` is the question every column, reason, filter and figure
+  now asks, so they cannot drift apart again. The reason on the row is `Projection::skipped`'s own
+  words rather than a second copy assembled out here from the state and the note - which is what
+  it was, and which had no answer at all for this case.
+
+  One projection per frame, computed once in `draw` and handed to the three places that report on
+  it, rather than each asking for its own.
+
+- The question about an `amend` says which items it would change. `ids: [22]` is a true account of
+  the arguments and a useless one to be asked about: the tool rewrites and hides pieces of the
+  context, the box asking covers the list those numbers refer to, and the answer is one key - so
+  somebody asked whether item 22 may be elided had to already know what item 22 was, from a screen
+  they could no longer see. The question now names each item the way the context tab does, and
+  expands a `select` into what it matches, which is the argument least answerable without it. Only
+  for the two tools this program installs itself, because `ids` on somebody else's tool is
+  somebody else's vocabulary and a confident description of the wrong thing is worse than none.
+
 - A provider's notice reaches whoever is holding the `App`, not only this program's own loop.
   `take_notice` was drained on a tick in `main`, so "the model was cut off mid-answer; what had
   arrived is kept" - written for exactly the moment a person needs to know something is missing -
   went nowhere for any other caller, and could land after the turn it describes. `on_outcome`
   drains it first now, so it sits with that turn; the tick keeps draining it for the notices that
   belong to no turn.
+
+### changed
+
+- An item's page says why it is in the context, which is now a sentence that exists. `enter` on a
+  context row shows what the model gets and what the item stores; the `as stored` page now opens
+  with `included_because` where there is one, which is the same line `introspect`'s own item view
+  has printed all along. What fills it in is the runtime keeping a shortened tool result's pointer
+  to its whole half somewhere a state change cannot wipe - so `space` on either row no longer
+  loses which item holds what.
 
 ## [0.5.0] - 2026-09-06
 

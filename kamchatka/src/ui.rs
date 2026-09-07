@@ -28,7 +28,7 @@ use ratatui::{
 use tui_markdown::StyleSheet as _;
 use unicode_segmentation::UnicodeSegmentation as _;
 
-use crate::app::{App, Focus, Overlay, Page, Speaker, Tab};
+use crate::app::{App, Focus, Going, Overlay, Page, Speaker, Tab};
 
 /// The first line of a session that is not being resumed.
 ///
@@ -271,9 +271,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .areas(frame.area());
 
-    draw_body(frame, app, body);
+    // one projection a frame, shared by the three places that report on it. Each asking for its
+    // own would be three walks of the context per redraw, and - worse - three answers that could
+    // disagree about the same request
+    let going = app.going();
+    draw_body(frame, app, &going, body);
     draw_input(frame, app, input);
-    draw_status(frame, app, status);
+    draw_status(frame, app, &going, status);
 
     if app.overlay.is_some() {
         // what the frame could actually scroll to is what the keys work against from here on.
@@ -310,7 +314,7 @@ fn faint() -> Style {
 }
 
 /// The window: a strip of tabs, and whichever one is open filling everything under it.
-fn draw_body(frame: &mut Frame, app: &mut App, area: Rect) {
+fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) {
     let focused = app.focus == Focus::Body;
 
     let mut strip = Vec::new();
@@ -336,14 +340,14 @@ fn draw_body(frame: &mut Frame, app: &mut App, area: Rect) {
     };
     let block = Block::bordered()
         .title(Line::from(strip))
-        .title_bottom(Line::styled(footer(app), quiet()).right_aligned())
+        .title_bottom(Line::styled(footer(app, going), quiet()).right_aligned())
         .border_style(edge);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     let scrolled = match app.tab {
         Tab::Chat => draw_chat(frame, app, inner),
-        Tab::Context => draw_context(frame, app, inner),
+        Tab::Context => draw_context(frame, app, going, inner),
         Tab::Trace => draw_trace(frame, app, inner),
         Tab::Permissions => draw_permissions(frame, app, inner),
     };
@@ -430,7 +434,7 @@ fn scrollbar(frame: &mut Frame, window: Rect, border: Style, scrolled: Scrolled)
 }
 
 /// What the open tab has to say about itself, along the bottom.
-fn footer(app: &App) -> String {
+fn footer(app: &App, going: &Going) -> String {
     match app.tab {
         // note: a conversation somebody has scrolled back through stays where they left it, so
         // this is the line that has to say there is more underneath - and how to get to it. Left
@@ -462,7 +466,7 @@ fn footer(app: &App) -> String {
             let items = app.kernel.items();
             let out = items
                 .iter()
-                .filter(|item| !item.state.sends_content())
+                .filter(|item| !going.sends_content(item))
                 .count();
             let elided = items.iter().filter(|item| item.state.is_elided()).count();
             match (out, elided) {
@@ -605,7 +609,7 @@ fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
 /// note: With the whole window to work in there is room for the last column, and it is the one
 /// that matters: a list of labels and numbers tells you an item exists, and this tells you what
 /// the model is actually being told.
-fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
+fn draw_context(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) -> Scrolled {
     let items = app.listed();
     let held_back = app.kernel.items().len() - items.len();
     if items.is_empty() {
@@ -635,7 +639,6 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let kind = if width >= 84 { 18 } else { 0 };
     let counted = 4 + 2 + label + 1 + kind + 8 + 7 + 2;
     let says = width.saturating_sub(counted);
-    let costs = app.costs();
 
     frame.render_widget(
         Paragraph::new(Line::styled(
@@ -681,11 +684,25 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
             // an item that is not going says why, in the projector's own words; one that is
             // shows the first thing the model will read of it. An elided one is on the first
             // side of that: what the model reads is the note, so the note is what to show
-            let (tail, tail_style) = match item.state.sends_content() {
+            //
+            // note: `going.sends_content` rather than the state's own, and `left_out` rather than
+            // a reason built here out of the state and the note. An item the projector repaired
+            // away is `Active` and is not in the request, so keyed on the state this row showed
+            // the content it was not sending; and the string this used to assemble is the one
+            // `Projection::skipped` already carries, which has an answer for that case and this
+            // did not
+            let (tail, tail_style) = match going.sends_content(item) {
                 false => (
-                    match &item.note {
-                        Some(note) => format!("{}: {note}", item.state),
-                        None => item.state.to_string(),
+                    match going.left_out.get(&item.id) {
+                        // the projector's own words about an item it did not carry
+                        Some(why) => why.clone(),
+                        // an elided one it *did* carry, as a marker, so it has nothing to say
+                        // about it - and what the model reads there is the note, so the note is
+                        // what belongs on the row
+                        None => match &item.note {
+                            Some(note) => format!("{}: {note}", item.state),
+                            None => item.state.to_string(),
+                        },
                     },
                     quiet().italic(),
                 ),
@@ -737,14 +754,14 @@ fn draw_context(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
                 Span::styled(
                     format!(
                         "{:>8}",
-                        fitted(costs.get(&item.id).copied().unwrap_or(0), 8)
+                        fitted(going.costs.get(&item.id).copied().unwrap_or(0), 8)
                     ),
                     style,
                 ),
                 Span::styled(
                     format!(
                         "{:>7}  ",
-                        match item.state.sends_content() {
+                        match going.sends_content(item) {
                             true => String::new(),
                             false => fitted(item.tokens, 7),
                         }
@@ -1037,7 +1054,7 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 
 // ------------------------------------------------------------------------------- the status line
 
-fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
     let dim = quiet();
     let mut spans = match app.busy {
         true => {
@@ -1098,7 +1115,16 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
         add(format!("{} really", thousands(reported as usize)), dim);
     }
 
-    let withheld = app.kernel.with_context(|context| context.tokens_withheld());
+    // note: counted over the request rather than over the states, so this and `/budget` and the
+    // `held` column are one answer. `tokens_withheld` misses an item the projector repaired away,
+    // which is holding as much as any excluded one
+    let withheld: usize = app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| !going.sends_content(item))
+        .map(|item| item.tokens)
+        .sum();
     if withheld != 0 {
         add(format!("{} held back", thousands(withheld)), dim);
     }
@@ -1284,7 +1310,14 @@ fn draw_permission(frame: &mut Frame, app: &App, scroll: usize) -> usize {
         columns,
         "",
     );
-    let args = wrapped(&readable(&request.args), columns, "");
+    // the arguments, and then what the ones naming context items actually are: a question about
+    // eliding item 22 is unanswerable while the box asking it covers the list saying what 22 is
+    let mut shown = readable(&request.args);
+    let about = app.about(&request);
+    if !about.is_empty() {
+        shown.push_str(&format!("{}\n", about.join("\n")));
+    }
+    let args = wrapped(&shown, columns, "");
     let mut foot = wrapped(&answers(""), columns, "");
 
     // as tall as the question is, rather than a fixed box with a hole in it - but no taller than
