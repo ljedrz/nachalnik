@@ -9,6 +9,24 @@ minor bump may break you.
 
 ### fixed
 
+- `Trim` pays for the marker it leaves behind. Eliding a tool result does not recover what the
+  result was costing: the projector puts `[... <the pass's reason> ...]` where the content was, and
+  the kernel makes that reason the note on every item in the pass, so each elision buys back the
+  content *less* one copy of the same sentence - about 21 tokens of it. The pass subtracted the
+  whole item and stopped as soon as its own arithmetic said it had reached the target, which on a
+  context of small results is a target it never reached at all. Twenty `write` confirmations of
+  seven tokens each, elided for twenty-one tokens apiece: the plan reported 140 tokens recovered
+  and took the request from 852 to 1,190 - through the 1,000-token limit the pass exists to keep it
+  under, having spent one of the person's undos to get there.
+
+  It now credits itself with the net of each elision and skips any result no bigger than the marker
+  that would replace it, which is a floor rather than a refusal to work - one result worth eliding
+  among twenty that are not is still elided, and the twenty are left alone. A pass with nothing
+  worth doing returns `None`, which is the same answer the 0.5.0 fix arrived at from the other
+  direction. The marker's cost is estimated from the reason's own length at four bytes a token, and
+  is allowed to be an estimate: a counter that has learnt a different ratio moves the boundary by
+  one small result, where crediting the whole item moved it by everything.
+
 - A stream that stops arriving keeps what arrived. `parse_stream` returned the transport's error,
   which failed the turn and dropped every token the model had produced - and been billed for. One
   session died that way 148 seconds into its 22nd request, `error decoding response body`, having
@@ -72,6 +90,13 @@ minor bump may break you.
   went nowhere for any other caller, and could land after the turn it describes. `on_outcome`
   drains it first now, so it sits with that turn; the tick keeps draining it for the notices that
   belong to no turn.
+
+- A compaction pass says what it moved. The line in the chat and the row in the trace both counted
+  `report.removed` and nothing else - but removing and eliding are two mechanisms, and the
+  compactor that ships here only ever elides, on purpose, so that the call each result answers
+  keeps its answer. Every pass it has ever made therefore announced itself as `compacted: 0 items
+  out` in the only account a person gets of a context changing under them. Third instance of one
+  conflation, after `Trim`'s candidates and `/budget`'s held-back line.
 
 ### added
 

@@ -3101,6 +3101,100 @@ async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
     );
 }
 
+/// A marker is not free, and a pass that credits itself with the whole of what it elided is
+/// counting on it being. `Trim` subtracted each item's tokens and put a line of its own reason
+/// where the content had been, so on a context full of small results the arithmetic said it had
+/// recovered hundreds of tokens while the request it was making got bigger.
+#[tokio::test]
+async fn compaction_does_not_elide_a_result_smaller_than_the_marker_replacing_it() {
+    use kamchatka::tools::Trim;
+    use nachalnik::{Budget, Compactor, Content};
+
+    let mut harness = Harness::new([]);
+    let kernel = harness.app.kernel.clone();
+
+    // the bulk is something the pass cannot touch, so the loop runs to the end of its candidates
+    // and never reaches the target however many of them it takes
+    kernel.push(ContextItem::file("big.rs", "x".repeat(2_600)).pinned());
+    // twenty results the size a `write` confirmation really is: "wrote 412 bytes to /w/foo.rs".
+    // Each one answers a call that is really in the context, or the projector repairs it away
+    // and there is nothing here to elide
+    for i in 0..20 {
+        let asked = call(&format!("c{i}"), "write", json!({}));
+        kernel.push(ContextItem::assistant(
+            Content::text(""),
+            vec![asked.clone()],
+        ));
+        kernel.push(ContextItem::tool_result(
+            asked.id.clone(),
+            "write",
+            format!("wrote 412 bytes to /w/f{i}.rs"),
+            false,
+        ));
+    }
+
+    let trim = Trim {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    let budget = || Budget {
+        limit: Some(1_000),
+        ..kernel.budget()
+    };
+
+    let before = budget().context_tokens;
+    assert!(trim.should_compact(&budget()), "over the threshold");
+    assert!(
+        trim.plan(&kernel.items(), &budget()).await.is_none(),
+        "there is nothing here worth eliding, so there is no plan"
+    );
+    assert_eq!(
+        budget().context_tokens,
+        before,
+        "and nothing moved: the request is the one it was"
+    );
+
+    // the floor is a floor and not a refusal to work: one result worth eliding, in among the
+    // twenty that are not, and the pass takes that one and leaves the rest alone
+    let asked = call("big", "shell", json!({}));
+    kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![asked.clone()],
+    ));
+    let big = kernel.push(ContextItem::tool_result(
+        asked.id.clone(),
+        "shell",
+        "y".repeat(1_200),
+        false,
+    ));
+
+    let with_big = budget().context_tokens;
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("one result is worth it");
+    assert_eq!(plan.elide, vec![big], "only the one that pays for itself");
+    kernel.apply_compaction(plan);
+    assert!(
+        budget().context_tokens < with_big,
+        "and the request really did get smaller: {with_big} -> {}",
+        budget().context_tokens
+    );
+
+    // and the person is told what really happened. This compactor never removes anything, so the
+    // line naming only removals announced every pass it ever made as `0 items out`
+    harness.drain();
+    let screen = harness.flat();
+    assert!(
+        screen.contains("compacted: 1 elided"),
+        "the announcement does not say what moved: {screen}"
+    );
+    assert!(
+        !screen.contains("0 items out"),
+        "and does not say nothing moved: {screen}"
+    );
+}
+
 /// Editing an elided item leaves it elided: the row says a marker is being sent, and an edit that
 /// came back `Active` would be sending the new text against what the screen says.
 #[tokio::test]

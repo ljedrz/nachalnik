@@ -842,8 +842,8 @@ impl App {
             }
             Event::Compacted { report } => {
                 let mut note = format!(
-                    "compacted: {} items out, {} → {} tokens ({})",
-                    report.removed.len(),
+                    "compacted: {}, {} → {} tokens ({})",
+                    moved(&report),
                     report.tokens_before,
                     report.tokens_after,
                     report.reason
@@ -2735,8 +2735,8 @@ fn trace_line(event: &Event) -> (String, String) {
             }
         ),
         Event::Compacted { report } => format!(
-            "{} out, {} → {} tokens",
-            report.removed.len(),
+            "{}, {} → {} tokens",
+            moved(report),
             report.tokens_before,
             report.tokens_after
         ),
@@ -2887,6 +2887,23 @@ fn nothing_to_send(kernel: &Kernel, why: &str) -> String {
             "{why}: not one of the {items} item(s) it holds is going. The list above says which \
              and why; `space` on the context tab puts one back."
         ),
+    }
+}
+
+/// What a compaction pass moved, in the word belonging to each mechanism.
+///
+/// note: removing and eliding are two mechanisms and both places that announced a pass named only
+/// the first. The compactor that ships here never removes anything - it elides, so that the call
+/// each result answers keeps its answer - so every pass it has ever made was announced as
+/// `0 items out`, in the line and the trace row that are the only account a person gets of a
+/// context changing under them. Third instance of the same conflation, after `Trim`'s candidates
+/// and `/budget`'s held-back line.
+fn moved(report: &nachalnik::CompactionReport) -> String {
+    match (report.removed.len(), report.elided.len()) {
+        (0, 0) => "nothing moved".to_owned(),
+        (0, elided) => format!("{elided} elided"),
+        (removed, 0) => format!("{removed} out"),
+        (removed, elided) => format!("{removed} out, {elided} elided"),
     }
 }
 

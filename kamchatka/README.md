@@ -695,6 +695,11 @@ The compactor shortens the oldest tool results to a marker once the context pass
 nothing that is pinned, because the kernel refuses. Every one of them is still on the context tab,
 marked `…`, still holding every byte it held, one <kbd>space</kbd> from coming back.
 
+A marker costs something too — it is a line of text where the content was — so the compactor
+counts what each elision actually recovers and leaves alone any result no bigger than the marker
+that would replace it. Eliding a `wrote 412 bytes to …` makes the request *bigger*, and a pass
+that took twenty of them is how that was found.
+
 ## 📦 installing
 
 ```console
