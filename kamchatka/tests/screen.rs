@@ -5033,3 +5033,77 @@ async fn an_edited_turn_reads_where_it_was_and_says_what_it_used_to_be() {
         "the row should say where the old words went: {screen}"
     );
 }
+
+/// The blank lines a provider puts in front of a turn do not reach the screen.
+///
+/// note: `inception/mercury` opens every message with two of them and the recorded `gemini`
+/// sessions have none, so this is the provider's habit rather than anything the runtime did. The
+/// item keeps what arrived - a record of "what arrived, tidied up" cannot answer what arrived -
+/// and the screen declines to spend rows on it.
+///
+/// note: the thinking rather than the answer, because the answer is rendered as markdown and the
+/// renderer swallows them already. Everything else - the thinking, a tool's output, an item's
+/// pages - is shown as the text it is, and that is where the padding was being read.
+#[tokio::test]
+async fn a_turn_that_arrives_padded_is_not_read_padded() {
+    let mut harness = Harness::new([]);
+    harness.app.say(Speaker::User, "say something");
+    // the shape mercury sends: two newlines, then the words
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Reasoning("\n\nweighing it up".to_owned()),
+    });
+    let answered = harness
+        .app
+        .kernel
+        .push(ContextItem::assistant("no, crabs do not", vec![]));
+    harness.app.on_event(Event::ModelFinished {
+        item: answered,
+        tool_calls: vec![],
+        stop: StopReason::EndTurn,
+        usage: Some(Usage::default()),
+    });
+
+    let screen = harness.screen();
+    let rows: Vec<&str> = screen.lines().collect();
+    let at = |needle: &str| {
+        rows.iter()
+            .position(|row| row.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} should be on the screen: {screen}"))
+    };
+
+    // one blank row between them, which is the separator the chat puts there itself
+    let gap = at("weighing it up") - at("say something");
+    assert_eq!(
+        gap,
+        2,
+        "expected one blank row between them, got {}",
+        gap - 1
+    );
+}
+
+/// And a tool result spends its six rows on what the tool said.
+///
+/// note: `head` takes the first six *lines*, so two blank ones in front cost a third of the
+/// preview and truncate it two lines early - the padding does not just look untidy, it eats the
+/// evidence.
+#[tokio::test]
+async fn a_padded_tool_result_does_not_spend_its_preview_on_nothing() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("done"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(ConstTool::new(
+        "dig",
+        "\n\nfirst\nsecond\nthird\nfourth\nfifth\nsixth",
+    )));
+
+    harness.send("dig").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("first"), "{screen}");
+    assert!(
+        screen.contains("sixth"),
+        "the blank rows should not have cost it the last two lines: {screen}"
+    );
+}

@@ -426,10 +426,11 @@ impl App {
     /// to yank the window back to the newest of them on every fragment, so reading anything it
     /// had said thirty seconds ago was impossible until the turn ended.
     pub fn say(&mut self, speaker: Speaker, text: impl Into<String>) {
+        let text = text.into();
         self.close();
         self.transcript.push(Entry {
             speaker,
-            text: text.into(),
+            text: unpadded(&text).to_owned(),
             open: false,
             item: None,
             was: None,
@@ -525,7 +526,7 @@ impl App {
                 entry.speaker,
                 Speaker::User | Speaker::Model | Speaker::Result
             ) {
-                entry.text = text.to_owned();
+                entry.text = unpadded(text).to_owned();
             }
             entry.was = Some(old);
             entry.item = Some(new);
@@ -557,7 +558,7 @@ impl App {
         };
 
         entry.open = false;
-        entry.text = entry.text.trim_end().to_owned();
+        entry.text = unpadded(entry.text.trim_end()).to_owned();
         if entry.text.is_empty() {
             self.transcript.pop();
         }
@@ -3208,7 +3209,7 @@ fn stored(item: &ContextItem) -> String {
 /// the thinking that led to the second one belongs.
 fn whole(content: &Content) -> String {
     let Some(blocks) = content.as_blocks() else {
-        return content.to_text().into_owned();
+        return unpadded(&content.to_text()).to_owned();
     };
 
     blocks
@@ -3240,7 +3241,33 @@ fn one_line(text: &str) -> String {
 }
 
 /// The first few lines of something, with a note if there were more.
+/// The same text without the blank lines a provider put in front of it.
+///
+/// note: a presentation fix, not a correction to the record. The newlines are the provider's -
+/// `inception/mercury` opens every message with two, the recorded `gemini` sessions have none -
+/// and the item keeps exactly what arrived, because a runtime whose record is "what arrived,
+/// tidied up" cannot answer what arrived. What they must not do is cost three rows of a screen.
+///
+/// note: leading blank *lines*, not leading whitespace. Trimming the latter takes the indentation
+/// off the first line of a message that opens with a code block.
+fn unpadded(text: &str) -> &str {
+    let mut rest = text;
+    loop {
+        let Some((line, tail)) = rest.split_once('\n') else {
+            return rest;
+        };
+        if !line.trim().is_empty() {
+            return rest;
+        }
+        rest = tail;
+    }
+}
+
+/// The first few lines of something, and a mark if there was more.
 fn head(text: &str, lines: usize) -> String {
+    // the blank ones first, or a provider that opens every message with two of them spends four
+    // of the six rows a tool result gets to make its case in, and truncates two lines early
+    let text = unpadded(text);
     let mut kept: Vec<&str> = text.lines().take(lines).collect();
     let total = text.lines().count();
     if total > lines {
