@@ -4886,3 +4886,57 @@ async fn the_question_expands_a_selector_into_the_items_it_matches() {
         "a selector has to be expanded or the question cannot be answered: {screen}"
     );
 }
+
+/// What the model is no longer shown says so where somebody reads it, and is still readable.
+///
+/// note: marked rather than hidden, which is the whole decision. The chat is the record of what
+/// happened and the context is what will be sent; a chat that quietly dropped the superseded turn
+/// would let you see what the model sees and lose what you did to it, which is the one thing this
+/// program exists not to do.
+#[tokio::test]
+async fn the_chat_marks_what_the_model_is_no_longer_shown() {
+    let mut harness = Harness::new([ModelResponse::text("crabs probably do not wonder about it")]);
+    harness.send("do crabs think that fish can fly?").await;
+    harness.settle().await;
+
+    let before = harness.screen();
+    assert!(before.contains("crabs probably do not wonder"), "{before}");
+    // the composed mark rather than a bare `~`, which the status line spends on `~19 tokens`
+    assert!(!before.contains("~ ["), "nothing is withheld yet: {before}");
+
+    // the answer the model gave, replaced by one it did not - which is `e` on the context tab
+    let answered = harness.app.kernel.items()[1].id;
+    harness
+        .app
+        .kernel
+        .supersede(
+            answered,
+            ContextItem::assistant("of course they do", vec![]),
+        )
+        .expect("the item is there to be replaced");
+
+    let after = harness.screen();
+    // it is still there to be read ...
+    assert!(
+        after.contains("crabs probably do not wonder"),
+        "the superseded turn should still be readable: {after}"
+    );
+    // ... and says, where it is read, that the model is not being shown it any more, in the
+    // projector's own words rather than a second account assembled for this screen
+    assert!(after.contains("~ ["), "it should be marked: {after}");
+    assert!(
+        after.contains("superseded by item"),
+        "it should say why: {after}"
+    );
+
+    // and putting it back takes the mark off, because the mark is a reading of the request
+    harness
+        .app
+        .kernel
+        .set_state([answered], ContextState::Active, None);
+    let restored = harness.screen();
+    assert!(
+        !restored.contains("~ ["),
+        "the mark should be gone: {restored}"
+    );
+}

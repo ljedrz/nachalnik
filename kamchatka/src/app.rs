@@ -183,6 +183,18 @@ pub struct Entry {
     pub text: String,
     /// Whether more of it is still arriving.
     pub open: bool,
+    /// The context item this line became, once there is one.
+    ///
+    /// note: what the screen says and what the context holds do not arrive together, so this is
+    /// filled in by [`App::attribute`] when the item exists rather than when the line is printed.
+    /// A streamed answer is on screen fragment by fragment and has no identifier until
+    /// `ModelFinished`; a call is printed after the turn that asked for it; a message typed into a
+    /// running turn is said at once and pushed when the turn stops.
+    ///
+    /// note: `None` means *nothing here knows*, not *not going*. The chat leaves those lines
+    /// alone rather than guessing, which is why a site this was never wired into shows an
+    /// unmarked row instead of quietly claiming the model still reads it.
+    pub item: Option<ContextId>,
 }
 
 /// What the next request does with each context item.
@@ -322,6 +334,12 @@ pub struct App {
     typed_ahead: Option<String>,
     /// Whether the response being awaited has put anything on the screen of its own.
     streamed: bool,
+    /// The turn the calls being printed came out of.
+    ///
+    /// note: `ToolRequested` names the call and the tool and not the item that proposed them, and
+    /// by the time it arrives the turn has finished - so the identifier is kept from
+    /// `ModelFinished`, which is the last event before it that has one.
+    last_turn: Option<ContextId>,
     /// How much the running tool has said so far, for the one trace line that counts it.
     streamed_bytes: usize,
     /// Where a finished turn reports itself.
@@ -383,6 +401,7 @@ impl App {
             question_scroll: 0,
             typed_ahead: None,
             streamed: false,
+            last_turn: None,
             streamed_bytes: 0,
             outcomes,
         }
@@ -402,6 +421,7 @@ impl App {
             speaker,
             text: text.into(),
             open: false,
+            item: None,
         });
         if speaker == Speaker::User {
             self.follow = true;
@@ -440,8 +460,47 @@ impl App {
                     speaker,
                     text: fragment.to_owned(),
                     open: true,
+                    item: None,
                 });
             }
+        }
+    }
+
+    /// Records which context item the last thing this speaker said became.
+    ///
+    /// note: bounded to the unattributed tail - the walk back stops at the first line that
+    /// already has an item - so a turn can only ever claim its own lines. Unbounded, a turn whose
+    /// text was empty because it did nothing but ask for tools would walk past its own silence
+    /// and stamp the *previous* answer with its identifier, which is a row confidently marked
+    /// with the wrong item. The chrome in between (a note, an error) carries no item and does not
+    /// stop the walk, which is what lets it reach past "the turn paused" to the answer above it.
+    fn attribute(&mut self, speaker: Speaker, id: ContextId) {
+        if let Some(entry) = self
+            .transcript
+            .iter_mut()
+            .rev()
+            .take_while(|entry| entry.item.is_none())
+            .find(|entry| entry.speaker == speaker)
+        {
+            entry.item = Some(id);
+        }
+    }
+
+    /// Records the item for a line that was said long before it could be pushed.
+    ///
+    /// note: for the message typed into a running turn, which is on screen immediately and goes
+    /// into the context when the turn stops - with everything the turn said in between, all of it
+    /// attributed, so [`App::attribute`] would stop dead before reaching it. Searching forwards
+    /// is exact rather than a guess: only one message can be waiting at a time, and every earlier
+    /// one was attributed as it was pushed, so the first unattributed line from that speaker is
+    /// the one that just went in.
+    fn attribute_waiting(&mut self, speaker: Speaker, id: ContextId) {
+        if let Some(entry) = self
+            .transcript
+            .iter_mut()
+            .find(|entry| entry.speaker == speaker && entry.item.is_none())
+        {
+            entry.item = Some(id);
         }
     }
 
@@ -490,21 +549,29 @@ impl App {
     fn retell(&mut self, items: &[Arc<ContextItem>]) {
         for item in items {
             match &item.kind {
-                ContextKind::UserMessage => self.say(Speaker::User, item.content.to_text()),
+                ContextKind::UserMessage => {
+                    self.say(Speaker::User, item.content.to_text());
+                    self.attribute(Speaker::User, item.id);
+                }
                 ContextKind::AssistantMessage { .. } => {
                     let text = item.content.to_text();
                     if !text.trim().is_empty() {
                         self.say(Speaker::Model, text);
+                        self.attribute(Speaker::Model, item.id);
                     }
                     // `calls()`, so a turn the provider recorded as ordered blocks reads back
                     // with the tools it asked for rather than as bare text
                     for call in item.calls() {
                         let args = one_line(&call.args.to_string());
                         self.say(Speaker::Call, format!("{}({args})", call.tool));
+                        // the calls belong to the turn that asked for them, so a superseded
+                        // answer takes its calls down with it on screen as it does in the request
+                        self.attribute(Speaker::Call, item.id);
                     }
                 }
                 ContextKind::ToolResult { tool, is_error, .. } => {
                     self.say(Speaker::Result, head(&item.content.to_text(), 6));
+                    self.attribute(Speaker::Result, item.id);
                     self.say(
                         Speaker::Note,
                         format!(
@@ -671,7 +738,8 @@ impl App {
         // a message somebody sent into this turn has waited for it to end; now it goes in, and
         // unless the turn was stopped or stepped it gets a turn of its own
         if ended && let Some(message) = self.typed_ahead.take() {
-            self.kernel.push(ContextItem::user(message));
+            let id = self.kernel.push(ContextItem::user(message));
+            self.attribute_waiting(Speaker::User, id);
             if carry_on {
                 self.start_turn();
             }
@@ -755,15 +823,22 @@ impl App {
                 // said in between - "stopped", for one - and guessing wrong prints the answer
                 // twice
                 if !self.streamed
-                    && let Some(item) = self.kernel.item(item)
+                    && let Some(recorded) = self.kernel.item(item)
                 {
-                    let text = item.content.to_text();
+                    let text = recorded.content.to_text();
                     if !text.trim().is_empty() {
                         self.say(Speaker::Model, text);
                     }
                 }
                 self.streamed = false;
                 self.close();
+                // after `close`, which drops an entry that turned out to be empty: attributing
+                // first would stamp a line that is about to be thrown away and leave the real one
+                // bare. Whether it streamed or was read back, this is the first moment the answer
+                // on screen has an item to be judged by
+                self.attribute(Speaker::Model, item);
+                self.attribute(Speaker::Reasoning, item);
+                self.last_turn = Some(item);
             }
             Event::ModelFailed { error } | Event::StepFailed { error } => {
                 self.close();
@@ -803,6 +878,11 @@ impl App {
                     Speaker::Call,
                     format!("{tool}({})", one_line(&args.to_string())),
                 );
+                // the event names the call, not the turn that proposed it - and the projector
+                // takes a turn's calls down with the turn, so the screen has to as well
+                if let Some(turn) = self.last_turn {
+                    self.attribute(Speaker::Call, turn);
+                }
             }
             Event::ToolOutput { chunk, .. } => self.append(Speaker::Result, &chunk),
             Event::ToolFinished {
@@ -821,8 +901,9 @@ impl App {
                 {
                     self.transcript.pop();
                 }
-                if let Some(item) = self.kernel.item(item) {
-                    self.say(Speaker::Result, head(&item.content.to_text(), 6));
+                if let Some(recorded) = self.kernel.item(item) {
+                    self.say(Speaker::Result, head(&recorded.content.to_text(), 6));
+                    self.attribute(Speaker::Result, item);
                 }
 
                 let mut note = format!("{tool}: {tokens} tokens");
@@ -1956,7 +2037,8 @@ impl App {
         }
 
         // this is all "sending a message" is: one context item, and then the loop
-        self.kernel.push(ContextItem::user(line));
+        let id = self.kernel.push(ContextItem::user(line));
+        self.attribute(Speaker::User, id);
         self.start_turn();
     }
 
@@ -1974,7 +2056,8 @@ impl App {
             "step" => {
                 if !rest.is_empty() {
                     self.say(Speaker::User, rest);
-                    self.kernel.push(ContextItem::user(rest));
+                    let id = self.kernel.push(ContextItem::user(rest));
+                    self.attribute(Speaker::User, id);
                 }
                 self.start_step();
             }

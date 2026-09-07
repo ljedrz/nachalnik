@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use nachalnik::{ContextKind, ContextState, Kernel, State, Verdict};
+use nachalnik::{ContextId, ContextItem, ContextKind, ContextState, Kernel, State, Verdict};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -405,7 +405,7 @@ fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) {
     frame.render_widget(block, area);
 
     let scrolled = match app.tab {
-        Tab::Chat => draw_chat(frame, app, inner),
+        Tab::Chat => draw_chat(frame, app, going, inner),
         Tab::Context => draw_context(frame, app, going, inner),
         Tab::Trace => draw_trace(frame, app, inner),
         Tab::Permissions => draw_permissions(frame, app, inner),
@@ -567,10 +567,43 @@ fn footer(app: &App, going: &Going) -> String {
 
 // ------------------------------------------------------------------------------ the conversation
 
-fn draw_chat(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
+fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Scrolled {
     let width = inner.width as usize;
     let mut lines: Vec<Line> = Vec::new();
+    // the item the last marked line belonged to, so that a turn and the calls it asked for say
+    // once between them why they are not going rather than once each
+    let mut marked: Option<ContextId> = None;
     for entry in &app.transcript {
+        // what the model is no longer shown is drawn so that the eye can tell without reading it.
+        // `going.sends_content` rather than the state, for the reason it exists: an item the
+        // projector repaired away is `Active` and is not in the request. An entry nothing
+        // attributed is left exactly as it was - `None` here means nothing knows, not "not going"
+        let held = entry
+            .item
+            .and_then(|id| app.kernel.item(id))
+            .filter(|item| !going.sends_content(item));
+
+        if let Some(item) = held {
+            if marked != Some(item.id) {
+                let (mark, _) = state_mark(item.state);
+                lines.push(Line::styled(
+                    format!("{mark} [{}] {}", item.id.0, withheld_why(&item, going)),
+                    quiet().italic(),
+                ));
+                marked = Some(item.id);
+            }
+
+            // flattened rather than dimmed on top of itself, and markdown is not rendered here at
+            // all: a highlighted block that kept its colours and lost only its brightness still
+            // reads as live text at a glance, which is the one thing the mark exists to prevent
+            for text in wrapped(&entry.text, width, "╎ ") {
+                lines.push(Line::styled(text, quiet()));
+            }
+            lines.push(Line::default());
+            continue;
+        }
+        marked = None;
+
         // the model writes markdown, and a terminal that printed the asterisks would be showing
         // the punctuation instead of the emphasis. Nothing else here is markdown: a tool's output
         // is whatever the tool said, and running it through a renderer would be inventing
@@ -728,17 +761,7 @@ fn draw_context(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) -> 
     let rows: Vec<ListItem> = items
         .iter()
         .map(|item| {
-            let (mark, style) = match item.state {
-                ContextState::Active => ("·", Style::default()),
-                ContextState::Pinned => ("▪", Style::default().fg(Color::Yellow)),
-                ContextState::Excluded => ("-", quiet()),
-                // in the request, but only as a marker: a mark of its own, because "going" and
-                // "not going" is the wrong question about it and either answer would mislead
-                ContextState::Elided => ("…", quiet()),
-                ContextState::Archived => ("▫", quiet()),
-                ContextState::Superseded => ("~", quiet()),
-                _ => ("?", quiet()),
-            };
+            let (mark, style) = state_mark(item.state);
 
             // an item that is not going says why, in the projector's own words; one that is
             // shows the first thing the model will read of it. An elided one is on the first
@@ -751,20 +774,7 @@ fn draw_context(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) -> 
             // `Projection::skipped` already carries, which has an answer for that case and this
             // did not
             let (tail, tail_style) = match going.sends_content(item) {
-                false => (
-                    match going.left_out.get(&item.id) {
-                        // the projector's own words about an item it did not carry
-                        Some(why) => why.clone(),
-                        // an elided one it *did* carry, as a marker, so it has nothing to say
-                        // about it - and what the model reads there is the note, so the note is
-                        // what belongs on the row
-                        None => match &item.note {
-                            Some(note) => format!("{}: {note}", item.state),
-                            None => item.state.to_string(),
-                        },
-                    },
-                    quiet().italic(),
-                ),
+                false => (withheld_why(item, going), quiet().italic()),
                 true => (
                     match item
                         .content
@@ -2031,6 +2041,43 @@ fn rule(line: &Line<'_>) -> bool {
 }
 
 /// A line of a fenced code block: a rule down the left, and no reflowing of what is inside it.
+/// The mark and style an item in this state is drawn with.
+///
+/// note: shared by the context tab and the chat, so that one screen cannot call an item
+/// superseded while the other draws it as though it were still being read.
+fn state_mark(state: ContextState) -> (&'static str, Style) {
+    match state {
+        ContextState::Active => ("·", Style::default()),
+        ContextState::Pinned => ("▪", Style::default().fg(Color::Yellow)),
+        ContextState::Excluded => ("-", quiet()),
+        // in the request, but only as a marker: a mark of its own, because "going" and
+        // "not going" is the wrong question about it and either answer would mislead
+        ContextState::Elided => ("…", quiet()),
+        ContextState::Archived => ("▫", quiet()),
+        ContextState::Superseded => ("~", quiet()),
+        _ => ("?", quiet()),
+    }
+}
+
+/// Why this item's content is not going into the next request, in the projector's own words where
+/// it has any.
+///
+/// note: the same answer for the context tab's tail and the chat's mark, out of one place, for
+/// the reason [`Going`] keeps its two halves together: an item is either in the request or out of
+/// it for a reason, and two screens working that out separately is how they come to disagree.
+fn withheld_why(item: &ContextItem, going: &Going) -> String {
+    match going.left_out.get(&item.id) {
+        // the projector's own words about an item it did not carry
+        Some(why) => why.clone(),
+        // an elided one it *did* carry, as a marker, so it has nothing to say about it - and what
+        // the model reads there is the note, so the note is what belongs on the row
+        None => match &item.note {
+            Some(note) => format!("{}: {note}", item.state),
+            None => item.state.to_string(),
+        },
+    }
+}
+
 fn gutter(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
     let bar = Span::styled("│ ", faint());
     let code = Style::default().fg(Color::Cyan);
