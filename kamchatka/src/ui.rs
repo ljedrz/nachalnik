@@ -596,8 +596,16 @@ fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Sc
             // flattened rather than dimmed on top of itself, and markdown is not rendered here at
             // all: a highlighted block that kept its colours and lost only its brightness still
             // reads as live text at a glance, which is the one thing the mark exists to prevent
-            for text in wrapped(&entry.text, width, "╎ ") {
-                lines.push(Line::styled(text, quiet()));
+            //
+            // note: the rule is put on afterwards rather than passed to `wrapped` as a prefix.
+            // A prefix is a speaker's, so it belongs to the first row and the rest hang under it -
+            // which is right for `> ` and wrong for this, where a fifteen-line answer came out
+            // with one marked row and fourteen that read as ordinary indented text
+            for text in wrapped(&entry.text, width.saturating_sub(2), "") {
+                lines.push(Line::from(vec![
+                    Span::styled("╎ ", faint()),
+                    Span::styled(text, quiet()),
+                ]));
             }
             lines.push(Line::default());
             continue;

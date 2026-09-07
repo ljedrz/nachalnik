@@ -468,19 +468,25 @@ impl App {
 
     /// Records which context item the last thing this speaker said became.
     ///
-    /// note: bounded to the unattributed tail - the walk back stops at the first line that
-    /// already has an item - so a turn can only ever claim its own lines. Unbounded, a turn whose
-    /// text was empty because it did nothing but ask for tools would walk past its own silence
-    /// and stamp the *previous* answer with its identifier, which is a row confidently marked
-    /// with the wrong item. The chrome in between (a note, an error) carries no item and does not
-    /// stop the walk, which is what lets it reach past "the turn paused" to the answer above it.
+    /// note: bounded to the tail this turn owns - the walk back stops at the first line belonging
+    /// to a *different* item - so a turn can only ever claim its own lines. Unbounded, a turn
+    /// whose text was empty because it did nothing but ask for tools would walk past its own
+    /// silence and stamp the *previous* answer with its identifier, which is a row confidently
+    /// marked with the wrong item. The chrome in between (a note, an error) carries no item and
+    /// does not stop the walk, which is what lets it reach past "the turn paused" to the answer
+    /// above it.
+    ///
+    /// note: lines already attributed to *this* item do not stop it either, and that is not a
+    /// nicety. A turn puts two of them on the screen - what it thought and what it said - and
+    /// stopping at the first would leave the thinking unmarked beside a marked answer, which a
+    /// live run does and no test did.
     fn attribute(&mut self, speaker: Speaker, id: ContextId) {
         if let Some(entry) = self
             .transcript
             .iter_mut()
             .rev()
-            .take_while(|entry| entry.item.is_none())
-            .find(|entry| entry.speaker == speaker)
+            .take_while(|entry| entry.item.is_none() || entry.item == Some(id))
+            .find(|entry| entry.speaker == speaker && entry.item.is_none())
         {
             entry.item = Some(id);
         }

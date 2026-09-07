@@ -4940,3 +4940,53 @@ async fn the_chat_marks_what_the_model_is_no_longer_shown() {
         "the mark should be gone: {restored}"
     );
 }
+
+/// Both halves of a turn are marked, not just the one the walk reached first.
+///
+/// note: the regression a live run found and this file did not. A turn puts what it thought and
+/// what it said on the screen as two entries; attributing the second stamped it, and attributing
+/// the first then stopped at the stamp - so a superseded answer was marked and the thinking above
+/// it went on reading as though the model were still being shown it.
+#[tokio::test]
+async fn a_turn_marks_what_it_thought_as_well_as_what_it_said() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user("go on then"));
+
+    // what a streaming provider produces: thinking, then words, then the recorded item
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Reasoning("weighing it up".to_owned()),
+    });
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Text("here is the answer".to_owned()),
+    });
+    let answered = harness
+        .app
+        .kernel
+        .push(ContextItem::assistant("here is the answer", vec![]));
+    harness.app.on_event(Event::ModelFinished {
+        item: answered,
+        tool_calls: vec![],
+        stop: StopReason::EndTurn,
+        usage: Some(Usage::default()),
+    });
+
+    harness
+        .app
+        .kernel
+        .set_state([answered], ContextState::Excluded, Some("by hand".into()));
+
+    let screen = harness.screen();
+    // one header between them, because they are one item ...
+    assert_eq!(
+        screen.matches("excluded: by hand").count(),
+        1,
+        "the turn should say why once, not once per line: {screen}"
+    );
+    // ... and both halves carry the rule, the thinking included
+    for line in ["weighing it up", "here is the answer"] {
+        let marked = screen
+            .lines()
+            .any(|row| row.contains(line) && row.contains('╎'));
+        assert!(marked, "{line:?} should be marked as withheld: {screen}");
+    }
+}
