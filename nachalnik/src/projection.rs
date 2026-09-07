@@ -455,13 +455,28 @@ impl Projector for LinearProjector {
                 }
                 ContextKind::ToolResult { call, tool, .. } => {
                     if self.repair_orphans && !claim(&mut calls, call) {
+                        // note: there are two ways to fail to claim a call and they do not read
+                        // the same. One this projection does not carry is an orphan; one it
+                        // carries whose answers are all spoken for is a *second* result for it -
+                        // which is what restoring the whole of a truncated output beside the copy
+                        // the model was shown produces, and it is the pairing working rather than
+                        // anything going wrong. Saying the call was missing there sends whoever
+                        // just did it looking for a call that is on their screen
+                        let answered = calls.contains_key(call);
+                        let why = match answered {
+                            true => format!("the call `{call}` already has a result"),
+                            false => format!("the call `{call}` is not in the projection"),
+                        };
                         projection.repairs.push(format!(
-                            "dropped item {} (a result of `{tool}`): the call `{call}` is not in the projection",
+                            "dropped item {} (a result of `{tool}`): {why}",
                             item.id
                         ));
                         projection.skipped.push(Skipped {
                             id: item.id,
-                            reason: "an orphaned tool result".into(),
+                            reason: match answered {
+                                true => "a second result for one call".into(),
+                                false => "an orphaned tool result".into(),
+                            },
                         });
                         continue;
                     }

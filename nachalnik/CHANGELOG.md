@@ -44,6 +44,16 @@ minor bump may break you.
   since both existed, and was always empty because nothing in the kernel set it. This is the first
   thing that does.
 
+- A second result for one call is not reported as a missing call. There are two ways for a tool
+  result to fail to claim its call and the repair described both as the first: a call this
+  projection does not carry is an orphan, but a call it *does* carry whose answer is already spoken
+  for is a second result for it. That is not a fault - it is what restoring the whole of a
+  truncated output beside the copy the model was shown produces, which is the intended way to
+  send the whole instead, and the pairing then drops the short copy exactly as it should. Somebody
+  who has just done that read `the call \`c1\` is not in the projection` about a call sitting on
+  their screen. It now says `already has a result`, and `Skipped::reason` says
+  `a second result for one call` rather than `an orphaned tool result`.
+
 ## [0.3.1] - 2026-09-06
 
 ### added

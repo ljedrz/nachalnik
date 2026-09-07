@@ -1003,3 +1003,77 @@ async fn eliding_a_turn_stops_it_costing_what_it_thought() {
     let withheld = kernel.with_context(|context| context.tokens_withheld());
     assert!(withheld >= before - after, "{withheld} withheld");
 }
+
+/// Restoring the whole of a truncated output beside the copy the model was shown is one keystroke,
+/// and the projector is what makes it safe: the pair is one call's answer, so the whole claims the
+/// call and the shortened copy is dropped. What it says about that has to be true, though.
+///
+/// note: the two ways to fail to claim a call read the same and are not the same thing. A call
+/// this projection does not carry is an orphan; a call it carries that is already answered is a
+/// second result for it. Telling somebody who has just restored an archive that the call "is not
+/// in the projection" sends them looking for a call that is on their screen.
+#[tokio::test]
+async fn a_second_result_for_one_call_is_not_reported_as_a_missing_call() {
+    let kernel = kernel();
+    let asked = nachalnik::test::call("c1", "read", json!({}));
+    kernel.push(ContextItem::user("read it"));
+    kernel.push(ContextItem::assistant("reading", vec![asked.clone()]));
+
+    // the shape `Config::keep_truncated_output` leaves behind: the whole, archived, and the
+    // shortened copy the model was handed, both answering the one call
+    let whole = kernel.push(ContextItem::tool_result(
+        asked.id.clone(),
+        "read",
+        "the whole file".repeat(50),
+        false,
+    ));
+    kernel.set_state([whole], ContextState::Archived, None);
+    kernel.push(ContextItem::tool_result(
+        asked.id.clone(),
+        "read",
+        "the whole file[... truncated ...]",
+        false,
+    ));
+
+    let sent = kernel.project();
+    assert!(sent.repairs.is_empty(), "as it stands: {:?}", sent.repairs);
+
+    // "send the whole one instead", which is `space` on the context tab
+    kernel.set_state([whole], ContextState::Active, None);
+    let sent = kernel.project();
+    assert_eq!(
+        sent.messages
+            .iter()
+            .filter(|m| m.tool_call_id.is_some())
+            .count(),
+        1,
+        "one call still has exactly one answer"
+    );
+    assert_eq!(sent.repairs.len(), 1, "{:?}", sent.repairs);
+    assert!(
+        sent.repairs[0].contains("already has a result"),
+        "the call is right there, and the repair has to say so: {}",
+        sent.repairs[0]
+    );
+    assert!(
+        !sent.repairs[0].contains("not in the projection"),
+        "{}",
+        sent.repairs[0]
+    );
+
+    // and a result nobody ever asked for still reads the other way
+    kernel.push(ContextItem::tool_result(
+        "nobody-asked".into(),
+        "grep",
+        "x",
+        false,
+    ));
+    let sent = kernel.project();
+    assert!(
+        sent.repairs
+            .iter()
+            .any(|r| r.contains("`nobody-asked` is not in the projection")),
+        "{:?}",
+        sent.repairs
+    );
+}
