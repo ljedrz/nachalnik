@@ -414,7 +414,39 @@ impl Reach {
     /// as a plain absolute path. A path that does not exist yet - which is most of what `write` is
     /// handed - is resolved through its parent, because a file cannot be created outside a
     /// directory it is not in.
+    ///
+    /// note: a leading `~` is refused with a sentence rather than expanded, and it is refused
+    /// *before* the unconfined early return, which is the half that matters. These tools run in
+    /// process with no shell in front of them, so nothing has ever expanded it - and expanding it
+    /// here would mean `--no-sandbox` handing over `$HOME/.ssh/id_rsa` for real, on a path the
+    /// model wrote. Not expanding it is the safe default and it is kept; what was wrong was
+    /// saying nothing, because `~/.gitconfig` then joins onto the working directory as a
+    /// directory literally called `~` and comes back `No such file or directory`. That is the
+    /// `access(2)` trap in a second form: an error indistinguishable from the file being absent,
+    /// which a model believes - so it concludes the home directory is empty rather than that its
+    /// path was taken at its word, and nothing in front of it says otherwise.
+    ///
+    /// note: two things about how that sentence is *worded*, both of them from watching models
+    /// read it. It says the same path will be refused again, because one that did not say so was
+    /// sent back unchanged six times in a single turn - a refusal that does not close the retry is
+    /// an invitation to retry. And it names no path but the one it was handed: the literal-`~`
+    /// spelling used to be here, and two models answered a refusal about `~/notes.txt` by reading
+    /// `./~`. Every concrete path in a refusal is read as a path to try, because a refusal is read
+    /// under pressure to try something else; that spelling now lives in `PATH_ARG`, which is read
+    /// while choosing instead.
     pub fn allows(&self, path: &str, doing: Access) -> Result<PathBuf, String> {
+        // the whole string, not any component: `notes.txt~` is a real file and `./~` is how a
+        // shell asks for a literal one, so both go through untouched and the message says so
+        if path.starts_with('~') {
+            return Err(format!(
+                "{path}: `~` is not expanded here, and this path will be refused again exactly as \
+                 it stands. There is no shell in front of these tools, so `~` was read as a \
+                 directory of that name rather than as a home directory. Say the path in full, or \
+                 relative to {}.",
+                self.workdir.display()
+            ));
+        }
+
         let path = PathBuf::from(path);
         if !self.confined {
             return Ok(path);

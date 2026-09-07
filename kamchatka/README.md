@@ -46,7 +46,9 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 > exception, which is that the system directories (`/usr`, `/etc`, `/bin`, `/lib`, `/proc` and the
 > rest) are readable, because a command that cannot read `/usr/bin` cannot be a command. So
 > `cat /etc/passwd` works and `cat ~/.ssh/id_rsa` does not. The three file tools are held to the
-> same boundary by their own code, and to a tighter one: they refuse `/etc/passwd` too.
+> same boundary by their own code, and to a tighter one: they refuse `/etc/passwd` too. They also
+> never expand `~` — there is no shell in front of them, so a path is taken at its word, and they
+> say that in a sentence rather than reporting the file as missing.
 > The permissions tab says which you have — `shell: confined`, or
 > `shell: a command can do any of these` where Landlock is not available. `--sandbox-allow PATH`
 > opens up more, `--sandbox-read PATH` opens it up for reading only, and `--no-sandbox` turns it

@@ -38,6 +38,24 @@ fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, BoxError> {
         .ok_or_else(|| format!("the `{name}` argument is required").into())
 }
 
+/// What the three file tools say about the path they take.
+///
+/// note: one string because it is one rule, and three copies of a sentence is three places to
+/// remember when the rule changes. The `~` clause is the half a model cannot work out for itself:
+/// these tools run in process with no shell in front of them, so nothing expands it, and the
+/// alternative to saying so is a path that quietly becomes a directory called `~` under the
+/// working directory. `Reach::allows` says it again at the point of failure, which is the half
+/// that actually lands - a description is what makes the refusal legible when it arrives.
+///
+/// note: and the literal-`~` spelling is here rather than in that refusal, which is where it used
+/// to be. A refusal is read under pressure to try something else, so every concrete path in one is
+/// read as a path to try: two models answered a refusal about `~/notes.txt` by reading `./~`, a
+/// file neither of them wanted and neither of them had. A schema is read while choosing, which is
+/// when a rare spelling is worth knowing and nobody is about to act on it.
+const PATH_ARG: &str = "absolute, or relative to the working directory. `~` is not expanded - \
+                        there is no shell here - so write the path out or use one relative to the \
+                        working directory. A file whose name really is `~` is `./~`";
+
 /// How much of each tool's output the model is shown, which a person can change mid-session.
 ///
 /// note: a shared handle rather than a number beside each `spec`, because the thing that changes
@@ -142,7 +160,7 @@ impl Tool for Read {
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "absolute, or relative to the working directory",
+                        "description": PATH_ARG,
                     },
                 },
                 "required": ["path"],
@@ -180,7 +198,7 @@ impl Tool for Write {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "absolute, or relative to the working directory",
+                    "description": PATH_ARG,
                 },
                 "content": { "type": "string", "description": "the whole of the new file" },
             },
@@ -222,7 +240,7 @@ impl Tool for Edit {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "absolute, or relative to the working directory",
+                    "description": PATH_ARG,
                 },
                 "old": {
                     "type": "string",

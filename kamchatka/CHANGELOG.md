@@ -84,6 +84,36 @@ minor bump may break you.
   for the two tools this program installs itself, because `ids` on somebody else's tool is
   somebody else's vocabulary and a confident description of the wrong thing is worse than none.
 
+- A leading `~` is refused in words instead of quietly becoming a directory called `~`. The three
+  file tools run in process with no shell in front of them, so nothing has ever expanded it -
+  `read` on `~/.gitconfig` joined it onto the working directory and came back
+  `/w/~/.gitconfig: No such file or directory`. That is the `access(2)` trap in a second form: an
+  error indistinguishable from the file being absent, which a model believes, so it concludes the
+  home directory is empty rather than that its path was taken at its word.
+
+  Not expanding it is the right default and it is kept - expanding here would have `--no-sandbox`
+  hand over `$HOME/.ssh/id_rsa` for real, on a path a model wrote - so the refusal is a sentence
+  naming what happened, where to write a path instead, and `./~` for a file really called that.
+  It comes *before* the unconfined early return, because that is the case it matters most in. Only
+  a leading `~` is refused: `notes.txt~` is a real file and `./~` is how a shell asks for a literal
+  one.
+
+  Said twice, the way the confinement is. `Reach::allows` is what lands, but it lands as a surprise
+  unless the argument said so first, so the three file tools share one `PATH_ARG` describing the
+  rule once. It costs 87 tokens across the tool definitions - 406 to 493 - which is a constant paid
+  per request against a model that otherwise spends whole calls hunting for a home directory it
+  cannot reach, and one such call is worth more than that.
+
+- The `~` refusal closes the retry and names no other path. Two changes, both from watching models
+  read the sentence added earlier in this release. It now says the same path will be refused again
+  as it stands, because one that did not say so was sent back unchanged six times in a single turn
+  by the same model - a refusal that does not close the retry is an invitation to retry, and after
+  the change that model asked once and got it right. And the literal-`~` spelling has moved out of
+  it into `PATH_ARG`: two models answered a refusal about `~/notes.txt` by reading `./~`, because
+  every concrete path in a refusal is read as a path to try. A refusal is read under pressure to
+  try something else; a schema is read while choosing, which is when a rare spelling is worth
+  knowing and nobody is about to act on it.
+
 - A provider's notice reaches whoever is holding the `App`, not only this program's own loop.
   `take_notice` was drained on a tick in `main`, so "the model was cut off mid-answer; what had
   arrived is kept" - written for exactly the moment a person needs to know something is missing -

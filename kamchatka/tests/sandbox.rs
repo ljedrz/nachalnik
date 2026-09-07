@@ -395,6 +395,106 @@ fn the_file_tools_are_held_to_the_same_boundary() {
     assert!(open.allows("/etc/passwd", Access::Reading).is_ok());
 }
 
+/// `~` is not expanded, and the model is told so rather than left with `No such file or directory`.
+///
+/// note: the same trap as `access(2)` under Landlock, in a second form. Nothing expands `~` for
+/// these tools - they run in process with no shell in front of them - so `~/.gitconfig` joined
+/// onto the working directory as a directory literally named `~` and came back absent. A model
+/// believes that: it concludes the home directory is empty rather than that its path was taken at
+/// its word, and nothing in front of it said otherwise.
+#[test]
+fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
+    use kamchatka::sandbox::{Access, Reach};
+
+    let dir = workdir("tilde").canonicalize().expect("it exists");
+    let reach = Reach {
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confined: true,
+    };
+
+    for path in ["~", "~/.gitconfig", "~/", "~root/.ssh/id_rsa"] {
+        let refused = reach
+            .allows(path, Access::Reading)
+            .expect_err("a leading `~` is not a path this can honour");
+        assert!(
+            refused.contains("`~` is not expanded here"),
+            "it has to say what happened to the path: {refused}"
+        );
+        assert!(
+            refused.contains(&dir.display().to_string()),
+            "and where to write one instead: {refused}"
+        );
+        // note: a refusal that does not close the retry is an invitation to retry. Without this
+        // sentence one model sent the same path back six times in a single turn
+        assert!(
+            refused.contains("refused again"),
+            "and that sending the same path back will not help: {refused}"
+        );
+        // note: and it names no other path. Every concrete path in a refusal is read as a path to
+        // try, because a refusal is read under pressure to try something else - two models
+        // answered a refusal about `~/notes.txt` by reading the `./~` this used to mention
+        assert!(
+            !refused.contains("./~"),
+            "and offers no second path to reach for: {refused}"
+        );
+    }
+
+    // the security half: expanding it would have `--no-sandbox` hand over a real home directory on
+    // a path the model wrote, so the refusal comes before the unconfined early return
+    let open = Reach {
+        confined: false,
+        ..reach.clone()
+    };
+    assert!(
+        open.allows("~/.ssh/id_rsa", Access::Writing).is_err(),
+        "an unconfined session is exactly where this must not expand"
+    );
+
+    // and it is the leading `~` only: a vim backup is a real file, and `./~` is how a shell asks
+    // for a literal one, so neither is anybody's business but the filesystem's
+    assert_eq!(
+        reach.allows("notes.txt~", Access::Reading),
+        Ok(dir.join("notes.txt~"))
+    );
+    assert_eq!(reach.allows("./~", Access::Reading), Ok(dir.join("~")));
+
+    // the other half of the pair. A sentence at the point of failure is what lands, but it lands
+    // as a surprise unless the argument said so first - which is the arrangement `shell` already
+    // has with its confinement, and the reason a description is worth the tokens
+    for tool in kamchatka::tools::builtin(
+        Shell {
+            workdir: dir.clone(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            policy: Arc::new(Careful::new()),
+            confiner: None,
+            limits: Limits::default(),
+        },
+        reach,
+        Limits::default(),
+    ) {
+        let spec = tool.spec();
+        let Some(path) = spec.schema["properties"].get("path") else {
+            continue;
+        };
+        let said = path["description"].as_str().unwrap_or_default();
+        assert!(
+            said.contains("`~` is not expanded"),
+            "`{}`'s path argument does not warn about it: {said}",
+            spec.id
+        );
+        // and this is where the literal-`~` spelling lives, because here it is read while
+        // choosing rather than while looking for something else to try
+        assert!(
+            said.contains("`./~`"),
+            "`{}`'s path argument does not say how to name one: {said}",
+            spec.id
+        );
+    }
+}
+
 /// A kernel whose one tool is the confined `shell`, answering with a fixed script.
 ///
 /// note: through the tool rather than the binary, because what a confined command leaves behind is

@@ -315,6 +315,27 @@ README and the crate docs in longer form:
   a `cargo` that was never missing. Say it at the point of failure, name the path, and say nothing
   where the refusal was not yours - a hedge on `cat /etc/shadow` sends a model looking for a
   boundary that had nothing to do with it. `Sandbox::note_for` is the shape.
+- **A refusal closes the retry, and names no path but the one it refused.** Two rules about the
+  wording, both bought by watching models read one. A refusal that does not say the same call will
+  fail again is read as a reason it failed *this time*: one model sent an identical path back six
+  times in a single turn, and after the sentence was added it asked once and got it right. And
+  every concrete path in a refusal is read as a path to try, because a refusal is read under
+  pressure to try something else - a parenthesis offering `./~` for the rare file genuinely called
+  that had two models reading `./~`, a file neither of them wanted. Rare spellings belong in the
+  argument's description, which is read while choosing; the refusal gets the one instruction that
+  applies. This is the counterpart to the rule above: it says how to word what that one says to
+  say. Two suites test it, and only one can - `tests/sandbox.rs` pins the sentence, and the last
+  section of `tests/live.rs` watches a real model read it, because a scripted provider agrees with
+  every refusal it is handed.
+- **Nothing expands `~` for the file tools, and that is deliberate.** They run in process with no
+  shell, so `read ~/.gitconfig` used to join a directory literally called `~` onto the working
+  directory and come back `No such file or directory` - the same trap as the one below, since a
+  model believes an absent file and concludes the home directory is empty. Expanding it is the
+  wrong fix: under `--no-sandbox` `Reach::allows` returns the path untouched, so `~/.ssh/id_rsa`
+  would resolve for real on a path the model wrote. It is refused with a sentence instead, before
+  the unconfined early return, and the argument's own description says the rule so the refusal is
+  not a surprise. `shell` is the other way round - `sh -c` does expand it, and the confinement
+  refuses what it expands to.
 - **`access(2)` does not know about Landlock.** It answers from the file's own permissions, so a
   program that probes before it opens is told yes and then refused - and lands in whichever branch
   it keeps for a *corrupt* file rather than a *missing* one. Git does exactly this with
