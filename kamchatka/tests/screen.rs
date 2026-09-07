@@ -3137,6 +3137,65 @@ async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
     );
 }
 
+/// A pinned tool result is one `Trim` may not have, and naming it anyway is not free: the kernel
+/// refuses it, the plan is a plan all the same, and a plan carries a summary. One pinned result
+/// bigger than the target keeps the context over the threshold for the rest of the session, so
+/// against a live endpoint this added a summary and burned an undo before every request, growing
+/// the request 53 tokens a turn - the thing the pass exists to stop.
+#[tokio::test]
+async fn compaction_does_not_ask_for_a_result_that_is_pinned() {
+    use kamchatka::tools::Trim;
+    use nachalnik::{Budget, Compactor};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    let call = nachalnik::ToolCall::new("c1", "shell", std::sync::Arc::new(json!({})));
+    kernel.push(ContextItem::assistant(
+        nachalnik::Content::text("let me look"),
+        vec![call.clone()],
+    ));
+    let result = kernel.push(ContextItem::tool_result(
+        call.id.clone(),
+        "shell",
+        "y".repeat(4_000),
+        false,
+    ));
+    kernel.set_state(
+        [result],
+        ContextState::Pinned,
+        Some("this has to last".into()),
+    );
+
+    let trim = Trim {
+        threshold: 0.2,
+        target: 0.1,
+    };
+    let budget = || Budget {
+        limit: Some(1_000),
+        ..kernel.budget()
+    };
+    assert!(
+        trim.should_compact(&budget()),
+        "well over the threshold, which is the case this is about"
+    );
+
+    let (items, undo) = (kernel.items().len(), kernel.with_context(|c| c.undo_len()));
+    for _ in 0..5 {
+        assert!(
+            trim.plan(&kernel.items(), &budget()).await.is_none(),
+            "there is nothing here it may take, so there is no plan to make"
+        );
+    }
+    assert_eq!(kernel.items().len(), items, "and the context did not grow");
+    assert_eq!(kernel.with_context(|c| c.undo_len()), undo);
+    assert_eq!(
+        kernel.item(result).unwrap().state,
+        ContextState::Pinned,
+        "and the pin held"
+    );
+}
+
 /// A marker is not free, and a pass that credits itself with the whole of what it elided is
 /// counting on it being. `Trim` subtracted each item's tokens and put a line of its own reason
 /// where the content had been, so on a context full of small results the arithmetic said it had

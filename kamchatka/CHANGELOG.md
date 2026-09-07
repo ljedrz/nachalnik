@@ -9,6 +9,17 @@ minor bump may break you.
 
 ### fixed
 
+- `Trim` does not ask for a result that is pinned. `ContextState::sends_content` says yes to a
+  pinned item - it is in the request, that is what the state is for - so the candidate filter took
+  one, and the kernel then refused it, as it must: a pin is a promise. That refusal is not free.
+  The plan was still a plan, a plan carries a summary, and one pinned result bigger than the target
+  keeps the context over the threshold for the rest of the session, so the pass is asked again
+  before every request and refuses again every time. Measured against a real endpoint: three turns,
+  three summaries saying a result had been elided when none had, three undos spent, and the request
+  climbing 2,637 → 2,716 → 2,788. Not naming what it may not take is what makes the plan `None`
+  instead. The kernel no longer banks a summary for a pass that moved nothing either, which is the
+  same hole from the other side and closes it for any compactor.
+
 - `Trim` pays for the marker it leaves behind. Eliding a tool result does not recover what the
   result was costing: the projector puts `[... <the pass's reason> ...]` where the content was, and
   the kernel makes that reason the note on every item in the pass, so each elision buys back the

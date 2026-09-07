@@ -15,9 +15,9 @@ use std::{
 };
 
 use nachalnik::{
-    BoxError, Budget, Capability, CompactionPlan, Compactor, ContextItem, ContextKind, OutputSink,
-    PermissionPolicy, PermissionRequest, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, Verdict,
-    async_trait,
+    BoxError, Budget, Capability, CompactionPlan, Compactor, ContextItem, ContextKind,
+    ContextState, OutputSink, PermissionPolicy, PermissionRequest, Tool, ToolCall, ToolCallId,
+    ToolOutput, ToolSpec, Verdict, async_trait,
 };
 use parking_lot::Mutex;
 
@@ -1127,8 +1127,17 @@ impl Compactor for Trim {
         // summary went into the context before every single request from then on: a compactor
         // growing the context by a line and burning an undo per request, for as long as the
         // session lasted. It takes only a pinned file bigger than the target to get there
+        //
+        // note: and not a pinned one, which `sends_content` says yes to. The kernel refuses those
+        // - a pin is a promise - so proposing one produces a plan that moves nothing, and a plan
+        // is not nothing: it is a summary and an undo. One pinned result bigger than the target
+        // keeps the context over the threshold for the rest of the session, so the pass is asked
+        // again before every request and refuses again every time. Not naming what may not be
+        // taken is what makes the plan `None` instead
         let candidates = items.iter().filter(|item| {
-            item.state.sends_content() && matches!(item.kind, ContextKind::ToolResult { .. })
+            item.state.sends_content()
+                && item.state != ContextState::Pinned
+                && matches!(item.kind, ContextKind::ToolResult { .. })
         });
 
         let mut used = budget.used();
