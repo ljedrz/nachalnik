@@ -9,7 +9,7 @@
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -30,14 +30,6 @@ use crate::{
 /// How many trace lines are kept; the session log is the one that keeps everything.
 const TRACE_DEPTH: usize = 400;
 
-/// How long after the last keystroke a permission question starts taking keys as answers.
-///
-/// note: a question arrives on its own schedule, in the middle of whatever somebody happens to be
-/// typing, and its keys are ordinary letters - `a` grants a capability for the rest of the session
-/// and is also the third letter of "what". Long enough to cover the keystrokes already on their
-/// way when it appeared; short enough that answering it is still one key.
-pub const SETTLING: Duration = Duration::from_millis(300);
-
 /// How much of a still-running tool's output the transcript holds on to.
 ///
 /// note: a tool's output and nothing else. A command can produce megabytes and the whole of it is
@@ -54,9 +46,10 @@ const VERSIONS: usize = 8;
 /// Which half of the window the keys are talking to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
-    /// The prompt, which is under every tab and can always be typed into.
+    /// The prompt, which is on the chat tab and wherever an item is being edited.
     Input,
-    /// Whatever the open tab is showing.
+    /// Whatever else on the screen takes keys: the tab's own body, or - on the chat tab - the
+    /// question pinned above the prompt, which is the only thing there that does.
     Body,
 }
 
@@ -66,8 +59,10 @@ pub enum Focus {
 /// conversation, the context and the event stream - and splitting it between them meant all three
 /// were cramped: the trace was cut off mid-sentence, the context could only afford a label and a
 /// number, and a long answer was reading in sixty columns. Only one of them is being read at a
-/// time. The prompt and the status line are under all of them, because a message can be sent from
-/// anywhere and the budget is always worth seeing.
+/// time. The status line is under all of them, because the budget is always worth seeing; the
+/// prompt is not, because three of the four are read and operated rather than typed into, and a
+/// prompt there was a mode - every letter on those tabs meant one of two things depending on where
+/// the focus had got to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     /// The conversation.
@@ -136,11 +131,6 @@ pub struct Traced {
 
 /// What is being shown over the top of everything else.
 pub enum Overlay {
-    /// A tool wants to run, and somebody has to say so.
-    Permission {
-        /// How far down its arguments are scrolled.
-        scroll: usize,
-    },
     /// Something long enough to need its own screen.
     Text {
         /// What it is.
@@ -322,8 +312,12 @@ pub struct App {
     pub grants: ratatui::widgets::ListState,
     /// Whether the last stop was asked for rather than reached.
     interrupting: bool,
-    /// When a key that was not an answer to a question was last pressed.
-    typing: Instant,
+    /// How far down the pinned question's arguments are scrolled.
+    ///
+    /// note: on the app rather than on the question, because there is no question to hang it on:
+    /// what is pinned above the prompt is drawn from `pending_permissions()` every frame, so
+    /// there is no state saying a question is open and none to get out of step with the kernel.
+    pub question_scroll: usize,
     /// A message somebody sent into a turn that was already running, waiting for it to end.
     typed_ahead: Option<String>,
     /// Whether the response being awaited has put anything on the screen of its own.
@@ -386,7 +380,7 @@ impl App {
             grants: ratatui::widgets::ListState::default(),
             interrupting: false,
             since: Instant::now(),
-            typing: Instant::now(),
+            question_scroll: 0,
             typed_ahead: None,
             streamed: false,
             streamed_bytes: 0,
@@ -618,9 +612,6 @@ impl App {
         };
 
         self.say(Speaker::Note, format!("step → {told}"));
-        if matches!(state, State::Deciding { .. }) {
-            self.overlay = Some(Overlay::Permission { scroll: 0 });
-        }
     }
 
     /// Takes in the end of a turn.
@@ -652,9 +643,12 @@ impl App {
         let carry_on = ended && !self.interrupting;
         match outcome {
             Outcome::Failed(e) => self.say(Speaker::Error, e),
-            Outcome::Stopped(State::Deciding { .. }) => {
-                self.overlay = Some(Overlay::Permission { scroll: 0 })
-            }
+            // note: a turn stopping to ask says nothing here, and opens nothing. The question is
+            // drawn from `pending_permissions()` every frame, so there is no moment at which it
+            // has to be put on the screen and none at which it has to be taken off - which is
+            // also the end of a class of bug this had: an overlay left standing over a question
+            // that had been answered somewhere else, until the next key closed it
+            Outcome::Stopped(State::Deciding { .. }) => {}
             // a turn that stops in `Idle` either ran out of requests or was asked to stop, and
             // the difference matters to whoever is reading the screen
             Outcome::Stopped(State::Idle) if !self.interrupting => {
@@ -898,14 +892,9 @@ impl App {
         }
 
         if self.overlay.is_some() {
-            // a key that answered a question is not somebody typing, and must not push the moment
-            // the *next* question starts listening at; every other key is
-            if !self.overlay_key(key).await {
-                self.typing = Instant::now();
-            }
+            self.overlay_key(key).await;
             return;
         }
-        self.typing = Instant::now();
 
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         // taken rather than read, so that a count lives for exactly one key wherever that key is
@@ -929,24 +918,28 @@ impl App {
             // gesture most people will find first; this is the one for a turn that wrote a
             // thousand lines while somebody was looking at the twelfth
             (KeyCode::Char('e'), true) => self.follow = true,
-            // the two ends of the conversation, one key each. With control held, because the
-            // prompt is under every tab and `home` and `end` are its own - a prompt whose keys
-            // moved something else while somebody was editing a line would be the trap
+            // the two ends of the conversation, one key each. With control held, because `home`
+            // and `end` are the prompt's own - a prompt whose keys moved something else while
+            // somebody was editing a line would be the trap
             (KeyCode::Home, true) => {
                 self.scroll = 0;
                 self.follow = false;
             }
             (KeyCode::End, true) => self.follow = true,
             (KeyCode::F(1), _) => self.preview("the keys", crate::ui::HELP),
-            // the chat tab has nothing to move the focus to: the conversation is read, not
-            // operated, and swallowing what somebody typed at it would be a trap
-            (KeyCode::Tab, _) if self.tab != Tab::Chat => {
-                self.focus = match self.focus {
-                    Focus::Input => Focus::Body,
-                    Focus::Body => Focus::Input,
-                }
-            }
+            // `tab` moves the keys to the other thing on the screen that wants them, and on a tab
+            // with no prompt there is no other thing - so it means the one gesture that is always
+            // worth having: back to where typing happens
+            (KeyCode::Tab, _) => match (self.prompted(), self.tab, self.asked().is_some()) {
+                // the conversation is read rather than operated, so the only thing on the chat tab
+                // that takes keys of its own is a question, and only while there is one
+                (_, Tab::Chat, false) => {}
+                (true, ..) => self.flip_focus(),
+                _ => self.show(Tab::Chat),
+            },
             _ => match (self.tab, self.focus) {
+                // the pinned question, which is what `Focus::Body` means on the chat tab
+                (Tab::Chat, Focus::Body) => self.question_key(key).await,
                 (Tab::Context, Focus::Body) => self.context_key(key, &count),
                 (Tab::Trace, Focus::Body) => self.trace_key(key),
                 (Tab::Permissions, Focus::Body) => self.permissions_key(key),
@@ -967,9 +960,11 @@ impl App {
 
     /// Opens a tab, and puts the keys wherever they are useful on it.
     ///
-    /// note: Switching to the context or the trace is something somebody does in order to work
-    /// on it, so the focus follows; switching back to the conversation is not, so it does not.
-    /// `tab` moves it either way.
+    /// note: Switching to the context or the trace is something somebody does in order to work on
+    /// it, so the focus follows - and there is nothing else on those tabs for it to be on. On the
+    /// conversation the keys go to the prompt, unless something is being asked: coming back to a
+    /// waiting question is what somebody does *in order to answer it*, having just been away
+    /// looking at what it is about, and making them press `tab` first would be asking twice.
     pub fn show(&mut self, tab: Tab) {
         // an edit belongs to the tab it was started from, and leaving that tab abandons it.
         // Otherwise the prompt is still holding the item's text with `editing` still set, and the
@@ -977,20 +972,40 @@ impl App {
         self.cancel_edit();
 
         self.tab = tab;
-        self.focus = match tab {
-            Tab::Chat => Focus::Input,
+        self.focus = match (tab, self.asked().is_some()) {
+            (Tab::Chat, false) => Focus::Input,
             _ => Focus::Body,
         };
     }
 
-    /// Opens a tab without taking the keys off the prompt.
+    /// The question a tool is waiting on, if one is.
     ///
-    /// note: For a tab reached by *typing a command*, where moving the focus would hand the next
-    /// thing somebody types to the tab. The permissions tab is the worst place for that: `a`, `n`
-    /// and `r` are all bare letters there, and all of them change something.
-    pub fn open(&mut self, tab: Tab) {
-        self.cancel_edit();
-        self.tab = tab;
+    /// note: asked of the kernel every time rather than held here. What is pinned above the prompt
+    /// is a *rendering* of the kernel's state, so it cannot be open when there is nothing to
+    /// answer, or shut when there is.
+    pub fn asked(&self) -> Option<PermissionRequest> {
+        self.kernel.pending_permissions().into_iter().next()
+    }
+
+    /// Whether the prompt is on the screen at all.
+    ///
+    /// note: it belongs to the conversation, and it used to be under every tab so that a message
+    /// could be sent from anywhere. What that cost was a mode on three tabs that have no use for
+    /// one: every key on them was either a key or a letter depending on where the focus happened
+    /// to be, and the answer was `tab`, and forgetting was a `space` typed into a message instead
+    /// of cycling the row somebody was looking at. The exception is an edit, which is the prompt
+    /// doing a job for the tab underneath it: the item being rewritten is on that tab, and the box
+    /// has to be beside it.
+    pub fn prompted(&self) -> bool {
+        self.tab == Tab::Chat || self.editing.is_some()
+    }
+
+    /// Moves the keys between the prompt and whatever else is asking for them.
+    fn flip_focus(&mut self) {
+        self.focus = match self.focus {
+            Focus::Input => Focus::Body,
+            Focus::Body => Focus::Input,
+        };
     }
 
     /// Puts the prompt back to composing a message, whatever it was doing.
@@ -1691,10 +1706,10 @@ impl App {
         }
     }
 
-    /// Keys that belong to whatever is on top; returns whether one answered a question.
-    async fn overlay_key(&mut self, key: KeyEvent) -> bool {
+    /// Keys that belong to whatever is on top.
+    async fn overlay_key(&mut self, key: KeyEvent) {
         let Some(overlay) = &mut self.overlay else {
-            return false;
+            return;
         };
 
         match overlay {
@@ -1718,49 +1733,49 @@ impl App {
                     *page = (*page + step) % pages.len();
                     *scroll = 0;
                 }
-                // a tool is still waiting to be told whether it may run, so closing whatever was
-                // being read goes back to the question rather than leaving it unanswered and
-                // unreachable - which is what happened after [i] showed the exact JSON
-                _ => {
-                    self.overlay = match self.kernel.pending_permissions().is_empty() {
-                        true => None,
-                        false => Some(Overlay::Permission { scroll: 0 }),
-                    }
-                }
+                // note: it used to go back to a permission overlay rather than close, because a
+                // question was an overlay too and `[i]` had covered it over. A question is pinned
+                // above the prompt now and was never covered, so there is nothing to go back to
+                _ => self.overlay = None,
             },
-            // the arguments can be longer than the box has room for - an `amend` carrying a
-            // rewritten tool result is as long as the result - so the keys that scroll everything
-            // else scroll them here too. They are not answers, and returning `true` says so: a
-            // page read is not somebody typing, and must not put the settling window back
-            Overlay::Permission { scroll } => {
-                match key.code {
-                    KeyCode::PageUp => *scroll = scroll.saturating_sub(PAGE),
-                    KeyCode::PageDown => *scroll += PAGE,
-                    _ => return self.permission_key(key).await,
-                }
-
-                return true;
-            }
         }
-
-        false
     }
 
-    /// Answers the question a tool is waiting on; returns whether it answered.
+    /// Answers the question a tool is waiting on.
     ///
-    /// note: a question that appears under somebody's fingers is not answered by those fingers.
-    /// Its keys are letters, and a live session granted `shell` for good with the `a` of "what" -
-    /// typed at the prompt, into a question that had arrived a second earlier and was never read.
-    /// Letters keep going where they were aimed until the typing stops; see [`SETTLING`].
-    async fn permission_key(&mut self, key: KeyEvent) -> bool {
-        let Some(request) = self.kernel.pending_permissions().into_iter().next() else {
-            self.overlay = None;
-            return false;
+    /// note: reached only with the keys deliberately moved to it, which is the whole of what a
+    /// settling timer used to be for. The answers are bare letters, and a question used to arrive on top of
+    /// whatever somebody was typing and start taking them: one live session granted `shell` for
+    /// good with the `a` of "what". A timer covered the keystrokes already in flight and could not
+    /// cover the next word. Now the question appears without asking for the keys, and `tab` is how
+    /// it gets them - so a letter typed at the prompt is a letter, whatever is waiting above it.
+    async fn question_key(&mut self, key: KeyEvent) {
+        let Some(request) = self.asked() else {
+            self.focus = Focus::Input;
+            return;
         };
-        if self.typing.elapsed() < SETTLING {
-            self.input_key(key).await;
 
-            return false;
+        // the arguments can be longer than the panel has room for - an `amend` carrying a
+        // rewritten tool result is as long as the result - so the keys that scroll everything else
+        // scroll them here too
+        match key.code {
+            KeyCode::PageUp => {
+                self.question_scroll = self.question_scroll.saturating_sub(PAGE);
+                return;
+            }
+            KeyCode::PageDown => {
+                self.question_scroll += PAGE;
+                return;
+            }
+            KeyCode::Up => {
+                self.question_scroll = self.question_scroll.saturating_sub(1);
+                return;
+            }
+            KeyCode::Down => {
+                self.question_scroll += 1;
+                return;
+            }
+            _ => {}
         }
 
         let mut remembered = false;
@@ -1786,23 +1801,19 @@ impl App {
                     format!("{args}\n\n--- the tool ---\n{spec}"),
                 );
 
-                return true;
+                return;
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Grant::Deny,
             KeyCode::Char('d') | KeyCode::Char('D') => {
                 self.drop_pending();
-                return true;
+                return;
             }
-            // a key that is not one of the answers is somebody typing at the prompt underneath,
-            // and that is where it goes rather than nowhere. The first key of a sentence arrives
-            // after a pause, so it is not the typing this waits out, and it was being eaten one
-            // character into every message; `enter` sends what is in the prompt, which waits for
-            // this question the same way a message typed into a running turn does
-            _ => {
-                self.input_key(key).await;
-
-                return false;
-            }
+            // a key that is not one of the answers does nothing, and that is the point. It used to
+            // fall through to the prompt, because a question took every key whether or not anybody
+            // had given it one - so it had to hand back the ones that were not answers. The keys
+            // are here because somebody put them here, and letting a stray one type into a message
+            // would put the answers back into the middle of a sentence
+            _ => return,
         };
 
         // saying yes to a command that reaches for the network is permission for *that* command,
@@ -1836,9 +1847,12 @@ impl App {
                 }
             }
         }
-        // the model may have asked for several things at once, and each is its own question
+        // the model may have asked for several things at once, and each is its own question. The
+        // keys stay on the panel while there are more, so three answers are three keystrokes
+        // rather than three rounds of `tab`
         if self.kernel.pending_permissions().is_empty() {
-            self.overlay = None;
+            self.focus = Focus::Input;
+            self.question_scroll = 0;
             // somebody driving this a transition at a time did not ask for the rest of the turn,
             // and running it here would be the harness taking the wheel back
             match self.stepping {
@@ -1849,8 +1863,6 @@ impl App {
                 false => self.start_turn(),
             }
         }
-
-        true
     }
 
     /// Drops every call the model is waiting on an answer for, and tells it so.
@@ -2027,7 +2039,7 @@ impl App {
             // it used to print a line naming the allowed capabilities. The tab is that line, plus
             // the ones that are refused, plus the ones nobody has decided about yet, plus what
             // each of them covers - and every row can be changed where it is read
-            "policy" | "permissions" => self.open(Tab::Permissions),
+            "policy" | "permissions" => self.show(Tab::Permissions),
             // note: one word per mechanism, and the mechanism here is a state. `/prune` moved an
             // item to `excluded` and every place the result is read back said `excluded`, so the
             // command is named for that now - and `amend`'s own five moves are named the same way,

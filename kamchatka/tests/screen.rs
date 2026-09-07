@@ -13,7 +13,7 @@ use std::{sync::Arc, time::Duration};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{
-    app::{App, Outcome, Speaker, Tab},
+    app::{App, Focus, Outcome, Speaker, Tab},
     provider::OpenAiCompatible,
     sandbox::Confinement,
     tools::{Careful, Limits, Subject},
@@ -66,13 +66,18 @@ impl Harness {
         }
     }
 
-    /// Answers the question on the screen, after the pause a question waits for.
+    /// Answers the question pinned above the prompt, moving the keys to it first.
     ///
-    /// note: a permission question does not take a key as an answer while somebody is still
-    /// typing - see `kamchatka::app::SETTLING`, and the live session that granted `shell` for good
-    /// with the `a` of "what" - and a test presses its keys with nothing at all in between.
+    /// note: a question does not take the keys on arrival - see the note on `App::question_key`,
+    /// and the live session that granted `shell` for good with the `a` of "what". Reaching it is
+    /// `tab`, or coming back to the chat tab while it waits; a `y` pressed at the prompt instead
+    /// is a `y` typed into a message, which is exactly what this saves every caller from writing.
     async fn answer(&mut self, code: KeyCode) {
-        tokio::time::sleep(kamchatka::app::SETTLING).await;
+        match self.app.tab {
+            Tab::Chat if self.app.focus != Focus::Body => self.press(KeyCode::Tab).await,
+            Tab::Chat => {}
+            _ => self.app.show(Tab::Chat),
+        }
         self.press(code).await;
     }
 
@@ -207,6 +212,22 @@ impl Harness {
         dots.iter()
             .position(|x| buffer[(*x, row)].fg == Color::Yellow)
             .expect("one of them is lit")
+    }
+
+    /// The colour the named tab is written in on the strip along the top.
+    fn tab_colour(&mut self, name: &str) -> Color {
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| ui::draw(frame, &mut self.app))
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+
+        let row: String = (0..buffer.area.width)
+            .map(|x| buffer[(x, 0)].symbol())
+            .collect();
+        let at = row.find(name).expect("the tab is on the strip") as u16;
+
+        buffer[(at, 0)].fg
     }
 
     /// Draws at a given size.
@@ -396,7 +417,7 @@ async fn saying_always_stops_the_question_being_asked_again() {
 
     harness.send("dig twice").await;
     harness.settle().await;
-    assert!(harness.app.overlay.is_some(), "the first one is a question");
+    assert!(harness.app.asked().is_some(), "the first one is a question");
 
     harness.answer(KeyCode::Char('a')).await;
     harness.settle().await;
@@ -1548,7 +1569,7 @@ async fn saying_always_answers_for_everything_the_question_named() {
     ));
     harness.send("read it").await;
     harness.settle().await;
-    assert!(harness.app.overlay.is_some(), "the rule made it a question");
+    assert!(harness.app.asked().is_some(), "the rule made it a question");
 
     // `a` has to answer the path rule as well as the capability. Answering for `read` alone would
     // leave the question exactly where it was, since the rule is the stricter of the two
@@ -1676,10 +1697,7 @@ async fn changing_a_permission_changes_what_happens_next() {
     // shell is a question by default, so this turn stops and asks
     harness.send("tidy up").await;
     harness.settle().await;
-    assert!(matches!(
-        harness.app.overlay,
-        Some(kamchatka::app::Overlay::Permission { .. })
-    ));
+    assert!(harness.app.asked().is_some());
     // answering resumes the turn, so let it finish before starting another
     harness.answer(KeyCode::Char('n')).await;
     harness.settle().await;
@@ -1817,7 +1835,7 @@ async fn ctrl_d_leaves_even_when_a_tool_is_waiting_to_run() {
 
     harness.send("do something rash").await;
     harness.settle().await;
-    assert!(harness.app.overlay.is_some(), "a question is up");
+    assert!(harness.app.asked().is_some(), "a question is up");
 
     // `d` is a key at this prompt, and the overlay used to be dispatched before anything looked
     // at the modifiers - so the key people press to leave dropped every pending call instead
@@ -1945,30 +1963,34 @@ async fn an_abandoned_edit_does_not_swallow_the_next_message() {
     );
 }
 
+/// A tab with no prompt on it takes the keys, and `tab` is the way back to the one that has one.
+///
+/// note: this used to assert the opposite, and the reason it did was real: `a`, `n`, `r` and `d`
+/// are bare letters on the permissions tab and every one of them changes something, so a command
+/// typed at the prompt handing the next keystroke to the tab was a trap. What made it a trap was
+/// that the prompt was still *drawn* there, looking exactly as typeable as it does anywhere else,
+/// with only the focus - invisible except as a border colour - deciding which of the two a letter
+/// meant. The box is gone from this tab now, so the question a person has to answer before
+/// pressing a letter is one the screen answers on its own.
 #[tokio::test]
-async fn a_command_that_opens_a_tab_leaves_the_keys_on_the_prompt() {
+async fn a_tab_with_no_prompt_on_it_takes_the_keys() {
     let mut harness = Harness::new([]);
 
     harness.send("/policy").await;
-
-    // `a`, `n`, `r` and `d` are all bare letters on this tab and all of them change something, so
-    // a command typed at the prompt must not hand the next keystroke to it
     assert_eq!(harness.app.tab, Tab::Permissions);
-    assert_eq!(harness.app.focus, kamchatka::app::Focus::Input);
-
-    let before = harness
-        .app
-        .policy
-        .stance(&Subject::Capability(Capability::Read));
-    harness.send("are we ok?").await;
-    assert_eq!(
-        harness
-            .app
-            .policy
-            .stance(&Subject::Capability(Capability::Read)),
-        before,
-        "typing at the prompt should not have rewritten the policy"
+    assert_eq!(harness.app.focus, Focus::Body);
+    assert!(!harness.app.prompted(), "and there is nowhere to type");
+    assert!(
+        !harness.screen().contains(" you "),
+        "so the prompt is not drawn: {}",
+        harness.screen()
     );
+
+    // and the way back to typing is one key, from any of the three
+    harness.press(KeyCode::Tab).await;
+    assert_eq!(harness.app.tab, Tab::Chat);
+    assert_eq!(harness.app.focus, Focus::Input);
+    assert!(harness.app.prompted());
 }
 
 #[tokio::test]
@@ -2581,7 +2603,7 @@ async fn saying_always_leaves_a_waiting_call_that_needs_something_else_a_questio
     let waiting = harness.app.kernel.pending_permissions();
     assert_eq!(waiting.len(), 1, "the one with a rule of its own");
     assert_eq!(waiting[0].args["path"], ".env");
-    assert!(harness.app.overlay.is_some());
+    assert!(harness.app.asked().is_some());
 }
 
 #[tokio::test]
@@ -2683,7 +2705,7 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
 
     harness.send("dig").await;
     harness.settle().await;
-    assert!(harness.app.overlay.is_some(), "the question is up");
+    assert!(harness.app.asked().is_some(), "the question is up");
 
     // the next thing typed is a message, not an answer - and `a` is the third letter of it. It
     // used to grant `shell` for the rest of the session, which is what a live run did
@@ -2692,8 +2714,13 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
     }
 
     assert!(
-        harness.app.overlay.is_some(),
+        harness.app.asked().is_some(),
         "the question is still waiting to be read"
+    );
+    assert_eq!(
+        harness.app.focus,
+        Focus::Input,
+        "and it never took the keys to begin with"
     );
     assert_eq!(
         harness
@@ -2703,8 +2730,11 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
         Verdict::Ask,
         "nothing was granted by somebody typing a sentence"
     );
-    // ... and the sentence is where it was aimed, whole - including its first letter, which
-    // arrives after a pause and is therefore not part of any typing this could have waited out
+    // ... and the sentence is where it was aimed, whole. This used to be a race the program could
+    // only mostly win: the question took every key and handed back the ones that were not answers,
+    // so a 300ms timer decided which. The first letter of a sentence arrives after a pause, so the
+    // timer had already expired by the time it landed, and it was `a` a few keys later that did
+    // the damage. Nothing is timed now - the question is drawn without being given the keys
     assert_eq!(harness.app.input.lines(), ["what is the capital of Peru"]);
 
     // ... and it can be sent from there, which puts it in the queue a message typed into a
@@ -2712,14 +2742,19 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
     harness.press(KeyCode::Enter).await;
     assert!(harness.app.input.lines() == [""], "the prompt was sent");
     assert!(
-        harness.app.overlay.is_some(),
+        harness.app.asked().is_some(),
         "and the question is still the question"
     );
 
-    // and once the typing stops, one key answers it
+    // and `tab` puts the keys on it, where one key answers it
     harness.answer(KeyCode::Char('y')).await;
     harness.settle().await;
-    assert!(harness.app.overlay.is_none(), "answered");
+    assert!(harness.app.asked().is_none(), "answered");
+    assert_eq!(
+        harness.app.focus,
+        Focus::Input,
+        "and the keys come back to the prompt with nothing left to ask"
+    );
 }
 
 #[tokio::test]
@@ -2737,7 +2772,7 @@ async fn a_message_sent_into_a_turn_that_stops_to_ask_waits_for_the_answer_too()
     // typed while that turn is running, and the turn then stops to ask about the call
     harness.send("what is the capital of Peru").await;
     harness.settle().await;
-    assert!(harness.app.overlay.is_some(), "the turn stopped to ask");
+    assert!(harness.app.asked().is_some(), "the turn stopped to ask");
 
     // it must not have gone in yet: the call it stopped at has a result still to come, and a user
     // message between an assistant's call and that call's result is a shape a request cannot have
@@ -3332,6 +3367,86 @@ async fn editing_an_elided_item_does_not_quietly_send_the_edit() {
     assert!(sent.contains("shorter wall"), "{sent}");
 }
 
+/// The whole of why a question is pinned rather than laid over the screen: it is a question about
+/// something, and the something is on another tab.
+///
+/// note: this is the case `App::about` was written for and could only paper over. A question about
+/// eliding item 22 was asked by a box that covered the list saying what 22 was, so the labels had
+/// to be read into the question itself - and anything the question did not think to copy was
+/// unreachable until it had been answered. Now the answer is to go and look.
+#[tokio::test]
+async fn a_waiting_question_can_be_left_and_come_back_to() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "amend", json!({ "ids": [1] }))]),
+        ModelResponse::text("done"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("amend", "elided").with_capabilities([Capability::Custom("amend".into())]),
+    ));
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("secrets.txt", "a password, probably"));
+
+    harness.send("tidy the context").await;
+    harness.settle().await;
+    assert!(harness.app.asked().is_some(), "a question is waiting");
+    assert!(
+        harness.screen().contains("a tool wants to run"),
+        "pinned on the chat tab: {}",
+        harness.screen()
+    );
+
+    // away to the context tab, which the question used to make unreachable. `tab` is not the way:
+    // on the chat tab it moves the keys onto the question, which is a different gesture
+    harness.press(KeyCode::Tab).await;
+    assert_eq!(harness.app.tab, Tab::Chat, "`tab` is not a tab switch here");
+    harness.chord(KeyCode::Char('t')).await;
+    assert_eq!(harness.app.tab, Tab::Context);
+    let context = harness.screen();
+    assert!(context.contains("secrets.txt"), "{context}");
+    assert!(
+        !context.contains("a tool wants to run"),
+        "and the question is not following: {context}"
+    );
+    assert!(
+        harness.app.asked().is_some(),
+        "but it is still waiting to be answered"
+    );
+
+    // the strip is what says so from over here
+    assert_eq!(
+        harness.tab_colour("chat"),
+        Color::Red,
+        "the chat tab is where the answer has to go"
+    );
+
+    // reading an item is what somebody came here to do, and it decides nothing
+    harness.press(KeyCode::Enter).await;
+    assert!(
+        harness.screen().contains("a password"),
+        "{}",
+        harness.screen()
+    );
+    harness.press(KeyCode::Esc).await;
+    assert!(
+        harness.app.asked().is_some(),
+        "and none of that answered anything"
+    );
+
+    // and back, where the keys are already on the question because that is what the trip was for
+    harness.app.show(Tab::Chat);
+    assert_eq!(harness.app.focus, Focus::Body);
+    harness.press(KeyCode::Char('y')).await;
+    harness.settle().await;
+    assert!(harness.app.asked().is_none(), "one key, having looked");
+    assert_ne!(
+        harness.tab_colour("chat"),
+        Color::Red,
+        "and the strip stops saying otherwise"
+    );
+}
+
 #[tokio::test]
 async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
     // an `amend` that rewrites a tool result carries the replacement in its arguments, and the
@@ -3366,11 +3481,24 @@ async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
     assert!(screen.contains("line 0 of"), "{screen}");
     assert!(!screen.contains("line 79 of"), "{screen}");
 
-    // pgdn moves the arguments rather than the conversation hidden behind them
+    // the question is pinned rather than laid over the screen, so `pgdn` is the conversation's
+    // until somebody moves the keys onto the question - and then it is the arguments'
+    //
+    // note: asserted on a line the panel is the only thing that can be showing. The conversation
+    // behind it echoes the call, which puts the first two lines of the argument on the screen
+    // whatever the panel is scrolled to - and used to be covered over by the box
+    harness.press(KeyCode::PageDown).await;
+    assert!(
+        !harness.screen().contains("line 17 of"),
+        "the arguments did not move: {}",
+        harness.screen()
+    );
+
+    harness.press(KeyCode::Tab).await;
+    assert_eq!(harness.app.focus, Focus::Body);
     harness.press(KeyCode::PageDown).await;
     let screen = harness.screen();
-    assert!(!screen.contains("line 0 of"), "{screen}");
-    assert!(screen.contains("line 20 of"), "{screen}");
+    assert!(screen.contains("line 17 of"), "{screen}");
     // the answers do not move with them
     assert!(screen.contains("[y] once"), "{screen}");
 

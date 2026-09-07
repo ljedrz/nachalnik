@@ -34,9 +34,10 @@ use crate::app::{App, Focus, Going, Overlay, Page, Speaker, Tab};
 ///
 /// note: `pub` for the same reason [`HELP`] is: so that a test can check that what somebody is
 /// told on their first screen is what the keys actually do. It used to open with `tab moves to
-/// the context`, which tab has never done - on the chat tab there is nothing to move the focus
-/// to, so it does nothing at all - and it went on to offer `ctrl+t` for the trace, which is two
-/// presses away rather than one. The first sentence anybody reads was wrong in both halves.
+/// the context`, which tab has never done - on the chat tab it moves the keys onto a waiting
+/// question, and there is nothing else there to move them to - and it went on to offer `ctrl+t`
+/// for the trace, which is two presses away rather than one. The first sentence anybody reads was
+/// wrong in both halves.
 pub const GREETING: &str = "ctrl+t opens the context, and again the trace · alt+1 comes back · \
                             ctrl+p shows the next request · F1 lists the keys";
 
@@ -52,16 +53,18 @@ pub const GREETING: &str = "ctrl+t opens the context, and again the trace · alt
 pub const HELP: &str = "  THE TABS
     ctrl+t              the next one
     alt+1 / 2 / 3 / 4   chat / context / trace / permissions
-    tab                 move between the prompt and the tab, on the last three
+    tab                 move the keys between the prompt and whatever else on
+                        the screen wants them; from a tab that has no prompt,
+                        back to the conversation
 
   ANYWHERE
     ctrl+p              the exact request that would be sent next
-    f1                  this; also ? on a tab that has the focus
+    f1                  this; also ? on any tab but the chat one
     esc                 close this, or stop what is running
     ctrl+c              stop what is running; again to leave
     ctrl+d              leave
 
-  THE PROMPT, which is under every tab
+  THE PROMPT, which is on the chat tab, and wherever an item is being edited
     enter               send
     alt+enter           a new line
     pgup / pgdn         scroll the conversation; where you leave it is where
@@ -73,7 +76,7 @@ pub const HELP: &str = "  THE TABS
     (a message sent while a turn is running waits for the end of it, and
      then gets a turn of its own)
 
-  THE CONTEXT TAB, when it has the focus
+  THE CONTEXT TAB, which has the keys whenever it is open
     up / down, j / k    pick an item
     pgup / pgdn         a screenful at a time
     g / G               the first item / the last
@@ -90,12 +93,12 @@ pub const HELP: &str = "  THE TABS
     left / right        move between those, while one is open
     u / U               undo / redo the last change to the context
 
-  THE TRACE TAB, when it has the focus
+  THE TRACE TAB, which has the keys whenever it is open
     up / down, j / k    read back through it
     pgup / pgdn         a screenful at a time
     g / G               the oldest it still holds / the newest
 
-  THE PERMISSIONS TAB, when it has the focus
+  THE PERMISSIONS TAB, which has the keys whenever it is open
     up / down, j / k    pick a capability, or one of the path rules under them
     g / G               the first / the last
     space               cycle it: ask, then allow, then deny
@@ -104,16 +107,20 @@ pub const HELP: &str = "  THE TABS
     (the line along the bottom says what a shell command can reach, and how
      many subjects are not listed here because nobody has answered about them)
 
-  A TOOL IS WAITING TO RUN
+  A TOOL IS WAITING TO RUN - pinned above the prompt, on the chat tab, which
+  goes red on the tab strip while one is there
+    tab                 answer it; again to go back to the prompt
     y / n               once / no
     esc                 no
-    pgup / pgdn         scroll arguments too long for the box
+    up / down, pgup / pgdn   scroll arguments too long for the panel
     a                   always, for everything the question names - and for
                         the calls already waiting behind it
     i                   the exact JSON, and the tool's own definition
     d                   drop every call it is waiting on, and tell it why
-    (a question that arrives while you are typing waits for you to stop:
-     until then your keys go to the prompt, where you aimed them)
+    (it never takes the keys off you: a question that arrives while you type
+     is a question you keep typing past. Coming back to the chat tab while one
+     is waiting does put the keys on it, because that is what you came for -
+     so you can go and read what it is about, and answer with one key)
 
   COMMANDS
     /help               this; also /?
@@ -266,9 +273,44 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // long line is several rows, and a box sized to the line count would show the last of them
     // and hide the rest
     let inner = frame.area().width.saturating_sub(2) as usize;
-    let input_height = (wrapped_rows(app.input.lines(), inner) as u16).clamp(1, most) + 2;
-    let [body, input, status] = Layout::vertical([
+    // the prompt belongs to the conversation, and to an edit wherever that was started. The three
+    // other tabs are read and operated rather than typed into, and a box there was a mode: every
+    // letter on them was a key or a character depending on where the focus had got to
+    let prompted = app.prompted();
+    let mut input_height = match prompted {
+        true => (wrapped_rows(app.input.lines(), inner) as u16).clamp(1, most) + 2,
+        false => 0,
+    };
+    // pinned above the prompt rather than laid over the middle of the screen, so that everything
+    // the question is about stays reachable while it waits: a question covering the context tab
+    // is a question about item 22 asked with the list of items underneath it
+    let height = frame.area().height;
+    let wanted = match app.tab == Tab::Chat {
+        true => question_rows(app, inner),
+        false => 0,
+    };
+    // what it may have is everything except the prompt, the status line and enough of the
+    // conversation to see what the question is about - and if that is not enough to answer with,
+    // the prompt gives way first and the conversation second. An overlay owned the whole screen
+    // and never had to choose; pinned, the question is sharing one, and a question somebody
+    // cannot answer is worse than either a prompt or a transcript they cannot see
+    let mut question = 0;
+    if wanted != 0 {
+        let spare = |taken: u16| height.saturating_sub(taken + 1 + MIN_CHAT);
+        let enough = MIN_QUESTION.min(wanted);
+
+        question = wanted.min(spare(input_height));
+        if question < enough {
+            input_height = 0;
+            question = wanted.min(spare(0));
+        }
+        if question < enough {
+            question = wanted.min(height.saturating_sub(BESIDES));
+        }
+    }
+    let [body, asked, input, status] = Layout::vertical([
         Constraint::Min(3),
+        Constraint::Length(question),
         Constraint::Length(input_height),
         Constraint::Length(1),
     ])
@@ -279,7 +321,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // disagree about the same request
     let going = app.going();
     draw_body(frame, app, &going, body);
-    draw_input(frame, app, input);
+    if question != 0 {
+        // what the frame could really scroll to is what the keys work against from here on, the
+        // same write-back the overlay does
+        app.question_scroll = draw_question(frame, app, asked);
+    }
+    if prompted {
+        draw_input(frame, app, input);
+    }
     draw_status(frame, app, &going, status);
 
     if app.overlay.is_some() {
@@ -287,9 +336,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         // Without the write-back, `scroll` counts presses rather than rows: ten pages down past
         // the end of a short body is ten pages back up before anything moves
         let at = draw_overlay(frame, app);
-        if let Some(Overlay::Text { scroll, .. } | Overlay::Permission { scroll }) =
-            &mut app.overlay
-        {
+        if let Some(Overlay::Text { scroll, .. }) = &mut app.overlay {
             *scroll = at;
         }
     }
@@ -318,7 +365,10 @@ fn faint() -> Style {
 
 /// The window: a strip of tabs, and whichever one is open filling everything under it.
 fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) {
-    let focused = app.focus == Focus::Body;
+    // the chat tab has a second thing the keys can be on, and only while a question is pinned
+    // there; on the other three, `Focus::Body` is the only place they ever are
+    let asked = app.asked().is_some();
+    let focused = app.focus == Focus::Body && !(app.tab == Tab::Chat && asked);
 
     let mut strip = Vec::new();
     for tab in Tab::ALL {
@@ -327,12 +377,18 @@ fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) {
         }
         // the open tab looks open whatever the keys are doing; which half of the window they are
         // talking to is the border's job, and having both say it left `chat` looking shut,
-        // because the prompt always has the focus there
+        // because the prompt has the focus there unless a question has been given it
+        //
+        // note: and `chat` goes red while a tool is waiting to be told whether it may run. The
+        // question is pinned there rather than laid over the screen, which is what makes it
+        // possible to walk away from it and look at what it is about - so something has to say,
+        // from the other three tabs, that walking back is what the session is waiting for
         strip.push(Span::styled(
             format!(" {} ", tab.name()),
-            match tab == app.tab {
-                true => Style::default().fg(Color::Yellow).bold(),
-                false => quiet(),
+            match (tab == app.tab, tab == Tab::Chat && asked) {
+                (_, true) => Style::default().fg(Color::Red).bold(),
+                (true, _) => Style::default().fg(Color::Yellow).bold(),
+                _ => quiet(),
             },
         ));
     }
@@ -1309,27 +1365,24 @@ fn draw_overlay(frame: &mut Frame, app: &App) -> usize {
             page,
             scroll,
         }) => panel(frame, &format!(" {title} "), pages, *page, *scroll, 100, 90),
-        Some(Overlay::Permission { scroll }) => draw_permission(frame, app, *scroll),
         None => 0,
     }
 }
 
-/// A tool is waiting to be told whether it may run.
+/// What a waiting question is made of, at the width it will be drawn at.
 ///
 /// note: three regions rather than one paragraph, because the arguments are the only part with no
 /// bound on it. Sized as one block, an `amend` carrying eighty lines of replacement text pushed
-/// the answers off the bottom of the screen and left the box with no way to read the rest and no
-/// way to see that `y` was still a key - the question was unanswerable by anything except a guess.
-/// The answers are pinned to the bottom, and the arguments scroll between them and the header.
-///
-/// Returns the offset the arguments were really drawn at.
-fn draw_permission(frame: &mut Frame, app: &App, scroll: usize) -> usize {
-    let Some(request) = app.kernel.pending_permissions().into_iter().next() else {
-        return 0;
-    };
+/// the answers off the bottom and left the panel with no way to read the rest and no way to see
+/// that `y` was still a key - the question was unanswerable by anything except a guess. The
+/// answers are pinned to the bottom, and the arguments scroll between them and the header.
+fn question_parts(
+    app: &App,
+    columns: usize,
+    cut: bool,
+) -> Option<(Vec<String>, Vec<String>, Vec<String>)> {
+    let request = app.asked()?;
     let waiting = app.kernel.pending_permissions().len();
-    /// How wide the box is, when the screen has that much to give it.
-    const WIDTH: u16 = 72;
 
     // what the policy will actually consult, not what the tool declared: `shell` reaching for the
     // network and `read` handed a path there is a rule about are both judged against something the
@@ -1343,60 +1396,118 @@ fn draw_permission(frame: &mut Frame, app: &App, scroll: usize) -> usize {
         .collect();
     // two lines of options rather than one that wraps wherever it happens to run out: the answers
     // on the first, and the two that are about looking closer or giving up on the lot on the
-    // second. `more` joins them when there are arguments below the fold, rather than going on a
-    // line of its own: a line of its own costs the arguments two rows on the screen that made it
-    // necessary in the first place
-    let answers = |more: &str| {
-        format!(
-            "[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}{more}{}",
-            judged.join(" and "),
-            match waiting > 1 {
-                true => "drop them all",
-                false => "drop it",
-            },
-            match waiting > 1 {
-                true => format!("\n\n{} more after this one", waiting - 1),
-                false => String::new(),
-            }
-        )
-    };
+    // second. The `pgup / pgdn` joins them when there are arguments below the fold, rather than
+    // going on a line of its own: a line of its own costs the arguments two rows on the screen
+    // that made it necessary in the first place
+    let answers = format!(
+        "[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}{}{}",
+        judged.join(" and "),
+        match waiting > 1 {
+            true => "drop them all",
+            false => "drop it",
+        },
+        match cut {
+            true => "   pgup / pgdn for the rest",
+            false => "",
+        },
+        match waiting > 1 {
+            true => format!("\n\n{} more after this one", waiting - 1),
+            false => String::new(),
+        }
+    );
 
-    // wrapped once, at the width the box will really have: measuring at a fixed 68 and drawing at
-    // whatever the screen allowed was already off by however much a narrow terminal took away
-    let style = Style::default().fg(Color::Yellow);
-    let block = Block::bordered()
-        .title(" a tool wants to run ")
-        .border_style(style)
-        .padding(ratatui::widgets::Padding::horizontal(1));
-    let columns = centred(frame.area(), WIDTH, 0).width.saturating_sub(4) as usize;
     let head = wrapped(
         &format!("{} wants: {}\n", request.tool, judged.join(", ")),
         columns,
         "",
     );
-    // the arguments, and then what the ones naming context items actually are: a question about
-    // eliding item 22 is unanswerable while the box asking it covers the list saying what 22 is
+    // the arguments, and then what the ones naming context items actually are. This used to be the
+    // only way to know: the question was a box over the middle of the screen, so a question about
+    // eliding item 22 was unanswerable while the thing asking it covered the list saying what 22
+    // is. It is a convenience now - the context tab is a keystroke away and stays that way - and
+    // still worth having, because the answer is usually right here
     let mut shown = readable(&request.args);
     let about = app.about(&request);
     if !about.is_empty() {
         shown.push_str(&format!("{}\n", about.join("\n")));
     }
-    let args = wrapped(&shown, columns, "");
-    let mut foot = wrapped(&answers(""), columns, "");
 
-    // as tall as the question is, rather than a fixed box with a hole in it - but no taller than
-    // the screen, and it is `centred` that decides that, so what it would cut is worked out here
-    // rather than discovered as a missing line
-    let wanted = (head.len() + args.len() + foot.len()) as u16 + 2;
-    if wanted > frame.area().height {
-        foot = wrapped(&answers("   pgup / pgdn for the rest"), columns, "");
+    Some((
+        head,
+        // `readable` puts a blank line after every field, so the last of them is a row of nothing
+        // at the bottom of the panel - and a row of nothing that does not fit is a panel saying
+        // there is more to read and then paging down to a blank
+        trimmed(wrapped(&shown, columns, "")),
+        wrapped(&answers, columns, ""),
+    ))
+}
+
+/// The same lines, without the empty ones at the end.
+fn trimmed(mut lines: Vec<String>) -> Vec<String> {
+    while lines.last().is_some_and(|line| line.trim().is_empty()) {
+        lines.pop();
     }
-    let area = centred(frame.area(), WIDTH, wanted);
+
+    lines
+}
+
+/// The fewest rows a question is drawn in, whatever a short screen would rather give it: two of
+/// border, one of header and the two the answers are on.
+const MIN_QUESTION: u16 = 7;
+
+/// What has to be left over when a question is taking the last of the screen: a row of the
+/// conversation, and the status line.
+const BESIDES: u16 = 2;
+
+/// How much of the conversation a question leaves alone while there is any choice about it. The
+/// question is about something that was said up there, which is the whole reason it is pinned
+/// below it rather than laid over it.
+const MIN_CHAT: u16 = 5;
+
+/// How many rows the pinned question would like, or `0` when nothing is being asked. What it
+/// actually gets is [`draw`]'s to decide, and is less on a screen with no room for it.
+fn question_rows(app: &App, columns: usize) -> u16 {
+    let Some((head, args, foot)) = question_parts(app, columns.saturating_sub(2), false) else {
+        return 0;
+    };
+
+    (head.len() + args.len() + foot.len()) as u16 + 2
+}
+
+/// A tool is waiting to be told whether it may run, pinned above the prompt.
+///
+/// Returns the offset the arguments were really drawn at.
+fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
+    let columns = area.width.saturating_sub(4) as usize;
+    let Some((head, args, foot)) = question_parts(app, columns, false) else {
+        return 0;
+    };
+
+    // yellow when the keys are on it, so that "this is answerable right now" and "this is waiting
+    // for you to come back" are not the same picture. The title says how to reach it, the way the
+    // prompt's does when the keys are somewhere else
+    let asking = app.focus == Focus::Body && app.tab == Tab::Chat;
+    let style = match asking {
+        true => Style::default().fg(Color::Yellow),
+        false => Style::default().fg(Color::Red),
+    };
+    let block = Block::bordered()
+        .title(match asking {
+            true => " a tool wants to run ".to_owned(),
+            false => " a tool wants to run · tab ".to_owned(),
+        })
+        .border_style(style)
+        .padding(ratatui::widgets::Padding::horizontal(1));
     let inner = block.inner(area);
 
-    // the answers get their rows first and the header what is left over, because a box too small
+    // the answers get their rows first and the header what is left over, because a panel too small
     // for both is still answerable and is not still readable; the arguments get the remainder,
     // and are the only region that can be asked to show less than it holds
+    let cut = (head.len() + args.len() + foot.len()) as u16 + 2 > area.height;
+    let foot = match cut {
+        true => question_parts(app, columns, true).map_or(foot, |(_, _, it)| it),
+        false => foot,
+    };
     let bottom = (foot.len() as u16).min(inner.height);
     let top = (head.len() as u16).min(inner.height - bottom);
     let [above, middle, below] = Layout::vertical([
@@ -1405,7 +1516,9 @@ fn draw_permission(frame: &mut Frame, app: &App, scroll: usize) -> usize {
         Constraint::Length(bottom),
     ])
     .areas(inner);
-    let at = scroll.min(args.len().saturating_sub(middle.height as usize));
+    let at = app
+        .question_scroll
+        .min(args.len().saturating_sub(middle.height as usize));
 
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);

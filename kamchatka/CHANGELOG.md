@@ -7,6 +7,41 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- A permission question is pinned above the prompt on the chat tab instead of being an overlay
+  over the middle of the screen, and the prompt is on the chat tab only. The two go together: a
+  question was modal, so while one was up nothing else worked, and being asked whether `amend` may
+  elide item 22 meant deciding about item 22 with the box asking the question covering the list
+  that says what item 22 is. `App::about` exists because of that - it copies the items' labels into
+  the question, because they could not be reached any other way - and it is a convenience now
+  rather than the only route. The chat tab goes red on the strip while one waits, so the other
+  three say what the session is waiting for.
+
+  Dropping the prompt from the other three tabs is what makes the keys unambiguous. It was under
+  all four so that a message could be sent from anywhere, and the cost was a mode: every letter on
+  those tabs was a key or a character depending on where the focus had got to, and `space` after
+  sending a message typed a space instead of cycling the row somebody was looking at. Now
+  context/trace/permissions have no prompt and no mode, `tab` from any of them is the way back to
+  typing, and `Focus::Body` on the chat tab means the pinned question.
+
+  The settling window is gone with it, and so is the failure it patched. A question used to take
+  every key on arrival and hand back the ones that were not answers, with a 300ms timer deciding
+  which - one live session granted `shell` for the rest of it with the `a` of "what". A question
+  now appears without asking for the keys at all, so a letter typed at the prompt is a letter,
+  whatever is waiting above it. `tab` moves them to it; so does coming back to the chat tab while
+  one waits, because that is what the trip was for - go and read the item, come back, one key.
+
+  It is also one less thing to keep in step: the panel is drawn from `pending_permissions()` every
+  frame rather than from an `Overlay::Permission` that had to be opened and closed, so it cannot be
+  up with nothing to answer or absent with something waiting.
+
+  This takes public API away, so the next release is a minor: `app::SETTLING` and `App::open` are
+  gone, and so is the `Overlay::Permission` variant. `App::asked`, `App::prompted` and
+  `App::question_scroll` are what replaced them. Nothing in this workspace sits above `kamchatka`,
+  so no other crate has to follow and nothing is forced today - but a `0.5.1` published with this
+  in it would be resolved by every `^0.5` requirement out there and break at the match.
+
 ### fixed
 
 - `Trim` does not ask for a result that is pinned. `ContextState::sends_content` says yes to a

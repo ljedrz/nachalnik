@@ -59,9 +59,10 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 
 ## 👉 four tabs, one window
 
-<kbd>ctrl+t</kbd> for the next one, or <kbd>alt+1</kbd> … <kbd>alt+4</kbd> directly. The prompt and
-the status line are under all of them, so a message can be sent from anywhere and the budget is
-always in view.
+<kbd>ctrl+t</kbd> for the next one, or <kbd>alt+1</kbd> … <kbd>alt+4</kbd> directly. The status line
+is under all of them, so the budget is always in view. The prompt is not: it belongs to the
+conversation, and the other three tabs are read and operated rather than typed into. <kbd>tab</kbd>
+is the way back to it from any of them.
 
 ```text
  asking ••• 42s · gemini-3.6-flash @ generativelanguage… · ~13,204 tokens, 10.3% (128k)
@@ -213,8 +214,9 @@ somebody spent deciding whether to allow a shell. That is the question people br
 here it is answered without subtracting a column of timestamps.
 
 It is the same stream `/save` writes to a `.jsonl`, and reading it is how you find out that a
-permission question became a decision became a state change became a call. <kbd>tab</kbd> then
-<kbd>up</kbd> reads back through it.
+permission question became a decision became a state change became a call. <kbd>up</kbd> reads
+back through it — the keys are already on the tab, because there is no prompt on it to share them
+with.
 
 The one thing it does not draw a line per is a *fragment*. The model's streamed text and a running
 command's output arrive dozens of times a second, and a line each would push the rest of the trace
@@ -282,7 +284,7 @@ seconds earlier was unreadable until the turn ended; now nothing but your own me
 and the line along the bottom says how much has arrived underneath. <kbd>ctrl+e</kbd> goes back to
 following, and so does scrolling down to the end. <kbd>ctrl+home</kbd> and <kbd>ctrl+end</kbd> are
 the two ends of it in one key; control is held because <kbd>home</kbd> and <kbd>end</kbd> belong to
-the prompt, which is under every tab, and a line editor whose <kbd>home</kbd> moved something else
+the prompt, and a line editor whose <kbd>home</kbd> moved something else
 would be a trap.
 
 **Nothing said is shortened to fit.** However long an answer is, the whole of it is on the chat tab
@@ -383,8 +385,14 @@ person and the model read the same reason instead of the person reading it alone
 
 ### the question itself
 
+It is pinned above the prompt on the **chat** tab, rather than laid over the middle of the screen:
+
 ```text
-┌ a tool wants to run ─────────────────────────────────────────────────┐
+┌ chat │ context │ trace │ permissions ────────────────────────────────┐
+│> check whether example.com is up                                     │
+│                                                                      │
+└───────── alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions ┘
+┌ a tool wants to run · tab ───────────────────────────────────────────┐
 │ shell wants: shell, network                                          │
 │                                                                      │
 │ cmd: curl -s https://example.com                                     │
@@ -392,7 +400,17 @@ person and the model read the same reason instead of the person reading it alone
 │ [y] once   [a] always, for shell and network   [n] no                │
 │ [i] the exact JSON   [d] drop it                                     │
 └──────────────────────────────────────────────────────────────────────┘
+┌ you ─────────────────────────────────────────────────────────────────┐
+│ ask for something, or /help                                          │
+└──────────────────────────────────────────────────────────────────────┘
 ```
+
+**A question you cannot investigate is a question you cannot answer.** It used to be a box over the
+middle of the screen, and while it was up nothing else worked — so being asked whether `amend` may
+elide item 22 meant deciding about item 22 with the list saying what item 22 *is* underneath the
+box asking. Pinned, it takes none of that away: <kbd>ctrl+t</kbd> to the context tab, read the
+item, come back, answer. The **chat** tab goes red on the strip while one is waiting, so the other
+three tabs say what the session is waiting for.
 
 It names **everything the policy consulted**, not just what the tool declared, and <kbd>a</kbd>
 answers for all of it. That includes any calls already queued behind this one: a model that asks
@@ -405,12 +423,17 @@ with <kbd>pgup</kbd> and <kbd>pgdn</kbd> moving them; the answers stay where the
 carrying a rewritten tool result is as long as the result was, and a question whose answers had
 been pushed off the bottom of the screen is one nobody can answer.
 
-Typing does not answer it. A question arrives on its own schedule, in the middle of whatever you
-happen to be typing, and its keys are ordinary letters — `a` grants a capability for the rest of
-the session and is also the third letter of "what". So a question waits for a pause in the typing
-before it starts taking keys as answers, and until then your letters go where you aimed them: into
-the prompt. <kbd>enter</kbd> sends what is in the prompt, and it waits, exactly like a message sent
+Typing does not answer it, and it never takes the keys off you. A question arrives on its own
+schedule, in the middle of whatever you happen to be typing, and its keys are ordinary letters —
+`a` grants a capability for the rest of the session and is also the third letter of "what", which
+is how one live session granted `shell` for good. So the question appears without asking for the
+keys, and <kbd>tab</kbd> is how it gets them. Your letters go where you aimed them: into the
+prompt. <kbd>enter</kbd> sends what is in the prompt, and it waits, exactly like a message sent
 into a running turn does.
+
+Coming *back* to the chat tab while a question is waiting does put the keys on it — that is what
+the trip was for. So the whole gesture is: <kbd>ctrl+t</kbd>, look at the thing, <kbd>alt+1</kbd>,
+<kbd>y</kbd>.
 
 ## 🐢 one transition at a time
 
