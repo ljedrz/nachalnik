@@ -22,7 +22,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{
     app::{App, Focus, Tab},
     provider::OpenAiCompatible,
-    tools::{Careful, Subject},
+    tools::{Careful, Limits, Subject},
     ui,
 };
 use nachalnik::{
@@ -101,7 +101,10 @@ fn live() -> Option<(
 
     let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
 
-    Some((App::new(kernel, policy, provider, outcomes), finished))
+    Some((
+        App::new(kernel, policy, provider, Limits::default(), outcomes),
+        finished,
+    ))
 }
 
 macro_rules! live {
@@ -514,12 +517,12 @@ fn gemini() -> Option<(
     }
     kernel.set_policy(policy.clone());
     kernel.add_tool(Arc::new(Secret));
-    let introspect = kamchatka::introspect::install(&kernel);
+    let introspect = kamchatka::introspect::install(&kernel, Limits::default());
 
     let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
 
     Some((
-        App::new(kernel, policy, provider, outcomes),
+        App::new(kernel, policy, provider, Limits::default(), outcomes),
         introspect,
         finished,
     ))

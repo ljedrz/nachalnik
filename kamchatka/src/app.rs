@@ -23,7 +23,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{
     provider::Endpoint,
     sandbox::Confinement,
-    tools::{Careful, Subject},
+    tools::{Careful, Limits, Subject},
     ui::thousands,
 };
 
@@ -246,6 +246,12 @@ pub struct App {
     pub policy: Arc<Careful>,
     /// The provider, for switching models - whichever dialect it speaks.
     pub provider: Arc<dyn Endpoint>,
+    /// How much of each tool's output the model is shown, which `/limit` changes.
+    ///
+    /// note: the same handle the tools were built with, so `/limit` changes the number they will
+    /// actually declare on the next request. Holding a second one would be a command that reports
+    /// success and does nothing.
+    pub limits: Limits,
     /// What items used to say, oldest first, for the ones that have been rewritten.
     ///
     /// note: kept here rather than in the kernel because the kernel deliberately does not keep
@@ -334,6 +340,7 @@ impl App {
         kernel: Kernel,
         policy: Arc<Careful>,
         provider: Arc<dyn Endpoint>,
+        limits: Limits,
         outcomes: UnboundedSender<Outcome>,
     ) -> Self {
         let mut input = TextArea::default();
@@ -350,6 +357,7 @@ impl App {
             kernel,
             policy,
             provider,
+            limits,
             versions: BTreeMap::new(),
             introspect: None,
             // the terminal's own default, for a screen test that never spawns anything; the
@@ -1383,6 +1391,23 @@ impl App {
         }
     }
 
+    /// What every item is holding out of the next request, and how many of them there are.
+    ///
+    /// note: [`Context::tokens_withheld`](nachalnik::Context::tokens_withheld) answers this from
+    /// the item states, which is the right answer to a question about states and the wrong one
+    /// here: it counts an excluded, archived or elided item and misses one the projector repaired
+    /// away, because that one's state says it is sending. `/budget` and the context tab have to
+    /// agree about this figure or they are two accounts of one request again.
+    fn withheld(&self, going: &Going) -> (usize, usize) {
+        self.kernel
+            .items()
+            .iter()
+            .filter(|item| !going.sends_content(item))
+            .fold((0, 0), |(tokens, count), item| {
+                (tokens + item.tokens, count + 1)
+            })
+    }
+
     /// The context items a pending call names, described the way a row on the context tab is.
     ///
     /// note: `ids: [22]` is a true account of the arguments and a useless one to be asked about.
@@ -1991,6 +2016,11 @@ impl App {
                     .join("\n");
                 self.preview("what the model is offered", body);
             }
+            // note: the answer to a result the model has just reported as cut off. It changes the
+            // *next* call rather than recovering that one, and does not need to recover it: the
+            // whole of a shortened result is archived beside the copy the model was shown, and
+            // `space` on the context tab sends that instead
+            "limit" => self.limit(rest),
             "budget" => self.budget(),
             "seams" => self.seams(),
             "introspect" => self.introspect(),
@@ -2212,7 +2242,10 @@ impl App {
                 );
             }
             None => {
-                self.introspect = Some(crate::introspect::install(&self.kernel));
+                self.introspect = Some(crate::introspect::install(
+                    &self.kernel,
+                    self.limits.clone(),
+                ));
                 self.say(
                     Speaker::Note,
                     "`introspect` and `amend` go into the next request: the model can now read its own \
@@ -2320,23 +2353,94 @@ impl App {
         self.preview("what is plugged into the runtime", body);
     }
 
+    /// Reports how much of each tool's output the model is shown, or changes one.
+    ///
+    /// note: this exists because of a session that asked a copy of itself three questions and got
+    /// back the copy's deliberation with all three answers cut off the end. The limit was right
+    /// for the four other things that tool does and wrong for that one, and there was no way to
+    /// say so without restarting - so a person watching a result come back shortened had the
+    /// choice of living with it or losing the session.
+    ///
+    /// note: it changes the next call, not the one already shortened, and the message says which.
+    /// Nothing is lost either way: the whole of a shortened result is archived beside the copy the
+    /// model was shown, and one keystroke on the context tab sends it instead.
+    fn limit(&mut self, rest: &str) {
+        let table = |limits: &Limits| {
+            limits
+                .all()
+                .into_iter()
+                .map(|(tool, bytes)| format!("{tool:<14}{:>9} bytes", thousands(bytes)))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        let mut words = rest.split_whitespace();
+        let (Some(tool), Some(bytes)) = (words.next(), words.next()) else {
+            if !rest.trim().is_empty() {
+                self.say(
+                    Speaker::Error,
+                    "`/limit <tool> <bytes>`, or `/limit` on its own to see them",
+                );
+                return;
+            }
+            let body = format!(
+                "{}\n\nhow much of each tool's output the model is shown. `/limit <tool> <bytes>` \
+                 changes one, from the next call onwards; the whole of anything already shortened \
+                 is archived beside it on the context tab, one `space` from being sent instead.",
+                table(&self.limits)
+            );
+            self.preview("the output limits", body);
+            return;
+        };
+
+        let Ok(bytes) = bytes.parse::<usize>() else {
+            self.say(
+                Speaker::Error,
+                format!("`{bytes}` is not a number of bytes"),
+            );
+            return;
+        };
+        // a limit of nothing is a tool whose every answer is a marker, which is not a limit
+        // anybody means; dropping the tool is what "say nothing" is spelled
+        if bytes == 0 {
+            self.say(
+                Speaker::Error,
+                format!(
+                    "0 would send the model nothing but a truncation marker; `/tools drop {tool}` \
+                     is how a tool stops being offered"
+                ),
+            );
+            return;
+        }
+
+        match self.limits.set(tool, bytes) {
+            Some(was) => self.say(
+                Speaker::Note,
+                format!(
+                    "`{tool}` was cut at {} bytes and is now cut at {}, from its next call \
+                     onwards",
+                    thousands(was),
+                    thousands(bytes)
+                ),
+            ),
+            None => self.say(
+                Speaker::Error,
+                format!(
+                    "nothing here limits `{tool}`'s output; the ones that are limited are:\n{}",
+                    table(&self.limits)
+                ),
+            ),
+        }
+    }
+
     fn budget(&mut self) {
         let budget = self.kernel.budget();
-        let withheld = self
-            .kernel
-            .with_context(|context| context.tokens_withheld());
-        // note: `sends_content` rather than `is_projected`, because the figure beside it is
-        // `tokens_withheld` and that is the question *it* answers. An elided item is projected -
-        // as a marker - and is not sending what it holds, so counting the ones that are not
-        // projected put a count of nothing beside nine thousand tokens: the two halves of one
-        // sentence answering two different questions, in the command whose whole job is to say
-        // what the next request costs and what it does not
-        let out = self
-            .kernel
-            .items()
-            .iter()
-            .filter(|item| !item.state.sends_content())
-            .count();
+        // note: both figures from `Going`, and both from the same one, because they are the two
+        // halves of one sentence. `tokens_withheld` answers this from the states, which counts an
+        // excluded, archived or elided item and misses one the projector repaired away - and that
+        // one is holding as much as any of them. Counted here, the sentence is true of all four
+        // ways of not being sent, and the context tab is drawing from the same answer
+        let (withheld, out) = self.withheld(&self.going());
 
         let mut lines = vec![format!(
             "the next request: ~{} tokens, {} of context and {} of tool definitions",

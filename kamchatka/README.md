@@ -454,6 +454,12 @@ next request onward, which is one call on the kernel and no restart. When a mode
 the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* call it is waiting on
 with one reason — and the model is told, rather than left waiting on calls that silently vanished.
 
+So is how much of each tool's output the model is shown. `/limit` lists it, `/limit read 64000`
+changes one from its next call onward. The result that has *already* been cut is recovered a
+different way: its whole is archived beside the copy the model was given, and <kbd>space</kbd> on
+it sends that instead — the projector answers one call with one result, so the whole takes the
+call and the short copy drops out.
+
 ## 🔎 letting the agent read and manage its own context
 
 `--introspect`, or `/introspect` at any point, offers two more tools. They are off by default,

@@ -122,6 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         readable: Vec::new(),
         confined: true,
     };
+    let limits = tools::Limits::new();
     for tool in tools::builtin(
         tools::Shell {
             policy: policy.clone(),
@@ -129,15 +130,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             extra: reach.extra.clone(),
             readable: reach.readable.clone(),
             confiner: confinement.is_confined().then(|| program.clone()),
+            limits: limits.clone(),
         },
         reach,
+        limits.clone(),
     ) {
         kernel.add_tool(tool);
     }
     // the control arm of a comparison is the same model, on the same task, with no way to see or
     // change what it is carrying: `INTROSPECT=off` is what takes its hands away
     let introspecting = std::env::var("INTROSPECT").as_deref() != Ok("off");
-    let _introspect = introspecting.then(|| introspect::install(&kernel));
+    let _introspect = introspecting.then(|| introspect::install(&kernel, limits.clone()));
     eprintln!(
         "shell: {confinement}, model: {model}, budget: {budget}, ordered: {ordered}, \
          introspect: {introspecting}"

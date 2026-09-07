@@ -130,6 +130,8 @@ pub const HELP: &str = "  THE TABS
     /seams              what is plugged into each of the runtime's six parts
     /tools              what the model is offered
     /tools drop ID      stop offering one of them, from now on
+    /limit              how much of each tool's output the model is shown
+    /limit ID BYTES     change one, from its next call onwards
     /introspect         offer the model the two tools that read and manage its own
                         context, or stop offering them
     /policy             open the permissions tab; also /permissions

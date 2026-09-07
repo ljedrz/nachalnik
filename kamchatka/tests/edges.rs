@@ -12,7 +12,7 @@ use std::{sync::Arc, time::Duration};
 use kamchatka::{
     app::{App, Overlay, Page, Speaker, Tab},
     provider::OpenAiCompatible,
-    tools::Careful,
+    tools::{Careful, Limits},
     ui,
 };
 use nachalnik::{
@@ -31,7 +31,7 @@ fn app() -> App {
     std::mem::forget(_keep);
 
     let provider = Arc::new(OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""));
-    let mut app = App::new(kernel, policy, provider, outcomes);
+    let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
 
     app.say(Speaker::User, "what does this do?");
     app.say(
@@ -85,7 +85,7 @@ fn a_session_with_nothing_in_it_draws_at_every_size() {
     let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
     std::mem::forget(keep);
     let provider = Arc::new(OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""));
-    let mut app = App::new(kernel, policy, provider, outcomes);
+    let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
 
     for tab in Tab::ALL {
         app.show(tab);
@@ -211,7 +211,7 @@ async fn a_permission_question_draws_at_every_size() {
     let (outcomes, _keep) = tokio::sync::mpsc::unbounded_channel();
     std::mem::forget(_keep);
     let provider = Arc::new(OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""));
-    let mut app = App::new(kernel, policy, provider, outcomes);
+    let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
 
     app.kernel.push(ContextItem::user("read the env"));
     let _ = tokio::time::timeout(Duration::from_secs(5), app.kernel.turn()).await;
@@ -253,7 +253,7 @@ async fn every_size_with_text_that_is_not_ascii() {
     let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
     std::mem::forget(keep);
     let provider = Arc::new(OpenAiCompatible::new("模型", "http://127.0.0.1:1", ""));
-    let mut app = App::new(kernel, policy, provider, outcomes);
+    let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
 
     app.kernel.push(ContextItem::user(AWKWARD));
     app.kernel
@@ -329,7 +329,7 @@ async fn every_key_at_every_tab_with_nothing_to_act_on() {
                 let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
                 std::mem::forget(keep);
                 let provider = Arc::new(OpenAiCompatible::new("none", "http://127.0.0.1:1", ""));
-                App::new(kernel, policy, provider, outcomes)
+                App::new(kernel, policy, provider, Limits::default(), outcomes)
             }
             false => app(),
         };
@@ -509,7 +509,7 @@ fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
             "https://generativelanguage.googleapis.com/v1beta/openai",
             "",
         ));
-        let mut app = App::new(kernel, policy, provider, outcomes);
+        let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
 
         let mut terminal = Terminal::new(TestBackend::new(width, 12)).expect("a backend");
         terminal

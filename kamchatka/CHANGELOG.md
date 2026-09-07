@@ -73,6 +73,27 @@ minor bump may break you.
   drains it first now, so it sits with that turn; the tick keeps draining it for the notices that
   belong to no turn.
 
+### added
+
+- `/limit`, which is how much of each tool's output the model is shown - and now something a
+  person can change. `/limit` lists the table; `/limit read 64000` moves one, from that tool's
+  next call onward. `Tool::spec` is called afresh for every request, so it lands without a
+  restart, the same property `/tools drop` leans on; the limits live in one shared `Limits` table
+  that the tools declaring them and the command changing them both hold, because a second copy is
+  a command that reports success and does nothing.
+
+  It exists because of a session that asked a copy of itself three questions and got back the
+  copy's deliberation with all three answers cut off the end. 32,000 bytes is right for the four
+  other things `introspect` does and wrong for a fork, and there was no way to say so without
+  restarting - so watching a result arrive shortened left a choice between living with it and
+  losing the session.
+
+  It changes the *next* call and says so, because the one already shortened is recovered a
+  different way and always could be: its whole is archived beside the copy the model was shown,
+  and one `space` on the context tab sends that instead. That is safe rather than merely possible,
+  because the projector answers one call with one result: the whole claims the call and the short
+  copy drops out with a repair line saying why.
+
 ### changed
 
 - An item's page says why it is in the context, which is now a sentence that exists. `enter` on a

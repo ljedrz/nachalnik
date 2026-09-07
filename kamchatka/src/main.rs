@@ -219,6 +219,8 @@ async fn terminal() -> Result<()> {
         true => sandbox::Confinement::Unsupported,
         false => sandbox::available(&program),
     };
+    // one table, shared by the tools that declare a limit and the `/limit` that changes them
+    let limits = tools::Limits::new();
     let reach = sandbox::Reach {
         workdir: std::env::current_dir()?,
         extra: args.sandbox_allow.clone(),
@@ -236,8 +238,10 @@ async fn terminal() -> Result<()> {
             // and a permissions tab that says so - rather than one whose every command comes back
             // with an error nobody can account for
             confiner: confinement.is_confined().then(|| program.clone()),
+            limits: limits.clone(),
         },
         reach,
+        limits.clone(),
     ) {
         kernel.add_tool(tool);
     }
@@ -245,7 +249,9 @@ async fn terminal() -> Result<()> {
     // the handle the two tools reach the kernel through, which `App` then holds so that `/introspect`
     // can turn them off again; see `introspect::install` for why it is a weak handle to something out
     // here rather than a kernel the tools hold
-    let introspect = args.introspect.then(|| introspect::install(&kernel));
+    let introspect = args
+        .introspect
+        .then(|| introspect::install(&kernel, limits.clone()));
 
     // the servers have to outlive this scope: dropping one takes its child process, and its
     // tools, with it
@@ -266,7 +272,7 @@ async fn terminal() -> Result<()> {
     }
 
     let (outcomes, mut finished) = mpsc::unbounded_channel();
-    let mut app = App::new(kernel, policy, provider, outcomes);
+    let mut app = App::new(kernel, policy, provider, limits, outcomes);
     app.confinement = confinement;
     app.introspect = introspect;
     match args.resume.is_some() {

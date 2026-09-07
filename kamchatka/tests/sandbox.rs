@@ -19,7 +19,7 @@ use std::{
 
 use kamchatka::{
     sandbox::{Confinement, Sandbox, available},
-    tools::{Careful, Shell},
+    tools::{Careful, Limits, Shell},
 };
 use nachalnik::{
     Config, ContextItem, ContextKind, Kernel, ModelResponse,
@@ -405,6 +405,7 @@ fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse
     kernel.set_provider(Arc::new(ScriptedProvider::new(script)));
     kernel.set_policy(Arc::new(AllowAll));
     kernel.add_tool(Arc::new(Shell {
+        limits: Limits::default(),
         policy: Arc::new(Careful::new()),
         workdir: workdir.to_path_buf(),
         extra: Vec::new(),

@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use kamchatka::introspect;
+use kamchatka::{introspect, tools::Limits};
 use nachalnik::{
     Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, Role, ToolCallId,
     test::{AllowAll, ScriptedProvider, call},
@@ -28,7 +28,7 @@ fn agent(
     let provider = Arc::new(ScriptedProvider::new(script));
     kernel.set_provider(provider.clone());
     kernel.set_policy(Arc::new(AllowAll));
-    let anchor = introspect::install(&kernel);
+    let anchor = introspect::install(&kernel, Limits::default());
 
     (kernel, provider, anchor)
 }

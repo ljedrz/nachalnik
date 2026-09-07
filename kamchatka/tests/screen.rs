@@ -16,7 +16,7 @@ use kamchatka::{
     app::{App, Outcome, Speaker, Tab},
     provider::OpenAiCompatible,
     sandbox::Confinement,
-    tools::{Careful, Subject},
+    tools::{Careful, Limits, Subject},
     ui,
 };
 use nachalnik::{
@@ -60,7 +60,7 @@ impl Harness {
         let provider = Arc::new(OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""));
 
         Self {
-            app: App::new(kernel, policy, provider, outcomes),
+            app: App::new(kernel, policy, provider, Limits::default(), outcomes),
             events,
             finished,
         }
@@ -978,7 +978,7 @@ async fn the_help_lists_the_keys_that_exist() {
     // and every form `amend`'s schema names to a model is one the selector language really takes.
     // A schema that offered a form the parser refuses would be teaching a model to make a call
     // that comes back as an error, which is the one thing a description is there to prevent
-    let offered = kamchatka::introspect::install(&harness.app.kernel);
+    let offered = kamchatka::introspect::install(&harness.app.kernel, Limits::default());
     let amend = harness.app.kernel.tool("amend").expect("installed");
     let select = amend.spec().schema["properties"]["select"]["description"]
         .as_str()
@@ -3683,6 +3683,7 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             readable: Vec::new(),
             policy: harness.app.policy.clone(),
             confiner: Some(std::path::PathBuf::from("/self")),
+            limits: Limits::default(),
         },
         kamchatka::sandbox::Reach {
             workdir: std::path::PathBuf::from("/w"),
@@ -3690,10 +3691,11 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             readable: Vec::new(),
             confined: true,
         },
+        Limits::default(),
     ) {
         harness.app.kernel.add_tool(tool);
     }
-    let _offered = kamchatka::introspect::install(&harness.app.kernel);
+    let _offered = kamchatka::introspect::install(&harness.app.kernel, Limits::default());
 
     for spec in harness.app.kernel.tool_specs() {
         assert!(
@@ -4333,5 +4335,237 @@ async fn the_two_ends_of_the_conversation_are_one_key_each() {
     assert!(
         typed.contains("!a question?"),
         "and end is the end of it: {typed}"
+    );
+}
+
+/// `/limit` changes the number the tool will really declare on its next call.
+///
+/// note: the answer to a result the model has just reported as cut off. It has to reach the tools
+/// rather than a table nobody reads - `Tool::spec` is called afresh for every request, which is
+/// what makes a change here land without a restart - and it has to say that it applies to the
+/// next call, because the one already shortened is recovered a different way: its whole is
+/// archived beside it and one `space` sends that instead.
+#[tokio::test]
+async fn the_output_limit_can_be_raised_without_restarting() {
+    let mut harness = Harness::new([]);
+    let limits = harness.app.limits.clone();
+    for tool in kamchatka::tools::builtin(
+        kamchatka::tools::Shell {
+            workdir: std::path::PathBuf::from("/w"),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            policy: harness.app.policy.clone(),
+            confiner: None,
+            limits: limits.clone(),
+        },
+        kamchatka::sandbox::Reach {
+            workdir: std::path::PathBuf::from("/w"),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            confined: true,
+        },
+        limits,
+    ) {
+        harness.app.kernel.add_tool(tool);
+    }
+
+    let declared = |harness: &Harness, tool: &str| {
+        harness
+            .app
+            .kernel
+            .tool_specs()
+            .into_iter()
+            .find(|spec| spec.id == tool)
+            .and_then(|spec| spec.output_limit)
+    };
+    assert_eq!(declared(&harness, "read"), Some(32_000));
+
+    harness.send("/limit read 64000").await;
+    assert_eq!(
+        declared(&harness, "read"),
+        Some(64_000),
+        "the tool has to declare the new one, or the command changed nothing"
+    );
+    // and shell is untouched: one tool was named, one tool moved
+    assert_eq!(declared(&harness, "shell"), Some(32_000));
+
+    let screen = harness.flat();
+    assert!(screen.contains("was cut at 32,000"), "{screen}");
+    assert!(
+        screen.contains("from its next call"),
+        "it has to say which call it applies to: {screen}"
+    );
+
+    // a tool nothing here limits says so, and lists what is limited rather than failing silently
+    harness.send("/limit write 1000").await;
+    let screen = harness.flat();
+    assert!(screen.contains("nothing here limits `write`"), "{screen}");
+
+    // and nought is not a limit, it is a tool that answers with a marker
+    harness.send("/limit read 0").await;
+    assert_eq!(declared(&harness, "read"), Some(64_000), "unchanged");
+    assert!(
+        harness.flat().contains("tools drop read"),
+        "{}",
+        harness.flat()
+    );
+
+    // the listing last, because it opens a preview and the next keystroke closes it again
+    harness.send("/limit").await;
+    let screen = harness.flat();
+    assert!(
+        screen.contains("64,000 bytes"),
+        "it lists the new one: {screen}"
+    );
+    assert!(screen.contains("amend"), "and every other one: {screen}");
+}
+
+/// An item the projector repaired away is holding what it holds, and the pane has to say so.
+///
+/// note: the bug this closes, from a real session. Somebody put the whole of a truncated tool
+/// result back beside the copy the model had been shown - which is the intended way to send the
+/// whole - and the row *below* it dropped to `0`. The pair answer one call, so the whole takes the
+/// call and the short copy is dropped: correct, and the request was right throughout. What was
+/// wrong is that three of the four places reporting on it disagreed. The row said it was sending
+/// its content, showed `0` for what that cost, and accounted for none of the 8,583 tokens it was
+/// holding; `/budget` said nothing was held back at all.
+///
+/// note: the cause is one conflation, for the third time: whether an item is going cannot be read
+/// off its *state*. A repaired-away item is `Active`. Only the projection knows.
+#[tokio::test]
+async fn an_item_the_projector_drops_says_what_it_is_holding() {
+    let mut harness = Harness::new([]);
+    let kernel = harness.app.kernel.clone();
+
+    let asked = call("c1", "introspect", json!({}));
+    kernel.push(ContextItem::user("read the whole of it"));
+    kernel.push(ContextItem::assistant("reading", vec![asked.clone()]));
+    // the pair an output limit leaves behind
+    let whole = kernel.push(ContextItem::tool_result(
+        asked.id.clone(),
+        "introspect",
+        "the fork's whole answer ".repeat(60),
+        false,
+    ));
+    kernel.push(ContextItem::tool_result(
+        asked.id.clone(),
+        "introspect",
+        "the fork's whole answer [... 900 bytes truncated by an output limit ...]",
+        false,
+    ));
+    kernel.set_state([whole], ContextState::Archived, None);
+
+    // `space` on the archived whole, which is how a person asks for all of it
+    kernel.set_state([whole], ContextState::Active, None);
+
+    harness.tab(Tab::Context);
+    let screen = harness.flat();
+    assert!(
+        screen.contains("a second result for one call"),
+        "the dropped row does not say why it is not going: {screen}"
+    );
+    assert!(
+        !screen.contains("truncated by an output limit ..."),
+        "and it must not show content it is not sending: {screen}"
+    );
+
+    // back to the chat tab before typing a command: on the context tab the letters are keys
+    harness.tab(Tab::Chat);
+
+    // and `/budget` counts it too, where it used to say nothing was held back at all. Counting
+    // the item is the half that was wrong: the figure came from the states, which have no way to
+    // say that an `Active` item is not in the request
+    harness.send("/budget").await;
+    let budget = harness.flat();
+    assert!(
+        budget.contains("held back:") && budget.contains("in 1 item"),
+        "`/budget` disagrees with the pane about what is held back: {budget}"
+    );
+    assert!(
+        !budget.contains("held back: 0 "),
+        "the short copy is holding its whole content: {budget}"
+    );
+}
+
+/// The question about an `amend` names the items it would change.
+///
+/// note: `ids: [2]` is a true account of the arguments and a useless one to be asked about. The
+/// tool rewrites and hides pieces of the context, the box asking covers the list those numbers
+/// refer to, and the answer is one key - so somebody asked whether item 2 may be elided had to
+/// already know what item 2 was, from a screen they could no longer see.
+#[tokio::test]
+async fn the_question_about_an_amend_says_which_items_it_would_change() {
+    let mut harness = Harness::configured(
+        [ModelResponse::tool_calls(vec![call(
+            "c1",
+            "amend",
+            json!({ "action": "elide", "ids": [2], "reason": "it has served its purpose" }),
+        )])],
+        Config::default(),
+    );
+    let _offered = kamchatka::introspect::install(&harness.app.kernel, Limits::default());
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("what is in the log?"));
+    harness.app.kernel.push(ContextItem::file(
+        "server.log",
+        "a wall of output".repeat(40),
+    ));
+
+    harness.send("tidy up").await;
+    harness.settle().await;
+
+    let screen = harness.flat();
+    assert!(screen.contains("a tool wants to run"), "{screen}");
+    assert!(
+        screen.contains("ids: [2]"),
+        "the arguments as written: {screen}"
+    );
+    // and what that number is, which is the half the question was missing
+    assert!(
+        screen.contains("[2] server.log") && screen.contains("reference"),
+        "the question does not say what item 2 is: {screen}"
+    );
+    assert!(
+        screen.contains("active"),
+        "nor what state it is in: {screen}"
+    );
+}
+
+/// A selector is the argument most worth expanding, because nobody can count it off the screen.
+#[tokio::test]
+async fn the_question_expands_a_selector_into_the_items_it_matches() {
+    let mut harness = Harness::configured(
+        [ModelResponse::tool_calls(vec![call(
+            "c1",
+            "amend",
+            json!({
+                "action": "elide",
+                "select": "all:files",
+                "reason": "the reads are done with",
+            }),
+        )])],
+        Config::default(),
+    );
+    let _offered = kamchatka::introspect::install(&harness.app.kernel, Limits::default());
+    harness.app.kernel.push(ContextItem::user("read them"));
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("one.rs", "fn one() {}"));
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("two.rs", "fn two() {}"));
+
+    harness.send("tidy up").await;
+    harness.settle().await;
+
+    let screen = harness.flat();
+    assert!(screen.contains("select: all:files"), "{screen}");
+    assert!(
+        screen.contains("[2] one.rs") && screen.contains("[3] two.rs"),
+        "a selector has to be expanded or the question cannot be answered: {screen}"
     );
 }

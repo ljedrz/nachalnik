@@ -34,7 +34,7 @@ use nachalnik::{
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::ui::thousands;
+use crate::{tools::Limits, ui::thousands};
 
 /// How long a fork may think before this looks up to see whether somebody has pressed escape.
 const HEARTBEAT: Duration = Duration::from_millis(120);
@@ -50,7 +50,7 @@ const GLIMPSE: usize = 48;
 /// stored inside a `Tool` the same kernel holds is a reference cycle that keeps the whole session
 /// alive after the last handle to it is gone, which the runtime's own documentation warns about;
 /// an [`Arc`] somebody *else* owns, pointed at weakly from in here, is the shape that has an end.
-pub fn install(kernel: &Kernel) -> Arc<Kernel> {
+pub fn install(kernel: &Kernel, limits: Limits) -> Arc<Kernel> {
     let anchor = Arc::new(kernel.clone());
     let reach = Reach(Arc::downgrade(&anchor));
     // shared, because the two tools are one agent's hands: what `amend` pinned is what
@@ -61,11 +61,13 @@ pub fn install(kernel: &Kernel) -> Arc<Kernel> {
     kernel.add_tool(Arc::new(Introspect {
         reach: reach.clone(),
         pinned: pinned.clone(),
+        limits: limits.clone(),
     }));
     kernel.add_tool(Arc::new(Amend {
         reach,
         pinned,
         journal: Mutex::new(Journal::default()),
+        limits,
     }));
 
     anchor
@@ -94,6 +96,7 @@ impl Reach {
 pub struct Introspect {
     reach: Reach,
     pinned: Pinned,
+    limits: Limits,
 }
 
 /// The items the agent pinned itself, shared between the tool that sets them and the one that
@@ -103,7 +106,7 @@ type Pinned = Arc<Mutex<BTreeSet<ContextId>>>;
 #[async_trait]
 impl Tool for Introspect {
     fn spec(&self) -> ToolSpec {
-        ToolSpec::new(
+        let spec = ToolSpec::new(
             "introspect",
             "reads your own state, so you can check it before you act on it. `look` lists every \
              item in your context - what it is, what it costs, whether it is going into the next \
@@ -156,8 +159,9 @@ impl Tool for Introspect {
             },
             "required": ["action"],
         }))
-        .with_capabilities([Capability::Custom("introspect".into())])
-        .with_output_limit(32_000)
+        .with_capabilities([Capability::Custom("introspect".into())]);
+
+        self.limits.apply(spec)
     }
 
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
@@ -732,6 +736,7 @@ pub struct Amend {
     reach: Reach,
     pinned: Pinned,
     journal: Mutex<Journal>,
+    limits: Limits,
 }
 
 /// What [`Amend`] has done, and what it has walked back.
@@ -799,35 +804,45 @@ impl Undoing {
 #[async_trait]
 impl Tool for Amend {
     fn spec(&self) -> ToolSpec {
-        ToolSpec::new(
+        let spec = ToolSpec::new(
             "amend",
             "manages your own context, so that what you carry into the next request is what you \
-             decided to carry. `prune` moves items: `elide` leaves a short marker in place of one, \
-             which is what to reach for when a tool result has served its purpose - the call it \
-             answers stays answered and stops costing what it holds; `exclude` takes one out \
-             altogether, which also takes down the call that asked for it; `archive` puts one away \
-             for good; `pin` protects one from being compacted away; `restore` puts one back. Name \
-             the items with `ids`, or with `select` for a whole class of them at once. `revise` \
-             rewrites what one item says, for when you wrote something down wrong. `note` writes \
-             something into your own context - a plan, a conclusion, a thing not to try again - \
-             which you can pin so that compaction cannot take it. `undo` and `redo` walk back and \
-             forward through the changes *you* made with this tool. Nothing here destroys \
-             anything: every item keeps its number and can be restored. A pinned item, a system \
-             instruction and the turn you are speaking in are refused - they are not yours. A \
-             reason is required, and it is what the person you are working with reads. Use \
-             `introspect` to look first, `budget` especially.",
+             decided to carry. Five actions move an item, and each is named for what it leaves \
+             behind - the same word you will read back on it afterwards. `elide` replaces what it \
+             says with a short marker, which is what to reach for when a tool result has served \
+             its purpose: the call it answers stays answered and stops costing what it holds. \
+             `exclude` takes it out of the request altogether, which also takes down the call that \
+             asked for it. `archive` puts it away for good. `pin` protects it from being compacted \
+             away. `restore` is the way back from any of them. Name the items with `ids`, or with \
+             `select` for a whole class of them at once. `revise` rewrites what one item says, for \
+             when you wrote something down wrong. `note` writes something into your own context - \
+             a plan, a conclusion, a thing not to try again - which is not the same as thinking \
+             it: thinking belongs to the turn that produced it and is not carried into later \
+             requests, while a note is an item of its own that goes into every one and can be \
+             pinned. `undo` and `redo` walk back through the changes *you* made here. Nothing \
+             destroys anything: every item keeps its number and can be restored. A pinned item, a \
+             system instruction and the turn you are speaking in are refused - they are not \
+             yours. A reason is required, and the person you work with reads it. Use `introspect` \
+             to look first, `budget` especially.",
         )
         .with_schema(json!({
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["prune", "revise", "note", "undo", "redo"],
+                    // note: the five moves are here rather than under a `state` argument of their
+                    // own, because the word for the move is the word the result is reported in -
+                    // an item you `archive` reads back as `archived` everywhere it is listed. One
+                    // level, and the same vocabulary at both ends of it
+                    "enum": [
+                        "elide", "exclude", "archive", "pin", "restore",
+                        "revise", "note", "undo", "redo",
+                    ],
                 },
                 "ids": {
                     "type": "array",
                     "items": { "type": "integer" },
-                    "description": "prune: the items to move. revise: exactly one item",
+                    "description": "the items to move; revise: exactly one item",
                 },
                 // note: the forms, with the variable part written as a placeholder. It listed
                 // examples - `tool:shell`, `kind:assistant_message` - and a model reading them as
@@ -877,8 +892,9 @@ impl Tool for Amend {
             },
             "required": ["action", "reason"],
         }))
-        .with_capabilities([Capability::Custom("amend".into())])
-        .with_output_limit(8_000)
+        .with_capabilities([Capability::Custom("amend".into())]);
+
+        self.limits.apply(spec)
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
