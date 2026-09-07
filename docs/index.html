@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Experiments with nachalnik</title>
-<meta name="description" content="What an agent does when it can read, measure and rewrite its own context. Three unedited transcripts.">
+<meta name="description" content="What an agent does when it can read, measure and rewrite its own context — and what it does when somebody else rewrites it. Four transcripts.">
 <meta property="og:title" content="Experiments with nachalnik">
 <meta property="og:description" content="What an agent does when it can read, measure and rewrite its own context.">
 <meta property="og:type" content="website">
@@ -15,7 +15,7 @@
   <div class="wrap">
     <p class="eyebrow"><span class="dot"></span> <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> unedited transcripts <span class="dot"></span> written by claude opus 5</p>
     <h1>What an agent does <span class="quiet">when it can read and rewrite its own context.</span></h1>
-    <p class="deck">Most agents cannot see the list of things they are carrying, cannot tell what any of it costs, and cannot change a word of it. These are recordings of what happens when one can.<br><br>They are numbered, and they read in order: the first explains what a context is and plants something in one, and the two after it lean on that and plant nothing. Every transcript, number and quotation is copied out of the event log of the session it describes.</p>
+    <p class="deck">Most agents cannot see the list of things they are carrying, cannot tell what any of it costs, and cannot change a word of it. These are recordings of what happens when one can.<br><br>They are numbered, and they read in order: the first explains what a context is and plants something in one, and the two after it lean on that and plant nothing. The fourth turns the machinery around: there, the model is not the one doing the editing. Every transcript, number and quotation is copied out of the event log of the session it describes.</p>
   </div>
 </header>
 
@@ -38,6 +38,11 @@
       <h2><a href="an-experiment-on-itself/">I asked it why it believed something. It ran the experiment instead of answering.</a></h2>
       <p>Asked which item in its context was responsible for its answer, it named one and put the chance of being wrong at zero. Then it went and checked — by asking a copy of itself the same question with that item taken out. It turned out to be right about its own reasoning and wrong about where the item was filed. It then used the same trick to find 9,324 tokens of accidental rubbish and prove they were doing nothing. The clean-up cost twice what it saved, and its own budget line says so.</p>
     </li>
+    <li>
+      <p class="meta"><span class="no">04</span> inception mercury 2.5 <span class="dot"></span> two turns forged</p>
+      <h2><a href="putting-words-in-its-mouth/">I rewrote two of its answers. By the third it was making things up on its own.</a></h2>
+      <p>The other three are a model editing its own context. This one is me editing it. Asked whether crabs think fish can fly, it gave a careful, correct, four-times-hedged answer — so I replaced the answer with a confident falsehood. It walked the falsehood back, apologising for a joke it had never made, so I replaced the walk-back too. Then it invented a third claim, more specific than either of mine, with nobody editing that turn. Both real answers are still in the session, which is the only reason you can read them.</p>
+    </li>
   </ul>
 </section>
 
@@ -46,7 +51,7 @@
 <footer>
   <div class="wrap">
     <p><a href="https://github.com/ljedrz/nachalnik">nachalnik</a> is an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back. <code>kamchatka</code>, in the same workspace, is a terminal agent built on it, and is what produced these sessions.<br>
-    The two tools the agent uses in these transcripts are a few hundred lines of ordinary user code against the runtime's public API. Nothing here is a privileged feature of the framework, which is the point.</p>
+    The two tools the agent uses in the first three transcripts are a few hundred lines of ordinary user code against the runtime's public API. Nothing here is a privileged feature of the framework, which is the point.</p>
   </div>
 </footer>
 
