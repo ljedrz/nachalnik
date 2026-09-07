@@ -1077,7 +1077,15 @@ impl Amend {
         for refusal in &refused {
             out.push_str(&format!("refused: {refusal}\n"));
         }
-        out.push_str(&cost(kernel, before));
+        out.push_str(&cost(
+            kernel,
+            before,
+            match state {
+                // the only move whose growth is not the content itself
+                ContextState::Elided => Grew::Marker,
+                _ => Grew::Content,
+            },
+        ));
 
         ToolOutput::new(out)
     }
@@ -1123,7 +1131,9 @@ impl Amend {
             item.label,
             thousands(now),
             thousands(was),
-            cost(kernel, before),
+            // the two figures above already say the new text is the longer one, so the sentence
+            // this would add says it a second time
+            cost(kernel, before, Grew::Asked),
         ))
     }
 
@@ -1197,7 +1207,7 @@ impl Amend {
                 false =>
                     "It is not pinned, so compaction may take it; say `pin` if it has to last.",
             },
-            cost(kernel, before),
+            cost(kernel, before, Grew::Asked),
         ))
     }
 
@@ -1269,7 +1279,10 @@ impl Amend {
         out.push_str(&format!(
             "{done} change(s) of yours can still be undone, {undone} redone.\n"
         ));
-        out.push_str(&cost(kernel, before));
+        // walking back an elision is content returning; walking one forward puts the marker back,
+        // and a marker that grew the request is not what somebody undoing something is asking
+        // about. Either way it is a state going back to what it was, which is the content
+        out.push_str(&cost(kernel, before, Grew::Content));
 
         ToolOutput::new(out)
     }
@@ -1376,14 +1389,53 @@ fn own_turn(kernel: &Kernel, call: &ToolCallId) -> Option<ContextId> {
     })
 }
 
-/// What the next request costs now, beside what it cost before the change.
+/// Why a change might leave the next request bigger than it found it, which is what the figures
+/// are worth saying beside.
 ///
-/// note: it says so when the change made the request *bigger*, which is not a rare accident. An
-/// elided item is replaced by a marker carrying the reason somebody gave for eliding it, and on a
-/// short item that reason is the larger of the two - a live session elided twenty-two items and
-/// added 162 tokens doing it. Both numbers were already here and a model reading them carefully
-/// could work it out; none of them did, and one went on to elide everything it had.
-fn cost(kernel: &Kernel, before: usize) -> String {
+/// note: named, and passed by the caller that made the change, because one explanation cannot
+/// serve all four of them. It used to: every action reported growth as a marker left behind by an
+/// elision, so a live run that wrote a *note* was told its ten extra tokens were the marker of an
+/// elision it had not performed. A wrong account of a number is worse than the bare number - the
+/// only reason this sentence exists is that models read the two figures and did not work out which
+/// way they had gone.
+#[derive(Debug, Clone, Copy)]
+enum Grew {
+    /// An elision replaced content with a marker carrying the reason given for it.
+    Marker,
+    /// Content that was not going into the request is going into it now.
+    Content,
+    /// Nothing to account for: the caller asked for something bigger and got it.
+    Asked,
+}
+
+impl Grew {
+    /// The sentence to put after the figures, once it is known that they went up.
+    fn by(self, more: usize) -> String {
+        match self {
+            // an elision on a short item costs more than the content did: a live session elided
+            // twenty-two items and added 162 tokens doing it, then went on to elide everything
+            // else it had
+            Self::Marker => format!(
+                " That is {} more than before, not less: what an elided item leaves behind is a \
+                 marker carrying your reason for eliding it, and on a short item that costs more \
+                 than the content did.",
+                thousands(more)
+            ),
+            Self::Content => format!(
+                " That is {} more than before: content that was being left out of the request is \
+                 going into it again, and it costs what it says.",
+                thousands(more)
+            ),
+            // a note is content somebody asked to carry, so its cost is the answer to the request
+            // rather than a surprise in it. `note` says on its own line that it goes into every
+            // request from here on, which is the part worth knowing
+            Self::Asked => String::new(),
+        }
+    }
+}
+
+/// What the next request costs now, beside what it cost before the change.
+fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
     let budget = kernel.budget();
     let now = budget.used();
     format!(
@@ -1395,12 +1447,7 @@ fn cost(kernel: &Kernel, before: usize) -> String {
             .unwrap_or_default(),
         thousands(before),
         match now > before {
-            true => format!(
-                " That is {} more than before, not less: what an elided item leaves behind is a \
-                 marker carrying your reason for eliding it, and on a short item that costs more \
-                 than the content did.",
-                thousands(now - before)
-            ),
+            true => grew.by(now - before),
             false => String::new(),
         },
     )

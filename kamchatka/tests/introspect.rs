@@ -179,6 +179,98 @@ async fn eliding_something_small_says_that_it_cost_more_than_it_saved() {
     assert!(said.contains("marker"), "and why: {said}");
 }
 
+/// And the reason it gives is the reason for *that* change. One sentence used to serve every
+/// action, so writing a note - which grows the request because that is what a note is for - was
+/// told its ten extra tokens were a marker left by an elision it had not performed.
+#[tokio::test]
+async fn a_note_that_makes_the_request_bigger_is_not_blamed_on_an_elision() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "amend",
+        json!({
+            "action": "note",
+            "label": "code word",
+            "content": "the code word is PELICAN",
+            "reason": "worth keeping",
+        }),
+    )]));
+
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("the next request is now"), "{said}");
+    assert!(
+        !said.contains("marker"),
+        "no marker was left anywhere: {said}"
+    );
+    assert!(
+        !said.contains("not less"),
+        "and a note costing what it says is not a surprise to account for: {said}"
+    );
+}
+
+/// Content coming back into the request gets its own account of why the figure went up, rather
+/// than the elision one or none at all.
+#[tokio::test]
+async fn restoring_something_says_the_growth_is_the_content_itself() {
+    let (kernel, _provider, _anchor) = agent(vec![
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "amend",
+            json!({ "action": "exclude", "ids": [1], "reason": "not needed for now" }),
+        )]),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "amend",
+            json!({ "action": "restore", "ids": [1], "reason": "needed after all" }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+
+    kernel.push(ContextItem::user(
+        "a message long enough that leaving it out and putting it back moves the figure by more \
+         than nothing at all, which is the whole of what this is checking",
+    ));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("more than before"), "{said}");
+    assert!(said.contains("costs what it says"), "and why: {said}");
+    assert!(!said.contains("marker"), "nothing was elided: {said}");
+}
+
+/// A move needs to know which items, and `label` is not how it is said - but it is a way somebody
+/// could reasonably think it was, because `label` is in the same schema. So the refusal is the
+/// spelling of what they meant rather than a restatement of the arguments.
+#[tokio::test]
+async fn a_move_given_a_label_instead_of_ids_is_told_how_to_say_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "amend",
+        json!({
+            "action": "elide",
+            "label": "secrets.txt",
+            "reason": "of no further interest",
+        }),
+    )]));
+
+    kernel.push(ContextItem::file("secrets.txt", "nothing much"));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains(r#"select: "label:secrets.txt""#),
+        "the exact thing to say next: {said}"
+    );
+    assert!(
+        kernel.items().iter().all(|item| !item.state.is_elided()),
+        "and nothing was moved on a guess"
+    );
+}
+
 #[tokio::test]
 async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for() {
     // the trap this closes: reading an item copies it into the context, so asking to see a big

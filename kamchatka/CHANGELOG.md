@@ -120,6 +120,15 @@ minor bump may break you.
   per request against a model that otherwise spends whole calls hunting for a home directory it
   cannot reach, and one such call is worth more than that.
 
+- `amend` accounts for a change with the reason for *that* change. One sentence served all four of
+  the things that can move the figure, and it named eliding as the cause - so a model that wrote a
+  note, which makes the request bigger because that is what a note is for, was told its ten extra
+  tokens were the marker of an elision it had not performed. The whole reason that sentence exists
+  is that models read the two figures and did not work out which way they had gone; a wrong account
+  of a number is worse than the bare number. Eliding still explains its marker, content coming back
+  says it is content, and a note says nothing beyond the figures, which are the answer rather than
+  a surprise in it.
+
 - The `~` refusal closes the retry and names no other path. Two changes, both from watching models
   read the sentence added earlier in this release. It now says the same path will be refused again
   as it stands, because one that did not say so was sent back unchanged six times in a single turn
