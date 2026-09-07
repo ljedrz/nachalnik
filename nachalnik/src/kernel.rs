@@ -1082,6 +1082,9 @@ impl Kernel {
     /// request, and [`Kernel::redo`] would be unreachable for the rest of the session.
     pub fn apply_compaction(&self, plan: CompactionPlan) -> CompactionReport {
         let counter = self.counter();
+        // both taken before the context lock, because that is the lock order and neither of these
+        // may be reached for once it is held
+        let projector = self.projector();
         let CompactionPlan {
             remove,
             elide,
@@ -1100,7 +1103,13 @@ impl Kernel {
         // context that never existed - one without the item somebody had just added
         {
             let mut context = self.0.context.write();
-            let tokens_before = context.tokens();
+            // the projected total rather than the sum of the items, which is what the report says
+            // it is and what a pass is judged by. Summing the items credits an elision with the
+            // whole of what it took away and charges nothing for the marker left in its place -
+            // so a pass could report a decrease having made the request bigger. Projecting is a
+            // walk over the items that moves `Content` by pointer, and it happens once a request
+            // at most
+            let tokens_before = projection_tokens(&projector.project(context.items()), &*counter);
 
             // what the plan comes to is worked out before anything moves, because the checkpoint
             // has to be taken before the first change and must not be taken at all if there is
@@ -1211,7 +1220,7 @@ impl Kernel {
                 summary: added,
                 reason,
                 tokens_before,
-                tokens_after: context.tokens(),
+                tokens_after: projection_tokens(&projector.project(context.items()), &*counter),
             };
 
             // still under the lock, and the pass's own events before the report of it: see the
@@ -2034,11 +2043,7 @@ impl Kernel {
         let counter = self.counter();
         let context = self.0.context.read();
         let projection = projector.project(context.items());
-        let tokens = projection
-            .messages
-            .iter()
-            .map(|message| counter.count_message(message))
-            .sum::<usize>();
+        let tokens = projection_tokens(&projection, &*counter);
 
         (projection, tokens)
     }
@@ -2080,6 +2085,20 @@ fn refusal(source: GrantSource, why: Option<String>) -> String {
             .to_owned(),
         other => format!("the call was not permitted: {other:?}"),
     }
+}
+
+/// Counts what a projection costs, which is what a request carrying it would cost.
+///
+/// note: the one definition of "the projected total", because there are two callers and they were
+/// not agreeing. Counted over the messages that came out rather than the items that went in: a
+/// reference is labelled on its way out, and an elided item is a marker the size of a line where
+/// the item behind it may be ten thousand tokens.
+fn projection_tokens(projection: &Projection, counter: &dyn TokenCounter) -> usize {
+    projection
+        .messages
+        .iter()
+        .map(|message| counter.count_message(message))
+        .sum()
 }
 
 /// Estimates the size of the given tool definitions: the schemas plus the descriptions.

@@ -821,6 +821,47 @@ async fn compaction_is_visible_and_reversible() {
     assert!(kernel.budget().context_tokens > before);
 }
 
+/// A report's two totals are what a request would cost before and after, and an elided item costs
+/// a marker rather than nothing. Summed over the items instead, a pass that made the request
+/// bigger reported a decrease - and the figure a person is shown disagreed with the budget beside
+/// it, which is the one thing these numbers exist to be held against.
+#[tokio::test]
+async fn a_compaction_report_charges_for_the_markers_it_left_behind() {
+    let kernel = Kernel::new(Config::default());
+    let call = call("c1", "grep", json!({}));
+    kernel.push(ContextItem::user("go"));
+    kernel.push(ContextItem::assistant("looking", vec![call.clone()]));
+    let result = kernel.push(ContextItem::tool_result(
+        call.id.clone(),
+        "grep",
+        "y".repeat(4_000),
+        false,
+    ));
+
+    // a note long enough to be worth counting, which is what a compactor's reason really is
+    let reason = "compacted to make room; the context had reached 84% of the 1,000-token limit";
+    let report = kernel.apply_compaction(nachalnik::CompactionPlan {
+        elide: vec![result],
+        reason: reason.to_owned(),
+        ..Default::default()
+    });
+
+    assert_eq!(report.elided.len(), 1);
+    assert_eq!(
+        report.tokens_after,
+        kernel.budget().context_tokens,
+        "the report and the budget are counting the same request"
+    );
+    // the marker is in there: what is left is not nothing, and it is not the item either
+    assert!(
+        report.tokens_after >= reason.len() / 4,
+        "the marker went uncounted: {} left after {}",
+        report.tokens_after,
+        report.tokens_before
+    );
+    assert!(report.tokens_after < report.tokens_before / 10);
+}
+
 #[tokio::test]
 async fn a_pin_is_a_promise() {
     let kernel = Kernel::new(Config::default());

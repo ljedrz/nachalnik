@@ -5,6 +5,27 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- A `CompactionReport`'s two totals are the projected ones its documentation always said they
+  were. They came from summing the items that were sending content, which drops an elided item
+  from the total altogether and never charges for the marker put in its place - so a pass was
+  credited with the whole of what it took away and nothing for what it left behind. On a plan
+  eliding one 4,000-byte result the report said 5 tokens remained where a request made right then
+  cost 27, the difference being the note in the projector's brackets; on a pass eliding twenty
+  small results the arithmetic reports a decrease on a context it has made bigger.
+
+  `Kernel::projected` had this right and said why in a note - "an elided item is a marker the size
+  of a line where the item behind it may be ten thousand tokens" - and `apply_compaction` was the
+  one place not going through it. Both now share a single `projection_tokens`, so the figure in a
+  report can be held against the `Budget` that provoked it, which is the only reason a client is
+  given both. `Event::ContextRecounted` keeps its item sums: recounting *is* about the items.
+
+  It costs one projection of the context at each end of a pass, which happens at most once per
+  request and moves `Content` by pointer.
+
 ## [0.3.1] - 2026-09-06
 
 ### added

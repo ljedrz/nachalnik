@@ -104,9 +104,16 @@ pub struct CompactionReport {
     pub summary: Option<Removed>,
     /// Why the pass happened.
     pub reason: String,
-    /// The projected token total before.
+    /// The projected token total before: what a request made just before the pass would have cost.
+    ///
+    /// note: projected rather than summed over the items, and the difference is the marker. An
+    /// elided item stops sending what it holds and starts sending a line saying so, so the sum of
+    /// the items credits the pass with everything it took away and charges nothing for what it put
+    /// there instead - by which arithmetic a pass that made the request bigger reports a decrease.
+    /// These two are counted the way [`Budget::context_tokens`] is, so a report can be held
+    /// against the budget that provoked it.
     pub tokens_before: usize,
-    /// The projected token total after.
+    /// The projected token total after: what a request made now would cost, markers included.
     pub tokens_after: usize,
 }
 
