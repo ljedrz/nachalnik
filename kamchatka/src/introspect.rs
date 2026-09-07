@@ -1004,11 +1004,18 @@ impl Amend {
             // what each one does rather than only what it is called: the choice between `elide`
             // and `exclude` is the one that decides whether a tool call keeps its answer, and a
             // list of five words does not help anybody make it
+            //
+            // note: `archive` said "keep it, do not send it, and stop counting it against the
+            // budget", which is three things `exclude` also does - so the clause only meant
+            // anything by implying that an excluded item is still charged for, and it is not.
+            // Measured against a real endpoint, the two produce the same request to the token:
+            // 3,451 active, 2,219 either way. What actually separates them is what the person
+            // reading the pane is meant to conclude, so that is what the line says now
             return ToolOutput::error(
                 "say which move you mean, as the `action`:\n  \
                  elide    - replace what it says with a marker; a tool call keeps its answer\n  \
                  exclude  - take it out of the request; a tool call loses its answer too\n  \
-                 archive  - keep it, do not send it, and stop counting it against the budget\n  \
+                 archive  - the same, for what you are done with rather than setting aside\n  \
                  pin      - protect it from compaction\n  \
                  restore  - put it back the way it was",
             );

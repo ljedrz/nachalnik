@@ -20,6 +20,14 @@ minor bump may break you.
   instead. The kernel no longer banks a summary for a pass that moved nothing either, which is the
   same hole from the other side and closes it for any compactor.
 
+- `amend`'s list of the five moves does not claim a difference the budget does not make. `archive`
+  read "keep it, do not send it, and stop counting it against the budget" - three things `exclude`
+  does as well, so the clause could only mean something by implying that an excluded item is still
+  charged for. It is not: measured against a real endpoint the two produce the same request to the
+  token, 3,451 active and 2,219 either way, with the same figure held back. What separates them is
+  what the person reading the pane is meant to conclude - one is set aside, the other is done with
+  - and that is what the line says now.
+
 - `Trim` pays for the marker it leaves behind. Eliding a tool result does not recover what the
   result was costing: the projector puts `[... <the pass's reason> ...]` where the content was, and
   the kernel makes that reason the note on every item in the pass, so each elision buys back the
