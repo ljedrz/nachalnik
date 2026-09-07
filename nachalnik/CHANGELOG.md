@@ -23,6 +23,18 @@ minor bump may break you.
 
 ### fixed
 
+- A compaction pass that moved nothing leaves nothing behind. The checkpoint was already
+  conditional on the pass having done something - and then the summary went in whether or not it
+  had, and the condition on the checkpoint counted `summary.is_some()` as something done. A summary
+  stands *in the place of* what was taken, which is what its documentation says, so a pass that
+  took nothing has nowhere to put one. Left alone this compounds rather than annoys: the pass is
+  asked again before the next request, the context is no smaller than it was, so it says yes again.
+  Measured against a real endpoint with one pinned tool result over the target - the case
+  `Trim`'s own note names - three requests produced three summaries, each saying an earlier tool
+  result had been elided when none had, each spending one of the person's undos, and each growing
+  the request 53 tokens: a compactor enlarging the context it exists to shrink, for as long as the
+  session lasts.
+
 - A `CompactionReport`'s two totals are the projected ones its documentation always said they
   were. They came from summing the items that were sending content, which drops an elided item
   from the total altogether and never charges for the marker put in its place - so a pass was

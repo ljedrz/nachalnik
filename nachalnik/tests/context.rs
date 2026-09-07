@@ -423,6 +423,25 @@ fn a_compaction_that_moves_nothing_does_not_spend_an_undo() {
         "a pass that moved nothing spent an undo"
     );
 
+    // the same pass with a summary on it, which is the shape every real one has. A summary stands
+    // in the place of what was taken, so a pass that took nothing has nowhere to put one - and
+    // banking it anyway is the whole of the failure this is about, because the next request asks
+    // again and the context is no smaller. Measured against a live endpoint: a summary and an
+    // undo per turn, and the request growing 53 tokens each time
+    let report = kernel.apply_compaction(CompactionPlan {
+        elide: vec![pinned],
+        summary: Some(ContextItem::summary("1 earlier tool result(s) were elided")),
+        reason: "an overzealous compactor, with something to say about it".into(),
+        ..CompactionPlan::default()
+    });
+    assert!(report.summary.is_none(), "the summary went in anyway");
+    assert_eq!(kernel.items().len(), 2, "and is in the context");
+    assert_eq!(
+        kernel.with_context(|c| c.undo_len()),
+        depth,
+        "and was worth a checkpoint"
+    );
+
     // and the redo the person still had is still theirs. This is the sharper half: `checkpoint`
     // discards the redo stack, so a pass that did nothing used to make an undone change
     // unreachable - before every request, for the rest of the session

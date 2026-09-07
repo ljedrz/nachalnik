@@ -1154,7 +1154,14 @@ impl Kernel {
                 eliding.push(entry);
             }
 
-            if !removing.is_empty() || !eliding.is_empty() || summary.is_some() {
+            // a summary stands in the place of what was taken, so a pass that took nothing has no
+            // place to put one. Banking it anyway is not a stray line: the pass is asked again
+            // before the next request, the context is no smaller than it was, so it says yes
+            // again - and a compactor whose every candidate is pinned then adds a summary saying
+            // results were elided, spends an undo, and grows the request it exists to shrink, on
+            // every request for as long as the session lasts. Measured at 53 tokens a turn
+            let moved = !removing.is_empty() || !eliding.is_empty();
+            if moved {
                 context.checkpoint();
             }
 
@@ -1195,7 +1202,7 @@ impl Kernel {
                 elided.push(entry);
             }
 
-            if let Some(item) = summary {
+            if let Some(item) = summary.filter(|_| moved) {
                 let id = context.add(item, &*counter);
                 let item = context.item(id).expect("the item was just added");
                 announcements.push(Event::ContextAdded {
