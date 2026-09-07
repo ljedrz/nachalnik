@@ -459,6 +459,67 @@ fn a_compaction_that_moves_nothing_does_not_spend_an_undo() {
     assert!(kernel.redo());
 }
 
+/// A pass may only take what the request is carrying, and the projection is what knows. An item
+/// the projector repaired away is `Active`, holds everything it holds, and is costing nothing -
+/// so a pass that takes it recovers nothing while reporting the whole of it as recovered, and
+/// moves something the model was never being shown.
+#[test]
+fn a_compaction_leaves_alone_what_the_request_was_not_carrying() {
+    let kernel = kernel();
+    let call = nachalnik::ToolCall::new("c1", "read", Arc::new(json!({ "path": "big.rs" })));
+    kernel.push(ContextItem::assistant(
+        nachalnik::Content::text("let me look"),
+        vec![call.clone()],
+    ));
+    let answered = kernel.push(ContextItem::tool_result(
+        call.id.clone(),
+        "read",
+        "x".repeat(400),
+        false,
+    ));
+    // the whole of a shortened output, put back beside the copy the model was shown: two results
+    // answer one call, and the projector carries one of them
+    let second = kernel.push(ContextItem::tool_result(
+        call.id.clone(),
+        "read",
+        "x".repeat(4_000),
+        false,
+    ));
+
+    let carried = kernel.project().included.to_vec();
+    assert!(
+        carried.contains(&answered) != carried.contains(&second),
+        "exactly one of the pair is in the request: {carried:?}"
+    );
+    let ghost = match carried.contains(&second) {
+        true => answered,
+        false => second,
+    };
+    let held = kernel.item(ghost).unwrap().tokens;
+
+    let depth = kernel.with_context(|c| c.undo_len());
+    let report = kernel.apply_compaction(CompactionPlan {
+        elide: vec![ghost],
+        remove: vec![ghost],
+        summary: Some(ContextItem::summary("something was elided")),
+        reason: "the context was full".into(),
+    });
+    assert!(
+        report.elided.is_empty() && report.removed.is_empty(),
+        "it was costing nothing, so there was nothing to recover: it was credited with {held}"
+    );
+    assert_eq!(
+        kernel.item(ghost).unwrap().state,
+        ContextState::Active,
+        "and it is in the state the person left it in"
+    );
+    assert!(
+        report.summary.is_none(),
+        "with no summary for work not done"
+    );
+    assert_eq!(kernel.with_context(|c| c.undo_len()), depth);
+}
+
 /// And a pass that *does* move something is still one operation, whichever of the three it did.
 #[test]
 fn a_compaction_that_moves_something_is_one_undo() {

@@ -3085,8 +3085,15 @@ async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
     // a pinned file bigger than the target is all it takes: the pass can never get under it,
     // however much it elides, so it is asked again on the next request and the one after
     kernel.push(ContextItem::file("big.rs", "x".repeat(4_000)).pinned());
+    // the call as well as its result, because a result answering no call is repaired out of the
+    // request, and the kernel will not elide something the request is not carrying
+    let call = nachalnik::ToolCall::new("c1", "shell", std::sync::Arc::new(json!({})));
+    kernel.push(ContextItem::assistant(
+        nachalnik::Content::text("let me look"),
+        vec![call.clone()],
+    ));
     kernel.push(ContextItem::tool_result(
-        nachalnik::ToolCallId::from("c1"),
+        call.id.clone(),
         "shell",
         "y".repeat(400),
         false,

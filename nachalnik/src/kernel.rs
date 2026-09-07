@@ -1109,7 +1109,14 @@ impl Kernel {
             // so a pass could report a decrease having made the request bigger. Projecting is a
             // walk over the items that moves `Content` by pointer, and it happens once a request
             // at most
-            let tokens_before = projection_tokens(&projector.project(context.items()), &*counter);
+            let before = projector.project(context.items());
+            let tokens_before = projection_tokens(&before, &*counter);
+            // what a pass may take is what the request is carrying, and the projection is the
+            // only thing that knows. An item the projector repaired away - a second result for a
+            // call that already has one - is `Active`, holds everything it holds, and is
+            // contributing nothing: taking it recovers nothing, reports the whole of it as
+            // recovered, and moves something that was never being sent
+            let carrying: HashSet<ContextId> = before.included.iter().copied().collect();
 
             // what the plan comes to is worked out before anything moves, because the checkpoint
             // has to be taken before the first change and must not be taken at all if there is
@@ -1124,11 +1131,9 @@ impl Kernel {
                     label: item.label.clone(),
                     tokens: item.tokens,
                 };
-                let (pinned, projected) = (item.state == ContextState::Pinned, item.is_projected());
-
-                if pinned {
+                if item.state == ContextState::Pinned {
                     refused.push(entry);
-                } else if projected {
+                } else if carrying.contains(&id) {
                     removing.push(entry);
                 }
             }
@@ -1148,7 +1153,7 @@ impl Kernel {
                     refused.push(entry);
                     continue;
                 }
-                if !item.is_projected() || item.state.is_elided() {
+                if !carrying.contains(&id) || item.state.is_elided() {
                     continue;
                 }
                 eliding.push(entry);

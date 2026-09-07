@@ -35,6 +35,17 @@ minor bump may break you.
   the request 53 tokens: a compactor enlarging the context it exists to shrink, for as long as the
   session lasts.
 
+- A pass may only take what the request is carrying, and the projection is what knows. The guard
+  asked the item - `is_projected`, which is a question about the state - so an item the projector
+  had repaired away passed it: `Active`, holding everything it holds, contributing nothing. A
+  second result for a call that already has one is exactly that, and putting the whole of a
+  truncated output back beside the copy the model was shown produces one. Eliding it recovers
+  nothing while the report credits the pass with the whole of it (204 tokens, on a live run), and
+  moves something the model was never being shown into a state nobody chose. `apply_compaction`
+  already projects the context to get `tokens_before`; it now reads `included` from that same
+  projection and answers both questions from it, which is the answer `Projection` was the one
+  place holding.
+
 - A `CompactionReport`'s two totals are the projected ones its documentation always said they
   were. They came from summing the items that were sending content, which drops an elided item
   from the total altogether and never charges for the marker put in its place - so a pass was
