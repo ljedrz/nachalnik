@@ -522,6 +522,32 @@ async fn the_budget_puts_the_estimate_beside_what_was_really_charged() {
     );
 }
 
+/// What the provider served from its cache is the figure that says what a *change* to the front
+/// of the request would cost, and both dialects have always reported it while nothing read it out.
+#[tokio::test]
+async fn the_budget_says_how_much_of_the_last_request_was_served_from_cache() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(20_000),
+            cached_input_tokens: Some(18_000),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }]);
+
+    harness.send("go").await;
+    harness.settle().await;
+    harness.send("/budget").await;
+
+    let screen = harness.flat();
+    assert!(screen.contains("really cost 20,000"), "{screen}");
+    // the sentence wraps in the pane, so this is the part of it that fits on one line
+    assert!(
+        screen.contains("18,000 of it (90%) served"),
+        "the figure that prices a change to the prefix is missing: {screen}"
+    );
+}
+
 /// The token figure and the count in one sentence have to be answering the same question. An
 /// elided item is projected - as a marker - and is not sending what it holds, so a count of what
 /// is *not projected* put nothing beside nine thousand tokens.

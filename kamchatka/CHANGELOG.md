@@ -128,6 +128,15 @@ minor bump may break you.
   to its whole half somewhere a state change cannot wipe - so `space` on either row no longer
   loses which item holds what.
 
+- `/budget` says how much of the last request the provider served from its cache. Both dialects
+  have reported it all along - `prompt_tokens_details.cached_tokens` and
+  `cachedContentTokenCount` - and nothing read it out to anybody. It belongs beside the real cost
+  because it is the figure that prices a *change* rather than a request: the front of a request is
+  the tool definitions and the oldest messages, so anything that rewrites them is paid for in full
+  on the next one. A session reading `20,000, 18,000 of it (90%) served from the provider's cache`
+  is being told what a rewrite up there would cost, which is the number that settles most questions
+  about whether one is worth making.
+
 ## [0.5.0] - 2026-09-06
 
 ### fixed

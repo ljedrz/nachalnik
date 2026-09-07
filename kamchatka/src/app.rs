@@ -2467,10 +2467,32 @@ impl App {
         }
 
         match budget.reported.and_then(|usage| usage.input_tokens) {
-            Some(reported) => lines.push(format!(
-                "the last request really cost {}, as the provider counted it",
-                thousands(reported as usize)
-            )),
+            Some(reported) => {
+                let mut line = format!(
+                    "the last request really cost {}, as the provider counted it",
+                    thousands(reported as usize)
+                );
+                // note: the one figure here that says what a *change* costs rather than what the
+                // request cost. Both dialects have always reported it - `prompt_tokens_details`
+                // and `cachedContentTokenCount` - and nothing read it out to anybody. It belongs
+                // beside the real cost because it is the same sentence: the front of a request is
+                // the tool definitions and the oldest messages, so anything that rewrites them is
+                // paid for in full on the next request, and this is the number saying how much
+                // that would be
+                if let Some(cached) = budget.reported.and_then(|usage| usage.cached_input_tokens) {
+                    line.push_str(&match (cached, reported) {
+                        (0, _) => ", none of it from the provider's cache".to_owned(),
+                        (cached, 0) => format!(", {} of it cached", thousands(cached as usize)),
+                        (cached, reported) => format!(
+                            ", {} of it ({:.0}%) served from the provider's cache - which is what \
+                             a change to the front of the request would cost again",
+                            thousands(cached as usize),
+                            cached as f64 / reported as f64 * 100.0,
+                        ),
+                    });
+                }
+                lines.push(line);
+            }
             None => lines.push("nothing has been sent yet, so there is no real figure".to_owned()),
         }
 
