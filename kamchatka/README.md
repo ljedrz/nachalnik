@@ -75,7 +75,9 @@ own is the same word whether a request is in flight or the program is wedged, an
 there to tell the two apart. It is absent while the runtime is resting, including when it is
 waiting on **you**: nothing should suggest work is happening while a question sits unanswered.
 
-**chat** is the conversation, and every terminal agent has one. **context** is why this exists:
+**chat** is the conversation, and every terminal agent has one — this one also says which of it
+the model is still being sent, and reads an edit where the turn it replaced was. **context** is
+why this exists:
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
@@ -166,7 +168,7 @@ item; `e` decides **what** it reads. The prompt turns into an editor holding the
 committing supersedes the old one rather than overwriting it:
 
 ```text
-  1 ~ ledger.py    reference    469  superseded: superseded by item 8
+  1 ~ ledger.py    reference    469  superseded: replaced by item 8
   8 ▪ ledger.py    reference    477  """A running-balance ledger.
 ```
 

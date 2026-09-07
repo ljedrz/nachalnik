@@ -91,6 +91,13 @@ minor bump may break you.
   their screen. It now says `already has a result`, and `Skipped::reason` says
   `a second result for one call` rather than `an orphaned tool result`.
 
+- A superseded item's note no longer repeats the state it is in. `Kernel::supersede` set it to
+  `superseded by item 8` while the state was already `Superseded`, and a skipped item's reason is
+  written as `{state}: {note}` - so every screen built on that read `superseded: superseded by item
+  8`. The note is now `replaced by item 8`, which reads correctly composed and also on its own,
+  which the shorter `by item 8` would not: a client listing an item on one line shows the note
+  bare, and `by item 8` there says nothing.
+
 ## [0.3.1] - 2026-09-06
 
 ### added

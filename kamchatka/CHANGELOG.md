@@ -227,6 +227,21 @@ minor bump may break you.
   out` in the only account a person gets of a context changing under them. Third instance of one
   conflation, after `Trim`'s candidates and `/budget`'s held-back line.
 
+- The blank lines a provider puts in front of a message are no longer read as content. Some
+  providers send them - `inception/mercury` opens every message with two, and the recorded `gemini`
+  sessions have none - so it is a habit of the provider rather than anything the runtime did. The
+  item goes on keeping exactly what arrived, because a record of "what arrived, tidied up" cannot
+  answer what arrived; the screen stops spending rows on it.
+
+  Cosmetic in the conversation and not cosmetic in a tool result. The preview is the first six
+  *lines*, so two blank ones in front cost a third of it and truncate it two lines early: on one
+  real transcript four of the six rows were empty. The padding was eating the evidence.
+
+  Leading blank *lines* rather than leading whitespace, which would take the indentation off the
+  first line of a message that opens with a code block. The answer itself needed no fixing and gets
+  none - it is rendered as markdown and the renderer already swallows them. The thinking, a tool's
+  output and an item's pages are shown as the text they are, and those are where this was read.
+
 ### added
 
 - `/limit`, which is how much of each tool's output the model is shown - and now something a
@@ -247,6 +262,26 @@ minor bump may break you.
   and one `space` on the context tab sends that instead. That is safe rather than merely possible,
   because the projector answers one call with one result: the whole claims the call and the short
   copy drops out with a repair line saying why.
+
+- The conversation says which of itself the model is still being shown. A turn that has been
+  excluded, archived, elided or superseded keeps its place and its words, and takes a rule down its
+  left with a line above it naming the item and saying why it is out in the projector's own words -
+  `~ [2] superseded: replaced by item 3`, and then the turn.
+
+  Marked rather than hidden, which is the whole decision. The conversation is the record of what
+  happened and the context is what will be sent; a chat that quietly dropped the turn would let
+  somebody see what the model sees and lose what they did to it. Both halves of a turn are marked,
+  what it thought as well as what it said, and the rule runs the length of the block rather than
+  sitting on its first row.
+
+  The reading asks the projection and not the item's state, for the reason `Going` exists at all:
+  an item the projector repaired away is `Active` and is not in the request. The mark and the
+  reason come out of the context tab rather than being assembled again here, so the two screens
+  cannot end up giving different accounts of the same item.
+
+  `app::Entry` grew `item` and `was` to carry this, and its fields are public, so anything
+  constructing one literally will need them. A line nothing attributed shows unmarked: `None` there
+  means nothing knows, not "not going".
 
 ### changed
 
@@ -281,6 +316,27 @@ minor bump may break you.
   the deliberation about how to answer, which is the one part nobody asked for. The section is
   still labelled, and now says the reasoning came before the answer above it, so the order is a
   decision about what survives a limit rather than a claim about what the copy did.
+
+- An edit reads where the turn was. It used to leave the turn it replaced sitting in the
+  conversation with a note underneath saying the numbers had changed, and never show the words the
+  model had actually been given; now the lines move onto the item that replaced them and the row
+  above says what happened - `~ [2] → [3] · edited here, 13 tokens replaced · enter on [3] reads
+  what it said`.
+
+  Saying the new text instead is the obvious version and it is wrong. `say` appends, so a turn
+  edited twenty exchanges ago lands after everything that followed it and the only account of the
+  session is then in an order no request ever had. It reads fine for the turn just taken and lies
+  about every older one, which is backwards: the older the edit, the more the screen has to be
+  trusted.
+
+  Only the line that showed what the turn *said* takes the new words. An edit carries the kind over
+  whole, so the calls and the thinking are unchanged and the lines showing them are still true;
+  what they need is the new identifier, so that excluding the edited turn later takes them out with
+  it. Nothing is hidden by this - `commit_edit` already filed the old content under the *new*
+  identifier and `faces` builds it into a `v1` page, which is what the row now points at.
+
+  Replaying a saved session is deliberately left alone: `retell` is handed every item including the
+  superseded ones, and a session read back off disk is a record rather than a conversation.
 
 ## [0.5.0] - 2026-09-06
 

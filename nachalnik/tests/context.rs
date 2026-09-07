@@ -754,7 +754,7 @@ fn superseding_is_explicit_and_reversible() {
     assert!(!kernel.item(old).unwrap().is_projected());
     assert_eq!(
         kernel.item(old).unwrap().note.as_deref(),
-        Some(&*format!("superseded by item {new}"))
+        Some(&*format!("replaced by item {new}"))
     );
     assert_eq!(
         kernel.item(new).unwrap().content.to_text(),

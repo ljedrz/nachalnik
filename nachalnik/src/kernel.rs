@@ -830,7 +830,7 @@ impl Kernel {
         self.set_state_one(
             old,
             ContextState::Superseded,
-            Some(format!("superseded by item {new}")),
+            Some(format!("replaced by item {new}")),
         );
 
         Ok(new)

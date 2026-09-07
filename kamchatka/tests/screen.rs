@@ -4925,7 +4925,7 @@ async fn the_chat_marks_what_the_model_is_no_longer_shown() {
     // projector's own words rather than a second account assembled for this screen
     assert!(after.contains("~ ["), "it should be marked: {after}");
     assert!(
-        after.contains("superseded by item"),
+        after.contains("replaced by item"),
         "it should say why: {after}"
     );
 
