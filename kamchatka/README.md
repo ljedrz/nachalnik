@@ -686,7 +686,7 @@ the limit: 1,048,576, which the next request would fill 1.9% of
 the last request really cost 20,063, as the provider counted it
 
 the counter has learned from 2 request(s) and scaled itself by 1.131: its own guesses
-came to 35,447 tokens where the provider counted 40,073, so it was reading 13.1% low
+came to 35,447 tokens where the provider counted 40,073
 ```
 
 That correction is the runtime's `Calibrating` counter: every response tells it what the request

@@ -2521,19 +2521,19 @@ impl App {
                  and no request so far has been big enough to learn anything from"
                     .to_owned()
             }
+            // note: the two figures and the scale, and no percentage. There was one, and it read
+            // "so it was reading 54.3% low" off `scale - 1` - which is the error as a fraction of
+            // the *estimate*, where "reading 54.3% low" is read as a fraction of the truth. Those
+            // are 54.3% and 35.2% of the same pair of numbers. Both are true and the sentence
+            // could only assert one of them, so it asserts neither: the guess and the charge are
+            // what somebody wants, and the scale between them is already on the line
             Some(learned) => format!(
                 "the counter has learned from {} request(s) and scaled itself by {:.3}: its own \
-                 guesses came to {} tokens where the provider counted {}, so it was reading {:.1}% \
-                 {}",
+                 guesses came to {} tokens where the provider counted {}",
                 learned.observations,
                 learned.scale,
                 thousands(learned.estimated as usize),
                 thousands(learned.reported as usize),
-                ((learned.scale - 1.0) * 100.0).abs(),
-                match learned.scale < 1.0 {
-                    true => "high",
-                    false => "low",
-                },
             ),
         });
 

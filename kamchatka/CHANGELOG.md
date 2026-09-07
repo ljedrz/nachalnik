@@ -20,6 +20,13 @@ minor bump may break you.
   instead. The kernel no longer banks a summary for a pass that moved nothing either, which is the
   same hole from the other side and closes it for any compactor.
 
+- `/budget`'s account of what the counter has learned drops its percentage. It read "so it was
+  reading 54.3% low", computed from `scale - 1`, which is the error as a fraction of the counter's
+  own guess - while "reading 54.3% low" is read as a fraction of the truth. On the same pair of
+  numbers those are 54.3% and 35.2%, so the sentence asserted one and meant the other. The guess,
+  the charge and the scale between them are what somebody came to the line for, and all three were
+  already on it.
+
 - `amend`'s list of the five moves does not claim a difference the budget does not make. `archive`
   read "keep it, do not send it, and stop counting it against the budget" - three things `exclude`
   does as well, so the clause could only mean something by implying that an excluded item is still
