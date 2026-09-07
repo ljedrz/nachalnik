@@ -75,6 +75,22 @@ minor bump may break you.
   One projection per frame, computed once in `draw` and handed to the three places that report on
   it, rather than each asking for its own.
 
+- One word per mechanism, in `amend` and at the prompt. `amend` had a `prune` action with a
+  `state` argument, which put the word for *one* move over five of them - `pin` and `restore`
+  included, so "prune to pin it" was the documented way to protect something - and an item you
+  pruned then read back as `archived` on every screen that lists it. Two live models in a row
+  spent a call each asking for `restore` as an action, were told it was a state and not an action,
+  and gave up. They were right and the levels were wrong: the five moves are actions now, each
+  named for the state it leaves behind, and the `state` argument is gone. `/prune` becomes
+  `/exclude` for the same reason - it only ever moved an item to `excluded` - and `/keep` becomes
+  `/pin`.
+
+  Nothing that used to work stopped working. `prune` with a `state`, `/prune`, `/keep`, `unelide`,
+  `unpin` and `include` are all still accepted and none of them is documented, because taking a
+  word somebody reached for costs nothing and refusing it costs them a turn. AGENTS.md carries the
+  convention now, including that distinction: a synonym in an enum, a help line or a message is
+  the bug, a synonym in a `match` is a kindness.
+
 - The question about an `amend` says which items it would change. `ids: [22]` is a true account of
   the arguments and a useless one to be asked about: the tool rewrites and hides pieces of the
   context, the box asking covers the list those numbers refer to, and the answer is one key - so
@@ -113,6 +129,11 @@ minor bump may break you.
   every concrete path in a refusal is read as a path to try. A refusal is read under pressure to
   try something else; a schema is read while choosing, which is when a rare spelling is worth
   knowing and nobody is about to act on it.
+
+- A move given a `label` instead of `ids` is told how to say what it meant. `label` is in the same
+  schema - it names a `note` - and a model reaching for a way to say *which item* took it, which is
+  a fair reading and a wasted call. The refusal now hands back the spelling: `select:
+  "label:secrets.txt"`, which is a selector that works and was there all along.
 
 - A provider's notice reaches whoever is holding the `App`, not only this program's own loop.
   `take_notice` was drained on a tick in `main`, so "the model was cut off mid-answer; what had
@@ -166,6 +187,15 @@ minor bump may break you.
   on the next one. A session reading `20,000, 18,000 of it (90%) served from the provider's cache`
   is being told what a rewrite up there would cost, which is the number that settles most questions
   about whether one is worth making.
+
+- `amend`'s `note` says what it is for, which is the question it kept prompting: how is writing a
+  note different from thinking? Four ways, and the description and the code now say them. Thinking
+  belongs to the turn that produced it, so pruning the turn prunes the thought; it has no
+  identifier, so it cannot be revised, pinned, or protected from a compactor; it is not reliably
+  carried back at all - this program's OpenAI-compatible dialect has never put reasoning on the
+  wire and cannot - and it is not a row on the context tab with a reason beside it. A note is an
+  item: numbered, projected into every request from then on, pinnable, and visible to the person.
+  It is the one thing in a context that is there because the agent judged a finding worth keeping.
 
 ## [0.5.0] - 2026-09-06
 

@@ -2028,7 +2028,14 @@ impl App {
             // the ones that are refused, plus the ones nobody has decided about yet, plus what
             // each of them covers - and every row can be changed where it is read
             "policy" | "permissions" => self.open(Tab::Permissions),
-            "prune" | "keep" | "restore" => self.by_selector(command, rest),
+            // note: one word per mechanism, and the mechanism here is a state. `/prune` moved an
+            // item to `excluded` and every place the result is read back said `excluded`, so the
+            // command is named for that now - and `amend`'s own five moves are named the same way,
+            // so the person and the model reach for the same word. The old spellings still work:
+            // accepting a word somebody typed costs nothing
+            "exclude" | "prune" => self.by_selector("exclude", rest),
+            "pin" | "keep" => self.by_selector("pin", rest),
+            "restore" => self.by_selector("restore", rest),
             "model" => {
                 if !rest.is_empty() {
                     let (provider, model) = (self.provider.clone(), rest.to_owned());
@@ -2283,8 +2290,11 @@ impl App {
         }
 
         let (state, note) = match command {
-            "prune" => (ContextState::Excluded, Some(format!("pruned by `{input}`"))),
-            "keep" => (ContextState::Pinned, None),
+            "exclude" => (
+                ContextState::Excluded,
+                Some(format!("at the terminal, by `{input}`")),
+            ),
+            "pin" => (ContextState::Pinned, None),
             _ => (ContextState::Active, None),
         };
         let changed = self.kernel.set_state(ids, state, note);

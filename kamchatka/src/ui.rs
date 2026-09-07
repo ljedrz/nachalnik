@@ -122,8 +122,9 @@ pub const HELP: &str = "  THE TABS
     /request            the request that would go next
     /payload            the provider's own rendering of it, byte for byte
     /raw                the provider's own last answer
-    /prune SELECTOR     take items out; with no selector, the whole language
-    /keep SELECTOR      pin them
+    /exclude SELECTOR   take items out of the request; also /prune. With no
+                        selector, the whole selector language
+    /pin SELECTOR       protect them from compaction; also /keep
     /restore SELECTOR   put them back
     /budget             the estimate, what the last request really cost, and the
                         correction the counter has worked out from the difference

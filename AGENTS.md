@@ -365,6 +365,22 @@ README and the crate docs in longer form:
   `Error`, `State`, `Delta`, `Content`, `Role`, `StopReason`, `Capability`, `GrantSource`,
   `ContextKind`, `ContextState`. A new variant is not a breaking change; forgetting the attribute
   on a new enum is.
+- **One word per mechanism, and it is the word the result is read back in.** An output limit
+  **truncates**, a compactor **elides**, `/exclude` **excludes**, `Kernel::supersede`
+  **supersedes**. A second word for something that already has one is a second thing to learn and
+  a thing two parts of the program can disagree about, and it always shows up in the same place:
+  somebody does an operation under one name and reads the result under another. `amend` had a
+  `prune` action with a `state` argument, which put the word for *one* move over five of them -
+  `pin` and `restore` included, so "prune to pin it" was the documented way to protect
+  something - and an item you pruned then read back as `archived` on every screen that listed it.
+  Two live models in a row spent a call each asking for `restore` as an action, were told it was a
+  state and not an action, and gave up; they were right and the levels were wrong. The five moves
+  are actions now, named for the state each leaves behind.
+
+  This is about what the program **says**, not what it accepts. Taking a word somebody reached for
+  costs nothing and refusing it costs them a turn, so `unelide`, `unpin`, `include`, the old
+  `prune` and `/keep` all still work and none of them is documented. A synonym in an enum, a help
+  line or a message is the bug; a synonym in a `match` is a kindness.
 - **Seams identify themselves.** `Projector`, `TokenCounter`, `PermissionPolicy` and `Compactor`
   each carry a `name()` defaulting to the implementing type's path, so a client can put the six
   seams on a screen (`/seams` in `kamchatka`). It is for showing a person, not for matching on.

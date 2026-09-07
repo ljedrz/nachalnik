@@ -612,34 +612,70 @@ async fn the_tools_stop_working_when_the_handle_goes() {
     assert!(answered(&kernel).contains("this session is over"));
 }
 
+/// The word for the move is the action, and it is the word the result is read back in.
+///
+/// note: these five used to be one `prune` action with a `state` argument, which put the word for
+/// one of them over all five - `pin` and `restore` included, so "prune to pin it" was the
+/// documented way to protect something, and an item you pruned read back as `archived`. Two live
+/// models in a row spent a call each asking for `restore` as an action and being told it was a
+/// state; they were right and the levels were wrong. The old spelling still works, because
+/// accepting a word somebody reached for costs nothing and refusing it costs a turn.
 #[tokio::test]
-async fn an_action_nobody_implements_is_named_rather_than_guessed_at() {
-    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
-        "c1",
-        "amend",
-        json!({ "action": "elide", "ids": [1], "reason": "it is enormous" }),
-    )]));
+async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "amend",
+            json!({ "action": "elide", "ids": [1], "reason": "it is enormous" }),
+        ),
+        // the way it was spelled before, which is still a way to spell it
+        call(
+            "c2",
+            "amend",
+            json!({ "action": "prune", "ids": [2], "state": "exclude", "reason": "and this one" }),
+        ),
+        // and the way back, which is an action like the rest of them
+        call(
+            "c3",
+            "amend",
+            json!({ "action": "restore", "ids": [1], "reason": "I want it after all" }),
+        ),
+    ]));
 
     kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    kernel.push(ContextItem::file("bigger.rs", "1".repeat(400)));
     kernel.push(ContextItem::user("go"));
 
     kernel.turn().await.expect("the turn failed");
 
-    // `elide` is a state, not an action, and a tool that quietly did the nearest thing would be
-    // teaching the model an argument that does not exist. So it is refused - but a word this tool
-    // does know, at another level, is worth saying so about: two live models in a row spent a
-    // call each on `restore` and were told only that no such thing existed
-    let said = answered(&kernel);
+    let said = all_answers(&kernel);
+    assert_eq!(said.len(), 3, "{said:?}");
+    assert!(said[0].contains("elided"), "{}", said[0]);
+    assert!(said[1].contains("excluded"), "{}", said[1]);
+    assert_eq!(kernel.items()[0].state, ContextState::Active, "{}", said[2]);
+    assert_eq!(kernel.items()[1].state, ContextState::Excluded);
+
+    // and nothing tells anybody about a `state` argument any more, because there is not one
+    let offered = kernel
+        .tool_specs()
+        .into_iter()
+        .find(|spec| spec.id == "amend")
+        .expect("it is offered");
     assert!(
-        said.contains("`elide` is a `state`, not an `action`"),
-        "{said}"
+        offered.schema["properties"].get("state").is_none(),
+        "the level that caused this is still in the schema: {}",
+        offered.schema
     );
-    assert!(
-        said.contains("\"action\":\"prune\""),
-        "the way out is spelled: {said}"
-    );
-    assert!(said.contains("\"state\":\"elide\""), "{said}");
-    assert_eq!(kernel.items()[0].state, ContextState::Active);
+    for action in ["elide", "exclude", "archive", "pin", "restore"] {
+        assert!(
+            offered.schema["properties"]["action"]["enum"]
+                .as_array()
+                .expect("an enum")
+                .iter()
+                .any(|listed| listed == action),
+            "`{action}` is not offered as an action"
+        );
+    }
 }
 
 #[tokio::test]
@@ -660,7 +696,7 @@ async fn an_action_that_is_no_part_of_this_tool_gets_the_list_of_the_ones_that_a
     // will not do to anything
     let said = answered(&kernel);
     assert!(said.contains("there is no `delete`"), "{said}");
-    assert!(said.contains("prune") && said.contains("revise"), "{said}");
+    assert!(said.contains("elide") && said.contains("revise"), "{said}");
     assert_eq!(kernel.items()[0].state, ContextState::Active);
 }
 

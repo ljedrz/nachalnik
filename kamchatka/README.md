@@ -82,7 +82,7 @@ waiting on **you**: nothing should suggest work is happening while a question si
 │  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                    │
 │  2 · user          user_message             6         what does the kernel do?                              │
 │  3 · assistant     assistant_message        7         asked for read                                        │
-│  4 - read          tool_result              0     15  excluded: pruned at the terminal                      │
+│  4 - read          tool_result              0     15  excluded: at the terminal, by `tool:read`             │
 │  5 · assistant     assistant_message        7         asked for shell                                       │
 │  6 … shell         tool_result             11  9,004  compaction: compacted to make room                    │
 │  7 · assistant     assistant_message       62         The kernel is a state machine with five states. …     │
@@ -123,7 +123,7 @@ again.
 | <kbd>enter</kbd> | read the whole of it — see below |
 | <kbd>←</kbd> / <kbd>→</kbd> | move between its pages, while it is open |
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
-| <kbd>23G</kbd> | go to the item numbered 23 — the number `/prune` takes |
+| <kbd>23G</kbd> | go to the item numbered 23 — the number `/exclude` takes |
 
 An oversized tool result is held as *two* items: the truncated copy the model was shown, and the
 whole of it beside it, marked `▫ archived` and not going. <kbd>space</kbd> or <kbd>p</kbd> on that
@@ -234,7 +234,7 @@ why:
 12 item(s) in, 4 out:
   [13] left out: an assistant turn with no content and no answered calls
   [14] left out: archived: the whole output; the model was shown a truncated copy
-  [15] left out: excluded: pruned by `tool:shell:latest`
+  [15] left out: excluded: at the terminal, by `tool:shell:latest`
   repaired: dropped the call `call_301842` (shell) from item 13: its result is not
             in the projection
 ```
@@ -519,15 +519,16 @@ it does reaches this session's context or its log. Forking needed no change to t
 — `Kernel::snapshot` and `Kernel::resume` already *are* that, and leaving an item out is one field
 on a copy of the snapshot.
 
-**`amend`** changes things. `prune` moves items between the same three states the <kbd>space</kbd>
-key does:
+**`amend`** changes things. `elide`, `exclude`, `archive`, `pin` and `restore` move items between
+the same states the <kbd>space</kbd> key does, and each action is named for the state it leaves —
+which is the word you will read back on the item afterwards:
 
 * `elide` — for a tool result that has served its purpose. The call stays answered, and the result
   stops costing what it holds.
 * `exclude` — take it out altogether.
 * `pin` — protect it from compaction.
 
-Items are named by `ids`, or by `select`, which takes the same selector language `/prune` does. So
+Items are named by `ids`, or by `select`, which takes the same selector language `/exclude` does. So
 "the tool results I am done with" is one call rather than twelve numbers read off a listing.
 
 `revise` rewrites what an item says. `note` writes something into the context — a plan, a

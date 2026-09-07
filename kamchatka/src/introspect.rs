@@ -851,7 +851,7 @@ impl Tool for Amend {
                 // in its own columns, which is a shorter way to learn them than a schema is
                 "select": {
                     "type": "string",
-                    "description": "prune: a class of items instead of `ids`. One of: an item \
+                    "description": "a class of items instead of `ids`. One of: an item \
                                     number; `all`; `all:tool_results` (or files, diagnostics, \
                                     selections, memories, instructions, system, user, model, \
                                     compaction); `kind:<kind>` or `state:<state>`, taking the \
@@ -860,26 +860,18 @@ impl Tool for Amend {
                                     `file:<path>`; `label:<text>`. Anything else is read as a \
                                     label.",
                 },
-                "state": {
-                    "type": "string",
-                    // note: the five worth naming. `unelide`, `unpin`, `include` and the rest
-                    // are accepted and deliberately not listed - an enum of eleven words, six of
-                    // them the same word, is a harder thing to read than one of five
-                    "enum": ["elide", "exclude", "archive", "pin", "restore"],
-                    "description": "prune: where they go. `restore` is the way back from any of \
-                                    the others, including a pin you set yourself",
-                },
                 "content": {
                     "type": "string",
                     "description": "revise: what the item should say instead. note: what to write down",
                 },
                 "label": {
                     "type": "string",
-                    "description": "note: a short name for it, so it is findable later",
+                    "description": "note: a short name for it, so you can find it again",
                 },
                 "pin": {
                     "type": "boolean",
-                    "description": "note: protect it from compaction",
+                    "description": "note: protect it from compaction, for a finding that \
+                                    has to outlast the context it was found in",
                 },
                 "reason": {
                     "type": "string",
@@ -911,21 +903,30 @@ impl Tool for Amend {
         };
 
         match action(&call.args)? {
-            "prune" => Ok(self.prune(&kernel, call, reason)),
             "revise" => Ok(self.revise(&kernel, call, reason)),
             "note" => Ok(self.note(&kernel, call, reason)),
             "undo" => Ok(self.walk(&kernel, call, reason, true)),
             "redo" => Ok(self.walk(&kernel, call, reason, false)),
-            // a word that names a *state* is not a typo, it is somebody looking in the right
-            // tool at the wrong level: `restore` is what `prune` puts an item back to, and two
-            // models in a row spent a call each being told it does not exist before giving up
-            other if state_of(other).is_some() => Ok(ToolOutput::error(format!(
-                "`{other}` is a `state`, not an `action`: \
-                 {{\"action\":\"prune\",\"ids\":[…],\"state\":\"{other}\",\"reason\":\"…\"}}"
-            ))),
+            // note: the five moves are actions of their own, named for what they do. They used to
+            // be one `prune` action with a `state` argument, which put the word for *one* of them
+            // over all five - including `pin` and `restore`, which are its opposite, so "prune to
+            // pin it" was the documented spelling of protecting something. It also disagreed with
+            // every place the result is read back, all of which name the state. Two models in a
+            // row spent a call each asking for `restore` and being told it was a state and not an
+            // action; the answer was that they were right and the levels were wrong.
+            //
+            // note: `prune` with a `state` still works, for the reason `unelide` does - accepting
+            // a word somebody reached for costs nothing, and refusing it costs a turn. What
+            // changed is the word this program *says*.
+            other if state_of(other).is_some() || other == "prune" => {
+                Ok(self.moved(&kernel, call, reason, other))
+            }
             other => Ok(ToolOutput::error(unknown(
                 other,
-                &["prune", "revise", "note", "undo", "redo"],
+                &[
+                    "elide", "exclude", "archive", "pin", "restore", "revise", "note", "undo",
+                    "redo",
+                ],
             ))),
         }
     }
@@ -946,7 +947,7 @@ fn wrote_anything_down(kernel: &Kernel) -> bool {
 
 impl Amend {
     /// Moves items to a state, refusing the ones that are not the model's to move.
-    fn prune(&self, kernel: &Kernel, call: &ToolCall, reason: &str) -> ToolOutput {
+    fn moved(&self, kernel: &Kernel, call: &ToolCall, reason: &str, action: &str) -> ToolOutput {
         // a selector, or a list of numbers. Naming a class of items is what makes this usable for
         // the job it is mostly for - "the tool results I am done with" is one thought, and
         // reading twelve numbers off a listing to say it is not
@@ -972,15 +973,31 @@ impl Amend {
                     "`{input}` is a selector, and nothing in your context matches it; \
                      `introspect` with `look` lists what there is"
                 ),
-                None => "`prune` needs `ids`, or a `select` naming a class of them".to_owned(),
+                // the mistake a live run actually made: `label` is in this schema, for naming a
+                // `note`, and a model reaching for a way to say *which item* took it. The label
+                // was a fine way to name one - `select` reads a bare word as a label - so the
+                // useful answer is the spelling of what it meant rather than a list of arguments
+                None => match call.args["label"].as_str() {
+                    Some(label) => format!(
+                        "`{action}` needs `ids`, or a `select` naming a class of them. `label` \
+                         names a `note`, not the items to move - to move the items called \
+                         `{label}`, say `select: \"label:{label}\"`"
+                    ),
+                    None => format!("`{action}` needs `ids`, or a `select` naming a class of them"),
+                },
             });
         }
-        let Some(state) = state_of(call.args["state"].as_str().unwrap_or_default()) else {
+        // the action names the move; `prune` is the old spelling and carries it in `state`
+        let named = match action {
+            "prune" => call.args["state"].as_str().unwrap_or_default(),
+            other => other,
+        };
+        let Some(state) = state_of(named) else {
             // what each one does rather than only what it is called: the choice between `elide`
             // and `exclude` is the one that decides whether a tool call keeps its answer, and a
             // list of five words does not help anybody make it
             return ToolOutput::error(
-                "`state` must be one of:\n  \
+                "say which move you mean, as the `action`:\n  \
                  elide    - replace what it says with a marker; a tool call keeps its answer\n  \
                  exclude  - take it out of the request; a tool call loses its answer too\n  \
                  archive  - keep it, do not send it, and stop counting it against the budget\n  \
@@ -1114,6 +1131,24 @@ impl Amend {
     /// in here?" has an answer on the context pane. It is the item's own field for exactly this,
     /// and a tool that attributed its writing to somebody else would be the one dishonest thing
     /// in a program built to show where everything came from.
+    /// Writes something the agent decided into its own context, as an item of its own.
+    ///
+    /// note: worth being clear about what this is *for*, because the obvious objection is that a
+    /// model can already think, and thinking is free. Four differences, and each of them is the
+    /// reason somebody reaches for this rather than a reasoning block. Reasoning belongs to the
+    /// turn that produced it, so pruning that turn prunes the thought - deliberately, since for a
+    /// signed thinking block nothing else is safe. Reasoning is not addressable: it has no
+    /// identifier, cannot be revised, cannot be pinned, and a compactor cannot be told to leave
+    /// it alone. Reasoning is not reliably carried back either - this program's own
+    /// OpenAI-compatible dialect has never put it on the wire and cannot, so on that endpoint a
+    /// conclusion a model reached by thinking is gone by the next request. And reasoning is not
+    /// on the context tab as a row of its own with a reason beside it, which is the difference
+    /// between a person being able to see what the agent decided to keep and having to read a
+    /// transcript for it.
+    ///
+    /// note: so a note is the one item in a context that is there because the agent judged a
+    /// finding worth keeping, which is why [`wrote_anything_down`] asks about exactly this and
+    /// why hiding everything while holding none of them is worth a sentence.
     fn note(&self, kernel: &Kernel, call: &ToolCall, reason: &str) -> ToolOutput {
         let Some(content) = call.args["content"]
             .as_str()

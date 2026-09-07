@@ -915,7 +915,10 @@ async fn an_item_that_is_not_going_into_the_request_says_why_where_it_is_listed(
     // "why is that out?" is a question about the thing you are looking at, so it is answered
     // on its row rather than only in the request preview
     let screen = harness.screen();
-    assert!(screen.contains("excluded: pruned by `files`"), "{screen}");
+    assert!(
+        screen.contains("excluded: at the terminal, by `files`"),
+        "{screen}"
+    );
 }
 
 #[tokio::test]
