@@ -549,6 +549,79 @@ fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
     );
 }
 
+/// And when the address has already gone and the line is still too long, the *name* gives way -
+/// vendor prefix first, then from the left. The figures and the key hint never do.
+///
+/// note: found by pointing the live suite at OpenRouter, which is this program's default endpoint
+/// and where a name like `dots-studio/dots-3-note-preview:free` is ordinary. 36 columns of model
+/// is enough on its own to push `F1 for the keys` off a 100-column terminal, with `openrouter.ai`
+/// already dropped and nothing else left to give.
+#[test]
+fn a_long_model_name_gives_way_after_the_address_and_before_the_figures() {
+    let status_at = |width: u16| {
+        let kernel = Kernel::new(Config::default());
+        let policy = Arc::new(Careful::new());
+        // this one on the kernel as well, because the name on the line is the *kernel's* model
+        // and a scripted provider is called `scripted` - eleven columns, which is the whole
+        // subject here
+        let provider = Arc::new(OpenAiCompatible::new(
+            "dots-studio/dots-3-note-preview:free",
+            "https://openrouter.ai/api/v1",
+            "",
+        ));
+        kernel.set_provider(provider.clone());
+        kernel.set_policy(policy.clone());
+        let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
+        std::mem::forget(keep);
+        let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
+
+        let mut terminal = Terminal::new(TestBackend::new(width, 12)).expect("a backend");
+        terminal
+            .draw(|frame| ui::draw(frame, &mut app))
+            .expect("a frame");
+        let buffer = terminal.backend().buffer().clone();
+        (0..width)
+            .map(|x| buffer[(x, 11)].symbol())
+            .collect::<String>()
+    };
+
+    // room for all of it: the whole name, and the address after it
+    let whole = status_at(120);
+    assert!(
+        whole.contains("dots-studio/dots-3-note-preview:free @ openrouter.ai"),
+        "{whole}"
+    );
+    assert!(whole.contains("F1 for the keys"), "{whole}");
+
+    // the address is gone, the vendor with it, and the model is still the one this session is
+    // talking to. A few columns narrower than the terminal it was found on, because the line
+    // there also carried the provider's own figure, and what is under test is the ladder
+    let short = status_at(88);
+    assert!(!short.contains('@'), "the address gave way first: {short}");
+    assert!(
+        !short.contains("dots-studio/"),
+        "and the vendor prefix after it: {short}"
+    );
+    assert!(
+        short.contains("dots-3-note-preview:free"),
+        "the name itself is still readable: {short}"
+    );
+    assert!(
+        short.contains("F1 for the keys"),
+        "and the key hint stayed: {short}"
+    );
+
+    // narrower still: the name is cut from the left, because the right-hand end is the part that
+    // names the model rather than the house it came from
+    let cut = status_at(78);
+    assert!(cut.contains('\u{2026}'), "it says it was cut: {cut}");
+    assert!(cut.contains(":free"), "keeping the far end: {cut}");
+    assert!(
+        cut.contains("F1 for the keys"),
+        "and the key hint still stayed: {cut}"
+    );
+}
+
 /// `/models` against somewhere that answers nothing says so, rather than opening an empty box.
 #[tokio::test]
 async fn models_says_when_the_endpoint_lists_none() {

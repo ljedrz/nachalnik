@@ -1148,7 +1148,7 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
     let over = line.width().saturating_sub(area.width as usize);
     let line = match over {
         0 => line,
-        _ => Line::from(shrink_host(line.spans, over)),
+        _ => Line::from(shrink_address(line.spans, over)),
     };
 
     frame.render_widget(Paragraph::new(line), area);
@@ -1158,9 +1158,19 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
 /// the columns it was costing are better spent on the figures to its right.
 const HOST_FLOOR: usize = 8;
 
-/// The same spans with the ` @ host` shortened to claw back `over` columns, or taken off when
-/// there is no shortening of it left worth reading.
-fn shrink_host(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> {
+/// The least of a model's name worth showing, which is more than a host's: the name is what the
+/// line is about, and a session cannot tell what it is talking to from `…h`.
+const MODEL_FLOOR: usize = 12;
+
+/// The same spans with the `model @ host` shortened to claw back `over` columns.
+///
+/// note: a ladder, because there is more than one thing here that can give way and they are not
+/// worth the same. The host goes first, then the model's vendor prefix, then the model itself from
+/// the left - and the figures and the key at the right end, which is what all of this is protecting,
+/// never do. It used to stop after the host: `dots-studio/dots-3-note-preview:free` is 36 columns
+/// on OpenRouter, which is this program's default endpoint, and a line carrying one lost `F1 for
+/// the keys` off the right edge at 100 columns with the address already gone.
+fn shrink_address(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> {
     spans
         .into_iter()
         .map(|span| {
@@ -1171,17 +1181,68 @@ fn shrink_host(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> {
 
             // one column of the saving goes on the ellipsis that says it was shortened
             let keep = Span::raw(host).width().saturating_sub(over + 1);
-            let shortened = match keep >= HOST_FLOOR {
+            if keep >= HOST_FLOOR {
                 // from the right: the leftmost label is the one that distinguishes an endpoint -
                 // `generativelanguage` in Google's, the resource name in an Azure deployment -
                 // and the rest of it is a domain shared with everything else the vendor runs
-                true => format!("{model} @ {}…", &host[..prefix_within(host, keep)]),
-                false => model.to_owned(),
-            };
+                return Span::styled(
+                    format!("{model} @ {}…", &host[..prefix_within(host, keep)]),
+                    style,
+                );
+            }
 
-            Span::styled(shortened, style)
+            // the address is gone; whatever is still over has to come out of the name
+            let short = over.saturating_sub(Span::raw(format!(" @ {host}")).width());
+
+            Span::styled(shrink_model(model, short), style)
         })
         .collect()
+}
+
+/// A model's name with `over` columns taken out of it, or as near as is still worth reading.
+///
+/// note: the opposite end from a host, because the distinguishing part is at the opposite end.
+/// `dots-studio/` is shared with everything that vendor publishes and `dots-3-note-preview:free`
+/// is the model, so the prefix goes first and the ellipsis afterwards eats from the left.
+fn shrink_model(model: &str, over: usize) -> String {
+    if over == 0 {
+        return model.to_owned();
+    }
+
+    let named = model.split_once('/').map_or(model, |(_, rest)| rest);
+    let saved = Span::raw(model).width() - Span::raw(named).width();
+    let Some(short) = over.checked_sub(saved).filter(|short| *short != 0) else {
+        return named.to_owned();
+    };
+
+    // one column of the saving goes on the ellipsis, as with a host
+    let keep = Span::raw(named).width().saturating_sub(short + 1);
+    match keep >= MODEL_FLOOR {
+        true => format!("…{}", &named[named.len() - suffix_within(named, keep)..]),
+        // below the floor there is nothing left to say and nothing to be gained by saying half of
+        // it; the line is drawn as it is and the terminal clips what does not fit
+        false => named.to_owned(),
+    }
+}
+
+/// The longest suffix of `text` that fits in `width` columns, as a length in bytes.
+fn suffix_within(text: &str, width: usize) -> usize {
+    let mut len = 0;
+    let mut filled = 0;
+
+    for (offset, grapheme) in text.grapheme_indices(true).rev() {
+        let next = filled + Span::raw(grapheme).width();
+        if len != 0 && next > width {
+            break;
+        }
+        len = text.len() - offset;
+        filled = next;
+        if filled >= width {
+            break;
+        }
+    }
+
+    len
 }
 
 /// How long each of the three dots stays lit.

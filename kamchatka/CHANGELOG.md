@@ -144,6 +144,14 @@ minor bump may break you.
   a fair reading and a wasted call. The refusal now hands back the spelling: `select:
   "label:secrets.txt"`, which is a selector that works and was there all along.
 
+- The status line's give-way ladder has the rung it was missing. The address gives way before the
+  figures, in two steps, and there it stopped - so a long *name* pushed `F1 for the keys` off the
+  right edge with the address already gone and nothing left to give.
+  `dots-studio/dots-3-note-preview:free` is 36 columns and perfectly ordinary on OpenRouter, which
+  is this program's default endpoint. The vendor prefix goes next, then the name is cut from the
+  left, which is the opposite end from a host and for the same reason: the distinguishing part of
+  `openrouter.ai` is at the front and the distinguishing part of a model id is at the back.
+
 - A provider's notice reaches whoever is holding the `App`, not only this program's own loop.
   `take_notice` was drained on a tick in `main`, so "the model was cut off mid-answer; what had
   arrived is kept" - written for exactly the moment a person needs to know something is missing -
