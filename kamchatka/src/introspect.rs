@@ -682,12 +682,6 @@ async fn branch(
             thousands(usage.output_tokens.unwrap_or_default() as usize),
         ));
     }
-    if let Some(reasoning) = &response.reasoning {
-        out.push_str(&format!(
-            "\n--- its reasoning ---\n{}\n",
-            reasoning.to_text()
-        ));
-    }
     let said = response
         .content
         .as_ref()
@@ -710,6 +704,20 @@ async fn branch(
             "\n--- what it said ({:?}) ---\n{said}\n",
             response.stop
         )),
+    }
+
+    // note: the answer before the thinking, which is the opposite of the order it was produced
+    // in and the right way round for the one thing that happens to this output: an output limit
+    // cuts from the end. On a reasoning model the thinking is the bulk of a fork - measured on one
+    // real fork, 68% of 34,287 bytes against the answer's 30% - so with the thinking first the
+    // limit ate the answer and left the deliberation about how to answer. That session lost
+    // exactly the three paragraphs it had asked for. Nothing about this order is a claim about
+    // what the copy did; the two sections are labelled and the reasoning says it is reasoning
+    if let Some(reasoning) = &response.reasoning {
+        out.push_str(&format!(
+            "\n--- its reasoning, which it produced before the answer above ---\n{}\n",
+            reasoning.to_text()
+        ));
     }
 
     Ok(ToolOutput::new(out))

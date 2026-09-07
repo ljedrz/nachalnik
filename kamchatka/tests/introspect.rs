@@ -324,6 +324,47 @@ async fn draft_answers_on_a_fork_and_leaves_the_context_alone() {
     );
 }
 
+/// A fork leads with the answer, because an output limit cuts from the end.
+///
+/// note: the reasoning is the bulk of a fork on a reasoning model - 68% of one real 34KB fork
+/// against the answer's 30% - so with the thinking first the limit ate the answer and left the
+/// deliberation about how to answer. One session asked a copy of itself three questions, and what
+/// came back was the copy working out how to reply, with all three answers cut off the end.
+#[tokio::test]
+async fn a_fork_leads_with_the_answer_so_a_limit_cuts_the_thinking_instead() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "introspect",
+            json!({ "action": "fork", "question": "why did you stop?" }),
+        )]),
+        ModelResponse {
+            reasoning: Some("X".repeat(2_000).into()),
+            ..ModelResponse::text("Because the glob had crossed a line.")
+        },
+        ModelResponse::text("done"),
+    ]);
+
+    kernel.push(ContextItem::user("ask a copy of yourself"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    let answer = said
+        .find("--- what it said")
+        .expect("the answer is in there");
+    let thinking = said.find("--- its reasoning").expect("so is the thinking");
+    assert!(
+        answer < thinking,
+        "the answer has to come first, or a limit takes it: answer at {answer}, thinking at \
+         {thinking}"
+    );
+    // and the section still says which is which, so the order is not a claim about what it did
+    assert!(
+        said.contains("which it produced before the answer above"),
+        "{said}"
+    );
+}
+
 #[tokio::test]
 async fn a_fork_is_asked_a_question_without_the_items_it_was_told_to_leave_out() {
     let (kernel, provider, _anchor) = agent([

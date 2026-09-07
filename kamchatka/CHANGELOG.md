@@ -197,6 +197,13 @@ minor bump may break you.
   item: numbered, projected into every request from then on, pinnable, and visible to the person.
   It is the one thing in a context that is there because the agent judged a finding worth keeping.
 
+- A fork leads with the answer and puts the thinking after it. An output limit cuts from the end,
+  and on a reasoning model the thinking is the bulk of a fork: measured on one real 34,287-byte
+  fork, 68% thinking against the answer's 30%, sitting last. So the limit ate the answer and kept
+  the deliberation about how to answer, which is the one part nobody asked for. The section is
+  still labelled, and now says the reasoning came before the answer above it, so the order is a
+  decision about what survives a limit rather than a claim about what the copy did.
+
 ## [0.5.0] - 2026-09-06
 
 ### fixed
