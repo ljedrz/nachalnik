@@ -199,8 +199,20 @@ pub struct ContextItem {
     /// last seen - without the kernel having to invent a vocabulary for them.
     pub meta: Value,
     /// Why the item is in the context at all.
+    ///
+    /// note: this and `note` below are the two halves of "why is this here", and which one a fact
+    /// belongs in is decided by whether it outlives a state change. A shortened tool result is
+    /// *always* a shortened tool result, whatever state anybody moves it to, so which item holds
+    /// the whole of it is recorded here. Kept in the note it was destroyed the first time
+    /// somebody cycled the row, which is the one thing a person does while trying to understand
+    /// the pair.
     pub included_because: Option<String>,
     /// Why the item is in its current state; set whenever the state changes.
+    ///
+    /// note: *replaced* whenever it changes, including with `None`. That is the point rather than
+    /// a shortcoming - a reason for being excluded stops being true the moment something is put
+    /// back, and a stale one would be worse than none - so nothing that has to survive a state
+    /// change may be kept in here. Put that in `included_because`.
     pub note: Option<String>,
 }
 

@@ -26,6 +26,24 @@ minor bump may break you.
   It costs one projection of the context at each end of a pass, which happens at most once per
   request and moves `Content` by pointer.
 
+- What a shortened tool result *is* outlives every state it passes through. `note` is documented
+  as why an item is in its current state, and it is replaced whenever that changes - correctly,
+  because a reason for being excluded stops being true the moment something is put back. The pair
+  an output limit leaves behind was keeping a fact about its *content* in there: which item holds
+  the whole of it. So a session that cycled both rows with `space` while trying to understand them
+  lost the only sentence saying that one was a short copy of the other - destroyed by looking at
+  it, and by the one gesture a person makes while looking.
+
+  It goes in `included_because` now, which is why an item is in the context at all and which no
+  state change touches. The archived half keeps its note as well, because "the model was shown a
+  truncated copy" really is why *that* one is archived. Both fields say in their own docs which
+  facts belong in which, since the answer is not obvious and getting it wrong is silent:
+  `included_because` for anything that has to survive a state change, `note` for the state.
+
+  `included_because` has been read out by `kamchatka`'s item view and by `Event::ContextAdded`
+  since both existed, and was always empty because nothing in the kernel set it. This is the first
+  thing that does.
+
 ## [0.3.1] - 2026-09-06
 
 ### added

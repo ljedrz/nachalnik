@@ -557,13 +557,23 @@ async fn output_limits_are_enforced_and_admitted() {
         truncated.contains("949 bytes truncated by an output limit"),
         "{truncated}"
     );
+    // note: `included_because` and not `note`. A note says why an item is in its current state
+    // and is replaced whenever that changes; this one is `Active`, and being a shortened copy is
+    // a fact about what it holds rather than about any state it happens to be in. Kept in the
+    // note it was destroyed the first time anybody cycled the row, which took the only sentence
+    // saying which item held the whole
     assert_eq!(
-        shown.note.as_deref(),
+        shown.included_because.as_deref(),
         Some(&*format!(
             "949 bytes were truncated by the output limit; the whole output is item {}",
             whole.id
         ))
     );
+    assert_eq!(
+        whole.included_because.as_deref(),
+        Some("the whole of a tool output an output limit shortened")
+    );
+
     assert_eq!(
         results[2].content.to_text().len(),
         1_000,
@@ -600,6 +610,79 @@ async fn output_limits_are_enforced_and_admitted() {
     assert!(kernel.item(shown.id).unwrap().is_projected());
 }
 
+/// What a truncated result *is* outlives every state it passes through.
+///
+/// note: the bug this closes. `note` is documented as why an item is in its current state, and it
+/// is replaced whenever that changes - correctly, since a reason for being excluded stops being
+/// true the moment something is put back. The pair an output limit leaves behind was keeping a
+/// fact about its *content* in there: which item held the whole. A live session cycled both rows
+/// with `space` while looking at them, and the pointer between the two halves was gone - the only
+/// sentence saying that item 54 was a short copy of item 53, destroyed by looking at it.
+///
+/// note: so it lives in `included_because` now, which is why the item is in the context at all
+/// and which no state change touches. The archived half keeps a note as well, because "the model
+/// was shown a truncated copy" really is why *that* one is archived.
+#[tokio::test]
+async fn what_a_shortened_result_is_survives_being_looked_at() {
+    let kernel = Kernel::new(Config {
+        default_tool_output_limit: Some(100),
+        ..Config::default()
+    });
+    kernel.set_policy(Arc::new(AllowAll));
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "big", json!({}))]),
+        ModelResponse::text("done"),
+    ])));
+    kernel.add_tool(Arc::new(ConstTool::new("big", "y".repeat(1_000))));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.unwrap();
+
+    let results = tool_results(&kernel);
+    assert_eq!(results.len(), 2, "the whole and the copy that was shown");
+    let (whole, shown) = (results[0].id, results[1].id);
+    assert!(
+        kernel
+            .item(shown)
+            .unwrap()
+            .included_because
+            .as_deref()
+            .is_some_and(|why| why.contains(&format!("whole output is item {whole}"))),
+        "the copy has to say where the whole is"
+    );
+
+    // `space` on a row cycles it: all of it, a marker, nothing, all of it again. Twice round both
+    for _ in 0..2 {
+        for state in [
+            ContextState::Elided,
+            ContextState::Excluded,
+            ContextState::Active,
+        ] {
+            kernel.set_state([whole, shown], state, None);
+        }
+    }
+
+    for id in [whole, shown] {
+        let item = kernel.item(id).unwrap();
+        assert!(
+            item.included_because.is_some(),
+            "[{id}] no longer knows what it is"
+        );
+        assert_eq!(
+            item.note, None,
+            "[{id}] is active, so it has no state left to explain"
+        );
+    }
+    assert!(
+        kernel
+            .item(shown)
+            .unwrap()
+            .included_because
+            .as_deref()
+            .is_some_and(|why| why.contains(&format!("whole output is item {whole}"))),
+        "and the pointer between the halves is still there"
+    );
+}
+
 #[tokio::test]
 async fn the_whole_output_can_be_refused() {
     let kernel = Kernel::new(Config {
@@ -624,13 +707,13 @@ async fn the_whole_output_can_be_refused() {
     assert_eq!(results[0].content.to_text().len(), 50);
     assert!(
         results[0]
-            .note
+            .included_because
             .as_deref()
             .is_some_and(|n| n.contains("truncated"))
     );
     assert!(
         !results[0]
-            .note
+            .included_because
             .as_deref()
             .unwrap()
             .contains("whole output is")

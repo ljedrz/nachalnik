@@ -1829,7 +1829,12 @@ impl Kernel {
                 output.is_error,
             );
             item.state = ContextState::Archived;
+            // the note says why it is archived, which is what a note is for and which stops being
+            // true the moment somebody activates it. The `because` is the half that does not:
+            // this item is the whole of an output that was shortened, whatever state it ends up in
             item.note = Some("the whole output; the model was shown a truncated copy".to_owned());
+            item.included_because =
+                Some("the whole of a tool output an output limit shortened".to_owned());
 
             // the pair is one thing that happened, so it gets one checkpoint, taken here
             self.add_item(item, true)
@@ -1886,7 +1891,13 @@ impl Kernel {
         let is_error = output.is_error;
         let mut item =
             ContextItem::tool_result(call.id.clone(), call.tool.clone(), output.content, is_error);
-        item.note = match (truncated, whole) {
+        // note: `included_because` and not `note`, which is documented as why an item is in its
+        // *current state* and is replaced whenever that changes. This item is `Active`, so it has
+        // no state to explain - and being a shortened copy is a fact about what it holds, which
+        // outlives every state it will ever be in. Kept in the note, it was destroyed the first
+        // time anybody pressed `space` on the row: a live session cycled the pair looking at it
+        // and lost the only sentence saying which item held the whole.
+        item.included_because = match (truncated, whole) {
             (Some(bytes), Some(whole)) => Some(format!(
                 "{bytes} bytes were truncated by the output limit; the whole output is item {whole}"
             )),
