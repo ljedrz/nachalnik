@@ -573,6 +573,9 @@ fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Sc
     // the item the last marked line belonged to, so that a turn and the calls it asked for say
     // once between them why they are not going rather than once each
     let mut marked: Option<ContextId> = None;
+    // the same, for the line that says a turn was edited: a turn is several entries and the edit
+    // happened once
+    let mut stubbed: Option<ContextId> = None;
     for entry in &app.transcript {
         // what the model is no longer shown is drawn so that the eye can tell without reading it.
         // `going.sends_content` rather than the state, for the reason it exists: an item the
@@ -582,6 +585,28 @@ fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Sc
             .item
             .and_then(|id| app.kernel.item(id))
             .filter(|item| !going.sends_content(item));
+
+        // an edited line shows what the item says *now*, in the place the old one had, and says
+        // so - with the identifier it used to carry, which is what `←` pages back through
+        if entry.was.is_some() && stubbed != entry.was {
+            if let Some(was) = entry.was {
+                let then = app.kernel.item(was).map(|item| item.tokens).unwrap_or(0);
+                let now = entry.item.map(|id| id.0).unwrap_or(0);
+                lines.push(Line::styled(
+                    format!(
+                        "~ [{}] → [{now}] · edited here, {} tokens replaced · enter on [{now}] \
+                         reads what it said",
+                        was.0,
+                        thousands(then)
+                    ),
+                    quiet().italic(),
+                ));
+            }
+            stubbed = entry.was;
+        }
+        if entry.was.is_none() {
+            stubbed = None;
+        }
 
         if let Some(item) = held {
             if marked != Some(item.id) {

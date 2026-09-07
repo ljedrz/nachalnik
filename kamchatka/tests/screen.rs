@@ -4990,3 +4990,46 @@ async fn a_turn_marks_what_it_thought_as_well_as_what_it_said() {
         assert!(marked, "{line:?} should be marked as withheld: {screen}");
     }
 }
+
+/// An edit reads where the turn was, and says what it used to be.
+///
+/// note: the alternative - saying the new words at the end of the transcript - describes an order
+/// no request ever had, because an edit to a turn from twenty exchanges ago would land after
+/// everything that followed it. What the model reads is the new words in the old place, so that
+/// is what the conversation shows.
+#[tokio::test]
+async fn an_edited_turn_reads_where_it_was_and_says_what_it_used_to_be() {
+    let mut harness = Harness::new([ModelResponse::text("nay")]);
+    harness.send("do crabs think that fish can fly?").await;
+    harness.settle().await;
+
+    // `e` on the answer, three keys to clear it, then the words somebody puts in its mouth
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Char('e')).await;
+    assert_eq!(harness.app.input.lines(), ["nay"]);
+    for _ in 0..3 {
+        harness.press(KeyCode::Backspace).await;
+    }
+    harness.send("of course they do").await;
+
+    harness.tab(Tab::Chat);
+    let screen = harness.screen();
+    let row = |needle: &str| screen.lines().position(|line| line.contains(needle));
+
+    // the edit is in the conversation, and the turn it replaced is not sitting beside it
+    assert!(screen.contains("of course they do"), "{screen}");
+    assert!(
+        !screen.contains("nay"),
+        "the superseded text should not still be on the chat: {screen}"
+    );
+    // in the place the old turn had, rather than after everything
+    assert!(row("do crabs think") < row("of course they do"), "{screen}");
+    // and the line says what it used to be, and where what it said has gone
+    assert!(screen.contains("[2] → [3]"), "{screen}");
+    assert!(screen.contains("edited here"), "{screen}");
+    assert!(
+        screen.contains("reads what it said"),
+        "the row should say where the old words went: {screen}"
+    );
+}

@@ -195,6 +195,16 @@ pub struct Entry {
     /// alone rather than guessing, which is why a site this was never wired into shows an
     /// unmarked row instead of quietly claiming the model still reads it.
     pub item: Option<ContextId>,
+    /// The item this line used to be, if somebody edited it here.
+    ///
+    /// note: an edit supersedes, so the line now shows what the *new* item says, in the place the
+    /// old one occupied. That is the conversation the model is really in - the alternative, a
+    /// replacement said at the end of the transcript, puts a turn edited twenty exchanges ago
+    /// after everything that followed it and describes an order no request ever had. What this
+    /// keeps is the thread back: the row says which item it was, and the old words are a page of
+    /// the item that replaced it - [`App::faces`] builds them out of [`App::versions`], which
+    /// [`App::commit_edit`] files under the *new* identifier for exactly this reason.
+    pub was: Option<ContextId>,
 }
 
 /// What the next request does with each context item.
@@ -422,6 +432,7 @@ impl App {
             text: text.into(),
             open: false,
             item: None,
+            was: None,
         });
         if speaker == Speaker::User {
             self.follow = true;
@@ -461,6 +472,7 @@ impl App {
                     text: fragment.to_owned(),
                     open: true,
                     item: None,
+                    was: None,
                 });
             }
         }
@@ -489,6 +501,34 @@ impl App {
             .find(|entry| entry.speaker == speaker && entry.item.is_none())
         {
             entry.item = Some(id);
+        }
+    }
+
+    /// Moves the lines that were showing an item onto the one that has replaced it.
+    ///
+    /// note: in place, rather than saying the new text at the end. An edit does not add a turn to
+    /// the conversation, it changes one - and the request the model gets says so, with the new
+    /// words where the old ones were. A transcript that appended them would be the only account
+    /// of this session in a different order from the request it produced.
+    ///
+    /// note: only the line that showed what the item *said* takes the new text. An edit carries
+    /// the kind over whole, so the turn's calls and its thinking are unchanged and the lines
+    /// showing them still show the truth; what they need is the new identifier, so that taking
+    /// the edited turn out later takes them out with it.
+    fn resay(&mut self, old: ContextId, new: ContextId, text: &str) {
+        for entry in self
+            .transcript
+            .iter_mut()
+            .filter(|entry| entry.item == Some(old))
+        {
+            if matches!(
+                entry.speaker,
+                Speaker::User | Speaker::Model | Speaker::Result
+            ) {
+                entry.text = text.to_owned();
+            }
+            entry.was = Some(old);
+            entry.item = Some(new);
         }
     }
 
@@ -1216,10 +1256,10 @@ impl App {
                 self.versions.insert(new, history);
                 self.remember(new, old.content.clone());
 
-                self.say(
-                    Speaker::Note,
-                    format!("[{id}] is now [{new}]; the old one is still there, marked superseded"),
-                );
+                // and the conversation shows the edit where the turn was, rather than the turn it
+                // replaced sitting there greyed out with nothing on the screen saying what the
+                // model now reads in its place
+                self.resay(id, new, text);
             }
             Err(e) => self.say(Speaker::Error, e.to_string()),
         }
