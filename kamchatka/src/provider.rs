@@ -712,7 +712,34 @@ impl Provider for OpenAiCompatible {
                     bytes
                 }
                 Ok(Ok(None)) => break,
-                Ok(Err(e)) => return Err(e.into()),
+                // the body stopped arriving in the middle of an answer. Everything parsed so far
+                // is kept and the socket is abandoned, which is what the interrupt below already
+                // does for the other way a stream ends early - this is that case without the
+                // consent, so it is marked with a name of its own instead of `interrupted`.
+                //
+                // note: it used to return the error, which failed the turn and threw away every
+                // token the model had produced *and been billed for*: one session spent 148
+                // seconds on an answer and kept none of it. Retrying is the other candidate and
+                // is worse, because every attempt is billed too - an answer that reliably outruns
+                // an upstream's patience would be paid for four times and fail anyway - and the
+                // loop above retries only where nothing was generated
+                Ok(Err(e)) => {
+                    // nothing arrived at all, so there is nothing to keep and no answer to
+                    // report; the transport's own account is the most useful thing there is
+                    if chunks.is_empty() {
+                        return Err(e.into());
+                    }
+                    // a turn whose `finish_reason` already arrived is a complete answer that lost
+                    // its trailing bytes, and calling that cut off would be inventing a fault
+                    if finish.is_none() {
+                        *self.notice.lock() = Some(format!(
+                            "{} was cut off mid-answer ({e}); what had arrived is kept",
+                            self.model.lock()
+                        ));
+                        finish = Some("cut off".to_owned());
+                    }
+                    break;
+                }
                 Err(_) => {
                     if deltas.is_interrupted() {
                         finish = Some("interrupted".to_owned());

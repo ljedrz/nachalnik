@@ -26,11 +26,19 @@
 
 use std::{sync::Arc, time::Duration};
 
-use nachalnik::{Config, ContextItem, Kernel, ModelResponse, Provider};
+use nachalnik::{Config, ContextItem, Kernel, ModelResponse, Provider, StopReason};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
 };
+
+/// What a provider calls a turn whose stream stopped arriving partway.
+///
+/// note: a [`StopReason::Other`] rather than a variant of its own, because `Other` is the
+/// runtime's own place for "anything else the provider reported" and a word three providers
+/// have to agree on does not need the core to hold it. What makes them agree is this case:
+/// the literal lives in each provider, and a provider that spells it differently fails here.
+const CUT_OFF: &str = "cut off";
 
 /// The wire format a provider under test speaks.
 ///
@@ -130,6 +138,14 @@ impl Conformance {
                 self.not_a_stream().await,
             ),
             (
+                "a body that stops arriving keeps what arrived",
+                self.cut_off_midstream().await,
+            ),
+            (
+                "a stream cut while the model was still thinking keeps the thinking",
+                self.cut_off_while_thinking().await,
+            ),
+            (
                 "what the server said a request cost is carried through",
                 self.usage().await,
             ),
@@ -182,7 +198,7 @@ impl Conformance {
 
         let from = body.find("za").expect("the text is in the body");
         for at in from..from + SAID.len() + 1 {
-            match self.ask(body, Some(at)).await {
+            match self.ask(body, Delivery::Split(at)).await {
                 Ok(response) => {
                     let said = text_of(&response);
                     if said != SAID {
@@ -197,6 +213,152 @@ impl Conformance {
         }
 
         Outcome::Passed
+    }
+
+    /// A body that stops arriving in the middle of an answer keeps what arrived.
+    ///
+    /// note: the failure that prompted this ran for 148 seconds against a reasoning model and
+    /// came back `error decoding response body` - reqwest's words for a body that ended early -
+    /// with every token it had produced thrown away and the turn failed. All three providers here
+    /// did that, and one of them carried a note saying it did the opposite.
+    ///
+    /// note: the answer is the one the interrupt path eleven lines above it already gives: keep
+    /// whatever was parsed, abandon the socket, and mark the turn. A dropped connection is that
+    /// case without the consent, so it gets the same handling under a name of its own. The two
+    /// alternatives are both worse. Failing throws away work the provider has *already billed*;
+    /// retrying bills it again, up to the retry budget, so an answer that reliably outruns an
+    /// upstream's patience is paid for four times and fails anyway - and the loop that retries a
+    /// busy server is careful to do it only where nothing was generated.
+    ///
+    /// note: what a *complete* call caught by the cut does is nothing special on purpose. It is a
+    /// call the model really made, it is recorded, and the permission policy is still the thing
+    /// that decides whether it runs. A provider dropping it would be deciding that on the
+    /// caller's behalf, which is the one thing none of this is allowed to do.
+    async fn cut_off_midstream(&self) -> Outcome {
+        let body = match self.dialect {
+            Dialect::OpenAi => concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"the first half \"},\"index\":0}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"call_1\",",
+                "\"type\":\"function\",\"function\":{\"name\":\"write\",",
+                "\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}]},\"index\":0}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"content\":\"NEVER-ARRIVED\"},\"index\":0}]}\n\n",
+                "data: [DONE]\n\n",
+            ),
+            Dialect::Gemini => concat!(
+                "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"the first half \"}],",
+                "\"role\":\"model\"}}]}\n\n",
+                "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{",
+                "\"name\":\"write\",\"args\":{\"path\":\"a.txt\"},\"id\":\"call_1\"}}],",
+                "\"role\":\"model\"}}]}\n\n",
+                "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"NEVER-ARRIVED\"}],",
+                "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
+            ),
+        };
+
+        // the connection goes away just inside the third chunk, so the two before it are whole
+        // lines that arrived and the third is a line that never finished. Found rather than
+        // counted, because the prefix is a different length in each dialect
+        let marker = body
+            .find("NEVER-ARRIVED")
+            .expect("the third chunk is in the body");
+        let at = body[..marker]
+            .rfind("data: ")
+            .expect("it is a chunk of its own")
+            + 6;
+        let response = match self.ask(body, Delivery::Cut(at)).await {
+            Ok(response) => response,
+            Err(e) => {
+                return Outcome::Failed(format!(
+                    "a body that stopped arriving took the whole turn with it: {e}"
+                ));
+            }
+        };
+
+        let said = text_of(&response);
+        if said != "the first half " {
+            return Outcome::Failed(format!(
+                "what arrived before the cut came back {said:?} rather than {:?}",
+                "the first half "
+            ));
+        }
+        // `calls()` rather than the field, because one dialect records a turn as ordered blocks
+        // and keeps its calls in them
+        let calls: Vec<_> = response.calls().collect();
+        if calls.len() != 1 {
+            return Outcome::Failed(format!(
+                "the call that arrived whole was not kept: {:?}",
+                calls.iter().map(|call| &call.tool).collect::<Vec<_>>()
+            ));
+        }
+        match &response.stop {
+            StopReason::Other(why) if why == CUT_OFF => Outcome::Passed,
+            other => Outcome::Failed(format!(
+                "the turn came back as {other:?}, which does not say it was cut off"
+            )),
+        }
+    }
+
+    /// And a cut with nothing on the wire yet but thinking is still a turn.
+    ///
+    /// note: the case above cuts after some content, which is the easy half. On a reasoning model
+    /// the answer starts late - replaying a real OpenRouter stream, the first non-empty `content`
+    /// was 36% of the way in, behind eleven thousand bytes of `reasoning` - so a cut is more likely
+    /// to land here than anywhere else. What decides it is whether a thinking delta counts as
+    /// something having arrived: counted, the turn comes back with the thinking in it, and the next
+    /// request carries what the model had worked out; not counted, the whole thing is an error and
+    /// the most expensive part of the answer is the part thrown away.
+    async fn cut_off_while_thinking(&self) -> Outcome {
+        let body = match self.dialect {
+            Dialect::OpenAi => concat!(
+                "data: {\"choices\":[{\"delta\":{\"reasoning\":\"working it out\"},\"index\":0}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"content\":\"NEVER-ARRIVED\"},\"index\":0}]}\n\n",
+                "data: [DONE]\n\n",
+            ),
+            Dialect::Gemini => concat!(
+                "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"working it out\",",
+                "\"thought\":true}],\"role\":\"model\"}}]}\n\n",
+                "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"NEVER-ARRIVED\"}],",
+                "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
+            ),
+        };
+
+        let marker = body
+            .find("NEVER-ARRIVED")
+            .expect("the second chunk is in the body");
+        let at = body[..marker]
+            .rfind("data: ")
+            .expect("it is a chunk of its own")
+            + 6;
+        let response = match self.ask(body, Delivery::Cut(at)).await {
+            Ok(response) => response,
+            Err(e) => {
+                return Outcome::Failed(format!(
+                    "a turn that had only got as far as thinking was thrown away whole: {e}"
+                ));
+            }
+        };
+
+        // `thinking()` rather than the field, for the reason `calls()` is used above: one dialect
+        // records a turn as ordered blocks and keeps its thinking in them
+        let thought = response
+            .thinking()
+            .map(|content| content.to_text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !thought.contains("working it out") {
+            return Outcome::Failed(format!(
+                "the thinking that had arrived is not on the turn: {thought:?}"
+            ));
+        }
+        if text_of(&response).contains("NEVER-ARRIVED") {
+            return Outcome::Failed("what never arrived is on the turn anyway".to_owned());
+        }
+        match &response.stop {
+            StopReason::Other(why) if why == CUT_OFF => Outcome::Passed,
+            other => Outcome::Failed(format!(
+                "the turn came back as {other:?}, which does not say it was cut off"
+            )),
+        }
     }
 
     /// Two calls in one turn are two calls.
@@ -227,7 +389,7 @@ impl Conformance {
             ),
         };
 
-        let response = match self.ask(body, None).await {
+        let response = match self.ask(body, Delivery::Whole).await {
             Ok(response) => response,
             Err(e) => return Outcome::Failed(e),
         };
@@ -270,7 +432,7 @@ impl Conformance {
             "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
         );
 
-        let response = match self.ask(body, None).await {
+        let response = match self.ask(body, Delivery::Whole).await {
             Ok(response) => response,
             Err(e) => return Outcome::Failed(e),
         };
@@ -305,7 +467,7 @@ impl Conformance {
             "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
         );
 
-        match self.ask(body, None).await {
+        match self.ask(body, Delivery::Whole).await {
             Ok(response) => match response.calls().next() {
                 Some(call) if call.args["path"] == "notes.md" => Outcome::Passed,
                 Some(call) => Outcome::Failed(format!("the fragments came back as {}", call.args)),
@@ -330,7 +492,7 @@ impl Conformance {
             "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
         );
 
-        let response = match self.ask(body, None).await {
+        let response = match self.ask(body, Delivery::Whole).await {
             Ok(response) => response,
             Err(e) => return Outcome::Failed(e),
         };
@@ -363,7 +525,7 @@ impl Conformance {
             ),
         };
 
-        match self.ask(body, None).await {
+        match self.ask(body, Delivery::Whole).await {
             Ok(response) if text_of(&response) == "one two three" => Outcome::Passed,
             Ok(response) => {
                 Outcome::Failed(format!("the pieces came back as {:?}", text_of(&response)))
@@ -380,7 +542,7 @@ impl Conformance {
     async fn error_in_a_200(&self) -> Outcome {
         let body = "data: {\"error\":{\"message\":\"the upstream is on fire\",\"code\":502}}\n\n";
 
-        match self.ask(body, None).await {
+        match self.ask(body, Delivery::Whole).await {
             Ok(response) => Outcome::Failed(format!(
                 "a failure inside a 200 was read as an answer: {:?}",
                 text_of(&response)
@@ -392,7 +554,10 @@ impl Conformance {
 
     /// A body that is not a stream at all is an error rather than an empty answer.
     async fn not_a_stream(&self) -> Outcome {
-        match self.ask("<html>502 Bad Gateway</html>", None).await {
+        match self
+            .ask("<html>502 Bad Gateway</html>", Delivery::Whole)
+            .await
+        {
             Ok(response) => Outcome::Failed(format!(
                 "a page of HTML was read as an answer: {:?}",
                 text_of(&response)
@@ -421,7 +586,7 @@ impl Conformance {
             ),
         };
 
-        match self.ask(body, None).await {
+        match self.ask(body, Delivery::Whole).await {
             Ok(response) => match response.usage.and_then(|usage| usage.input_tokens) {
                 Some(11) => Outcome::Passed,
                 other => Outcome::Failed(format!("the request was reported as costing {other:?}")),
@@ -441,10 +606,10 @@ impl Conformance {
     async fn ask(
         &self,
         body: &'static str,
-        split_at: Option<usize>,
+        delivery: Delivery,
     ) -> Result<Arc<ModelResponse>, String> {
         let kernel = Kernel::new(Config::default());
-        kernel.set_provider((self.build)(server(body, split_at).await));
+        kernel.set_provider((self.build)(server(body, delivery).await));
         kernel.push(ContextItem::user("go"));
         kernel.step().await.map_err(|e| e.to_string())?;
 
@@ -463,14 +628,30 @@ fn text_of(response: &ModelResponse) -> String {
         .unwrap_or_default()
 }
 
-/// Answers every request with `body`, optionally in two writes split at `at` bytes.
+/// How much of a body the server delivers, and in how many writes.
+///
+/// note: named rather than an `Option<usize>`, because there are three intents here and two of
+/// them are the same number meaning different things: `Split` delivers the whole answer awkwardly,
+/// `Cut` delivers half an answer and goes away.
+#[derive(Debug, Clone, Copy)]
+enum Delivery {
+    /// All of it, in one write.
+    Whole,
+    /// All of it, in two writes broken at this byte.
+    Split(usize),
+    /// The first this many bytes and then the connection, with `Content-Length` still promising
+    /// the whole thing - an upstream that went away in the middle of an answer.
+    Cut(usize),
+}
+
+/// Answers every request with `body`, delivered however `delivery` says.
 ///
 /// note: it answers more than one connection, because a provider that retries a request is a
 /// provider doing what it is supposed to do and should not deadlock a test for it.
 ///
 /// note: `Content-Length` rather than a chunked body, so that the server says nothing about
 /// framing that the provider might lean on. What is being tested is what it does with the bytes.
-async fn server(body: &'static str, split_at: Option<usize>) -> String {
+async fn server(body: &'static str, delivery: Delivery) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address = listener.local_addr().expect("its own address");
 
@@ -490,13 +671,18 @@ async fn server(body: &'static str, split_at: Option<usize>) -> String {
                 .await;
 
             let bytes = body.as_bytes();
-            match split_at {
-                Some(at) if at < bytes.len() => {
+            match delivery {
+                Delivery::Split(at) if at < bytes.len() => {
                     let _ = socket.write_all(&bytes[..at]).await;
                     let _ = socket.flush().await;
                     // long enough for the first half to be read on its own, which is the point
                     tokio::time::sleep(Duration::from_millis(20)).await;
                     let _ = socket.write_all(&bytes[at..]).await;
+                }
+                // the promised length is the whole body and this is not it, so the client sees a
+                // body that stops arriving rather than a short answer
+                Delivery::Cut(at) if at < bytes.len() => {
+                    let _ = socket.write_all(&bytes[..at]).await;
                 }
                 _ => {
                     let _ = socket.write_all(bytes).await;

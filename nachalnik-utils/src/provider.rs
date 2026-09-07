@@ -381,7 +381,34 @@ impl OpenAiCompatible {
             let bytes = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
                 Ok(Ok(Some(bytes))) => bytes,
                 Ok(Ok(None)) => break,
-                Ok(Err(e)) => return Err(e.into()),
+                // the body stopped arriving in the middle of an answer. Everything parsed so far
+                // is kept and the socket is abandoned, which is what the interrupt below already
+                // does for the other way a stream ends early - this is that case without the
+                // consent, so it is marked with a name of its own instead of `interrupted`.
+                //
+                // note: it used to return the error, which failed the turn and threw away every
+                // token the model had produced *and been billed for*: one session spent 148
+                // seconds on an answer and kept none of it. Retrying is the other candidate and
+                // is worse, because every attempt is billed too - an answer that reliably outruns
+                // an upstream's patience would be paid for four times and fail anyway - and the
+                // loop above retries only where nothing was generated
+                Ok(Err(e)) => {
+                    // nothing arrived at all, so there is nothing to keep and no answer to
+                    // report; the transport's own account is the most useful thing there is
+                    if chunks.is_empty() {
+                        return Err(e.into());
+                    }
+                    // a turn whose finish reason already arrived is a complete answer that lost
+                    // its trailing bytes, and calling that cut off would be inventing a fault.
+                    //
+                    // note: nothing says so out loud here, unlike the terminal client's status
+                    // line - this provider has nowhere to say it - so the stop reason and the
+                    // recorded stream are the whole of the account
+                    if finish.is_none() {
+                        finish = Some("cut off".to_owned());
+                    }
+                    break;
+                }
                 Err(_) => {
                     if deltas.is_interrupted() {
                         finish = Some("interrupted".to_owned());
@@ -621,12 +648,21 @@ impl Provider for OpenAiCompatible {
         for attempt in 0..ATTEMPTS {
             self.attempts.fetch_add(1, SeqCst);
 
-            // note: a connection that fails, or a body that stops arriving halfway, is exactly
-            // as transient as the 503 below and was the one case this loop did not cover - it
-            // bailed on the first occurrence and took the caller's whole run with it. Measured
-            // against OpenRouter: `error decoding response body`, twelve requests into a run,
-            // once. Retried on the same schedule as a busy model, and given up on in the same
-            // way, so a caller sees one behaviour for "the network did not hold" rather than two
+            // note: a connection that fails before it is answered is exactly as transient as the
+            // 503 below and was the one case this loop did not cover - it bailed on the first
+            // occurrence and took the caller's whole run with it. Retried on the same schedule as
+            // a busy model, and given up on in the same way, so a caller sees one behaviour for
+            // "the network did not hold" rather than two.
+            //
+            // note: this covers getting *answered*, and not the body that follows. A body that
+            // stops arriving halfway is not retried and must not be: by then the model has
+            // generated, and been billed for, whatever did arrive, so a second attempt pays for
+            // it twice - and an answer that reliably outruns an upstream's patience would be paid
+            // for five times and fail anyway, which is the trap `PATIENCE` already documents. It
+            // is handled where it happens instead: `parse_stream` keeps what arrived and ends the
+            // turn with `cut off`. This note used to claim the opposite, and named
+            // `error decoding response body` - measured against OpenRouter, twelve requests into
+            // a run - as something it retried. It never did.
             let sent = self
                 .client
                 .post(format!("{}/chat/completions", self.base_url))

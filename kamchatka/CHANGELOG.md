@@ -5,6 +5,43 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- A stream that stops arriving keeps what arrived. `parse_stream` returned the transport's error,
+  which failed the turn and dropped every token the model had produced - and been billed for. One
+  session died that way 148 seconds into its 22nd request, `error decoding response body`, having
+  just asked a copy of itself the question the whole session was built around; nothing of the
+  answer survived. Eleven lines above the line that did it, the interrupt path already had the
+  right answer written down: *"whatever has been parsed is kept and the rest of the socket is
+  abandoned"*. A dropped connection is that case without the consent, so it now gets the same
+  handling under a name of its own - the turn ends at `cut off`, the status line says the model was
+  cut off mid-answer and that what arrived was kept, and the calls that arrived whole are kept too,
+  because the permission policy is still what decides whether they run and a provider quietly
+  dropping them would be deciding that instead.
+
+  Retrying was the other candidate and is worse: every attempt is billed, so an answer that
+  reliably outruns an upstream's patience is paid for four times and fails anyway - and the loop
+  that waits out a busy server retries only where nothing was generated. A complete answer whose
+  trailing bytes were lost is not reported as cut off, and a stream that carried nothing at all
+  still fails, because there is nothing to keep and the transport's own account is the best there
+  is.
+
+  Both dialects, and the case is in the shared conformance suite rather than in either of them, so
+  the third provider was fixed by the same commit and a fourth cannot get this wrong quietly. That
+  suite exists because this workspace has three providers and had been fixing one bug in one copy
+  at a time; this is the fourth instance, and the first where the *note* had been fixed in one copy
+  while the behaviour was fixed in none - `nachalnik-utils` carried a paragraph claiming it retried
+  a body that stopped arriving, naming this exact error. It never did.
+
+- A provider's notice reaches whoever is holding the `App`, not only this program's own loop.
+  `take_notice` was drained on a tick in `main`, so "the model was cut off mid-answer; what had
+  arrived is kept" - written for exactly the moment a person needs to know something is missing -
+  went nowhere for any other caller, and could land after the turn it describes. `on_outcome`
+  drains it first now, so it sits with that turn; the tick keeps draining it for the notices that
+  belong to no turn.
+
 ## [0.5.0] - 2026-09-06
 
 ### fixed

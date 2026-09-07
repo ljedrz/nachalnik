@@ -492,7 +492,33 @@ impl Provider for Gemini {
                     bytes
                 }
                 Ok(Ok(None)) => break,
-                Ok(Err(e)) => return Err(e.into()),
+                // the body stopped arriving in the middle of an answer. Everything parsed so far
+                // is kept and the socket is abandoned, which is what the interrupt below already
+                // does for the other way a stream ends early - this is that case without the
+                // consent, so it is marked with a name of its own instead of `interrupted`.
+                //
+                // note: it used to return the error, which failed the turn and threw away every
+                // token the model had produced *and been billed for*: one session spent 148
+                // seconds on an answer and kept none of it. Retrying is the other candidate and
+                // is worse, because every attempt is billed too - an answer that reliably outruns
+                // an upstream's patience would be paid for four times and fail anyway - and the
+                // loop above retries only where nothing was generated
+                Ok(Err(e)) => {
+                    // nothing arrived at all, so there is nothing to keep and no answer to
+                    // report; the transport's own account is the most useful thing there is
+                    if chunks.is_empty() {
+                        return Err(e.into());
+                    }
+                    // a turn whose finish reason already arrived is a complete answer that lost
+                    // its trailing bytes, and calling that cut off would be inventing a fault
+                    if finish.is_none() {
+                        *self.notice.lock() = Some(format!(
+                            "{model} was cut off mid-answer ({e}); what had arrived is kept"
+                        ));
+                        finish = Some("cut off".to_owned());
+                    }
+                    break;
+                }
                 Err(_) => {
                     if deltas.is_interrupted() {
                         finish = Some("interrupted".to_owned());
@@ -606,6 +632,11 @@ impl Provider for Gemini {
             // and a call is not that
             stop: match finish.as_deref() {
                 Some("interrupted") => StopReason::Other("interrupted".to_owned()),
+                // note: ahead of `asked`, for the reason `interrupted` is ahead of it. That the
+                // turn asked for a tool is visible in the blocks it is carrying; that the stream
+                // stopped partway through is visible nowhere else. The kernel decides what to run
+                // from the calls rather than from this, so saying so costs the turn nothing
+                Some("cut off") => StopReason::Other("cut off".to_owned()),
                 _ if asked => StopReason::ToolUse,
                 Some("STOP") => StopReason::EndTurn,
                 Some("MAX_TOKENS") => StopReason::Length,

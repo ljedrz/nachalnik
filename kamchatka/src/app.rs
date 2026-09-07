@@ -594,6 +594,20 @@ impl App {
         self.busy = false;
         self.close();
 
+        // note: before anything this says about the turn, because most of what a provider puts
+        // here is *about* the turn that just ended - "the model was cut off mid-answer; what had
+        // arrived is kept" is the account of the answer above it, and reads as a remark about the
+        // next one if it lands after. The loop also drains this on a tick, for the notices that
+        // belong to no turn at all, and taking it twice costs nothing.
+        //
+        // note: here rather than only in that loop, so that a notice is not something only the
+        // program's own `main` receives. A cut-off answer that says so to nobody is the failure
+        // this was written to close, and it took a test driving `App` directly to see that it
+        // could still happen.
+        if let Some(notice) = self.provider.take_notice() {
+            self.say(Speaker::Note, notice);
+        }
+
         // note: a turn that stopped to ask a question has not ended - the call it is asking about
         // still has a result to come - and a message pushed now would land between the call and
         // that result, which is a place a request cannot have one. A live run put "what is the
