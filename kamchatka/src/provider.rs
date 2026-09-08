@@ -133,6 +133,9 @@ pub struct OpenAiCompatible {
     /// The parameter names the listing said this model takes, where it said anything. Learnt from
     /// the same entry the context limit comes from, which is already being fetched and read.
     parameters: Mutex<Vec<String>>,
+    /// Whether [`Self::parameters`] is the whole of what the model takes; see
+    /// [`Endpoint::lists_every_parameter`].
+    every_parameter: Mutex<bool>,
     /// How many times this provider has backed off, so that a busy server cannot be retried
     /// forever by a session that keeps making new requests.
     attempts: AtomicUsize,
@@ -252,6 +255,7 @@ impl OpenAiCompatible {
             model: Mutex::new(model.into()),
             context_limit: Mutex::new(configured_limit()),
             parameters: Mutex::new(Vec::new()),
+            every_parameter: Mutex::new(true),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
             attribution: None,
@@ -404,6 +408,7 @@ impl OpenAiCompatible {
         *self.model.lock() = model.into();
         *self.context_limit.lock() = configured_limit();
         self.parameters.lock().clear();
+        *self.every_parameter.lock() = true;
         self.probe().await;
         self.say_if_the_model_is_not_there().await;
     }
@@ -535,10 +540,12 @@ impl OpenAiCompatible {
         // stays true either way; it is the "and ignored" beside it that is guessing, and only for
         // that class. The trade is one class of parameter over-reported against every class going
         // unchecked, which is the position this was in.
+        let sampling_only = entry["supported_parameters"].is_null();
         if let Some(listed) = entry["supported_parameters"]
             .as_array()
             .or_else(|| entry["supported_sampling_parameters"].as_array())
         {
+            *self.every_parameter.lock() = !sampling_only;
             *self.parameters.lock() = listed
                 .iter()
                 .filter_map(|name| name.as_str().map(str::to_owned))
@@ -982,6 +989,24 @@ pub trait Endpoint: Provider {
     /// Which model is being asked.
     fn model(&self) -> String;
 
+    /// Whether [`ModelInfo::parameters`] is the whole of what the model takes, or only the part of
+    /// it this endpoint publishes.
+    ///
+    /// note: it decides what may be said about a parameter that is *not* on the list, and the two
+    /// answers are different claims. An exhaustive list settles it - the parameter is sent, the
+    /// model does not take it, and it is ignored, which is the thing `/params` exists to say. A
+    /// list of the sampling knobs alone settles nothing: `reasoning_effort` is absent from
+    /// `mercury-2.5`'s and is read all the same, validated hard enough that a bad value comes back
+    /// a 400. Reporting that one as ignored would be inventing a restriction out of a list that
+    /// never claimed to be complete, which is the failure this crate takes seriously everywhere
+    /// else it reads somebody's metadata.
+    ///
+    /// note: defaulted to `true` because a dialect that publishes one list of everything is the
+    /// ordinary case and the one this was written against. An endpoint that knows better says so.
+    fn lists_every_parameter(&self) -> bool {
+        true
+    }
+
     /// The projection this dialect can carry.
     ///
     /// note: it is answered here, beside the `to_wire` that has to honour it, because the two
@@ -1043,6 +1068,10 @@ impl Endpoint for OpenAiCompatible {
 
     fn model(&self) -> String {
         self.model.lock().clone()
+    }
+
+    fn lists_every_parameter(&self) -> bool {
+        *self.every_parameter.lock()
     }
 
     async fn models(&self) -> Vec<String> {

@@ -47,6 +47,21 @@ impl Harness {
         Self::configured(script, Config::default())
     }
 
+    /// The same, over an endpoint that has already been asked what the model takes - so that the
+    /// two ways `/params` can word an unlisted parameter are both reachable from here.
+    fn served_by(
+        script: impl IntoIterator<Item = ModelResponse>,
+        provider: Arc<OpenAiCompatible>,
+    ) -> Self {
+        let mut harness = Self::configured(script, Config::default());
+        // both, and the same one, because that is what `main` does: `/params` reads what the
+        // *kernel* was told about the model and words it by what the endpoint says it published,
+        // so a test holding two different providers would be testing a program nobody runs
+        harness.app.kernel.set_provider(provider.clone());
+        harness.app.provider = provider;
+        harness
+    }
+
     /// The same, for a runtime configured some other way.
     fn configured(script: impl IntoIterator<Item = ModelResponse>, config: Config) -> Self {
         let kernel = Kernel::new(config);
@@ -4806,6 +4821,82 @@ async fn params_says_what_this_model_takes_and_what_it_will_quietly_ignore() {
     assert!(
         !screen.contains("does not list temperature"),
         "and it is not complained about: {screen}"
+    );
+}
+
+/// Serves one model listing, in the shape of an endpoint that publishes its *sampling* parameters
+/// only, and hands back a provider that has read it.
+async fn sampling_only() -> Arc<OpenAiCompatible> {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = listener.local_addr().expect("its address");
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        // quoted from what api.inceptionlabs.ai really answers, trimmed to the fields read here
+        let body = r#"{"data":[{"id":"mercury-2.5","context_length":260000,
+            "supported_sampling_parameters":["temperature","stop"],
+            "supported_features":["tools","json_mode","structured_outputs"]}]}"#;
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let mut discard = [0u8; 4096];
+            let _ = socket.read(&mut discard).await;
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                         Content-Length: {}\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        }
+    });
+
+    let provider = Arc::new(OpenAiCompatible::new(
+        "mercury-2.5",
+        format!("http://{at}"),
+        "no key needed",
+    ));
+    provider.probe().await;
+    provider
+}
+
+#[tokio::test]
+async fn a_sampling_only_listing_does_not_claim_a_parameter_missing_from_it_is_ignored() {
+    // the case that prompted this: `reasoning_effort` is absent from `mercury-2.5`'s published
+    // list and is read all the same - validated hard enough that a bad value comes back a 400.
+    // Calling it ignored would be a restriction invented out of a list that never claimed to be
+    // complete, which is the one thing this program must not do with somebody else's metadata
+    let mut harness = Harness::served_by([], sampling_only().await);
+
+    harness.send(r#"/params reasoning_effort "high""#).await;
+    let screen = harness.screen();
+    assert!(
+        !screen.contains("sent, and ignored"),
+        "nothing here settles what becomes of it: {screen}"
+    );
+    assert!(
+        screen.contains("sampling parameters only") && screen.contains("sent, and unchecked"),
+        "and what is not known is said: {screen}"
+    );
+    assert!(
+        screen.contains("also takes, of the ones it publishes"),
+        "the list beside it is as partial as the list it came from: {screen}"
+    );
+
+    // one that *is* on the list is settled either way, so it draws no line of its own and drops
+    // out of what is left to try
+    harness.send("/params temperature 0.2").await;
+    let screen = harness.screen();
+    assert!(
+        !screen.contains("what becomes of temperature"),
+        "a listed parameter is not remarked on: {screen}"
+    );
+    assert!(
+        screen.contains("also takes, of the ones it publishes: stop"),
+        "and it is no longer on offer: {screen}"
     );
 }
 

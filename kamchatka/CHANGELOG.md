@@ -20,8 +20,18 @@ minor bump may break you.
   What the narrower name costs is written down beside it: it lists the sampling knobs only and
   leaves `tools` and `response_format` to `supported_features`, so a non-sampling parameter set
   against such an endpoint is now reported as unlisted when it is served perfectly well. The
-  message reads "does not list", which stays true either way; it is "and ignored" beside it that
-  guesses, and only for that class. One class over-reported beats every class unchecked.
+  message no longer guesses about that class either, which is the other half of this. An
+  exhaustive list settles what happens to a parameter missing from it - sent, not taken, ignored -
+  and that is the sentence worth having. A list of the sampling knobs alone settles nothing:
+  `reasoning_effort` is absent from `mercury-2.5`'s and is read all the same, validated hard
+  enough that a bad value comes back a 400, and `instant`/`low`/`medium`/`high` walk its reasoning
+  tokens from none to hundreds. Reporting *that* as ignored would be a restriction invented out of
+  a list which never claimed to be complete. So `Endpoint::lists_every_parameter` says which kind
+  of list is behind the answer, an endpoint publishing only the narrow one says so, and `/params`
+  words it as what it is: "publishes its sampling parameters only, so nothing here says what
+  becomes of reasoning_effort: sent, and unchecked", as a note rather than an error, because not
+  knowing is not a fault. The line beside it that offers what else the model takes is qualified
+  the same way.
 
 ## [0.6.0] - 2026-09-08
 

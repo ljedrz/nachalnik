@@ -2461,14 +2461,34 @@ impl App {
                     .filter(|key| !takes(key))
                     .collect();
                 if !ignored.is_empty() {
-                    self.say(
-                        Speaker::Error,
-                        format!(
-                            "{} does not list {}: sent, and ignored",
-                            info.model,
-                            ignored.join(", ")
+                    // note: two messages, because the list supports two different claims. Where it
+                    // is everything the model takes, a parameter missing from it is sent and
+                    // ignored and saying so is the point. Where the endpoint published its
+                    // *sampling* parameters only, the same absence settles nothing:
+                    // `reasoning_effort` is not among `mercury-2.5`'s and is read anyway, so
+                    // reporting it as ignored would be this program inventing a restriction out of
+                    // a list that never claimed to be complete. It says what it actually knows,
+                    // and an error is downgraded to a note with it - not knowing is not a fault
+                    let (speaker, said) = match self.provider.lists_every_parameter() {
+                        true => (
+                            Speaker::Error,
+                            format!(
+                                "{} does not list {}: sent, and ignored",
+                                info.model,
+                                ignored.join(", ")
+                            ),
                         ),
-                    );
+                        false => (
+                            Speaker::Note,
+                            format!(
+                                "{} publishes its sampling parameters only, so nothing here says \
+                                 what becomes of {}: sent, and unchecked",
+                                info.model,
+                                ignored.join(", ")
+                            ),
+                        ),
+                    };
+                    self.say(speaker, said);
                 }
 
                 let spare: Vec<&str> = info
@@ -2478,9 +2498,13 @@ impl App {
                     .filter(|name| !params.contains_key(*name))
                     .collect();
                 if !spare.is_empty() {
+                    let all = match self.provider.lists_every_parameter() {
+                        true => "also takes",
+                        false => "also takes, of the ones it publishes",
+                    };
                     self.say(
                         Speaker::Note,
-                        format!("{} also takes: {}", info.model, spare.join(", ")),
+                        format!("{} {all}: {}", info.model, spare.join(", ")),
                     );
                 }
             }
