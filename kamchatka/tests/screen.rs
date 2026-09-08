@@ -32,6 +32,8 @@ use ratatui::{
 use serde_json::json;
 use tokio::sync::{broadcast::Receiver, mpsc::UnboundedReceiver};
 
+mod common;
+
 /// A terminal, and everything needed to pretend somebody is sitting at it.
 struct Harness {
     app: App,
@@ -2382,8 +2384,7 @@ async fn a_tab_that_fits_draws_no_bar_at_all() {
 
 #[tokio::test]
 async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("a place to write");
+    let dir = common::scratch("save");
     // named `.jsonl` on purpose: the stem used to keep it, so this wrote `notes.jsonl.jsonl`
     let asked = dir.join("notes.jsonl");
 
@@ -2439,8 +2440,7 @@ async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
 
 #[tokio::test]
 async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_there() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-load-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("a place to write");
+    let dir = common::scratch("load");
     let saved = dir.join("before.json");
 
     let mut first = Harness::new([ModelResponse::text("4817, noted")]);
@@ -2530,8 +2530,7 @@ async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_t
 /// next request would carry the same `tool_call_id` twice.
 #[tokio::test]
 async fn a_loaded_session_hands_over_the_identifiers_it_already_used() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-loadcalls-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("a place to write");
+    let dir = common::scratch("load-calls");
     let saved = dir.join("worked.json");
 
     // a session with a real tool exchange in it, which is the only way an identifier gets used
@@ -2609,8 +2608,7 @@ async fn a_loaded_session_hands_over_the_identifiers_it_already_used() {
 /// `held` column and the `sending` column beside it are answering in different units.
 #[tokio::test]
 async fn a_loaded_session_puts_every_figure_on_one_scale() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-loadscale-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("a place to write");
+    let dir = common::scratch("load-scale");
     let saved = dir.join("taught.json");
 
     // a session whose provider charged twice what was estimated, so its counter learnt a scale
@@ -2683,8 +2681,7 @@ async fn a_loaded_session_puts_every_figure_on_one_scale() {
 
 #[tokio::test]
 async fn loading_something_that_is_not_a_session_says_which_file_and_why() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-notasession-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("a place to write");
+    let dir = common::scratch("not-a-session");
     let junk = dir.join("junk.json");
     std::fs::write(&junk, "{\"nope\": true}").expect("written");
 
@@ -4807,8 +4804,7 @@ async fn a_session_can_be_written_without_anybody_having_asked() {
         .kernel
         .push(ContextItem::user("something to keep"));
 
-    let dir = std::env::temp_dir().join(format!("kamchatka-test-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("the directory");
+    let dir = common::scratch("files");
     let log = dir.join("s.jsonl").display().to_string();
     let state = dir.join("s.json").display().to_string();
 

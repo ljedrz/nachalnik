@@ -17,6 +17,8 @@ use nachalnik::{
 };
 use serde_json::json;
 
+mod common;
+
 /// What the policy would answer about `read`ing this path.
 fn asking_about(policy: &Careful, path: &str) -> Verdict {
     let call = ToolCall::new("c1", "read", json!({ "path": path }));
@@ -36,8 +38,7 @@ fn asking_about(policy: &Careful, path: &str) -> Verdict {
 /// path, and the two used to disagree about the simplest thing there is: a trailing slash.
 #[test]
 fn a_credential_rule_is_about_the_file_that_gets_opened() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-policy-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::scratch("policy");
     std::fs::create_dir_all(dir.join("sub")).expect("a temporary directory");
     std::fs::write(dir.join(".env"), "TOKEN=hunter2").expect("something worth protecting");
     // note: a temporary directory is usually reached by a name that is not where it is - `/var` is
@@ -130,8 +131,7 @@ fn a_directory_rule_is_about_a_component() {
 /// The sandbox is the boundary that does not care about names; these rules do, and say so.
 #[test]
 fn the_rules_are_about_names_and_a_symlink_is_not_one() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-link-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::scratch("policy-link");
     std::fs::create_dir_all(&dir).expect("a temporary directory");
     std::fs::write(dir.join(".env"), "TOKEN=hunter2").expect("something worth protecting");
 
@@ -167,8 +167,7 @@ fn the_rules_are_about_names_and_a_symlink_is_not_one() {
 /// Nothing outside the working directory, however it is spelled.
 #[test]
 fn the_reach_refuses_what_is_outside_it() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-reach-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::scratch("policy-reach");
     std::fs::create_dir_all(dir.join("sub")).expect("a temporary directory");
     let reach = Reach {
         workdir: dir.clone(),

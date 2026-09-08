@@ -98,6 +98,28 @@ minor bump may break you.
 
 ### fixed
 
+- Nothing this crate's test suites write goes in `/tmp` any more. Every one of them cleared its
+  directory on the way in rather than on the way out - a test that fails is a test whose leavings
+  you want to look at - and the name carried the process identifier, so a fresh directory arrived
+  with every run and none of them ever left. Thirty runs had put eight hundred and ten of them in
+  `/tmp`. `tests/common::scratch` hands out a directory under `CARGO_TARGET_TMPDIR`, which cargo
+  provides for exactly this, is inside `target/`, and `cargo clean` sweeps. The names lost the
+  identifier with the prefix, since one only has to be unique within its own suite and a stable
+  one is what somebody debugging a failure can find.
+
+  One path stays in the temp directory and has to: the claim it checks is that the temp directory
+  is *not* opened up even though a writable directory inside it is handed to the command, and a
+  path under `target/` would be testing something else. It leaves nothing behind, because the
+  write it makes is refused.
+
+- Two sandbox tests stopped leaving a confined command's scratch directory behind. The directory
+  is named after the command's own process so that whoever spawned it can find it again - the
+  command cannot remove it, `/tmp` not being writable under the ruleset - and these two called
+  `output()`, which consumes the child, and then removed `scratch_for(std::process::id())`: the
+  *test's* identifier, naming a directory that never existed. So each run of that file left two
+  behind for good, which is the sixty `kamchatka-<pid>` directories that were not from the suite's
+  own workspaces. They spawn and wait now, the way this file's own `run` helper does and documents.
+
 - A repair the request needs every time is said once in the conversation rather than after every
   message. A projection is built afresh for every request, so a projector that dropped an orphaned
   call last turn drops it again this turn and honestly reports doing so - which is right of the

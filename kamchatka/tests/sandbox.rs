@@ -27,6 +27,8 @@ use nachalnik::{
 };
 use serde_json::json;
 
+mod common;
+
 /// The binary under test, which is also the thing that confines itself.
 fn program() -> PathBuf {
     // the test binary lives beside it
@@ -63,9 +65,7 @@ fn run(sandbox: &Sandbox, cmd: &str) -> (bool, String) {
 
 /// A workspace of its own, so nothing here can touch the repository.
 fn workdir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("kamchatka-sandbox-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("a temporary directory");
+    let dir = common::scratch(name);
     std::fs::write(dir.join("inside.txt"), "hello").expect("a file in it");
 
     dir
@@ -160,6 +160,12 @@ fn a_command_cannot_write_outside_it() {
     }
     // `/tmp` itself, which the sandbox does *not* open up: what a command gets instead is a
     // directory of its own, handed to it as `TMPDIR`
+    //
+    // note: the one path in this suite that is still in the temp directory rather than under
+    // `common::scratch`, and it has to be - the claim is about the *temp directory* being closed
+    // even though a writable one inside it is handed to the command, and a path under `target/`
+    // would be testing something else. Nothing is left behind: the write is refused, which is
+    // what the assertion below is
     let escape = std::env::temp_dir().join("kamchatka-escaped.txt");
     let _ = std::fs::remove_file(&escape);
     let (ok, said) = run(
@@ -201,8 +207,7 @@ fn a_command_cannot_truncate_a_file_outside_the_working_directory() {
         return;
     }
     let dir = workdir("truncate");
-    let outside =
-        std::env::temp_dir().join(format!("kamchatka-outside-{}.txt", std::process::id()));
+    let outside = common::scratch("truncate-outside").join("whole.txt");
     std::fs::write(&outside, "the whole of it").expect("a file outside");
 
     let (_, said) = run(
@@ -791,18 +796,27 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
         writable: true,
         network: false,
     };
-    let child = Command::new(program())
+    // spawned rather than run in one call, for the reason `run` is: the directory a confined
+    // command gets is named after *that* command, it cannot remove its own, and only whoever
+    // spawned it knows the identifier. These two used to call `output()` and then remove
+    // `scratch_for(std::process::id())` - this test's own identifier, naming a directory that
+    // never existed - so every run of this file left two of the child's behind for good
+    let spawned = Command::new(program())
         .args(confined.argv("git log -n 1 --oneline"))
         .env("HOME", &home)
         .env_remove("GIT_CONFIG_GLOBAL")
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .expect("the binary under test is built");
+    let scratch = kamchatka::sandbox::scratch_for(spawned.id());
+    let child = spawned.wait_with_output().expect("it was spawned");
+    let _ = std::fs::remove_dir_all(&scratch);
     let said = format!(
         "{}{}",
         String::from_utf8_lossy(&child.stdout),
         String::from_utf8_lossy(&child.stderr)
     );
-    let _ = std::fs::remove_dir_all(kamchatka::sandbox::scratch_for(std::process::id()));
 
     assert!(
         child.status.success(),
@@ -817,14 +831,18 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
     // ... and opened up, it is git's own configuration again rather than nothing
     let mut opened = confined.clone();
     opened.readable = vec![home.join(".gitconfig")];
-    let child = Command::new(program())
+    let spawned = Command::new(program())
         .args(opened.argv("git config --get user.name"))
         .env("HOME", &home)
         .env_remove("GIT_CONFIG_GLOBAL")
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .expect("the binary under test is built");
+    let scratch = kamchatka::sandbox::scratch_for(spawned.id());
+    let child = spawned.wait_with_output().expect("it was spawned");
+    let _ = std::fs::remove_dir_all(&scratch);
     let said = String::from_utf8_lossy(&child.stdout).into_owned();
-    let _ = std::fs::remove_dir_all(kamchatka::sandbox::scratch_for(std::process::id()));
 
     assert_eq!(
         said.trim(),

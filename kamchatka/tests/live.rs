@@ -42,6 +42,8 @@ use nachalnik::{
 use ratatui::{Terminal, backend::TestBackend};
 use serde_json::json;
 
+mod common;
+
 /// A model small enough to be free and able to call a tool.
 const DEFAULT_MODEL: &str = "gemini-3.5-flash-lite";
 
@@ -935,7 +937,7 @@ macro_rules! introspecting {
 fn workdir(name: &str) -> std::path::PathBuf {
     // the process id in the name, so that two models being run against this at once do not each
     // clear the other's files out from under it
-    let dir = std::env::temp_dir().join(format!("kamchatka-live-{}-{name}", std::process::id()));
+    let dir = common::scratch(&format!("live-{name}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("a directory");
 
