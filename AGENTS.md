@@ -112,7 +112,7 @@ the runtime's own concerns: `subject.rs` (a `Kernel` plus "ask, and wait for the
 model), `intervene.rs` and `fork.rs` (a frozen `Snapshot`, a `ContextState` moved on a copy of it,
 and the copy run once with no tools), `trial.rs` (an append-only record, the way `Session` is,
 plus `Act` - what a subject *did*), `score.rs` (the arithmetic, computed *from* the record),
-`experiment.rs` (one trait method, a runner, and `Instrument`), and `suite/` (the seven
+`experiment.rs` (one trait method, a runner, and `Instrument`), and `suite/` (the eight
 experiments, the two dossiers, `script.rs`, and `handles.rs`).
 
 **What the crate is for is a ladder, and it is easy to miss the top of it.** `attribution`,
@@ -121,8 +121,18 @@ what its answer rests on, and score the answer. That is all any harness can do. 
 and `repair` measure introspection *by experiment*: `suite/handles.rs` installs two tools a
 subject can call, one that forks its own context and ablates an item and one that rewrites it, and
 the argument is the difference between what a model *says* and what it finds out. Those two
-experiments are the reason this crate is on this runtime rather than beside it. The runbook and the methods document belong to a study rather than
-to the instrument, and live in whichever repository ran it.
+experiments are the reason this crate is on this runtime rather than beside it.
+
+`provenance` is off the ladder rather than on a rung of it, and reading it as an eighth report
+experiment is the mistake to avoid. Every other experiment here asks the subject something and
+scores what it said; this one asks the subject nothing at all. The harness writes a tool call, its
+result and the answer drawn from it into a context, then runs copies with the result left alone,
+elided and excluded, and asks each of them whether anything was run and whether that is the whole
+of the conversation. Both answers have a ground truth because the harness wrote the record, so
+nothing here is scored against a fork, and the `standing` arm is a base rate rather than a
+control: a model that suspects tampering in an untouched context has not detected anything. Six
+requests, the cheapest thing in the suite. The runbook and the methods document belong to a study
+rather than to the instrument, and live in whichever repository ran it.
 
 The one place it departs from the runtime's rules is prompt text, and the departure is contained:
 everything above `suite/` does not know what a question is about, and the two tool descriptions
@@ -133,7 +143,7 @@ copy is run (`tests/harness.rs` asserts the ordering), and accuracy is never rep
 majority baseline beside it.
 
 `Instrument` is the part to be careful with. Every `Outcome` carries a stated version and an
-FNV-1a digest over every sentence the experiment says, and `tests/machinery.rs` pins all seven. If
+FNV-1a digest over every sentence the experiment says, and `tests/machinery.rs` pins all eight. If
 that test fails, a question changed and every run recorded before the change measured something
 else. Adding a template nothing existing reads is safe and leaves the other digests alone; editing
 one is not.
@@ -142,6 +152,14 @@ one is not.
 `panel` talk to a real API through `examples/common`. `nachalnik-eval/examples/bench.rs` runs the
 introspection suite against any OpenAI-compatible endpoint and writes the whole record out as
 JSON; a local ollama works and costs nothing.
+
+`nachalnik-eval`'s other two examples are the analysis half, and neither asks a model anything:
+they read the saved `report.json` files back, which is the point of `--json` holding every
+question and every answer. `compare` puts runs side by side and groups them by
+`Instrument::digest`, so runs whose questions differ by a word are reported apart rather than
+averaged together. `pool` computes the figures that are about *models* rather than about items -
+the sign test over one run per model, which is honest there and nowhere else in the crate, since
+models are independent of each other in a way that items sharing a dossier never are.
 
 `kamchatka/examples/recorded.rs` runs a session headless and writes it out four ways - readable,
 as events, as a snapshot, as the raw stream - which is how the first two transcripts under `docs/`
@@ -152,7 +170,7 @@ needs `KAMCHATKA_CONTEXT_LIMIT` set rather than setting one itself. It writes in
 which is ignored: a run measuring the repository it sits in must not find previous transcripts
 lying in it.
 
-`docs/` is the write-ups, served by GitHub Pages from `main` `/docs`. `index.html` lists them and
+`docs/` is the write-ups, served by GitHub Pages from `master` `/docs`. `index.html` lists them and
 each piece is a directory with an `index.html` in it; `style.css` is shared by all of them. No
 build step, no scripts. Every number in every one of them is copied out of a recorded event log;
 if a claim in there stops being true, the fix is a new recording rather than a new sentence.
@@ -192,8 +210,8 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
     cargo run -p nachalnik-eval --example bench -- -m granite4.2:3b --json run.json
 ```
 
-Its own live suite is two tests and about twenty requests; the whole four-experiment suite is
-about sixty, which is the `bench` example's job rather than `cargo test`'s.
+Its own live suite is two tests and about twenty requests; the whole eight-experiment suite is
+about a hundred and sixty, which is the `bench` example's job rather than `cargo test`'s.
 
 Test files: `nachalnik/tests/` is `kernel`, `context`, `state`, `session`, `tokens`,
 `concurrency`, `blocks`, `live`. `nachalnik-eval/tests/` is `machinery` (the readings, the
@@ -384,8 +402,9 @@ README and the crate docs in longer form:
 - **Seams identify themselves.** `Projector`, `TokenCounter`, `PermissionPolicy` and `Compactor`
   each carry a `name()` defaulting to the implementing type's path, so a client can put the six
   seams on a screen (`/seams` in `kamchatka`). It is for showing a person, not for matching on.
-- **Changelogs** are per crate (`nachalnik/`, `nachalnik-mcp/`, `kamchatka/`), Keep a Changelog
-  format, and are expected to be current before a release rather than reconstructed after one.
+- **Changelogs** are per crate (`nachalnik/`, `nachalnik-mcp/`, `nachalnik-eval/`, `kamchatka/`),
+  Keep a Changelog format, and are expected to be current before a release rather than
+  reconstructed after one.
 - **A version moves as soon as something above it needs API the registry does not have.**
   `cargo package --workspace` builds each member from its own tarball, and a tarball carries
   version requirements rather than path dependencies - so `kamchatka` is resolved against whatever

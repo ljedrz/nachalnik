@@ -516,10 +516,13 @@ call and the short copy drops out.
 ## 🔎 letting the agent read and manage its own context
 
 `--introspect`, or `/introspect` at any point, offers two more tools. They are off by default,
-because a model that can rewrite its own context is a decision rather than a default. There is a
-[write-up](https://ljedrz.github.io/nachalnik/) of two sessions: one where an agent found a
-false note in its own context and corrected it, and one where it took back a hallucination of its
-own by rewriting the two turns it had made things up in.
+because a model that can rewrite its own context is a decision rather than a default. There are
+[write-ups](https://ljedrz.github.io/nachalnik/) of three sessions driven from these two tools:
+one where an agent found a false note in its own context and corrected it, one where it took back
+a hallucination of its own by rewriting the two turns it had made things up in, and one where it
+answered *why do you think that* by forking itself and running the ablation rather than by
+introspecting. Two more transcripts are up there in which I do the editing instead, through the
+keys rather than through these.
 
 **`introspect`** reads. `look` lists every item it is carrying — what each one is, what it costs,
 whether it is going into the next request and why not if it is not — and reads any of them back,

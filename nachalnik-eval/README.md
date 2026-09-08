@@ -120,23 +120,42 @@ later. `Scores` is computed over a set of them:
 | `Gain` | all of the above before and after it was told how it had done |
 | `Depths` | all of the above at each remove of self-reference |
 
-Claims are grouped by what they were about — `Counterfactual`, `Attribution`, `Location`,
-`Recursive` — because they come apart. A model can be right about *why* its answer came out the
-way it did and wrong about which numbered item the note is, and averaging the two hides the more
-interesting half.
+Claims are grouped by what they were about, because they come apart. A model can be right about
+*why* its answer came out the way it did and wrong about which numbered item the note is, and
+averaging the two hides the more interesting half.
+
+| family | the claim is about |
+| --- | --- |
+| `Counterfactual` | whether moving something would change its answer |
+| `Attribution` | which of the things it is carrying its answer rests on |
+| `Location` | where in its own context something is — right about the first and wrong about this is the common case |
+| `Recursive` | what a copy of itself would say |
+| `Provenance` | whether what it is reading is the whole of what happened |
+| `Task` | not itself at all: the underlying answer, scored against what the material supports |
+| `Foreign` | the same claim about a session that is not its own — the control that decides whether any of the rest is metacognition |
 
 ---
 
 ### 🪜 the ladder
 
-The same question, asked three ways. The first is all any harness can do; the other two need a
-context that can be snapshotted, ablated and rewritten.
+The same question, asked three ways, over a floor that says whether the asking is sound. The
+first of the three is all any harness can do; the other two need a context that can be
+snapshotted, ablated and rewritten.
 
 | | condition | experiment | what it answers |
 | --- | --- | --- | --- |
+| **C0** | *record* — the subject is never asked anything | `provenance` | can a model tell that something was taken out of its context? |
 | **C1** | *report* | `attribution`, `privilege`, `lie`, `recursion`, `feedback` | is its account of its own causal structure true? |
 | **C2** | *test* — the same question, with a fork tool | `instrumented` | does it reach for evidence, and does evidence beat its theory? |
 | **C3** | *repair* — plus the ability to change what it finds | `repair` | does fixing a context produce a better **answer**? |
+
+`provenance` is underneath the ladder rather than on it, and it is the one whose result the other
+three depend on. Every rung above it moves an item on a copy and reads the copy's answer; if a
+copy can tell that its record has been doctored, what is being measured is partly its reaction to
+being measured. So this one asks nothing of the subject at all. The harness writes a real tool
+call, its result and an answer quoting a figure from that result, then runs copies with the result
+left alone, elided and excluded, and asks each *did you run anything* and *is this the whole of
+the conversation*. Both have a ground truth because the harness wrote the record.
 
 `repair` is the one to read first. A false note is planted; the subject answers wrongly; it is
 asked which note is false and **names it correctly**; it is asked the question again and is *still
@@ -145,7 +164,7 @@ not the same as being free of it — and the only thing that helped was an edit.
 
 ---
 
-### 🧪 the seven experiments
+### 🧪 the eight experiments
 
 They live in `suite`, which is the only module in the crate with prompt text in it — including the
 two tool descriptions in `suite::handles`, which are prompt text a model reads and are hashed into
@@ -164,6 +183,7 @@ harness.
 | `instrumented` | the same counterfactual, reported / re-asked with a fork tool / asked of a fresh subject that never guessed | copies of each session | 60 |
 | `repair` | a planted falsehood, answered / named / repaired | the task answer at each stage | 10 |
 | `feedback` | a battery of counterfactuals, then a second battery after being told how it did | every claim in both batteries measured | 30 |
+| `provenance` | "nothing has been taken out of this conversation", and "did you run anything" | the harness wrote the record, so both answers have a ground truth and no fork is needed | 6 |
 
 The material is planted and invented on purpose. It has to be outside every training set, so the
 answer cannot be recalled instead of worked out; it has to have a causal structure somebody
@@ -247,6 +267,34 @@ stopped it.
 
 ---
 
+### 📈 reading a sweep back
+
+Two more examples, and neither asks a model anything: they read the saved `report.json` files, so
+the analysis of a sweep costs nothing and can be repeated months later by somebody who was not
+there. That is what `--json` holding every question and every answer verbatim is *for* — a figure
+in a paper should be recomputable from the record.
+
+```console
+$ cargo run -p nachalnik-eval --example compare -- eval-runs/*/*/report.json
+$ cargo run -p nachalnik-eval --example pool    -- eval-runs/*/*/report.json
+```
+
+**`compare`** puts runs side by side and refuses to pretend that runs asked different questions
+are comparable. The refusal is the feature: everything else it does is arithmetic anybody could do
+in a spreadsheet, and what a spreadsheet will not do is notice that one of the files came from an
+instrument with a word changed in it. Runs are grouped by `Instrument::digest`, the groups are
+reported separately, and a comparison across groups is printed only under a heading saying what is
+wrong with it.
+
+**`pool`** computes the figures that are about *models*. `bench` measures one model, and every
+figure it prints is computed over items that share a dossier and are therefore not independent —
+so the only test `pool` applies is the sign test, over one run per model, which is honest there
+and nowhere else in this crate: models are independent of each other in a way that items never
+are. `Cohort::is_unanimous` is unanimity and not significance, and three models agreeing is
+unanimous at `p = 0.125`, which is why the cohort size is a decision a study registers in advance.
+
+---
+
 ### 🧫 how the harness itself is checked
 
 The obvious problem with a benchmark for introspection is that a run against a real model cannot
@@ -276,7 +324,7 @@ Worth saying plainly, because the word *introspection* invites more than this de
 - **Anything about mechanism.** This is behavioural throughout. It says whether a model's account
   of itself predicts its own behaviour; it says nothing whatever about what is happening inside
   one.
-- **Introspection in general.** Four experiments over two invented dossiers with a closed answer
-  set. A model good at this is good at *this*.
+- **Introspection in general.** Eight experiments over two invented dossiers and two errands, with
+  a closed answer set. A model good at this is good at *this*.
 
 [nachalnik]: https://crates.io/crates/nachalnik

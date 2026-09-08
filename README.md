@@ -93,22 +93,53 @@ context is `snapshot` and `resume`, previewing a request is `preview_request`, p
 
 ---
 
+### 📝 what it looks like when it runs
+
+Five transcripts, at **<https://ljedrz.github.io/nachalnik/>**, quoted verbatim from the sessions
+they describe. They read in order, and the machinery turns around halfway through: in the first
+three the model is the one editing its context, and from the fourth on it is not.
+
+1. **[a lie in its own notes](https://ljedrz.github.io/nachalnik/a-lie-in-its-own-notes/)** - two
+   notes go in labelled as carried over from an earlier session, one of them false. It lists what
+   it is carrying, checks the notes against the repository, and rewrites the wrong one in place.
+2. **[retracting a hallucination](https://ljedrz.github.io/nachalnik/retracting-a-hallucination/)** -
+   asked about a crate that did not exist when it was trained, it invents one twice. Told so, it
+   finds both of its own turns and replaces them. Nothing is planted here, which is the caveat the
+   first one carries.
+3. **[an experiment on itself](https://ljedrz.github.io/nachalnik/an-experiment-on-itself/)** -
+   asked which item its answer rested on, it went and checked, by asking a copy of itself the same
+   question with that item taken out. Right about its own reasoning, wrong about where the item was
+   filed.
+4. **[putting words in its mouth](https://ljedrz.github.io/nachalnik/putting-words-in-its-mouth/)** -
+   I replace two of its answers with confident falsehoods. By the third turn it is inventing a
+   claim more specific than either of mine, with nobody editing that turn. Both real answers are
+   still in the session, which is the only reason you can read them.
+5. **[taking away the receipt](https://ljedrz.github.io/nachalnik/taking-away-the-receipt/)** - a
+   shell command really runs, and then I hide its output, which takes down the turn that made the
+   call as well. Asked how it knew, it answers correctly, and then retracts a true statement when I
+   say I do not recall any command.
+
+Every number and every quotation in them is copied out of the event log of the session it
+describes, which is what an append-only log of typed events is for.
+
+---
+
 ### 🧪 building and testing
 
 ```console
 $ cargo test --workspace
 ```
 
-482 tests, of which 34 are live suites that skip themselves when there is no API key: 202 in
-`kamchatka`, 180 in `nachalnik`, 72 in `nachalnik-eval`, 25 in `nachalnik-mcp` and three in
+512 tests, of which 40 are live suites that skip themselves when there is no API key: 234 in
+`kamchatka`, 179 in `nachalnik`, 73 in `nachalnik-eval`, 24 in `nachalnik-mcp` and two in
 `nachalnik-utils`. Each crate's readme says what its own cover.
 
-Three of those three-and-a-bit are the provider conformance suite. This workspace has one
-OpenAI-compatible provider written twice and a Gemini one that shares 41% of its lines with the
-nearer of them, and they cannot be merged - `kamchatka` is published and `nachalnik-utils` never
-will be. So they share the *questions* instead: every provider is asked the same eight through a
-real socket, each question is a bug that actually happened to one of them, and a question added
-applies to all three without any of them being edited.
+Three of them are the provider conformance suite. This workspace has one OpenAI-compatible
+provider written twice and a Gemini one that shares 43% of its lines with the nearer of them, and
+they cannot be merged - `kamchatka` is published and `nachalnik-utils` never will be. So they
+share the *questions* instead: every provider is asked the same eleven through a real socket, each
+question is a bug that actually happened to one of them, and a question added applies to all three
+without any of them being edited.
 
 The live suites are the only way to check the things a mock cannot - that the requests this
 workspace builds are accepted by a real API, and that a real model's answers survive the round trip

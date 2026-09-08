@@ -65,8 +65,10 @@ Reach for it when **what was in the context is part of your answer**:
   into whichever shape the wire format wanted.
 * **Agents that read and manage their own context.** Everything here is public API a `Tool` can
   call, so the same view and the same controls can be handed to the model. `kamchatka` does; see
-  the [write-ups][writeup] of sessions where an agent found a false note in its own context and
-  rewrote it, and where one took back a hallucination of its own the same way.
+  the [write-ups][writeup] - five sessions where an agent found a false note in its own context and
+  rewrote it, took back a hallucination of its own the same way, ran an ablation on itself rather
+  than answer from theory, and - in the two where I am the one editing - carried on from words I
+  put in its mouth and retracted a true statement after I hid the evidence for it.
 
 Reach for something else if you want **an agent today**. This crate ships no provider, no tools,
 no prompt and no UI, so a working agent is yours to assemble; [`kamchatka`][kamchatka] in this
@@ -497,7 +499,7 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
 
 ### 🧪 tests
 
-`cargo test -p nachalnik` runs 157 offline tests - 152 unit and integration, 5 doc - covering the
+`cargo test -p nachalnik` runs 161 offline tests - 156 unit and integration, 5 doc - covering the
 context model, the selectors, the state machine, the loop, permissions, projection and tool-call
 repair, token counting and calibration, compaction, and the session log. Three are worth naming:
 the state machine is tested for refusing a second concurrent `step` and for a dropped one not
