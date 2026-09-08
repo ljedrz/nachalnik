@@ -42,6 +42,28 @@ minor bump may break you.
   so no other crate has to follow and nothing is forced today - but a `0.5.1` published with this
   in it would be resolved by every `^0.5` requirement out there and break at the match.
 
+- The permissions tab says which policy is deciding, and what it answers about everything the list
+  does not mention: `Careful · anything it has not been told about: ask`, above the rows and there
+  whether or not there are any. The tab was every answer somebody had given and no account of what
+  was deciding in between - so the first question a screen of permissions raises was the one thing
+  not on it, and answering it meant reading `/seams` for the name and the source for the behaviour.
+
+  Both halves come out of the policy rather than being written into the screen. The name is what
+  the kernel answers when asked, which is the same answer `/seams` gives and the one that would
+  notice if the policy were ever swapped; `Careful::untold` is new, and is the value the two arms
+  of `Careful::stance` fall back to, so a sentence describing this policy cannot come to disagree
+  with what it does. `App::policy_name` shortens the path - `PermissionPolicy::name` defaults to
+  the implementing type's own, which is right for a panel whose subject is which types are plugged
+  in and spends thirty columns of a list saying `kamchatka::tools::Careful`.
+
+  With nothing decided the tab now says the emptiness is not permission - `nothing has been decided
+  yet, which is why this list is empty rather than permissive` - and goes on to the part that is
+  not guessable: a fresh policy holds a rule for each of a handful of paths that are credentials by
+  convention, those are questions too and so are not rows either, and they begin to earn their keep
+  the moment a capability is answered `always`, because the strictest thing consulted wins and a
+  rule can only tighten what a capability allows. It names no paths. Three of the eleven read as
+  the list, and the count along the bottom is already the honest answer to how many there are.
+
 ### fixed
 
 - The chat tab looks as open as the other three. The window border went yellow when the keys were

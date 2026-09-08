@@ -1607,6 +1607,52 @@ async fn saying_always_answers_for_everything_the_question_named() {
     );
 }
 
+/// The permissions tab says which policy is in force and what it does with the rest.
+///
+/// note: the tab was every answer somebody had given and no account of what was deciding in
+/// between - so the first question a screen of permissions raises was the one thing not on it, and
+/// answering it meant reading `/seams` for the name and the source for the behaviour. Both halves
+/// come out of the policy: the name is what the kernel answers when asked, and the verdict is the
+/// value `Careful::stance` falls back to, so neither can drift from what actually happens.
+#[tokio::test]
+async fn the_permissions_tab_says_which_policy_is_deciding() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
+    ));
+    harness.tab(Tab::Permissions);
+
+    // with nothing decided, which is when it matters most: the list is empty and something has to
+    // say the emptiness is not permission
+    let empty = harness.flat();
+    assert!(empty.contains("Careful"), "the policy is named: {empty}");
+    assert!(
+        empty.contains("anything it has not been told about: ask"),
+        "and says what it does with everything not listed: {empty}"
+    );
+    assert!(
+        empty.contains("empty rather than permissive"),
+        "an empty list is not an open one, and the tab has to say so: {empty}"
+    );
+
+    // and it is still there once there are rows, because it is not an empty-state message
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::Read), Verdict::Allow);
+    let filled = harness.flat();
+    assert!(filled.contains("Careful"), "{filled}");
+    assert!(filled.contains("read allow read"), "{filled}");
+
+    // the short name, not the path `PermissionPolicy::name` defaults to - that belongs to /seams
+    assert!(
+        !filled.contains("kamchatka::tools"),
+        "thirty columns of a list spent saying `Careful`: {filled}"
+    );
+    // and the verdict is read off the policy rather than written into the screen
+    assert_eq!(kamchatka::tools::Careful::untold(), Verdict::Ask);
+}
+
 #[tokio::test]
 async fn the_permissions_tab_draws_the_path_rules_too() {
     let mut harness = Harness::new([]);

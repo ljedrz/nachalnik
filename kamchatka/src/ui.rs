@@ -28,7 +28,10 @@ use ratatui::{
 use tui_markdown::StyleSheet as _;
 use unicode_segmentation::UnicodeSegmentation as _;
 
-use crate::app::{App, Focus, Going, Overlay, Page, Speaker, Tab};
+use crate::{
+    app::{App, Focus, Going, Overlay, Page, Speaker, Tab},
+    tools::Careful,
+};
 
 /// The first line of a session that is not being resumed.
 ///
@@ -104,8 +107,10 @@ pub const HELP: &str = "  THE TABS
     space               cycle it: ask, then allow, then deny
     a / n / r           allow it / never allow it / ask about it again
                         (backspace does what r does)
-    (the line along the bottom says what a shell command can reach, and how
-     many subjects are not listed here because nobody has answered about them)
+    (the line along the top says which policy is in force and what it answers
+     about anything not listed; the one along the bottom says what a shell
+     command can reach, and how many subjects are not listed here because
+     nobody has answered about them)
 
   A TOOL IS WAITING TO RUN - pinned above the prompt, on the chat tab, which
   goes red on the tab strip while one is there
@@ -914,6 +919,19 @@ fn draw_context(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) -> 
 
 // ------------------------------------------------------------------------------ the permissions
 
+/// One verdict, as the word for it and the colour that word is always in.
+///
+/// note: shared by the rows and by the line above them saying what the policy answers about
+/// everything it has not been told about. Two of them is two places for `ask` to stop being
+/// yellow, on the one screen where the colour is the answer.
+fn verdict_word(verdict: Verdict) -> (&'static str, Style) {
+    match verdict {
+        Verdict::Allow => ("allow", Style::default().fg(Color::Green)),
+        Verdict::Ask => ("ask", Style::default().fg(Color::Yellow)),
+        Verdict::Deny => ("deny", Style::default().fg(Color::Red)),
+    }
+}
+
 /// What the policy will answer about each capability, and which tools that covers.
 ///
 /// note: The permission prompt is the policy's only other appearance, and it shows up one call at
@@ -923,6 +941,27 @@ fn draw_context(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) -> 
 /// callback you can only learn about by triggering it.
 fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let rows = app.permissions();
+
+    // which policy is in force and what it does with everything the list does not mention, above
+    // the list, always
+    //
+    // note: the tab was every answer somebody had given and no account of what was deciding in
+    // between - so "which policy is this, and what is it doing?" was the one question a screen of
+    // permissions raises and the only one it could not answer. Reading `/seams` for the name and
+    // the source for the behaviour is not a screen. Both halves come from the policy itself:
+    // `Careful::untold` is the value `stance` falls back to, so this cannot come to describe a
+    // policy that has since changed its mind
+    let [stated, area] = Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).areas(area);
+    let (untold, untold_style) = verdict_word(Careful::untold());
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(format!("  {} ", app.policy_name()), Style::default().bold()),
+            Span::styled("· anything it has not been told about: ", quiet()),
+            Span::styled(untold, untold_style),
+        ])),
+        stated,
+    );
+
     if rows.is_empty() {
         // note: what is *not* here is a row per thing nobody has answered about yet. The policy
         // asks about everything by default, so listing the defaults is listing the absence of
@@ -930,9 +969,17 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
         // stopping. What arrives here is what somebody answered `a` or `n` to
         frame.render_widget(
             Paragraph::new(
-                "nothing has been decided yet.\n\nThe policy asks about everything it has not \
-                 been told about; answer a question with `a` or `n` and it will be here, where it \
-                 can be changed.",
+                "nothing has been decided yet, which is why this list is empty rather than \
+                 permissive.\n\nAnswer a question with `a` or `n` and its subject arrives here, \
+                 where it can be changed. A fresh policy also holds a rule for each of a handful \
+                 of paths that are credentials by convention, and those are questions too, so \
+                 they are not rows either - the line along the bottom is what counts them. They \
+                 begin to earn their keep the moment a capability is answered `always`: the \
+                 capability opens, the rules stay where they are, and the strictest thing \
+                 consulted wins - so a rule can only ever tighten what a capability allows. Those \
+                 rules bind `read`, `write` and `edit`, and deliberately not `shell`: a command \
+                 names its files inside a string, so what holds a command to a boundary is the \
+                 sandbox rather than a rule here.",
             )
             .style(quiet())
             .wrap(ratatui::widgets::Wrap { trim: false }),
@@ -965,11 +1012,7 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let listed: Vec<ListItem> = rows
         .iter()
         .map(|row| {
-            let (answer, style) = match row.verdict {
-                Verdict::Allow => ("allow", Style::default().fg(Color::Green)),
-                Verdict::Ask => ("ask", Style::default().fg(Color::Yellow)),
-                Verdict::Deny => ("deny", Style::default().fg(Color::Red)),
-            };
+            let (answer, style) = verdict_word(row.verdict);
             // a capability nothing declares is still worth a row, and it should say so rather
             // than look like an oversight - but `network` is not one of them, however it looks: no
             // tool declares it and the shell is judged against it anyway, on what the command says

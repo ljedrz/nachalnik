@@ -833,15 +833,27 @@ impl Careful {
                 .lock()
                 .get(capability)
                 .copied()
-                .unwrap_or(Verdict::Ask),
+                .unwrap_or(Self::untold()),
             Subject::Path(pattern) => self
                 .paths
                 .lock()
                 .iter()
                 .find(|(known, _)| known == pattern)
                 .map(|(_, verdict)| *verdict)
-                .unwrap_or(Verdict::Ask),
+                .unwrap_or(Self::untold()),
         }
+    }
+
+    /// What it answers about a subject nobody has told it anything about, which is everything
+    /// until somebody answers a question.
+    ///
+    /// note: a function the two arms of [`Careful::stance`] fall back to rather than a
+    /// `Verdict::Ask` written into each of them, so that the sentence the permissions tab draws
+    /// about this policy is read out of the policy and cannot come to disagree with it. The tab
+    /// listed the answers somebody had given and said nothing about what was deciding in the
+    /// meantime, which is the first thing a screen of permissions is asked.
+    pub const fn untold() -> Verdict {
+        Verdict::Ask
     }
 
     /// Decides what to answer about one subject from now on.

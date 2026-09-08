@@ -323,6 +323,8 @@ place, where it can be changed:
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
+│  Careful · anything it has not been told about: ask                                                          │
+│                                                                                                              │
 │  capability or path     answer      the tools it covers                                                      │
 │  read                   allow       read                                                                     │
 │  write                  deny        write                                                                    │
@@ -332,6 +334,12 @@ place, where it can be changed:
 │                                                                                                              │
 └──────────────── shell: confined · 12 more it will ask about · space cycles · a allow · n never · r ask again ┘
 ```
+
+The line along the top is the policy in force and what it answers about everything the list does
+not mention. It is there because a screen of permissions raises exactly one question before any of
+the rows — *which policy is this, and what is it doing?* — and reading `/seams` for the name and
+the source for the behaviour is not a screen. Both halves come out of the policy itself, so neither
+can come to describe a `Careful` that has since changed its mind.
 
 A fresh session has no rows at all: everything starts at `ask`, and the tab fills up as you answer.
 Rows are **decisions**, not defaults. `ask` is what this policy does about anything nobody has

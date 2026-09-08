@@ -1772,6 +1772,22 @@ impl App {
         })
     }
 
+    /// What the policy in force is called, short enough to put at the top of a screen.
+    ///
+    /// note: asked of the kernel rather than of [`App::policy`], because what the permissions tab
+    /// is reporting is the policy the *runtime* will consult - the same answer `/seams` gives, and
+    /// the one that would notice if the two ever came apart.
+    ///
+    /// note: the last segment of the path. `PermissionPolicy::name` defaults to the implementing
+    /// type's own path, which is right for `/seams` - a panel whose whole subject is which types
+    /// are plugged in - and spends thirty columns of a list saying `kamchatka::tools::Careful`
+    /// where `Careful` is the part anybody reads.
+    pub fn policy_name(&self) -> String {
+        let name = self.kernel.policy().name();
+
+        name.rsplit("::").next().unwrap_or(name).to_owned()
+    }
+
     /// Whether a registered tool can run commands, and the policy has not refused it outright.
     ///
     /// note: the question the permissions tab has to answer honestly. `Capability::Shell` subsumes
