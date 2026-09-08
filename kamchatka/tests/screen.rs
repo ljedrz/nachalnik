@@ -230,6 +230,27 @@ impl Harness {
         buffer[(at, 0)].fg
     }
 
+    /// The colour of each box's top-left corner, top to bottom: the window, and then the prompt
+    /// or the question boxed under it.
+    ///
+    /// note: the corner rather than the title, because the title is what a box says and the border
+    /// is what it is. One of them is drawn in the colour that means the keys are here.
+    fn corners(&mut self) -> Vec<Color> {
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        terminal
+            .draw(|frame| ui::draw(frame, &mut self.app))
+            .unwrap();
+        let buffer = terminal.backend().buffer().clone();
+
+        (0..buffer.area.height)
+            .filter_map(|y| {
+                (0..buffer.area.width)
+                    .find(|x| buffer[(*x, y)].symbol() == "┌")
+                    .map(|x| buffer[(x, y)].fg)
+            })
+            .collect()
+    }
+
     /// Draws at a given size.
     fn sized(&mut self, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -2094,6 +2115,49 @@ async fn what_a_person_reads_is_lighter_than_what_holds_it_together() {
     harness.tab(Tab::Chat);
     let (bar, _) = harness.style_of("│ fn f()");
     assert_eq!(bar, Color::DarkGray, "chrome, not words");
+}
+
+/// Every tab is framed the same, and the box with the keys in it is the one that says so.
+///
+/// note: the chat tab used to be the one screen in the program with no yellow on it anywhere. The
+/// window border went yellow when the keys were on the tab's body, and on the chat tab they never
+/// are - `Focus::Body` there is the pinned question, which has a box of its own - so the tab a
+/// session is mostly spent on could not look open while the other three did. The prompt did not
+/// make up for it in white: against grey that is a difference in brightness rather than in hue.
+#[tokio::test]
+async fn every_window_is_framed_the_same_and_the_keys_say_where_they_are() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("notes.txt", "the wrong note"));
+
+    // the open window is framed the same on the tab with a prompt and on the tab without one ...
+    harness.tab(Tab::Chat);
+    assert_eq!(harness.app.focus, Focus::Input);
+    assert_eq!(
+        harness.corners(),
+        vec![Color::Yellow, Color::Yellow],
+        "the window is framed, and the prompt under it has the keys"
+    );
+
+    harness.tab(Tab::Context);
+    assert_eq!(harness.app.focus, Focus::Body);
+    assert_eq!(harness.corners(), vec![Color::Yellow]);
+
+    // ... and while an item is being edited the prompt is the one that answers "where do the keys
+    // go?", which it could not do while an edit was yellow whether it had them or not
+    harness.press(KeyCode::Char('e')).await;
+    assert_eq!(harness.corners(), vec![Color::Yellow, Color::Yellow]);
+    harness.press(KeyCode::Tab).await;
+    assert_eq!(harness.app.focus, Focus::Body);
+    assert_eq!(harness.corners(), vec![Color::Yellow, Color::Gray]);
+    // and the box that has lost them says how to get back, the way the prompt's own title does
+    assert!(
+        harness.flat().contains("editing [1] · tab"),
+        "{}",
+        harness.flat()
+    );
 }
 
 #[tokio::test]

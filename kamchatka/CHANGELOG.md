@@ -44,6 +44,26 @@ minor bump may break you.
 
 ### fixed
 
+- The chat tab looks as open as the other three. The window border went yellow when the keys were
+  on the tab's body, and on the chat tab they never are: `Focus::Body` there means the pinned
+  question, which has a box of its own. So the tab most of a session is spent on was the one window
+  that could not light up, and it had nothing else yellow on it either - an unfocused frame reads as
+  "this is not where you are", which of the four screens it is the least true of.
+
+  The border is the frame of the open window now, drawn in the same yellow the open tab's name
+  already wears on the strip above it. That is the one thing it is agreeing with, and there was
+  nothing else left for it to say: what has the keys *within* a window is said by the box that has
+  them, and on the two list tabs by the selected row, which is reversed under the keys and
+  underlined without them. Both of those sit beside the thing they describe, which a border a whole
+  window away does not.
+
+  So the prompt is what answers "where does what I type go?", and it now answers in the same yellow
+  the pinned question uses rather than in white - which against grey is a difference in brightness
+  rather than in hue, the weaker of the two signals and the first to go on a pale theme. An edit was
+  yellow whether it had the keys or not, which was that colour doing a second job; what says the
+  prompt is not composing a message is its title, which spells the whole of it out, and which now
+  gains `· tab` when the keys are elsewhere the way the other two titles do.
+
 - An edit that has been undone comes off the conversation with the item it named. The chat's
   account of an edit was written into the transcript when the edit was made, and `undo` takes the
   replacement item back out of the context without telling the screen which line had been moved

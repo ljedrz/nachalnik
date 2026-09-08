@@ -364,22 +364,30 @@ fn faint() -> Style {
 }
 
 /// The window: a strip of tabs, and whichever one is open filling everything under it.
+///
+/// note: the border is the frame of the open window and says so - the same yellow the open tab's
+/// name is written in on the strip above it, which is the one thing it is agreeing with. It used to
+/// go faint whenever the keys were not on the tab's body, and on the chat tab they never are:
+/// `Focus::Body` there means the pinned question, which has a box of its own. So the tab a session
+/// is mostly spent on was the one window that could never look open, while the other three lit up,
+/// and "unfocused window" reads as "this is not where you are".
+///
+/// note: what has the keys *within* the window is said by the box that has them - the prompt and
+/// the question go yellow, and grey or red when the keys are elsewhere - and, on the two list
+/// tabs, by the selected row, which is reversed under the keys and underlined without them. Both
+/// of those sit next to the thing they are describing, which a border a whole window away does
+/// not.
 fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) {
     // the chat tab has a second thing the keys can be on, and only while a question is pinned
     // there; on the other three, `Focus::Body` is the only place they ever are
     let asked = app.asked().is_some();
-    let focused = app.focus == Focus::Body && !(app.tab == Tab::Chat && asked);
 
     let mut strip = Vec::new();
     for tab in Tab::ALL {
         if !strip.is_empty() {
             strip.push(Span::styled("│", faint()));
         }
-        // the open tab looks open whatever the keys are doing; which half of the window they are
-        // talking to is the border's job, and having both say it left `chat` looking shut,
-        // because the prompt has the focus there unless a question has been given it
-        //
-        // note: and `chat` goes red while a tool is waiting to be told whether it may run. The
+        // note: `chat` goes red while a tool is waiting to be told whether it may run. The
         // question is pinned there rather than laid over the screen, which is what makes it
         // possible to walk away from it and look at what it is about - so something has to say,
         // from the other three tabs, that walking back is what the session is waiting for
@@ -393,10 +401,7 @@ fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) {
         ));
     }
 
-    let edge = match focused {
-        true => Style::default().fg(Color::Yellow),
-        false => faint(),
-    };
+    let edge = Style::default().fg(Color::Yellow);
     let block = Block::bordered()
         .title(Line::from(strip))
         .title_bottom(Line::styled(footer(app, going), quiet()).right_aligned())
@@ -1125,26 +1130,33 @@ fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
 
 // ------------------------------------------------------------------------------------ the prompt
 
+/// The prompt, which is the one thing on the chat tab the keys can be on.
+///
+/// note: yellow when the keys are on it, which is the same yellow the pinned question wears for
+/// the same reason - the two are the boxes that can hold them, and one of them holding them is
+/// what the colour says. It used to be white, which against grey is a difference in brightness
+/// rather than in hue: the weaker of the two signals, the first to go on a pale theme, and the
+/// answer to the only question anybody asks of a prompt.
+///
+/// note: an edit was yellow whether the keys were on it or not, which was the same colour doing a
+/// second job - and left two yellow boxes on the screen at once with the item being edited on the
+/// tab underneath. What says this box is not composing a message is its title, which spells the
+/// whole of it out; the colour is left to say the one thing it says everywhere else.
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Focus::Input;
     // the same box does two jobs, so it has to say which one it is doing: typing into it
     // ordinarily sends a message, and typing into it while an item is being edited rewrites what
-    // the model will read
-    let (title, colour) = match app.editing {
-        Some(id) => (
-            format!(" editing [{id}] · enter commits · esc cancels "),
-            Color::Yellow,
-        ),
-        None => (
-            match focused {
-                true => " you ".to_owned(),
-                false => " you · tab ".to_owned(),
-            },
-            match focused {
-                true => Color::White,
-                false => Color::Gray,
-            },
-        ),
+    // the model will read. Either way the title says how to reach it when the keys are elsewhere,
+    // the way the question's does
+    let title = match (app.editing, focused) {
+        (Some(id), true) => format!(" editing [{id}] · enter commits · esc cancels "),
+        (Some(id), false) => format!(" editing [{id}] · tab "),
+        (None, true) => " you ".to_owned(),
+        (None, false) => " you · tab ".to_owned(),
+    };
+    let colour = match focused {
+        true => Color::Yellow,
+        false => Color::Gray,
     };
     app.input.set_block(
         Block::bordered()
