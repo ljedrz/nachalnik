@@ -58,9 +58,9 @@ words. `space` cycles how much of an item the model gets, `p` pins it, `e` chang
 `u` undoes. `/step` performs exactly one transition of the state machine, which is the only way to
 stand in `Ready`: the model has said what it wants to do, and none of it has run yet.
 
-A couple of thousand lines of ordinary user code on top of the crate - two providers, six tools, a
-policy, a compactor and the drawing. See [its readme](kamchatka/README.md) for the sandbox, the
-keys, and the rest.
+Ordinary user code on top of the crate, and nothing else: two providers, six tools, a policy, a
+compactor and the drawing. Not one of them is a privileged feature of the runtime. See
+[its readme](kamchatka/README.md) for the sandbox, the keys, and the rest.
 
 ---
 
@@ -130,16 +130,15 @@ describes, which is what an append-only log of typed events is for.
 $ cargo test --workspace
 ```
 
-512 tests, of which 40 are live suites that skip themselves when there is no API key: 234 in
-`kamchatka`, 179 in `nachalnik`, 73 in `nachalnik-eval`, 24 in `nachalnik-mcp` and two in
-`nachalnik-utils`. Each crate's readme says what its own cover.
+Every crate has a suite, and each crate's readme says what its own covers. The live ones skip
+themselves when there is no API key.
 
-Three of them are the provider conformance suite. This workspace has one OpenAI-compatible
-provider written twice and a Gemini one that shares 43% of its lines with the nearer of them, and
-they cannot be merged - `kamchatka` is published and `nachalnik-utils` never will be. So they
-share the *questions* instead: every provider is asked the same eleven through a real socket, each
-question is a bug that actually happened to one of them, and a question added applies to all three
-without any of them being edited.
+Among them is the provider conformance suite. This workspace has one OpenAI-compatible provider
+written twice and a Gemini one written beside them, and they cannot be merged - `kamchatka` is
+published and `nachalnik-utils` never will be. So they share the *questions* instead: every
+provider is asked the same ones through a real socket, each question is a bug that actually
+happened to one of them, and a question added applies to all three without any of them being
+edited.
 
 The live suites are the only way to check the things a mock cannot - that the requests this
 workspace builds are accepted by a real API, and that a real model's answers survive the round trip
@@ -149,10 +148,11 @@ through a context:
 $ OPENROUTER_API_KEY=sk-or-... cargo test --workspace -- --test-threads=1
 ```
 
-Every count and every percentage in this workspace's readmes was measured at the commit it was
-written for, against a real API where it says so. They are there because a claim with a number in
-it can be checked and a claim without one cannot - but the current answer is always
-`cargo test --workspace`, not a page.
+The figures in these readmes are measurements - what a request really cost, what a counter guessed
+against what a provider charged, what a session did - taken against a real API where they say so.
+What they are deliberately not is a tally of the repository itself. A test count and a line count
+go stale on the next commit, nothing checks them, and a reader who wants either has a better
+answer than a page: `cargo test --workspace`, and the tree.
 
 ---
 

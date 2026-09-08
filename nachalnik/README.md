@@ -499,15 +499,15 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
 
 ### 🧪 tests
 
-`cargo test -p nachalnik` runs 161 offline tests - 156 unit and integration, 5 doc - covering the
-context model, the selectors, the state machine, the loop, permissions, projection and tool-call
-repair, token counting and calibration, compaction, and the session log. Three are worth naming:
+`cargo test -p nachalnik` runs the offline suite, covering the context model, the selectors, the
+state machine, the loop, permissions, projection and tool-call repair, token counting and
+calibration, compaction, and the session log. Three are worth naming:
 the state machine is tested for refusing a second concurrent `step` and for a dropped one not
 wedging the kernel, the log for reporting an item's states in the order they were applied (which
 two threads changing one item is enough to break), and a replaced `Projector` gets a test of its
 own, because a seam nothing has ever been swapped through is a claim rather than a seam.
 
-There is also a live suite of 23, skipped when there is no key, which is the only way to check the
+There is also a live suite, skipped when there is no key, which is the only way to check the
 things a mock cannot - that the requests this crate builds are accepted by a real API, and that a
 real model's answers survive the round trip through the context:
 

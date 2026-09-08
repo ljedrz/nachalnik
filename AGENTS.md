@@ -210,8 +210,10 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
     cargo run -p nachalnik-eval --example bench -- -m granite4.2:3b --json run.json
 ```
 
-Its own live suite is two tests and about twenty requests; the whole eight-experiment suite is
-about a hundred and sixty, which is the `bench` example's job rather than `cargo test`'s.
+Its own live suite is a couple of tests and about twenty requests; the whole eight-experiment
+suite is about a hundred and sixty, which is the `bench` example's job rather than `cargo test`'s.
+Request counts stay because they are what a run costs and somebody has to budget for them; test
+counts do not, here or in the readmes.
 
 Test files: `nachalnik/tests/` is `kernel`, `context`, `state`, `session`, `tokens`,
 `concurrency`, `blocks`, `live`. `nachalnik-eval/tests/` is `machinery` (the readings, the
@@ -425,6 +427,16 @@ README and the crate docs in longer form:
   explaining what was wrong, what was decided, and what was checked - including what was
   deliberately *not* done and why. Read `git log` before writing one; the bar is high and
   consistent.
+- **No counting the repository.** Do not put a test count, a line count or a percentage of one
+  file against another into the prose. They are true for one commit, nothing checks them, and
+  every one of them in this workspace had drifted or was wrong on the day it was written - a
+  readme claiming 482 tests over a tree with 512, and `kamchatka` described as a couple of thousand
+  lines when it was already over ten. The cost is not the wrong number, it is that a reader who
+  finds one wrong stops believing the numbers that *are* measurements. Measurements stay: what a
+  request cost, what a counter guessed against what a provider charged, what a model did in a
+  recorded session, what a run of the eval suite spends. Those were taken against something real,
+  they are dated by the commit they were written for, and they do not change when somebody adds a
+  test. Anyone who wants a count has `cargo test --workspace` and the tree.
 - **The prose argues.** Headings are lowercase, sentences are sentences, and a paragraph that
   merely lists what a thing has is not finished. Spelling leans British (`behaviour`, `defence`,
   `optimisation`, `honouring`) with `-ize` endings for `summarize`. Rust source uses hyphens; the
