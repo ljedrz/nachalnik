@@ -7,6 +7,31 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- `Provenance`, an eighth experiment, and `Kind::Provenance` for what it scores. It writes a real
+  tool call, its result and the answer drawn from it into a subject's context, then asks copies two
+  questions - did you run anything, and is this the whole of the conversation - with the result
+  left alone, elided, and excluded. Both answers have a ground truth the harness knows because the
+  harness wrote the record, so nothing here is scored against a fork.
+
+  It measures the thing this crate has been treating as a caveat. `Observation::repairs` has always
+  said that excluding a tool result takes its call down as well, and
+  `excluding_a_tool_result_takes_its_call_down_and_eliding_one_does_not` now settles offline what
+  that costs: the elided arm keeps all four items and repairs nothing, and the excluded arm keeps
+  two - the orphaned call is repaired away, which empties the turn that made it, which is a turn
+  the projector drops. The copy reads a conversation in which nothing was ever run, with the answer
+  still in it quoting a figure from a result that is no longer there.
+
+  Which makes the two interventions a trade rather than a preference. `Without` leaves no trace in
+  the request, so a copy cannot tell it is being measured; it also leaves a record that supports
+  the wrong answer, and a model that reads it correctly reports a falsehood. `Elided` leaves a
+  marker a model can be honest about and a demand characteristic a study has to declare. The
+  experiment puts a number on both arms, and its `standing` arm is the base rate that makes either
+  readable: a model that suspects tampering in an untouched context is not detecting anything.
+
+  Cheapest thing in the suite at six requests, and the only one that asks the subject nothing.
+
 ### changed
 
 - `Cohort::is_unanimous` says what it checks. Its line read "whether the agreement reaches the
@@ -29,11 +54,20 @@ minor bump may break you.
 - `Intervention::Elided` says that it is visible to the copy. An elided item is projected as a
   marker made of its note, and this sets that note - so the treated arm reads
   `[... left out of this copy ...]` where the control reads nothing of the kind, which is a
-  difference between the arms besides the one under test. Nothing in `suite` uses it, and the
-  documentation now says why `Without` is what an ablation should reach for.
+  difference between the arms besides the one under test. `Provenance` is the one experiment that
+  uses it, and uses it as an arm rather than as an ablation; everywhere else `Without` is still
+  what to reach for, and the documentation now says why.
 
-note: no question changed, so `script::VERSION` is where it was and every digest in `tests/machinery.rs`
-is unmoved. A run against this is comparable with a run against 0.1.0.
+note: two questions were *added* and no question changed, so `script::VERSION` is where it was and
+every digest in `tests/machinery.rs` is unmoved - which is the distinction `script.rs` is built
+around, checked by the seven pinned fingerprints still reading `v5` beside the two new ones. A run
+against this is comparable with a run against 0.1.0.
+
+note: `the_version_moved_and_this_time_it_took_every_question_with_it` pairs experiments with their
+old fingerprints by name rather than by position. It zipped two lists in the same order, which
+survives an append and silently breaks on an insertion: every experiment gets compared with the
+previous one's digest, and since the assertion is that they *differ*, it passes while checking
+nothing. Inserting `provenance` in the middle of `all()` is what found it.
 
 ## [0.1.0] - 2026-09-05
 

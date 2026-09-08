@@ -8,9 +8,10 @@
 use nachalnik::{Config, ContextId, ContextItem, ContextState, Kernel, ModelInfo, StopReason};
 use nachalnik_eval::{
     Act, Answer, Cohort, Deference, Experiment, Faced, Instrument, Intervention, Kind, Paired,
-    Probe, Reached, Reading, Report, Resolution, Scores, Spend, Step, Surface, per_model, suite,
-    suite::PLANTED,
+    Probe, Reached, Reading, Report, Resolution, Scores, Spend, Step, Subject, Surface, per_model,
+    suite,
     suite::dossier::{ALL as ALL_DOSSIERS, DEPOT, Expected, MILL},
+    suite::{ERRANDS, LISTING, PLANTED},
 };
 use std::collections::BTreeSet;
 
@@ -172,6 +173,120 @@ fn an_exclusion_is_a_state_change_and_nothing_is_destroyed() {
     assert!(moved.note.is_some());
     // and the live session never heard about it
     assert_eq!(kernel.item(annex).unwrap().state, ContextState::Active);
+}
+
+#[test]
+fn an_errand_answers_out_of_its_own_result() {
+    // note: two invariants, and neither is decoration. `Errand::args` reads the arguments out of
+    // a string constant and falls back to an empty object rather than panicking, so a malformed
+    // constant would hand every copy a call that names a tool and says nothing about what it was
+    // called with - a quieter and worse failure than a parse error.
+    //
+    // note: the second is the design. An answer that could have been given without the result is
+    // an answer whose support nothing is measuring, so the declared figure has to be in the
+    // result, has to be restated in the answer, and must *not* be in the question - a figure the
+    // asking supplied would be readable in every arm.
+    for errand in ERRANDS {
+        assert!(
+            errand.args().is_object(),
+            "`{}` has arguments that are not a JSON object: {}",
+            errand.label,
+            errand.args
+        );
+
+        let digits = |text: &str| {
+            text.chars()
+                .filter(|c| c.is_ascii_digit())
+                .collect::<String>()
+        };
+        assert!(
+            digits(errand.result).contains(&digits(errand.quotes)),
+            "`{}` quotes {} and its result does not state it",
+            errand.label,
+            errand.quotes
+        );
+        assert!(
+            errand.answered.contains(errand.quotes),
+            "`{}` answers without restating {}",
+            errand.label,
+            errand.quotes
+        );
+        assert!(
+            !digits(errand.asked).contains(&digits(errand.quotes)),
+            "`{}` is asked in terms of {}, so the answer does not need the result",
+            errand.label,
+            errand.quotes
+        );
+    }
+}
+
+#[test]
+fn excluding_a_tool_result_takes_its_call_down_and_eliding_one_does_not() {
+    // note: the whole of what `Provenance` measures, settled offline. Every other experiment here
+    // reaches for `Intervention::Without` because it leaves no marker in the request; what it does
+    // leave is this - a conversation in which the call was never made - and the crate said so in a
+    // doc comment for a long time before anything checked it.
+    let subject = Subject::new(Kernel::new(Config::default()));
+    let items = LISTING.install(&subject);
+    let (called, result) = (items[1].id, items[2].id);
+    let origin = subject.kernel().snapshot();
+
+    // as it stands: the ask, the call, the result, the answer
+    let whole = Kernel::resume(Config::default(), origin.clone()).project();
+    assert_eq!(whole.included.len(), 4);
+    assert_eq!(whole.messages.len(), 4);
+    assert!(whole.repairs.is_empty());
+    assert_eq!(
+        whole
+            .messages
+            .iter()
+            .filter(|m| !m.tool_calls.is_empty())
+            .count(),
+        1
+    );
+
+    // elided: the result keeps its place and keeps answering its call, so the turn keeps its shape
+    // and there is nothing to repair
+    let mut snapshot = origin.clone();
+    Intervention::elided([result]).apply(&mut snapshot);
+    let elided = Kernel::resume(Config::default(), snapshot).project();
+    assert_eq!(elided.included.len(), 4);
+    assert_eq!(elided.messages.len(), 4);
+    assert!(elided.repairs.is_empty(), "{:?}", elided.repairs);
+    assert_eq!(
+        elided
+            .messages
+            .iter()
+            .filter(|m| !m.tool_calls.is_empty())
+            .count(),
+        1
+    );
+
+    // excluded: the orphaned call is repaired away, which leaves an assistant turn with no content
+    // and no answered calls, which is a turn the projector drops - so *two* items leave, and the
+    // copy reads a conversation in which nothing was ever run
+    let mut snapshot = origin;
+    Intervention::without([result]).apply(&mut snapshot);
+    let gone = Kernel::resume(Config::default(), snapshot).project();
+    assert_eq!(gone.included.len(), 2);
+    assert_eq!(gone.messages.len(), 2);
+    assert_eq!(gone.repairs.len(), 1);
+    assert!(gone.repairs[0].contains("its result is not in the projection"));
+    assert!(gone.messages.iter().all(|m| m.tool_calls.is_empty()));
+    assert_eq!(
+        gone.skipped.iter().map(|left| left.id).collect::<Vec<_>>(),
+        vec![called, result],
+        "the call was named as well as the result"
+    );
+
+    // and the answer that quoted the figure is still there, with nothing behind it
+    assert!(
+        gone.messages.iter().any(|m| m
+            .content
+            .as_ref()
+            .is_some_and(|said| said.to_text().contains("68,402"))),
+        "the conclusion outlives its evidence, which is the situation being measured"
+    );
 }
 
 #[test]
@@ -513,6 +628,18 @@ fn the_instrument_is_pinned_so_that_it_cannot_change_quietly() {
             suite::Repair::new().instrument(),
             "v5/depot+orchard+foundry+ferry+kiln+planted #a2fa046fb6002e99",
         ),
+        // note: still `v5`, and that is the rule in `script.rs` doing what it promises. This
+        // experiment added two templates and a set of material nothing else reads, so every
+        // fingerprint above is the one it had before `provenance` existed and every run taken
+        // under v5 is still comparable with one taken today.
+        (
+            suite::Provenance::new().instrument(),
+            "v5/listing #cbc52a3857d85488",
+        ),
+        (
+            suite::Provenance::new().on(&suite::CONFIG).instrument(),
+            "v5/config #2dfa847c408fadd2",
+        ),
     ] {
         assert_eq!(experiment.to_string(), pinned);
     }
@@ -532,28 +659,45 @@ fn the_version_moved_and_this_time_it_took_every_question_with_it() {
     // in the material as it stood, every inert note had three digits or fewer, so a subject that
     // simply claimed "notes with figures matter" would have scored well for the wrong reason.
     // Better to break comparability once, loudly, than to keep a benchmark that cannot fail.
+    // note: paired by name and not by position, which it was until `provenance` was inserted in
+    // the middle of `all()`. A `zip` over two lists in the same order is one edit away from
+    // comparing every experiment with the previous one's digest - which still passes, because the
+    // assertion is that they *differ*, and stops checking anything at all. An experiment added
+    // after v4 has no v3 fingerprint to have moved away from and is skipped by name.
+    let before = [
+        ("attribution", "bfd6ceca9cefa20a"), // as v2 and v3 asked it
+        ("recursion", "c4cba59d5b638259"),
+        ("lie", "93a62c47b8f4e725"),
+        ("privilege", "81fb157b09caae22"),
+        ("instrumented", "d3c58af08fcc4185"), // as v3 asked it
+        ("repair", "eed7de26ff68d883"),       // as v3 asked it
+        ("feedback", "cd0514fb0d394cb0"),
+    ];
     let digests: Vec<String> = suite::all()
         .iter()
         .map(|e| e.instrument().digest.clone())
         .collect();
-    for (experiment, moved) in suite::all().iter().zip([
-        "bfd6ceca9cefa20a", // attribution, as v2 and v3 asked it
-        "c4cba59d5b638259", // recursion
-        "93a62c47b8f4e725", // lie
-        "81fb157b09caae22", // privilege
-        "d3c58af08fcc4185", // instrumented, as v3 asked it
-        "eed7de26ff68d883", // repair, as v3 asked it
-        "cd0514fb0d394cb0", // feedback
-    ]) {
+    let mut checked = 0;
+    for experiment in suite::all() {
+        let Some((_, moved)) = before.iter().find(|(name, _)| *name == experiment.name()) else {
+            continue;
+        };
+        checked += 1;
         assert_ne!(
-            experiment.instrument().digest,
+            &experiment.instrument().digest,
             moved,
             "{} still fingerprints as it did before the red herrings",
             experiment.name()
         );
     }
+    assert_eq!(
+        checked,
+        before.len(),
+        "an experiment named in the v3 list has been renamed or dropped, so its fingerprint is no \
+         longer being checked against the one it had"
+    );
 
-    // and they are still seven distinct fingerprints: a change that collapsed two experiments
+    // and they are still one distinct fingerprint each: a change that collapsed two experiments
     // onto one digest would make a report unable to say which of them produced a number
     assert_eq!(
         digests.iter().collect::<BTreeSet<_>>().len(),

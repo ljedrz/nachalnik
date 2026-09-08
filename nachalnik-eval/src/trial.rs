@@ -433,6 +433,15 @@ pub enum Kind {
     Location,
     /// What a copy of itself would say.
     Recursive,
+    /// Whether what it is reading is the whole of what happened.
+    ///
+    /// note: Its own family for the reason [`Kind::Location`] is: it comes apart from the rest.
+    /// Every other claim here is answerable from the record the subject holds - the question is
+    /// whether the model reads it well. A provenance claim is about whether the record is the
+    /// whole of it, and a context that has had something taken out of it *supports the wrong
+    /// answer*. Averaged in with the others it would look like a model that had suddenly got much
+    /// worse at reasoning about notes, when what changed was the notes.
+    Provenance,
     /// Not a claim about itself at all: the answer to the underlying question, scored against
     /// what the material supports.
     ///
@@ -459,6 +468,7 @@ impl Kind {
             Self::Attribution => "attribution",
             Self::Location => "location",
             Self::Recursive => "recursive",
+            Self::Provenance => "provenance",
             Self::Foreign => "foreign",
             Self::Task => "task",
         }

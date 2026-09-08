@@ -595,7 +595,7 @@ async fn a_whole_run_reports_and_round_trips() {
     })
     .await;
 
-    assert_eq!(report.outcomes.len(), 7);
+    assert_eq!(report.outcomes.len(), 8);
     for outcome in &report.outcomes {
         assert_eq!(outcome.failed, None, "{} stopped early", outcome.experiment);
         assert!(
@@ -633,7 +633,7 @@ async fn a_subject_with_no_provider_fails_the_experiment_and_not_the_run() {
     })
     .await;
 
-    assert_eq!(report.outcomes.len(), 7);
+    assert_eq!(report.outcomes.len(), 8);
     for outcome in &report.outcomes {
         assert!(outcome.failed.is_some());
         assert!(outcome.scores.is_empty());
