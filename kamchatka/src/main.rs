@@ -172,7 +172,7 @@ async fn terminal() -> Result<()> {
                 .map(|since| since.as_secs())
                 .unwrap_or_default();
 
-            format!("kamchatka-{started}")
+            App::session_stamp(started)
         }),
         max_requests_per_turn: (args.requests > 0).then_some(args.requests),
         parallel_tool_calls: args.parallel,

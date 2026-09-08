@@ -2938,6 +2938,50 @@ impl App {
         );
     }
 
+    /// A name for a session, from the seconds since the epoch it started at.
+    ///
+    /// note: this is the session's identity *and* the name of the two files it leaves behind, and
+    /// it was `kamchatka-1788849917`. Those go in a directory called `kamchatka`, so half of every
+    /// filename said what the directory had already said - and the other half said nothing at all
+    /// to anybody reading it. `2026-09-08T06-45-17Z` names the same session, sorts the same way,
+    /// and answers the question somebody is looking at a list of them to ask.
+    ///
+    /// note: UTC, and it says so, because the alternative is a local time that needs the timezone
+    /// database to work out - a dependency for a filename - and a name that quietly means
+    /// something different depending on where it was written.
+    ///
+    /// note: to the second, which is what it was before: two sessions started inside one second
+    /// would collide, and did before too. The identifier a session gets from the runtime by
+    /// default is a counter that restarts with the process, which is fine as an identity and
+    /// writes over the last session's record.
+    pub fn session_stamp(secs: u64) -> String {
+        // days since the epoch, and what is left of the last one
+        let (days, rest) = ((secs / 86_400) as i64, secs % 86_400);
+        // note: Howard Hinnant's `civil_from_days`, which is the whole of the calendar in five
+        // lines of integer arithmetic and gets the leap years right for every year rather than
+        // for the ones a test happened to try. The shift is to an era starting in March, so that
+        // a leap day is the last day of a year instead of the sixtieth
+        let z = days + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z.rem_euclid(146_097);
+        let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let day = doy - (153 * mp + 2) / 5 + 1;
+        let month = match mp < 10 {
+            true => mp + 3,
+            false => mp - 9,
+        };
+        let year = yoe + era * 400 + i64::from(month <= 2);
+
+        format!(
+            "{year:04}-{month:02}-{day:02}T{:02}-{:02}-{:02}Z",
+            rest / 3_600,
+            (rest % 3_600) / 60,
+            rest % 60
+        )
+    }
+
     /// Writes the session log and a snapshot that can be resumed from, at a path somebody gave.
     ///
     /// note: Two files, because they answer different questions: the log says what happened, and

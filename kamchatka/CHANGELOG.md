@@ -9,6 +9,20 @@ minor bump may break you.
 
 ### changed
 
+- A session is named for when it started, in UTC, and that name is also its two files:
+  `/tmp/kamchatka/2026-09-08T06-45-17Z.jsonl`. It was `kamchatka-1788849917`, written into a
+  directory called `kamchatka` - so half of every filename repeated the directory it was in, and
+  the other half said nothing whatever to somebody reading a list of them. The same name is what
+  the last line printed on the way out says, what `Event::SessionStarted` carries and what a fork
+  hangs `#fork` off, because it is one identity rather than a filename with a label beside it.
+
+  `App::session_stamp` is public and does the calendar itself, in Howard Hinnant's
+  `civil_from_days` - five lines of integer arithmetic that get the leap years right for every
+  year rather than for the ones a test happened to try, and no dependency for a filename. UTC, and
+  the name says `Z`, because a local time needs the timezone database to work out and would mean
+  something different depending on where it was written. Still to the second, so two sessions
+  started inside one second collide exactly as they did before.
+
 - A permission question stands in the prompt's place on the chat tab instead of being an overlay
   over the middle of the screen, and the prompt is on the chat tab only. The two go together: a
   question was modal, so while one was up nothing else worked, and being asked whether `amend` may

@@ -662,11 +662,15 @@ Every session is written out when it ends, whether or not it ended well, and the
 printed is where:
 
 ```text
-kamchatka-1788373510 · 9 events recorded
-9 records in /tmp/kamchatka/kamchatka-1788373510.jsonl, and a session in
-/tmp/kamchatka/kamchatka-1788373510.json
-`kamchatka -r /tmp/kamchatka/kamchatka-1788373510.json` carries on from it
+2026-09-02T18-25-10Z · 9 events recorded
+9 records in /tmp/kamchatka/2026-09-02T18-25-10Z.jsonl, and a session in
+/tmp/kamchatka/2026-09-02T18-25-10Z.json
+`kamchatka -r /tmp/kamchatka/2026-09-02T18-25-10Z.json` carries on from it
 ```
+
+A session's name is when it started, in UTC, and it is also the name of its two files. It used to
+be `kamchatka-1788373510`, which repeated the directory it was about to be written into and then
+said nothing whatever to somebody reading a list of them.
 
 The condition used to be "somebody typed `/save`", which is exactly backwards: a session that
 ended badly is the one worth reading afterwards, and it was the one that left nothing. Nine runs

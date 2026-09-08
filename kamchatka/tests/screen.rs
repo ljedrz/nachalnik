@@ -1681,6 +1681,39 @@ async fn saying_always_answers_for_everything_the_question_named() {
     );
 }
 
+/// A session is named for when it started, in a name that is also its two files.
+///
+/// note: it was `kamchatka-1788849917`, written into a directory called `kamchatka` - so half of
+/// every filename repeated the directory and the other half said nothing to anybody reading a list
+/// of them. The dates here are the ones that catch a calendar written by hand: a leap day, the day
+/// after one, the first of March in a century that is not a leap year, and the epoch itself.
+#[test]
+fn a_session_is_named_for_when_it_started() {
+    for (secs, expected) in [
+        (0, "1970-01-01T00-00-00Z"),
+        (1_788_849_917, "2026-09-08T06-45-17Z"),
+        (951_782_400, "2000-02-29T00-00-00Z"),
+        (951_868_800, "2000-03-01T00-00-00Z"),
+        (4_107_542_400, "2100-03-01T00-00-00Z"),
+        (1_583_020_800, "2020-03-01T00-00-00Z"),
+    ] {
+        assert_eq!(App::session_stamp(secs), expected, "at {secs}");
+    }
+
+    // sortable, which is most of what a directory of them is for
+    let mut names = [
+        App::session_stamp(1_788_849_917),
+        App::session_stamp(0),
+        App::session_stamp(951_782_400),
+    ];
+    names.sort();
+    assert_eq!(names[0], "1970-01-01T00-00-00Z");
+    assert_eq!(names[2], "2026-09-08T06-45-17Z");
+
+    // and it says nothing about kamchatka, because the directory it goes in already does
+    assert!(!App::session_stamp(0).contains("kamchatka"));
+}
+
 /// The permissions tab says which policy is in force and what it does with the rest.
 ///
 /// note: the tab was every answer somebody had given and no account of what was deciding in
