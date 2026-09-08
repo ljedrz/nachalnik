@@ -9,7 +9,7 @@ minor bump may break you.
 
 ### changed
 
-- A permission question is pinned above the prompt on the chat tab instead of being an overlay
+- A permission question stands in the prompt's place on the chat tab instead of being an overlay
   over the middle of the screen, and the prompt is on the chat tab only. The two go together: a
   question was modal, so while one was up nothing else worked, and being asked whether `amend` may
   elide item 22 meant deciding about item 22 with the box asking the question covering the list
@@ -23,14 +23,38 @@ minor bump may break you.
   those tabs was a key or a character depending on where the focus had got to, and `space` after
   sending a message typed a space instead of cycling the row somebody was looking at. Now
   context/trace/permissions have no prompt and no mode, `tab` from any of them is the way back to
-  typing, and `Focus::Body` on the chat tab means the pinned question.
+  typing, and `Focus::Body` on the chat tab means the waiting question.
 
   The settling window is gone with it, and so is the failure it patched. A question used to take
   every key on arrival and hand back the ones that were not answers, with a 300ms timer deciding
-  which - one live session granted `shell` for the rest of it with the `a` of "what". A question
-  now appears without asking for the keys at all, so a letter typed at the prompt is a letter,
-  whatever is waiting above it. `tab` moves them to it; so does coming back to the chat tab while
-  one waits, because that is what the trip was for - go and read the item, come back, one key.
+  which - one live session granted `shell` for the rest of it with the `a` of "what". Nothing is
+  timed now: a question appears without asking for the keys at all, and `tab` is what gives them
+  to it. So does coming back to the chat tab while one waits, because that is what the trip was
+  for - go and read the item, come back, one key.
+
+  It takes the prompt's rows rather than sitting above them, which is the second half of the same
+  decision and was the second half of the same bug. Stacked, the two disagreed on any window
+  shorter than about fifteen rows: the question needs the room, so the prompt gave way - and went
+  on holding the keys, and whatever had been typed into it, from off the screen. That is a session
+  waiting on an answer nobody can give it without first pressing a key nothing on the screen
+  mentions, and the box that says `· tab` is the one telling you to press it. Now the box holding
+  the keys is always the box on the screen, at every window size.
+
+  What was typed is not lost. The prompt is not drawn rather than cleared, so answering hands its
+  place back with the draft still in it and the keys already on it - no second `tab`. What it costs
+  is that a message cannot be *sent* while a question waits, which is the honest shape of "answer
+  this first": the queue a message typed into a running turn goes into is still there, and a turn
+  that has stopped to ask is not running.
+
+  `App::locked_key` is the guard, and it is a guard rather than a consequence of the layout. Until
+  `tab` is pressed the only keys that do anything are the ones that scroll the conversation, since
+  reading is not answering and the whole reason the question is not modal is so somebody can go and
+  look at what it is about. Everything else is swallowed - the answers, because they are bare
+  letters and that is the `a` of "what" again, and `enter`, because a prompt that still took it
+  would send the half-written message the question interrupted and start a turn on the way to
+  answering. The panel says so where it is read: until it has the keys it carries a `[tab] puts the
+  keys here, and then:` line above the answers, because listing `[y] once` beside a `y` that is
+  being deliberately ignored is a screen promising a key it has not got.
 
   It is also one less thing to keep in step: the panel is drawn from `pending_permissions()` every
   frame rather than from an `Overlay::Permission` that had to be opened and closed, so it cannot be

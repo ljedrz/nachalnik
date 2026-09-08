@@ -66,7 +66,7 @@ impl Harness {
         }
     }
 
-    /// Answers the question pinned above the prompt, moving the keys to it first.
+    /// Answers the question standing in the prompt's place, moving the keys to it first.
     ///
     /// note: a question does not take the keys on arrival - see the note on `App::question_key`,
     /// and the live session that granted `shell` for good with the `a` of "what". Reaching it is
@@ -2817,8 +2817,9 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
     harness.settle().await;
     assert!(harness.app.asked().is_some(), "the question is up");
 
-    // the next thing typed is a message, not an answer - and `a` is the third letter of it. It
-    // used to grant `shell` for the rest of the session, which is what a live run did
+    // the question has the prompt's place, so there is nowhere for this to go - and `a` is the
+    // third letter of it. It used to grant `shell` for the rest of the session, which is what a
+    // live run did
     for c in "what is the capital of Peru".chars() {
         harness.press(KeyCode::Char(c)).await;
     }
@@ -2840,20 +2841,30 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
         Verdict::Ask,
         "nothing was granted by somebody typing a sentence"
     );
-    // ... and the sentence is where it was aimed, whole. This used to be a race the program could
-    // only mostly win: the question took every key and handed back the ones that were not answers,
-    // so a 300ms timer decided which. The first letter of a sentence arrives after a pause, so the
-    // timer had already expired by the time it landed, and it was `a` a few keys later that did
-    // the damage. Nothing is timed now - the question is drawn without being given the keys
-    assert_eq!(harness.app.input.lines(), ["what is the capital of Peru"]);
+    // ... and none of it reached the prompt either, because the prompt is not on the screen. This
+    // used to be a race the program could only mostly win: the question took every key and handed
+    // back the ones that were not answers, so a 300ms timer decided which. The first letter of a
+    // sentence arrives after a pause, so the timer had already expired by the time it landed, and
+    // it was `a` a few keys later that did the damage. Nothing is timed now, and nothing is
+    // swallowed by a box somebody cannot see
+    assert_eq!(harness.app.input.lines(), [""]);
+    assert!(
+        !harness.screen().contains("┌ you "),
+        "the prompt gave up its place to the question: {}",
+        harness.screen()
+    );
 
-    // ... and it can be sent from there, which puts it in the queue a message typed into a
-    // running turn goes in: the question is a pause in a turn, not the end of one
+    // `enter` is guarded by the same gate, which is most of why it is a gate: unswallowed it would
+    // send whatever the question interrupted and start a turn on the way to answering
     harness.press(KeyCode::Enter).await;
-    assert!(harness.app.input.lines() == [""], "the prompt was sent");
     assert!(
         harness.app.asked().is_some(),
         "and the question is still the question"
+    );
+    assert_eq!(
+        harness.app.kernel.state().name(),
+        "deciding",
+        "nothing was sent, so nothing was started"
     );
 
     // and `tab` puts the keys on it, where one key answers it
@@ -2864,6 +2875,58 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
         harness.app.focus,
         Focus::Input,
         "and the keys come back to the prompt with nothing left to ask"
+    );
+}
+
+/// A half-written message is still there after the question that interrupted it.
+///
+/// note: the question takes the prompt's place rather than stacking above it, so the box holding
+/// the keys is always the box on the screen - stacked, the two disagreed below about fifteen rows,
+/// where the question needs the room and the prompt gave way while keeping the keys and the text.
+/// What that costs is that the draft goes off the screen for as long as the question is up, so the
+/// thing worth pinning is that it comes back, and comes back with the keys on it.
+#[tokio::test]
+async fn the_question_gives_the_prompt_its_place_back_with_what_was_in_it() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("done"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+    ));
+
+    // a draft typed while the turn runs, before there is any question to interrupt it
+    harness.send("dig").await;
+    for c in "and what about".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+    assert_eq!(harness.app.input.lines(), ["and what about"]);
+
+    harness.settle().await;
+    assert!(harness.app.asked().is_some(), "the turn stopped to ask");
+    // the prompt is off the screen and the question is where it was, saying what to press
+    let screen = harness.flat();
+    assert!(!screen.contains("┌ you "), "{screen}");
+    assert!(screen.contains("a tool wants to run · tab"), "{screen}");
+    assert!(
+        screen.contains("[tab] puts the keys here"),
+        "the answers do not work yet, so the panel says which key does: {screen}"
+    );
+
+    // answering hands the place back, with the draft in it and the keys on it - no second `tab`
+    harness.answer(KeyCode::Char('y')).await;
+    harness.settle().await;
+    assert_eq!(harness.app.focus, Focus::Input);
+    assert_eq!(
+        harness.app.input.lines(),
+        ["and what about"],
+        "the draft the question interrupted"
+    );
+    let screen = harness.flat();
+    assert!(screen.contains("and what about"), "{screen}");
+    assert!(
+        !screen.contains("[tab] puts the keys here"),
+        "and the gate is gone with the question: {screen}"
     );
 }
 

@@ -77,7 +77,8 @@ pub const HELP: &str = "  THE TABS
     ctrl+e              follow the newest again, from wherever you are
     home / end          the prompt's own, as in any other line editor
     (a message sent while a turn is running waits for the end of it, and
-     then gets a turn of its own)
+     then gets a turn of its own; a turn that stops to ask about a tool has
+     to be answered first, because the question is in the prompt's place)
 
   THE CONTEXT TAB, which has the keys whenever it is open
     up / down, j / k    pick an item
@@ -112,9 +113,10 @@ pub const HELP: &str = "  THE TABS
      command can reach, and how many subjects are not listed here because
      nobody has answered about them)
 
-  A TOOL IS WAITING TO RUN - pinned above the prompt, on the chat tab, which
+  A TOOL IS WAITING TO RUN - in the prompt's place, on the chat tab, which
   goes red on the tab strip while one is there
-    tab                 answer it; again to go back to the prompt
+    tab                 put the keys on it. None of the answers below does
+                        anything until you have, and nor does enter
     y / n               once / no
     esc                 no
     up / down, pgup / pgdn   scroll arguments too long for the panel
@@ -122,10 +124,15 @@ pub const HELP: &str = "  THE TABS
                         the calls already waiting behind it
     i                   the exact JSON, and the tool's own definition
     d                   drop every call it is waiting on, and tell it why
-    (it never takes the keys off you: a question that arrives while you type
-     is a question you keep typing past. Coming back to the chat tab while one
-     is waiting does put the keys on it, because that is what you came for -
-     so you can go and read what it is about, and answer with one key)
+    (it never takes the keys by itself. The answers are bare letters, and a
+     question that arrived while somebody was typing once read the `a` of
+     `what` as `always, for shell` and kept it for the rest of the session -
+     so until you press tab the only keys that do anything are the ones that
+     scroll the conversation, which is how you read what the question is
+     about before answering it. Whatever was in the prompt is still there
+     when the question has gone, with the keys back on it and no second tab
+     to press. Coming back to the chat tab from another one also puts them on
+     the question, because that is what you came for)
 
   COMMANDS
     /help               this; also /?
@@ -283,34 +290,27 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // other tabs are read and operated rather than typed into, and a box there was a mode: every
     // letter on them was a key or a character depending on where the focus had got to
     let prompted = app.prompted();
-    let mut input_height = match prompted {
+    let input_height = match prompted {
         true => (wrapped_rows(app.input.lines(), inner) as u16).clamp(1, most) + 2,
         false => 0,
     };
-    // pinned above the prompt rather than laid over the middle of the screen, so that everything
-    // the question is about stays reachable while it waits: a question covering the context tab
-    // is a question about item 22 asked with the list of items underneath it
+    // in the prompt's place rather than laid over the middle of the screen, so that everything the
+    // question is about stays reachable while it waits: a question covering the context tab is a
+    // question about item 22 asked with the list of items underneath it
     let height = frame.area().height;
     let wanted = match app.tab == Tab::Chat {
         true => question_rows(app, inner),
         false => 0,
     };
-    // what it may have is everything except the prompt, the status line and enough of the
-    // conversation to see what the question is about - and if that is not enough to answer with,
-    // the prompt gives way first and the conversation second. An overlay owned the whole screen
-    // and never had to choose; pinned, the question is sharing one, and a question somebody
-    // cannot answer is worse than either a prompt or a transcript they cannot see
+    // what it may have is everything except the status line and enough of the conversation to see
+    // what the question is about - and if that is not enough to answer with, the conversation
+    // gives way too. There is no prompt left to bargain with: `App::prompted` is false while a
+    // question waits, so `input_height` is already nought here. It used to be the first thing
+    // asked to give way, which meant the box holding the keys was the box that went
     let mut question = 0;
     if wanted != 0 {
-        let spare = |taken: u16| height.saturating_sub(taken + 1 + MIN_CHAT);
-        let enough = MIN_QUESTION.min(wanted);
-
-        question = wanted.min(spare(input_height));
-        if question < enough {
-            input_height = 0;
-            question = wanted.min(spare(0));
-        }
-        if question < enough {
+        question = wanted.min(height.saturating_sub(1 + MIN_CHAT));
+        if question < MIN_QUESTION.min(wanted) {
             question = wanted.min(height.saturating_sub(BESIDES));
         }
     }
@@ -1504,8 +1504,20 @@ fn question_parts(
     // second. The `pgup / pgdn` joins them when there are arguments below the fold, rather than
     // going on a line of its own: a line of its own costs the arguments two rows on the screen
     // that made it necessary in the first place
+    //
+    // note: and a line above them, until the keys are here, because until then none of them does
+    // anything. Listing `[y] once` beside a `y` that is being swallowed is the panel promising a
+    // key it has not got - and the swallowing is deliberate, so the honest thing is to name the
+    // one key that works. It goes when `tab` is pressed, which is also the moment the options
+    // start being true
     let answers = format!(
-        "[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}{}{}",
+        "{}[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}{}{}",
+        // the same reading `draw_question` colours the border by, so the panel cannot be counted
+        // one way and drawn the other
+        match app.focus == Focus::Body && app.tab == Tab::Chat {
+            true => "",
+            false => "[tab] puts the keys here, and then:\n",
+        },
         judged.join(" and "),
         match waiting > 1 {
             true => "drop them all",
@@ -1579,7 +1591,7 @@ fn question_rows(app: &App, columns: usize) -> u16 {
     (head.len() + args.len() + foot.len()) as u16 + 2
 }
 
-/// A tool is waiting to be told whether it may run, pinned above the prompt.
+/// A tool is waiting to be told whether it may run, in the prompt's place.
 ///
 /// Returns the offset the arguments were really drawn at.
 fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {

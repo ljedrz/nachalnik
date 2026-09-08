@@ -215,8 +215,8 @@ async fn a_permission_question_draws_at_every_size() {
 
     app.kernel.push(ContextItem::user("read the env"));
     let _ = tokio::time::timeout(Duration::from_secs(5), app.kernel.turn()).await;
-    // the question is pinned above the prompt rather than opened, so it is on the screen already;
-    // what this sweeps is whether it can be drawn in a space too small to hold it
+    // the question stands in the prompt's place rather than being opened, so it is on the screen
+    // already; what this sweeps is whether it can be drawn in a space too small to hold it
     assert!(app.asked().is_some(), "a question is waiting");
 
     for width in 1..=60u16 {

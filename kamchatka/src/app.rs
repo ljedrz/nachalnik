@@ -50,7 +50,7 @@ pub enum Focus {
     /// The prompt, which is on the chat tab and wherever an item is being edited.
     Input,
     /// Whatever else on the screen takes keys: the tab's own body, or - on the chat tab - the
-    /// question pinned above the prompt, which is the only thing there that does.
+    /// question standing in the prompt's place, which is the only thing there that does.
     Body,
 }
 
@@ -342,7 +342,7 @@ pub struct App {
     /// How far down the pinned question's arguments are scrolled.
     ///
     /// note: on the app rather than on the question, because there is no question to hang it on:
-    /// what is pinned above the prompt is drawn from `pending_permissions()` every frame, so
+    /// what stands in the prompt's place is drawn from `pending_permissions()` every frame, so
     /// there is no state saying a question is open and none to get out of step with the kernel.
     pub question_scroll: usize,
     /// A message somebody sent into a turn that was already running, waiting for it to end.
@@ -1089,16 +1089,25 @@ impl App {
             // `tab` moves the keys to the other thing on the screen that wants them, and on a tab
             // with no prompt there is no other thing - so it means the one gesture that is always
             // worth having: back to where typing happens
-            (KeyCode::Tab, _) => match (self.prompted(), self.tab, self.asked().is_some()) {
+            (KeyCode::Tab, _) => match (self.tab, self.asked().is_some()) {
+                // it is what puts the keys on a waiting question, and the only thing that does
+                // from this tab. There is nothing to hand them back to until the question is
+                // answered - it has the prompt's place - so pressing it again is not a way out
+                (Tab::Chat, true) => self.focus = Focus::Body,
                 // the conversation is read rather than operated, so the only thing on the chat tab
                 // that takes keys of its own is a question, and only while there is one
-                (_, Tab::Chat, false) => {}
-                (true, ..) => self.flip_focus(),
+                (Tab::Chat, false) => {}
+                // an edit is the prompt doing a job for the tab underneath it, and both halves
+                // take keys
+                _ if self.prompted() => self.flip_focus(),
                 _ => self.show(Tab::Chat),
             },
             _ => match (self.tab, self.focus) {
                 // the pinned question, which is what `Focus::Body` means on the chat tab
                 (Tab::Chat, Focus::Body) => self.question_key(key).await,
+                // a question is on the screen and has not been given the keys, so the prompt is
+                // not on the screen either and there is nothing here for a key to do
+                (Tab::Chat, Focus::Input) if self.asked().is_some() => self.locked_key(key),
                 (Tab::Context, Focus::Body) => self.context_key(key, &count),
                 (Tab::Trace, Focus::Body) => self.trace_key(key),
                 (Tab::Permissions, Focus::Body) => self.permissions_key(key),
@@ -1139,9 +1148,9 @@ impl App {
 
     /// The question a tool is waiting on, if one is.
     ///
-    /// note: asked of the kernel every time rather than held here. What is pinned above the prompt
-    /// is a *rendering* of the kernel's state, so it cannot be open when there is nothing to
-    /// answer, or shut when there is.
+    /// note: asked of the kernel every time rather than held here. What stands in the prompt's
+    /// place is a *rendering* of the kernel's state, so it cannot be open when there is nothing to
+    /// answer, or shut when there is - and [`App::prompted`] reads it for the same reason.
     pub fn asked(&self) -> Option<PermissionRequest> {
         self.kernel.pending_permissions().into_iter().next()
     }
@@ -1155,8 +1164,19 @@ impl App {
     /// of cycling the row somebody was looking at. The exception is an edit, which is the prompt
     /// doing a job for the tab underneath it: the item being rewritten is on that tab, and the box
     /// has to be beside it.
+    ///
+    /// note: and a waiting question takes its place rather than stacking above it, so that the box
+    /// the keys are in is the box on the screen. Stacked, the two disagreed on any window shorter
+    /// than about fifteen rows: the question needs the room, so the prompt gave way - and went on
+    /// holding the keys and whatever had been typed into it from off the screen, which is a
+    /// session waiting on an answer nobody can give it without first pressing a key nothing
+    /// mentions. What was typed is not lost; the box comes back with it, and `App::locked_key` is
+    /// what stands between a keystroke and a prompt that is not there.
     pub fn prompted(&self) -> bool {
-        self.tab == Tab::Chat || self.editing.is_some()
+        match self.tab {
+            Tab::Chat => self.asked().is_none(),
+            _ => self.editing.is_some(),
+        }
     }
 
     /// Moves the keys between the prompt and whatever else is asking for them.
@@ -1916,17 +1936,42 @@ impl App {
         }
     }
 
+    /// The keys while a question is on the screen and has not been given them.
+    ///
+    /// note: this is the guard, and it is a guard rather than a consequence of the layout. The
+    /// question has the prompt's place, so there is nothing to type into and nothing for `enter`
+    /// to send - and both of those matter. The answers are bare letters, and a question that took
+    /// the keys on arrival read the `a` of "what" as `always, for shell` and kept it for the rest
+    /// of a live session; an `enter` that still reached the prompt would send the half-written
+    /// message the question interrupted, starting a turn nobody asked for on the way to answering.
+    /// `tab` is the one gesture that gets past this, and the panel's title says so.
+    ///
+    /// note: what is left working is what moves the conversation, because reading is not
+    /// answering. The question is pinned rather than modal so that somebody can go and look at
+    /// what it is about before deciding, and a guard that also froze the transcript would be
+    /// taking back the thing the pinning bought.
+    fn locked_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Up => self.scroll_by(-1),
+            KeyCode::Down => self.scroll_by(1),
+            KeyCode::PageUp => self.scroll_by(-(self.viewport as isize / 2)),
+            KeyCode::PageDown => self.scroll_by(self.viewport as isize / 2),
+            _ => {}
+        }
+    }
+
     /// Answers the question a tool is waiting on.
     ///
     /// note: reached only with the keys deliberately moved to it, which is the whole of what a
-    /// settling timer used to be for. The answers are bare letters, and a question used to arrive on top of
-    /// whatever somebody was typing and start taking them: one live session granted `shell` for
-    /// good with the `a` of "what". A timer covered the keystrokes already in flight and could not
-    /// cover the next word. Now the question appears without asking for the keys, and `tab` is how
-    /// it gets them - so a letter typed at the prompt is a letter, whatever is waiting above it.
+    /// settling timer used to be for. See the note on [`App::locked_key`] for what that is
+    /// protecting against and why a timer could not do it.
     async fn question_key(&mut self, key: KeyEvent) {
         let Some(request) = self.asked() else {
+            // the question went away rather than being answered - the turn was stopped, or the
+            // calls were dropped - so the prompt is back, and this key belongs to it instead of
+            // being swallowed by a panel that is no longer there
             self.focus = Focus::Input;
+            self.input_key(key).await;
             return;
         };
 

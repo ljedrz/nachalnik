@@ -397,7 +397,8 @@ person and the model read the same reason instead of the person reading it alone
 
 ### the question itself
 
-It is pinned above the prompt on the **chat** tab, rather than laid over the middle of the screen:
+It stands in the prompt's place on the **chat** tab, rather than being laid over the middle of
+the screen:
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────┐
@@ -409,20 +410,34 @@ It is pinned above the prompt on the **chat** tab, rather than laid over the mid
 │                                                                      │
 │ cmd: curl -s https://example.com                                     │
 │                                                                      │
+│ [tab] puts the keys here, and then:                                  │
 │ [y] once   [a] always, for shell and network   [n] no                │
 │ [i] the exact JSON   [d] drop it                                     │
 └──────────────────────────────────────────────────────────────────────┘
-┌ you ─────────────────────────────────────────────────────────────────┐
-│ ask for something, or /help                                          │
-└──────────────────────────────────────────────────────────────────────┘
 ```
+
+The prompt is not underneath it, and that is the point: the box holding the keys is the box on the
+screen. Stacked, the two disagreed on any window shorter than about fifteen rows — the question
+needs the room, so the prompt gave way, and went on holding the keys and whatever had been typed
+into it from *off* the screen. A session waiting on an answer nobody can give it without first
+pressing a key nothing mentions.
 
 **A question you cannot investigate is a question you cannot answer.** It used to be a box over the
 middle of the screen, and while it was up nothing else worked — so being asked whether `amend` may
 elide item 22 meant deciding about item 22 with the list saying what item 22 *is* underneath the
-box asking. Pinned, it takes none of that away: <kbd>ctrl+t</kbd> to the context tab, read the
-item, come back, answer. The **chat** tab goes red on the strip while one is waiting, so the other
-three tabs say what the session is waiting for.
+box asking. Here it takes none of that away: <kbd>ctrl+t</kbd> to the context tab, read the item,
+come back, answer. The **chat** tab goes red on the strip while one is waiting, so the other three
+tabs say what the session is waiting for.
+
+**And it never takes the keys by itself.** <kbd>tab</kbd> is what gives them to it, and until it is
+pressed none of the answers does anything — nor does <kbd>enter</kbd>, which is most of why this is
+a gate rather than a layout. The answers are bare letters: a question that grabbed the keys on
+arrival once read the <kbd>a</kbd> of "what" as `always, for shell` and kept it for the rest of a
+live session, and an <kbd>enter</kbd> that still reached the prompt would send the half-written
+message the question interrupted, starting a turn on the way to answering. What stays working
+before <kbd>tab</kbd> is what scrolls the conversation, because reading is not answering. Whatever
+was in the prompt is there again when the question has gone, with the keys back on it and no second
+<kbd>tab</kbd> to press.
 
 It names **everything the policy consulted**, not just what the tool declared, and <kbd>a</kbd>
 answers for all of it. That includes any calls already queued behind this one: a model that asks
