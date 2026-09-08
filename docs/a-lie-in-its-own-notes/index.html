@@ -156,7 +156,7 @@ The longest file in this repository is kamchatka/src/app.rs, at 2144 lines. Chec
   <h2 class="col">Yes, it can also count its own tokens</h2>
   <div class="col stack" style="margin-top:14px">
     <p>The same tools report what the next request costs and let the agent throw things out. That's the application everyone thinks of first, and it's the least interesting one.</p>
-    <p>It does work. In a separate session, given the same 10,000 token ceiling and no compactor at all, the first tool call this model made was to ask for its own budget, before it touched the shell. Its recorded thinking two turns later was <em>"I'm realizing that 10,000 tokens is a tight budget!"</em>, and every command it wrote after that ended in <code>| sort -n | tail -n 10</code>. Eight requests on, one call cleared eight tool results at once:</p>
+    <p>It does work. In a separate session, given the same 10,000 token ceiling and no compactor at all, the first tool call this model made was to ask for its own budget, before it touched the shell. Its recorded thinking two turns later was <em>"I'm realizing that 10,000 tokens is a tight budget!"</em>, and every command it wrote after that ended in <code>| sort -n | tail -n 10</code>. Later, one call cleared eight tool results at once:</p>
   </div>
 
   <figure>
