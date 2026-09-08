@@ -7,6 +7,55 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- `/limit`, which is how much of each tool's output the model is shown - and now something a
+  person can change. `/limit` lists the table; `/limit read 64000` moves one, from that tool's
+  next call onward. `Tool::spec` is called afresh for every request, so it lands without a
+  restart, the same property `/tools drop` leans on; the limits live in one shared `Limits` table
+  that the tools declaring them and the command changing them both hold, because a second copy is
+  a command that reports success and does nothing.
+
+  The rows are numbered and the number is one the command takes, so `/limit 3 64000` is the same
+  instruction as naming the tool - `introspect` is eleven characters to reach the one limit that
+  most often wants moving. A tool has no identifier but its name, which is what the model calls
+  and what `/tools drop` takes, so the number belongs to the listing rather than to the tool; that
+  is exactly why it is only worth printing if it can then be typed, and a row out of range is
+  answered by the same listing a name nothing limits gets, since that listing is where the range
+  is written down. Same argument as `23G` on the context tab, settled the same way.
+
+  It exists because of a session that asked a copy of itself three questions and got back the
+  copy's deliberation with all three answers cut off the end. 32,000 bytes is right for the four
+  other things `introspect` does and wrong for a fork, and there was no way to say so without
+  restarting - so watching a result arrive shortened left a choice between living with it and
+  losing the session.
+
+  It changes the *next* call and says so, because the one already shortened is recovered a
+  different way and always could be: its whole is archived beside the copy the model was shown,
+  and one `space` on the context tab sends that instead. That is safe rather than merely possible,
+  because the projector answers one call with one result: the whole claims the call and the short
+  copy drops out with a repair line saying why.
+
+- The conversation says which of itself the model is still being shown. A turn that has been
+  excluded, archived, elided or superseded keeps its place and its words, and takes a rule down its
+  left with a line above it naming the item and saying why it is out in the projector's own words -
+  `~ [2] superseded: replaced by item 3`, and then the turn.
+
+  Marked rather than hidden, which is the whole decision. The conversation is the record of what
+  happened and the context is what will be sent; a chat that quietly dropped the turn would let
+  somebody see what the model sees and lose what they did to it. Both halves of a turn are marked,
+  what it thought as well as what it said, and the rule runs the length of the block rather than
+  sitting on its first row.
+
+  The reading asks the projection and not the item's state, for the reason `Going` exists at all:
+  an item the projector repaired away is `Active` and is not in the request. The mark and the
+  reason come out of the context tab rather than being assembled again here, so the two screens
+  cannot end up giving different accounts of the same item.
+
+  `app::Entry` grew `item` and `was` to carry this, and its fields are public, so anything
+  constructing one literally will need them. A line nothing attributed shows unmarked: `None` there
+  means nothing knows, not "not going".
+
 ### changed
 
 - A session is named for when it started, in UTC, and that name is also its two files:
@@ -109,6 +158,59 @@ minor bump may break you.
   the moment a capability is answered `always`, because the strictest thing consulted wins and a
   rule can only tighten what a capability allows. It names no paths. Three of the eleven read as
   the list, and the count along the bottom is already the honest answer to how many there are.
+
+- An item's page says why it is in the context, which is now a sentence that exists. `enter` on a
+  context row shows what the model gets and what the item stores; the `as stored` page now opens
+  with `included_because` where there is one, which is the same line `introspect`'s own item view
+  has printed all along. What fills it in is the runtime keeping a shortened tool result's pointer
+  to its whole half somewhere a state change cannot wipe - so `space` on either row no longer
+  loses which item holds what.
+
+- `/budget` says how much of the last request the provider served from its cache. Both dialects
+  have reported it all along - `prompt_tokens_details.cached_tokens` and
+  `cachedContentTokenCount` - and nothing read it out to anybody. It belongs beside the real cost
+  because it is the figure that prices a *change* rather than a request: the front of a request is
+  the tool definitions and the oldest messages, so anything that rewrites them is paid for in full
+  on the next one. A session reading `20,000, 18,000 of it (90%) served from the provider's cache`
+  is being told what a rewrite up there would cost, which is the number that settles most questions
+  about whether one is worth making.
+
+- `amend`'s `note` says what it is for, which is the question it kept prompting: how is writing a
+  note different from thinking? Four ways, and the description and the code now say them. Thinking
+  belongs to the turn that produced it, so pruning the turn prunes the thought; it has no
+  identifier, so it cannot be revised, pinned, or protected from a compactor; it is not reliably
+  carried back at all - this program's OpenAI-compatible dialect has never put reasoning on the
+  wire and cannot - and it is not a row on the context tab with a reason beside it. A note is an
+  item: numbered, projected into every request from then on, pinnable, and visible to the person.
+  It is the one thing in a context that is there because the agent judged a finding worth keeping.
+
+- A fork leads with the answer and puts the thinking after it. An output limit cuts from the end,
+  and on a reasoning model the thinking is the bulk of a fork: measured on one real 34,287-byte
+  fork, 68% thinking against the answer's 30%, sitting last. So the limit ate the answer and kept
+  the deliberation about how to answer, which is the one part nobody asked for. The section is
+  still labelled, and now says the reasoning came before the answer above it, so the order is a
+  decision about what survives a limit rather than a claim about what the copy did.
+
+- An edit reads where the turn was. It used to leave the turn it replaced sitting in the
+  conversation with a note underneath saying the numbers had changed, and never show the words the
+  model had actually been given; now the lines move onto the item that replaced them and the row
+  above says what happened - `~ [2] → [3] · edited here, 13 tokens replaced · enter on [3] reads
+  what it said`.
+
+  Saying the new text instead is the obvious version and it is wrong. `say` appends, so a turn
+  edited twenty exchanges ago lands after everything that followed it and the only account of the
+  session is then in an order no request ever had. It reads fine for the turn just taken and lies
+  about every older one, which is backwards: the older the edit, the more the screen has to be
+  trusted.
+
+  Only the line that showed what the turn *said* takes the new words. An edit carries the kind over
+  whole, so the calls and the thinking are unchanged and the lines showing them are still true;
+  what they need is the new identifier, so that excluding the edited turn later takes them out with
+  it. Nothing is hidden by this - `commit_edit` already filed the old content under the *new*
+  identifier and `faces` builds it into a `v1` page, which is what the row now points at.
+
+  Replaying a saved session is deliberately left alone: `retell` is handed every item including the
+  superseded ones, and a session read back off disk is a record rather than a conversation.
 
 ### fixed
 
@@ -393,110 +495,6 @@ minor bump may break you.
   first line of a message that opens with a code block. The answer itself needed no fixing and gets
   none - it is rendered as markdown and the renderer already swallows them. The thinking, a tool's
   output and an item's pages are shown as the text they are, and those are where this was read.
-
-### added
-
-- `/limit`, which is how much of each tool's output the model is shown - and now something a
-  person can change. `/limit` lists the table; `/limit read 64000` moves one, from that tool's
-  next call onward. `Tool::spec` is called afresh for every request, so it lands without a
-  restart, the same property `/tools drop` leans on; the limits live in one shared `Limits` table
-  that the tools declaring them and the command changing them both hold, because a second copy is
-  a command that reports success and does nothing.
-
-  The rows are numbered and the number is one the command takes, so `/limit 3 64000` is the same
-  instruction as naming the tool - `introspect` is eleven characters to reach the one limit that
-  most often wants moving. A tool has no identifier but its name, which is what the model calls
-  and what `/tools drop` takes, so the number belongs to the listing rather than to the tool; that
-  is exactly why it is only worth printing if it can then be typed, and a row out of range is
-  answered by the same listing a name nothing limits gets, since that listing is where the range
-  is written down. Same argument as `23G` on the context tab, settled the same way.
-
-  It exists because of a session that asked a copy of itself three questions and got back the
-  copy's deliberation with all three answers cut off the end. 32,000 bytes is right for the four
-  other things `introspect` does and wrong for a fork, and there was no way to say so without
-  restarting - so watching a result arrive shortened left a choice between living with it and
-  losing the session.
-
-  It changes the *next* call and says so, because the one already shortened is recovered a
-  different way and always could be: its whole is archived beside the copy the model was shown,
-  and one `space` on the context tab sends that instead. That is safe rather than merely possible,
-  because the projector answers one call with one result: the whole claims the call and the short
-  copy drops out with a repair line saying why.
-
-- The conversation says which of itself the model is still being shown. A turn that has been
-  excluded, archived, elided or superseded keeps its place and its words, and takes a rule down its
-  left with a line above it naming the item and saying why it is out in the projector's own words -
-  `~ [2] superseded: replaced by item 3`, and then the turn.
-
-  Marked rather than hidden, which is the whole decision. The conversation is the record of what
-  happened and the context is what will be sent; a chat that quietly dropped the turn would let
-  somebody see what the model sees and lose what they did to it. Both halves of a turn are marked,
-  what it thought as well as what it said, and the rule runs the length of the block rather than
-  sitting on its first row.
-
-  The reading asks the projection and not the item's state, for the reason `Going` exists at all:
-  an item the projector repaired away is `Active` and is not in the request. The mark and the
-  reason come out of the context tab rather than being assembled again here, so the two screens
-  cannot end up giving different accounts of the same item.
-
-  `app::Entry` grew `item` and `was` to carry this, and its fields are public, so anything
-  constructing one literally will need them. A line nothing attributed shows unmarked: `None` there
-  means nothing knows, not "not going".
-
-### changed
-
-- An item's page says why it is in the context, which is now a sentence that exists. `enter` on a
-  context row shows what the model gets and what the item stores; the `as stored` page now opens
-  with `included_because` where there is one, which is the same line `introspect`'s own item view
-  has printed all along. What fills it in is the runtime keeping a shortened tool result's pointer
-  to its whole half somewhere a state change cannot wipe - so `space` on either row no longer
-  loses which item holds what.
-
-- `/budget` says how much of the last request the provider served from its cache. Both dialects
-  have reported it all along - `prompt_tokens_details.cached_tokens` and
-  `cachedContentTokenCount` - and nothing read it out to anybody. It belongs beside the real cost
-  because it is the figure that prices a *change* rather than a request: the front of a request is
-  the tool definitions and the oldest messages, so anything that rewrites them is paid for in full
-  on the next one. A session reading `20,000, 18,000 of it (90%) served from the provider's cache`
-  is being told what a rewrite up there would cost, which is the number that settles most questions
-  about whether one is worth making.
-
-- `amend`'s `note` says what it is for, which is the question it kept prompting: how is writing a
-  note different from thinking? Four ways, and the description and the code now say them. Thinking
-  belongs to the turn that produced it, so pruning the turn prunes the thought; it has no
-  identifier, so it cannot be revised, pinned, or protected from a compactor; it is not reliably
-  carried back at all - this program's OpenAI-compatible dialect has never put reasoning on the
-  wire and cannot - and it is not a row on the context tab with a reason beside it. A note is an
-  item: numbered, projected into every request from then on, pinnable, and visible to the person.
-  It is the one thing in a context that is there because the agent judged a finding worth keeping.
-
-- A fork leads with the answer and puts the thinking after it. An output limit cuts from the end,
-  and on a reasoning model the thinking is the bulk of a fork: measured on one real 34,287-byte
-  fork, 68% thinking against the answer's 30%, sitting last. So the limit ate the answer and kept
-  the deliberation about how to answer, which is the one part nobody asked for. The section is
-  still labelled, and now says the reasoning came before the answer above it, so the order is a
-  decision about what survives a limit rather than a claim about what the copy did.
-
-- An edit reads where the turn was. It used to leave the turn it replaced sitting in the
-  conversation with a note underneath saying the numbers had changed, and never show the words the
-  model had actually been given; now the lines move onto the item that replaced them and the row
-  above says what happened - `~ [2] → [3] · edited here, 13 tokens replaced · enter on [3] reads
-  what it said`.
-
-  Saying the new text instead is the obvious version and it is wrong. `say` appends, so a turn
-  edited twenty exchanges ago lands after everything that followed it and the only account of the
-  session is then in an order no request ever had. It reads fine for the turn just taken and lies
-  about every older one, which is backwards: the older the edit, the more the screen has to be
-  trusted.
-
-  Only the line that showed what the turn *said* takes the new words. An edit carries the kind over
-  whole, so the calls and the thinking are unchanged and the lines showing them are still true;
-  what they need is the new identifier, so that excluding the edited turn later takes them out with
-  it. Nothing is hidden by this - `commit_edit` already filed the old content under the *new*
-  identifier and `faces` builds it into a `v1` page, which is what the row now points at.
-
-  Replaying a saved session is deliberately left alone: `retell` is handed every item including the
-  superseded ones, and a session read back off disk is a record rather than a conversation.
 
 ## [0.5.0] - 2026-09-06
 

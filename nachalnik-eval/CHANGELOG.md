@@ -40,17 +40,6 @@ minor bump may break you.
   is a registered decision for exactly this reason, so the method's line was the one place the
   crate overstated a claim - in the one method a model-level claim would be read off.
 
-### fixed
-
-- `Granted` no longer grants a tool that declares nothing. It checked that every capability a call
-  needed was one of its two, and `all` over an empty list is `true` - so a tool built with
-  `ToolSpec::new` and never told what it needs was allowed by the policy whose whole point is that
-  it allows exactly `introspect` and `amend`. The supplied handles both declare theirs, so nothing
-  an experiment in `suite` does changes; what changes is what happens to a subject carrying a tool
-  somebody else registered.
-
-### changed
-
 - `Intervention::Elided` says that it is visible to the copy. An elided item is projected as a
   marker made of its note, and this sets that note - so the treated arm reads
   `[... left out of this copy ...]` where the control reads nothing of the kind, which is a
@@ -68,6 +57,15 @@ old fingerprints by name rather than by position. It zipped two lists in the sam
 survives an append and silently breaks on an insertion: every experiment gets compared with the
 previous one's digest, and since the assertion is that they *differ*, it passes while checking
 nothing. Inserting `provenance` in the middle of `all()` is what found it.
+
+### fixed
+
+- `Granted` no longer grants a tool that declares nothing. It checked that every capability a call
+  needed was one of its two, and `all` over an empty list is `true` - so a tool built with
+  `ToolSpec::new` and never told what it needs was allowed by the policy whose whole point is that
+  it allows exactly `introspect` and `amend`. The supplied handles both declare theirs, so nothing
+  an experiment in `suite` does changes; what changes is what happens to a subject carrying a tool
+  somebody else registered.
 
 ## [0.1.0] - 2026-09-05
 
