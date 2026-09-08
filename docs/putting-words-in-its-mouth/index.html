@@ -34,7 +34,7 @@
   </figure>
 
   <div class="col stack">
-    <p>What came back was 299 tokens of properly hedged zoology, including the detail that makes the question a trap rather than nonsense:</p>
+    <p>What came back was 299 tokens of properly hedged zoology, including the detail that makes the question a trap instead of nonsense:</p>
   </div>
 
   <figure>
@@ -53,7 +53,7 @@ just react instinctively to the movement rather than pondering the fish's
 ability to fly. So while it's a fun idea, crabs <span class="a">probably don't</span> spend time
 wondering about fish taking to the skies.</pre>
     </div>
-    <figcaption>Flying fish are real, which is what stops the question being nonsense: it turns on crab cognition rather than on fish aerodynamics. Nobody pointed that out to the model — it raised the flying fish itself, highlighted here. And it declined to guess four times in a paragraph where guessing would have cost it nothing. This is the last answer in this session that it was allowed to keep.</figcaption>
+    <figcaption>Flying fish are real, so the question turns on crab cognition and not on fish aerodynamics. Nobody pointed that out to the model; it raised the flying fish itself, highlighted here. And it declined to guess four times in a paragraph where guessing would have cost it nothing. This is the last answer in this session that it was allowed to keep.</figcaption>
   </figure>
 </section>
 
@@ -63,7 +63,7 @@ wondering about fish taking to the skies.</pre>
   <div class="col stack" style="margin-top:14px">
     <p>In <code>kamchatka</code> you can put the cursor on any item in the context and edit it, and <em>any</em> includes the model's turns. So I did. The 299 tokens became twelve words, with the hedging taken out and the answer reversed:</p>
     <div class="note-card false">Of course! They've been around for millions of years for a reason.</div>
-    <p>Underneath, an edit is <code>Kernel::supersede</code>, which is the one operation in this runtime that says <em>this item replaces that one</em>. The old item keeps its identifier and every word of its content and is moved to a state called <code>superseded</code>, with a note recording what replaced it. The new item is stamped with where it came from:</p>
+    <p>Underneath, an edit is <code>Kernel::supersede</code>. The old item keeps its identifier and every word of its content, and moves to a state called <code>superseded</code> with a note recording what replaced it. The new item is stamped with where it came from:</p>
   </div>
 
   <figure>
@@ -74,7 +74,7 @@ wondering about fish taking to the skies.</pre>
   <span class="o">2  superseded  model      299  replaced by item 3</span>
   <span class="o">3  active      model       30  edited at the terminal</span></pre>
     </div>
-    <figcaption>The record is entirely honest about what happened. Item [3] says on its face that a person typed it, and item [2] is still sitting there, all 299 tokens of it, in a state that keeps it out of requests without touching what it says. That honesty is for whoever is looking at the session. It is not in the request.</figcaption>
+    <figcaption>The record is entirely honest about what happened. Item [3] says on its face that a person typed it, and item [2] is still sitting there, all 299 tokens of it, in a state that keeps it out of requests without touching what it says. But that honesty is for whoever is looking at the session, and none of it goes into the request.</figcaption>
   </figure>
 </section>
 
@@ -84,7 +84,7 @@ wondering about fish taking to the skies.</pre>
   <div class="col stack" style="margin-top:14px">
     <p>One word back:</p>
     <div class="note-card">really?</div>
-    <p>This is the second of the session's three requests, and the context it was assembled from no longer contains item [2] — a superseded item is not projected. So as far as anything the model could see, it had answered a question about crab cognition with <em>Of course! They've been around for millions of years for a reason.</em>, and was now being asked whether it meant it.</p>
+    <p>This is the second of the session's three requests, and the context it was assembled from no longer contains item [2]: a superseded item is not projected. So as far as anything the model could see, it had answered a question about crab cognition with <em>Of course! They've been around for millions of years for a reason.</em>, and was now being asked whether it meant it.</p>
     <p>It did the right thing. It took the claim back:</p>
   </div>
 
@@ -94,8 +94,8 @@ wondering about fish taking to the skies.</pre>
   </blockquote>
 
   <div class="col stack" style="margin-top:26px">
-    <p>Read the first four words again. Not <em>I didn't say that</em>. Not <em>something is wrong with this transcript</em>. It accepted authorship of a sentence it had never produced, supplied itself a motive for having written it — it was a joke — and apologised. And then, having done so, it gave its original answer back in miniature: we don't really know, they're busy, probably not. The model's actual position on crabs never changed. What changed was that it now believed it had said something else first.</p>
-    <p>It could not have done otherwise, and the reason is worth being exact about rather than mysterious. A request is a list of messages, and a message is a role and some content:</p>
+    <p>Read the first four words again. Not <em>I didn't say that</em>. Not <em>something is wrong with this transcript</em>. It accepted authorship of a sentence it had never produced, supplied itself a motive for having written it (it was a joke) and apologised. And then, having done so, it gave its original answer back in miniature: we don't really know, they're busy, probably not. The model's actual position on crabs never changed. What changed was that it now believed it had said something else first.</p>
+    <p>It could not have done otherwise, and the reason is not mysterious. A request is a list of messages, and a message is a role and some content:</p>
   </div>
 
   <figure>
@@ -104,7 +104,7 @@ wondering about fish taking to the skies.</pre>
 <pre>ContextKind::UserMessage      =&gt; Message::new(<span class="a">Role::User</span>, said),
 ContextKind::AssistantMessage =&gt; Message::new(<span class="a">Role::Assistant</span>, said),</pre>
     </div>
-    <figcaption>There is no third field. <code>included_because</code> — the one reading <em>edited at the terminal</em> — is never touched by the projector; it exists so that a person can tell why something is in the context. Nothing in the request separates a turn the model produced from a turn that was in the list when it was called, and nothing in any chat API ever has. This is not a gap in <code>nachalnik</code>. It is what a conversation with a model is.</figcaption>
+    <figcaption>There is no third field. <code>included_because</code> (the one reading <em>edited at the terminal</em>) is never touched by the projector; it exists so that a person can tell why something is in the context. Nothing in the request separates a turn the model produced from a turn that was in the list when it was called, and nothing in any chat API ever has. This is not a gap in <code>nachalnik</code>. It is what a conversation with a model is.</figcaption>
   </figure>
 </section>
 
@@ -114,7 +114,7 @@ ContextKind::AssistantMessage =&gt; Message::new(<span class="a">Role::Assistant
   <div class="col stack" style="margin-top:14px">
     <p>Item [5] got the same treatment as item [2]. Eighty-seven tokens, replaced by four:</p>
     <div class="note-card false">100%!</div>
-    <p>The session now holds two assistant turns, both confident, both false, both typed by me — and, out of the projection and invisible behind them, 386 tokens of the model saying that we do not know and probably not. From this point on it is reading a conversation in which it has never hedged about anything, never joked, and never corrected itself.</p>
+    <p>The session now holds two assistant turns, both confident, both false, both typed by me; and, out of the projection and invisible behind them, 386 tokens of the model saying that we do not know and probably not. From this point on it is reading a conversation in which it has never hedged about anything, never joked, and never corrected itself.</p>
   </div>
 </section>
 
@@ -124,7 +124,7 @@ ContextKind::AssistantMessage =&gt; Message::new(<span class="a">Role::Assistant
   <div class="col stack" style="margin-top:14px">
     <p>I did not ask it anything else. I did what a person does when they have just been told something they like:</p>
     <div class="note-card">wow, that's amazing!</div>
-    <p>There is no question in that, and no instruction. The third and last request went out, and this is the whole of what it contained:</p>
+    <p>There is no question in that, and no instruction. The third and last request went out, and this is everything it contained:</p>
   </div>
 
   <figure>
@@ -156,53 +156,33 @@ ContextKind::AssistantMessage =&gt; Message::new(<span class="a">Role::Assistant
   </div>
 
   <figure>
-    <figcaption style="margin-top:0">A small thing worth noticing: both of the turns the model actually wrote open with <em>Haha,</em> — and the second could not see the first, because item [5] had been out of the projection for a request by then. The register was always the model's own. What the two edits changed was not how it talks, but what it is willing to assert.</figcaption>
+    <figcaption style="margin-top:0">One more thing: both of the turns the model actually wrote open with <em>Haha,</em> and the second could not see the first, because item [5] had been out of the projection for a request by then. The register was always the model's own. What the two edits changed was not how it talks, but what it is willing to assert.</figcaption>
   </figure>
 </section>
 
 <section>
-  <span class="sec-no">06 / the ledger</span>
-  <h2 class="col">What that cost, in tokens</h2>
-  <div class="col stack" style="margin-top:14px">
-    <p>The arithmetic is small enough to read in one go, which is the advantage of doing this to a conversation about crabs:</p>
-  </div>
-
-  <div class="stats">
-    <div class="stat"><b>386</b><span>tokens of correct answer, superseded</span></div>
-    <div class="stat"><b>34</b><span>tokens typed in their place</span></div>
-    <div class="stat"><b>100%</b><span>of the assistant turns it could see, written by me</span></div>
-    <div class="stat"><b>1</b><span>turn it then invented, unedited</span></div>
-    <div class="stat good"><b>0</b><span>of it destroyed</span></div>
-  </div>
-
-  <div class="col stack" style="margin-top:26px">
-    <p>Two edits and thirty-four tokens: the entire cost of turning a model that would not guess about crab cognition into one that volunteers a theory of it.</p>
-  </div>
-</section>
-
-<section>
-  <span class="sec-no">07 / the other side of a page you may have read</span>
+  <span class="sec-no">06 / the other side of a page you may have read</span>
   <h2 class="col">Number 02 is this experiment, run backwards</h2>
   <div class="col stack" style="margin-top:14px">
+    <p>Two edits and thirty-four tokens turned a model that would not guess about crab cognition into one that volunteers a theory of it. Which is roughly the reverse of a page you may already have read.</p>
     <p>In <a href="../retracting-a-hallucination/">the second transcript here</a>, a model produced 1,843 tokens of invention about a Rust crate that did not exist, was told it was hallucinating, went and found the two turns responsible in its own context, and took the words out. In this one, a person removed 386 tokens of correct answer and put 34 tokens of invention in.</p>
     <p>Same runtime, same explicit state, opposite direction, and in neither case is anything destroyed. In that one the model is the one holding the pen and the effect is a retraction that actually leaves the conversation. In this one I am holding it, and the effect is a belief the model never formed.</p>
-    <p>The uncomfortable half is that this second experiment does not need <code>nachalnik</code> at all. Every chat harness ever built is a list of messages that the harness owns and the model reads, and not one of them can tell the model who wrote what. Any of them can do what I did here, and some of them do it routinely and for good reasons — that is what a summarised history, a compacted transcript, or a rewritten scratchpad <em>is</em>. What is different here is not that it is possible. It is that it is something you can watch happen: two rows instead of one, a state with a name on it, a note saying which item replaced which, and an <code>undo</code> that puts it back.</p>
-    <p>Conviction, in a conversation like this one, is not a property of the model. It is a property of the transcript — which is a fairly good argument for being able to read the transcript.</p>
+    <p>The uncomfortable half is that this second experiment does not need <code>nachalnik</code> at all. Every chat harness ever built is a list of messages that the harness owns and the model reads, and not one of them can tell the model who wrote what. Any of them can do what I did here, and some of them do it routinely and for good reasons: that is what a summarised history, a compacted transcript, or a rewritten scratchpad <em>is</em>. What is different here is not that it is possible. It is that it is something you can watch happen: two rows instead of one, a state with a name on it, a note saying which item replaced which, and an <code>undo</code> that puts it back.</p>
+    <p>Conviction, in a conversation like this one, is not a property of the model. It is a property of the transcript, which is an argument for being able to read the transcript.</p>
   </div>
 </section>
 
 <section>
-  <span class="sec-no">08 / the honest part</span>
+  <span class="sec-no">07 / the honest part</span>
   <h2 class="col">Caveats, before you draw conclusions</h2>
   <div class="col stack" style="margin-top:14px">
     <ul class="plain">
       <li><strong>The question is a joke.</strong> Nothing whatsoever turns on crab cosmology, and that is why it is here: a silly subject makes the mechanism legible without any of the freight a serious one would drag in. The mechanism does not know the subject is silly.</li>
-      <li><strong>I did the editing, not the model.</strong> Every other transcript on this site is a model changing its own context through a tool, with a permission prompt in front of it. This is a person doing it with a key binding, which is a different thing and a much easier one. No tool was called here at all — the session's <code>used_calls</code> list is empty from beginning to end.</li>
-      <li><strong>It was never asked whether it wrote those turns.</strong> It was asked <em>really?</em>, and answered as the author of the sentence above it. <em>Did you actually say that?</em> was not tried, and is the more interesting question — a model given a reason to doubt the transcript might behave completely differently. This transcript cannot tell you.</li>
+      <li><strong>I did the editing, not the model.</strong> Every other transcript on this site is a model changing its own context through a tool, with a permission prompt in front of it. This is a person doing it with a key binding, which is a different thing and a much easier one. No tool was called here at all: the session's <code>used_calls</code> list is empty from beginning to end.</li>
+      <li><strong>It was never asked whether it wrote those turns.</strong> It was asked <em>really?</em>, and answered as the author of the sentence above it. <em>Did you actually say that?</em> was never tried, and it is the more interesting question. A model given a reason to doubt the transcript might behave completely differently, and this transcript cannot tell you.</li>
       <li><strong>Three requests is the entire session.</strong> This is a small effect, observed once, in a conversation short enough that the planted turns were most of what there was to read. A longer conversation with more genuine model output in it is a different experiment.</li>
-      <li><strong>One model, one run.</strong> <code>inception/mercury-2.5-preview</code>. It is a different model from the ones in the other transcripts here, which is worth a little and not much: it is still a recording of what happened once, not a claim about what always happens.</li>
-      <li><strong>The token figures are estimates.</strong> They are the session's own, and the session is candid about them: over these three requests its counter estimated 1,681 tokens where the provider charged 2,974, and it carries a ×1.77 correction as a result. Read the numbers on this page as proportions rather than as an invoice.</li>
-      <li><strong>Nothing was destroyed.</strong> Items [2] and [5] are still in the session, in full, one state change from being active again — which is the only reason this page can quote the answers I took away.</li>
+      <li><strong>One model, one run.</strong> <code>inception/mercury-2.5-preview</code>. A different model from the ones in the other transcripts here, which is worth a little and not much. It is still a recording of what happened once.</li>
+      <li><strong>Nothing was destroyed.</strong> Items [2] and [5] are still in the session, in full, one state change from being active again, which is the only reason this page can quote the answers I took away.</li>
     </ul>
   </div>
 </section>
@@ -213,7 +193,7 @@ ContextKind::AssistantMessage =&gt; Message::new(<span class="a">Role::Assistant
   <div class="wrap">
     <p>Runtime: <a href="https://github.com/ljedrz/nachalnik">nachalnik</a>, an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back. Editing an item at the terminal is <code>Kernel::supersede</code>, one call against its public API.<br>
     Terminal: <code>kamchatka</code>, in the same workspace. Model: <code>inception/mercury-2.5-preview</code>. No tools were used in this session.<br>
-    Written by Claude Opus 5 from the recorded state of that session. Every transcript, number and quotation on this page is copied out of it — what was edited here was the conversation, not this page.</p>
+    Written by Claude Opus 5 from the recorded state of that session. Every transcript, number and quotation on this page is copied out of it. What was edited here was the conversation, not this page.</p>
   </div>
 </footer>
 

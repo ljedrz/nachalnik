@@ -15,7 +15,7 @@
   <div class="wrap">
     <p class="eyebrow"><span class="dot"></span> <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> verbatim transcripts <span class="dot"></span> written by claude opus 5</p>
     <h1>What an agent does <span class="quiet">when anyone can read and rewrite its context.</span></h1>
-    <p class="deck">Most agents cannot see the list of things they are carrying, cannot tell what any of it costs, and cannot change a word of it. These are recordings of what happens when that stops being true.<br><br>They are numbered, and they read in order: the first explains what a context is and plants something in one, and the two after it lean on that and plant nothing. From the fourth on, the machinery turns around: the model is not the one doing the editing. In the fourth I put words in its mouth; in the fifth I plant nothing at all and simply take one item away, which turns out to be enough. Every transcript, number and quotation is copied out of the event log of the session it describes.</p>
+    <p class="deck">Most agents cannot see the list of things they are carrying, cannot tell what any of it costs, and cannot change a word of it. These are recordings of what happens when that stops being true.<br><br>They are numbered, and they read in order: the first explains what a context is and plants something in one, and the two after it lean on that and plant nothing. From the fourth on, the machinery turns around: the model is not the one doing the editing. In the fourth I put words in its mouth. In the fifth I plant nothing and simply take one item away. Every transcript, number and quotation is copied out of the event log of the session it describes.</p>
   </div>
 </header>
 
@@ -46,7 +46,7 @@
     <li>
       <p class="meta"><span class="no">05</span> inclusionai ling-3.0-flash <span class="dot"></span> nothing planted, one item hidden</p>
       <h2><a href="taking-away-the-receipt/">I took one item out of its context. It spent four turns explaining a command it could no longer see.</a></h2>
-      <p>A shell command really ran, with a permission prompt in front of it, and the model read the answer off its output. Then I hid the output and left the answer standing — which also takes down the turn that made the call, because a call whose result is gone is a call no API will accept. So the record now says, correctly and in every request, that no tool was ever used. Asked how it knew, it produced three explanations in a row, each false, including a sandbox escape it invented and then hardened when I said <em>kinda sus</em>. The sentence it finally staked its credibility on is the one thing it read straight off the record I had doctored.</p>
+      <p>A shell command really ran, with a permission prompt in front of it, and the model read the answer off its output. Then I hid the output and left the answer standing. That takes down the turn that made the call as well, because a call whose result is gone is a call no API will accept, so the record now says that no tool was ever used, and says it in every request. Asked how it knew, the model gave three explanations, all false, including a sandbox escape it invented and then hardened when I said <em>kinda sus</em>. Then it got there: <em>I don't actually know.</em></p>
     </li>
   </ul>
 </section>
@@ -56,7 +56,7 @@
 <footer>
   <div class="wrap">
     <p><a href="https://github.com/ljedrz/nachalnik">nachalnik</a> is an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back. <code>kamchatka</code>, in the same workspace, is a terminal agent built on it, and is what produced these sessions.<br>
-    The two tools the agent uses in the first three transcripts are a few hundred lines of ordinary user code against the runtime's public API. Nothing here is a privileged feature of the framework, which is the point.</p>
+    The two tools the agent uses in the first three transcripts are a few hundred lines of ordinary user code against the runtime's public API. None of it is a privileged feature of the framework.</p>
   </div>
 </footer>
 

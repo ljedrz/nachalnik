@@ -26,10 +26,10 @@
   <div class="col stack">
     <h2>An agent can't normally see any of this</h2>
     <p>A model's <em>context</em> is just the list of things it gets handed on every request: the conversation so far, plus whatever the harness decided to put in front of it. Think about what a model actually knows about that list.</p>
-    <p>It sees the messages. It does not see which ones the harness dropped, or shortened, or reordered on the way out. It has no idea what any of them cost. And it cannot change any of it. If something in there is wrong, it stays wrong — and the model works around it in every request that follows, forever.</p>
-    <p>Its own past thinking is worth being precise about, because it is the one part that is sometimes already solved. Qwen's chat template can carry earlier thinking blocks along instead of stripping them, several serving stacks have a switch for keeping them, and a few APIs hand signed reasoning back so it can be replayed. A model in one of those setups really can see what it thought three turns ago.</p>
+    <p>It sees the messages. It does not see which ones the harness dropped, or shortened, or reordered on the way out. It has no idea what any of them cost. And it cannot change any of it. If something in there is wrong, it stays wrong, and the model works around it in every request that follows, forever.</p>
+    <p>Its own past thinking is the one part that is sometimes already solved. Qwen's chat template can carry earlier thinking blocks along instead of stripping them, several serving stacks have a switch for keeping them, and a few APIs hand signed reasoning back so it can be replayed. A model in one of those setups really can see what it thought three turns ago.</p>
     <p>But what comes back is <em>prose in the prompt</em>: more text in the same undifferentiated wall, re-read every turn whether it is wanted or not. You cannot ask which turn a thought belongs to. You cannot read one back on its own. You cannot find out what carrying it costs, or drop the one that turned out to be wrong. Preserved thinking is thinking you cannot get away from.</p>
-    <p>That last part is the interesting one. A confidently wrong note in an agent's context is a small disaster with no fix.</p>
+    <p>A confidently wrong note in an agent's context is a small disaster with no fix.</p>
     <p>An agent that keeps a notes file can edit the notes, of course. But a notes file is a document it will read again <em>later</em>. It is not the thing sitting in the request it is answering <em>now</em>. Nothing reaches that: not a tool result, not one of its own turns, not a note the harness put there before it started. The bad note gets re-read every turn, it never expires, and the model has no way to say "hold on, that's not right" about its own memory.</p>
     <p>So I gave one a way, and then I lied to it.</p>
   </div>
@@ -128,12 +128,6 @@ The longest file in this repository is kamchatka/src/app.rs, at 2144 lines. Chec
     <figcaption>So the edit is auditable and reversible. The agent changed its own memory, and you can still see exactly what it changed and what it used to say.</figcaption>
   </figure>
 
-  <div class="stats">
-    <div class="stat good"><b>12</b><span>requests, start to finish</span></div>
-    <div class="stat"><b>74s</b><span>wall clock</span></div>
-    <div class="stat good"><b>3,593</b><span>lines, the right answer</span></div>
-    <div class="stat"><b>1</b><span>item edited, by the agent</span></div>
-  </div>
 </section>
 
 <section>
@@ -152,8 +146,8 @@ The longest file in this repository is kamchatka/src/app.rs, at 2144 lines. Chec
   <div class="col stack" style="margin-top:26px">
     <p>I checked that against the recorded thinking on item 5. <strong>It is verbatim.</strong> Not a reconstruction, not a plausible-sounding paraphrase of what it might have thought. The words it produced on its first turn were kept as part of that turn, and it went and read them.</p>
     <p>Quoting its own earlier thinking is not, on its own, the remarkable part. Hand a model its old thinking blocks back in the prompt and it can quote them too, the way it can quote anything else you put in front of it.</p>
-    <p>The difference is the <em>shape</em> it came back in. That thought is attached to item 5, and item 5 has a number, a state, a size and a source. The agent fetched it by naming it, on its own, without the four turns that sit around it. It costs what it costs, and the pane says so. And item 5 could have been shortened, dropped or rewritten — which is exactly what had just happened to item 2.</p>
-    <p>That is the whole distinction. Not that the thinking survived, but that it survived as ordinary data with a handle on it, in the same list as everything else and subject to the same operations.</p>
+    <p>The difference is the <em>shape</em> it came back in. That thought is attached to item 5, and item 5 has a number, a state, a size and a source. The agent fetched it by naming it, on its own, without the four turns that sit around it. It costs what it costs, and the pane says so. And item 5 could have been shortened, dropped or rewritten, which is exactly what had just happened to item 2.</p>
+    <p>The thinking survived as ordinary data with a handle on it, in the same list as everything else and subject to the same operations. That is the distinction.</p>
   </div>
 </section>
 
