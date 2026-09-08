@@ -7,6 +7,7 @@
 //! the task ends and hands control back; nothing is waiting on a channel for an answer.
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, VecDeque},
     sync::Arc,
     time::Instant,
@@ -197,13 +198,17 @@ pub struct Entry {
     pub item: Option<ContextId>,
     /// The item this line used to be, if somebody edited it here.
     ///
-    /// note: an edit supersedes, so the line now shows what the *new* item says, in the place the
-    /// old one occupied. That is the conversation the model is really in - the alternative, a
+    /// note: an edit supersedes, so the line shows what the *new* item says, in the place the old
+    /// one occupied. That is the conversation the model is really in - the alternative, a
     /// replacement said at the end of the transcript, puts a turn edited twenty exchanges ago
     /// after everything that followed it and describes an order no request ever had. What this
     /// keeps is the thread back: the row says which item it was, and the old words are a page of
     /// the item that replaced it - `App::faces` builds them out of `App::versions`, which
     /// `App::commit_edit` files under the *new* identifier for exactly this reason.
+    ///
+    /// note: [`Entry::text`] is left holding what was said at the time, and the new words are read
+    /// out of the item by [`App::said`]. So this is a pointer to the edit rather than a copy of
+    /// it, which is what lets an `undo` of the edit reach the screen.
     pub was: Option<ContextId>,
 }
 
@@ -512,24 +517,50 @@ impl App {
     /// words where the old ones were. A transcript that appended them would be the only account
     /// of this session in a different order from the request it produced.
     ///
-    /// note: only the line that showed what the item *said* takes the new text. An edit carries
-    /// the kind over whole, so the turn's calls and its thinking are unchanged and the lines
-    /// showing them still show the truth; what they need is the new identifier, so that taking
-    /// the edited turn out later takes them out with it.
-    fn resay(&mut self, old: ContextId, new: ContextId, text: &str) {
+    /// note: what moves is the attribution and nothing else. The new words are not written into
+    /// the entry, they are read out of the item every frame by [`App::said`] - which is what makes
+    /// an `undo` of the edit reach the screen. See the note there.
+    fn resay(&mut self, old: ContextId, new: ContextId) {
         for entry in self
             .transcript
             .iter_mut()
             .filter(|entry| entry.item == Some(old))
         {
-            if matches!(
-                entry.speaker,
-                Speaker::User | Speaker::Model | Speaker::Result
-            ) {
-                entry.text = unpadded(text).to_owned();
-            }
             entry.was = Some(old);
             entry.item = Some(new);
+        }
+    }
+
+    /// What an edit moved a line between - the item it used to be, and the item it is now - for as
+    /// long as the replacement is in the context.
+    ///
+    /// note: asked every frame rather than settled when the edit was made, because `undo` takes
+    /// the replacement back out and tells the screen nothing about which line had been moved onto
+    /// it. With the item gone this is `None`, the line is the one it was again, and a `redo` puts
+    /// the edit back - all three without anything here keeping a second account of it. It is the
+    /// same reading the withheld mark does of the projection, for the same reason: an edit is a
+    /// fact about the context, not about the transcript.
+    pub fn edit_of(&self, entry: &Entry) -> Option<(ContextId, Arc<ContextItem>)> {
+        Some((entry.was?, self.kernel.item(entry.item?)?))
+    }
+
+    /// What a line says: the words that were said, or - where an edit moved it onto the item that
+    /// replaced them - what that item says instead.
+    ///
+    /// note: only the line that showed what the item *said*. An edit carries the kind over whole,
+    /// so the turn's calls and its thinking are unchanged and the lines showing them still show
+    /// the truth; what they need is the new identifier, and `App::resay` gives them that.
+    pub fn said<'a>(&'a self, entry: &'a Entry) -> Cow<'a, str> {
+        match self.edit_of(entry) {
+            Some((_, now))
+                if matches!(
+                    entry.speaker,
+                    Speaker::User | Speaker::Model | Speaker::Result
+                ) =>
+            {
+                Cow::Owned(unpadded(&now.content.to_text()).to_owned())
+            }
+            _ => Cow::Borrowed(&entry.text),
         }
     }
 
@@ -1260,7 +1291,7 @@ impl App {
                 // and the conversation shows the edit where the turn was, rather than the turn it
                 // replaced sitting there greyed out with nothing on the screen saying what the
                 // model now reads in its place
-                self.resay(id, new, text);
+                self.resay(id, new);
             }
             Err(e) => self.say(Speaker::Error, e.to_string()),
         }

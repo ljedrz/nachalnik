@@ -76,8 +76,9 @@ there to tell the two apart. It is absent while the runtime is resting, includin
 waiting on **you**: nothing should suggest work is happening while a question sits unanswered.
 
 **chat** is the conversation, and every terminal agent has one — this one also says which of it
-the model is still being sent, and reads an edit where the turn it replaced was. **context** is
-why this exists:
+the model is still being sent, and reads an edit where the turn it replaced was. Both of those are
+read off the context every frame rather than written down when they happen, so a <kbd>u</kbd> that
+takes an edit back takes it off here too. **context** is why this exists:
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
@@ -172,9 +173,10 @@ committing supersedes the old one rather than overwriting it:
   8 ▪ ledger.py    reference    477  """A running-balance ledger.
 ```
 
-The original is still there, still readable, still one <kbd>u</kbd> from coming back — and the
-next request carries only the edit, because a superseded item is not projected. Trimming a
-2,000-line file down to the function that matters is two keystrokes and a delete.
+The original is still there, still readable, still one <kbd>u</kbd> from coming back — on both
+screens, since the conversation reads the edit out of the context rather than keeping its own copy
+— and the next request carries only the edit, because a superseded item is not projected. Trimming
+a 2,000-line file down to the function that matters is two keystrokes and a delete.
 
 **trace** is every event the runtime emits, as it happens, in the same names the session log is
 made of:

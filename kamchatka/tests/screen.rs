@@ -5034,6 +5034,51 @@ async fn an_edited_turn_reads_where_it_was_and_says_what_it_used_to_be() {
     );
 }
 
+/// An edit that has been undone comes off the conversation with the item it named.
+///
+/// note: the chat's account of an edit is a reading of the context rather than a copy written into
+/// the transcript, and this is the difference between the two. `undo` takes the replacement item
+/// back out and tells the screen nothing about which line had been moved onto it, so a transcript
+/// holding the new words went on showing them - beside a row offering `enter on [3]` for an item
+/// that no longer existed, against a context that had the original answer back. Showing somebody
+/// a conversation the model is not in is the one thing this program exists not to do.
+#[tokio::test]
+async fn undoing_an_edit_takes_it_off_the_conversation_too() {
+    let mut harness = Harness::new([ModelResponse::text("nay")]);
+    harness.send("do crabs think that fish can fly?").await;
+    harness.settle().await;
+
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Char('e')).await;
+    for _ in 0..3 {
+        harness.press(KeyCode::Backspace).await;
+    }
+    harness.send("of course they do").await;
+
+    // `u` puts the answer back, and the conversation says what the context says
+    harness.press(KeyCode::Char('u')).await;
+    harness.tab(Tab::Chat);
+    let undone = harness.screen();
+    assert!(undone.contains("nay"), "the answer is back: {undone}");
+    assert!(
+        !undone.contains("of course they do"),
+        "the edit is out of the context, so it is off the chat: {undone}"
+    );
+    assert!(
+        !undone.contains("edited here"),
+        "and nothing points at the item the undo took away: {undone}"
+    );
+
+    // and `U` is the way back, all the way back
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Char('U')).await;
+    harness.tab(Tab::Chat);
+    let redone = harness.screen();
+    assert!(redone.contains("of course they do"), "{redone}");
+    assert!(redone.contains("[2] → [3]"), "{redone}");
+}
+
 /// The blank lines a provider puts in front of a turn do not reach the screen.
 ///
 /// note: `inception/mercury` opens every message with two of them and the recorded `gemini`

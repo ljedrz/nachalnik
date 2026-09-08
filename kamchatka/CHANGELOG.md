@@ -44,6 +44,20 @@ minor bump may break you.
 
 ### fixed
 
+- An edit that has been undone comes off the conversation with the item it named. The chat's
+  account of an edit was written into the transcript when the edit was made, and `undo` takes the
+  replacement item back out of the context without telling the screen which line had been moved
+  onto it - so the conversation went on showing the new words beside a row offering `enter on [3]`
+  for an item that no longer existed, while the context tab beside it had the original answer back.
+  Showing somebody a conversation the model is not in is the one thing this program exists not to
+  do.
+
+  It is a reading now rather than a copy, which is the same move the withheld mark made for the
+  same reason: an edit is a fact about the context, not about the transcript. `Entry::text` keeps
+  what was said at the time and `App::said` asks the item what it says now, so the line follows an
+  undo and a `redo` both - and a row that cannot be opened is never drawn. `App::said` and
+  `App::edit_of` are public, beside `Entry::was` which they read.
+
 - `cargo doc` builds again. Four intra-doc links added with `Entry::item` and `Entry::was` name
   private methods from public documentation, which rustdoc refuses under `-D warnings` - so the
   lint job was red and the two commits that added them did not run it. They are plain code spans

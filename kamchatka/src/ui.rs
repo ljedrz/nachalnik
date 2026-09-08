@@ -588,10 +588,14 @@ fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Sc
 
         // an edited line shows what the item says *now*, in the place the old one had, and says
         // so - with the identifier it used to carry, which is what `←` pages back through
-        if entry.was.is_some() && stubbed != entry.was {
-            if let Some(was) = entry.was {
+        //
+        // note: `App::edit_of` rather than the entry's own `was`, so that an edit which has been
+        // undone stops claiming to be one. The item it named is gone, and a row offering
+        // `enter on [3]` for an item nothing can open is worse than no row
+        match app.edit_of(entry) {
+            Some((was, now)) if stubbed != Some(was) => {
                 let then = app.kernel.item(was).map(|item| item.tokens).unwrap_or(0);
-                let now = entry.item.map(|id| id.0).unwrap_or(0);
+                let now = now.id.0;
                 lines.push(Line::styled(
                     format!(
                         "~ [{}] → [{now}] · edited here, {} tokens replaced · enter on [{now}] \
@@ -601,12 +605,14 @@ fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Sc
                     ),
                     quiet().italic(),
                 ));
+                stubbed = Some(was);
             }
-            stubbed = entry.was;
+            Some(_) => {}
+            None => stubbed = None,
         }
-        if entry.was.is_none() {
-            stubbed = None;
-        }
+        // what the line says now, which for an edited one is the item's words rather than the ones
+        // that were said at the time; see `App::said`
+        let said = app.said(entry);
 
         if let Some(item) = held {
             if marked != Some(item.id) {
@@ -626,7 +632,7 @@ fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Sc
             // A prefix is a speaker's, so it belongs to the first row and the rest hang under it -
             // which is right for `> ` and wrong for this, where a fifteen-line answer came out
             // with one marked row and fourteen that read as ordinary indented text
-            for text in wrapped(&entry.text, width.saturating_sub(2), "") {
+            for text in wrapped(&said, width.saturating_sub(2), "") {
                 lines.push(Line::from(vec![
                     Span::styled("╎ ", faint()),
                     Span::styled(text, quiet()),
@@ -642,7 +648,7 @@ fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Sc
         // is whatever the tool said, and running it through a renderer would be inventing
         // structure the tool did not put there
         if entry.speaker == Speaker::Model {
-            let split = chunks(&entry.text);
+            let split = chunks(&said);
             let last = split.len().saturating_sub(1);
             for (nth, chunk) in split.into_iter().enumerate() {
                 // a fenced block gets a rule down its left rather than a slab of background,
@@ -701,7 +707,7 @@ fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Sc
             Speaker::Model => unreachable!("rendered above"),
         };
 
-        for text in wrapped(&entry.text, width, prefix) {
+        for text in wrapped(&said, width, prefix) {
             lines.push(Line::styled(text, style));
         }
         lines.push(Line::default());
