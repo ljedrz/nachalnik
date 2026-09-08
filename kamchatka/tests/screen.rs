@@ -679,6 +679,78 @@ async fn several_repairs_at_once_are_one_line_rather_than_a_wall_of_them() {
     assert!(screen.contains("ctrl+p says where"), "{screen}");
 }
 
+/// A repair that stands is said once, not after every message.
+///
+/// note: a repair is a property of the context rather than news about a turn. The projection is
+/// built afresh for every request, so the projector re-does the repair and reports it again -
+/// which is right of the projector and wrong of the conversation: one tool result taken out once
+/// put a line about its orphaned call after every message for the rest of a session. The trace is
+/// the other way round and stays that way, because `model.requested` really did carry it each
+/// time, and a log that hid a repeated entry would be the wrong thing entirely.
+#[tokio::test]
+async fn a_repair_that_stands_is_said_once_rather_than_every_turn() {
+    let mut harness = Harness::new([]);
+    let requested = |repairs: Vec<String>| Event::ModelRequested {
+        model: ModelInfo::new("scripted", "scripted"),
+        messages: 1,
+        tools: 0,
+        tokens: 4,
+        items: Vec::new(),
+        skipped: Vec::new(),
+        repairs,
+    };
+    let orphan = "dropped the call `c1` (shell) from item 4: its result is not in the projection";
+
+    harness.app.on_event(requested(vec![orphan.to_owned()]));
+    let first = harness.flat();
+    assert!(first.contains("dropped the call `c1`"), "{first}");
+    assert!(
+        first.contains("will be while this stands"),
+        "the past tense reads as something this turn did: {first}"
+    );
+
+    // three more requests with the same context, and the same repair every time
+    for _ in 0..3 {
+        harness.app.on_event(requested(vec![orphan.to_owned()]));
+    }
+    assert_eq!(
+        harness.flat().matches("will be while this stands").count(),
+        1,
+        "said once: {}",
+        harness.flat()
+    );
+
+    // the trace has every one of them, because that is what a log is
+    harness.tab(Tab::Trace);
+    assert_eq!(
+        harness.flat().matches("repaired: dropped the call").count(),
+        4,
+        "the log keeps them all: {}",
+        harness.flat()
+    );
+
+    // a second thing going wrong is news, and so is the first one coming back
+    harness.tab(Tab::Chat);
+    harness.app.on_event(requested(vec![
+        orphan.to_owned(),
+        "flattened item 9".to_owned(),
+    ]));
+    assert!(
+        harness.flat().contains("repaired in 2 places"),
+        "{}",
+        harness.flat()
+    );
+
+    harness.app.on_event(requested(Vec::new()));
+    harness.app.on_event(requested(vec![orphan.to_owned()]));
+    assert_eq!(
+        harness.flat().matches("will be while this stands").count(),
+        2,
+        "it stopped standing and started again: {}",
+        harness.flat()
+    );
+}
+
 #[tokio::test]
 async fn a_models_markdown_is_shown_as_formatting_rather_than_as_punctuation() {
     // a raw literal, because what is under test is markdown and the escapes would be the first

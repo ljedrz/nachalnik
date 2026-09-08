@@ -98,6 +98,29 @@ minor bump may break you.
 
 ### fixed
 
+- A repair the request needs every time is said once in the conversation rather than after every
+  message. A projection is built afresh for every request, so a projector that dropped an orphaned
+  call last turn drops it again this turn and honestly reports doing so - which is right of the
+  projector and wrong of the screen: one tool result taken out at the terminal put
+  `the request was repaired: dropped the call ... from item 4` under every answer for the rest of
+  the session, for a decision made once and unchanged since.
+
+  All four kinds behave this way, which is what makes it worth fixing rather than special-casing:
+  an orphaned call, an orphaned result, a flattened ordered turn and a result held back until its
+  call arrives all last exactly as long as the state that caused them. So the conversation says
+  what is being repaired when the set of repairs changes, and the count it gives is the whole of
+  it rather than what is newly so, because that is the number `ctrl+p` will show.
+
+  The wording moved to the present tense - `the request is repaired, and will be while this
+  stands` - because the past tense reads as something that happened to this one request, which is
+  exactly what somebody then goes looking for a cause of in a turn that has nothing to do with it.
+
+  The trace is the other way round and stays that way: it keeps every one of them, because
+  `model.requested` really did carry that repair each time and a log that hid a repeated entry
+  would be the wrong thing entirely. Nothing about any of this ever reached the model - a repair is
+  an `Event`, and `Event::ModelRequested` names the items a request was built from rather than
+  carrying its messages, so the sentence exists on the screen and the log and nowhere on the wire.
+
 - The chat tab looks as open as the other three. The window border went yellow when the keys were
   on the tab's body, and on the chat tab they never are: `Focus::Body` there means the pinned
   question, which has a box of its own. So the tab most of a session is spent on was the one window

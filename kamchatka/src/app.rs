@@ -339,6 +339,19 @@ pub struct App {
     pub grants: ratatui::widgets::ListState,
     /// Whether the last stop was asked for rather than reached.
     interrupting: bool,
+    /// The repairs the last request needed, so that a standing one is said once.
+    ///
+    /// note: a repair is a property of the context rather than news about a turn. The projection
+    /// is built afresh for every request, so the projector re-does the repair and honestly
+    /// re-reports it - which put a line about item 4's dropped call in the conversation after
+    /// every message for the rest of a session, for one tool result excluded once. All four kinds
+    /// behave this way: an orphaned call, an orphaned result, a flattened turn and a result held
+    /// back all last as long as the state that caused them.
+    ///
+    /// note: the *conversation* only. The trace keeps every one, because it is the event log and a
+    /// log that hid a repeated entry would be the wrong thing entirely - `model.requested` really
+    /// did carry that repair, every time.
+    reported_repairs: Vec<String>,
     /// How far down the pinned question's arguments are scrolled.
     ///
     /// note: on the app rather than on the question, because there is no question to hang it on:
@@ -412,6 +425,7 @@ impl App {
             chosen: 0,
             grants: ratatui::widgets::ListState::default(),
             interrupting: false,
+            reported_repairs: Vec::new(),
             since: Instant::now(),
             question_scroll: 0,
             typed_ahead: None,
@@ -873,16 +887,36 @@ impl App {
                 // One compaction pass can orphan half a dozen calls at once, though, and six
                 // notices in a row push the answer off the screen to say one thing - so the
                 // conversation gets the fact and ctrl+p gets the list
-                match repairs.len() {
-                    0 => {}
-                    1 => self.say(
-                        Speaker::Note,
-                        format!("the request was repaired: {}", repairs[0]),
-                    ),
-                    many => self.say(
-                        Speaker::Note,
-                        format!("the request was repaired in {many} places; ctrl+p says where"),
-                    ),
+                //
+                // note: and only when they change. See `App::reported_repairs` - a repair lasts as
+                // long as the state that caused it, so the projector re-does it for every request
+                // and honestly reports it again, which put this line in the conversation after
+                // every message for the rest of a session over one tool result taken out once
+                //
+                // note: the count is everything being repaired rather than what is newly so,
+                // because it is the number `ctrl+p` will show. And the wording says the repair
+                // stands: in the past tense it reads as something that happened to this one
+                // request, which is exactly what somebody then goes looking for the cause of,
+                // and there is nothing about this turn to find
+                if repairs != self.reported_repairs {
+                    match repairs.len() {
+                        0 => {}
+                        1 => self.say(
+                            Speaker::Note,
+                            format!(
+                                "the request is repaired, and will be while this stands: {}",
+                                repairs[0]
+                            ),
+                        ),
+                        many => self.say(
+                            Speaker::Note,
+                            format!(
+                                "the request is repaired in {many} places, and will be while they \
+                                 stand; ctrl+p says where"
+                            ),
+                        ),
+                    }
+                    self.reported_repairs = repairs.clone();
                 }
                 for repair in &repairs {
                     self.trace("", format!("repaired: {repair}"));
