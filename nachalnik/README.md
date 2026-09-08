@@ -56,7 +56,7 @@ Reach for it when **what was in the context is part of your answer**:
 * **Evaluation and model comparison.** The same items into several kernels, with a digest of the
   projected messages showing that the only variable was the model - and the tokenizers disagreeing
   with each other about identical bytes, which you can see rather than assume.
-  (`cargo run --example compare`, `--example panel`)
+  (`cargo run --example compare_models`, `--example panel`)
 * **Editor and IDE integration.** A `/context` view, a permission prompt and an undo that are
   yours to render, over a loop that stops between transitions instead of acting and reporting.
 * **Anything that has to be auditable or reproducible.** An append-only log of typed events, plus
@@ -463,7 +463,7 @@ Two offline, and API-key-free:
 
 Two that talk to a model:
 
-* **[compare][ex-compare]** - the same prompt to several models at once, with proof that it *was*
+* **[compare_models][ex-compare]** - the same prompt to several models at once, with proof that it *was*
   the same prompt. Every model gets a `Kernel` of its own, the same `ContextItem`s are pushed into
   each, and the fingerprint is of the serialized messages of `preview_request()`. Ask a follow-up
   and it goes on comparing, but stops claiming the requests are identical, because by then they are
@@ -475,7 +475,7 @@ Two that talk to a model:
   panelist states its position through a tool - so the ending is arithmetic rather than a vibe.
 
 ```console
-$ cargo run --example compare -- -m gemini-3.5-flash-lite -m gemini-3.5-flash \
+$ cargo run --example compare_models -- -m gemini-3.5-flash-lite -m gemini-3.5-flash \
     -s "answer in at most 40 words" "the biggest downside of Rust's orphan rule?"
 
 INPUTS · what each model is about to be sent
@@ -492,7 +492,7 @@ and nothing else. They talk to anything that speaks that dialect, local models i
 
 ```console
 $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
-    cargo run --example compare -- -m llama3.2 -m granite4.2:3b "why the borrow checker?"
+    cargo run --example compare_models -- -m llama3.2 -m granite4.2:3b "why the borrow checker?"
 ```
 
 ---
@@ -577,7 +577,7 @@ Licensed under the MIT License ([LICENSE-MIT][license]).
 [writeup]: https://ljedrz.github.io/nachalnik/
 [nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
 [nachalnik-eval]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-eval
-[ex-compare]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compare.rs
+[ex-compare]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compare_models.rs
 [ex-panel]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/panel.rs
 [ex-transparency]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/transparency.rs
 [ex-compaction]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compaction.rs

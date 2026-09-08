@@ -21,6 +21,21 @@ minor bump may break you.
   writing a conformance case asserting that a stream cut mid-thought keeps the thinking: it did
   keep it, in blocks, where the assertion was not looking.
 
+### changed
+
+- The `compare` example is `compare_models`. `nachalnik-eval` ships an example called `compare`
+  too - it puts saved *runs* side by side where this one puts *models* - and two example targets
+  with one name collide at `target/debug/examples/compare`, so `cargo build --workspace
+  --examples` produced one binary where two were asked for and whichever built last won. Cargo
+  says so and says it may become a hard error; it is a `cargo` warning rather than a `rustc` one,
+  which is why `RUSTFLAGS: -D warnings` never caught it and CI has been green over it since
+  `nachalnik-eval` landed.
+
+  This one gives way rather than the other because the eval crate's example names are quoted in
+  the write-up of a run, and a command in a paper that no longer exists is worse than a longer
+  command here. `compare_models` also says which of the two things it compares, which the bare
+  word never did once there were two.
+
 ### fixed
 
 - A compaction pass that moved nothing leaves nothing behind. The checkpoint was already

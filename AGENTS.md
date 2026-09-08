@@ -148,8 +148,8 @@ that test fails, a question changed and every run recorded before the change mea
 else. Adding a template nothing existing reads is safe and leaves the other digests alone; editing
 one is not.
 
-`nachalnik/examples`: `transparency` and `compaction` need no key and run in CI; `compare` and
-`panel` talk to a real API through `examples/common`. `nachalnik-eval/examples/bench.rs` runs the
+`nachalnik/examples`: `transparency` and `compaction` need no key and run in CI; `compare_models`
+and `panel` talk to a real API through `examples/common`. `nachalnik-eval/examples/bench.rs` runs the
 introspection suite against any OpenAI-compatible endpoint and writes the whole record out as
 JSON; a local ollama works and costs nothing.
 

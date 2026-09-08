@@ -2,14 +2,14 @@
 //!
 //! ```text
 //! export NACHALNIK_API_KEY=...
-//! cargo run --example compare -- -m openai/gpt-4o-mini -m qwen/qwen3-coder "is this sound?"
+//! cargo run --example compare_models -- -m openai/gpt-4o-mini -m qwen/qwen3-coder "is this sound?"
 //! ```
 //!
 //! Local models work as well as hosted ones, and are the cheapest way to try this:
 //!
 //! ```text
 //! NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
-//!   cargo run --example compare -- -m llama3.2 -m granite4.2:3b "is this sound?"
+//!   cargo run --example compare_models -- -m llama3.2 -m granite4.2:3b "is this sound?"
 //! ```
 //!
 //! A comparison is only worth anything if the only thing that differed was the model, and that

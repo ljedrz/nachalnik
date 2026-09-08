@@ -43,7 +43,7 @@ use nachalnik::{
 use parking_lot::Mutex;
 use serde_json::json;
 
-// the OpenAI-compatible HTTP provider, shared with the `compare` example
+// the OpenAI-compatible HTTP provider, shared with the `compare_models` example
 #[path = "common/mod.rs"]
 mod common;
 

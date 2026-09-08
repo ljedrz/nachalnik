@@ -1,6 +1,6 @@
 //! Tests against a real model, over the real wire.
 //!
-//! They are skipped unless an API key is in the environment, the same variable the `compare` and
+//! They are skipped unless an API key is in the environment, the same variable the `compare_models` and
 //! `panel` examples read:
 //!
 //! ```text
