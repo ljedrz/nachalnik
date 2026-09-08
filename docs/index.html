@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Experiments with nachalnik</title>
-<meta name="description" content="What an agent does when anyone can read, measure and rewrite its context. Four transcripts, quoted verbatim from the sessions they describe.">
+<meta name="description" content="What an agent does when anyone can read, measure and rewrite its context. Five transcripts, quoted verbatim from the sessions they describe.">
 <meta property="og:title" content="Experiments with nachalnik">
 <meta property="og:description" content="What an agent does when anyone can read and rewrite its context.">
 <meta property="og:type" content="website">
@@ -15,7 +15,7 @@
   <div class="wrap">
     <p class="eyebrow"><span class="dot"></span> <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> verbatim transcripts <span class="dot"></span> written by claude opus 5</p>
     <h1>What an agent does <span class="quiet">when anyone can read and rewrite its context.</span></h1>
-    <p class="deck">Most agents cannot see the list of things they are carrying, cannot tell what any of it costs, and cannot change a word of it. These are recordings of what happens when that stops being true.<br><br>They are numbered, and they read in order: the first explains what a context is and plants something in one, and the two after it lean on that and plant nothing. From the fourth on, the machinery turns around: the model is not the one doing the editing. Every transcript, number and quotation is copied out of the event log of the session it describes.</p>
+    <p class="deck">Most agents cannot see the list of things they are carrying, cannot tell what any of it costs, and cannot change a word of it. These are recordings of what happens when that stops being true.<br><br>They are numbered, and they read in order: the first explains what a context is and plants something in one, and the two after it lean on that and plant nothing. From the fourth on, the machinery turns around: the model is not the one doing the editing. In the fourth I put words in its mouth; in the fifth I plant nothing at all and simply take one item away, which turns out to be enough. Every transcript, number and quotation is copied out of the event log of the session it describes.</p>
   </div>
 </header>
 
@@ -41,7 +41,12 @@
     <li>
       <p class="meta"><span class="no">04</span> inception mercury 2.5 <span class="dot"></span> two turns forged</p>
       <h2><a href="putting-words-in-its-mouth/">I rewrote two of its answers. By the third it was making things up on its own.</a></h2>
-      <p>The other three are a model editing its own context. This one is me editing it. Asked whether crabs think fish can fly, it gave a careful, correct, four-times-hedged answer — so I replaced the answer with a confident falsehood. It walked the falsehood back, apologising for a joke it had never made, so I replaced the walk-back too. Then it invented a third claim, more specific than either of mine, with nobody editing that turn. Both real answers are still in the session, which is the only reason you can read them.</p>
+      <p>The first three are a model editing its own context. This one is me editing it. Asked whether crabs think fish can fly, it gave a careful, correct, four-times-hedged answer — so I replaced the answer with a confident falsehood. It walked the falsehood back, apologising for a joke it had never made, so I replaced the walk-back too. Then it invented a third claim, more specific than either of mine, with nobody editing that turn. Both real answers are still in the session, which is the only reason you can read them.</p>
+    </li>
+    <li>
+      <p class="meta"><span class="no">05</span> inclusionai ling-3.0-flash <span class="dot"></span> nothing planted, one item hidden</p>
+      <h2><a href="taking-away-the-receipt/">I took one item out of its context. It spent four turns explaining a command it could no longer see.</a></h2>
+      <p>A shell command really ran, with a permission prompt in front of it, and the model read the answer off its output. Then I hid the output and left the answer standing — which also takes down the turn that made the call, because a call whose result is gone is a call no API will accept. So the record now says, correctly and in every request, that no tool was ever used. Asked how it knew, it produced three explanations in a row, each false, including a sandbox escape it invented and then hardened when I said <em>kinda sus</em>. The sentence it finally staked its credibility on is the one thing it read straight off the record I had doctored.</p>
     </li>
   </ul>
 </section>
