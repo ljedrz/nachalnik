@@ -788,14 +788,14 @@ kernel took: `confined`, or `partly confined` where some of it is older than the
 their real installation there. `cargo` is a rustup shim, rustup reads `~/.rustup/settings.toml`
 before it does anything at all, and a model asked to build a Rust project therefore gets
 
-```
+```text
 error: could not read settings file: '/home/you/.rustup/settings.toml': Permission denied
 ```
 
 which looks exactly like a missing compiler. Hand it the toolchain, for reading and no more:
 
-```
-kamchatka --sandbox-read ~/.rustup --sandbox-read ~/.cargo -m …
+```console
+$ kamchatka --sandbox-read ~/.rustup --sandbox-read ~/.cargo -m …
 ```
 
 Read-only rather than `--sandbox-allow`, because a model that can *replace* the toolchain it is
@@ -813,7 +813,7 @@ your identity and aliases in there too.
 **A permission error says where it came from.** When a confined command is refused a path outside
 its reach, the tool result names it:
 
-```
+```text
 exit: 1 (the command reported a failure)
 [/home/you/.rustup/settings.toml is outside what this session reaches, so the permission error
 below is the confinement rather than the file's own permissions. …]
