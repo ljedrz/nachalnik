@@ -44,6 +44,11 @@ minor bump may break you.
 
 ### fixed
 
+- `cargo doc` builds again. Four intra-doc links added with `Entry::item` and `Entry::was` name
+  private methods from public documentation, which rustdoc refuses under `-D warnings` - so the
+  lint job was red and the two commits that added them did not run it. They are plain code spans
+  now: a reader of the public docs could not have followed them anyway.
+
 - `Trim` does not ask for a result that is pinned. `ContextState::sends_content` says yes to a
   pinned item - it is in the request, that is what the state is for - so the candidate filter took
   one, and the kernel then refused it, as it must: a pin is a promise. That refusal is not free.

@@ -186,7 +186,7 @@ pub struct Entry {
     /// The context item this line became, once there is one.
     ///
     /// note: what the screen says and what the context holds do not arrive together, so this is
-    /// filled in by [`App::attribute`] when the item exists rather than when the line is printed.
+    /// filled in by `App::attribute` when the item exists rather than when the line is printed.
     /// A streamed answer is on screen fragment by fragment and has no identifier until
     /// `ModelFinished`; a call is printed after the turn that asked for it; a message typed into a
     /// running turn is said at once and pushed when the turn stops.
@@ -202,8 +202,8 @@ pub struct Entry {
     /// replacement said at the end of the transcript, puts a turn edited twenty exchanges ago
     /// after everything that followed it and describes an order no request ever had. What this
     /// keeps is the thread back: the row says which item it was, and the old words are a page of
-    /// the item that replaced it - [`App::faces`] builds them out of [`App::versions`], which
-    /// [`App::commit_edit`] files under the *new* identifier for exactly this reason.
+    /// the item that replaced it - `App::faces` builds them out of `App::versions`, which
+    /// `App::commit_edit` files under the *new* identifier for exactly this reason.
     pub was: Option<ContextId>,
 }
 
