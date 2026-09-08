@@ -56,6 +56,14 @@ minor bump may break you.
   keys here, and then:` line above the answers, because listing `[y] once` beside a `y` that is
   being deliberately ignored is a screen promising a key it has not got.
 
+  A blank row separates the answers from what the tool was asked to do, since `path: /etc/hosts`
+  and `[y] once` on consecutive rows read as one list of things rather than as a question and the
+  ways of answering it - and the header was already separated from the arguments this way, so the
+  answers were the odd ones out. It is a row of the layout rather than a line of the answers, which
+  is what makes it the first thing to give way: in the answers it would be the top line of the one
+  region that gets its rows before anything else, so a panel with a single row to spare would have
+  spent it on a blank and pushed `[y] once` off the bottom.
+
   It is also one less thing to keep in step: the panel is drawn from `pending_permissions()` every
   frame rather than from an `Overlay::Permission` that had to be opened and closed, so it cannot be
   up with nothing to answer or absent with something waiting.

@@ -1649,6 +1649,13 @@ async fn the_permissions_tab_says_which_policy_is_deciding() {
         !filled.contains("kamchatka::tools"),
         "thirty columns of a list spent saying `Careful`: {filled}"
     );
+    // at the margin rather than indented under itself like a row: the two columns the rows share
+    // put it in the `capability` column, reading as the table's first and oddest entry
+    let screen = harness.sized(84, 12);
+    assert!(
+        screen.lines().any(|line| line.starts_with("│Careful")),
+        "{screen}"
+    );
     // and the verdict is read off the policy rather than written into the screen
     assert_eq!(kamchatka::tools::Careful::untold(), Verdict::Ask);
 }
@@ -2876,6 +2883,54 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
         Focus::Input,
         "and the keys come back to the prompt with nothing left to ask"
     );
+}
+
+/// The answers are separated from what the tool was asked to do, and the blank goes first.
+///
+/// note: `path: /etc/hosts` and `[y] once` on consecutive rows read as one list of things rather
+/// than as a question and the ways of answering it - and the header was already separated from the
+/// arguments this way, so the answers were the odd ones out. It is a row of the layout rather than
+/// a line of the answers, which is what makes it the first thing to give way: in the answers it
+/// would be the top line of the one region that gets its rows before anything else, so a panel
+/// with a single row to spare would have spent it on a blank and pushed `[y] once` off the bottom.
+#[tokio::test]
+async fn a_question_separates_its_answers_from_what_it_is_about() {
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "read",
+        json!({ "path": "/etc/hosts" }),
+    )])]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
+    ));
+    harness.send("go").await;
+    harness.settle().await;
+    // the keys on it, so the answers are the first line of the region rather than the `[tab]` one
+    harness.press(KeyCode::Tab).await;
+
+    let roomy = harness.sized(76, 24);
+    let rows: Vec<&str> = roomy.lines().collect();
+    let answers = rows
+        .iter()
+        .position(|line| line.contains("[y] once"))
+        .unwrap_or_else(|| panic!("the answers are on the screen: {roomy}"));
+    assert!(
+        rows[answers - 1].trim_matches(['│', ' ']).is_empty(),
+        "a blank row between the two: {roomy}"
+    );
+    assert!(
+        rows[answers - 2].contains("/etc/hosts"),
+        "and the argument above that: {roomy}"
+    );
+
+    // and with no room for it, what goes is the blank rather than an answer
+    let short = harness.sized(76, 10);
+    for line in ["[y] once", "[i] the exact JSON"] {
+        assert!(
+            short.contains(line),
+            "{line:?} should survive a short screen: {short}"
+        );
+    }
 }
 
 /// A half-written message is still there after the question that interrupted it.

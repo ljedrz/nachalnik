@@ -323,7 +323,7 @@ place, where it can be changed:
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
-│  Careful · anything it has not been told about: ask                                                          │
+│Careful · anything it has not been told about: ask                                                            │
 │                                                                                                              │
 │  capability or path     answer      the tools it covers                                                      │
 │  read                   allow       read                                                                     │

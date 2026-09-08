@@ -951,11 +951,15 @@ fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     // the source for the behaviour is not a screen. Both halves come from the policy itself:
     // `Careful::untold` is the value `stance` falls back to, so this cannot come to describe a
     // policy that has since changed its mind
+    // note: at the margin rather than indented under it like a row. It is a statement about the
+    // whole tab, and the two columns of indent the rows share put it in the `capability` column -
+    // reading as the first and oddest entry in the table rather than as the sentence the table is
+    // underneath. It also sat two columns off the empty-state prose, which starts at the margin
     let [stated, area] = Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).areas(area);
     let (untold, untold_style) = verdict_word(Careful::untold());
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(format!("  {} ", app.policy_name()), Style::default().bold()),
+            Span::styled(format!("{} ", app.policy_name()), Style::default().bold()),
             Span::styled("· anything it has not been told about: ", quiet()),
             Span::styled(untold, untold_style),
         ])),
@@ -1568,8 +1572,16 @@ fn trimmed(mut lines: Vec<String>) -> Vec<String> {
     lines
 }
 
+/// What a question costs on top of the lines it holds: a border top and bottom, and the blank row
+/// between the arguments and the answers.
+///
+/// note: named because two places have to agree about it - the height the panel asks for, and the
+/// reading of whether the arguments had to be cut, which is what puts `pgup / pgdn` on the answers.
+/// Disagreeing by one row is a panel that says there is more to read when there is not.
+const BORDERS_AND_GAP: u16 = 3;
+
 /// The fewest rows a question is drawn in, whatever a short screen would rather give it: two of
-/// border, one of header and the two the answers are on.
+/// border, the header and the blank under it, a row of arguments and the two the answers are on.
 const MIN_QUESTION: u16 = 7;
 
 /// What has to be left over when a question is taking the last of the screen: a row of the
@@ -1588,7 +1600,7 @@ fn question_rows(app: &App, columns: usize) -> u16 {
         return 0;
     };
 
-    (head.len() + args.len() + foot.len()) as u16 + 2
+    (head.len() + args.len() + foot.len()) as u16 + BORDERS_AND_GAP
 }
 
 /// A tool is waiting to be told whether it may run, in the prompt's place.
@@ -1620,16 +1632,28 @@ fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
     // the answers get their rows first and the header what is left over, because a panel too small
     // for both is still answerable and is not still readable; the arguments get the remainder,
     // and are the only region that can be asked to show less than it holds
-    let cut = (head.len() + args.len() + foot.len()) as u16 + 2 > area.height;
+    let cut = (head.len() + args.len() + foot.len()) as u16 + BORDERS_AND_GAP > area.height;
     let foot = match cut {
         true => question_parts(app, columns, true).map_or(foot, |(_, _, it)| it),
         false => foot,
     };
     let bottom = (foot.len() as u16).min(inner.height);
     let top = (head.len() as u16).min(inner.height - bottom);
-    let [above, middle, below] = Layout::vertical([
+    // a blank row between what the tool was asked to do and the keys that answer for it. Without
+    // it `path: /etc/hosts` and `[y] once` sit on consecutive rows and read as one list of six
+    // things rather than as a question and the ways of answering it - and the header is already
+    // separated from the arguments this way, so the answers were the odd ones out
+    //
+    // note: a row of the layout rather than a line of the foot, which is what makes it the first
+    // thing to go. In the foot it would be the top line of the one region that gets its rows
+    // before anything else, so a panel with a single row to spare would have spent it on a blank
+    // and pushed `[y] once` off the bottom. Here it is taken only when the arguments still have a
+    // row of their own left afterwards
+    let gap = u16::from(inner.height > top + bottom + 1);
+    let [above, middle, _, below] = Layout::vertical([
         Constraint::Length(top),
-        Constraint::Length(inner.height - top - bottom),
+        Constraint::Length(inner.height - top - bottom - gap),
+        Constraint::Length(gap),
         Constraint::Length(bottom),
     ])
     .areas(inner);
