@@ -4777,14 +4777,31 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         "it has to say which call it applies to: {screen}"
     );
 
+    // the number the listing prints is a handle the command takes, or it is decoration: `read` is
+    // the third of the four rows, sorted, and this is the same instruction as naming it
+    harness.send("/limit 3 48000").await;
+    assert_eq!(declared(&harness, "read"), Some(48_000));
+    assert_eq!(declared(&harness, "shell"), Some(32_000), "one row moved");
+    assert!(
+        harness.flat().contains("`read` was cut at 64,000"),
+        "the answer names the tool, not the row: {}",
+        harness.flat()
+    );
+
     // a tool nothing here limits says so, and lists what is limited rather than failing silently
     harness.send("/limit write 1000").await;
     let screen = harness.flat();
     assert!(screen.contains("nothing here limits `write`"), "{screen}");
 
+    // a row out of range is answered the same way, by a listing that says what the range is
+    harness.send("/limit 9 1000").await;
+    let screen = harness.flat();
+    assert!(screen.contains("nothing here limits `9`"), "{screen}");
+    assert!(screen.contains("[4] shell"), "{screen}");
+
     // and nought is not a limit, it is a tool that answers with a marker
     harness.send("/limit read 0").await;
-    assert_eq!(declared(&harness, "read"), Some(64_000), "unchanged");
+    assert_eq!(declared(&harness, "read"), Some(48_000), "unchanged");
     assert!(
         harness.flat().contains("tools drop read"),
         "{}",
@@ -4795,10 +4812,12 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     harness.send("/limit").await;
     let screen = harness.flat();
     assert!(
-        screen.contains("64,000 bytes"),
+        screen.contains("48,000 bytes"),
         "it lists the new one: {screen}"
     );
     assert!(screen.contains("amend"), "and every other one: {screen}");
+    // numbered, so that the number the command takes is one somebody can read off the screen
+    assert!(screen.contains("[3] read"), "{screen}");
 }
 
 /// An item the projector repaired away is holding what it holds, and the pane has to say so.

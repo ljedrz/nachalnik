@@ -483,9 +483,10 @@ next request onward, which is one call on the kernel and no restart. When a mode
 the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* call it is waiting on
 with one reason — and the model is told, rather than left waiting on calls that silently vanished.
 
-So is how much of each tool's output the model is shown. `/limit` lists it, `/limit read 64000`
-changes one from its next call onward. The result that has *already* been cut is recovered a
-different way: its whole is archived beside the copy the model was given, and <kbd>space</kbd> on
+So is how much of each tool's output the model is shown. `/limit` lists it — numbered, and the
+number is one the command takes, so `/limit read 64000` and `/limit 3 64000` are the same
+instruction — and either changes one from its next call onward. The result that has *already* been
+cut is recovered a different way: its whole is archived beside the copy the model was given, and <kbd>space</kbd> on
 it sends that instead — the projector answers one call with one result, so the whole takes the
 call and the short copy drops out.
 

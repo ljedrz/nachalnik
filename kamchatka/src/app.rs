@@ -2547,18 +2547,34 @@ impl App {
     /// note: it changes the next call, not the one already shortened, and the message says which.
     /// Nothing is lost either way: the whole of a shortened result is archived beside the copy the
     /// model was shown, and one keystroke on the context tab sends it instead.
+    ///
+    /// note: the rows are numbered, and the number is one this command takes - `/limit 3 64000`
+    /// and `/limit read 64000` are the same instruction. A tool has no identifier but its name,
+    /// which is what the model calls and what `/tools drop` takes, so this number belongs to the
+    /// listing rather than to the tool; that is exactly why it is only worth printing if it can
+    /// then be typed. The context tab settled the same argument the same way, and `23G` is there
+    /// because the number in its first column is the one `/exclude` takes.
     fn limit(&mut self, rest: &str) {
         let table = |limits: &Limits| {
-            limits
-                .all()
-                .into_iter()
-                .map(|(tool, bytes)| format!("{tool:<14}{:>9} bytes", thousands(bytes)))
+            let rows = limits.all();
+            // as wide as the widest number, so four tools read `[1]` and a dozen do not jog the
+            // column the figures are in
+            let wide = rows.len().to_string().len() + 2;
+            rows.into_iter()
+                .enumerate()
+                .map(|(nth, (tool, bytes))| {
+                    format!(
+                        "{:<wide$} {tool:<14}{:>9} bytes",
+                        format!("[{}]", nth + 1),
+                        thousands(bytes)
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n")
         };
 
         let mut words = rest.split_whitespace();
-        let (Some(tool), Some(bytes)) = (words.next(), words.next()) else {
+        let (Some(named), Some(bytes)) = (words.next(), words.next()) else {
             if !rest.trim().is_empty() {
                 self.say(
                     Speaker::Error,
@@ -2568,13 +2584,23 @@ impl App {
             }
             let body = format!(
                 "{}\n\nhow much of each tool's output the model is shown. `/limit <tool> <bytes>` \
-                 changes one, from the next call onwards; the whole of anything already shortened \
-                 is archived beside it on the context tab, one `space` from being sent instead.",
+                 changes one, by name or by the number beside it, from the next call onwards; the \
+                 whole of anything already shortened is archived beside it on the context tab, one \
+                 `space` from being sent instead.",
                 table(&self.limits)
             );
             self.preview("the output limits", body);
             return;
         };
+
+        // the number the listing prints, or the name the model calls. A row out of range falls
+        // through as a name and is answered with the listing, which is where the range is
+        let rows = self.limits.all();
+        let tool = match named.parse::<usize>() {
+            Ok(nth) if (1..=rows.len()).contains(&nth) => rows[nth - 1].0.clone(),
+            _ => named.to_owned(),
+        };
+        let tool = tool.as_str();
 
         let Ok(bytes) = bytes.parse::<usize>() else {
             self.say(

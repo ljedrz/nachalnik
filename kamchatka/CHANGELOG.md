@@ -290,6 +290,14 @@ minor bump may break you.
   that the tools declaring them and the command changing them both hold, because a second copy is
   a command that reports success and does nothing.
 
+  The rows are numbered and the number is one the command takes, so `/limit 3 64000` is the same
+  instruction as naming the tool - `introspect` is eleven characters to reach the one limit that
+  most often wants moving. A tool has no identifier but its name, which is what the model calls
+  and what `/tools drop` takes, so the number belongs to the listing rather than to the tool; that
+  is exactly why it is only worth printing if it can then be typed, and a row out of range is
+  answered by the same listing a name nothing limits gets, since that listing is where the range
+  is written down. Same argument as `23G` on the context tab, settled the same way.
+
   It exists because of a session that asked a copy of itself three questions and got back the
   copy's deliberation with all three answers cut off the end. 32,000 bytes is right for the four
   other things `introspect` does and wrong for a fork, and there was no way to say so without
