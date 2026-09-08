@@ -568,10 +568,27 @@ impl Provider for Gemini {
                 }
 
                 if let Some(reported) = chunk.get("usageMetadata").filter(|u| !u.is_null()) {
+                    // note: the thoughts are added in, because `Usage::output_tokens` is
+                    // everything generated and this dialect reports the two apart. Google's own
+                    // `totalTokenCount` is defined as the prompt plus the thoughts plus the
+                    // candidates, so the sum is that definition rather than this crate's
+                    // invention - and without it a thinking turn's cost is the answer alone,
+                    // which on a model that thinks for a thousand tokens and replies in twenty
+                    // is a bill understated by fifty to one. `thoughtsTokenCount` still says how
+                    // much of it was thinking, one field along
+                    let thoughts = reported["thoughtsTokenCount"].as_u64();
+                    let candidates = reported["candidatesTokenCount"].as_u64();
                     usage = Some(Usage {
                         input_tokens: reported["promptTokenCount"].as_u64(),
-                        output_tokens: reported["candidatesTokenCount"].as_u64(),
-                        reasoning_tokens: reported["thoughtsTokenCount"].as_u64(),
+                        // note: `None` only where the dialect said neither, so that "it did not
+                        // say" stays distinguishable from "it generated nothing"
+                        output_tokens: match (candidates, thoughts) {
+                            (None, None) => None,
+                            (candidates, thoughts) => {
+                                Some(candidates.unwrap_or_default() + thoughts.unwrap_or_default())
+                            }
+                        },
+                        reasoning_tokens: thoughts,
                         cached_input_tokens: reported["cachedContentTokenCount"].as_u64(),
                     });
                 }

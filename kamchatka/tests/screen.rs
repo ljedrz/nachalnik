@@ -581,6 +581,91 @@ async fn the_budget_puts_the_estimate_beside_what_was_really_charged() {
     );
 }
 
+/// A model billed for reasoning it never sends back leaves nothing on the context tab where the
+/// thinking was, so the only trace of the money is a number - and until it was read out, not even
+/// that. `mercury-2.5` answers one question with 1,139 reasoning tokens and 273 of answer.
+#[tokio::test]
+async fn the_budget_says_what_the_answer_cost_and_how_much_of_it_was_reasoning() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(9),
+            output_tokens: Some(1_412),
+            reasoning_tokens: Some(1_139),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("No.")
+    }]);
+
+    harness.send("is 9409 prime?").await;
+    harness.settle().await;
+    harness.send("/budget").await;
+
+    let screen = harness.screen();
+    assert!(
+        screen.contains("generated 1,412 out, 1,139 of it reasoning"),
+        "the thinking is a share of what was generated, not a second figure: {screen}"
+    );
+    // and the turn itself said so once, because the words are gone and the tokens are not
+    assert!(
+        screen.contains("charged for reasoning it does not send back"),
+        "nothing said where the turn went: {screen}"
+    );
+}
+
+/// Said once, because it is true of the endpoint rather than of a turn - the same trap a standing
+/// repair fell into, which put one line about item 4 after every message for a whole session.
+#[tokio::test]
+async fn a_model_that_hides_its_reasoning_is_remarked_on_once() {
+    let thinking = || ModelResponse {
+        usage: Some(Usage {
+            output_tokens: Some(500),
+            reasoning_tokens: Some(400),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    };
+    let mut harness = Harness::new([thinking(), thinking(), thinking()]);
+
+    for _ in 0..3 {
+        harness.send("go").await;
+        harness.settle().await;
+    }
+
+    let screen = harness.screen();
+    assert_eq!(
+        screen
+            .matches("charged for reasoning it does not send back")
+            .count(),
+        1,
+        "three turns, one sentence: {screen}"
+    );
+}
+
+/// A provider that reports no reasoning is not a provider reporting none of it, and the line that
+/// would say so must not appear for the ordinary case.
+#[tokio::test]
+async fn a_model_that_reports_no_reasoning_is_not_said_to_be_hiding_any() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(9),
+            output_tokens: Some(30),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }]);
+
+    harness.send("go").await;
+    harness.settle().await;
+    harness.send("/budget").await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("generated 30 out"), "{screen}");
+    assert!(
+        !screen.contains("of it reasoning") && !screen.contains("does not send back"),
+        "silence about reasoning is not a claim there was none: {screen}"
+    );
+}
+
 /// What the provider served from its cache is the figure that says what a *change* to the front
 /// of the request would cost, and both dialects have always reported it while nothing read it out.
 #[tokio::test]

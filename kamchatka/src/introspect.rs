@@ -424,9 +424,9 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
 
     match budget.reported {
         Some(usage) => out.push_str(&format!(
-            "the last request really cost {} in / {} out, as the provider counted it\n",
+            "the last request really cost {} in / {}, as the provider counted it\n",
             thousands(usage.input_tokens.unwrap_or_default() as usize),
-            thousands(usage.output_tokens.unwrap_or_default() as usize),
+            crate::ui::charged(&usage),
         )),
         None => out.push_str(
             "nothing has been charged for yet, so the figures above are only an estimate\n",
@@ -677,9 +677,9 @@ async fn branch(
     );
     if let Some(usage) = response.usage {
         out.push_str(&format!(
-            "it cost {} in / {} out.\n",
+            "it cost {} in / {}.\n",
             thousands(usage.input_tokens.unwrap_or_default() as usize),
-            thousands(usage.output_tokens.unwrap_or_default() as usize),
+            crate::ui::charged(&usage),
         ));
     }
     let said = response

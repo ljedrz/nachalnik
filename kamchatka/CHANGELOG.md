@@ -9,6 +9,28 @@ minor bump may break you.
 
 ### fixed
 
+- What a turn cost to generate is on the screen, and so is how much of it was thinking. Every
+  provider here reported it and nothing read it out: the trace said `in / out`, `/budget`
+  accounted for the request and went silent about the answer, and the two figures `introspect`
+  hands a model about its own spending did the same. On an endpoint that bills for reasoning and
+  returns none of it there was nowhere in this program to find out where a turn went -
+  `mercury-2.5` answers one question with 1,139 reasoning tokens and 273 of answer, and its stream
+  carries no reasoning field at all, so the context tab shows a turn with nothing where the
+  thinking was. All four places now read `1,412 out, 1,139 of it reasoning` through one renderer,
+  and the reasoning is shown as a share of what was generated rather than added to it.
+
+  A model that is charged for reasoning it does not send back is also said so once, in the
+  conversation, the first time it happens - once, because it is a fact about the endpoint and not
+  news about a turn, which is the trap a standing repair fell into and left a line about item 4
+  after every message for a session.
+
+- The Gemini dialect's `output_tokens` includes the thinking. It reported `candidatesTokenCount`
+  alone, which is the answer without the thoughts beside it - and Google defines its own
+  `totalTokenCount` as the prompt plus the thoughts plus the candidates, so the number this crate
+  was carrying was not that dialect's idea of what a turn cost either. On a model thinking for a
+  thousand tokens and replying in twenty it understated the bill fifty to one. `thoughtsTokenCount`
+  still says how much of it was thinking, so the answer's own cost is a subtraction away.
+
 - A model listing is read for what the model takes under either name the two dialects publish it
   as. `supported_parameters` is OpenRouter's and was the only one read; Inception's endpoint calls
   it `supported_sampling_parameters`, so its list went unread and `/params` fell silent - the check

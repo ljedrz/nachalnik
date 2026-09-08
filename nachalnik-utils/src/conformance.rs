@@ -149,6 +149,10 @@ impl Conformance {
                 "what the server said a request cost is carried through",
                 self.usage().await,
             ),
+            (
+                "a turn that thought reports the thinking inside what it generated",
+                self.reasoning_is_inside_what_was_generated().await,
+            ),
         ];
 
         let (mut failed, mut skipped) = (Vec::new(), Vec::new());
@@ -213,6 +217,59 @@ impl Conformance {
         }
 
         Outcome::Passed
+    }
+
+    /// A turn that thought reports the thinking inside what it generated.
+    ///
+    /// note: the question none of the three was ever asked, and all three answered differently.
+    /// `Usage::output_tokens` is everything the model generated and is charged for, reasoning
+    /// included, so that `input + output` is the whole bill whichever endpoint answered. The
+    /// dialects do not hand it over that way: OpenAI's `completion_tokens` already contains the
+    /// reasoning, Google reports thoughts and candidates side by side, and a Google endpoint
+    /// speaking the OpenAI dialect omits the details object and leaves the thinking to be found in
+    /// the difference between the total and its parts. Three shapes, one figure, and until this
+    /// case existed each provider settled it privately and two settled it wrongly.
+    ///
+    /// note: what is asserted is the *relationship* rather than a number pulled from a fixture -
+    /// the answer's own cost has to come back by subtracting the reasoning from the output. A
+    /// provider that reports the two side by side passes the sum and fails this.
+    async fn reasoning_is_inside_what_was_generated(&self) -> Outcome {
+        let body = match self.dialect {
+            Dialect::OpenAi => concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\"index\":0,",
+                "\"finish_reason\":\"stop\"}]}\n\n",
+                "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":11,",
+                "\"completion_tokens\":30,\"total_tokens\":41,",
+                "\"completion_tokens_details\":{\"reasoning_tokens\":20}}}\n\n",
+                "data: [DONE]\n\n",
+            ),
+            Dialect::Gemini => concat!(
+                "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}],",
+                "\"role\":\"model\"},\"finishReason\":\"STOP\"}],",
+                "\"usageMetadata\":{\"promptTokenCount\":11,\"candidatesTokenCount\":10,",
+                "\"thoughtsTokenCount\":20,\"totalTokenCount\":41}}\n\n",
+            ),
+        };
+
+        let usage = match self.ask(body, Delivery::Whole).await {
+            Ok(response) => match response.usage {
+                Some(usage) => usage,
+                None => return Outcome::Failed("nothing was reported".to_owned()),
+            },
+            Err(e) => return Outcome::Failed(e),
+        };
+
+        match (usage.output_tokens, usage.reasoning_tokens) {
+            (Some(30), Some(20)) => Outcome::Passed,
+            (Some(10), Some(20)) => Outcome::Failed(
+                "the thinking is reported beside what was generated rather than inside it, so a \
+                 bill of 30 reads as 10"
+                    .to_owned(),
+            ),
+            other => Outcome::Failed(format!(
+                "30 generated, of which 20 was reasoning, came back as {other:?}"
+            )),
+        }
     }
 
     /// A body that stops arriving in the middle of an answer keeps what arrived.

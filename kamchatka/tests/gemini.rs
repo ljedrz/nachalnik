@@ -122,10 +122,19 @@ async fn a_streamed_turn_keeps_the_order_it_arrived_in() {
     // otherwise, and a turn reported as finished would never have run either of them
     assert_eq!(response.stop, StopReason::ToolUse);
 
+    // this dialect reports the thinking apart from the answer - 40 candidates and 12 thoughts -
+    // and `Usage::output_tokens` is everything generated, so it is their sum. Google defines its
+    // own `totalTokenCount` the same way, as prompt plus thoughts plus candidates; reporting 40
+    // here would say a turn that cost 52 to generate cost 40
     let usage = response.usage.expect("reported");
     assert_eq!(usage.input_tokens, Some(67));
-    assert_eq!(usage.output_tokens, Some(40));
+    assert_eq!(usage.output_tokens, Some(52));
     assert_eq!(usage.reasoning_tokens, Some(12));
+    assert_eq!(
+        usage.output_tokens.unwrap() - usage.reasoning_tokens.unwrap(),
+        40,
+        "and the answer's own cost is still recoverable, by subtraction"
+    );
 }
 
 #[tokio::test]

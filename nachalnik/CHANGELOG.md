@@ -5,6 +5,22 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- `Usage::output_tokens` says whether the reasoning is inside it, and `Usage::reasoning_tokens`
+  says it is a part of that number rather than a second one beside it. Documentation only - no
+  behaviour here moves - but the absence was load-bearing: the field said "tokens in the response"
+  and the dialects disagree about what that means. OpenAI's `completion_tokens` contains the
+  reasoning, Google reports `candidatesTokenCount` and `thoughtsTokenCount` side by side, and a
+  Google endpoint speaking the OpenAI dialect sends neither and leaves the thinking in the
+  difference between a total and its parts. Three providers in this workspace read those three
+  shapes into one field and settled the question three different ways, none of them written down,
+  because nothing here had settled it for them. A figure that means something different depending
+  on which endpoint answered is not a figure anybody can put beside another - which is the whole
+  claim `Usage` makes by existing separately from `Kernel::budget`.
+
 ## [0.3.2] - 2026-09-08
 
 ### added

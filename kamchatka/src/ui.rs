@@ -2656,6 +2656,33 @@ fn fitted(n: usize, width: usize) -> String {
     }
 }
 
+/// What a provider said one response cost, as `30 out` or `1,412 out, 1,139 of it reasoning`.
+///
+/// note: one renderer for the three places that report it - the trace, `/budget`, and the
+/// `introspect budget` a model reads about itself - because they were three sentences about the
+/// same two numbers and only one of them has to be got right. What it must never do is add the
+/// two: [`Usage::reasoning_tokens`] is a part of [`Usage::output_tokens`], so they are shown as a
+/// whole and a share of it.
+///
+/// note: a reasoning model that returns none of its reasoning still spends most of a turn on it -
+/// `mercury-2.5` answered one question with 1,139 reasoning tokens and 273 of answer - and until
+/// this said so there was nowhere in this program to find that out, on tokens somebody paid for.
+/// `None` is silence rather than zero: a provider that does not report reasoning is not a provider
+/// reporting none of it.
+pub(crate) fn charged(usage: &nachalnik::Usage) -> String {
+    let Some(out) = usage.output_tokens else {
+        return "nothing reported".to_owned();
+    };
+    match usage.reasoning_tokens.filter(|it| *it > 0) {
+        None => format!("{} out", thousands(out as usize)),
+        Some(thinking) => format!(
+            "{} out, {} of it reasoning",
+            thousands(out as usize),
+            thousands(thinking as usize)
+        ),
+    }
+}
+
 /// Formats a number with `,` as the thousands separator.
 pub(crate) fn thousands(n: usize) -> String {
     let digits = n.to_string();

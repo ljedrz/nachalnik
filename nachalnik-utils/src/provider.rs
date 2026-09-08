@@ -783,6 +783,9 @@ fn to_wire(message: &Message) -> Value {
 ///
 /// note: `reasoning_tokens` is read from `completion_tokens_details` where a server sends it, and
 /// otherwise *inferred* from the residual: `total_tokens` minus the prompt and completion counts.
+/// The two are not interchangeable and the difference is handled below rather than left to a
+/// caller: a reported figure is already inside `completion_tokens`, an inferred one is by
+/// construction outside it.
 /// Google's OpenAI-compatible endpoint omits the details object altogether and reports a total
 /// that is larger than its parts - measured, 19 in and 5 out against a total of 151 - so the
 /// thinking a reasoning model is billed for exists in that dialect only as the difference. Read
@@ -802,13 +805,22 @@ fn usage_of(reported: &Value) -> Usage {
         total.checked_sub(input.unwrap_or_default() + output.unwrap_or_default())
     };
 
+    // note: the two branches disagree about containment, and the difference has to be settled
+    // here or it is settled wrongly by whoever reads the result. A reported
+    // `completion_tokens_details.reasoning_tokens` is already inside `completion_tokens`; a
+    // residual is by construction outside it, being what the total has left over once the prompt
+    // and the completion are taken off. `Usage::output_tokens` is everything generated, so the
+    // residual is added to it and the reported one is not
+    let reported_reasoning = reported["completion_tokens_details"]["reasoning_tokens"].as_u64();
+    let inferred = reported_reasoning.is_none().then(residual).flatten();
+
     Usage {
         input_tokens: input,
-        output_tokens: output,
-        reasoning_tokens: reported["completion_tokens_details"]["reasoning_tokens"]
-            .as_u64()
-            .or_else(residual)
-            .filter(|tokens| *tokens > 0),
+        output_tokens: match (output, inferred) {
+            (output, None) => output,
+            (output, Some(extra)) => Some(output.unwrap_or_default() + extra),
+        },
+        reasoning_tokens: reported_reasoning.or(inferred).filter(|tokens| *tokens > 0),
         cached_input_tokens: reported["prompt_tokens_details"]["cached_tokens"].as_u64(),
     }
 }

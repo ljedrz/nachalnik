@@ -708,9 +708,21 @@ pub enum StopReason {
 pub struct Usage {
     /// Tokens in the request.
     pub input_tokens: Option<u64>,
-    /// Tokens in the response.
+    /// Everything the model generated and is charged for, reasoning included.
+    ///
+    /// note: *including* the reasoning, which is the half a provider has to be careful about,
+    /// because the dialects do not agree and the field cannot mean two things. OpenAI's
+    /// `completion_tokens` already contains it; Google reports `candidatesTokenCount` and
+    /// `thoughtsTokenCount` side by side and defines its own total as the two plus the prompt, so
+    /// a provider speaking that dialect adds them. The rule is what makes `input_tokens +
+    /// output_tokens` the whole bill for a request whichever endpoint answered it - and a figure
+    /// that means one thing per provider is not a figure anybody can put beside another.
     pub output_tokens: Option<u64>,
-    /// Tokens spent on reasoning, where reported separately.
+    /// How much of [`Self::output_tokens`] was reasoning, where the provider says.
+    ///
+    /// note: a part of that number rather than a second one beside it, so it is never added to
+    /// anything - it is subtracted from it to find what the answer itself cost. `None` means the
+    /// provider did not say, which is not the same as zero and must not be shown as it.
     pub reasoning_tokens: Option<u64>,
     /// Request tokens that were served from the provider's cache.
     pub cached_input_tokens: Option<u64>,

@@ -339,6 +339,12 @@ pub struct App {
     pub grants: ratatui::widgets::ListState,
     /// Whether the last stop was asked for rather than reached.
     interrupting: bool,
+    /// Whether the model has been seen to think without showing any of it, so it is said once.
+    ///
+    /// note: a property of the endpoint rather than news about a turn, the way `repairs` below is.
+    /// A model that returns no reasoning returns none of it every turn, and saying so after each
+    /// one would be the bug that note describes, in a second place.
+    thought_unseen: bool,
     /// The repairs the last request needed, so that a standing one is said once.
     ///
     /// note: a repair is a property of the context rather than news about a turn. The projection
@@ -425,6 +431,7 @@ impl App {
             chosen: 0,
             grants: ratatui::widgets::ListState::default(),
             interrupting: false,
+            thought_unseen: false,
             reported_repairs: Vec::new(),
             since: Instant::now(),
             question_scroll: 0,
@@ -928,7 +935,28 @@ impl App {
                     );
                 }
             }
-            Event::ModelFinished { item, .. } => {
+            Event::ModelFinished { item, usage, .. } => {
+                // note: the tokens are real and the words are gone. Some endpoints bill for
+                // reasoning and return none of it - `mercury-2.5` answered one question with 1,139
+                // reasoning tokens and 273 of answer, and its stream carries no reasoning field at
+                // all - so the context tab shows a turn with nothing in it where the thinking was,
+                // and the only trace of where the money went is a number in `/budget`. Said once,
+                // because it is true of the endpoint rather than of this turn
+                if !self.thought_unseen
+                    && usage.is_some_and(|it| it.reasoning_tokens.is_some_and(|n| n > 0))
+                    && self
+                        .kernel
+                        .item(item)
+                        .is_none_or(|turn| turn.thinking().next().is_none())
+                {
+                    self.thought_unseen = true;
+                    self.say(
+                        Speaker::Note,
+                        "this model is charged for reasoning it does not send back, so its \
+                         thinking is a number in /budget and nowhere else"
+                            .to_owned(),
+                    );
+                }
                 // a provider that does not stream leaves nothing on the screen, so the answer is
                 // read back off the item the kernel recorded. Whether it streamed is remembered
                 // rather than guessed at from the transcript: something else may well have been
@@ -2820,6 +2848,14 @@ impl App {
                     });
                 }
                 lines.push(line);
+
+                // note: the output side belongs here for the same reason the cached figure above
+                // does - it was reported, nothing read it out, and on a reasoning model it is most
+                // of what the turn cost. A budget that accounts for the request and stays silent
+                // about the answer is half a budget
+                if let Some(usage) = budget.reported {
+                    lines.push(format!("and generated {}", crate::ui::charged(&usage)));
+                }
             }
             None => lines.push("nothing has been sent yet, so there is no real figure".to_owned()),
         }
@@ -3105,9 +3141,9 @@ fn trace_line(event: &Event) -> (String, String) {
         } => format!("{messages} messages, {tools} tools, ~{tokens} tokens"),
         Event::ModelFinished { stop, usage, .. } => match usage {
             Some(usage) => format!(
-                "{stop:?}, {} in / {} out (reported)",
+                "{stop:?}, {} in / {} (reported)",
                 usage.input_tokens.unwrap_or(0),
-                usage.output_tokens.unwrap_or(0)
+                crate::ui::charged(usage)
             ),
             None => format!("{stop:?}"),
         },
