@@ -518,7 +518,27 @@ impl OpenAiCompatible {
 
         // the same entry carries what the model will accept, and reading it here costs nothing:
         // the round trip has already happened
-        if let Some(listed) = entry["supported_parameters"].as_array() {
+        //
+        // note: two names for it, because two dialects publish it differently and neither is
+        // wrong. OpenRouter's `supported_parameters` lists everything a request may carry, sampling
+        // knobs and `tools` and `response_format` together; Inception's
+        // `supported_sampling_parameters` lists the sampling knobs only and puts the rest under
+        // `supported_features`. Reading whichever is present beats reading one and calling the
+        // other silence: an endpoint that published its list and had it go unread is an endpoint
+        // where `/params` says nothing about a `top_p` the model ignores, which is the single thing
+        // that check exists to say.
+        //
+        // note: what the narrower name costs is a narrower answer to the same question. Set a
+        // *non*-sampling parameter against an endpoint that publishes only the sampling ones and it
+        // is reported as unlisted - `response_format` on `mercury-2.5` is exactly that, absent from
+        // the sampling list and served all the same. The message is worded "does not list", which
+        // stays true either way; it is the "and ignored" beside it that is guessing, and only for
+        // that class. The trade is one class of parameter over-reported against every class going
+        // unchecked, which is the position this was in.
+        if let Some(listed) = entry["supported_parameters"]
+            .as_array()
+            .or_else(|| entry["supported_sampling_parameters"].as_array())
+        {
             *self.parameters.lock() = listed
                 .iter()
                 .filter_map(|name| name.as_str().map(str::to_owned))
@@ -1503,5 +1523,80 @@ mod tests {
             !Unsent::Interrupted.worth_waiting_out(),
             "esc is a decision, not a delay"
         );
+    }
+
+    /// Serves one model listing and closes, so a `probe` reads a real HTTP response off a real
+    /// socket rather than a parsed literal.
+    async fn listing(body: &'static str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = listener.local_addr().expect("its address");
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut discard = [0u8; 4096];
+                let _ = socket.read(&mut discard).await;
+                let _ = socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                             Content-Length: {}\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        format!("http://{at}")
+    }
+
+    /// note: the two shapes are quoted from what the two endpoints really answer, trimmed to the
+    /// fields being read. The Inception one is the case that prompted this: it published a list,
+    /// nothing read it, and `/params` had nothing to say about a parameter `mercury-2.5` ignores.
+    #[tokio::test]
+    async fn a_listing_is_read_under_either_name_for_what_the_model_takes() {
+        let openrouter = r#"{"data":[{"id":"m","context_length":128000,
+            "supported_parameters":["temperature","top_p","tools"]}]}"#;
+        let inception = r#"{"data":[{"id":"m","context_length":260000,
+            "supported_sampling_parameters":["temperature","stop"],
+            "supported_features":["tools","json_mode"]}]}"#;
+
+        for (shape, body, limit, takes) in [
+            (
+                "supported_parameters",
+                openrouter,
+                128_000,
+                vec!["temperature", "top_p", "tools"],
+            ),
+            (
+                "supported_sampling_parameters",
+                inception,
+                260_000,
+                vec!["temperature", "stop"],
+            ),
+        ] {
+            let provider = OpenAiCompatible::new("m", listing(body).await, "no key needed");
+            provider.probe().await;
+
+            let info = provider.info();
+            assert_eq!(info.context_limit, Some(limit), "{shape}");
+            assert_eq!(info.parameters, takes, "{shape}");
+        }
+    }
+
+    /// An endpoint that publishes neither name says nothing, and silence is not a claim that the
+    /// model refuses everything - ollama and a bare proxy both answer this way.
+    #[tokio::test]
+    async fn a_listing_that_names_no_parameters_leaves_the_list_empty() {
+        let bare = r#"{"data":[{"id":"m","context_length":4096}]}"#;
+        let provider = OpenAiCompatible::new("m", listing(bare).await, "no key needed");
+        provider.probe().await;
+
+        assert_eq!(provider.info().context_limit, Some(4096));
+        assert!(provider.info().parameters.is_empty());
     }
 }

@@ -5,6 +5,24 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- A model listing is read for what the model takes under either name the two dialects publish it
+  as. `supported_parameters` is OpenRouter's and was the only one read; Inception's endpoint calls
+  it `supported_sampling_parameters`, so its list went unread and `/params` fell silent - the check
+  that exists to say *this parameter is sent and ignored* said nothing about a `top_p` that
+  `mercury-2.5` does not take. Silence there is indistinguishable from an endpoint that publishes
+  no list at all, which ollama and a bare proxy really do, so there was nothing on screen to
+  suggest the answer was missing rather than empty.
+
+  What the narrower name costs is written down beside it: it lists the sampling knobs only and
+  leaves `tools` and `response_format` to `supported_features`, so a non-sampling parameter set
+  against such an endpoint is now reported as unlisted when it is served perfectly well. The
+  message reads "does not list", which stays true either way; it is "and ignored" beside it that
+  guesses, and only for that class. One class over-reported beats every class unchecked.
+
 ## [0.6.0] - 2026-09-08
 
 ### added
