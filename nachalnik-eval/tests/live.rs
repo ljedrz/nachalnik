@@ -29,7 +29,7 @@ use std::{env, sync::Arc};
 use nachalnik::{Config, Kernel, Params, Provider};
 use nachalnik_eval::{
     Experiment, Outcome, Step, Subject, Trial,
-    suite::{Attribution, Recursion},
+    suite::{Attribution, DEPOT, Recursion},
 };
 use nachalnik_utils::{OpenAiCompatible, api_key, out_of_quota};
 use serde_json::json;
@@ -133,18 +133,27 @@ fn audit(outcome: &Outcome) {
 #[tokio::test]
 async fn a_real_model_can_be_asked_what_its_answer_is_made_of() {
     let _turn = SERIAL.lock().await;
-    let Some(outcome) = run(Attribution::new()).await else {
+    // note: `on(&DEPOT)`, because this asks whether the round trip works rather than what a model
+    // scores, and the default material has been all six dossiers since v4 - which is 60 conditions
+    // and 126 requests for a test whose whole subject is that a reading comes back readable. The
+    // whole battery is the `bench` example's job.
+    let Some(outcome) = run(Attribution::new().on(&DEPOT)).await else {
         return;
     };
 
     audit(&outcome);
-    // the depot dossier has seven notes and each is ablated once, against one control
+    // each note is ablated once, against one control
+    //
+    // note: counted off the dossier rather than written down. It was written down - as eight, for
+    // the seven notes the depot had when this was written - and the dossier grew to nine without
+    // the test noticing, because nothing in CI runs this file. A number a reader has to keep in
+    // step with material next door is a number that will stop being true.
     let conditions = outcome
         .steps
         .iter()
         .filter(|step| matches!(step, Step::Measured { .. }))
         .count();
-    assert_eq!(conditions, 8);
+    assert_eq!(conditions, DEPOT.notes.len() + 1);
 }
 
 #[tokio::test]
