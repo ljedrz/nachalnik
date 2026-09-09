@@ -661,8 +661,28 @@ async fn eliding_a_tool_result_keeps_the_call_and_the_api_accepts_it() {
     );
 
     // and the model read the marker for what it is rather than inventing the answer
-    let said = answer(&kernel);
-    assert!(!said.is_empty());
+    //
+    // note: asked again with room to think when the first turn came back with nothing, because on
+    // a reasoning model nothing usually means it never got as far as an answer. `max_tokens` is
+    // 500 for this whole file and `mercury-2.5` stopped on `Length` here having spent all 482 of
+    // its output tokens thinking - which is the failure the comment on `params` warns about, and
+    // which the assertion below would otherwise pass on, since a model that said nothing did not
+    // say `APRICOT` either. This is the one question in the file whose subject is what the model
+    // *said*, so it is the one that has to survive it.
+    let mut said = answer(&kernel);
+    if said.trim().is_empty() {
+        kernel.set_params(params(4_000));
+        kernel.push(ContextItem::user(
+            "What is the code word? If you cannot see it any more, say NOT VISIBLE and nothing \
+             else.",
+        ));
+        turn!(kernel);
+        said = answer(&kernel);
+    }
+    assert!(
+        !said.is_empty(),
+        "asked twice, the second time with room to think, and got nothing either time"
+    );
     assert!(
         !said.to_lowercase().contains("apricot"),
         "the code word is not in the request any more, so it should not be in the answer: {said}"
@@ -697,14 +717,18 @@ async fn a_truncated_tool_result_is_still_a_valid_request() {
 
     assert!(shown.content.to_text().len() < 400, "it was truncated");
     assert!(shown.content.to_text().contains("bytes truncated"));
+    // note: `included_because` rather than `note`, which is where the kernel has put this since
+    // 0.3.2 - a note says why an item is in its *current state* and is replaced whenever that
+    // changes, and being a shortened copy is a fact about what the item holds. The offline test
+    // moved with the code and this one did not, which is what a suite nothing in CI runs costs.
     assert!(
         shown
-            .note
+            .included_because
             .as_deref()
             .unwrap_or_default()
             .contains("truncated"),
         "and the item says so: {:?}",
-        shown.note
+        shown.included_because
     );
 
     // and only the short one crossed the wire, once
@@ -728,8 +752,17 @@ async fn compaction_before_a_request_produces_a_request_the_api_accepts() {
         threshold: 0.0,
         target: 0.0,
     })));
+    // the turn that asked for it, because a pass may only take what the request is *carrying* and
+    // the projection is what knows: a result whose call is nowhere in the context is one the
+    // projector drops as an orphan, and a compactor is then right to leave it alone. That guard
+    // arrived in 0.3.2 and this fixture was a bare result until now, so the pass had nothing to do
+    let call = ToolCall::new("call_0", "cargo", Arc::new(json!({ "args": "check" })));
+    kernel.push(ContextItem::assistant(
+        Content::text("let me build it"),
+        vec![call.clone()],
+    ));
     kernel.push(ContextItem::tool_result(
-        "call_0".into(),
+        call.id.clone(),
         "cargo",
         format!("{}\n", "warning: unused variable\n".repeat(200)),
         false,
