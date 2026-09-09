@@ -84,7 +84,10 @@ the crate.
 
 `kamchatka/src`: `app/` (the state - `mod.rs` is what the screen may ask of it and what a
 kernel event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands and
-`text.rs` turns a runtime value into a line), `ui.rs` (drawing only - it decides nothing),
+`text.rs` turns a runtime value into a line), `ui/` (drawing only - it decides nothing:
+`mod.rs` is the frame and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel
+that floats over one, `markdown.rs` and `table.rs` a model's prose turned into styled lines,
+`text.rs` the measuring and fitting),
 `tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `introspect.rs` (the two
 off-by-default tools an agent inspects and manages its own context with), `provider.rs` (the OpenAI-compatible
 dialect, and the `Endpoint` trait both providers answer), `gemini.rs` (Google's own, the one that
