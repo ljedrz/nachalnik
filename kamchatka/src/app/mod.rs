@@ -1,0 +1,1633 @@
+//! Everything the terminal knows: what is on the screen, what the keys do, and what to make of
+//! the events the kernel broadcasts.
+//!
+//! note: The kernel is driven from a task of its own, and this loop never blocks on it. What
+//! arrives here is [`Event`]s - the same ones the session log is made of - so the screen is a
+//! rendering of the record rather than a second account of it. When a turn stops for a decision,
+//! the task ends and hands control back; nothing is waiting on a channel for an answer.
+
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, VecDeque},
+    sync::Arc,
+    time::Instant,
+};
+
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use nachalnik::{
+    Capability, Content, ContextId, ContextItem, ContextKind, Delta, Event, Grant, GrantSource,
+    Kernel, PermissionRequest, State, Verdict, selectors::Selector,
+};
+use ratatui_textarea::{TextArea, WrapMode};
+use tokio::sync::mpsc::UnboundedSender;
+
+use crate::{
+    provider::Endpoint,
+    sandbox::Confinement,
+    tools::{Careful, Limits, Subject},
+    ui::thousands,
+};
+
+mod command;
+mod keys;
+mod text;
+
+use text::{head, moved, one_line, request_preview, trace_line, unpadded};
+
+/// How many trace lines are kept; the session log is the one that keeps everything.
+const TRACE_DEPTH: usize = 400;
+
+/// How much of a still-running tool's output the transcript holds on to.
+///
+/// note: a tool's output and nothing else. A command can produce megabytes and the whole of it is
+/// in the context either way, one keystroke from being read - but a *message* is never shortened
+/// on the way to the screen, however long it is. See [`App::append`].
+const LIVE_OUTPUT: usize = 8_000;
+
+/// Which half of the window the keys are talking to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Focus {
+    /// The prompt, which is on the chat tab and wherever an item is being edited.
+    Input,
+    /// Whatever else on the screen takes keys: the tab's own body, or - on the chat tab - the
+    /// question standing in the prompt's place, which is the only thing there that does.
+    Body,
+}
+
+/// What the window is showing.
+///
+/// note: Whole-window tabs rather than panes side by side. Three things want the screen - the
+/// conversation, the context and the event stream - and splitting it between them meant all three
+/// were cramped: the trace was cut off mid-sentence, the context could only afford a label and a
+/// number, and a long answer was reading in sixty columns. Only one of them is being read at a
+/// time. The status line is under all of them, because the budget is always worth seeing; the
+/// prompt is not, because three of the four are read and operated rather than typed into, and a
+/// prompt there was a mode - every letter on those tabs meant one of two things depending on where
+/// the focus had got to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tab {
+    /// The conversation.
+    Chat,
+    /// The context, item by item.
+    Context,
+    /// Every event, as it happens.
+    Trace,
+    /// What the policy will do about each capability, and what that covers.
+    Permissions,
+}
+
+impl Tab {
+    /// The tabs, in the order they are shown.
+    pub const ALL: [Self; 4] = [Self::Chat, Self::Context, Self::Trace, Self::Permissions];
+
+    /// What it is called on the tab strip.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Chat => "chat",
+            Self::Context => "context",
+            Self::Trace => "trace",
+            Self::Permissions => "permissions",
+        }
+    }
+}
+
+/// One row of the permissions tab: a capability or a path rule, what the policy will answer about
+/// it, and the tools that would be affected.
+pub struct Stance {
+    /// What the row is about: a capability, or a pattern the paths are matched against.
+    pub subject: Subject,
+    /// What the policy answers about it today.
+    pub verdict: Verdict,
+    /// The registered tools that declare it, in the order the model is offered them.
+    pub tools: Vec<String>,
+    /// The registered tools the policy judges against it only sometimes, by looking at the call.
+    ///
+    /// note: `network` and `shell` are the pair this exists for. No tool here declares `network` -
+    /// a model that wants the network writes `curl` - so the row read `nothing registered needs
+    /// it` beside a verdict of `deny`, which is a restriction that was not there. What is there is
+    /// [`crate::tools::Careful`] reading the command, and that is what this says.
+    pub sometimes: Vec<String>,
+}
+
+impl Stance {
+    /// Whether somebody has actually answered about this, as opposed to it being the default.
+    pub fn is_decided(&self) -> bool {
+        self.verdict != Verdict::Ask
+    }
+}
+
+/// One line of the trace pane: an event's name, and what it says for itself.
+pub struct Traced {
+    /// The dotted name, e.g. `model.requested`; empty for a continuation line.
+    pub name: String,
+    /// The rest of it.
+    pub detail: String,
+    /// When it arrived.
+    ///
+    /// note: what a log is missing without a clock is the question people actually bring to one:
+    /// which step was slow. Kept as an instant rather than a rendered string because what the
+    /// pane shows is the gap to the line above, which is not a property of either line alone.
+    pub at: Instant,
+}
+
+/// What is being shown over the top of everything else.
+pub enum Overlay {
+    /// Something long enough to need its own screen.
+    Text {
+        /// What it is.
+        title: String,
+        /// Its faces, in the order they are offered; almost everything has exactly one.
+        pages: Vec<Page>,
+        /// Which of them is on screen.
+        page: usize,
+        /// How far down it is scrolled.
+        scroll: usize,
+    },
+}
+
+/// One face of whatever an overlay is showing.
+///
+/// note: a context item has more than one honest answer to "what is this?" - what the request
+/// will contain, what the item says, and what it said before somebody rewrote it - and picking
+/// one of them to show was how the viewer came to be quietly wrong about the other two.
+pub struct Page {
+    /// What to call it on the strip along the top.
+    pub name: String,
+    /// The thing itself.
+    pub body: String,
+}
+
+/// Who produced a line of the transcript.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Speaker {
+    /// The person at the terminal.
+    User,
+    /// The model's answer.
+    Model,
+    /// The model's reasoning, where the provider exposes it.
+    Reasoning,
+    /// A tool the model asked for.
+    Call,
+    /// What that tool said.
+    Result,
+    /// The runtime, saying what it did.
+    Note,
+    /// Something went wrong.
+    Error,
+}
+
+/// One contribution to the conversation.
+pub struct Entry {
+    /// Who said it.
+    pub speaker: Speaker,
+    /// What they said.
+    pub text: String,
+    /// Whether more of it is still arriving.
+    pub open: bool,
+    /// The context item this line became, once there is one.
+    ///
+    /// note: what the screen says and what the context holds do not arrive together, so this is
+    /// filled in by `App::attribute` when the item exists rather than when the line is printed.
+    /// A streamed answer is on screen fragment by fragment and has no identifier until
+    /// `ModelFinished`; a call is printed after the turn that asked for it; a message typed into a
+    /// running turn is said at once and pushed when the turn stops.
+    ///
+    /// note: `None` means *nothing here knows*, not *not going*. The chat leaves those lines
+    /// alone rather than guessing, which is why a site this was never wired into shows an
+    /// unmarked row instead of quietly claiming the model still reads it.
+    pub item: Option<ContextId>,
+    /// The item this line used to be, if somebody edited it here.
+    ///
+    /// note: an edit supersedes, so the line shows what the *new* item says, in the place the old
+    /// one occupied. That is the conversation the model is really in - the alternative, a
+    /// replacement said at the end of the transcript, puts a turn edited twenty exchanges ago
+    /// after everything that followed it and describes an order no request ever had. What this
+    /// keeps is the thread back: the row says which item it was, and the old words are a page of
+    /// the item that replaced it - `App::faces` builds them out of `App::versions`, which
+    /// `App::commit_edit` files under the *new* identifier for exactly this reason.
+    ///
+    /// note: [`Entry::text`] is left holding what was said at the time, and the new words are read
+    /// out of the item by [`App::said`]. So this is a pointer to the edit rather than a copy of
+    /// it, which is what lets an `undo` of the edit reach the screen.
+    pub was: Option<ContextId>,
+}
+
+/// What the next request does with each context item.
+///
+/// note: the two halves are one answer, taken from one projection, because they have to agree:
+/// every item is either in the request for some number of tokens or out of it for a reason, and a
+/// screen that worked the two out separately would have rows that are neither.
+pub struct Going {
+    /// What each item in the request costs it.
+    pub costs: BTreeMap<ContextId, usize>,
+    /// Why each item that is not in the request was left out, in the projector's own words.
+    pub left_out: BTreeMap<ContextId, String>,
+}
+
+impl Going {
+    /// Whether this item's own content is going into the request.
+    ///
+    /// note: two conditions rather than [`nachalnik::ContextState::sends_content`], and the
+    /// second is the one that bites. An item may be in a state that sends content and still not
+    /// be in the request, because a projector repairs a request to keep it valid - a second
+    /// result for a call that already has one is dropped, which is what putting the whole of a
+    /// truncated output back beside the short copy produces. Anything asking "is this item's
+    /// content going" asks here, so that the columns, the reason beside them and `/budget`
+    /// cannot drift apart.
+    pub fn sends_content(&self, item: &ContextItem) -> bool {
+        item.state.sends_content() && self.costs.contains_key(&item.id)
+    }
+}
+
+/// What the kernel's task reports when it stops.
+pub enum Outcome {
+    /// The turn ended in this state.
+    Stopped(State),
+    /// One transition happened, and produced this state.
+    Stepped(State),
+    /// It could not be finished.
+    Failed(String),
+}
+
+/// The whole of the terminal's state.
+pub struct App {
+    /// The runtime.
+    pub kernel: Kernel,
+    /// When the runtime last started doing something, for the marker that says it still is.
+    ///
+    /// note: read at draw time rather than counted in frames, so the marker keeps time with the
+    /// world instead of with the redraw rate - and so that it stops dead if the screen stops
+    /// being drawn, which is the one thing it exists to make visible.
+    pub since: Instant,
+
+    /// The policy, which the permission overlay teaches.
+    pub policy: Arc<Careful>,
+    /// The provider, for switching models - whichever dialect it speaks.
+    pub provider: Arc<dyn Endpoint>,
+    /// How much of each tool's output the model is shown, which `/limit` changes.
+    ///
+    /// note: the same handle the tools were built with, so `/limit` changes the number they will
+    /// actually declare on the next request. Holding a second one would be a command that reports
+    /// success and does nothing.
+    pub limits: Limits,
+    /// What items used to say, oldest first, for the ones that have been rewritten.
+    ///
+    /// note: kept here rather than in the kernel because the kernel deliberately does not keep
+    /// it. A replacement is the one context operation that overwrites something, which is why
+    /// [`nachalnik::Event::ContextReplaced`] is the one event that carries content - so that a
+    /// client which wants the history can have it, and one that does not pays nothing. Before
+    /// this, an `amend` that rewrote a tool result left the old text nowhere a person could read
+    /// it: on the trace as a line of JSON, and in an undo window that closes.
+    versions: BTreeMap<ContextId, Vec<Content>>,
+
+    /// The handle the two introspection tools reach the kernel through, while they are offered.
+    ///
+    /// note: it is here rather than in `main` because `/introspect` turns them on and off, and this is
+    /// the thing that has to move when it does: they hold a weak handle to it, so dropping it is
+    /// what takes their reach away. See [`crate::introspect::install`].
+    pub introspect: Option<Arc<Kernel>>,
+    /// How much of the shell's sandbox the kernel agreed to, asked once at startup.
+    ///
+    /// note: on `App` rather than worked out where it is drawn, because finding out means
+    /// applying a ruleset in a child process and that is not something a frame should be doing
+    /// sixty times a second. It cannot change while the program runs.
+    pub confinement: Confinement,
+    /// The conversation.
+    pub transcript: Vec<Entry>,
+    /// Every event, name and detail.
+    pub trace: VecDeque<Traced>,
+    /// The prompt.
+    pub input: TextArea<'static>,
+    /// Which pane the keys go to.
+    pub focus: Focus,
+    /// Which of the listed context items is picked out; an index into [`App::listed`], which is
+    /// not the whole context when `sending_only` is on.
+    pub selected: usize,
+    /// Whether the context tab lists only what the next request carries, leaving out everything
+    /// that has been pruned, archived or superseded.
+    pub sending_only: bool,
+    /// Where the context pane is scrolled to, which it keeps between frames.
+    pub list: ratatui::widgets::ListState,
+    /// What is on top, if anything.
+    pub overlay: Option<Overlay>,
+    /// The first transcript line on screen.
+    pub scroll: usize,
+    /// Whether the transcript sticks to the bottom.
+    pub follow: bool,
+    /// Which tab the window is showing.
+    pub tab: Tab,
+    /// How far back through the trace it is scrolled, in lines from the bottom.
+    pub trace_scroll: usize,
+    /// Whether a turn is running.
+    pub busy: bool,
+    /// Whether it is time to leave.
+    pub quit: bool,
+    /// How many wrapped lines the transcript came to, as of the last frame.
+    pub rendered: usize,
+    /// How many lines fit, as of the last frame.
+    pub viewport: usize,
+    /// Which context item the prompt is editing, if it is editing one rather than composing a
+    /// message.
+    pub editing: Option<ContextId>,
+    /// Whether the loop is being driven a transition at a time, so that answering a permission
+    /// does not quietly run the rest of the turn.
+    pub stepping: bool,
+    /// Digits typed at the context tab, waiting for the key that uses them.
+    pub count: String,
+    /// Which capability is picked out on the permissions tab.
+    pub chosen: usize,
+    /// Where the permissions tab is scrolled to, which it keeps between frames.
+    pub grants: ratatui::widgets::ListState,
+    /// Whether the last stop was asked for rather than reached.
+    interrupting: bool,
+    /// Whether the model has been seen to think without showing any of it, so it is said once.
+    ///
+    /// note: a property of the endpoint rather than news about a turn, the way `repairs` below is.
+    /// A model that returns no reasoning returns none of it every turn, and saying so after each
+    /// one would be the bug that note describes, in a second place.
+    thought_unseen: bool,
+    /// The repairs the last request needed, so that a standing one is said once.
+    ///
+    /// note: a repair is a property of the context rather than news about a turn. The projection
+    /// is built afresh for every request, so the projector re-does the repair and honestly
+    /// re-reports it - which put a line about item 4's dropped call in the conversation after
+    /// every message for the rest of a session, for one tool result excluded once. All four kinds
+    /// behave this way: an orphaned call, an orphaned result, a flattened turn and a result held
+    /// back all last as long as the state that caused them.
+    ///
+    /// note: the *conversation* only. The trace keeps every one, because it is the event log and a
+    /// log that hid a repeated entry would be the wrong thing entirely - `model.requested` really
+    /// did carry that repair, every time.
+    reported_repairs: Vec<String>,
+    /// How far down the pinned question's arguments are scrolled.
+    ///
+    /// note: on the app rather than on the question, because there is no question to hang it on:
+    /// what stands in the prompt's place is drawn from `pending_permissions()` every frame, so
+    /// there is no state saying a question is open and none to get out of step with the kernel.
+    pub question_scroll: usize,
+    /// A message somebody sent into a turn that was already running, waiting for it to end.
+    typed_ahead: Option<String>,
+    /// Whether the response being awaited has put anything on the screen of its own.
+    streamed: bool,
+    /// The turn the calls being printed came out of.
+    ///
+    /// note: `ToolRequested` names the call and the tool and not the item that proposed them, and
+    /// by the time it arrives the turn has finished - so the identifier is kept from
+    /// `ModelFinished`, which is the last event before it that has one.
+    last_turn: Option<ContextId>,
+    /// How much the running tool has said so far, for the one trace line that counts it.
+    streamed_bytes: usize,
+    /// Where a finished turn reports itself.
+    outcomes: UnboundedSender<Outcome>,
+}
+
+impl App {
+    /// Builds the terminal's state around a kernel that is already wired up.
+    pub fn new(
+        kernel: Kernel,
+        policy: Arc<Careful>,
+        provider: Arc<dyn Endpoint>,
+        limits: Limits,
+        outcomes: UnboundedSender<Outcome>,
+    ) -> Self {
+        let mut input = TextArea::default();
+        input.set_placeholder_text("ask for something, or /help");
+        input.set_cursor_line_style(ratatui::style::Style::default());
+        // a long message wraps rather than scrolling sideways: the default keeps one long line on
+        // one row and slides it under the left border, so what somebody typed a moment ago is off
+        // the screen while they are still typing it. `WordOrGlyph` breaks at spaces and splits a
+        // word only when it could not fit on a line of its own - a path or a URL, which is
+        // exactly the thing worth seeing all of
+        input.set_wrap_mode(WrapMode::WordOrGlyph);
+
+        Self {
+            kernel,
+            policy,
+            provider,
+            limits,
+            versions: BTreeMap::new(),
+            introspect: None,
+            // the terminal's own default, for a screen test that never spawns anything; the
+            // program overwrites it with what a child process actually reported
+            confinement: Confinement::Unsupported,
+            transcript: Vec::new(),
+            trace: VecDeque::new(),
+            input,
+            focus: Focus::Input,
+            selected: 0,
+            sending_only: false,
+            list: ratatui::widgets::ListState::default(),
+            overlay: None,
+            scroll: 0,
+            follow: true,
+            tab: Tab::Chat,
+            trace_scroll: 0,
+            busy: false,
+            quit: false,
+            rendered: 0,
+            viewport: 0,
+            editing: None,
+            stepping: false,
+            count: String::new(),
+            chosen: 0,
+            grants: ratatui::widgets::ListState::default(),
+            interrupting: false,
+            thought_unseen: false,
+            reported_repairs: Vec::new(),
+            since: Instant::now(),
+            question_scroll: 0,
+            typed_ahead: None,
+            streamed: false,
+            last_turn: None,
+            streamed_bytes: 0,
+            outcomes,
+        }
+    }
+
+    // ------------------------------------------------------------------------ saying things
+
+    /// Adds a finished entry to the transcript, ending whatever was still arriving.
+    ///
+    /// note: only the person's own line takes the view back to the bottom. Everything else that
+    /// arrives leaves the scroll where somebody put it - a model writing four hundred lines used
+    /// to yank the window back to the newest of them on every fragment, so reading anything it
+    /// had said thirty seconds ago was impossible until the turn ended.
+    pub fn say(&mut self, speaker: Speaker, text: impl Into<String>) {
+        let text = text.into();
+        self.close();
+        self.transcript.push(Entry {
+            speaker,
+            text: unpadded(&text).to_owned(),
+            open: false,
+            item: None,
+            was: None,
+        });
+        if speaker == Speaker::User {
+            self.follow = true;
+        }
+    }
+
+    /// Says an error, unless the last thing said was the same error in a smaller envelope.
+    ///
+    /// note: one provider failure is reported twice - once as the event the kernel emitted and
+    /// once as the outcome the turn came to, the second wrapping the first - and two red lines
+    /// saying the same thing is one more than the news warrants; the trace pane has both either
+    /// way. This was guarded on the event and not on the outcome, so it went on happening for
+    /// every refused request: a 400 naming a bad parameter arrived, said itself, and said itself
+    /// again with `the provider failed:` in front of it. It is one method now, because the guard
+    /// belongs to the *reporting* rather than to either of the two places that report.
+    ///
+    /// note: the containment test is the new text against what is already there, in that order,
+    /// because it is the second one that wraps the first. Nothing is suppressed unless it repeats
+    /// the line immediately above it - two different failures in a row are two lines, and a
+    /// failure repeated after something else was said is news about a second attempt.
+    fn say_error(&mut self, error: String) {
+        let repeat = self.transcript.last().is_some_and(|last| {
+            last.speaker == Speaker::Error && unpadded(&error).contains(&last.text)
+        });
+        if !repeat {
+            self.say(Speaker::Error, error);
+        }
+    }
+
+    /// Appends to the open entry from this speaker, opening one if there is none.
+    ///
+    /// note: the bound is on a tool's output and on nothing else, which it did not used to be. A
+    /// `find /` should not be able to fill the transcript up, and the whole of it is in the
+    /// context either way - but a model writing a long answer had its first paragraphs eaten
+    /// while it was still writing the last one, and nothing ever put them back: the finished item
+    /// is read back off the kernel only for a provider that did not stream. A message is what
+    /// somebody came here to read. It is never shortened.
+    fn append(&mut self, speaker: Speaker, fragment: &str) {
+        match self.transcript.last_mut() {
+            Some(entry) if entry.open && entry.speaker == speaker => {
+                entry.text.push_str(fragment);
+                if speaker == Speaker::Result && entry.text.len() > LIVE_OUTPUT {
+                    let cut = entry
+                        .text
+                        .char_indices()
+                        .nth(entry.text.chars().count() - LIVE_OUTPUT / 2)
+                        .map(|(at, _)| at)
+                        .unwrap_or(0);
+                    entry.text = format!(
+                        "[... the earlier output is not repeated here; the whole of it is in the \
+                         context ...]\n{}",
+                        &entry.text[cut..]
+                    );
+                }
+            }
+            _ => {
+                self.close();
+                self.transcript.push(Entry {
+                    speaker,
+                    text: fragment.to_owned(),
+                    open: true,
+                    item: None,
+                    was: None,
+                });
+            }
+        }
+    }
+
+    /// Records which context item the last thing this speaker said became.
+    ///
+    /// note: bounded to the tail this turn owns - the walk back stops at the first line belonging
+    /// to a *different* item - so a turn can only ever claim its own lines. Unbounded, a turn
+    /// whose text was empty because it did nothing but ask for tools would walk past its own
+    /// silence and stamp the *previous* answer with its identifier, which is a row confidently
+    /// marked with the wrong item. The chrome in between (a note, an error) carries no item and
+    /// does not stop the walk, which is what lets it reach past "the turn paused" to the answer
+    /// above it.
+    ///
+    /// note: lines already attributed to *this* item do not stop it either, and that is not a
+    /// nicety. A turn puts two of them on the screen - what it thought and what it said - and
+    /// stopping at the first would leave the thinking unmarked beside a marked answer, which a
+    /// live run does and no test did.
+    fn attribute(&mut self, speaker: Speaker, id: ContextId) {
+        if let Some(entry) = self
+            .transcript
+            .iter_mut()
+            .rev()
+            .take_while(|entry| entry.item.is_none() || entry.item == Some(id))
+            .find(|entry| entry.speaker == speaker && entry.item.is_none())
+        {
+            entry.item = Some(id);
+        }
+    }
+
+    /// Moves the lines that were showing an item onto the one that has replaced it.
+    ///
+    /// note: in place, rather than saying the new text at the end. An edit does not add a turn to
+    /// the conversation, it changes one - and the request the model gets says so, with the new
+    /// words where the old ones were. A transcript that appended them would be the only account
+    /// of this session in a different order from the request it produced.
+    ///
+    /// note: what moves is the attribution and nothing else. The new words are not written into
+    /// the entry, they are read out of the item every frame by [`App::said`] - which is what makes
+    /// an `undo` of the edit reach the screen. See the note there.
+    fn resay(&mut self, old: ContextId, new: ContextId) {
+        for entry in self
+            .transcript
+            .iter_mut()
+            .filter(|entry| entry.item == Some(old))
+        {
+            entry.was = Some(old);
+            entry.item = Some(new);
+        }
+    }
+
+    /// What an edit moved a line between - the item it used to be, and the item it is now - for as
+    /// long as the replacement is in the context.
+    ///
+    /// note: asked every frame rather than settled when the edit was made, because `undo` takes
+    /// the replacement back out and tells the screen nothing about which line had been moved onto
+    /// it. With the item gone this is `None`, the line is the one it was again, and a `redo` puts
+    /// the edit back - all three without anything here keeping a second account of it. It is the
+    /// same reading the withheld mark does of the projection, for the same reason: an edit is a
+    /// fact about the context, not about the transcript.
+    pub fn edit_of(&self, entry: &Entry) -> Option<(ContextId, Arc<ContextItem>)> {
+        Some((entry.was?, self.kernel.item(entry.item?)?))
+    }
+
+    /// What a line says: the words that were said, or - where an edit moved it onto the item that
+    /// replaced them - what that item says instead.
+    ///
+    /// note: only the line that showed what the item *said*. An edit carries the kind over whole,
+    /// so the turn's calls and its thinking are unchanged and the lines showing them still show
+    /// the truth; what they need is the new identifier, and `App::resay` gives them that.
+    pub fn said<'a>(&'a self, entry: &'a Entry) -> Cow<'a, str> {
+        match self.edit_of(entry) {
+            Some((_, now))
+                if matches!(
+                    entry.speaker,
+                    Speaker::User | Speaker::Model | Speaker::Result
+                ) =>
+            {
+                Cow::Owned(unpadded(&now.content.to_text()).to_owned())
+            }
+            _ => Cow::Borrowed(&entry.text),
+        }
+    }
+
+    /// Records the item for a line that was said long before it could be pushed.
+    ///
+    /// note: for the message typed into a running turn, which is on screen immediately and goes
+    /// into the context when the turn stops - with everything the turn said in between, all of it
+    /// attributed, so [`App::attribute`] would stop dead before reaching it. Searching forwards
+    /// is exact rather than a guess: only one message can be waiting at a time, and every earlier
+    /// one was attributed as it was pushed, so the first unattributed line from that speaker is
+    /// the one that just went in.
+    fn attribute_waiting(&mut self, speaker: Speaker, id: ContextId) {
+        if let Some(entry) = self
+            .transcript
+            .iter_mut()
+            .find(|entry| entry.speaker == speaker && entry.item.is_none())
+        {
+            entry.item = Some(id);
+        }
+    }
+
+    /// Closes whatever was still arriving, and drops it if it turned out to be nothing.
+    fn close(&mut self) {
+        let Some(entry) = self.transcript.last_mut() else {
+            return;
+        };
+
+        entry.open = false;
+        entry.text = unpadded(entry.text.trim_end()).to_owned();
+        if entry.text.is_empty() {
+            self.transcript.pop();
+        }
+    }
+
+    /// Renders a context that already exists as a conversation, for a session picked back up.
+    ///
+    /// note: A resumed session arrives as one [`Event::SessionResumed`] rather than a thousand
+    /// additions, which is the truthful thing for the runtime to broadcast - what happened is
+    /// that a session was picked up, not that a thousand things were said. It does leave the
+    /// screen with nothing on it, so this reads the conversation back off the context. It is a
+    /// rendering of state rather than a replay of events, and it says so at the end, because the
+    /// items it draws as a conversation are not all necessarily going to be sent.
+    pub fn replay(&mut self) {
+        let items = self.kernel.items();
+        self.retell(&items);
+
+        let withheld = items.iter().filter(|item| !item.is_projected()).count();
+        self.say(
+            Speaker::Note,
+            format!(
+                "resumed session {}: {} items, ~{} tokens{}",
+                self.kernel.session_name(),
+                items.len(),
+                self.kernel.budget().context_tokens,
+                match withheld {
+                    0 => String::new(),
+                    n => format!(", {n} of which the pane says are not being sent"),
+                }
+            ),
+        );
+    }
+
+    /// Puts a run of context items on the transcript as the conversation they were.
+    fn retell(&mut self, items: &[Arc<ContextItem>]) {
+        for item in items {
+            match &item.kind {
+                ContextKind::UserMessage => {
+                    self.say(Speaker::User, item.content.to_text());
+                    self.attribute(Speaker::User, item.id);
+                }
+                ContextKind::AssistantMessage { .. } => {
+                    let text = item.content.to_text();
+                    if !text.trim().is_empty() {
+                        self.say(Speaker::Model, text);
+                        self.attribute(Speaker::Model, item.id);
+                    }
+                    // `calls()`, so a turn the provider recorded as ordered blocks reads back
+                    // with the tools it asked for rather than as bare text
+                    for call in item.calls() {
+                        let args = one_line(&call.args.to_string());
+                        self.say(Speaker::Call, format!("{}({args})", call.tool));
+                        // the calls belong to the turn that asked for them, so a superseded
+                        // answer takes its calls down with it on screen as it does in the request
+                        self.attribute(Speaker::Call, item.id);
+                    }
+                }
+                ContextKind::ToolResult { tool, is_error, .. } => {
+                    self.say(Speaker::Result, head(&item.content.to_text(), 6));
+                    self.attribute(Speaker::Result, item.id);
+                    self.say(
+                        Speaker::Note,
+                        format!(
+                            "{tool}: {} tokens{}",
+                            item.tokens,
+                            match is_error {
+                                true => ", reported as an error",
+                                false => "",
+                            }
+                        ),
+                    );
+                }
+                _ => self.say(
+                    Speaker::Note,
+                    format!(
+                        "[{}] {} ({}), {} tokens",
+                        item.id, item.label, item.source, item.tokens
+                    ),
+                ),
+            }
+        }
+    }
+
+    /// Adds an event to the trace pane.
+    fn trace(&mut self, name: impl Into<String>, detail: impl Into<String>) {
+        if self.trace.len() == TRACE_DEPTH {
+            self.trace.pop_front();
+        }
+        self.trace.push_back(Traced {
+            name: name.into(),
+            detail: detail.into(),
+            at: Instant::now(),
+        });
+    }
+
+    // ---------------------------------------------------------------------- driving the kernel
+
+    /// Starts, or carries on with, a turn.
+    pub fn start_turn(&mut self) {
+        if self.busy {
+            return;
+        }
+
+        self.busy = true;
+        self.since = Instant::now();
+        self.stepping = false;
+        self.interrupting = false;
+        let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
+        tokio::spawn(async move {
+            let outcome = match kernel.turn().await {
+                Ok(state) => Outcome::Stopped(state),
+                Err(e) => Outcome::Failed(e.to_string()),
+            };
+            let _ = outcomes.send(outcome);
+        });
+    }
+
+    /// Performs exactly one transition of the state machine, and stops.
+    ///
+    /// note: This is the runtime's own shape, made visible. A turn is a loop over `step`, and
+    /// running it a transition at a time is the only way to stand in [`State::Ready`] and look at
+    /// what the model has asked for *before* any of it runs - which the kernel documents as a
+    /// resting state on purpose, and which a whole turn walks straight through.
+    pub fn start_step(&mut self) {
+        if self.busy {
+            return;
+        }
+
+        self.busy = true;
+        self.since = Instant::now();
+        self.stepping = true;
+        self.interrupting = false;
+        let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
+        tokio::spawn(async move {
+            let outcome = match kernel.step().await {
+                Ok(state) => Outcome::Stepped(state),
+                Err(e) => Outcome::Failed(e.to_string()),
+            };
+            let _ = outcomes.send(outcome);
+        });
+    }
+
+    /// What one transition landed in, in a form somebody can act on.
+    fn stepped(&mut self, state: State) {
+        let told = match &state {
+            // the whole point of stepping: the calls are decided and about to run, and nothing
+            // has happened yet
+            State::Ready { calls } => {
+                let waiting: Vec<String> = self
+                    .kernel
+                    .pending_calls()
+                    .iter()
+                    .map(|call| format!("    {} {}", call.tool, one_line(&call.args.to_string())))
+                    .collect();
+                format!(
+                    "ready: {} call(s) decided, none of them run yet\n{}",
+                    calls.len(),
+                    waiting.join("\n")
+                )
+            }
+            State::Deciding { calls } => format!("deciding: {} waiting on you", calls.len()),
+            State::Executing { calls } => format!("executing: {} running", calls.len()),
+            State::Finished { stop, .. } => format!("finished: the model stopped, {stop:?}"),
+            other => other.name().to_owned(),
+        };
+
+        self.say(Speaker::Note, format!("step → {told}"));
+    }
+
+    /// Takes in the end of a turn.
+    pub fn on_outcome(&mut self, outcome: Outcome) {
+        self.busy = false;
+        self.close();
+
+        // note: before anything this says about the turn, because most of what a provider puts
+        // here is *about* the turn that just ended - "the model was cut off mid-answer; what had
+        // arrived is kept" is the account of the answer above it, and reads as a remark about the
+        // next one if it lands after. The loop also drains this on a tick, for the notices that
+        // belong to no turn at all, and taking it twice costs nothing.
+        //
+        // note: here rather than only in that loop, so that a notice is not something only the
+        // program's own `main` receives. A cut-off answer that says so to nobody is the failure
+        // this was written to close, and it took a test driving `App` directly to see that it
+        // could still happen.
+        if let Some(notice) = self.provider.take_notice() {
+            self.say(Speaker::Note, notice);
+        }
+
+        // note: a turn that stopped to ask a question has not ended - the call it is asking about
+        // still has a result to come - and a message pushed now would land between the call and
+        // that result, which is a place a request cannot have one. A live run put "what is the
+        // capital of Peru" exactly there
+        let ended = matches!(outcome, Outcome::Stopped(ref state) if !matches!(state, State::Deciding { .. }));
+        // a `Stepped` outcome is somebody driving this a transition at a time, and a failure is
+        // not the moment to start something else; either way what was typed waits for `/continue`
+        let carry_on = ended && !self.interrupting;
+        match outcome {
+            Outcome::Failed(e) => self.say_error(e),
+            // note: a turn stopping to ask says nothing here, and opens nothing. The question is
+            // drawn from `pending_permissions()` every frame, so there is no moment at which it
+            // has to be put on the screen and none at which it has to be taken off - which is
+            // also the end of a class of bug this had: an overlay left standing over a question
+            // that had been answered somewhere else, until the next key closed it
+            Outcome::Stopped(State::Deciding { .. }) => {}
+            // a turn that stops in `Idle` either ran out of requests or was asked to stop, and
+            // the difference matters to whoever is reading the screen
+            Outcome::Stopped(State::Idle) if !self.interrupting => {
+                let budget = self
+                    .kernel
+                    .config()
+                    .max_requests_per_turn
+                    .map(|max| max.to_string())
+                    .unwrap_or_else(|| "the".into());
+                self.say(
+                    Speaker::Note,
+                    format!("the turn paused after {budget} requests; /continue to carry on"),
+                );
+            }
+            Outcome::Stopped(_) => {}
+            Outcome::Stepped(state) => self.stepped(state),
+        }
+        self.interrupting = false;
+
+        // a message somebody sent into this turn has waited for it to end; now it goes in, and
+        // unless the turn was stopped or stepped it gets a turn of its own
+        if ended && let Some(message) = self.typed_ahead.take() {
+            let id = self.kernel.push(ContextItem::user(message));
+            self.attribute_waiting(Speaker::User, id);
+            if carry_on {
+                self.start_turn();
+            }
+        }
+
+        // the counter has just been told what the last request really cost, so the figures on the
+        // older items are out of date. Bringing them into line is a decision, not a side effect
+        self.kernel.recount();
+    }
+
+    // ------------------------------------------------------------------------- kernel events
+
+    /// Takes in one event from the runtime.
+    pub fn on_event(&mut self, event: Event) {
+        // a line per streamed fragment would push everything else out of the trace before it could
+        // be read - and a `cat` of a thousand lines really did erase the whole of it, one
+        // `tool.output` at a time. The fragments themselves are on the chat tab; the session log
+        // has them if `record_progress` is on
+        match &event {
+            Event::ModelDelta { .. } => {}
+            Event::ToolOutput { tool, chunk, .. } => {
+                self.streamed_bytes += chunk.len();
+                let detail = format!("{tool}, {} bytes so far", thousands(self.streamed_bytes));
+                // one line that counts up, rather than one line per chunk
+                match self.trace.back_mut() {
+                    Some(last) if last.name == "tool.output" => last.detail = detail,
+                    _ => self.trace("tool.output", detail),
+                }
+            }
+            _ => {
+                let (name, detail) = trace_line(&event);
+                self.trace(name, detail);
+            }
+        }
+
+        match event {
+            Event::ModelDelta { delta } => match delta {
+                Delta::Text(fragment) => {
+                    self.streamed = true;
+                    self.append(Speaker::Model, &fragment);
+                }
+                Delta::Reasoning(fragment) => self.append(Speaker::Reasoning, &fragment),
+                // the arguments are shown once they parse, as the call the model actually made
+                _ => {}
+            },
+            Event::ModelRequested {
+                repairs, skipped, ..
+            } => {
+                self.streamed = false;
+                self.close();
+
+                // the kernel altering what the model is told is not a detail for the trace pane.
+                // One compaction pass can orphan half a dozen calls at once, though, and six
+                // notices in a row push the answer off the screen to say one thing - so the
+                // conversation gets the fact and ctrl+p gets the list
+                //
+                // note: and only when they change. See `App::reported_repairs` - a repair lasts as
+                // long as the state that caused it, so the projector re-does it for every request
+                // and honestly reports it again, which put this line in the conversation after
+                // every message for the rest of a session over one tool result taken out once
+                //
+                // note: the count is everything being repaired rather than what is newly so,
+                // because it is the number `ctrl+p` will show. And the wording says the repair
+                // stands: in the past tense it reads as something that happened to this one
+                // request, which is exactly what somebody then goes looking for the cause of,
+                // and there is nothing about this turn to find
+                if repairs != self.reported_repairs {
+                    match repairs.len() {
+                        0 => {}
+                        1 => self.say(
+                            Speaker::Note,
+                            format!(
+                                "the request is repaired, and will be while this stands: {}",
+                                repairs[0]
+                            ),
+                        ),
+                        many => self.say(
+                            Speaker::Note,
+                            format!(
+                                "the request is repaired in {many} places, and will be while they \
+                                 stand; ctrl+p says where"
+                            ),
+                        ),
+                    }
+                    self.reported_repairs = repairs.clone();
+                }
+                for repair in &repairs {
+                    self.trace("", format!("repaired: {repair}"));
+                }
+                for left_out in skipped {
+                    self.trace(
+                        "",
+                        format!("[{}] left out: {}", left_out.id, left_out.reason),
+                    );
+                }
+            }
+            Event::ModelFinished { item, usage, .. } => {
+                // note: the tokens are real and the words are gone. Some endpoints bill for
+                // reasoning and return none of it - `mercury-2.5` answered one question with 1,139
+                // reasoning tokens and 273 of answer, and its stream carries no reasoning field at
+                // all - so the context tab shows a turn with nothing in it where the thinking was,
+                // and the only trace of where the money went is a number in `/budget`. Said once,
+                // because it is true of the endpoint rather than of this turn
+                if !self.thought_unseen
+                    && usage.is_some_and(|it| it.reasoning_tokens.is_some_and(|n| n > 0))
+                    && self
+                        .kernel
+                        .item(item)
+                        .is_none_or(|turn| turn.thinking().next().is_none())
+                {
+                    self.thought_unseen = true;
+                    self.say(
+                        Speaker::Note,
+                        "this model is charged for reasoning it does not send back, so its \
+                         thinking is a number in /budget and nowhere else"
+                            .to_owned(),
+                    );
+                }
+                // a provider that does not stream leaves nothing on the screen, so the answer is
+                // read back off the item the kernel recorded. Whether it streamed is remembered
+                // rather than guessed at from the transcript: something else may well have been
+                // said in between - "stopped", for one - and guessing wrong prints the answer
+                // twice
+                if !self.streamed
+                    && let Some(recorded) = self.kernel.item(item)
+                {
+                    let text = recorded.content.to_text();
+                    if !text.trim().is_empty() {
+                        self.say(Speaker::Model, text);
+                    }
+                }
+                self.streamed = false;
+                self.close();
+                // after `close`, which drops an entry that turned out to be empty: attributing
+                // first would stamp a line that is about to be thrown away and leave the real one
+                // bare. Whether it streamed or was read back, this is the first moment the answer
+                // on screen has an item to be judged by
+                self.attribute(Speaker::Model, item);
+                self.attribute(Speaker::Reasoning, item);
+                self.last_turn = Some(item);
+            }
+            Event::ModelFailed { error } | Event::StepFailed { error } => {
+                self.close();
+                self.say_error(error);
+            }
+            // note: a refusal the policy made on its own, which nobody was asked about and which
+            // the tool result records only as `the call was not permitted`. When the tool's own
+            // capability is `allow` - `shell` usually is - that leaves a refused call with nothing
+            // on screen accounting for it, and "why was that refused?" is the question the
+            // permissions tab exists to answer
+            Event::PermissionDecided {
+                call,
+                tool,
+                grant: Grant::Deny,
+                source: GrantSource::Policy,
+                ..
+            } => {
+                if let Some(reason) = self.policy.why(&call) {
+                    self.say(Speaker::Note, format!("{tool}: {reason}"));
+                }
+            }
+            // the one event that carries content, and the only place the old text exists at all
+            // once the undo window closes; the viewer reads it back off `←` and `→`
+            Event::ContextReplaced { id, was, .. } => self.remember(id, was),
+            Event::ToolStarted { .. } => self.streamed_bytes = 0,
+            Event::ToolRequested { tool, args, .. } => {
+                self.close();
+                self.say(
+                    Speaker::Call,
+                    format!("{tool}({})", one_line(&args.to_string())),
+                );
+                // the event names the call, not the turn that proposed it - and the projector
+                // takes a turn's calls down with the turn, so the screen has to as well
+                if let Some(turn) = self.last_turn {
+                    self.attribute(Speaker::Call, turn);
+                }
+            }
+            Event::ToolOutput { chunk, .. } => self.append(Speaker::Result, &chunk),
+            Event::ToolFinished {
+                tool,
+                tokens,
+                is_error,
+                truncated,
+                item,
+                ..
+            } => {
+                // whatever streamed in is replaced by the thing the model was actually given
+                if self
+                    .transcript
+                    .last()
+                    .is_some_and(|entry| entry.open && entry.speaker == Speaker::Result)
+                {
+                    self.transcript.pop();
+                }
+                if let Some(recorded) = self.kernel.item(item) {
+                    self.say(Speaker::Result, head(&recorded.content.to_text(), 6));
+                    self.attribute(Speaker::Result, item);
+                }
+
+                let mut note = format!("{tool}: {tokens} tokens");
+                if is_error {
+                    note.push_str(", reported as an error");
+                }
+                if let Some(bytes) = truncated {
+                    note.push_str(&format!(", {bytes} bytes held back"));
+                }
+                self.say(Speaker::Note, note);
+            }
+            Event::Compacted { report } => {
+                let mut note = format!(
+                    "compacted: {}, {} → {} tokens ({})",
+                    moved(&report),
+                    report.tokens_before,
+                    report.tokens_after,
+                    report.reason
+                );
+                if !report.refused.is_empty() {
+                    note.push_str(&format!(
+                        "; {} refused, because pinned",
+                        report.refused.len()
+                    ));
+                }
+                self.say(Speaker::Note, note);
+            }
+            Event::Interrupted => self.say(Speaker::Note, "stopped"),
+            Event::ToolUnknown { tool, .. } => self.say(
+                Speaker::Error,
+                format!("the model asked for `{tool}`, which is not a tool here"),
+            ),
+            Event::ContextAdded {
+                source,
+                label,
+                tokens,
+                id,
+                ..
+            } if source == "file" => self.say(
+                Speaker::Note,
+                format!("[{id}] {label} is in the context, {tokens} tokens"),
+            ),
+            _ => {}
+        }
+    }
+
+    // ----------------------------------------------------------------------------------- keys
+
+    /// Takes in one key press.
+    pub async fn on_key(&mut self, key: KeyEvent) {
+        // windows reports both halves of every press; everywhere else this is already true
+        if key.kind != KeyEventKind::Press {
+            return;
+        }
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+
+        // before anything else, including whatever is on top: these two mean the same thing
+        // wherever they are pressed, and an overlay that took them for its own would be answering
+        // a question nobody asked. `ctrl+d` at a permission prompt used to drop every pending
+        // call, because `d` is a key there and nothing was looking at the modifiers
+        if ctrl && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')) {
+            match self.busy && key.code == KeyCode::Char('c') {
+                true => self.interrupt(),
+                false => self.quit = true,
+            }
+            return;
+        }
+
+        if self.overlay.is_some() {
+            self.overlay_key(key).await;
+            return;
+        }
+
+        let alt = key.modifiers.contains(KeyModifiers::ALT);
+        // taken rather than read, so that a count lives for exactly one key wherever that key is
+        // handled: only the digit arm below puts it back. Cleared at the end of `context_key`
+        // instead, a `4` followed by `tab` or `F1` - neither of which gets that far - survived to
+        // send the next `G` to item 4
+        let count = std::mem::take(&mut self.count);
+
+        match (key.code, ctrl) {
+            (KeyCode::Esc, _) if self.busy => self.interrupt(),
+            (KeyCode::Char('t'), true) => self.show(self.next_tab()),
+            (KeyCode::Char('1'), _) if alt => self.show(Tab::Chat),
+            (KeyCode::Char('2'), _) if alt => self.show(Tab::Context),
+            (KeyCode::Char('3'), _) if alt => self.show(Tab::Trace),
+            (KeyCode::Char('4'), _) if alt => self.show(Tab::Permissions),
+            (KeyCode::Char('p'), true) => {
+                self.preview("the next request", request_preview(&self.kernel))
+            }
+            // the way back down from wherever the reading got to, without paging through however
+            // much arrived in the meantime. Scrolling to the bottom does it too, and that is the
+            // gesture most people will find first; this is the one for a turn that wrote a
+            // thousand lines while somebody was looking at the twelfth
+            (KeyCode::Char('e'), true) => self.follow = true,
+            // the two ends of the conversation, one key each. With control held, because `home`
+            // and `end` are the prompt's own - a prompt whose keys moved something else while
+            // somebody was editing a line would be the trap
+            (KeyCode::Home, true) => {
+                self.scroll = 0;
+                self.follow = false;
+            }
+            (KeyCode::End, true) => self.follow = true,
+            (KeyCode::F(1), _) => self.preview("the keys", crate::ui::HELP),
+            // `tab` moves the keys to the other thing on the screen that wants them, and on a tab
+            // with no prompt there is no other thing - so it means the one gesture that is always
+            // worth having: back to where typing happens
+            (KeyCode::Tab, _) => match (self.tab, self.asked().is_some()) {
+                // it is what puts the keys on a waiting question, and the only thing that does
+                // from this tab. There is nothing to hand them back to until the question is
+                // answered - it has the prompt's place - so pressing it again is not a way out
+                (Tab::Chat, true) => self.focus = Focus::Body,
+                // the conversation is read rather than operated, so the only thing on the chat tab
+                // that takes keys of its own is a question, and only while there is one
+                (Tab::Chat, false) => {}
+                // an edit is the prompt doing a job for the tab underneath it, and both halves
+                // take keys
+                _ if self.prompted() => self.flip_focus(),
+                _ => self.show(Tab::Chat),
+            },
+            _ => match (self.tab, self.focus) {
+                // the pinned question, which is what `Focus::Body` means on the chat tab
+                (Tab::Chat, Focus::Body) => self.question_key(key).await,
+                // a question is on the screen and has not been given the keys, so the prompt is
+                // not on the screen either and there is nothing here for a key to do
+                (Tab::Chat, Focus::Input) if self.asked().is_some() => self.locked_key(key),
+                (Tab::Context, Focus::Body) => self.context_key(key, &count),
+                (Tab::Trace, Focus::Body) => self.trace_key(key),
+                (Tab::Permissions, Focus::Body) => self.permissions_key(key),
+                _ => self.input_key(key).await,
+            },
+        }
+    }
+
+    /// Opens a tab, and puts the keys wherever they are useful on it.
+    ///
+    /// note: Switching to the context or the trace is something somebody does in order to work on
+    /// it, so the focus follows - and there is nothing else on those tabs for it to be on. On the
+    /// conversation the keys go to the prompt, unless something is being asked: coming back to a
+    /// waiting question is what somebody does *in order to answer it*, having just been away
+    /// looking at what it is about, and making them press `tab` first would be asking twice.
+    pub fn show(&mut self, tab: Tab) {
+        // an edit belongs to the tab it was started from, and leaving that tab abandons it.
+        // Otherwise the prompt is still holding the item's text with `editing` still set, and the
+        // next message somebody types and sends is committed into the context instead of asked
+        self.cancel_edit();
+
+        self.tab = tab;
+        self.focus = match (tab, self.asked().is_some()) {
+            (Tab::Chat, false) => Focus::Input,
+            _ => Focus::Body,
+        };
+    }
+
+    /// The question a tool is waiting on, if one is.
+    ///
+    /// note: asked of the kernel every time rather than held here. What stands in the prompt's
+    /// place is a *rendering* of the kernel's state, so it cannot be open when there is nothing to
+    /// answer, or shut when there is - and [`App::prompted`] reads it for the same reason.
+    pub fn asked(&self) -> Option<PermissionRequest> {
+        self.kernel.pending_permissions().into_iter().next()
+    }
+
+    /// Whether the prompt is on the screen at all.
+    ///
+    /// note: it belongs to the conversation, and it used to be under every tab so that a message
+    /// could be sent from anywhere. What that cost was a mode on three tabs that have no use for
+    /// one: every key on them was either a key or a letter depending on where the focus happened
+    /// to be, and the answer was `tab`, and forgetting was a `space` typed into a message instead
+    /// of cycling the row somebody was looking at. The exception is an edit, which is the prompt
+    /// doing a job for the tab underneath it: the item being rewritten is on that tab, and the box
+    /// has to be beside it.
+    ///
+    /// note: and a waiting question takes its place rather than stacking above it, so that the box
+    /// the keys are in is the box on the screen. Stacked, the two disagreed on any window shorter
+    /// than about fifteen rows: the question needs the room, so the prompt gave way - and went on
+    /// holding the keys and whatever had been typed into it from off the screen, which is a
+    /// session waiting on an answer nobody can give it without first pressing a key nothing
+    /// mentions. What was typed is not lost; the box comes back with it, and `App::locked_key` is
+    /// what stands between a keystroke and a prompt that is not there.
+    pub fn prompted(&self) -> bool {
+        match self.tab {
+            Tab::Chat => self.asked().is_none(),
+            _ => self.editing.is_some(),
+        }
+    }
+
+    /// Puts pasted text into the prompt.
+    ///
+    /// note: the line breaks inside a paste arrive as carriage returns rather than newlines,
+    /// because a terminal sends a paste as though it had been typed and that is what the enter key
+    /// sends. The editor underneath splits on newlines, so a pasted stack trace went in as one
+    /// line with invisible characters where its breaks were and read as its lines run together -
+    /// in the one place whose whole job is to show somebody what they are about to send.
+    pub fn paste(&mut self, text: &str) {
+        self.input
+            .insert_str(text.replace("\r\n", "\n").replace('\r', "\n"));
+    }
+
+    // -------------------------------------------------------------------- what the screen asks
+
+    /// What the next request does with each item: what it costs, or why it is not in it.
+    ///
+    /// note: not [`ContextItem::tokens`], which is what an item *holds*. An elided one holds a
+    /// thousand tokens and costs the dozen its marker takes; an archived one holds whatever it
+    /// holds and costs nothing. A pane that showed the held figure under a column headed `tokens`
+    /// was answering a question nobody asked while the status line beside it answered the right
+    /// one, and the two disagreed by exactly the elided items.
+    ///
+    /// note: read out of the projection rather than worked out here, because what an elided item
+    /// costs is the marker the *projector* writes, in the brackets the projector chooses. A
+    /// client that computed it would be keeping a second copy of a decision that is not its own.
+    ///
+    /// note: and `left_out` comes from the projection for a sharper reason than tidiness. Whether
+    /// an item is going cannot be read off its *state*: a projector repairs a request to keep it
+    /// valid, and an item it repairs away is `Active`, holding everything it holds, and not in the
+    /// request. Restoring the whole of a truncated output beside the copy the model was shown
+    /// makes one - the pair answer one call, so the whole takes the call and the short copy is
+    /// dropped. A pane keyed on the state then had that row claiming to send its content, showing
+    /// `0` for it, and accounting for none of what it was holding: three wrong answers about one
+    /// item, from asking the item instead of asking the request.
+    pub fn going(&self) -> Going {
+        let projection = self.kernel.project();
+        let counter = self.kernel.counter();
+        // `included` and `messages` line up one for one under a projector that makes a message
+        // per item; one that merges them has no per-item answer, and the item's own figure is a
+        // better guess than a number taken from the wrong message
+        let paired = projection.included.len() == projection.messages.len();
+
+        Going {
+            costs: projection
+                .included
+                .iter()
+                .enumerate()
+                .map(|(at, id)| {
+                    let cost = match paired {
+                        true => counter.count_message(&projection.messages[at]),
+                        false => self.kernel.item(*id).map(|item| item.tokens).unwrap_or(0),
+                    };
+
+                    (*id, cost)
+                })
+                .collect(),
+            // the projector's own words, rather than a second copy of them assembled out here
+            // from the state and the note - which is what this was, and which had no answer at
+            // all for an item the projector had repaired away
+            left_out: projection
+                .skipped
+                .into_iter()
+                .map(|skipped| (skipped.id, skipped.reason))
+                .collect(),
+        }
+    }
+
+    /// What every item is holding out of the next request, and how many of them there are.
+    ///
+    /// note: [`Context::tokens_withheld`](nachalnik::Context::tokens_withheld) answers this from
+    /// the item states, which is the right answer to a question about states and the wrong one
+    /// here: it counts an excluded, archived or elided item and misses one the projector repaired
+    /// away, because that one's state says it is sending. `/budget` and the context tab have to
+    /// agree about this figure or they are two accounts of one request again.
+    fn withheld(&self, going: &Going) -> (usize, usize) {
+        self.kernel
+            .items()
+            .iter()
+            .filter(|item| !going.sends_content(item))
+            .fold((0, 0), |(tokens, count), item| {
+                (tokens + item.tokens, count + 1)
+            })
+    }
+
+    /// The context items a pending call names, described the way a row on the context tab is.
+    ///
+    /// note: `ids: [22]` is a true account of the arguments and a useless one to be asked about.
+    /// The question covers a tool that rewrites and hides pieces of the context, the overlay is
+    /// covering the list those numbers refer to, and the answer is `y` or `n` - so somebody being
+    /// asked whether item 22 may be elided has to already know what item 22 is. Naming them turns
+    /// the question into one that can be answered on what is on the screen.
+    ///
+    /// note: only for the two tools this program installs itself, and only because it knows what
+    /// their arguments mean. `ids` on somebody else's tool is somebody else's vocabulary, and
+    /// guessing at it would put a confident description of the wrong thing in front of a decision.
+    /// Nothing here reaches the policy: it is the same arguments, read out.
+    pub fn about(&self, request: &PermissionRequest) -> Vec<String> {
+        if !matches!(request.tool.as_str(), "introspect" | "amend") {
+            return Vec::new();
+        }
+
+        let items = self.kernel.items();
+        let named: Vec<ContextId> = match request.args["select"].as_str() {
+            // a selector is opaque in a way a number is not: `all:tool_results` is the argument
+            // most worth expanding, because nobody can count them off the screen it is covering
+            Some(select) => match select.parse::<Selector>() {
+                Ok(selector) => selector.matches(&items),
+                Err(_) => return Vec::new(),
+            },
+            None => request.args["ids"]
+                .as_array()
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(|id| id.as_u64())
+                        .map(ContextId)
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
+        if named.is_empty() {
+            return Vec::new();
+        }
+
+        let going = self.going();
+        named
+            .iter()
+            .take(8)
+            .map(|id| match items.iter().find(|item| item.id == *id) {
+                None => format!("[{id}] there is no such item"),
+                Some(item) => format!(
+                    "[{id}] {} · {} · {} · {} tokens{}",
+                    item.label,
+                    item.kind.name(),
+                    item.state,
+                    thousands(item.tokens),
+                    match going.left_out.contains_key(id) {
+                        true => " · not in the next request",
+                        false => "",
+                    }
+                ),
+            })
+            .chain((named.len() > 8).then(|| format!("… and {} more", named.len() - 8)))
+            .collect()
+    }
+
+    /// The context items the tab is showing: all of them, or only the ones carrying content into
+    /// the next request.
+    ///
+    /// note: the predicate is [`Going::sends_content`], which is exactly the set with a figure in
+    /// the `held` column - so the toggle has one rule a person can hold in their head: it hides
+    /// every row that is holding something back. That does leave out elided items, which do go
+    /// into the request as a marker and do cost the marker's few tokens; showing them would be
+    /// defensible on "what am I sending", but the reason somebody reaches for this is that half
+    /// the list is wreckage after a compaction, and an elided row is wreckage.
+    ///
+    /// note: `Going`'s rather than the state's own, because a row the projector repaired away is
+    /// holding everything it holds and would have survived this filter as though it were going -
+    /// which is the one row somebody with the toggle on would most want to see the truth about.
+    pub fn listed(&self) -> Vec<Arc<ContextItem>> {
+        let items = self.kernel.items();
+        match self.sending_only {
+            false => items,
+            true => {
+                let going = self.going();
+                items
+                    .into_iter()
+                    .filter(|item| going.sends_content(item))
+                    .collect()
+            }
+        }
+    }
+
+    /// Every capability that matters here, and what would happen if a tool asked for it.
+    ///
+    /// note: The union of two lists, because either on its own is misleading. What the policy has
+    /// been told about is not the whole story - a tool can need something nobody has mentioned,
+    /// and that is exactly the row worth seeing, since it is the one that will stop and ask. And
+    /// what the tools declare is not the whole story either: `network` is refused here and no
+    /// built-in tool wants it, but a refusal you cannot see is not a policy you can trust.
+    pub fn permissions(&self) -> Vec<Stance> {
+        self.all_stances()
+            .into_iter()
+            .filter(Stance::is_decided)
+            .collect()
+    }
+
+    /// How many subjects the policy will simply ask about, because nobody has told it otherwise.
+    ///
+    /// note: the tab does not list them - a row for a `.aws` rule nobody has thought about is not
+    /// information - but it does say how many there are, because a screen showing two decisions
+    /// and silently standing for sixteen answers would be a different kind of dishonest.
+    pub fn undecided(&self) -> usize {
+        self.all_stances()
+            .iter()
+            .filter(|row| !row.is_decided())
+            .count()
+    }
+
+    /// Every subject this policy holds an opinion about, decided or not.
+    fn all_stances(&self) -> Vec<Stance> {
+        let mut rows: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
+        let mut sometimes: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
+        for (capability, _) in self.policy.stances() {
+            rows.entry(capability).or_default();
+        }
+        for spec in self.kernel.tool_specs() {
+            // a shell is judged against `network` too, when the command it was handed reaches for
+            // it; the policy is the one that knows, and this is the row that has to say so
+            if spec.capabilities.contains(&Capability::Shell) {
+                sometimes
+                    .entry(Capability::Network)
+                    .or_default()
+                    .push(spec.id.clone());
+                rows.entry(Capability::Network).or_default();
+            }
+            for capability in spec.capabilities {
+                rows.entry(capability).or_default().push(spec.id.clone());
+            }
+        }
+
+        // the capabilities first, then the rules that are finer than any of them. note: a path
+        // rule binds the three tools that are handed a path, and no others - a `shell` command
+        // names its files inside a string this program does not parse, and pretending otherwise
+        // would be exactly the sort of check that implies more than it delivers
+        let bound: Vec<String> = self
+            .kernel
+            .tool_specs()
+            .iter()
+            .filter(|spec| {
+                spec.capabilities.iter().any(|capability| {
+                    matches!(
+                        capability,
+                        Capability::Read | Capability::Write | Capability::Edit
+                    )
+                })
+            })
+            .map(|spec| spec.id.clone())
+            .collect();
+
+        let listed = rows
+            .into_iter()
+            .map(|(capability, tools)| Stance {
+                verdict: self.policy.stance(&Subject::Capability(capability.clone())),
+                sometimes: sometimes.remove(&capability).unwrap_or_default(),
+                subject: Subject::Capability(capability),
+                tools,
+            })
+            .chain(
+                self.policy
+                    .paths()
+                    .into_iter()
+                    .map(|(pattern, verdict)| Stance {
+                        subject: Subject::Path(pattern),
+                        verdict,
+                        tools: bound.clone(),
+                        sometimes: Vec::new(),
+                    }),
+            );
+
+        listed.collect()
+    }
+
+    /// What the shell can reach, in one line, or `None` if nothing here runs commands.
+    pub fn confinement(&self) -> Option<String> {
+        if !self.shell_is_live() {
+            return None;
+        }
+
+        Some(match self.confinement.is_confined() {
+            true => format!("shell: {}", self.confinement),
+            false => "shell: a command can do any of these".to_owned(),
+        })
+    }
+
+    /// What the policy in force is called, short enough to put at the top of a screen.
+    ///
+    /// note: asked of the kernel rather than of [`App::policy`], because what the permissions tab
+    /// is reporting is the policy the *runtime* will consult - the same answer `/seams` gives, and
+    /// the one that would notice if the two ever came apart.
+    ///
+    /// note: the last segment of the path. `PermissionPolicy::name` defaults to the implementing
+    /// type's own path, which is right for `/seams` - a panel whose whole subject is which types
+    /// are plugged in - and spends thirty columns of a list saying `kamchatka::tools::Careful`
+    /// where `Careful` is the part anybody reads.
+    pub fn policy_name(&self) -> String {
+        let name = self.kernel.policy().name();
+
+        name.rsplit("::").next().unwrap_or(name).to_owned()
+    }
+
+    /// Whether a registered tool can run commands, and the policy has not refused it outright.
+    ///
+    /// note: the question the permissions tab has to answer honestly. `Capability::Shell` subsumes
+    /// every other capability - a command reads, writes and reaches the network - so while one is
+    /// on the list and not denied, every other row is what a *tool* declares rather than what can
+    /// happen, unless something is actually confining it.
+    pub fn shell_is_live(&self) -> bool {
+        self.policy.stance(&Subject::Capability(Capability::Shell)) != Verdict::Deny
+            && self
+                .kernel
+                .tool_specs()
+                .iter()
+                .any(|spec| spec.capabilities.contains(&Capability::Shell))
+    }
+
+    // ---------------------------------------------------------------- the session, written out
+
+    /// A name for a session, from the seconds since the epoch it started at.
+    ///
+    /// note: this is the session's identity *and* the name of the two files it leaves behind, and
+    /// it was `kamchatka-1788849917`. Those go in a directory called `kamchatka`, so half of every
+    /// filename said what the directory had already said - and the other half said nothing at all
+    /// to anybody reading it. `2026-09-08T06-45-17Z` names the same session, sorts the same way,
+    /// and answers the question somebody is looking at a list of them to ask.
+    ///
+    /// note: UTC, and it says so, because the alternative is a local time that needs the timezone
+    /// database to work out - a dependency for a filename - and a name that quietly means
+    /// something different depending on where it was written.
+    ///
+    /// note: to the second, which is what it was before: two sessions started inside one second
+    /// would collide, and did before too. The identifier a session gets from the runtime by
+    /// default is a counter that restarts with the process, which is fine as an identity and
+    /// writes over the last session's record.
+    pub fn session_stamp(secs: u64) -> String {
+        // days since the epoch, and what is left of the last one
+        let (days, rest) = ((secs / 86_400) as i64, secs % 86_400);
+        // note: Howard Hinnant's `civil_from_days`, which is the whole of the calendar in five
+        // lines of integer arithmetic and gets the leap years right for every year rather than
+        // for the ones a test happened to try. The shift is to an era starting in March, so that
+        // a leap day is the last day of a year instead of the sixtieth
+        let z = days + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z.rem_euclid(146_097);
+        let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let day = doy - (153 * mp + 2) / 5 + 1;
+        let month = match mp < 10 {
+            true => mp + 3,
+            false => mp - 9,
+        };
+        let year = yoe + era * 400 + i64::from(month <= 2);
+
+        format!(
+            "{year:04}-{month:02}-{day:02}T{:02}-{:02}-{:02}Z",
+            rest / 3_600,
+            (rest % 3_600) / 60,
+            rest % 60
+        )
+    }
+
+    /// Writes the session log and a snapshot that can be resumed from, at a path somebody gave.
+    ///
+    /// note: Two files, because they answer different questions: the log says what happened, and
+    /// the snapshot is what can be picked back up. An event names an item rather than carrying
+    /// it, so the log alone cannot rebuild a context - keeping only one of them means losing
+    /// either the story or the state.
+    ///
+    /// note: the snapshot is what `/load` reads back into a running session and what
+    /// `kamchatka -r` starts from.
+    /// Writes the event log and a resumable snapshot, and says how many records that was.
+    ///
+    /// note: separate from `save` because the last write of a session happens after the terminal
+    /// has been restored, where `say` has nowhere to put a sentence. Both go through here so that
+    /// what `/save` produces and what a session leaves behind on its way out are the same pair of
+    /// files, written the same way.
+    pub fn write_session(&self, log: &str, state: &str) -> Result<usize, String> {
+        let records: Vec<String> = self
+            .kernel
+            .history()
+            .iter()
+            .filter_map(|record| serde_json::to_string(record).ok())
+            .collect();
+        // named, because "No such file or directory" on its own leaves somebody guessing which
+        // one; `-r` says which file it could not read and this should match it
+        std::fs::write(log, records.join("\n") + "\n")
+            .map_err(|e| format!("could not write {log}: {e}"))?;
+        let snapshot = serde_json::to_vec_pretty(&self.kernel.snapshot())
+            .map_err(|e| format!("could not render the session: {e}"))?;
+        std::fs::write(state, snapshot).map_err(|e| format!("could not write {state}: {e}"))?;
+
+        Ok(records.len())
+    }
+}

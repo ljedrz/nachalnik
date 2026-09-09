@@ -3249,7 +3249,7 @@ fn every_command_that_exists_is_in_the_help() {
     // note: line endings normalised first. `.gitattributes` pins the checkout to LF, and this is
     // the belt to that pair of braces: a test that reads source to see what it says should not be
     // the thing that notices how the source was checked out. It was, on Windows, and nowhere else.
-    let source = include_str!("../src/app.rs").replace("\r\n", "\n");
+    let source = include_str!("../src/app/command.rs").replace("\r\n", "\n");
     let handler = source
         .split_once("async fn command(")
         .expect("the slash commands are answered in one place")

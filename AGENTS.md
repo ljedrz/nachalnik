@@ -82,7 +82,9 @@ the crate.
 | `selectors.rs` | feature `selectors`: `17`, `tool:grep:latest`, `all:tool_results`, `file:src/foo.rs`. |
 | `test.rs` | feature `test`: `ScriptedProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |
 
-`kamchatka/src`: `app.rs` (state and key handling), `ui.rs` (drawing only - it decides nothing),
+`kamchatka/src`: `app/` (the state - `mod.rs` is what the screen may ask of it and what a
+kernel event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands and
+`text.rs` turns a runtime value into a line), `ui.rs` (drawing only - it decides nothing),
 `tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `introspect.rs` (the two
 off-by-default tools an agent inspects and manages its own context with), `provider.rs` (the OpenAI-compatible
 dialect, and the `Endpoint` trait both providers answer), `gemini.rs` (Google's own, the one that
