@@ -9,6 +9,23 @@ minor bump may break you.
 
 ### fixed
 
+- An interrupt no longer outlives the turn it stopped. `Kernel::interrupt` raises a flag that one
+  `step` is spent putting down, which is what stops an interrupt landing between two checks from
+  being lost - and there is one path where no step is ever spent on it: a `Provider` that watches
+  `DeltaSink::is_interrupted` and hands back what it had honours the interrupt *itself*. The turn
+  ends in `Finished` with the flag still up, and the next turn is the one that spends a step on
+  it: it transitions nothing and returns the state it was already in.
+
+  What that looks like from a client is a stop that eats the next message. Measured through
+  `kamchatka` against a real endpoint: press stop mid-answer, type "say apple", and the message
+  lands in the context with nothing answering it - the turn was consumed clearing a flag - while
+  the message *after* it gets a reply. The context then holds a question nobody answered, and the
+  screen shows an outcome carrying the previous turn's state, so nothing says why. Reaching
+  `Finished` now puts the flag down, on the grounds that a turn which is over has nothing left to
+  interrupt. The resting states an interrupt is actually for - `Ready`, `Deciding`, and `Idle`
+  mid-loop, the ones another request would otherwise go out from - are untouched, so the window
+  the single reader closes stays closed.
+
 - `Usage::output_tokens` says whether the reasoning is inside it, and `Usage::reasoning_tokens`
   says it is a part of that number rather than a second one beside it. Documentation only - no
   behaviour here moves - but the absence was load-bearing: the field said "tokens in the response"

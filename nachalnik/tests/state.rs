@@ -595,6 +595,30 @@ async fn a_provider_that_watches_stops_a_request_in_flight() {
         kernel.items().iter().any(|i| i.content.to_text() == "one"),
         "the partial turn is an ordinary item, to keep or to prune"
     );
+
+    // and the interrupt is spent: the provider honoured it, so no *later* step may be spent
+    // acknowledging it. This is the one path `step_once` cannot catch - nothing was ever
+    // acknowledged there, because the request itself did the stopping
+    assert!(
+        !kernel.is_interrupted(),
+        "an interrupt the provider honoured does not outlive the turn it stopped"
+    );
+
+    // said in the terms it goes wrong in: the next thing asked has to be the thing answered
+    kernel.push(ContextItem::user("now count again"));
+    let state = kernel.turn().await.expect("a turn of its own");
+    assert!(matches!(state, State::Finished { .. }), "{state:?}");
+    let answer = kernel.last_response().expect("an answer");
+    assert_eq!(
+        answer.stop,
+        nachalnik::StopReason::EndTurn,
+        "the turn after an interrupted one is not spent putting the interrupt down"
+    );
+    assert_eq!(
+        answer.content.clone().unwrap().to_text(),
+        "onetwothreefourfive",
+        "and it is a real answer to the new message"
+    );
 }
 
 /// A tool that notices it is not wanted and returns what it has.

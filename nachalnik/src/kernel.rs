@@ -1878,9 +1878,29 @@ impl Kernel {
     }
 
     /// Moves the machine to a state, announcing it.
+    ///
+    /// note: reaching [`State::Finished`] also puts down an outstanding interrupt, because the
+    /// turn it was asked of is over and there is nothing left in flight for it to stop. Without
+    /// this the flag outlived the request it was meant for in the one case
+    /// [`Kernel::step_once`] cannot catch: a [`Provider`] that watches
+    /// [`DeltaSink::is_interrupted`] and hands back what it had *honoured* the interrupt itself,
+    /// so no step was ever spent acknowledging it - and the next turn was, transitioning nothing
+    /// and returning the state it was already in. Measured through a client: press stop, type a
+    /// message, and it lands in the context with nothing answering it; the message after that is
+    /// the one that gets a reply.
+    ///
+    /// note: only [`State::Finished`]. The resting states an interrupt is *for* -
+    /// [`State::Ready`], [`State::Idle`] mid-loop, [`State::Deciding`] - are exactly the ones
+    /// from which another request would otherwise go out, and there the flag has to survive to
+    /// be read by the next step. That is the window the single reader in `step_once` exists to
+    /// close, and this does not widen it: a stop asked for as a turn ends has nothing to stop.
     fn transition(&self, machine: &mut Machine, to: State) {
         if machine.state == to {
             return;
+        }
+
+        if matches!(to, State::Finished { .. }) {
+            self.0.interrupted.store(false, SeqCst);
         }
 
         let from = std::mem::replace(&mut machine.state, to.clone());
