@@ -59,6 +59,14 @@ Two rules decide most questions before they are asked:
 real: if a downstream crate needs a core change to do an ordinary thing, the seam is wrong, not
 the crate.
 
+**`kamchatka` is for developers, and the runtime is for everybody.** The two are held to different
+standards on purpose, and the clearest case is multimodal. `nachalnik` and `nachalnik-providers`
+carry a `Content::Blob` **fully** - a turn that is a sentence and a screenshot goes out as both, in
+order, in either dialect - because somebody building a GUI on this runtime should never have to
+work around it. `kamchatka` renders no pictures and is not going to: a terminal cell is not a
+pixel, and what it owes a blob is that it does not break and that every view says one is there.
+Read a request for a capability with that split in mind before deciding where it belongs.
+
 ---
 
 ## where things are
