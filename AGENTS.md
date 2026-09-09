@@ -82,17 +82,17 @@ the crate.
 | `selectors.rs` | feature `selectors`: `17`, `tool:grep:latest`, `all:tool_results`, `file:src/foo.rs`. |
 | `test.rs` | feature `test`: `ScriptedProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |
 
-`kamchatka/src`: `app/` (the state - `mod.rs` is what the screen may ask of it and what a
-kernel event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands and
-`text.rs` turns a runtime value into a line), `ui/` (drawing only - it decides nothing:
-`mod.rs` is the frame and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel
-that floats over one, `markdown.rs` and `table.rs` a model's prose turned into styled lines,
-`text.rs` the measuring and fitting),
-`tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `introspect.rs` (the two
-off-by-default tools an agent inspects and manages its own context with), `provider.rs` (the OpenAI-compatible
-dialect, and the `Endpoint` trait both providers answer), `gemini.rs` (Google's own, the one that
-keeps the order of a turn), `main.rs` (arguments and wiring). It is a library plus a binary only so
-the screen can be drawn against a `TestBackend` in tests.
+`kamchatka/src`: `app/` (the state - `mod.rs` is what the screen may ask of it and what a kernel
+event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands and `text.rs`
+turns a runtime value into a line), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
+and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that floats over one,
+`markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
+fitting), `tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `introspect/` (the
+two off-by-default tools an agent inspects and manages its own context with - one per file, with
+`mod.rs` holding `install` and the handful of things both of them use), `provider.rs` (the
+OpenAI-compatible dialect, and the `Endpoint` trait both providers answer), `gemini.rs` (Google's
+own, the one that keeps the order of a turn), `main.rs` (arguments and wiring). It is a library plus
+a binary only so the screen can be drawn against a `TestBackend` in tests.
 
 Two providers, one trait. `Provider` is the kernel's half - ask, and be answered - and `Endpoint`
 is this program's: where the requests go, what is served there, what the last retry was about.
@@ -102,7 +102,7 @@ the claim `/seams` makes about every other part of the runtime and had not been 
 dialect's turn *is* an order and projecting three slots at it would flatten every turn on the way
 out one request after recording the order on the way in.
 
-`introspect.rs` is the second `nachalnik-mcp`: **written with no change to the runtime at all**, and
+`introspect/` is the second `nachalnik-mcp`: **written with no change to the runtime at all**, and
 worth reading for that reason. Forking a context is `Kernel::snapshot` and `Kernel::resume`;
 previewing a request is `preview_request`; pruning is `set_state`. What it adds is the part the
 runtime has no opinion about - which of those a *model* may do. A pinned item, a system
