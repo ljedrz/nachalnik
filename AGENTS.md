@@ -420,6 +420,31 @@ README and the crate docs in longer form:
 - **Changelogs** are per crate (`nachalnik/`, `nachalnik-mcp/`, `nachalnik-eval/`, `kamchatka/`),
   Keep a Changelog format, and are expected to be current before a release rather than
   reconstructed after one.
+- **Which number moves is a fact about the public API, not about how the work felt.** Cargo reads
+  `0.x.y` with the middle number as the major - `^0.3.2` resolves to `>=0.3.2, <0.4.0` - so `x` is
+  the compatibility boundary and `y` carries everything a 1.0 crate would split between a minor and
+  a patch. A change a caller cannot compile through bumps `x` and resets `y`; everything else, new
+  API included, bumps `y`. A changelog heading decides nothing: `### added` is not a minor, and
+  `nachalnik` 0.3.2 added `ModelResponse::thinking` and was right to be a patch, while `kamchatka`
+  0.6.0 took `App::new`'s arguments apart and was right not to be one.
+
+  Breaking is an item removed, a signature or a public field changed, a required method added to a
+  trait, or a variant added to an enum that is not `#[non_exhaustive]` - which is what that
+  attribute is on every public enum for. Not breaking: a new item, a variant on a
+  `#[non_exhaustive]` enum, or a *defaulted* trait method - that last one with the caveat cargo's
+  own reference gives it, since an implementor already carrying the name gets an ambiguity error
+  rather than a default.
+
+  Read it off the API rather than off the commit log or the diff. `cargo public-api --diff` where
+  it is installed; otherwise `git worktree add` the last tag, run
+  `cargo doc --workspace --all-features --no-deps` in both trees with separate `CARGO_TARGET_DIR`s,
+  and compare every `item-decl` block and `code-header` in the HTML - **keyed by the page it is
+  on**, or two identically-signed methods on different types cancel out and the comparison comes
+  back empty. That is not hypothetical: it hid `ModelResponse::thinking` behind
+  `ContextItem::thinking` and reported the release that added one as a release that added nothing.
+  A comparison that finds no change at all across a cycle with entries in its changelog is a
+  broken comparison until proven otherwise.
+
 - **A version moves as soon as something above it needs API the registry does not have.**
   `cargo package --workspace` builds each member from its own tarball, and a tarball carries
   version requirements rather than path dependencies - so `kamchatka` is resolved against whatever
@@ -432,6 +457,12 @@ README and the crate docs in longer form:
   under `nachalnik-mcp` and the bridge has to be re-cut against it, a *patch* does not, since a
   published `^0.3.0` resolves to `0.3.1` on its own and a release with nothing behind it is not
   one.
+- **A bump belongs to the release when nothing forced one earlier.** The bullet above is about a
+  version that has to move mid-cycle, and most do not - so at a release, every crate carrying a
+  non-empty `[unreleased]` section gets a bump, in a commit of its own, numbered by the comparison
+  above; a crate with nothing unreleased gets neither a bump nor a tag. Do it before the release
+  commit, so that the commit which dates the changelogs is the commit that gets tagged, and the
+  number in each tag is the one the comparison justified.
 - **A release is its own commit and it only dates the changelogs.** No code moves in it; the
   version numbers moved when they had to. It is the commit that gets tagged - annotated,
   `<crate>-v<version>` per crate that moved, plus a workspace `v<version>` taking the runtime's
