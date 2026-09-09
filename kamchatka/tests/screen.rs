@@ -4985,6 +4985,85 @@ async fn a_sampling_only_listing_does_not_claim_a_parameter_missing_from_it_is_i
     );
 }
 
+/// Serves a listing, and refuses every request that follows in the shape a validated endpoint
+/// refuses one: a list of what was wrong with it rather than a sentence about it.
+async fn refusing() -> Arc<OpenAiCompatible> {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = listener.local_addr().expect("its address");
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listing = r#"{"data":[{"id":"mercury-2.5","context_length":260000,
+            "supported_sampling_parameters":["temperature","stop"]}]}"#;
+        // quoted from what api.inceptionlabs.ai really answers `reasoning_effort: "banana"`
+        let refusal = concat!(
+            r#"{"error":{"message":[{"type":"value_error","loc":["body","reasoning_effort"],"#,
+            r#""msg":"Value error, reasoning_effort must be one of: 'instant', 'low', "#,
+            r#"'medium', 'high'","input":"banana","ctx":{"error":"reasoning_effort must be "#,
+            r#"one of: 'instant', 'low', 'medium', 'high'"}}],"#,
+            r#""type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
+        );
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let mut asked = [0u8; 4096];
+            let read = socket.read(&mut asked).await.unwrap_or(0);
+            let asked = String::from_utf8_lossy(&asked[..read]);
+            let (status, body) = match asked.contains("/models") {
+                true => ("200 OK", listing),
+                false => ("400 Bad Request", refusal),
+            };
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n\
+                         Content-Length: {}\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        }
+    });
+
+    let provider = Arc::new(OpenAiCompatible::new(
+        "mercury-2.5",
+        format!("http://{at}"),
+        "no key needed",
+    ));
+    provider.probe().await;
+    provider
+}
+
+#[tokio::test]
+async fn a_refused_request_says_what_was_wrong_with_it_once() {
+    let mut harness = Harness::served_by([], refusing().await);
+
+    harness.send("Say the single word: ready.").await;
+    harness.settle().await;
+    let screen = harness.screen();
+
+    // the sentence the server wrote, which is the thing a person can act on
+    assert!(
+        screen.contains("reasoning_effort must be one of"),
+        "the refusal says what was wrong with the request: {screen}"
+    );
+    // and not the machinery around it. A validated endpoint answers with a *list* of failures
+    // rather than a sentence, and reading only a sentence left three hundred characters of
+    // envelope - clipped mid-key - in the transcript and in the session log
+    for envelope in ["\"loc\"", "value_error", "\"ctx\"", "invalid_request_error"] {
+        assert!(
+            !screen.contains(envelope),
+            "{envelope} is the envelope, not the news: {screen}"
+        );
+    }
+
+    // once. One failure arrives twice - as the event and as the outcome the turn came to, the
+    // second wrapping the first - and only the first of the two was guarded
+    let said = screen.matches("must be one of").count();
+    assert_eq!(said, 1, "one failure is one red line: {screen}");
+}
+
 #[tokio::test]
 async fn an_endpoint_that_publishes_no_parameters_is_not_read_as_forbidding_them() {
     // ollama and a bare OpenAI-compatible proxy both say nothing about parameters. Silence is

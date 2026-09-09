@@ -75,6 +75,22 @@ minor bump may break you.
   `null` however it is asked - so the note about thinking that goes unseen is still exactly right
   there, and is now silent on a model whose thinking arrives.
 
+- A refused request is reported by the sentence in it. A validated endpoint answers a bad
+  parameter with a *list* of what was wrong rather than a sentence about it - Inception's
+  `error.message` is the pydantic shape, `[{"type": "value_error", "loc": ["body",
+  "reasoning_effort"], "msg": ...}]` - and `message` not being a string is where the reader gave
+  up: three hundred characters of envelope, clipped mid-key, went into the transcript and into the
+  session log, with the sentence somewhere inside it. `reasoning_effort: "banana"` now reads
+  `400 Bad Request: Value error, reasoning_effort must be one of: 'instant', 'low', 'medium',
+  'high'`, which is ninety-seven characters and the whole of the news. Where a failure's own
+  wording names nothing - "Input should be a valid boolean" - `loc` is prepended, because a
+  refusal that does not say which of eight parameters it means is one somebody has to guess at.
+
+- One failure is one red line. A provider that fails is reported twice, as the event and as the
+  outcome the turn came to, the second wrapping the first; the guard against saying it twice was
+  on the event and not on the outcome, so every refused request said itself and then said itself
+  again with `the provider failed:` in front of it. It is one method both paths call now.
+
 ## [0.6.0] - 2026-09-08
 
 ### added

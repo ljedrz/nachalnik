@@ -214,7 +214,11 @@ fn said(value: &Value) -> Option<String> {
         Some(nested) => nested,
         None => value,
     };
-    let message = error["message"].as_str()?.trim();
+    let message = match error["message"].as_str() {
+        Some(message) => message.trim().to_owned(),
+        // a third shape, and the one where reading a sentence mattered most: see `refusals`
+        None => refusals(&error["message"])?,
+    };
 
     let mut said = message.chars().take(400).collect::<String>();
     // the upstream's own words, where the wrapper is only reporting that something upstream
@@ -270,6 +274,45 @@ fn summarised(chunk: &Value, reasoning: &mut String, deltas: &DeltaSink) {
     }
     deltas.reasoning(summary);
     reasoning.push_str(summary);
+}
+
+/// The sentences inside a rejected request's list of what was wrong with it, each named by the
+/// parameter it is about.
+///
+/// note: a validated endpoint answers a bad parameter with a *list* rather than a sentence -
+/// Inception's `message` is the pydantic shape, `[{"type": "value_error", "loc": ["body",
+/// "reasoning_effort"], "msg": "...", "input": "banana", "ctx": {...}}]` - and until this read it,
+/// `message` was not a string, [`said`] gave up, and the three hundred characters of envelope the
+/// clip left went into the transcript and into the session log. The sentence was in there, forty
+/// characters in, wrapped in the machinery. That is the failure [`said`] exists to stop, arriving
+/// in the one place where the words are most worth having: the answer to what a request got wrong
+/// says which parameter and what it takes.
+///
+/// note: `loc` is prepended only where the message does not already name the field. Pydantic's
+/// own wording varies on exactly that point - a `value_error` raised by a validator usually names
+/// it, a type failure says "Input should be a valid boolean" and names nothing - and a message
+/// that does not say which of eight parameters it means is a message somebody has to guess at.
+fn refusals(message: &Value) -> Option<String> {
+    let listed = message.as_array().filter(|listed| !listed.is_empty())?;
+
+    let said: Vec<String> = listed
+        .iter()
+        .filter_map(|wrong| {
+            let msg = wrong["msg"].as_str()?.trim();
+            let field = wrong["loc"]
+                .as_array()
+                .and_then(|loc| loc.last())
+                .and_then(Value::as_str)
+                .filter(|field| !msg.contains(*field));
+
+            Some(match field {
+                Some(field) => format!("{field}: {msg}"),
+                None => msg.to_owned(),
+            })
+        })
+        .collect();
+
+    (!said.is_empty()).then(|| said.join("; "))
 }
 
 /// Installs the cryptography `rustls` will use, and says nothing if it is already installed.
@@ -1458,6 +1501,59 @@ mod tests {
 
         // and so does nothing at all
         assert!(complaint(status, "").contains("429"));
+    }
+
+    /// note: the two wordings pydantic gives the same kind of failure, which is why `loc` is read.
+    /// A validator that raised the error usually names the parameter in the message; a type
+    /// failure says "Input should be a valid boolean" and names nothing, and a refusal that does
+    /// not say which of eight parameters it is about is one somebody has to guess at. Both are
+    /// quoted from what `api.inceptionlabs.ai` answers.
+    #[test]
+    fn a_request_refused_by_a_list_of_failures_is_reported_by_the_sentences_in_it() {
+        let status = reqwest::StatusCode::BAD_REQUEST;
+
+        let named = concat!(
+            r#"{"error":{"message":[{"type":"value_error","loc":["body","reasoning_effort"],"#,
+            r#""msg":"Value error, reasoning_effort must be one of: 'instant', 'low', "#,
+            r#"'medium', 'high'","input":"banana","ctx":{"error":"reasoning_effort must be "#,
+            r#"one of: 'instant', 'low', 'medium', 'high'"}}],"#,
+            r#""type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
+        );
+        assert!(
+            serde_json::from_str::<Value>(named).is_ok(),
+            "the fixture has to be the shape the server actually sends"
+        );
+        let said = complaint(status, named);
+        assert!(said.contains("reasoning_effort must be one of"), "{said}");
+        for envelope in ["loc", "value_error", "ctx", "invalid_request_error"] {
+            assert!(!said.contains(envelope), "{envelope} is machinery: {said}");
+        }
+
+        // the same shape, for a failure whose own message names nothing. `loc` is the only thing
+        // that says what it was about
+        let unnamed = concat!(
+            r#"{"error":{"message":[{"type":"bool_parsing","loc":["body","reasoning_summary"],"#,
+            r#""msg":"Input should be a valid boolean, unable to interpret input","#,
+            r#""input":"banana"}],"type":"invalid_request_error"}}"#,
+        );
+        let said = complaint(status, unnamed);
+        assert!(
+            said.contains("reasoning_summary") && said.contains("valid boolean"),
+            "the parameter it is about is named: {said}"
+        );
+
+        // two at once are two sentences, and a list with nothing readable in it falls through to
+        // the clip rather than reporting an empty refusal
+        let two = concat!(
+            r#"{"error":{"message":[{"loc":["body","a"],"msg":"first"},"#,
+            r#"{"loc":["body","b"],"msg":"second"}]}}"#,
+        );
+        let said = complaint(status, two);
+        assert!(
+            said.contains("a: first") && said.contains("b: second"),
+            "{said}"
+        );
+        assert!(complaint(status, r#"{"error":{"message":[]}}"#).contains("message"));
     }
 
     /// The shape a stream that fails halfway sends, which is not the shape a refused request

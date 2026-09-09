@@ -466,6 +466,29 @@ impl App {
         }
     }
 
+    /// Says an error, unless the last thing said was the same error in a smaller envelope.
+    ///
+    /// note: one provider failure is reported twice - once as the event the kernel emitted and
+    /// once as the outcome the turn came to, the second wrapping the first - and two red lines
+    /// saying the same thing is one more than the news warrants; the trace pane has both either
+    /// way. This was guarded on the event and not on the outcome, so it went on happening for
+    /// every refused request: a 400 naming a bad parameter arrived, said itself, and said itself
+    /// again with `the provider failed:` in front of it. It is one method now, because the guard
+    /// belongs to the *reporting* rather than to either of the two places that report.
+    ///
+    /// note: the containment test is the new text against what is already there, in that order,
+    /// because it is the second one that wraps the first. Nothing is suppressed unless it repeats
+    /// the line immediately above it - two different failures in a row are two lines, and a
+    /// failure repeated after something else was said is news about a second attempt.
+    fn say_error(&mut self, error: String) {
+        let repeat = self.transcript.last().is_some_and(|last| {
+            last.speaker == Speaker::Error && unpadded(&error).contains(&last.text)
+        });
+        if !repeat {
+            self.say(Speaker::Error, error);
+        }
+    }
+
     /// Appends to the open entry from this speaker, opening one if there is none.
     ///
     /// note: the bound is on a tool's output and on nothing else, which it did not used to be. A
@@ -808,7 +831,7 @@ impl App {
         // not the moment to start something else; either way what was typed waits for `/continue`
         let carry_on = ended && !self.interrupting;
         match outcome {
-            Outcome::Failed(e) => self.say(Speaker::Error, e),
+            Outcome::Failed(e) => self.say_error(e),
             // note: a turn stopping to ask says nothing here, and opens nothing. The question is
             // drawn from `pending_permissions()` every frame, so there is no moment at which it
             // has to be put on the screen and none at which it has to be taken off - which is
@@ -982,15 +1005,7 @@ impl App {
             }
             Event::ModelFailed { error } | Event::StepFailed { error } => {
                 self.close();
-                // a provider that fails produces both of these, the second wrapping the first;
-                // two red lines saying the same thing is one more than the news warrants, and
-                // the trace pane has both either way
-                let repeat = self.transcript.last().is_some_and(|last| {
-                    last.speaker == Speaker::Error && error.contains(&last.text)
-                });
-                if !repeat {
-                    self.say(Speaker::Error, error);
-                }
+                self.say_error(error);
             }
             // note: a refusal the policy made on its own, which nobody was asked about and which
             // the tool result records only as `the call was not permitted`. When the tool's own
