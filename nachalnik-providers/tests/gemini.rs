@@ -11,6 +11,8 @@
 //! turn that came off the wire goes back on to it unchanged, signatures and all, because that is
 //! what this API rejects the next request over.
 
+#![cfg(feature = "gemini")]
+
 use std::sync::Arc;
 
 use nachalnik::{

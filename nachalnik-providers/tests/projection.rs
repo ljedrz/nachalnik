@@ -6,10 +6,12 @@
 //! reasoning, and the budget charged for every turn of thinking the context was holding.
 //! `Endpoint::projection` is the connection, and these are the tests that the two agree.
 
+#![cfg(any(feature = "openai", feature = "gemini"))]
+
 use std::sync::Arc;
 
 use nachalnik::{Config, Content, ContextItem, ContextKind, Kernel, Provider};
-use nachalnik_providers::{Endpoint, Gemini, OpenAiCompatible};
+use nachalnik_providers::Endpoint;
 
 /// A session holding one assistant turn: a short answer and a long think, which is the usual
 /// ratio for a reasoning model and the reason this matters at all.
@@ -43,10 +45,12 @@ fn thinking_out_loud() -> (Kernel, String) {
 /// size of the *request* rather than the size of the context. So a projector handing over
 /// something the wire format drops is not a wasted copy - it is a charge for bytes that never
 /// leave the process, repeated for as long as the turn is in the context.
+#[cfg(feature = "openai")]
 #[test]
 fn the_conventional_dialect_does_not_pay_for_thinking_it_cannot_send() {
     let (kernel, thinking) = thinking_out_loud();
-    let provider = OpenAiCompatible::new("m", "https://example.invalid/v1", "k");
+    let provider =
+        nachalnik_providers::OpenAiCompatible::new("m", "https://example.invalid/v1", "k");
     kernel.set_projector(Arc::new(provider.projection()));
 
     let request = kernel.preview_request().expect("a request");
@@ -69,10 +73,11 @@ fn the_conventional_dialect_does_not_pay_for_thinking_it_cannot_send() {
 /// The other half, and the reason this is a property of the dialect rather than a setting: Gemini
 /// takes a turn's thinking back as a part marked `thought`, and for a signed one it has to. Here
 /// the reasoning really is in the request, so the budget is right to charge for it.
+#[cfg(feature = "gemini")]
 #[test]
 fn the_gemini_dialect_pays_for_the_thinking_it_does_send() {
     let (kernel, thinking) = thinking_out_loud();
-    let provider = Gemini::new("m", "https://example.invalid", "k");
+    let provider = nachalnik_providers::Gemini::new("m", "https://example.invalid", "k");
     kernel.set_projector(Arc::new(provider.projection()));
 
     let request = kernel.preview_request().expect("a request");

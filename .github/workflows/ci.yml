@@ -63,11 +63,15 @@ jobs:
       - name: kamchatka, no features
         run: cargo check -p kamchatka --no-default-features --locked
       # a dialect each, and the one nobody builds on purpose: `waiting.rs` is shared, so a
-      # constant only one of them reads is dead code in the other's build
+      # constant only one of them reads is dead code in the other's build. `--all-targets`
+      # because the tests are gated by dialect too, and a test that names the provider that
+      # is not there compiles nowhere except under `--all-features`
       - name: nachalnik-providers, gemini only
-        run: cargo check -p nachalnik-providers --no-default-features --features gemini --locked
+        run: cargo check -p nachalnik-providers --all-targets --no-default-features --features gemini --locked
+      - name: nachalnik-providers, openai and the suite
+        run: cargo check -p nachalnik-providers --all-targets --no-default-features --features openai,conformance --locked
       - name: nachalnik-providers, no features
-        run: cargo check -p nachalnik-providers --no-default-features --locked
+        run: cargo check -p nachalnik-providers --all-targets --no-default-features --locked
 
       - name: tests
         # the live suites skip themselves without a key, which is how they should behave here

@@ -5,6 +5,8 @@
 //! whatever address a caller has pointed this at is something the person running it did not ask
 //! to send, and the address is a setting.
 
+#![cfg(feature = "openai")]
+
 use std::sync::Arc;
 
 use nachalnik::{Config, ContextItem, Kernel};

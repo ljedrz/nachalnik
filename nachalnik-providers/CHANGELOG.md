@@ -58,6 +58,20 @@ minor bump may break you.
   length is not what the model is really being served with. It replaces a `KAMCHATKA_CONTEXT_LIMIT`
   the providers used to read for themselves - see below.
 
+### fixed
+
+- `stream_options` follows whatever the request's parameters settled `stream` on, rather than
+  whichever way the provider was built. It is wrong in both directions otherwise, and one of them
+  is silent: sent to an endpoint that was asked for a whole answer it is a 400 about a field
+  nobody set, and left off a request whose parameters turned streaming *on* - which is how a
+  caller asks one question of a provider built for whole answers - the endpoint reports no usage
+  at all and the turn goes into the record with its cost unknown.
+
+- A rate limit that arrives as an `error` object inside a 200 is waited out like any other. This
+  dialect answers a whole-answer request its upstream refused that way rather than with a status,
+  and reading only the status turned two seconds of waiting into a hard failure. A spent daily
+  quota is still told apart and not waited out, because it will still be spent in a minute.
+
 ### changed
 
 - Neither provider reads the environment. `KAMCHATKA_API_KEY`, `KAMCHATKA_BASE_URL` and

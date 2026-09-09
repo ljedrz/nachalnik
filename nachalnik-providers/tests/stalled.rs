@@ -5,20 +5,21 @@
 //! ever arrives, and the key somebody pressed to stop it does nothing whatever. From the outside
 //! it looks identical to a program that is working.
 
+#![cfg(any(feature = "openai", feature = "gemini"))]
+
 use std::{sync::Arc, time::Duration};
 
 use nachalnik::{Config, ContextItem, Kernel};
-use nachalnik_providers::OpenAiCompatible;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
-};
+use tokio::{io::AsyncReadExt, net::TcpListener};
 
 /// Accepts one request, answers it as a stream, and then holds the socket open saying nothing.
 ///
 /// note: Not a closed connection and not an error - those are already handled. This is the
 /// awkward case: a perfectly good response that never continues.
+#[cfg(feature = "openai")]
 async fn silent_server() -> String {
+    use tokio::io::AsyncWriteExt as _;
+
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address = listener.local_addr().expect("its own address");
 
@@ -41,10 +42,11 @@ async fn silent_server() -> String {
     format!("http://{address}")
 }
 
+#[cfg(feature = "openai")]
 #[tokio::test]
 async fn a_model_that_says_nothing_at_all_can_still_be_stopped() {
     let kernel = Kernel::new(Config::default());
-    kernel.set_provider(Arc::new(OpenAiCompatible::new(
+    kernel.set_provider(Arc::new(nachalnik_providers::OpenAiCompatible::new(
         "silent",
         silent_server().await,
         "no key needed",
@@ -99,10 +101,11 @@ async fn deaf_server() -> String {
     format!("http://{address}")
 }
 
+#[cfg(feature = "openai")]
 #[tokio::test]
 async fn a_model_that_never_answers_at_all_can_still_be_stopped() {
     let kernel = Kernel::new(Config::default());
-    kernel.set_provider(Arc::new(OpenAiCompatible::new(
+    kernel.set_provider(Arc::new(nachalnik_providers::OpenAiCompatible::new(
         "deaf",
         deaf_server().await,
         "no key needed",
@@ -132,6 +135,7 @@ async fn a_model_that_never_answers_at_all_can_still_be_stopped() {
     );
 }
 
+#[cfg(feature = "gemini")]
 #[tokio::test]
 async fn the_other_dialect_is_watched_the_same_way() {
     // the two providers in this crate send their requests down different URLs with different

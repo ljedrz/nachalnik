@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 
 use crate::{
     openai::OpenAiCompatible,
+    out_of_quota,
     waiting::{
         HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, WHOLE_ANSWER, interrupted,
         watched,
@@ -193,12 +194,10 @@ impl Provider for OpenAiCompatible {
             "model": *self.model.lock(),
             "messages": request.messages.iter().map(to_wire).collect::<Vec<_>>(),
         });
-        // note: only when one is wanted. `stream_options` is not accepted by every endpoint that
-        // accepts `stream`, and sending either to one that was asked for a whole answer is asking
-        // for a 400 about a field nobody set
+        // note: only when one is wanted, because an endpoint asked for a whole answer and handed a
+        // `stream` it did not want is being asked a different question
         if self.stream {
             body["stream"] = json!(true);
-            body["stream_options"] = json!({ "include_usage": true });
         }
 
         if !request.tools.is_empty() {
@@ -220,9 +219,23 @@ impl Provider for OpenAiCompatible {
             );
         }
         // only what the user set, and nothing else: the kernel invents no parameters, and neither
-        // does this provider
+        // does this provider. Last, so that `stream` is one of the things they can decide
         for (key, value) in &request.params {
             body[key] = value.clone();
+        }
+
+        // note: after the parameters rather than beside `stream` above, because it has to follow
+        // whatever they settled on, and it is wrong in both directions if it does not. Sent to an
+        // endpoint that was asked for a whole answer it is a 400 about a field nobody set; left
+        // off a request whose parameters turned streaming *on* it costs the usage report, and a
+        // turn whose cost is unknown is the one thing this workspace will not have
+        match body["stream"] == json!(true) {
+            true => body["stream_options"] = json!({ "include_usage": true }),
+            false => {
+                if let Some(body) = body.as_object_mut() {
+                    body.remove("stream_options");
+                }
+            }
         }
 
         Some(body)
@@ -302,6 +315,44 @@ impl Provider for OpenAiCompatible {
 
             let status = response.status();
             if status.is_success() {
+                // a whole answer is read here rather than after the loop, because this dialect's
+                // other way of saying 429 is an `error` object inside a perfectly good 200 - and
+                // an upstream limit reported that way is exactly as worth waiting out as one
+                // reported as a status. There is nothing to watch arrive and nothing to
+                // interrupt: by the time this reads it the model has finished and been billed
+                if !streaming {
+                    let text = response.text().await?;
+                    let payload: Value = serde_json::from_str(&text)
+                        .map_err(|e| format!("the answer was not JSON ({e}): {text}"))?;
+                    let Some(error) = payload.get("error").filter(|e| !e.is_null()) else {
+                        self.backoff.store(0, Ordering::SeqCst);
+                        return Ok(whole(&payload));
+                    };
+
+                    let code = error["code"].as_u64().unwrap_or_default();
+                    // a spent daily quota is a 429 that will still be one in a minute, so it is
+                    // told apart here rather than waited out four times over
+                    let transient =
+                        (code == 429 || (500..600).contains(&code)) && !out_of_quota(&text);
+                    let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
+                    let wait = Duration::from_secs(1 << attempt);
+                    if !transient || attempt >= RETRIES {
+                        self.backoff.store(0, Ordering::SeqCst);
+                        return Err(match said(error) {
+                            Some(said) => said,
+                            None => format!("{error}").chars().take(300).collect(),
+                        }
+                        .into());
+                    }
+
+                    *self.notice.lock() = Some(format!(
+                        "{model} answered {code}; trying again in {}s",
+                        wait.as_secs()
+                    ));
+                    tokio::time::sleep(wait).await;
+                    continue;
+                }
+
                 // the budget belongs to a request, not to a session: without this an afternoon
                 // that had already ridden out four busy servers answered the fifth by giving up
                 // on the first try
@@ -342,22 +393,6 @@ impl Provider for OpenAiCompatible {
             ));
             tokio::time::sleep(wait).await;
         };
-
-        if !streaming {
-            // one body, already whole. There is nothing to watch arrive and nothing to interrupt:
-            // by the time this reads it the model has finished and been billed
-            let text = response.text().await?;
-            let payload: Value = serde_json::from_str(&text)
-                .map_err(|e| format!("the answer was not JSON ({e}): {text}"))?;
-            return match payload.get("error").filter(|e| !e.is_null()) {
-                Some(error) => Err(match said(error) {
-                    Some(said) => said,
-                    None => format!("{error}").chars().take(300).collect(),
-                }
-                .into()),
-                None => Ok(whole(&payload)),
-            };
-        }
 
         // bytes rather than a `String`, because a chunk boundary is not a character boundary. A
         // multi-byte character split across two reads used to be decoded twice, lossily, and
@@ -746,7 +781,52 @@ fn to_wire(message: &Message) -> Value {
 
 #[cfg(test)]
 mod tests {
+    use nachalnik::{ModelRequest, Params};
+
     use super::*;
+
+    /// `stream_options` follows whatever the parameters settled `stream` on, in both directions.
+    ///
+    /// note: it is wrong two different ways otherwise, and one of them is silent. Sent to an
+    /// endpoint that was asked for a whole answer it is a 400 about a field nobody set. *Left
+    /// off* a request whose parameters turned streaming on - which is how somebody asks for a
+    /// stream from a provider built without one - the endpoint reports no usage at all, and the
+    /// turn goes into the record with its cost unknown.
+    #[test]
+    fn stream_options_go_wherever_the_parameters_leave_the_stream() {
+        let rendered = |streaming: bool, asked: Option<bool>| {
+            let provider =
+                OpenAiCompatible::new("m", "https://example.invalid/v1", "k").streaming(streaming);
+            let mut request = ModelRequest {
+                messages: Vec::new(),
+                tools: Vec::new(),
+                params: Params::new(),
+            };
+            if let Some(asked) = asked {
+                request.params.insert("stream".to_owned(), json!(asked));
+            }
+            provider.render(&request).expect("this provider renders")
+        };
+
+        for (streaming, asked) in [(true, None), (true, Some(true)), (false, Some(true))] {
+            let body = rendered(streaming, asked);
+            assert_eq!(body["stream"], json!(true), "{streaming} {asked:?}");
+            assert_eq!(
+                body["stream_options"],
+                json!({ "include_usage": true }),
+                "a streamed request has to ask for the usage: {streaming} {asked:?}"
+            );
+        }
+
+        for (streaming, asked) in [(false, None), (false, Some(false)), (true, Some(false))] {
+            let body = rendered(streaming, asked);
+            assert_ne!(body["stream"], json!(true), "{streaming} {asked:?}");
+            assert!(
+                body.get("stream_options").is_none(),
+                "a whole answer must not be handed a stream's options: {streaming} {asked:?}"
+            );
+        }
+    }
 
     /// The two shapes a rate limit actually arrived in, copied out of a real session.
     ///
