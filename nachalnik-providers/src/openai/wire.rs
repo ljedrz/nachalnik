@@ -13,7 +13,7 @@
 use std::{sync::atomic::Ordering, time::Duration};
 
 use nachalnik::{
-    BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse, Provider,
+    BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse, Provider, Role,
     StopReason, ToolCall, ToolCallId, Usage, async_trait,
 };
 use serde_json::{Value, json};
@@ -742,7 +742,18 @@ fn to_wire(message: &Message) -> Value {
     let mut wire = json!({ "role": message.role.as_str() });
 
     if let Some(content) = &message.content {
-        wire["content"] = json!(content.to_text());
+        // note: a list of parts only where there is a blob to carry, because a plain string is
+        // what every endpoint speaking this dialect accepts and a few of the smaller ones accept
+        // nothing else. And only on a user turn: `tool` content is a string in this dialect
+        // whatever is in it, so a tool that returned a picture sends the sentence naming it -
+        // which is what `nachalnik-mcp` has always done and is better than a 400
+        wire["content"] = match content.as_blob().filter(|_| message.role == Role::User) {
+            Some(blob) => json!([{
+                "type": "image_url",
+                "image_url": { "url": format!("data:{};base64,{}", blob.media_type, blob.data) },
+            }]),
+            None => json!(content.to_text()),
+        };
     }
     // `calls()` rather than the field: a turn projected as ordered blocks keeps its calls in
     // its content, and reading the field would send the words of a turn with none of the calls

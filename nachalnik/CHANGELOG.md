@@ -5,6 +5,44 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- `Content::Blob`, and the `Blob` it holds: bytes that are not text - an image, a document, a
+  recording. The runtime does not look inside one. It carries it, measures it and hands it to a
+  `Provider`, the same as everything else, and *names* it wherever it has to become text, because
+  a gap where a picture was is worse than a sentence saying there was one:
+  `[image/png, 12048 bytes]` is what `to_text` answers, and `as_blob` is how anything that wants
+  the payload asks for it.
+
+  The payload is held **already base64**, which is deliberate. It is the form both dialects put it
+  on the wire in - a `data:` URI in one, `inline_data` in the other - so nothing is encoded on the
+  way out; `byte_len` really is the size in the form it would be sent in rather than three
+  quarters of it; a session log is the base64 string rather than a JSON array of six hundred
+  thousand numbers; and a base64 codec stays out of a crate with five dependencies and a rule
+  about growing a sixth. Whoever reads a PNG off a disk encodes it, where a base64 crate is free
+  to be.
+
+  `Content` is `#[non_exhaustive]`, so this breaks no `match` - and `nachalnik-providers` renders
+  it in both dialects as of its first release.
+
+### changed
+
+- `BytesPerToken` returns `0` for a `Content::Blob` rather than dividing its bytes by four. Those
+  bytes are base64, and base64 over four is a number about an encoding and not about a model: a
+  400 KB screenshot would arrive as a hundred thousand tokens and send a compactor after a context
+  that is nowhere near full. What a picture really costs is a formula over its *dimensions* which
+  every vendor publishes and each publishes differently, and none of them is reachable from a byte
+  length.
+
+  So the figure is a **floor**: a context holding pictures is larger than the budget says, and it
+  is silently larger, which is the part that is not good enough. Saying how much a counter could
+  not account for needs a figure on `Budget` and on `ContextItem`, and those have public fields
+  and no `#[non_exhaustive]` - so it is a breaking change and it is not in this release. Until it
+  is, a real tokenizer through `Kernel::set_counter` is the answer for anyone who needs the number
+  to be right, and the doc on `BytesPerToken::count` says as much.
+
 ## [0.3.3] - 2026-09-09
 
 ### fixed

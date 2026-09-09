@@ -7,6 +7,7 @@
 use nachalnik::{
     Block, Content, ContextId, ContextItem, ContextKind, Event, GrantSource, Kernel, Projection,
 };
+use serde_json::{Map, Value};
 
 /// An event's name, and one line of whatever else it has to say.
 pub(super) fn trace_line(event: &Event) -> (String, String) {
@@ -172,8 +173,12 @@ pub(super) fn request_preview(kernel: &Kernel) -> String {
     }
 
     let request = match kernel.preview_request() {
-        Ok(request) => serde_json::to_string_pretty(&request)
-            .unwrap_or_else(|e| format!("it will not serialize: {e}")),
+        // through `pretty`, so that a picture in the context is named here rather than printed:
+        // this is the view somebody opens to see the *shape* of a request
+        Ok(request) => match serde_json::to_value(&request) {
+            Ok(value) => pretty(&value),
+            Err(e) => format!("it will not serialize: {e}"),
+        },
         Err(e) => nothing_to_send(kernel, &e.to_string()),
     };
     if header.is_empty() {
@@ -235,8 +240,60 @@ fn short(name: &str) -> &str {
 }
 
 /// JSON, indented.
-pub(super) fn pretty(value: &serde_json::Value) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_else(|e| format!("it will not serialize: {e}"))
+pub(super) fn pretty(value: &Value) -> String {
+    serde_json::to_string_pretty(&without_blobs(value))
+        .unwrap_or_else(|e| format!("it will not serialize: {e}"))
+}
+
+/// The same JSON with its base64 payloads taken out and named.
+///
+/// note: `/request`, `/payload` and `/raw` all print JSON that can carry a
+/// [`nachalnik::Content::Blob`], and a blob on this screen is several megabytes of `AAAAAAAA`
+/// where somebody was looking for the shape of a request. What they need to know is the same two
+/// things the context tab's own row says - that it is there, and how much of it there is - so
+/// this says them and drops the rest. The record keeps the whole of it: this is a view.
+///
+/// note: by *shape* rather than by length, because a long tool result is a thing somebody opened
+/// this to read and must not be cut. The three shapes below are the three this workspace
+/// produces: the kernel's own `Content::Blob`, a `data:` URI in the conventional dialect, and
+/// Google's `inline_data`. A dialect nobody here speaks goes through unelided, which is the right
+/// failure - it shows too much rather than hiding something.
+fn without_blobs(value: &Value) -> Value {
+    match value {
+        // `data:image/png;base64,AAAA...`, wherever it sits
+        Value::String(text) => match text.split_once(";base64,") {
+            Some((head, payload)) if head.starts_with("data:") => {
+                Value::String(named(head.trim_start_matches("data:"), payload.len()))
+            }
+            _ => value.clone(),
+        },
+        Value::Array(items) => Value::Array(items.iter().map(without_blobs).collect()),
+        // `{ media_type | mime_type, data }`, which is both the kernel's shape and Google's
+        Value::Object(fields) => {
+            let mut elided: Map<String, Value> = fields
+                .iter()
+                .map(|(key, value)| (key.clone(), without_blobs(value)))
+                .collect();
+
+            let media = fields.get("media_type").or_else(|| fields.get("mime_type"));
+            if let (Some(Value::String(media)), Some(Value::String(payload))) =
+                (media, fields.get("data"))
+            {
+                elided.insert(
+                    "data".to_owned(),
+                    Value::String(named(media, payload.len())),
+                );
+            }
+
+            Value::Object(elided)
+        }
+        _ => value.clone(),
+    }
+}
+
+/// What is shown where a payload was.
+fn named(media_type: &str, bytes: usize) -> String {
+    format!("[ base64 blob, {media_type}, {bytes} bytes ]")
 }
 
 /// Exactly what one item puts into the next request, in the projector's own words.

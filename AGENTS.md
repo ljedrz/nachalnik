@@ -71,7 +71,7 @@ the crate.
 | `kernel/request.rs` | private: building a request, sending it, and repairing the call identifiers it came back with. |
 | `kernel/calls.rs` | private: asking the policy about a model's tool calls, running them, recording what they produced. |
 | `context.rs` | `Context`, `ContextItem`, `ContextId`, `ContextKind`, `ContextState`, undo/redo. |
-| `model.rs` | `Provider`, `Content`, `Message`, `ModelRequest`/`Response`, `ToolCall`, `Usage`, `Params`. |
+| `model.rs` | `Provider`, `Content`, `Blob`, `Message`, `ModelRequest`/`Response`, `ToolCall`, `Usage`, `Params`. |
 | `projection.rs` | `Projector`, `LinearProjector`, `Projection`, `Skipped` - context to wire messages. |
 | `tool.rs` | `Tool`, `ToolSpec`, `ToolOutput`. |
 | `permissions.rs` | `PermissionPolicy`, `Capability`, `Verdict`, `Grant`, `AskAlways`. |
@@ -254,8 +254,9 @@ panics takes the session with it, which is the one failure this program cannot r
 `nachalnik-providers/tests/` serves a recorded Gemini stream off a socket and checks what goes
 back out (`gemini`), checks what is volunteered to an endpoint about the calling program and to
 which one (`attribution`), answers two sockets that go silent, one before the first byte and one
-mid-stream (`stalled`), and holds each dialect's projection against what its own `to_wire` carries
-(`projection`). `nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one
+mid-stream (`stalled`), holds each dialect's projection against what its own `to_wire` carries
+(`projection`), pins where each puts a `Content::Blob` and that neither is handed one in a place
+it would refuse (`blobs`), and reads the answer that arrives in one piece (`whole_answers`). `nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one
 (`bridge`), and `foreign` runs one written in another language.
 
 The shapes a *stream* arrives in are not tested per provider, because the questions would be the
@@ -309,14 +310,29 @@ part of the change.
 
 Known and decided against *for now*, so that nobody spends an afternoon rediscovering them:
 
-- **Content is `Text`, `Json` or `Blocks`, and nothing else.** There is no image, audio or binary variant,
-  so a multimodal provider has to carry bytes through `Content::Json`, and `BytesPerToken` then
-  counts base64 length over four - a figure that is not so much wrong as meaningless, in a crate
-  whose case rests on an honest budget. `Content` is `#[non_exhaustive]`, so a `Blob` variant is
-  additive whenever it is wanted; what it would drag in is a `TokenCounter` that can say something
-  sensible about pixels, which is the part that is not additive. **Not before multimodal support
-  is actually being built** - a variant nothing produces and nothing counts would be worse than
-  its absence.
+- **A `Budget` that says how much it could not count.** `Content::Blob` exists now and both
+  dialects carry it, but `BytesPerToken` declines to put a figure on one: its payload is base64,
+  and base64 over four is a number about an encoding rather than about a model - a 400 KB
+  screenshot would arrive as a hundred thousand tokens and send a compactor after a context that
+  is nowhere near full. What a picture really costs is a formula over its *dimensions* which every
+  vendor publishes and each publishes differently (85 plus 170 a tile, width times height over
+  750, 258 a tile), and none of them is reachable from a byte length. So the counter returns `0`
+  and the budget is a floor: **a context holding pictures is larger than it says.**
+
+  The fix is for a count to be able to abstain out loud - a figure on `Budget` and on `ContextItem`
+  saying how many pieces of content the counter would not measure, and a defaulted
+  `TokenCounter::counts` for a counter to disown what it cannot reach. Both of those structs have
+  public fields and no `#[non_exhaustive]`, so adding one is a breaking change: it is `nachalnik`
+  0.4.0 and it re-cuts `nachalnik-mcp` under it. **The trigger is somebody actually running a
+  multimodal session** - until then a real tokenizer through `Kernel::set_counter` is the answer
+  for anyone who needs the number to be right, and the doc on `BytesPerToken::count` says so.
+
+- **`nachalnik-mcp` naming a picture rather than carrying one.** The bridge answers an image
+  block with `[an image (image/png), not carried into the context]`, which was the only thing it
+  could do and is no longer. Carrying it is now a few lines - a `Content::Blob` instead of a
+  sentence - and the reason to wait is that a server offering a 4 MB screenshot would put 5.5 MB
+  of base64 into a context whose budget cannot yet count it. **Do it with the counter, not
+  before**, or the bridge gets a way to make a budget silently wrong.
 
 ---
 

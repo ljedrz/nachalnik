@@ -15,7 +15,7 @@ use kamchatka::{
     ui,
 };
 use nachalnik::{
-    Config, ContextItem, Kernel,
+    Config, Content, ContextItem, Kernel,
     test::{ConstTool, ScriptedProvider},
 };
 use nachalnik_providers::OpenAiCompatible;
@@ -351,6 +351,47 @@ async fn every_key_at_every_tab_with_nothing_to_act_on() {
             }
         }
     }
+}
+
+/// A context holding bytes that are not text draws, and the row says what they are.
+///
+/// note: this program renders no pictures and is not going to - a terminal cell is not a pixel,
+/// and a half-hearted attempt would be worse than none. What it owes a `Content::Blob` is
+/// therefore what it owes anything else it cannot show: a row that says what is there and what it
+/// costs, which is what `Content::to_text` answers and what every view here already draws. This
+/// is the test that it really does, at every size, rather than a blank line or a panic.
+#[test]
+fn a_picture_in_the_context_is_named_rather_than_drawn() {
+    let mut app = app();
+    app.kernel.push(ContextItem::user(Content::blob(
+        "image/png",
+        "A".repeat(4_000),
+    )));
+
+    for tab in [Tab::Chat, Tab::Context, Tab::Trace, Tab::Permissions] {
+        app.tab = tab;
+        for width in [20, 80, 200] {
+            draw(&mut app, width, 24);
+        }
+    }
+
+    app.tab = Tab::Context;
+    let mut terminal = Terminal::new(TestBackend::new(120, 30)).expect("a backend");
+    terminal
+        .draw(|frame| ui::draw(frame, &mut app))
+        .expect("a frame");
+    let screen: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect();
+
+    assert!(
+        screen.contains("image/png"),
+        "the row names what it could not draw:\n{screen}"
+    );
 }
 
 /// The status line names the address as well as the model, and the address it names is the

@@ -128,6 +128,32 @@ fn calibrating() -> Arc<Calibrating<BytesPerToken>> {
     Arc::new(Calibrating::new(BytesPerToken::default()))
 }
 
+/// The default counter declines a blob rather than inventing a figure for it.
+///
+/// note: this is the one place `BytesPerToken` refuses to divide, and it is deliberate. The bytes
+/// of an image are base64, and base64 over four is a number about an encoding: a 400 KB
+/// screenshot would arrive as a hundred thousand tokens and send a compactor after a context that
+/// is nowhere near full. What one really costs is a formula over its dimensions that every vendor
+/// publishes and each publishes differently, and none of them is reachable from a byte length.
+///
+/// note: so the figure is a floor and this test pins that it is - a context holding pictures is
+/// bigger than the budget says. Saying *how much* bigger needs a number on `Budget` that is not
+/// there yet, which is why a real tokenizer is still the answer for anyone who needs this right.
+#[test]
+fn the_default_counter_declines_a_blob_rather_than_guessing_at_it() {
+    let counter = BytesPerToken::default();
+    let blob = Content::blob("image/png", "A".repeat(400_000));
+
+    assert!(blob.byte_len() > 400_000, "the payload is really there");
+    assert_eq!(
+        counter.count(&blob),
+        0,
+        "base64 over four is a number about the encoding, not about the model"
+    );
+    // and everything it can measure is measured exactly as before
+    assert_eq!(counter.count(&Content::text("a".repeat(400))), 100);
+}
+
 #[test]
 fn a_counter_that_has_been_told_nothing_corrects_nothing() {
     let counter = calibrating();

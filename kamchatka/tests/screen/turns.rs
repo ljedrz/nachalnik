@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{app::Tab, tools::Limits};
 use nachalnik::{
-    Capability, Config, ContextItem, ContextState, Event, ModelInfo, ModelResponse,
+    Capability, Config, Content, ContextItem, ContextState, Event, ModelInfo, ModelResponse,
     test::{ConstTool, call},
 };
 use serde_json::json;
@@ -340,6 +340,64 @@ async fn the_next_request_says_why_there_is_none_rather_than_reporting_a_fault()
         "{screen}"
     );
     assert!(screen.contains("not one of the 1 item(s)"), "{screen}");
+}
+
+/// A picture in the context is named in the previews rather than printed into them.
+///
+/// note: `/request`, `/payload` and `/raw` are the three places this program shows raw JSON, and
+/// a `Content::Blob` in any of them is several megabytes of `AAAAAAAA` where somebody was looking
+/// for the shape of a request. The record keeps the whole of it - these are views. What a view
+/// owes is the two things the context tab's own row says: that it is there, and how big it is.
+///
+/// note: the elision is by shape and not by length, and the second half of this checks that: a
+/// long tool result is a thing somebody opened `/request` to *read*, and cutting it would be
+/// solving the wrong problem.
+#[tokio::test]
+async fn a_picture_is_named_in_the_previews_rather_than_printed_into_them() {
+    // a real provider, because `/payload` is the provider's own rendering and a scripted one has
+    // none - and because the two previews carry the blob in two different shapes: the kernel's
+    // `{ media_type, data }` in `/request`, and this dialect's `data:` URI in `/payload`
+    let mut harness = Harness::served_by(
+        [],
+        Arc::new(nachalnik_providers::OpenAiCompatible::new(
+            "m",
+            "http://127.0.0.1:1",
+            "",
+        )),
+    );
+    let payload = "A".repeat(4_000);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user(Content::blob("image/png", &*payload)));
+    harness.drain();
+
+    for command in ["/request", "/payload"] {
+        harness.send(command).await;
+        let screen = harness.flat();
+        assert!(
+            screen.contains("base64 blob") && screen.contains("image/png"),
+            "{command} should name it: {screen}"
+        );
+        assert!(
+            !screen.contains("AAAAAAAAAA"),
+            "{command} should not print it: {screen}"
+        );
+        harness.press(KeyCode::Esc).await;
+    }
+
+    // and a long *result* is not touched, because that is what somebody opened this to read
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"));
+    harness.drain();
+    harness.send("/request").await;
+    let screen = harness.flat();
+    assert!(
+        screen.contains("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"),
+        "{screen}"
+    );
 }
 
 #[tokio::test]

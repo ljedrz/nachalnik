@@ -168,7 +168,26 @@ impl Default for BytesPerToken {
 }
 
 impl TokenCounter for BytesPerToken {
+    /// note: a [`Content::Blob`] counts as nothing, which is wrong and is the least wrong thing
+    /// available here. Its bytes are base64, and base64 over four is a number about an encoding
+    /// rather than about a model: one screenshot would arrive as a quarter of a million tokens
+    /// and send a compactor after a context that is nowhere near full. What an image really costs
+    /// is a formula over its *dimensions* that every vendor publishes and each publishes
+    /// differently - 85 plus 170 a tile, width times height over 750, 258 a tile - and none of
+    /// them is reachable from a byte length.
+    ///
+    /// note: so this under-reports rather than over-reports, and it does so silently, which is
+    /// the part that is not good enough. Saying *how many* pieces of content a counter would not
+    /// put a number on means a figure on [`Budget`] that is not there yet, and adding one is a
+    /// breaking change to a struct whose fields are all public. Until then: a context carrying
+    /// images is larger than this says, and a real tokenizer put in with
+    /// [`Kernel::set_counter`](crate::Kernel::set_counter) is the answer for anyone who needs the
+    /// number to be right.
     fn count(&self, content: &Content) -> usize {
+        if matches!(content, Content::Blob(_)) {
+            return 0;
+        }
+
         let divisor = self.bytes_per_token.max(1);
         content.byte_len().div_ceil(divisor)
     }

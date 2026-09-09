@@ -268,10 +268,9 @@ impl Gemini {
             if let Some(said) = message
                 .content
                 .as_ref()
-                .map(Content::to_text)
-                .filter(|said| !said.is_empty())
+                .filter(|said| said.as_blob().is_some() || !said.to_text().is_empty())
             {
-                parts.push(json!({ "text": said }));
+                parts.push(Self::part_of(said));
             }
             parts.extend(message.tool_calls.iter().map(Self::asking));
 
@@ -281,9 +280,7 @@ impl Gemini {
         blocks
             .iter()
             .map(|block| match block {
-                Block::Text(part) => {
-                    Self::reattach(json!({ "text": part.content.to_text() }), &part.extra)
-                }
+                Block::Text(part) => Self::reattach(Self::part_of(&part.content), &part.extra),
                 Block::Reasoning(part) => Self::reattach(
                     json!({ "text": part.content.to_text(), "thought": true }),
                     &part.extra,
@@ -295,6 +292,19 @@ impl Gemini {
             })
             .filter(|part| !part.is_null())
             .collect()
+    }
+
+    /// One piece of content, as the part this API carries it in.
+    ///
+    /// note: text in a `text` part and bytes in an `inline_data` one. The payload is already
+    /// base64, which is the form this field takes, so nothing is encoded on the way out.
+    fn part_of(content: &Content) -> Value {
+        match content.as_blob() {
+            Some(blob) => json!({
+                "inline_data": { "mime_type": blob.media_type, "data": blob.data },
+            }),
+            None => json!({ "text": content.to_text() }),
+        }
     }
 
     /// One tool call, as a part.
@@ -366,9 +376,12 @@ impl Provider for Gemini {
                 Role::Tool => ("user", vec![Self::answering(message)]),
                 _ => (
                     "user",
-                    vec![json!({
-                        "text": message.content.as_ref().map(Content::to_text).unwrap_or_default()
-                    })],
+                    vec![
+                        message
+                            .content
+                            .as_ref()
+                            .map_or_else(|| json!({ "text": "" }), Self::part_of),
+                    ],
                 ),
             };
             if parts.is_empty() {

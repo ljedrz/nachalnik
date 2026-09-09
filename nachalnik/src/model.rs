@@ -58,6 +58,58 @@ pub enum Content {
     /// sequence deep enough to matter would be recursing through [`Content::to_text`] and through
     /// `Drop`, and somebody hand-writing a snapshot should know that is on them.
     Blocks(Arc<[Block]>),
+    /// Bytes that are not text: an image, a document, a recording.
+    ///
+    /// note: the runtime does not look inside it. What it does is carry it, count it and hand it
+    /// to a [`Provider`], the same as everything else here - and *name* it wherever it has to be
+    /// turned into text, because a gap where a picture was is worse than a sentence saying there
+    /// was one.
+    Blob(Arc<Blob>),
+}
+
+/// Bytes that are not text, in the form every one of these APIs wants them.
+///
+/// note: the payload is already base64, and that is deliberate rather than lazy. It is the form
+/// the wire takes in both dialects this workspace speaks - a `data:` URI in one, `inline_data` in
+/// the other - so holding it this way means nothing is encoded on the way out, [`Content::byte_len`]
+/// really is the size in the form it would be sent in, and a session log is the base64 string and
+/// not a JSON array of six hundred thousand numbers. It also keeps a base64 codec out of a crate
+/// that has five dependencies and a rule about growing a sixth.
+///
+/// note: nothing here validates it. A caller that hands over a string which is not base64 has
+/// built a request the endpoint will refuse, and it will say so; a runtime that checked would be
+/// deciding what a media type means, which is the thing this crate does not do.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Blob {
+    /// What the payload is, as an IANA media type: `image/png`, `application/pdf`.
+    pub media_type: Arc<str>,
+    /// The payload, base64-encoded.
+    pub data: Arc<str>,
+}
+
+impl Blob {
+    /// Creates a blob from a media type and an already-base64 payload.
+    pub fn new(media_type: impl Into<Arc<str>>, data: impl Into<Arc<str>>) -> Self {
+        Self {
+            media_type: media_type.into(),
+            data: data.into(),
+        }
+    }
+
+    /// How large the payload is, as base64 - which is what goes on the wire.
+    pub fn byte_len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl fmt::Display for Blob {
+    /// Names it, for the places something has to be text.
+    ///
+    /// note: the same shape `nachalnik-mcp` has always used for a tool result it could not carry,
+    /// because the useful facts are the same two: what it was, and how much of it there was.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}, {} bytes]", self.media_type, self.byte_len())
+    }
 }
 
 impl Content {
@@ -76,11 +128,16 @@ impl Content {
         Self::Blocks(blocks.into_iter().collect())
     }
 
+    /// Creates a blob from a media type and an already-base64 payload.
+    pub fn blob(media_type: impl Into<Arc<str>>, data: impl Into<Arc<str>>) -> Self {
+        Self::Blob(Arc::new(Blob::new(media_type, data)))
+    }
+
     /// Returns the text, if this is [`Content::Text`].
     pub fn as_text(&self) -> Option<&str> {
         match self {
             Self::Text(s) => Some(s),
-            Self::Json(_) | Self::Blocks(_) => None,
+            Self::Json(_) | Self::Blocks(_) | Self::Blob(_) => None,
         }
     }
 
@@ -88,7 +145,15 @@ impl Content {
     pub fn as_blocks(&self) -> Option<&[Block]> {
         match self {
             Self::Blocks(blocks) => Some(blocks),
-            Self::Text(_) | Self::Json(_) => None,
+            Self::Text(_) | Self::Json(_) | Self::Blob(_) => None,
+        }
+    }
+
+    /// Returns the blob, if this is [`Content::Blob`].
+    pub fn as_blob(&self) -> Option<&Blob> {
+        match self {
+            Self::Blob(blob) => Some(blob),
+            Self::Text(_) | Self::Json(_) | Self::Blocks(_) => None,
         }
     }
 
@@ -101,10 +166,17 @@ impl Content {
     /// question, and it counts all of them. The newline is there because two text blocks were
     /// separated by *something* - a call, a thought - and running them together would make a word
     /// that was never in the output.
+    ///
+    /// note: for [`Content::Blob`] there is no faithful answer, so this names it rather than
+    /// giving one - `[image/png, 12048 bytes]`. The alternatives were an empty string, which
+    /// makes a picture vanish from a transcript with nothing to say it was ever there, and the
+    /// base64 itself, which is six hundred thousand characters of noise wherever anything expects
+    /// prose. Anything that wants the payload asks [`Content::as_blob`] for it.
     pub fn to_text(&self) -> Cow<'_, str> {
         match self {
             Self::Text(s) => Cow::Borrowed(s),
             Self::Json(v) => Cow::Owned(v.to_string()),
+            Self::Blob(blob) => Cow::Owned(blob.to_string()),
             Self::Blocks(blocks) => match blocks.iter().filter_map(Block::said).collect::<Vec<_>>()
             {
                 said if said.len() == 1 => said[0].content.to_text(),
@@ -129,6 +201,10 @@ impl Content {
             // all of them, including the thinking and the calls: what this answers is what the
             // turn costs, which is not what `to_text` answers
             Self::Blocks(blocks) => blocks.iter().map(Block::byte_len).sum(),
+            // the base64 and the media type, because both go out and neither is free. It is not
+            // what the *model* charges for a picture - that is a count no byte length can reach,
+            // and see `TokenCounter` for what this crate does and does not claim about it
+            Self::Blob(blob) => blob.byte_len() + blob.media_type.len(),
         }
     }
 
@@ -144,9 +220,11 @@ impl Content {
     /// does not fit, the content is cut to the limit without one, and the truncation is reported
     /// by the return value and by [`Event::ToolFinished`](crate::Event::ToolFinished) as usual.
     ///
-    /// note: Truncating [`Content::Json`] or [`Content::Blocks`] turns it into
-    /// [`Content::Text`] - a truncated JSON document is not JSON and a cut string is not an
-    /// ordered sequence of blocks, and pretending otherwise would hide the truncation.
+    /// note: Truncating [`Content::Json`], [`Content::Blocks`] or [`Content::Blob`] turns it into
+    /// [`Content::Text`] - a truncated JSON document is not JSON, a cut string is not an ordered
+    /// sequence of blocks, and half a PNG is not a picture. Pretending otherwise would hide the
+    /// truncation. A blob over the limit therefore arrives as the sentence naming it and the
+    /// count of what went, which is the whole payload.
     ///
     /// note: what has to fit is [`Content::byte_len`] and what is cut is [`Content::to_text`],
     /// which are the same string for text and for JSON and are not for blocks: a turn whose
@@ -1003,6 +1081,63 @@ mod tests {
         copy.truncate_to(100);
         assert_eq!(big.byte_len(), 1 << 20);
         assert_eq!(copy.byte_len(), 100);
+    }
+
+    /// A blob names itself wherever it has to be text, and is its base64 wherever it has to be
+    /// a size.
+    ///
+    /// note: the two questions get different answers on purpose. `to_text` is asked by anything
+    /// that has to *show* the content - a transcript, a truncation, a dialect with nowhere to put
+    /// it - and there is no faithful text for a picture, so it says what was there. `byte_len` is
+    /// asked by an output limit, and what the limit is protecting is the request, which carries
+    /// the base64.
+    #[test]
+    fn a_blob_names_itself_as_text_and_measures_as_what_goes_out() {
+        let content = Content::blob("image/png", "aGVsbG8=");
+
+        assert_eq!(content.to_text(), "[image/png, 8 bytes]");
+        assert_eq!(content.byte_len(), 8 + "image/png".len());
+        assert_eq!(content.as_blob().map(|b| &*b.media_type), Some("image/png"));
+        assert!(content.as_text().is_none(), "it is not text and says so");
+    }
+
+    /// A blob over an output limit becomes the sentence naming it, and the count is the payload.
+    ///
+    /// note: the alternative is half a PNG, which is not a picture and is not detectable as not
+    /// being one. `truncate_to` already turns JSON and blocks into text for the same reason.
+    #[test]
+    fn a_blob_that_is_over_a_limit_is_replaced_rather_than_cut() {
+        let mut content = Content::blob("image/png", "A".repeat(4_000));
+        let dropped = content.truncate_to(200).expect("it is over the limit");
+
+        let said = content.to_text();
+        assert!(
+            content.as_blob().is_none(),
+            "half a picture is not one: {said}"
+        );
+        assert!(said.starts_with("[image/png, 4000 bytes]"), "{said}");
+        assert!(said.contains("truncated by an output limit"), "{said}");
+        assert!(
+            dropped > 3_000,
+            "what went is the payload, not the sentence: {dropped}"
+        );
+        assert!(content.byte_len() <= 200);
+    }
+
+    /// It survives a session log, which is the whole reason the payload is held as base64.
+    #[test]
+    fn a_blob_round_trips_through_serde_as_the_string_it_already_is() {
+        let content = Content::blob("image/png", "aGVsbG8=");
+
+        let written = serde_json::to_string(&content).expect("a blob serializes");
+        assert_eq!(
+            written, r#"{"blob":{"media_type":"image/png","data":"aGVsbG8="}}"#,
+            "the log carries the base64 and not an array of numbers"
+        );
+        assert_eq!(
+            serde_json::from_str::<Content>(&written).expect("and comes back"),
+            content
+        );
     }
 
     #[test]

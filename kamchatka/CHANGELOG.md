@@ -22,6 +22,24 @@ minor bump may break you.
   copies of it in this workspace could not be merged: a published crate may not depend on one that
   is not.
 
+### added
+
+- A context item holding `nachalnik::Content::Blob` - bytes that are not text - draws, as the row
+  naming what it is and what it costs: `[image/png, 12048 bytes]`. This program renders no
+  pictures and is not going to: a terminal cell is not a pixel, and a half-hearted attempt would
+  be worse than none. What it owes a picture is what it owes anything else it cannot show, which
+  is to say that it was there - and that is what `to_text` already answers, so every view got it
+  without a line of drawing code. `tests/edges.rs` pins that it really does, at every size.
+
+  `/request`, `/payload` and `/raw` name it too, rather than printing it. Those three are the only
+  places this program shows raw JSON, and a blob in any of them is several megabytes of
+  `AAAAAAAA` where somebody was looking for the shape of a request - so the payload is replaced
+  with `[ base64 blob, image/png, 12048 bytes ]` and the rest of the body is left alone. By shape
+  rather than by length, in all three of the shapes this workspace produces - the kernel's own
+  `Content::Blob`, a `data:` URI, and Google's `inline_data` - because a long tool *result* is
+  something somebody opened `/request` to read and must not be cut. The session log keeps the
+  whole of it; these are views.
+
 ### changed
 
 - `provider::connect` and the new `provider::gemini::connect` are what is left here, and they are

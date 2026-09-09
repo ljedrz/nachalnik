@@ -48,6 +48,17 @@ minor bump may break you.
   unpublished copy did that and the published one did not, and it is the case where a turn's cost
   is otherwise invisible. Both paths read it through one function now, and one `stop_reason`.
 
+- Both dialects carry `nachalnik::Content::Blob`, each where its own API takes one: a `data:` URI
+  inside a typed content part here, an `inline_data` part there. A list of content parts only
+  where there is a blob to carry, because a plain string is what every endpoint speaking the
+  conventional dialect accepts and some of the smaller ones accept nothing else - a turn with no
+  picture in it goes out exactly as it did before.
+
+  Neither dialect accepts one in a *tool result*: `tool` content is a string in the first and a
+  `functionResponse` object in the second. A tool that returned a picture therefore sends the
+  sentence naming it, `[image/png, 12048 bytes]`, which is the answer `nachalnik-mcp` has always
+  given and beats a 400 by enough to be deliberate about.
+
 - The conformance suite, as `conformance`, off by default. It was written to keep three copies of
   this code honest and outlives them because what it holds is not agreement between copies but a
   list of shapes some server really sent, asked through a real socket. It is here for whoever
