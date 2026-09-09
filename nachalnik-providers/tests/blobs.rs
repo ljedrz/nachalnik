@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use nachalnik::{Config, Content, ContextItem, Kernel, Provider, ToolCall};
+use nachalnik::{Block, Config, Content, ContextItem, Kernel, Provider, ToolCall};
 use serde_json::{Value, json};
 
 /// A one-pixel PNG, base64, which is what a caller would have handed over.
@@ -116,4 +116,58 @@ fn googles_dialect_sends_inline_data_beside_the_text_parts() {
         answer["parts"][0]["functionResponse"]["response"]["result"],
         json!(format!("[image/png, {} bytes]", PIXEL.len()))
     );
+}
+
+/// A turn that is a sentence *and* a picture goes out as both.
+///
+/// note: the shape a caller building a multimodal client reaches for, and the one a byte-for-byte
+/// reading of "content is one thing" would lose: `to_text` on a block sequence names the picture
+/// rather than carrying it, which is right for a transcript and wrong for a request. Both dialects
+/// read the blocks instead, so the model gets the words and the image in the order they were put
+/// in.
+#[test]
+fn a_turn_that_is_a_sentence_and_a_picture_carries_both() {
+    let asked = Content::blocks([
+        Block::text(Content::text("what is wrong with this?")),
+        Block::text(Content::blob("image/png", PIXEL)),
+    ]);
+
+    #[cfg(feature = "openai")]
+    {
+        let provider = Arc::new(nachalnik_providers::OpenAiCompatible::new(
+            "m",
+            "https://example.invalid/v1",
+            "k",
+        ));
+        let body = rendered(provider, vec![ContextItem::user(asked.clone())]);
+        let parts = &body["messages"][0]["content"];
+
+        assert_eq!(
+            parts[0],
+            json!({ "type": "text", "text": "what is wrong with this?" })
+        );
+        assert_eq!(
+            parts[1]["image_url"]["url"],
+            json!(format!("data:image/png;base64,{PIXEL}")),
+            "{parts}"
+        );
+    }
+
+    #[cfg(feature = "gemini")]
+    {
+        let provider = Arc::new(nachalnik_providers::Gemini::new(
+            "m",
+            "https://example.invalid",
+            "k",
+        ));
+        let body = rendered(provider, vec![ContextItem::user(asked)]);
+        let parts = &body["contents"][0]["parts"];
+
+        assert_eq!(parts[0]["text"], "what is wrong with this?");
+        assert_eq!(
+            parts[1]["inline_data"],
+            json!({ "mime_type": "image/png", "data": PIXEL }),
+            "{parts}"
+        );
+    }
 }

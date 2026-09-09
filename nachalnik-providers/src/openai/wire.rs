@@ -13,8 +13,8 @@
 use std::{sync::atomic::Ordering, time::Duration};
 
 use nachalnik::{
-    BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse, Provider, Role,
-    StopReason, ToolCall, ToolCallId, Usage, async_trait,
+    Block, BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse, Provider,
+    Role, StopReason, ToolCall, ToolCallId, Usage, async_trait,
 };
 use serde_json::{Value, json};
 
@@ -737,21 +737,57 @@ fn stop_reason(finish: Option<&str>) -> StopReason {
     }
 }
 
+/// A message's content as this dialect's list of typed parts, where a plain string cannot carry
+/// what is in it.
+///
+/// note: `None` unless there is a blob somewhere, and that is the whole rule. A plain string is
+/// what every endpoint speaking this dialect accepts and some of the smaller ones accept nothing
+/// else, so a turn of text has to go out exactly as it did before any of this existed.
+///
+/// note: [`Content::Blocks`] is the shape a turn takes when it is *both* - a sentence and the
+/// screenshot it is about - and it is the one a caller building a multimodal client reaches for.
+/// The blocks are read through [`Block::said`], so a turn's thinking and its calls stay where
+/// they belong, which is the `tool_calls` array below and nowhere at all.
+fn parts_of(content: &Content) -> Option<Value> {
+    fn part(content: &Content) -> Value {
+        match content.as_blob() {
+            Some(blob) => json!({
+                "type": "image_url",
+                "image_url": {
+                    "url": format!("data:{};base64,{}", blob.media_type, blob.data),
+                },
+            }),
+            None => json!({ "type": "text", "text": content.to_text() }),
+        }
+    }
+
+    match content {
+        Content::Blob(_) => Some(json!([part(content)])),
+        Content::Blocks(blocks) => blocks
+            .iter()
+            .filter_map(Block::said)
+            .any(|said| said.content.as_blob().is_some())
+            .then(|| {
+                blocks
+                    .iter()
+                    .filter_map(Block::said)
+                    .map(|said| part(&said.content))
+                    .collect()
+            }),
+        _ => None,
+    }
+}
+
 /// Translates a kernel message into the wire format.
 fn to_wire(message: &Message) -> Value {
     let mut wire = json!({ "role": message.role.as_str() });
 
     if let Some(content) = &message.content {
-        // note: a list of parts only where there is a blob to carry, because a plain string is
-        // what every endpoint speaking this dialect accepts and a few of the smaller ones accept
-        // nothing else. And only on a user turn: `tool` content is a string in this dialect
-        // whatever is in it, so a tool that returned a picture sends the sentence naming it -
-        // which is what `nachalnik-mcp` has always done and is better than a 400
-        wire["content"] = match content.as_blob().filter(|_| message.role == Role::User) {
-            Some(blob) => json!([{
-                "type": "image_url",
-                "image_url": { "url": format!("data:{};base64,{}", blob.media_type, blob.data) },
-            }]),
+        // note: only on a user turn. `tool` content is a string in this dialect whatever is in
+        // it, so a tool that returned a picture sends the sentence naming it - which is what
+        // `nachalnik-mcp` has always done and is better than a 400
+        wire["content"] = match parts_of(content).filter(|_| message.role == Role::User) {
+            Some(parts) => parts,
             None => json!(content.to_text()),
         };
     }

@@ -374,14 +374,21 @@ impl Provider for Gemini {
             let (role, parts) = match message.role {
                 Role::Assistant => ("model", Self::turn(message)),
                 Role::Tool => ("user", vec![Self::answering(message)]),
+                // note: a turn recorded as blocks is a turn that is more than one thing - a
+                // sentence and the screenshot it is about - so it goes out as one part each
+                // rather than through `to_text`, which would name the picture instead of
+                // carrying it
                 _ => (
                     "user",
-                    vec![
-                        message
-                            .content
-                            .as_ref()
-                            .map_or_else(|| json!({ "text": "" }), Self::part_of),
-                    ],
+                    match message.content.as_ref() {
+                        Some(Content::Blocks(blocks)) => blocks
+                            .iter()
+                            .filter_map(Block::said)
+                            .map(|said| Self::part_of(&said.content))
+                            .collect(),
+                        Some(said) => vec![Self::part_of(said)],
+                        None => vec![json!({ "text": "" })],
+                    },
                 ),
             };
             if parts.is_empty() {

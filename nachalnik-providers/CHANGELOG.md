@@ -54,6 +54,11 @@ minor bump may break you.
   conventional dialect accepts and some of the smaller ones accept nothing else - a turn with no
   picture in it goes out exactly as it did before.
 
+  A turn that is a sentence *and* a picture - `Content::Blocks` holding both, which is the shape a
+  multimodal client reaches for - goes out as both, in the order it was put in. Reading it as one
+  content slot would have meant `to_text`, which names the picture instead of carrying it: right
+  for a transcript, wrong for a request.
+
   Neither dialect accepts one in a *tool result*: `tool` content is a string in the first and a
   `functionResponse` object in the second. A tool that returned a picture therefore sends the
   sentence naming it, `[image/png, 12048 bytes]`, which is the answer `nachalnik-mcp` has always
