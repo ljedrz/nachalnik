@@ -7,8 +7,9 @@
 **A terminal agent that shows you its context.**
 
 Built on [`nachalnik`][nachalnik], and built to demonstrate it. Everything in here is
-ordinary user code — two providers, the tools, the permission policy, the compactor, the drawing.
-The runtime supplies the state machine, the context and the paper trail.
+ordinary user code — the tools, the permission policy, the compactor, the drawing, and the two
+providers next door in [`nachalnik-providers`][providers]. The runtime supplies the state machine,
+the context and the paper trail.
 
 ```console
 $ cargo install kamchatka
@@ -912,5 +913,6 @@ MIT.
      which is not where the repository root is. Links into the tree are absolute. -->
 
 [nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
+[providers]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-providers
 [nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
 [protection]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/README.md#-what-it-does-and-does-not-protect-you-from

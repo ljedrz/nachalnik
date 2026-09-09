@@ -19,15 +19,14 @@ use crossterm::{
     execute,
 };
 use nachalnik::{Config, ContextItem, Event, Kernel};
+use nachalnik_providers::Endpoint;
 use ratatui::DefaultTerminal;
 use tokio::sync::{broadcast::error::RecvError, mpsc};
 use tokio_stream::StreamExt;
 
 use kamchatka::{
     app::{App, Outcome, Speaker},
-    gemini, introspect,
-    provider::{self, Endpoint},
-    sandbox, tools, ui,
+    introspect, provider, sandbox, tools, ui,
 };
 
 /// How often the screen is redrawn when nothing at all is happening.
@@ -151,7 +150,7 @@ async fn terminal() -> Result<()> {
         .to_owned()
     });
     let provider: Arc<dyn Endpoint> = match args.gemini {
-        true => gemini::connect(&model)
+        true => provider::gemini::connect(&model)
             .await
             .map(|it| it as Arc<dyn Endpoint>),
         false => provider::connect(&model)

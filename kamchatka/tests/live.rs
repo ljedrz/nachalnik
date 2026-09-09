@@ -30,7 +30,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use kamchatka::{
     app::{App, Focus, Tab},
-    provider::OpenAiCompatible,
     tools::{Careful, Limits, Subject},
     ui,
 };
@@ -39,6 +38,7 @@ use nachalnik::{
     LinearProjector, OutputSink, Role, State, Tool, ToolCall, ToolOutput, ToolSpec, Verdict,
     async_trait,
 };
+use nachalnik_providers::OpenAiCompatible;
 use ratatui::{Terminal, backend::TestBackend};
 use serde_json::json;
 
@@ -545,7 +545,7 @@ fn gemini() -> Option<(
     tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
 )> {
     let base = std::env::var("KAMCHATKA_GEMINI_BASE_URL")
-        .unwrap_or_else(|_| kamchatka::gemini::DEFAULT_BASE_URL.to_owned());
+        .unwrap_or_else(|_| nachalnik_providers::gemini::DEFAULT_BASE_URL.to_owned());
     // a key belongs to the endpoint it was given for. The one above is borrowed only when it was
     // plausibly Google's - an unset base URL, or one pointing there - because otherwise this sent
     // an OpenRouter key to `generativelanguage.googleapis.com` and reported the 400 that came back
@@ -562,7 +562,7 @@ fn gemini() -> Option<(
         std::env::var("KAMCHATKA_GEMINI_MODEL").unwrap_or_else(|_| "gemini-3.6-flash".to_owned());
 
     let kernel = Kernel::new(Config::default());
-    let provider = Arc::new(kamchatka::gemini::Gemini::new(model, base, key));
+    let provider = Arc::new(nachalnik_providers::Gemini::new(model, base, key));
     kernel.set_provider(provider.clone());
     // what `--gemini` wires up: this dialect's turn *is* an order, so the projector sends one
     kernel.set_projector(Arc::new(LinearProjector {

@@ -13,11 +13,11 @@
 
 use std::sync::Arc;
 
-use kamchatka::gemini::Gemini;
 use nachalnik::{
     Block, Config, Content, ContextItem, ContextKind, Kernel, LinearProjector, ModelResponse,
     Provider, StopReason, ToolCall, ToolCallId,
 };
+use nachalnik_providers::Gemini;
 use serde_json::{Value, json};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},

@@ -1,6 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["nachalnik", "nachalnik-mcp", "nachalnik-utils", "nachalnik-eval", "kamchatka"]
+members = [
+    "nachalnik",
+    "nachalnik-mcp",
+    "nachalnik-providers",
+    "nachalnik-utils",
+    "nachalnik-eval",
+    "kamchatka",
+]
 
 # what every crate in here agrees on; a member opts in with `edition.workspace = true`
 [workspace.package]
@@ -17,6 +24,7 @@ rust-version = "1.88"
 [workspace.dependencies]
 nachalnik = { version = "0.3.3", path = "nachalnik" }
 nachalnik-mcp = { version = "0.3.1", path = "nachalnik-mcp" }
+nachalnik-providers = { version = "0.1.0", path = "nachalnik-providers" }
 # no version: it is never published, so nothing may depend on it except as a dev-dependency
 nachalnik-utils = { path = "nachalnik-utils" }
 async-trait = "0.1"

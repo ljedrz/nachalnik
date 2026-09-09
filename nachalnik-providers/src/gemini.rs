@@ -1,6 +1,6 @@
 //! Google's own dialect, in which an assistant turn is an ordered list of parts.
 //!
-//! note: this exists because the OpenAI-compatible shim in [`provider`](crate::provider) cannot
+//! note: this exists because the OpenAI-compatible shim in [`openai`](crate::openai) cannot
 //! say what the model actually did. Gemini answers with `content.parts[]` - a thinking part, a
 //! sentence, a `functionCall`, in the order they were produced - and the shim flattens that into
 //! a `content` string beside a `tool_calls` array, because the dialect it is imitating has no
@@ -20,7 +20,6 @@
 //! part, uninterpreted.
 
 use std::{
-    env,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -35,8 +34,8 @@ use nachalnik::{
 use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
-use crate::provider::{
-    Endpoint, api_key, configured_limit, install_crypto, same_model,
+use crate::{
+    Endpoint, install_crypto, same_model,
     waiting::{PATIENCE, RETRIES, Silence, Unsent, Vigil, interrupted, watched},
 };
 
@@ -54,6 +53,9 @@ pub struct Gemini {
     api_key: String,
     model: Mutex<String>,
     context_limit: Mutex<Option<usize>>,
+    /// The limit the caller set by hand, if it set one, kept so that changing model or endpoint
+    /// puts it back rather than dropping it.
+    configured: Option<usize>,
     attempts: AtomicUsize,
     notice: Mutex<Option<String>>,
 }
@@ -82,10 +84,22 @@ impl Gemini {
             base_url: Mutex::new(base_url.into()),
             api_key: api_key.into(),
             model: Mutex::new(model.into()),
-            context_limit: Mutex::new(configured_limit()),
+            context_limit: Mutex::new(None),
+            configured: None,
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
         }
+    }
+
+    /// Measures against this limit rather than against whatever the endpoint advertises.
+    ///
+    /// note: sticky across [`Endpoint::set_model`] and [`Endpoint::set_endpoint`], because it is
+    /// a decision about what to measure and not a fact about one model. `None` means "ask the
+    /// endpoint", which is the default.
+    pub fn with_context_limit(mut self, limit: Option<usize>) -> Self {
+        self.configured = limit;
+        *self.context_limit.get_mut() = limit;
+        self
     }
 
     /// Asks the endpoint what the model's context limit is.
@@ -717,14 +731,14 @@ impl Endpoint for Gemini {
 
     async fn set_model(&self, model: String) {
         *self.model.lock() = model;
-        *self.context_limit.lock() = configured_limit();
+        *self.context_limit.lock() = self.configured;
         self.probe().await;
 
         let model = self.model.lock().clone();
         let listed = self.models().await;
         if !listed.is_empty() && !listed.iter().any(|name| same_model(name, &model)) {
             *self.notice.lock() = Some(format!(
-                "{model} is not one of the {} models at this address; /models lists them",
+                "{model} is not one of the {} models this address lists",
                 listed.len()
             ));
         }
@@ -732,7 +746,7 @@ impl Endpoint for Gemini {
 
     async fn set_endpoint(&self, url: String, model: Option<String>) {
         *self.base_url.lock() = url;
-        *self.context_limit.lock() = configured_limit();
+        *self.context_limit.lock() = self.configured;
         match model {
             Some(model) => self.set_model(model).await,
             None => self.probe().await,
@@ -742,17 +756,4 @@ impl Endpoint for Gemini {
     fn take_notice(&self) -> Option<String> {
         self.notice.lock().take()
     }
-}
-
-/// The endpoint to talk to; Google's own unless told otherwise.
-pub fn base_url() -> String {
-    env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_owned())
-}
-
-/// Builds a provider from the environment, asking the endpoint what the model's limit is.
-pub async fn connect(model: impl Into<String>) -> Result<Arc<Gemini>, BoxError> {
-    let provider = Arc::new(Gemini::new(model, base_url(), api_key()?));
-    provider.probe().await;
-
-    Ok(provider)
 }

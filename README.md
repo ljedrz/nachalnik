@@ -24,6 +24,7 @@ to show that it can be.
 | **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime - the thing you actually run, and the demonstration that the seams hold up under one. Also where the sandbox lives, because it is the program that spawns processes. |
 | **[`nachalnik-mcp`](nachalnik-mcp)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`](nachalnik-eval)** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared - so *"why do you think that?"* stops being unfalsifiable. |
+| **[`nachalnik-providers`](nachalnik-providers)** | the two dialects - OpenAI chat-completions and Google's own - streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
 | `nachalnik-utils` | never published, permanently `0.0.0`. The OpenAI-compatible provider the workspace's examples and live tests talk through, so that scaffolding is written once rather than four times. A *dev*-dependency, which is the whole trick: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
 
 ---
@@ -133,12 +134,11 @@ $ cargo test --workspace
 Every crate has a suite, and each crate's readme says what its own covers. The live ones skip
 themselves when there is no API key.
 
-Among them is the provider conformance suite. This workspace has one OpenAI-compatible provider
-written twice and a Gemini one written beside them, and they cannot be merged - `kamchatka` is
-published and `nachalnik-utils` never will be. So they share the *questions* instead: every
-provider is asked the same ones through a real socket, each question is a bug that actually
-happened to one of them, and a question added applies to all three without any of them being
-edited.
+Among them is the provider conformance suite. What a provider makes of a stream is not tested one
+provider at a time, because the questions would be the same each time. They share the *questions*
+instead: every provider in the workspace is asked the same ones through a real socket, each
+question is a bug that actually happened to one of them, and a question added applies to all of
+them without any being edited.
 
 The live suites are the only way to check the things a mock cannot - that the requests this
 workspace builds are accepted by a real API, and that a real model's answers survive the round trip

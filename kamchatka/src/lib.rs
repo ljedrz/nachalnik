@@ -27,10 +27,11 @@
 //! list of parts rather than a content slot beside a list of calls. What that buys is the order
 //! itself: thinking, a sentence, a tool call, more thinking - recorded as it happened, counted and
 //! prunable like anything else, and sent back the same way. Both dialects answer one trait
-//! ([`provider::Endpoint`]), so nothing above them knows which one it got.
+//! ([`nachalnik_providers::Endpoint`]), so nothing above them knows which one it got.
 //!
-//! Everything in here is user code: the providers, the tools, the policy, the compactor and the
-//! rendering. The kernel supplies the state machine, the context and the paper trail.
+//! Everything in here is user code: the tools, the policy, the compactor and the rendering, and
+//! the providers next door in [`nachalnik_providers`]. The kernel supplies the state machine, the
+//! context and the paper trail.
 //!
 //! It is a library only so that the screen can be tested - [`ui::draw`] against a
 //! `TestBackend` is how the tests check that a pruned item really does leave the next request.
@@ -40,7 +41,6 @@
 #![deny(unsafe_code)]
 
 pub mod app;
-pub mod gemini;
 pub mod introspect;
 pub mod provider;
 pub mod sandbox;

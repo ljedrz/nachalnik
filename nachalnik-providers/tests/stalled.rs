@@ -1,13 +1,14 @@
 //! What happens when the model says nothing at all - before the answer, or during it.
 //!
-//! note: This is the one thing a scripted provider cannot imitate, and it is worth a socket: a
+//! note: this is the one thing a scripted provider cannot imitate, and it is worth a socket: a
 //! provider that only checks the interrupt *between* fragments is stuck for ever when no fragment
-//! ever arrives, and `esc` does nothing whatever. It looks identical to a working program.
+//! ever arrives, and the key somebody pressed to stop it does nothing whatever. From the outside
+//! it looks identical to a program that is working.
 
 use std::{sync::Arc, time::Duration};
 
-use kamchatka::provider::OpenAiCompatible;
 use nachalnik::{Config, ContextItem, Kernel};
+use nachalnik_providers::OpenAiCompatible;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -137,7 +138,7 @@ async fn the_other_dialect_is_watched_the_same_way() {
     // headers, and the watching was written into one of them. This one's `send` was a bare `?`:
     // a stall got neither the doubling a busy server gets nor any of the noticing a stream gets
     let kernel = Kernel::new(Config::default());
-    kernel.set_provider(Arc::new(kamchatka::gemini::Gemini::new(
+    kernel.set_provider(Arc::new(nachalnik_providers::Gemini::new(
         "deaf",
         deaf_server().await,
         "no key needed",

@@ -18,8 +18,8 @@ use nachalnik::{
 };
 use serde_json::{Value, json};
 
-use crate::provider::{
-    OpenAiCompatible,
+use crate::{
+    openai::OpenAiCompatible,
     waiting::{HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, interrupted, watched},
 };
 

@@ -18,11 +18,11 @@ use nachalnik::{
     Capability, Content, ContextId, ContextItem, ContextKind, Delta, Event, Grant, GrantSource,
     Kernel, PermissionRequest, State, Verdict, selectors::Selector,
 };
+use nachalnik_providers::Endpoint;
 use ratatui_textarea::{TextArea, WrapMode};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
-    provider::Endpoint,
     sandbox::Confinement,
     tools::{Careful, Limits, Subject},
     ui::thousands,

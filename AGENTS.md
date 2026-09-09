@@ -51,6 +51,7 @@ Two rules decide most questions before they are asked:
 | `nachalnik-mcp` | MCP servers as `Tool`s. Deliberately outside the core: speaking MCP means spawning processes and reading notifications in the background, which the runtime promises not to do. | yes |
 | `kamchatka` | a terminal agent built on the runtime; the proof that the seams hold under a real client. | yes |
 | `nachalnik-eval` | a benchmark for model introspection: elicit a claim about a context, move the thing it was about on a copy, and score the claim against what happened. No provider, no network, four dependencies. | yes |
+| `nachalnik-providers` | the two dialects this workspace talks - OpenAI chat-completions and Google's `generateContent` - feature-gated, streamed, retried and interruptible. Deliberately outside the core for the same reason as `nachalnik-mcp`: the runtime opens no sockets. | yes |
 | `nachalnik-utils` | the OpenAI-compatible provider the examples, the live suites and `nachalnik-eval`'s `bench` example share. **Never published, permanently `0.0.0`, dev-dependency only** - cargo strips dev-dependencies from a published manifest, which is the whole trick. Nothing may depend on it normally. | no |
 
 `nachalnik-mcp` was written with **no change to the runtime at all**, and so were
@@ -90,20 +91,24 @@ and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that flo
 fitting), `tools/` (the four tools - `files.rs` for the three that run in process and `shell.rs` for
 the one that does not - with `policy.rs` for `Careful` and `trim.rs` for the compactor),
 `introspect/` (the two off-by-default tools an agent inspects and manages its own context with - one
-per file, with `mod.rs` holding `install` and the handful of things both of them use), `provider/`
-(`mod.rs` is the OpenAI-compatible endpoint and the `Endpoint` trait both providers answer,
-`wire.rs` is one request sent and read back, and `waiting.rs` is the stall watch and the retry
-rules, which are `pub(crate)` because `gemini` uses them too), `gemini.rs` (Google's own, the one
-that keeps the order of a turn), `main.rs` (arguments and wiring). It is a library plus a binary
-only so the screen can be drawn against a `TestBackend` in tests.
+per file, with `mod.rs` holding `install` and the handful of things both of them use),
+`provider.rs` (**not a provider**: the four environment variables this program reads, and the two
+`connect` functions that turn them into one), `main.rs` (arguments and wiring). It is a library
+plus a binary only so the screen can be drawn against a `TestBackend` in tests.
+
+`nachalnik-providers/src`: `openai/mod.rs` (`OpenAiCompatible`, where the requests go and what the
+endpoint says it serves), `openai/wire.rs` (one request sent and read back), `gemini.rs` (Google's
+own, the one that keeps the order of a turn), `endpoint.rs` (the `Endpoint` trait both answer),
+`waiting.rs` (the stall watch and the retry rules, `pub(crate)` because both dialects use them).
+Each dialect is a feature; `waiting.rs` is what makes them one crate rather than two.
 
 Two providers, one trait. `Provider` is the kernel's half - ask, and be answered - and `Endpoint`
-is this program's: where the requests go, what is served there, what the last retry was about.
-`App` holds an `Arc<dyn Endpoint>` and never finds out which wire format is behind it, which is
-the claim `/seams` makes about every other part of the runtime and had not been true of this one.
-`--gemini` picks the second, and turns on `LinearProjector::send_blocks` with it, because that
-dialect's turn *is* an order and projecting three slots at it would flatten every turn on the way
-out one request after recording the order on the way in.
+is the caller's: where the requests go, what is served there, what the last retry was about.
+`kamchatka`'s `App` holds an `Arc<dyn Endpoint>` and never finds out which wire format is behind
+it, which is the claim `/seams` makes about every other part of the runtime and had not been true
+of this one. `--gemini` picks the second, and turns on `LinearProjector::send_blocks` with it,
+because that dialect's turn *is* an order and projecting three slots at it would flatten every
+turn on the way out one request after recording the order on the way in.
 
 `introspect/` is the second `nachalnik-mcp`: **written with no change to the runtime at all**, and
 worth reading for that reason. Forking a context is `Kernel::snapshot` and `Kernel::resume`;
@@ -234,25 +239,25 @@ harness recovers an influence nobody told it about, and, since the rulebook can 
 only way to check the handles without paying a model to use them) and `live`. `kamchatka/tests/`
 draws the screen and reads the characters back (`screen/`, one binary made of ten files -
 `harness.rs` is the terminal they all sit at, and the other nine are named for what they read off
-it), drives the introspection tools through the real loop (`introspect`), serves a recorded Gemini
-stream off a socket and checks what goes back out (`gemini`), runs real commands under a real
-ruleset (`sandbox`), asks the policy its own questions rather than reading the answers off the
-screen (`policy`), checks what is volunteered to an endpoint about this program and to which one
-(`attribution`), answers two sockets that go silent, one before the first byte and one mid-stream
-(`stalled`), and holds each dialect's projection against what its own `to_wire` carries
-(`projection`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at every
-tab with nothing to act on, and both scrolled past their own ends - a frame that panics takes the
-session with it, which is the one failure this program cannot report. `nachalnik-mcp/tests/` stands
-a real MCP server up rather than mocking one (`bridge`), and `foreign` runs one written in another
-language.
+it), drives the introspection tools through the real loop (`introspect`), runs real commands under
+a real ruleset (`sandbox`), and asks the policy its own questions rather than reading the answers
+off the screen (`policy`). `edges` is the sweep: every tab at every window size from 1x1 up, every
+key at every tab with nothing to act on, and both scrolled past their own ends - a frame that
+panics takes the session with it, which is the one failure this program cannot report.
+`nachalnik-providers/tests/` serves a recorded Gemini stream off a socket and checks what goes
+back out (`gemini`), checks what is volunteered to an endpoint about the calling program and to
+which one (`attribution`), answers two sockets that go silent, one before the first byte and one
+mid-stream (`stalled`), and holds each dialect's projection against what its own `to_wire` carries
+(`projection`). `nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one
+(`bridge`), and `foreign` runs one written in another language.
 
-The shapes a *stream* arrives in are not tested per provider any more, because there are three
-providers and the questions are the same three times. `nachalnik-utils/src/conformance.rs` is the
-suite: every provider in the workspace is asked the same questions through a real socket, each one
-a bug that actually happened to one of them, and a question added applies to all three without any
-of them being edited. `kamchatka/tests/conformance.rs` holds this crate's two to it and
-`nachalnik-utils/tests/` holds its own, beside `whole_answers` - what a provider makes of a model
-that writes arguments no parser will take.
+The shapes a *stream* arrives in are not tested per provider, because the questions would be the
+same each time. `nachalnik-utils/src/conformance.rs` is the suite: every provider in the workspace
+is asked the same questions through a real socket, each one a bug that actually happened to one of
+them, and a question added applies to all of them without any being edited.
+`nachalnik-providers/tests/conformance.rs` holds both dialects to it and `nachalnik-utils/tests/`
+holds its own, beside `whole_answers` - what a provider makes of a model that writes arguments no
+parser will take.
 
 ---
 
@@ -305,15 +310,6 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   sensible about pixels, which is the part that is not additive. **Not before multimodal support
   is actually being built** - a variant nothing produces and nothing counts would be worse than
   its absence.
-- **A `nachalnik-gemini` crate.** `kamchatka/src/gemini.rs` is a self-contained module with no
-  kamchatka-specific types in it, and it is in kamchatka because that is where the consumer is:
-  `introspect` is only worth having if the turn it reads is the one that really happened. What it
-  costs is that `nachalnik/tests/live.rs` cannot reach it - the live suite may only use
-  `nachalnik-utils`, which is dev-only and unpublished - so the core's block support goes on being
-  checked against ordered turns recorded by hand. That is arguably the better test, since it does
-  not depend on a vendor's whims. **The trigger to extract is a second consumer**, and the reason
-  to take it seriously when it comes is that two copies of a provider is the mistake
-  `nachalnik-utils` already exists to undo.
 
 ---
 

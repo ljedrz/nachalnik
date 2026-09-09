@@ -11,7 +11,6 @@ use std::{sync::Arc, time::Duration};
 
 use kamchatka::{
     app::{App, Overlay, Page, Speaker, Tab},
-    provider::OpenAiCompatible,
     tools::{Careful, Limits},
     ui,
 };
@@ -19,6 +18,7 @@ use nachalnik::{
     Config, ContextItem, Kernel,
     test::{ConstTool, ScriptedProvider},
 };
+use nachalnik_providers::OpenAiCompatible;
 use ratatui::{Terminal, backend::TestBackend};
 
 fn app() -> App {

@@ -1218,12 +1218,10 @@ dependencies = [
  "landlock",
  "nachalnik",
  "nachalnik-mcp",
- "nachalnik-utils",
+ "nachalnik-providers",
  "parking_lot",
  "ratatui",
  "ratatui-textarea",
- "reqwest",
- "rustls",
  "serde_json",
  "synoptic",
  "tokio",
@@ -1418,6 +1416,20 @@ dependencies = [
  "async-trait",
  "nachalnik",
  "rmcp",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "nachalnik-providers"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "nachalnik",
+ "nachalnik-utils",
+ "parking_lot",
+ "reqwest",
+ "rustls",
  "serde_json",
  "tokio",
 ]

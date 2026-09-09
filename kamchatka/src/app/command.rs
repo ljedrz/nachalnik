@@ -204,7 +204,7 @@ impl App {
                     .iter()
                     .map(|name| {
                         let mark = match &current {
-                            Some(model) if crate::provider::same_model(name, model) => "▸",
+                            Some(model) if nachalnik_providers::same_model(name, model) => "▸",
                             _ => " ",
                         };
                         format!("{mark} {name}")
@@ -279,7 +279,7 @@ impl App {
                 // that makes the stream send the whole answer again is one whose effect lands in
                 // the transcript, the context and the log, and an endpoint publishing no list at
                 // all (ollama, a bare proxy) returns early below and would never have been told
-                for (name, does) in crate::provider::NOT_A_STREAM {
+                for (name, does) in nachalnik_providers::openai::NOT_A_STREAM {
                     if params.get(name).is_some_and(|set| set != false) {
                         self.say(Speaker::Error, format!("{name} {does}"));
                     }

@@ -1,0 +1,47 @@
+[package]
+name = "nachalnik-providers"
+version = "0.1.0"
+description = "Providers for the nachalnik agent runtime: the OpenAI chat-completions and Gemini dialects, streamed, retried and interruptible."
+documentation = "https://docs.rs/nachalnik-providers"
+readme = "README.md"
+# `web-programming::http-client` because that is the whole of what this is: somebody else's HTTP
+# API, read carefully
+categories = ["api-bindings", "asynchronous", "web-programming::http-client"]
+keywords = ["provider", "agent", "llm", "ai", "nachalnik"]
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+default = ["openai"]
+# The OpenAI chat-completions dialect: `/chat/completions`, `choices[].delta`, tool calls
+# assembled from fragments. What OpenRouter, ollama, vLLM, Together and most of the rest speak.
+openai = []
+# Google's own `generateContent`: `candidates[].content.parts`, whole calls, and ordered
+# `thought` parts - the dialect `nachalnik`'s `Content::Blocks` was built for.
+gemini = []
+
+[dependencies]
+nachalnik.workspace = true
+async-trait.workspace = true
+parking_lot.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+
+[dev-dependencies]
+nachalnik = { workspace = true, features = ["test"] }
+# the conformance suite both dialects are held to. A *dev*-dependency, which is what lets an
+# unpublished crate be depended on by a published one: cargo strips these from the manifest it
+# uploads
+nachalnik-utils.workspace = true
+# `net` and `io-util` for the tests that need a real socket: a server that answers and then says
+# nothing, and one that breaks a stream at a chosen byte. Neither shape can be mocked
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread"] }

@@ -1,7 +1,7 @@
 //! Waiting on a server that is slow, silent or busy - and knowing which of the three it is.
 //!
 //! note: shared by both dialects rather than written twice, which is why it is `pub(crate)` and
-//! why it names nothing OpenAI-specific. A stream that has gone quiet, a request that was refused
+//! why it names nothing dialect-specific. A stream that has gone quiet, a request that was refused
 //! with a `Retry-After`, and one somebody pressed escape on are three different answers to "send
 //! it again?", and getting them wrong costs either a turn or somebody's money.
 
@@ -21,11 +21,15 @@ pub(crate) const RETRIES: usize = 4;
 /// note: for the difference between a busy server and one that has said no until tomorrow. A
 /// per-minute limit answers `Retry-After: 5`; a spent daily quota answers with the seconds until
 /// midnight, and sitting through four doublings to discover that wastes the turn and the wait.
-pub(super) const LINGER: Duration = Duration::from_secs(60);
+///
+/// note: only the OpenAI dialect reports a `Retry-After`, which is why this is the one constant
+/// in here that belongs to a feature.
+#[cfg(feature = "openai")]
+pub(crate) const LINGER: Duration = Duration::from_secs(60);
 
 /// How long a stream may say nothing before the provider looks up to check whether it has been
 /// asked to stop.
-pub(super) const HEARTBEAT: Duration = Duration::from_millis(120);
+pub(crate) const HEARTBEAT: Duration = Duration::from_millis(120);
 
 /// How long a stream may say nothing before the person watching is told about it.
 pub(crate) const QUIET: Duration = Duration::from_secs(10);
@@ -217,14 +221,14 @@ pub(crate) async fn watched(
 /// listening on that address, a name that does not resolve - or a bug in what was built, and
 /// neither improves by being repeated. `is_timeout` walks the source chain, so a stall reported
 /// as hyper's `Io(TimedOut)` several layers down still counts.
-pub(super) fn worth_waiting_out(e: &reqwest::Error) -> bool {
+pub(crate) fn worth_waiting_out(e: &reqwest::Error) -> bool {
     e.is_timeout()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::install_crypto;
+    use crate::install_crypto;
 
     /// What the rule says about a silence of a given length, as a word.
     fn judged(vigil: &mut Vigil, seconds: u64) -> &'static str {

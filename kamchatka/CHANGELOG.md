@@ -5,6 +5,34 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### removed
+
+- `kamchatka::provider::OpenAiCompatible`, `kamchatka::gemini::Gemini`, `provider::Endpoint`,
+  `provider::same_model`, `provider::NOT_A_STREAM` and the `gemini` module. Both providers are now
+  [`nachalnik-providers`](https://crates.io/crates/nachalnik-providers), a crate of their own, and
+  this one depends on it. Anything reaching for them through this crate imports them from there
+  instead; nothing about what they do has changed.
+
+  The reason to move them is that nobody else could use them. The runtime ships no provider by
+  design, and the only two complete implementations in this workspace were here - behind ratatui,
+  crossterm, clap and landlock - and in a crate marked `publish = false` for ever. So the first
+  thing an adopter of the runtime had to write was a thousand lines of streamed HTTP, and the two
+  copies of it in this workspace could not be merged: a published crate may not depend on one that
+  is not.
+
+### changed
+
+- `provider::connect` and the new `provider::gemini::connect` are what is left here, and they are
+  the part that was always this program's: `KAMCHATKA_API_KEY`, `KAMCHATKA_BASE_URL`,
+  `KAMCHATKA_CONTEXT_LIMIT` and `KAMCHATKA_NO_ATTRIBUTION` are read here and passed in. The
+  providers read no environment at all now, which is not a library's to read. Nothing changes for
+  anyone running the program: the same four variables do the same four things.
+
+- Two fewer direct dependencies. `reqwest` and `rustls` were here for the providers and are
+  theirs now.
+
 ## [0.6.1] - 2026-09-09
 
 ### fixed

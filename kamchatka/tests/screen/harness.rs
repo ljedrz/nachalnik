@@ -11,11 +11,11 @@ use std::{sync::Arc, time::Duration};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{
     app::{App, Focus, Outcome, Tab},
-    provider::OpenAiCompatible,
     tools::{Careful, Limits},
     ui,
 };
 use nachalnik::{Config, Event, Kernel, ModelResponse, test::ScriptedProvider};
+use nachalnik_providers::OpenAiCompatible;
 use ratatui::{
     Terminal,
     backend::TestBackend,

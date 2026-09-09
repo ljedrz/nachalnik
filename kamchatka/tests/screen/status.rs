@@ -7,10 +7,10 @@
 
 use std::{sync::Arc, time::Duration};
 
-use kamchatka::provider::OpenAiCompatible;
 use nachalnik::{
     ContextItem, ContextState, ModelInfo, ModelResponse, Usage, test::ScriptedProvider,
 };
+use nachalnik_providers::OpenAiCompatible;
 
 use crate::harness::Harness;
 

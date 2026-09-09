@@ -12,15 +12,12 @@
 
 use std::{fs, io::Write, path::PathBuf, sync::Arc, time::Duration};
 
-use kamchatka::{
-    gemini, introspect,
-    provider::{self, Endpoint},
-    sandbox, tools,
-};
+use kamchatka::{introspect, provider, sandbox, tools};
 use nachalnik::{
     Block, Capability, Config, Content, ContextItem, ContextKind, Delta, Event, Grant, Kernel,
     LinearProjector, State, Verdict,
 };
+use nachalnik_providers::Endpoint;
 
 /// What it is being asked to work out.
 fn task() -> String {
@@ -74,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_owned()
     });
     let provider: Arc<dyn Endpoint> = match ordered {
-        true => gemini::connect(&model)
+        true => provider::gemini::connect(&model)
             .await
             .map(|it| it as Arc<dyn Endpoint>),
         false => provider::connect(&model)

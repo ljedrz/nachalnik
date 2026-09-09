@@ -1,18 +1,15 @@
 //! What each dialect asks the projector for, and whether the budget then matches the request.
 //!
-//! note: these two were settled in different places. The projector was chosen in `main.rs` from
-//! the `--gemini` flag, the wire format was written in the provider, and nothing connected them -
-//! so `send_reasoning` stayed on for a `to_wire` that has never sent reasoning, and the budget
-//! charged for every turn of thinking the context was holding. `Endpoint::projection` is the
-//! connection, and these are the tests that the two agree.
+//! note: these two used to be settled in different places. The projector was chosen by the
+//! client from whichever flag picked the dialect, the wire format was written in the provider,
+//! and nothing connected them - so `send_reasoning` stayed on for a `to_wire` that has never sent
+//! reasoning, and the budget charged for every turn of thinking the context was holding.
+//! `Endpoint::projection` is the connection, and these are the tests that the two agree.
 
 use std::sync::Arc;
 
-use kamchatka::{
-    gemini::Gemini,
-    provider::{Endpoint, OpenAiCompatible},
-};
 use nachalnik::{Config, Content, ContextItem, ContextKind, Kernel, Provider};
+use nachalnik_providers::{Endpoint, Gemini, OpenAiCompatible};
 
 /// A session holding one assistant turn: a short answer and a long think, which is the usual
 /// ratio for a reasoning model and the reason this matters at all.

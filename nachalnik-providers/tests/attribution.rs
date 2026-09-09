@@ -1,14 +1,14 @@
-//! What this program tells an endpoint about itself, and which endpoint it tells.
+//! What a provider tells an endpoint about the program calling it, and which endpoint it tells.
 //!
-//! note: what a provider makes of a stream is in the conformance suite, which both of this
-//! crate's providers are held to alongside `nachalnik-utils`'s. This is the part that is not
-//! shared with anything: a `HTTP-Referer` volunteered to whatever address somebody has pointed
-//! `KAMCHATKA_BASE_URL` at is something they did not ask to send.
+//! note: what a provider makes of a stream is in the conformance suite, which both dialects here
+//! are held to. This is the part that is shared with nothing: a `HTTP-Referer` volunteered to
+//! whatever address a caller has pointed this at is something the person running it did not ask
+//! to send, and the address is a setting.
 
 use std::sync::Arc;
 
-use kamchatka::provider::OpenAiCompatible;
 use nachalnik::{Config, ContextItem, Kernel};
+use nachalnik_providers::OpenAiCompatible;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
