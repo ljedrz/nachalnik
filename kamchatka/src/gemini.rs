@@ -36,8 +36,8 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::provider::{
-    Endpoint, PATIENCE, RETRIES, Silence, Unsent, Vigil, api_key, configured_limit, install_crypto,
-    interrupted, same_model, watched,
+    Endpoint, api_key, configured_limit, install_crypto, same_model,
+    waiting::{PATIENCE, RETRIES, Silence, Unsent, Vigil, interrupted, watched},
 };
 
 /// How long a stream may say nothing before the provider looks up to check whether it has been

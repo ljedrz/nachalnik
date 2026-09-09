@@ -89,10 +89,12 @@ and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that flo
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
 fitting), `tools.rs` (four tools, the `Careful` policy, the `Trim` compactor), `introspect/` (the
 two off-by-default tools an agent inspects and manages its own context with - one per file, with
-`mod.rs` holding `install` and the handful of things both of them use), `provider.rs` (the
-OpenAI-compatible dialect, and the `Endpoint` trait both providers answer), `gemini.rs` (Google's
-own, the one that keeps the order of a turn), `main.rs` (arguments and wiring). It is a library plus
-a binary only so the screen can be drawn against a `TestBackend` in tests.
+`mod.rs` holding `install` and the handful of things both of them use), `provider/` (`mod.rs` is the
+OpenAI-compatible endpoint and the `Endpoint` trait both providers answer, `wire.rs` is one request
+sent and read back, and `waiting.rs` is the stall watch and the retry rules, which are `pub(crate)`
+because `gemini` uses them too), `gemini.rs` (Google's own, the one that keeps the order of a turn),
+`main.rs` (arguments and wiring). It is a library plus a binary only so the screen can be drawn
+against a `TestBackend` in tests.
 
 Two providers, one trait. `Provider` is the kernel's half - ask, and be answered - and `Endpoint`
 is this program's: where the requests go, what is served there, what the last retry was about.

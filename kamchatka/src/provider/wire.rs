@@ -1,0 +1,766 @@
+//! One request, sent and read back: what goes out on the wire, and what a stream of fragments
+//! adds up to.
+//!
+//! note: the [`Provider`] half of [`OpenAiCompatible`] and the readers it needs, in a file of its
+//! own because the type next door is about *where* the requests go and this is about what happens
+//! when one does. Every function in here is private: what a caller gets is
+//! [`Provider::respond`].
+//!
+//! note: each of the readers below is a shape some server actually sent. A refusal arrives as an
+//! error object, as a list of failed candidates, or midway through a stream that had already
+//! started, and all three have to come out as the same sentence.
+
+use std::{sync::atomic::Ordering, time::Duration};
+
+use nachalnik::{
+    BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse, Provider,
+    StopReason, ToolCall, ToolCallId, Usage, async_trait,
+};
+use serde_json::{Value, json};
+
+use crate::provider::{
+    OpenAiCompatible,
+    waiting::{HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, interrupted, watched},
+};
+
+/// A tool call being assembled from streamed fragments.
+#[derive(Default)]
+struct PartialCall {
+    id: String,
+    name: String,
+    args: String,
+    /// Whatever the provider attached to the call, which it will want back verbatim.
+    extra: Value,
+    /// The number the provider filed this call under, if it used one. Not a position: see the
+    /// note where the fragments are gathered.
+    slot: Option<u64>,
+}
+
+/// What to say about a request the server refused: its own sentence, rather than its envelope.
+///
+/// note: a spent quota came back as six hundred characters of JSON - the message, the remedy, the
+/// rate-limit headers, and the account's `user_id` - and all of it went into the transcript and
+/// into the session log, which is a file people send each other. What a reader needs is the
+/// sentence. Nobody needs an identifier for their account written into it.
+fn complaint(status: reqwest::StatusCode, body: &str) -> String {
+    match serde_json::from_str::<Value>(body)
+        .ok()
+        .as_ref()
+        .and_then(said)
+    {
+        Some(said) => format!("{status}: {said}"),
+        None => {
+            let short: String = body.trim().chars().take(300).collect();
+            match short.is_empty() {
+                true => format!("{status}"),
+                false => format!("{status}: {short}"),
+            }
+        }
+    }
+}
+
+/// The sentence inside an error object, wherever the server put it.
+///
+/// note: two shapes, both seen on the same endpoint in the same afternoon. A refused request
+/// nests it under `error`; a stream that fails halfway sends the object on its own, with `message`
+/// at the top. Reading only the first left the second one printing its whole envelope, which is
+/// the thing this function exists to stop.
+fn said(value: &Value) -> Option<String> {
+    let error = match value.get("error").filter(|error| !error.is_null()) {
+        Some(nested) => nested,
+        None => value,
+    };
+    let message = match error["message"].as_str() {
+        Some(message) => message.trim().to_owned(),
+        // a third shape, and the one where reading a sentence mattered most: see `refusals`
+        None => refusals(&error["message"])?,
+    };
+
+    let mut said = message.chars().take(400).collect::<String>();
+    // the upstream's own words, where the wrapper is only reporting that something upstream
+    // failed - "Provider returned error" on its own names neither the provider nor the problem
+    if let Some(raw) = error["metadata"]["raw"]
+        .as_str()
+        .map(str::trim)
+        .filter(|raw| !raw.is_empty() && !message.contains(*raw))
+    {
+        said.push_str(" - ");
+        said.push_str(&raw.chars().take(300).collect::<String>());
+    }
+    Some(said)
+}
+
+/// Reads a whole summary of the thinking off a chunk, where the endpoint sends one that way.
+///
+/// note: the other half of `delta.reasoning`, and a different shape rather than a second name for
+/// the same one. That field is a *fragment* of the thinking, pushed as it is generated; this one
+/// is a finished summary of it, `{"content": ..., "status": "complete"}` on the chunk itself
+/// rather than in the delta, and it arrives after the answer it explains. Inception's endpoint is
+/// the case - `reasoning_summary: true` in the parameters - and it sends more than one over a
+/// turn, each a summary of the reasoning done since the last, which is why they are appended and
+/// not replaced: the same endpoint's *non*-streamed field is those same summaries joined, so
+/// joining them is reading it the way its author writes it.
+///
+/// note: a summary already held is not appended again. The status is not read for anything: a
+/// summary with words in it has arrived whichever word is beside it, and `unavailable` and
+/// `skipped` both carry no content, so the content is the whole of the question. What it must not
+/// do is put the word `unavailable` on the screen as if the model had thought it.
+///
+/// note: what a caller has to ask for, since the reading is only half of it: `reasoning_summary:
+/// true` among the parameters, *and* `reasoning_summary_wait: true` beside it whenever the request
+/// is streamed - which this crate's always are. Measured against `mercury-2`: with the wait, two
+/// of ten chunks carry a summary; without it the stream ends before any summary exists and none
+/// of seven do. A client that sets the first and not the second has asked for thinking that cannot
+/// then be sent to it, and this has nothing to read.
+fn summarised(chunk: &Value, reasoning: &mut String, deltas: &DeltaSink) {
+    let Some(summary) = chunk["reasoning_summary"]["content"]
+        .as_str()
+        .map(str::trim)
+        .filter(|summary| !summary.is_empty() && !reasoning.contains(*summary))
+    else {
+        return;
+    };
+
+    // a blank line between two of them, because they are separate summaries rather than one text
+    // arriving in pieces - and the screen is told the same thing the turn is, or a run that was
+    // watched live and one that was read back afterwards say different things
+    if !reasoning.is_empty() {
+        deltas.reasoning("\n\n");
+        reasoning.push_str("\n\n");
+    }
+    deltas.reasoning(summary);
+    reasoning.push_str(summary);
+}
+
+/// The sentences inside a rejected request's list of what was wrong with it, each named by the
+/// parameter it is about.
+///
+/// note: a validated endpoint answers a bad parameter with a *list* rather than a sentence -
+/// Inception's `message` is the pydantic shape, `[{"type": "value_error", "loc": ["body",
+/// "reasoning_effort"], "msg": "...", "input": "banana", "ctx": {...}}]` - and until this read it,
+/// `message` was not a string, [`said`] gave up, and the three hundred characters of envelope the
+/// clip left went into the transcript and into the session log. The sentence was in there, forty
+/// characters in, wrapped in the machinery. That is the failure [`said`] exists to stop, arriving
+/// in the one place where the words are most worth having: the answer to what a request got wrong
+/// says which parameter and what it takes.
+///
+/// note: `loc` is prepended only where the message does not already name the field. Pydantic's
+/// own wording varies on exactly that point - a `value_error` raised by a validator usually names
+/// it, a type failure says "Input should be a valid boolean" and names nothing - and a message
+/// that does not say which of eight parameters it means is a message somebody has to guess at.
+fn refusals(message: &Value) -> Option<String> {
+    let listed = message.as_array().filter(|listed| !listed.is_empty())?;
+
+    let said: Vec<String> = listed
+        .iter()
+        .filter_map(|wrong| {
+            let msg = wrong["msg"].as_str()?.trim();
+            let field = wrong["loc"]
+                .as_array()
+                .and_then(|loc| loc.last())
+                .and_then(Value::as_str)
+                .filter(|field| !msg.contains(*field));
+
+            Some(match field {
+                Some(field) => format!("{field}: {msg}"),
+                None => msg.to_owned(),
+            })
+        })
+        .collect();
+
+    (!said.is_empty()).then(|| said.join("; "))
+}
+
+#[async_trait]
+impl Provider for OpenAiCompatible {
+    fn info(&self) -> ModelInfo {
+        ModelInfo {
+            context_limit: *self.context_limit.lock(),
+            tool_calling: true,
+            reasoning: true,
+            parameters: self.parameters.lock().clone(),
+            ..ModelInfo::new("openai-compatible", self.model.lock().clone())
+        }
+    }
+
+    /// The payload, rendered once. `respond` sends exactly this, so previewing it is not a second
+    /// opinion about what goes out - it is the thing that goes out.
+    fn render(&self, request: &ModelRequest) -> Option<Value> {
+        let mut body = json!({
+            "model": *self.model.lock(),
+            "messages": request.messages.iter().map(to_wire).collect::<Vec<_>>(),
+            "stream": true,
+            "stream_options": { "include_usage": true },
+        });
+
+        if !request.tools.is_empty() {
+            body["tools"] = Value::Array(
+                request
+                    .tools
+                    .iter()
+                    .map(|spec| {
+                        json!({
+                            "type": "function",
+                            "function": {
+                                "name": spec.id,
+                                "description": spec.description,
+                                "parameters": spec.schema,
+                            },
+                        })
+                    })
+                    .collect(),
+            );
+        }
+        // only what the user set, and nothing else: the kernel invents no parameters, and neither
+        // does this provider
+        for (key, value) in &request.params {
+            body[key] = value.clone();
+        }
+
+        Some(body)
+    }
+
+    async fn respond(
+        &self,
+        request: ModelRequest,
+        deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        let body = self.render(&request).expect("this provider always renders");
+
+        // read once, and used for every line said about this request: a name that changed halfway
+        // through would make one wait look like two
+        let model = self.model.lock().clone();
+
+        // a free tier answers "busy" often enough that not retrying makes the whole thing look
+        // broken when it is not. Waiting and trying again is the *provider's* business: the
+        // kernel must not silently send a request twice behind a caller's back
+        let mut response = loop {
+            let response = match watched(
+                self.attributed(
+                    self.client
+                        .post(format!("{}/chat/completions", self.endpoint()))
+                        .bearer_auth(&self.api_key),
+                )
+                .json(&body)
+                .send(),
+                &deltas,
+                &model,
+                &self.notice,
+            )
+            .await
+            {
+                Ok(response) => response,
+                // a connection that timed out is a busy server wearing different clothes, and it
+                // used to be the one thing here that was not waited out: a 429 got four tries and
+                // a doubling, a stall got none. Eleven of fourteen runs against one upstream died
+                // this way while the same model answered a single request in six seconds. A
+                // refused connection is *not* this - it is a definite answer, usually an address
+                // with nothing behind it, and making a typo take four doublings to report helps
+                // nobody
+                Err(reason) if reason.worth_waiting_out() => {
+                    let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                    let wait = Duration::from_secs(1 << attempt);
+                    if attempt >= RETRIES {
+                        self.attempts.store(0, Ordering::SeqCst);
+                        return Err(reason.giving_up(&model));
+                    }
+
+                    *self.notice.lock() = Some(format!(
+                        "{model} {}; trying again in {}s",
+                        reason.what_happened(),
+                        wait.as_secs()
+                    ));
+                    tokio::time::sleep(wait).await;
+                    continue;
+                }
+                // nobody is owed an error for being obeyed
+                Err(Unsent::Interrupted) => return Ok(interrupted()),
+                Err(reason) => return Err(reason.giving_up(&model)),
+            };
+
+            let status = response.status();
+            if status.is_success() {
+                // the budget belongs to a request, not to a session: without this an afternoon
+                // that had already ridden out four busy servers answered the fifth by giving up
+                // on the first try
+                self.attempts.store(0, Ordering::SeqCst);
+                break response;
+            }
+
+            // the server's own answer to "when?", where it gives one. Guessing at a doubling is
+            // for a server that did not say
+            let asked = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.trim().parse::<u64>().ok())
+                .map(Duration::from_secs);
+
+            let transient = status.as_u16() == 429 || status.is_server_error();
+            let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+            let wait = asked.unwrap_or(Duration::from_secs(1 << attempt));
+            if !transient || attempt >= RETRIES || wait > LINGER {
+                self.attempts.store(0, Ordering::SeqCst);
+                let body = response.text().await.unwrap_or_default();
+                let mut said = complaint(status, &body);
+                if transient && wait > LINGER {
+                    said.push_str(&format!(
+                        " - it asked to be left for {}s, which is longer than this waits",
+                        wait.as_secs()
+                    ));
+                }
+                return Err(said.into());
+            }
+
+            *self.notice.lock() = Some(format!(
+                "{} answered {}; trying again in {}s",
+                self.model.lock(),
+                status.as_u16(),
+                wait.as_secs()
+            ));
+            tokio::time::sleep(wait).await;
+        };
+
+        // bytes rather than a `String`, because a chunk boundary is not a character boundary. A
+        // multi-byte character split across two reads used to be decoded twice, lossily, and
+        // arrived as two replacement characters that then went into the context, the transcript
+        // and the session log: `zażółć` came back `za\u{fffd}\u{fffd}ółć`. Held as bytes, the tail of
+        // a split character waits in here for the rest of itself, and only whole lines are decoded
+        let mut buffer: Vec<u8> = Vec::new();
+        let mut text = String::new();
+        let mut reasoning = String::new();
+        let mut calls: Vec<PartialCall> = Vec::new();
+        let mut finish = None;
+        let mut usage = None;
+        // every payload the server sent, verbatim
+        let mut chunks = Vec::new();
+        let mut vigil = Vigil::new();
+
+        loop {
+            // the timeout is what makes a model that says nothing at all interruptible; without
+            // it this sits in `chunk` until the server feels like talking, and a request that
+            // stalls before its first byte leaves `esc` doing nothing whatever. The same reason
+            // the shell tool has one
+            let bytes = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
+                Ok(Ok(Some(bytes))) => {
+                    if vigil.heard() {
+                        *self.notice.lock() =
+                            Some(format!("{} is answering again", self.model.lock()));
+                    }
+                    bytes
+                }
+                Ok(Ok(None)) => break,
+                // the body stopped arriving in the middle of an answer. Everything parsed so far
+                // is kept and the socket is abandoned, which is what the interrupt below already
+                // does for the other way a stream ends early - this is that case without the
+                // consent, so it is marked with a name of its own instead of `interrupted`.
+                //
+                // note: it used to return the error, which failed the turn and threw away every
+                // token the model had produced *and been billed for*: one session spent 148
+                // seconds on an answer and kept none of it. Retrying is the other candidate and
+                // is worse, because every attempt is billed too - an answer that reliably outruns
+                // an upstream's patience would be paid for four times and fail anyway - and the
+                // loop above retries only where nothing was generated
+                Ok(Err(e)) => {
+                    // nothing arrived at all, so there is nothing to keep and no answer to
+                    // report; the transport's own account is the most useful thing there is
+                    if chunks.is_empty() {
+                        return Err(e.into());
+                    }
+                    // a turn whose `finish_reason` already arrived is a complete answer that lost
+                    // its trailing bytes, and calling that cut off would be inventing a fault
+                    if finish.is_none() {
+                        *self.notice.lock() = Some(format!(
+                            "{} was cut off mid-answer ({e}); what had arrived is kept",
+                            self.model.lock()
+                        ));
+                        finish = Some("cut off".to_owned());
+                    }
+                    break;
+                }
+                Err(_) => {
+                    if deltas.is_interrupted() {
+                        finish = Some("interrupted".to_owned());
+                        break;
+                    }
+                    match vigil.waited() {
+                        Silence::Enough => {
+                            return Err(format!(
+                                "{} answered and then said nothing for {}s; giving up",
+                                self.model.lock(),
+                                PATIENCE.as_secs()
+                            )
+                            .into());
+                        }
+                        Silence::Worth(seconds) => {
+                            *self.notice.lock() = Some(format!(
+                                "{} has said nothing for {seconds}s; esc gives up on it",
+                                self.model.lock()
+                            ));
+                        }
+                        Silence::Ordinary => {}
+                    }
+                    continue;
+                }
+            };
+            buffer.extend_from_slice(&bytes);
+
+            while let Some(end) = buffer.iter().position(|byte| *byte == b'\n') {
+                // somebody pressed escape. Whatever has been parsed is kept and the rest of the
+                // socket is abandoned; the check is here, before the next fragment, so that a
+                // fragment is never read and then thrown away
+                if deltas.is_interrupted() {
+                    finish = Some("interrupted".to_owned());
+                    break;
+                }
+
+                // a whole line, so whatever multi-byte characters it holds are all here
+                let line = String::from_utf8_lossy(&buffer[..end]).trim().to_owned();
+                buffer.drain(..=end);
+
+                let Some(data) = line.strip_prefix("data:") else {
+                    continue;
+                };
+                let data = data.trim();
+                if data == "[DONE]" {
+                    continue;
+                }
+                let Ok(chunk) = serde_json::from_str::<Value>(data) else {
+                    continue;
+                };
+                // these APIs report an upstream failure - a rate limit, a dead provider - as an
+                // error object rather than an HTTP status, sometimes mid-stream
+                if let Some(error) = chunk.get("error").filter(|e| !e.is_null()) {
+                    // the same treatment the refused-request path gets: this one arrives as a
+                    // bare object with `message` at the top rather than nested under `error`, and
+                    // printing it whole put the provider's entire envelope on the screen
+                    return Err(match said(error) {
+                        Some(said) => said,
+                        None => format!("{error}").chars().take(300).collect(),
+                    }
+                    .into());
+                }
+
+                if let Some(reported) = chunk.get("usage").filter(|u| !u.is_null()) {
+                    usage = Some(Usage {
+                        input_tokens: reported["prompt_tokens"].as_u64(),
+                        output_tokens: reported["completion_tokens"].as_u64(),
+                        reasoning_tokens: reported["completion_tokens_details"]["reasoning_tokens"]
+                            .as_u64(),
+                        cached_input_tokens: reported["prompt_tokens_details"]["cached_tokens"]
+                            .as_u64(),
+                    });
+                }
+
+                let choice = &chunk["choices"][0];
+                if let Some(reason) = choice["finish_reason"].as_str() {
+                    finish = Some(reason.to_owned());
+                }
+
+                let delta = &choice["delta"];
+                if let Some(fragment) = delta["content"].as_str().filter(|f| !f.is_empty()) {
+                    deltas.text(fragment);
+                    text.push_str(fragment);
+                }
+                if let Some(fragment) = delta["reasoning"].as_str().filter(|f| !f.is_empty()) {
+                    deltas.reasoning(fragment);
+                    reasoning.push_str(fragment);
+                }
+                summarised(&chunk, &mut reasoning, &deltas);
+
+                for requested in delta["tool_calls"].as_array().into_iter().flatten() {
+                    // note: OpenAI numbers the calls in a message and streams each one's arguments
+                    // in fragments, so the index is what says which call a fragment belongs to.
+                    // Google's compatible endpoint sends no index at all - one whole call per
+                    // chunk, each with an identifier of its own - and taking that for index zero
+                    // folded three parallel calls into one: the names ran together into
+                    // `writewritewrite` and the model was told there was no such tool. So the
+                    // identifier decides when there is no index, and a fragment with neither
+                    // continues whatever came last
+                    let at = match requested["index"].as_u64() {
+                        // note: the index says which call a fragment belongs to. It is *not* a
+                        // position in the list: minimax numbers its calls from one, and using it
+                        // as a slot left an unfilled call at zero, which the kernel then reported
+                        // as a repaired identifier and a tool with no name - a wasted round trip
+                        // and an error the model had to read. So an index is looked up, and a
+                        // number never seen before starts a new call at the end
+                        Some(index) => match calls.iter().position(|call| call.slot == Some(index))
+                        {
+                            Some(at) => at,
+                            None => {
+                                calls.push(PartialCall {
+                                    slot: Some(index),
+                                    ..PartialCall::default()
+                                });
+                                calls.len() - 1
+                            }
+                        },
+                        None => match requested["id"].as_str().filter(|id| !id.is_empty()) {
+                            Some(id) => match calls.iter().position(|call| call.id == id) {
+                                Some(at) => at,
+                                None => {
+                                    calls.push(PartialCall::default());
+                                    calls.len() - 1
+                                }
+                            },
+                            None => match calls.is_empty() {
+                                true => {
+                                    calls.push(PartialCall::default());
+                                    0
+                                }
+                                false => calls.len() - 1,
+                            },
+                        },
+                    };
+                    let call = &mut calls[at];
+
+                    if let Some(id) = requested["id"].as_str() {
+                        call.id = id.to_owned();
+                    }
+                    if let Some(name) = requested["function"]["name"].as_str() {
+                        call.name.push_str(name);
+                    }
+                    if !requested["extra_content"].is_null() {
+                        call.extra = requested["extra_content"].clone();
+                    }
+                    if let Some(fragment) = requested["function"]["arguments"].as_str() {
+                        call.args.push_str(fragment);
+                        deltas.tool_args(ToolCallId(call.id.clone()), fragment);
+                    }
+                }
+
+                chunks.push(chunk);
+            }
+            if finish.as_deref() == Some("interrupted") {
+                break;
+            }
+        }
+        if chunks.is_empty() {
+            // a request stopped before the server had said anything is not a broken response, and
+            // reporting it as one would put a red line on the screen for doing what was asked
+            if finish.as_deref() == Some("interrupted") || deltas.is_interrupted() {
+                return Ok(interrupted());
+            }
+
+            // the response was not a stream at all; an error body is the usual reason
+            let buffer = String::from_utf8_lossy(&buffer);
+            let payload: Value = serde_json::from_str(&buffer).unwrap_or(Value::Null);
+            return match payload.get("error").filter(|e| !e.is_null()) {
+                Some(error) => Err(format!("{error}").into()),
+                None => Err(format!("the stream carried no data: {buffer}").into()),
+            };
+        }
+
+        Ok(ModelResponse {
+            content: (!text.is_empty()).then_some(Content::text(text)),
+            reasoning: (!reasoning.is_empty()).then_some(Content::text(reasoning)),
+            tool_calls: calls
+                .into_iter()
+                .map(|call| {
+                    // a model that produces invalid JSON gets to see that it did
+                    let args: Value = serde_json::from_str(&call.args)
+                        .unwrap_or_else(|_| json!({ "_unparsed": call.args }));
+
+                    // an empty or repeated identifier is repaired by the kernel, which says so on
+                    // the event stream; a provider does not have to paper over it
+                    ToolCall::new(call.id, call.name, args).with_extra(call.extra)
+                })
+                .collect(),
+            stop: match finish.as_deref() {
+                Some("stop") => StopReason::EndTurn,
+                Some("interrupted") => StopReason::Other("interrupted".to_owned()),
+                Some("tool_calls") | Some("function_call") => StopReason::ToolUse,
+                Some("length") => StopReason::Length,
+                Some("content_filter") => StopReason::Refusal,
+                Some(other) => StopReason::Other(other.to_owned()),
+                None => StopReason::Other("unreported".to_owned()),
+            },
+            usage,
+            raw: Some(json!({ "stream": chunks })),
+        })
+    }
+}
+
+/// Translates a kernel message into the wire format.
+fn to_wire(message: &Message) -> Value {
+    let mut wire = json!({ "role": message.role.as_str() });
+
+    if let Some(content) = &message.content {
+        wire["content"] = json!(content.to_text());
+    }
+    // `calls()` rather than the field: a turn projected as ordered blocks keeps its calls in
+    // its content, and reading the field would send the words of a turn with none of the calls
+    // in it - which this API rejects, and which is very hard to see afterwards
+    let calls: Vec<_> = message.calls().collect();
+    if !calls.is_empty() {
+        wire["tool_calls"] = Value::Array(
+            calls
+                .iter()
+                .map(|call| {
+                    let mut wire = json!({
+                        "id": call.id.0,
+                        "type": "function",
+                        "function": { "name": call.tool, "arguments": call.args.to_string() },
+                    });
+                    // some APIs hand back a signature per call and reject the next request
+                    // without it, so it goes back exactly as it arrived
+                    if !call.extra.is_null() {
+                        wire["extra_content"] = (*call.extra).clone();
+                    }
+
+                    wire
+                })
+                .collect(),
+        );
+    }
+    if let Some(id) = &message.tool_call_id {
+        wire["tool_call_id"] = json!(id.0);
+    }
+    if let Some(name) = &message.name {
+        wire["name"] = json!(name);
+    }
+
+    wire
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The two shapes a rate limit actually arrived in, copied out of a real session.
+    ///
+    /// note: `concat!` rather than a raw string over several lines. A raw string keeps the
+    /// backslash *and* the newline, so a fixture written that way is not JSON, `complaint` falls
+    /// through to clipping it, and the test passes without ever reaching the code it is about.
+    #[test]
+    fn a_refused_request_is_reported_in_the_server_s_own_words_and_no_more() {
+        let status = reqwest::StatusCode::TOO_MANY_REQUESTS;
+
+        // a spent daily quota: one useful sentence, wrapped in the rate-limit headers and the
+        // account's identifier, neither of which belongs in a file somebody will send on
+        let daily = concat!(
+            r#"{"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits"#,
+            r#" to unlock 1000 free model requests per day","code":429,"metadata":{"headers":"#,
+            r#"{"X-RateLimit-Remaining":"0"},"limit_source":"openrouter_free_tier_daily"}},"#,
+            r#""user_id":"user_3GBJq3JdBGGCK0OiVeXg1v8GYfW"}"#,
+        );
+        assert!(
+            serde_json::from_str::<Value>(daily).is_ok(),
+            "the fixture has to be the shape the server actually sends"
+        );
+        let said = complaint(status, daily);
+        assert!(said.contains("free-models-per-day"), "{said}");
+        assert!(
+            !said.contains("user_"),
+            "the account is nobody's business: {said}"
+        );
+        assert!(!said.contains("X-RateLimit"), "{said}");
+        assert!(said.len() < daily.len() / 2, "and it is shorter: {said}");
+
+        // an upstream one, where the wrapper's own message names neither the provider nor the
+        // problem, and the sentence worth reading is underneath it
+        let upstream = concat!(
+            r#"{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"#,
+            r#""z-ai/glm-5.2:free is temporarily rate-limited upstream.","provider_name":"#,
+            r#""Decart"}}}"#,
+        );
+        assert!(serde_json::from_str::<Value>(upstream).is_ok());
+        let said = complaint(status, upstream);
+        assert!(said.contains("Provider returned error"), "{said}");
+        assert!(said.contains("temporarily rate-limited upstream"), "{said}");
+
+        // something that is not JSON at all still says what happened
+        let plain = complaint(status, "<html>gateway timeout</html>");
+        assert!(
+            plain.contains("429") && plain.contains("gateway timeout"),
+            "{plain}"
+        );
+
+        // and so does nothing at all
+        assert!(complaint(status, "").contains("429"));
+    }
+
+    /// note: the two wordings pydantic gives the same kind of failure, which is why `loc` is read.
+    /// A validator that raised the error usually names the parameter in the message; a type
+    /// failure says "Input should be a valid boolean" and names nothing, and a refusal that does
+    /// not say which of eight parameters it is about is one somebody has to guess at. Both are
+    /// quoted from what `api.inceptionlabs.ai` answers.
+    #[test]
+    fn a_request_refused_by_a_list_of_failures_is_reported_by_the_sentences_in_it() {
+        let status = reqwest::StatusCode::BAD_REQUEST;
+
+        let named = concat!(
+            r#"{"error":{"message":[{"type":"value_error","loc":["body","reasoning_effort"],"#,
+            r#""msg":"Value error, reasoning_effort must be one of: 'instant', 'low', "#,
+            r#"'medium', 'high'","input":"banana","ctx":{"error":"reasoning_effort must be "#,
+            r#"one of: 'instant', 'low', 'medium', 'high'"}}],"#,
+            r#""type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
+        );
+        assert!(
+            serde_json::from_str::<Value>(named).is_ok(),
+            "the fixture has to be the shape the server actually sends"
+        );
+        let said = complaint(status, named);
+        assert!(said.contains("reasoning_effort must be one of"), "{said}");
+        for envelope in ["loc", "value_error", "ctx", "invalid_request_error"] {
+            assert!(!said.contains(envelope), "{envelope} is machinery: {said}");
+        }
+
+        // the same shape, for a failure whose own message names nothing. `loc` is the only thing
+        // that says what it was about
+        let unnamed = concat!(
+            r#"{"error":{"message":[{"type":"bool_parsing","loc":["body","reasoning_summary"],"#,
+            r#""msg":"Input should be a valid boolean, unable to interpret input","#,
+            r#""input":"banana"}],"type":"invalid_request_error"}}"#,
+        );
+        let said = complaint(status, unnamed);
+        assert!(
+            said.contains("reasoning_summary") && said.contains("valid boolean"),
+            "the parameter it is about is named: {said}"
+        );
+
+        // two at once are two sentences, and a list with nothing readable in it falls through to
+        // the clip rather than reporting an empty refusal
+        let two = concat!(
+            r#"{"error":{"message":[{"loc":["body","a"],"msg":"first"},"#,
+            r#"{"loc":["body","b"],"msg":"second"}]}}"#,
+        );
+        let said = complaint(status, two);
+        assert!(
+            said.contains("a: first") && said.contains("b: second"),
+            "{said}"
+        );
+        assert!(complaint(status, r#"{"error":{"message":[]}}"#).contains("message"));
+    }
+
+    /// The shape a stream that fails halfway sends, which is not the shape a refused request
+    /// sends. Copied out of a live session against `inception/mercury-2.5-preview`.
+    #[test]
+    fn an_error_that_arrives_mid_stream_is_read_the_same_way() {
+        let midstream = concat!(
+            r#"{"code":502,"message":"Upstream error from Inception: I'm sorry, but I can't"#,
+            r#" share details of my architecture or training process.","metadata":"#,
+            r#"{"error_type":"provider_unavailable"}}"#,
+        );
+        let value: Value =
+            serde_json::from_str(midstream).expect("the shape it actually arrives in");
+
+        // `message` at the top, with no `error` around it - read only the nested one and this
+        // whole envelope went to the screen
+        let sentence = said(&value).expect("there is a sentence in there");
+        assert!(
+            sentence.starts_with("Upstream error from Inception"),
+            "{sentence}"
+        );
+        assert!(!sentence.contains("error_type"), "{sentence}");
+        assert!(!sentence.contains('{'), "no envelope: {sentence}");
+
+        // and the nested shape still reads, so one function serves both paths
+        let nested: Value = serde_json::from_str(r#"{"error":{"message":"nested"}}"#).unwrap();
+        assert_eq!(said(&nested).as_deref(), Some("nested"));
+
+        // something with no sentence in it at all has nothing to hand back
+        let empty: Value = serde_json::from_str(r#"{"code":502}"#).unwrap();
+        assert_eq!(said(&empty), None);
+    }
+}
