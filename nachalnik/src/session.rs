@@ -1,3 +1,10 @@
+//! The paper trail: an append-only log of what happened, and a snapshot of where it ended up.
+//!
+//! note: the two are here together so that the difference between them is read in one place. A
+//! [`Record`] says what happened and survives every change to the client, the model and this
+//! crate's internals; a [`Snapshot`] says what there *is* now, which is what resuming needs -
+//! nothing in the log carries content, so a log cannot rebuild a context.
+
 use std::{
     collections::VecDeque,
     time::{SystemTime, UNIX_EPOCH},

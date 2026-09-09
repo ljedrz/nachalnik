@@ -1,3 +1,11 @@
+//! One tool on a server, as a [`Tool`](nachalnik::Tool) - and how much of what the server says
+//! about it is believed.
+//!
+//! note: [`Trust`] is the decision this crate exists to get right, and the reasoning is on the
+//! type. The short of it: annotations are hints from the thing being gated, so the default takes
+//! nobody's word for anything, and the one capability that is a fact rather than a claim -
+//! `mcp:<server>` - is declared whatever the trust setting.
+
 use nachalnik::{
     BoxError, Capability, Content, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
 };

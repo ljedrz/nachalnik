@@ -1,3 +1,10 @@
+//! Everything the kernel does, as it happens - and the two channels that report what is still
+//! arriving.
+//!
+//! note: one enum carries the whole observability story. No state change skips it and there is no
+//! logging a user cannot see, so a variant added here is a promise that something will be
+//! announced, and one taken away is a client's screen going quiet about it.
+
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};

@@ -1,3 +1,10 @@
+//! The knobs, with the reasoning for each default beside it.
+//!
+//! note: nothing here changes what the model is *told*. There is no system prompt, no instruction
+//! and no message template anywhere in this crate; these fields decide how the loop behaves and
+//! how much of what it does is recorded, and everything the model reads is context somebody
+//! pushed.
+
 #[cfg(doc)]
 use crate::{Compactor, Event, Kernel, ToolSpec};
 

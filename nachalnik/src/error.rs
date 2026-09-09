@@ -1,3 +1,10 @@
+//! What can go wrong in the kernel, and what deliberately cannot.
+//!
+//! note: a short list on purpose. A failing [`Tool`](crate::Tool) is not an error here - it
+//! becomes an error tool result the model is shown, because that is something the model needs to
+//! know - and [`BoxError`] exists so that whatever a provider or a tool failed with is carried
+//! without this crate interpreting it.
+
 use std::fmt;
 
 #[cfg(doc)]

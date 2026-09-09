@@ -1,3 +1,11 @@
+//! Who may run what: the capabilities a tool declares, the policy asked about a call, and the
+//! answer it gives.
+//!
+//! note: a decision point with a paper trail rather than a boundary. Exactly one thing is
+//! enforced - a refused call is never handed to [`Tool::invoke`](crate::Tool::invoke) - and every
+//! type below is a label the kernel compares and reports rather than a property it can check.
+//! Containment belongs inside a tool or around the whole process.
+
 use std::{fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};

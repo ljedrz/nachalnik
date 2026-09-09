@@ -1,3 +1,10 @@
+//! Context items in, wire messages out.
+//!
+//! note: the seam where the shape of a request is decided, and the one seam whose default a real
+//! API may well disagree with - which is why the whole of it is one method. [`Projection`] is the
+//! answer to "what is about to be sent", available before anything is, and the [`Skipped`] list
+//! beside it is why that answer is shorter than the context it came from.
+
 use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};

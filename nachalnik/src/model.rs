@@ -1,3 +1,11 @@
+//! The vocabulary both halves agree on: what a request carries, what a response brings back, and
+//! the [`Provider`] that turns one into the other.
+//!
+//! note: nothing in here knows about HTTP, JSON schemas or any particular vendor. It is the shape
+//! the kernel builds and a provider renders, which is what lets a dialect whose assistant turn is
+//! an ordered list of parts and one whose turn is a content slot beside a list of calls sit behind
+//! the same trait.
+
 use std::{borrow::Cow, fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};

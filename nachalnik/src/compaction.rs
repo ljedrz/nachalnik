@@ -1,3 +1,10 @@
+//! Making room, and saying exactly what it took.
+//!
+//! note: automatic context management is allowed; invisible context management is not. Every
+//! field of [`CompactionReport`] is there so that somebody can be shown what happened, disagree
+//! with it and put it back - `refused` included, which is where a compactor's attempt on a pinned
+//! item ends up.
+
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};

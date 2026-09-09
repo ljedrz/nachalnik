@@ -1,3 +1,10 @@
+//! Counting what has not been sent yet.
+//!
+//! note: no tokenizer goes in this crate - that would be a model-specific assumption in a crate
+//! that holds none - so every figure the kernel reports is an estimate, and the types here are
+//! built to say so out loud. [`Calibrating`] is what stops it being *merely* an estimate: a
+//! provider reports what a request really cost, and the correction applies from then on.
+
 use std::sync::Arc;
 
 use parking_lot::RwLock;

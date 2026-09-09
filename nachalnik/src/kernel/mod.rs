@@ -1,3 +1,10 @@
+//! The runtime: the state machine, the context it owns, and every operation a caller has on them.
+//!
+//! note: the public surface, and beside it the private parts of the machine the states move
+//! through - `Machine`, `Claim`, `Restore`. What a turn is *made of* is next door in `request`
+//! and `calls`, because somebody reading this file wants to know what the kernel offers rather
+//! than how a stream of fragments is read.
+
 use std::{
     collections::{BTreeMap, HashSet},
     fmt,

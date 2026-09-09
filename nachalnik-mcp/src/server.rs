@@ -1,3 +1,10 @@
+//! A connection to one MCP server, and what installing its tools into a kernel did.
+//!
+//! note: the connection lives as long as the [`Server`] does, which is the whole of the lifetime
+//! story: dropping it ends the session, and for a server running as a child process the process
+//! goes with it. That is also why this crate is not the runtime - holding a process open is
+//! precisely what `nachalnik` promises not to do.
+
 use std::sync::Arc;
 
 use nachalnik::{ContextItem, ContextKind, Kernel, Tool};

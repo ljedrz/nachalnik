@@ -1,3 +1,10 @@
+//! What can stop a measurement, which is not the same as what a measurement can find.
+//!
+//! note: none of this is a *finding*. A subject that answers unreadably, a copy that says
+//! nothing, a claim that turns out to be false - those are results, and they are recorded as
+//! results. Here are only the conditions under which there is nothing to record, and even those
+//! do not end a run: the runner keeps the steps an experiment had already taken.
+
 use std::fmt;
 
 #[cfg(doc)]

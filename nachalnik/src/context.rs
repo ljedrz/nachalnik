@@ -1,3 +1,10 @@
+//! The context: a list of identifiable items, what each one is, and what state it is in.
+//!
+//! note: the data structure the rest of this crate is about, and the only place identifiers are
+//! handed out. Undo and redo are here rather than in the kernel that calls them, because what a
+//! checkpoint has to restore is this structure's own invariants - every item still listed, every
+//! identifier still its own, and nothing destroyed by having been taken out of a request.
+
 use std::{collections::VecDeque, fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};

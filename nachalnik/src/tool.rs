@@ -1,3 +1,10 @@
+//! Something the model can invoke: what it declares, what it produces, and the trait that runs it.
+//!
+//! note: three types and no implementations. The kernel executes nothing itself - no filesystem,
+//! no process spawning, no network - so this is the whole of what it knows about tools, and
+//! [`ToolSpec`]'s capability list is the part a [`PermissionPolicy`](crate::PermissionPolicy)
+//! reads before anything runs.
+
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
