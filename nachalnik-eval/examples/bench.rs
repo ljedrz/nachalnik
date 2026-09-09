@@ -40,8 +40,8 @@ usage: bench [-m MODEL] [-r N] [-l N] [-e NAME].. [--temperature T] [--max-token
   -r, --replicates N     how many copies each condition gets (default 1)
   -l, --ladders N        how many times `repair` runs its ladder per dossier
       --swap             run `privilege` with its two dossiers the other way round
-  -e, --experiment NAME  only these: attribution, recursion, lie, privilege,
-                         instrumented, repair, feedback
+  -e, --experiment NAME  only these: attribution, recursion, lie, conflict,
+                         provenance, privilege, instrumented, repair, feedback
       --temperature T    sent verbatim as a model parameter (default 0)
       --max-tokens N     output budget per request (default 32768; 0 omits it)
       --json FILE        write the whole report, steps and all, here

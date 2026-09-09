@@ -131,6 +131,7 @@ averaging the two hides the more interesting half.
 | `Location` | where in its own context something is — right about the first and wrong about this is the common case |
 | `Recursive` | what a copy of itself would say |
 | `Provenance` | whether what it is reading is the whole of what happened |
+| `Consistency` | whether the things it is carrying can all be true at once |
 | `Task` | not itself at all: the underlying answer, scored against what the material supports |
 | `Foreign` | the same claim about a session that is not its own — the control that decides whether any of the rest is metacognition |
 
@@ -145,7 +146,7 @@ snapshotted, ablated and rewritten.
 | | condition | experiment | what it answers |
 | --- | --- | --- | --- |
 | **C0** | *record* — the subject is never asked anything | `provenance` | can a model tell that something was taken out of its context? |
-| **C1** | *report* | `attribution`, `privilege`, `lie`, `recursion`, `feedback` | is its account of its own causal structure true? |
+| **C1** | *report* | `attribution`, `privilege`, `lie`, `conflict`, `recursion`, `feedback` | is its account of its own causal structure true? |
 | **C2** | *test* — the same question, with a fork tool | `instrumented` | does it reach for evidence, and does evidence beat its theory? |
 | **C3** | *repair* — plus the ability to change what it finds | `repair` | does fixing a context produce a better **answer**? |
 
@@ -162,9 +163,17 @@ asked which note is false and **names it correctly**; it is asked the question a
 wrong*; then it is given `amend`, takes the note out, and gets it right. Identifying an error is
 not the same as being free of it — and the only thing that helped was an edit.
 
+`conflict` is `lie` with the tiebreak taken out. The same contradiction is planted, but both sides
+are `records/...` and the brief calls the records accurate, so nothing in the context settles which
+to believe and there is no wrong note to name. What is scored is whether the subject *says* the
+notes disagree — measured against copies that still have the contradiction and copies that no
+longer do, because a detection rate with no negative control is a count of the times a model said
+yes. Then each side is ablated in turn: one of them is carrying the answer, and the subject has
+already committed to which.
+
 ---
 
-### 🧪 the eight experiments
+### 🧪 the nine experiments
 
 They live in `suite`, which is the only module in the crate with prompt text in it — including the
 two tool descriptions in `suite::handles`, which are prompt text a model reads and are hashed into
@@ -179,6 +188,7 @@ harness.
 | `attribution` | "this note is what my answer is made of", and where it is, and whether two copies differ over it | every note ablated, one at a time | 14 |
 | `recursion` | its own next answer, then a copy's prediction of that, then a copy's of the copy's | a copy actually run at every level | 8 |
 | `lie` | which note in its context contradicts the records | the harness wrote the false note, *and* corrects it on a copy | 8 |
+| `conflict` | that two of its notes cannot both be true, which two, and which of them its answer took | each side ablated in turn, and the same question put to copies with nothing left to disagree | 11 |
 | `privilege` | the same claim about its own context and about another session's | copies of each session — the control that separates self-knowledge from task reasoning | 24 |
 | `instrumented` | the same counterfactual, reported / re-asked with a fork tool / asked of a fresh subject that never guessed | copies of each session | 60 |
 | `repair` | a planted falsehood, answered / named / repaired | the task answer at each stage | 10 |
@@ -324,7 +334,7 @@ Worth saying plainly, because the word *introspection* invites more than this de
 - **Anything about mechanism.** This is behavioural throughout. It says whether a model's account
   of itself predicts its own behaviour; it says nothing whatever about what is happening inside
   one.
-- **Introspection in general.** Eight experiments over two invented dossiers and two errands, with
+- **Introspection in general.** Nine experiments over six invented dossiers and two errands, with
   a closed answer set. A model good at this is good at *this*.
 
 [nachalnik]: https://crates.io/crates/nachalnik

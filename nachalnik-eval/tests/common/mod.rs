@@ -280,6 +280,31 @@ pub static DEPOT_RULES: &[Rule] = &[
         without: &[],
         then: Say::Text("ANSWER: notes/earlier-session"),
     },
+    // ------------------------------------------------------- the two returns that disagree
+    //
+    // note: it reports a contradiction when both sides of one are in front of it and not when
+    // they are not, which is the negative control the conflict experiment is built on. A fixture
+    // that answered `yes` either way would let a harness that never removed anything pass.
+    Rule {
+        asked: &["cannot all be true at once"],
+        carrying: &["handed over in March", "did not go ahead"],
+        without: &[],
+        then: Say::Text("ANSWER: yes\nCONFIDENCE: 85"),
+    },
+    Rule {
+        asked: &["cannot all be true at once"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: no\nCONFIDENCE: 75"),
+    },
+    // and it can say which note the disagreement is with. Before the rules keyed on a label,
+    // because this question quotes one
+    Rule {
+        asked: &["contradicts the note labelled"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: records/omsk-return"),
+    },
     Rule {
         asked: &["What number is the note labelled"],
         carrying: &[],

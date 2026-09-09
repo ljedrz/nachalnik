@@ -11,9 +11,10 @@
 //! [`Attribution`] is the one the others are variations on; [`Recursion`] is the one that goes
 //! deeper; [`Lie`] and [`Provenance`] are the two whose ground truth does not depend on a fork at
 //! all, the first because the harness wrote the falsehood and the second because it wrote the
-//! record; [`Privilege`] is the control that decides whether any of it is metacognition; and
-//! [`Feedback`] is the only one that asks whether any of this can be learnt, and costs about as
-//! much as several of the others together.
+//! record; [`Conflict`] is [`Lie`] with the tiebreak taken out, so that the contradiction has no
+//! right answer and only reporting it does; [`Privilege`] is the control that decides whether any
+//! of it is metacognition; and [`Feedback`] is the only one that asks whether any of this can be
+//! learnt, and costs about as much as several of the others together.
 //!
 //! note: [`Provenance`] is also the only one that asks the subject nothing. It measures what
 //! copies say about a record the harness has doctored, which needs no claim to score it against -
@@ -34,6 +35,7 @@ pub mod handles;
 pub mod script;
 
 mod attribution;
+mod conflict;
 mod feedback;
 mod instrumented;
 mod lie;
@@ -44,6 +46,9 @@ mod repair;
 
 pub use crate::suite::{
     attribution::Attribution,
+    conflict::{
+        ANNEX, CREW, Conflict, LINE, NOTICED, RAMP, RETIREMENT, RIFTS, Rift, SETTLED, UNSETTLED,
+    },
     dossier::{ALL, DEPOT, Dossier, Expected, FERRY, FOUNDRY, KILN, MILL, Note, ORCHARD},
     feedback::Feedback,
     instrumented::{Instrumented, REPORTED, RETESTED, TESTED},
@@ -119,10 +124,10 @@ pub(crate) fn note_drift(trial: &Trial, live: &Answer, control: &Observation) {
     }
 }
 
-/// The eight experiments, at their default settings.
+/// The nine experiments, at their default settings.
 ///
 /// note: One copy per condition, which is the cheap end. It is enough to run the whole thing for
-/// about seventy requests and enough to produce every figure in a report; it is *not* enough for
+/// about eighty requests and enough to produce every figure in a report; it is *not* enough for
 /// [`Change::instability`](crate::Change), which needs at least two and is reported as zero
 /// without them. Raise the replicates before quoting a number at anybody.
 pub fn all() -> Vec<Arc<dyn Experiment>> {
@@ -130,6 +135,7 @@ pub fn all() -> Vec<Arc<dyn Experiment>> {
         Arc::new(Attribution::new()),
         Arc::new(Recursion::new()),
         Arc::new(Lie::new()),
+        Arc::new(Conflict::new()),
         Arc::new(Provenance::new()),
         Arc::new(Privilege::new()),
         Arc::new(Instrumented::new()),
@@ -138,7 +144,7 @@ pub fn all() -> Vec<Arc<dyn Experiment>> {
     ]
 }
 
-/// The same eight, with every condition run `replicates` times and every ladder run `ladders`
+/// The same nine, with every condition run `replicates` times and every ladder run `ladders`
 /// times.
 ///
 /// note: two numbers, because they buy different things and only one of them is cheap. A
@@ -154,6 +160,7 @@ pub fn all_with(replicates: usize, ladders: usize) -> Vec<Arc<dyn Experiment>> {
         Arc::new(Attribution::new().replicates(replicates)),
         Arc::new(Recursion::new().replicates(replicates)),
         Arc::new(Lie::new().replicates(replicates)),
+        Arc::new(Conflict::new().replicates(replicates)),
         Arc::new(Provenance::new().replicates(replicates)),
         Arc::new(Privilege::new().replicates(replicates)),
         Arc::new(Instrumented::new().replicates(replicates)),

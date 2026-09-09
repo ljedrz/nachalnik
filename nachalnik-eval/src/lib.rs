@@ -58,6 +58,7 @@
 //! | [`Kind::Location`] | "that item is number 7" | which number it really is |
 //! | [`Kind::Recursive`] | "a copy of me, asked that, would say yes" | a copy, asked that |
 //! | [`Kind::Provenance`] | "nothing has been taken out of this conversation" | what the harness took out of it |
+//! | [`Kind::Consistency`] | "nothing in front of me contradicts anything else" | what the harness planted that does |
 //!
 //! Each comparison is one [`Resolution`], and [`Scores`] is computed over a set of them:
 //! accuracy, the majority baseline, a Brier score, expected calibration error, an

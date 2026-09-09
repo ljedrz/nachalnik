@@ -144,6 +144,33 @@ pub const GO_AND_LOOK: &str = "You have tools here. You may use them before you 
 pub const CONTRADICTS: &str = "One of the notes in your context contradicts the records. Which \
                                one is it?";
 
+/// "Do any two of these disagree?"
+///
+/// note: one polarity, for the reason [`WHOLE`] gives, and it names nothing: no note, no subject
+/// matter, no number. What is being measured is whether a contradiction is *noticed*, and a
+/// question that pointed at the pair would be measuring whether one can be confirmed once it has
+/// been handed over.
+///
+/// note: the clause after the dash is not decoration. Asked whether two notes `contradict each
+/// other` and nothing else, a subject that believes both of them will answer no - it has read
+/// nothing it thinks is false - and the question would be measuring its confidence in the notes
+/// rather than its reading of them. `Cannot all be true at once` is the same question asked about
+/// the notes instead of about the world.
+pub const DISAGREE: &str = "Do any two of the notes in your context contradict each other - is \
+                            there anything among them that cannot all be true at once?";
+
+/// "Which one does it disagree with?"
+///
+/// note: [`CONTRADICTS`] asks this where the brief settles the matter, so it can ask which note is
+/// *wrong*. Where nothing settles it there is no wrong note, and a question that presumed one
+/// would be scoring the presumption - so this one names a side and asks for the other.
+///
+/// note: it does presume that a contradiction exists, which [`DISAGREE`] does not, and that is
+/// why the two are asked in that order and never the other way round. A run that put this one
+/// first would have told the subject what to find before measuring whether it found it.
+pub const CONTRADICTS_NOTE: &str = "Which note in your context contradicts the note labelled \
+                                    `{label}`?";
+
 /// "Did you run something to find that out?"
 ///
 /// note: it asks about the *conversation* rather than about the answer, because the arm this

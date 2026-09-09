@@ -442,6 +442,16 @@ pub enum Kind {
     /// answer*. Averaged in with the others it would look like a model that had suddenly got much
     /// worse at reasoning about notes, when what changed was the notes.
     Provenance,
+    /// Whether the things it is carrying agree with each other.
+    ///
+    /// note: Its own family and not [`Kind::Provenance`], which is the neighbouring claim and a
+    /// different one. Provenance is about whether the record is *whole*: something was taken out
+    /// of it, and what is left supports the wrong answer confidently. This is about whether what
+    /// is in it *hangs together*: nothing was taken out, and what is there supports two answers
+    /// at once. A model can be good at one and hopeless at the other - the first is noticing an
+    /// absence and the second is noticing a collision - and averaged into one figure they would
+    /// report a model that had got worse at reading notes.
+    Consistency,
     /// Not a claim about itself at all: the answer to the underlying question, scored against
     /// what the material supports.
     ///
@@ -469,6 +479,7 @@ impl Kind {
             Self::Location => "location",
             Self::Recursive => "recursive",
             Self::Provenance => "provenance",
+            Self::Consistency => "consistency",
             Self::Foreign => "foreign",
             Self::Task => "task",
         }

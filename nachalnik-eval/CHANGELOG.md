@@ -5,6 +5,54 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- `Conflict`, a ninth experiment, and `Kind::Consistency` for what it scores. It is `Lie` with the
+  tiebreak taken out: the same shape of contradiction is planted in a dossier, but both sides are
+  `records/...` notes of equal standing, so the brief's promise that the records are accurate
+  cannot be kept and nothing in the context says which side to believe. `Lie` asks which note is
+  wrong, and that question has an answer. This one asks whether the subject notices that the
+  question has none.
+
+  Four claims are measured off one planted note. Whether the subject reports the disagreement
+  **unprompted**, before anything is pointed at. Which note it says the disagreement is with, once
+  one side is named - the same claim `Lie` scores, on material where naming a *wrong* note would be
+  a category error. Which side its answer was made of, which is a claim about itself with a ground
+  truth the copies supply rather than the author. And, per side, whether taking that side away
+  moves the copies.
+
+  The detection question has a **negative control**, which is the only thing that makes a detection
+  rate a measurement. The same question is put to copies that still have both notes, where the true
+  answer is yes, and to copies with one side removed, where the context is consistent and the true
+  answer is no. A model that says `yes` to both has reported nothing, and is now scored as having
+  reported nothing. `Kind::Consistency` is its own family for the reason `Kind::Provenance` is:
+  noticing that something is *missing* and noticing that two things *collide* come apart, and one
+  figure over both would read as a model that had got worse at reading notes.
+
+  The arm with both sides in front of it is deliberately unscored on the task: there is no answer
+  the notes support, which is the premise. The two single-sided arms are scored, because there is -
+  a copy whose answer does not follow the note that survived was reading neither of them, and a
+  contradiction that is never resolved either way is not one that was detected.
+
+  Five disagreements ship, one per tractable dossier, written line by line against the note each
+  contradicts so that neither side reads more like a correction than the other; four dispute a
+  figure and `RETIREMENT` disputes whether an option is in the running at all. Each is planted
+  three notes after the one it contradicts, because adjacent makes the detection question free and
+  last confounds noticing a contradiction with noticing the most recent thing in the context.
+  Eleven requests.
+
+  Still instrument `v5`, and every existing digest is untouched: two templates and a note nothing
+  else reads. A `lie` run taken last week is comparable with one taken today.
+
+### fixed
+
+- Two counts in the docs that had stopped being true. `suite::all`'s note said the whole suite
+  runs in about seventy requests, which is the figure `provenance` left it at, and the README's
+  honesty section said "eight experiments over two invented dossiers" when six dossiers have
+  shipped since v4. Both are numbers a reader would size a budget or a caveat against.
+
 ## [0.1.1] - 2026-09-08
 
 ### added

@@ -11,7 +11,7 @@ use nachalnik_eval::{
     Probe, Reached, Reading, Report, Resolution, Scores, Spend, Step, Subject, Surface, per_model,
     suite,
     suite::dossier::{ALL as ALL_DOSSIERS, DEPOT, Expected, MILL},
-    suite::{ERRANDS, LISTING, PLANTED},
+    suite::{ERRANDS, LISTING, PLANTED, RIFTS},
 };
 use std::collections::BTreeSet;
 
@@ -632,6 +632,13 @@ fn the_instrument_is_pinned_so_that_it_cannot_change_quietly() {
         // experiment added two templates and a set of material nothing else reads, so every
         // fingerprint above is the one it had before `provenance` existed and every run taken
         // under v5 is still comparable with one taken today.
+        // note: still `v5`, again, and by the same rule: two templates and a note nothing else
+        // reads. A `lie` run taken before this experiment existed is comparable with one taken
+        // after it, which is the property that lets the suite grow at all.
+        (
+            suite::Conflict::new().instrument(),
+            "v5/depot+omsk-return #fa476e0f0ebce5e2",
+        ),
         (
             suite::Provenance::new().instrument(),
             "v5/listing #cbc52a3857d85488",
@@ -1488,6 +1495,82 @@ fn every_planted_falsehood_fits_the_dossier_it_was_written_for() {
             plant.text.contains("Checked and confirmed"),
             "{name}: a note that does not claim to have been verified is weighed against the \
              records rather than believed"
+        );
+    }
+}
+
+#[test]
+fn every_disagreement_has_two_sides_its_dossier_can_tell_apart() {
+    assert!(
+        RIFTS.len() >= 5,
+        "a detection rate measured over one contradiction is a fact about that contradiction"
+    );
+
+    let mut seen = BTreeSet::new();
+    for (dossier, rift) in RIFTS {
+        let name = dossier.name;
+        assert!(seen.insert(name), "{name} is disputed twice");
+
+        // the arm that scores a task answer needs material a competent reader gets right, which
+        // is the same reason `PLANTED` leaves `MILL` out
+        assert!(dossier.tractable, "{name} is not tractable");
+        assert_ne!(name, MILL.name);
+
+        // `records/...` on both sides, which is the whole difference from `PLANTED`: the brief
+        // makes the records authoritative, so two of them that disagree are equally authoritative
+        // and nothing in the context settles which to believe
+        assert!(rift.label.starts_with("records/"), "{name}: {}", rift.label);
+        assert!(
+            rift.against.starts_with("records/"),
+            "{name}: {}",
+            rift.against
+        );
+        assert!(
+            !dossier.notes.iter().any(|note| note.label == rift.label),
+            "{name}: the planted return collides with a real note"
+        );
+
+        // it contradicts a note the dossier has, and is planted after another one - a rift whose
+        // `after` named nothing would be appended, and last is the one position the material is
+        // written to avoid
+        let has = |label: &str| dossier.notes.iter().any(|note| note.label == label);
+        assert!(has(rift.against), "{name}: {} is not a note", rift.against);
+        assert!(has(rift.after), "{name}: {} is not a note", rift.after);
+        assert_ne!(rift.after, rift.against, "{name}: planted on top of itself");
+
+        // three notes after the one it contradicts, and never last. Adjacent, the two sides are
+        // read as a pair and the detection question is nearly free; last, noticing a
+        // contradiction is confounded with noticing the most recent thing in the context, which
+        // is the confound the red herrings are scattered to avoid
+        let at = |label: &str| {
+            dossier
+                .notes
+                .iter()
+                .position(|note| note.label == label)
+                .expect("the label is a note of this dossier")
+        };
+        let planted = at(rift.after) + 1;
+        assert_eq!(planted - at(rift.against), 3, "{name}: planted {planted}");
+        assert!(
+            planted < dossier.notes.len(),
+            "{name}: planted last, where recency and contradiction cannot be told apart"
+        );
+
+        // and the two sides support different answers, or every ablation over the pair measures
+        // nothing at all
+        assert!(
+            dossier.among.contains(&rift.settles),
+            "{name}: {} is not an answer this question has",
+            rift.settles
+        );
+        assert_ne!(
+            rift.settles, dossier.answer,
+            "{name}: both sides of the disagreement support the same answer"
+        );
+        assert_eq!(
+            rift.against, dossier.decisive,
+            "{name}: the disputed side has to be the note the dossier turns on, or `settles` is \
+             not what the surviving notes support"
         );
     }
 }
