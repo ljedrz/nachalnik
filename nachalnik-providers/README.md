@@ -27,6 +27,7 @@ lines, written once.
 | --- | --- |
 | `openai` (default) | `POST /chat/completions`, `choices[].delta`, tool calls assembled from fragments. OpenRouter, ollama, vLLM, LM Studio, Together, and most of the rest. |
 | `gemini` | Google's `generateContent`: `candidates[].content.parts`, whole calls, ordered `thought` parts. |
+| `conformance` | the suite the two above are held to, for anyone writing a third. Stands up real sockets; off unless asked for. |
 
 Both answer `Provider`, which is what the kernel asks through, and `Endpoint`, which is what the
 program around it asks: where the requests are going, which model is being asked, what this
@@ -63,6 +64,29 @@ turn or somebody's money. All three are separated here, and shared by both diale
 Every request is retried at most four times and **every attempt is billed** - a provider that
 generated nine thousand tokens and then lost the connection has still generated them - which is
 why the retry is for a server that said *busy*, not for a request that is simply large.
+
+---
+
+### 🧾 what actually went out
+
+Streamed is the default and is what a person watching wants. `streaming(false)` asks for the
+answer in one piece instead, which is what a benchmark or a batch wants - and is the only way to
+reach some endpoints' non-streaming code, which is not always the same code as their streaming
+code. What it costs is every fragment and, with them, the ability to stop a turn partway: an
+answer that arrives whole has no middle to interrupt.
+
+```rust
+let provider = OpenAiCompatible::new(model, base_url, key)
+    .streaming(false)
+    .recording(true);
+// ... a turn later
+assert_eq!(provider.requests()[0].params["max_tokens"], json!(1));
+```
+
+`recording(true)` keeps a copy of every request the provider was asked to send, and `requests()`
+hands them back. It is off by default - a session running all afternoon would otherwise hold every
+request it ever made - and it is there because *what was actually sent* is a question this runtime
+takes seriously everywhere else. `render` answers it before the fact; this answers it after.
 
 ---
 

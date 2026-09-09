@@ -45,6 +45,9 @@
 
 mod endpoint;
 
+#[cfg(feature = "conformance")]
+pub mod conformance;
+
 #[cfg(feature = "gemini")]
 pub mod gemini;
 #[cfg(feature = "openai")]
@@ -57,6 +60,18 @@ pub use crate::endpoint::Endpoint;
 pub use crate::gemini::Gemini;
 #[cfg(feature = "openai")]
 pub use crate::openai::OpenAiCompatible;
+
+/// Whether an error means an account is out of free requests for the day, rather than having hit
+/// a momentary upstream limit.
+///
+/// note: the two are the same HTTP status and the difference matters to whoever is deciding what
+/// to do next. The first is worth skipping over - it will still be true in a minute - and the
+/// second is worth waiting out. A provider here already refuses to sit through a `Retry-After`
+/// longer than a minute for the same reason; this is for a caller reading the error afterwards
+/// and deciding whether the rest of a run is worth attempting.
+pub fn out_of_quota(error: &str) -> bool {
+    error.contains("per-day") || error.contains("daily")
+}
 
 /// Whether a listed identifier names the model being asked about, allowing for the decorations
 /// listings put on them: Google's `models/` prefix, ollama's implicit `:latest` tag.

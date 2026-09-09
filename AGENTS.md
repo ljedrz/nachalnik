@@ -52,7 +52,7 @@ Two rules decide most questions before they are asked:
 | `kamchatka` | a terminal agent built on the runtime; the proof that the seams hold under a real client. | yes |
 | `nachalnik-eval` | a benchmark for model introspection: elicit a claim about a context, move the thing it was about on a copy, and score the claim against what happened. No provider, no network, four dependencies. | yes |
 | `nachalnik-providers` | the two dialects this workspace talks - OpenAI chat-completions and Google's `generateContent` - feature-gated, streamed, retried and interruptible. Deliberately outside the core for the same reason as `nachalnik-mcp`: the runtime opens no sockets. | yes |
-| `nachalnik-utils` | the OpenAI-compatible provider the examples, the live suites and `nachalnik-eval`'s `bench` example share. **Never published, permanently `0.0.0`, dev-dependency only** - cargo strips dev-dependencies from a published manifest, which is the whole trick. Nothing may depend on it normally. | no |
+| `nachalnik-utils` | the *environment* the examples, the live suites and `nachalnik-eval`'s `bench` example read - which endpoint, which key, which models. Ninety lines; it held the provider until `nachalnik-providers` could. **Never published, permanently `0.0.0`, dev-dependency only, and depended on without a version** - which is what makes cargo strip it from a published manifest. Nothing may depend on it normally. | no |
 
 `nachalnik-mcp` was written with **no change to the runtime at all**, and so were
 `kamchatka`'s introspection tools and `nachalnik-eval`. That remains the test of whether a seam is
@@ -97,10 +97,17 @@ per file, with `mod.rs` holding `install` and the handful of things both of them
 plus a binary only so the screen can be drawn against a `TestBackend` in tests.
 
 `nachalnik-providers/src`: `openai/mod.rs` (`OpenAiCompatible`, where the requests go and what the
-endpoint says it serves), `openai/wire.rs` (one request sent and read back), `gemini.rs` (Google's
-own, the one that keeps the order of a turn), `endpoint.rs` (the `Endpoint` trait both answer),
-`waiting.rs` (the stall watch and the retry rules, `pub(crate)` because both dialects use them).
-Each dialect is a feature; `waiting.rs` is what makes them one crate rather than two.
+endpoint says it serves), `openai/wire.rs` (one request sent and read back, streamed or whole),
+`gemini.rs` (Google's own, the one that keeps the order of a turn), `endpoint.rs` (the `Endpoint`
+trait both answer), `waiting.rs` (the stall watch and the retry rules, `pub(crate)` because both
+dialects use them), `conformance.rs` (the suite, behind its own feature). Each dialect is a
+feature; `waiting.rs` is what makes them one crate rather than two.
+
+This crate **reads no environment**. Where the requests go, which key pays for them and what limit
+to measure against are arguments, and the two callers in this workspace supply them:
+`kamchatka/src/provider.rs` reads `KAMCHATKA_*` and `nachalnik-utils` reads `NACHALNIK_*`. A
+library that quietly picked up `OPENAI_API_KEY` would be spending somebody's money on the strength
+of a variable they exported for another reason.
 
 Two providers, one trait. `Provider` is the kernel's half - ask, and be answered - and `Endpoint`
 is the caller's: where the requests go, what is served there, what the last retry was about.
@@ -252,12 +259,12 @@ mid-stream (`stalled`), and holds each dialect's projection against what its own
 (`bridge`), and `foreign` runs one written in another language.
 
 The shapes a *stream* arrives in are not tested per provider, because the questions would be the
-same each time. `nachalnik-utils/src/conformance.rs` is the suite: every provider in the workspace
-is asked the same questions through a real socket, each one a bug that actually happened to one of
-them, and a question added applies to all of them without any being edited.
-`nachalnik-providers/tests/conformance.rs` holds both dialects to it and `nachalnik-utils/tests/`
-holds its own, beside `whole_answers` - what a provider makes of a model that writes arguments no
-parser will take.
+same each time. `nachalnik-providers/src/conformance.rs` is the suite, behind the `conformance`
+feature: a provider is asked the same questions through a real socket, each one a bug that
+actually happened, and a question added applies to everything held to it without any of them being
+edited. `nachalnik-providers/tests/conformance.rs` holds both dialects to it. `whole_answers` is
+what is left over - the answer that arrives in one piece, which only the OpenAI dialect has a path
+for, so there is nothing for it to agree with.
 
 ---
 

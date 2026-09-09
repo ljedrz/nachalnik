@@ -1,28 +1,25 @@
-//! Scaffolding shared by `nachalnik`'s examples and its live test suite. Not published, not API.
+//! The environment `nachalnik`'s examples and its live suites read. Not published, not API.
 //!
-//! note: This crate exists for one reason: the examples and the live tests each had their own
-//! copy of the same OpenAI-compatible provider - five hundred lines apiece, grown apart in
-//! different directions, and fixed twice whenever they needed fixing at all. Neither of them is
-//! what this workspace is *about*, so neither of them should be written twice.
+//! note: what this crate held until now was a whole OpenAI-compatible provider, because the
+//! examples and the live tests each had a copy of one and the two had grown apart. That provider
+//! is [`nachalnik_providers`] now - published, so that `kamchatka`'s copy could be merged into it
+//! as well - and what is left here is the part that was never a provider's to do: which endpoint
+//! to talk to, which key pays for it, and which models to ask.
 //!
-//! note: It is a dev-dependency of `nachalnik` and of `nachalnik-eval`, and of nothing else,
-//! which is what lets it stay at `0.0.0` and unpublished: cargo strips dev-dependencies from a
-//! published manifest, so a crate that is only ever dev-depended on never has to exist on the
-//! registry. A *normal* dependency could not do this - `cargo package` refuses a dependency with
-//! no version - which is why `kamchatka`, being published and being a binary, still carries a
-//! provider of its own, and why `nachalnik-eval`'s runner is an example rather than one.
+//! note: it stays a crate rather than a module in either place because both places need it -
+//! `nachalnik`'s examples and live suite, and `nachalnik-eval`'s - and a second copy of these
+//! forty lines is how the first duplication started. It is a dev-dependency of both and of
+//! nothing else, which is what lets it stay at `0.0.0` and unpublished: cargo strips
+//! dev-dependencies from a published manifest, so a crate that is only ever dev-depended on never
+//! has to exist on the registry.
 
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 
-pub mod conformance;
-pub mod provider;
-
-pub use provider::{OpenAiCompatible, models, out_of_quota, providers};
-
-use std::env;
+use std::{env, sync::Arc};
 
 use nachalnik::BoxError;
+use nachalnik_providers::OpenAiCompatible;
 
 /// The API key, under whichever of the documented names it is set.
 ///
@@ -45,4 +42,49 @@ pub fn context_limit() -> Option<usize> {
     env::var("NACHALNIK_CONTEXT_LIMIT")
         .ok()
         .and_then(|value| value.parse().ok())
+}
+
+/// The models to use, from repeated flags or from `NACHALNIK_MODELS`.
+pub fn models(flags: Vec<String>) -> Vec<String> {
+    if !flags.is_empty() {
+        return flags;
+    }
+
+    env::var("NACHALNIK_MODELS")
+        .map(|listed| {
+            listed
+                .split(',')
+                .map(|model| model.trim().to_owned())
+                .filter(|model| !model.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A provider built from the environment, on a client with the timeout a slow endpoint wants.
+///
+/// note: not labelled and not probed. What to call it is the caller's - a suite comparing two
+/// endpoints wants different names for them than a benchmark writing one into a report - and
+/// probing is a round trip a caller may not want to pay for.
+pub fn provider(model: &str) -> Result<OpenAiCompatible, BoxError> {
+    Ok(OpenAiCompatible::new(model, base_url(), api_key()?)
+        .with_client(OpenAiCompatible::client())
+        .with_context_limit(context_limit()))
+}
+
+/// One provider per model, sharing a connection pool, each asked what its context limit is.
+///
+/// note: one client between them rather than one each, so that a panel comparing four models on
+/// the same host opens one set of connections rather than four.
+pub async fn providers(models: &[String]) -> Result<Vec<Arc<OpenAiCompatible>>, BoxError> {
+    let client = OpenAiCompatible::client();
+
+    let mut built = Vec::new();
+    for model in models {
+        let provider = provider(model)?.with_client(client.clone());
+        provider.probe().await;
+        built.push(Arc::new(provider));
+    }
+
+    Ok(built)
 }

@@ -31,7 +31,8 @@ use nachalnik_eval::{
     Experiment, Outcome, Step, Subject, Trial,
     suite::{Attribution, DEPOT, Recursion},
 };
-use nachalnik_utils::{OpenAiCompatible, api_key, out_of_quota};
+use nachalnik_providers::out_of_quota;
+use nachalnik_utils::api_key;
 use serde_json::json;
 
 /// A small, free, widely available model.
@@ -42,21 +43,14 @@ static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// The model to measure, or `None` when there is no key and the test should skip.
 fn provider() -> Option<Arc<dyn Provider>> {
-    let key = match api_key() {
-        Ok(key) => key,
-        Err(why) => {
-            println!("skipped: {why}");
-            return None;
-        }
-    };
+    if let Err(why) = api_key() {
+        println!("skipped: {why}");
+        return None;
+    }
     let model = env::var("NACHALNIK_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
-    let provider = OpenAiCompatible::new(
-        OpenAiCompatible::client(),
-        model,
-        nachalnik_utils::base_url(),
-        key,
-    )
-    .streaming(false);
+    let provider = nachalnik_utils::provider(&model)
+        .expect("the key is there")
+        .streaming(false);
 
     Some(Arc::new(provider))
 }

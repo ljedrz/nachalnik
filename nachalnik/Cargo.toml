@@ -43,9 +43,16 @@ tokio = { workspace = true, features = ["rt", "sync"] }
 
 [dev-dependencies]
 nachalnik = { path = ".", features = ["selectors", "test"] } # a workaround to use these features in tests by default
-# the OpenAI-compatible provider the examples and the live suite talk through. A dev-dependency,
-# and only ever a dev-dependency: cargo strips those from a published manifest, which is what lets
-# that crate stay unpublished at 0.0.0
-nachalnik-utils.workspace = true
+# the provider the examples and the live suite talk through, and the environment they read it out
+# of. Both are dev-dependencies and only ever dev-dependencies, so cargo strips them from the
+# published manifest - which is what lets `nachalnik-utils` stay unpublished at 0.0.0.
+#
+# note: no version on either, deliberately, and that is what does the stripping: a dev-dependency
+# carrying one is kept, and a kept one would mean this crate could not be packaged until
+# `nachalnik-providers` was on the registry - which depends on *this* crate. The cycle is legal
+# and cargo would resolve it, but it would make the two crates publishable only in one order for
+# ever after, which is a lot to pay for a version number nobody reads.
+nachalnik-providers = { path = "../nachalnik-providers" }
+nachalnik-utils = { path = "../nachalnik-utils" }
 reqwest.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

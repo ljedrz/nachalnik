@@ -1,27 +1,30 @@
-//! A suite every provider in this workspace has to pass, whichever dialect it speaks.
+//! A suite any provider can be held to, whichever of the two dialects it speaks.
 //!
-//! note: this exists because three providers here are one provider written three times.
-//! `kamchatka`'s OpenAI-compatible one and this crate's share 418 identical lines; `kamchatka`'s
-//! two share 286. They cannot simply be merged - `kamchatka` is published and this crate is
-//! permanently unpublished, so nothing published may depend on it - and the cost of that has been
-//! paid three times in a row, each time the same way: a bug found in one copy, fixed in one copy.
-//! The stream that decoded each chunk lossily was in all three. The tool-call fragments filed by a
-//! missing index were in two. Arguments that would not parse were handled one way in a file's
-//! streamed path and another in its whole-answer path.
+//! note: this was written when there were three providers in this workspace that were one
+//! provider written three times, and it is the reason there is now one per dialect. The cost of
+//! the copies was paid three times in a row, each time the same way: a bug found in one copy,
+//! fixed in one copy. The stream that decoded each chunk lossily was in all three. The tool-call
+//! fragments filed by a missing index were in two. Arguments that would not parse were handled one
+//! way in a file's streamed path and another in its whole-answer path.
 //!
-//! note: so the answer here is not deduplication but agreement. Each provider is asked the same
-//! questions through a real socket, and a case added to this module applies to every provider at
-//! once without any of them being edited. Every case below is a bug that actually happened.
+//! note: it outlives the duplication because what it holds is not agreement between copies but a
+//! list of shapes some server really sent. Every case below is a bug that actually happened, asked
+//! through a real socket rather than of a parser, because what is under test lives inside
+//! `respond` - between reading bytes off a response and handing back a [`ModelResponse`] - and a
+//! test that reached in beside it would be testing a copy of the code under test.
+//!
+//! note: behind the `conformance` feature, and off by default. It is a dev tool, it stands up
+//! `TcpListener`s, and a caller writing a provider of its own is who it is for.
 //!
 //! ```no_run
 //! # use std::sync::Arc;
-//! # use nachalnik_utils::conformance::Conformance;
+//! # use nachalnik_providers::conformance::Conformance;
 //! # async fn go() {
 //! Conformance::openai("my provider", |url| Arc::new(my_provider(url)))
 //!     .check()
 //!     .await;
 //! # }
-//! # fn my_provider(_: String) -> nachalnik_utils::OpenAiCompatible { unimplemented!() }
+//! # fn my_provider(_: String) -> nachalnik_providers::OpenAiCompatible { unimplemented!() }
 //! ```
 
 use std::{sync::Arc, time::Duration};
@@ -35,9 +38,9 @@ use tokio::{
 /// What a provider calls a turn whose stream stopped arriving partway.
 ///
 /// note: a [`StopReason::Other`] rather than a variant of its own, because `Other` is the
-/// runtime's own place for "anything else the provider reported" and a word three providers
-/// have to agree on does not need the core to hold it. What makes them agree is this case:
-/// the literal lives in each provider, and a provider that spells it differently fails here.
+/// runtime's own place for "anything else the provider reported" and a word providers have to
+/// agree on does not need the core to hold it. What makes them agree is this case: the literal
+/// lives in each provider, and one that spells it differently fails here.
 const CUT_OFF: &str = "cut off";
 
 /// The wire format a provider under test speaks.

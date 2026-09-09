@@ -29,7 +29,7 @@ use std::{
 
 use nachalnik::{Config, Kernel, Params, Provider};
 use nachalnik_eval::{Outcome, Report, Subject, evaluate, suite};
-use nachalnik_utils::{OpenAiCompatible, base_url};
+use nachalnik_utils::base_url;
 use serde_json::json;
 
 const USAGE: &str = "\
@@ -103,9 +103,8 @@ async fn main() -> Result<(), nachalnik::BoxError> {
         }
     }
 
-    let client = OpenAiCompatible::client();
     let provider: Arc<dyn Provider> = Arc::new(
-        OpenAiCompatible::from_env(client, &model)?
+        nachalnik_utils::provider(&model)?
             .labelled(base_url())
             // there is nothing to stream to: every answer here is read, not watched
             .streaming(false),

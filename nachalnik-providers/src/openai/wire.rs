@@ -20,7 +20,10 @@ use serde_json::{Value, json};
 
 use crate::{
     openai::OpenAiCompatible,
-    waiting::{HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, interrupted, watched},
+    waiting::{
+        HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, WHOLE_ANSWER, interrupted,
+        watched,
+    },
 };
 
 /// A tool call being assembled from streamed fragments.
@@ -179,7 +182,7 @@ impl Provider for OpenAiCompatible {
             tool_calling: true,
             reasoning: true,
             parameters: self.parameters.lock().clone(),
-            ..ModelInfo::new("openai-compatible", self.model.lock().clone())
+            ..ModelInfo::new(self.label.clone(), self.model.lock().clone())
         }
     }
 
@@ -189,9 +192,14 @@ impl Provider for OpenAiCompatible {
         let mut body = json!({
             "model": *self.model.lock(),
             "messages": request.messages.iter().map(to_wire).collect::<Vec<_>>(),
-            "stream": true,
-            "stream_options": { "include_usage": true },
         });
+        // note: only when one is wanted. `stream_options` is not accepted by every endpoint that
+        // accepts `stream`, and sending either to one that was asked for a whole answer is asking
+        // for a 400 about a field nobody set
+        if self.stream {
+            body["stream"] = json!(true);
+            body["stream_options"] = json!({ "include_usage": true });
+        }
 
         if !request.tools.is_empty() {
             body["tools"] = Value::Array(
@@ -225,7 +233,19 @@ impl Provider for OpenAiCompatible {
         request: ModelRequest,
         deltas: DeltaSink,
     ) -> Result<ModelResponse, BoxError> {
+        if self.recording {
+            self.requests.lock().push(request.clone());
+        }
         let body = self.render(&request).expect("this provider always renders");
+        // read off the body rather than off the field, so that a caller who set `stream` in its
+        // own parameters gets the path it asked for: `render` puts those on last, deliberately
+        let streaming = body["stream"] == json!(true);
+        // nothing arrives until the whole answer does, when it is not a stream, so the silence
+        // that means "this has stalled" is a much longer one
+        let patience = match streaming {
+            true => PATIENCE,
+            false => WHOLE_ANSWER,
+        };
 
         // read once, and used for every line said about this request: a name that changed halfway
         // through would make one wait look like two
@@ -235,6 +255,7 @@ impl Provider for OpenAiCompatible {
         // broken when it is not. Waiting and trying again is the *provider's* business: the
         // kernel must not silently send a request twice behind a caller's back
         let mut response = loop {
+            self.attempts.fetch_add(1, Ordering::SeqCst);
             let response = match watched(
                 self.attributed(
                     self.client
@@ -246,6 +267,7 @@ impl Provider for OpenAiCompatible {
                 &deltas,
                 &model,
                 &self.notice,
+                patience,
             )
             .await
             {
@@ -258,10 +280,10 @@ impl Provider for OpenAiCompatible {
                 // with nothing behind it, and making a typo take four doublings to report helps
                 // nobody
                 Err(reason) if reason.worth_waiting_out() => {
-                    let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                    let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
                     let wait = Duration::from_secs(1 << attempt);
                     if attempt >= RETRIES {
-                        self.attempts.store(0, Ordering::SeqCst);
+                        self.backoff.store(0, Ordering::SeqCst);
                         return Err(reason.giving_up(&model));
                     }
 
@@ -283,7 +305,7 @@ impl Provider for OpenAiCompatible {
                 // the budget belongs to a request, not to a session: without this an afternoon
                 // that had already ridden out four busy servers answered the fifth by giving up
                 // on the first try
-                self.attempts.store(0, Ordering::SeqCst);
+                self.backoff.store(0, Ordering::SeqCst);
                 break response;
             }
 
@@ -297,10 +319,10 @@ impl Provider for OpenAiCompatible {
                 .map(Duration::from_secs);
 
             let transient = status.as_u16() == 429 || status.is_server_error();
-            let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+            let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
             let wait = asked.unwrap_or(Duration::from_secs(1 << attempt));
             if !transient || attempt >= RETRIES || wait > LINGER {
-                self.attempts.store(0, Ordering::SeqCst);
+                self.backoff.store(0, Ordering::SeqCst);
                 let body = response.text().await.unwrap_or_default();
                 let mut said = complaint(status, &body);
                 if transient && wait > LINGER {
@@ -320,6 +342,22 @@ impl Provider for OpenAiCompatible {
             ));
             tokio::time::sleep(wait).await;
         };
+
+        if !streaming {
+            // one body, already whole. There is nothing to watch arrive and nothing to interrupt:
+            // by the time this reads it the model has finished and been billed
+            let text = response.text().await?;
+            let payload: Value = serde_json::from_str(&text)
+                .map_err(|e| format!("the answer was not JSON ({e}): {text}"))?;
+            return match payload.get("error").filter(|e| !e.is_null()) {
+                Some(error) => Err(match said(error) {
+                    Some(said) => said,
+                    None => format!("{error}").chars().take(300).collect(),
+                }
+                .into()),
+                None => Ok(whole(&payload)),
+            };
+        }
 
         // bytes rather than a `String`, because a chunk boundary is not a character boundary. A
         // multi-byte character split across two reads used to be decoded twice, lossily, and
@@ -442,14 +480,7 @@ impl Provider for OpenAiCompatible {
                 }
 
                 if let Some(reported) = chunk.get("usage").filter(|u| !u.is_null()) {
-                    usage = Some(Usage {
-                        input_tokens: reported["prompt_tokens"].as_u64(),
-                        output_tokens: reported["completion_tokens"].as_u64(),
-                        reasoning_tokens: reported["completion_tokens_details"]["reasoning_tokens"]
-                            .as_u64(),
-                        cached_input_tokens: reported["prompt_tokens_details"]["cached_tokens"]
-                            .as_u64(),
-                    });
+                    usage = Some(usage_of(reported));
                 }
 
                 let choice = &chunk["choices"][0];
@@ -566,18 +597,108 @@ impl Provider for OpenAiCompatible {
                     ToolCall::new(call.id, call.name, args).with_extra(call.extra)
                 })
                 .collect(),
-            stop: match finish.as_deref() {
-                Some("stop") => StopReason::EndTurn,
-                Some("interrupted") => StopReason::Other("interrupted".to_owned()),
-                Some("tool_calls") | Some("function_call") => StopReason::ToolUse,
-                Some("length") => StopReason::Length,
-                Some("content_filter") => StopReason::Refusal,
-                Some(other) => StopReason::Other(other.to_owned()),
-                None => StopReason::Other("unreported".to_owned()),
-            },
+            stop: stop_reason(finish.as_deref()),
             usage,
             raw: Some(json!({ "stream": chunks })),
         })
+    }
+}
+
+/// Reads a whole answer - one JSON body, no fragments - into a turn.
+///
+/// note: the streamed path assembles the same thing from `delta` objects a piece at a time; this
+/// one is handed `message` finished. What they must agree about is what they make of it, which is
+/// why the two readers below are shared rather than written twice: a model whose arguments will
+/// not parse, and a usage report whose reasoning has to be inferred, were each handled one way
+/// here and another there.
+fn whole(body: &Value) -> ModelResponse {
+    let choice = &body["choices"][0];
+    let message = &choice["message"];
+
+    ModelResponse {
+        content: message["content"]
+            .as_str()
+            .filter(|text| !text.is_empty())
+            .map(Content::text),
+        // note: the summary is on the body rather than on the message, and is read here for the
+        // reason `summarised` reads it off a chunk: an endpoint that reports the thinking only as
+        // a finished summary is an endpoint whose thinking is otherwise dropped. Not streamed,
+        // this one is already the several summaries joined, so there is nothing to append
+        reasoning: message["reasoning"]
+            .as_str()
+            .or_else(|| body["reasoning_summary"]["content"].as_str())
+            .filter(|text| !text.is_empty())
+            .map(Content::text),
+        tool_calls: message["tool_calls"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|call| {
+                // a model that produces invalid JSON gets to see that it did - the same answer
+                // the streamed path gives. Handing it `{}` instead meant a call arrived with no
+                // arguments and nothing anywhere to say why
+                let written = call["function"]["arguments"].as_str().unwrap_or("{}");
+                let args: Value = serde_json::from_str(written)
+                    .unwrap_or_else(|_| json!({ "_unparsed": written }));
+
+                ToolCall::new(
+                    call["id"].as_str().unwrap_or_default(),
+                    call["function"]["name"].as_str().unwrap_or_default(),
+                    args,
+                )
+                .with_extra(call["extra_content"].clone())
+            })
+            .collect(),
+        stop: stop_reason(choice["finish_reason"].as_str()),
+        usage: body.get("usage").filter(|u| !u.is_null()).map(usage_of),
+        raw: Some(body.clone()),
+    }
+}
+
+/// What a turn cost, as this dialect reports it.
+///
+/// note: the two branches disagree about containment, and the difference has to be settled here
+/// or it is settled wrongly by whoever reads the result. A reported
+/// `completion_tokens_details.reasoning_tokens` is already inside `completion_tokens`; a residual
+/// is by construction outside it, being what the total has left over once the prompt and the
+/// completion are taken off. [`Usage::output_tokens`] is everything generated, so the residual is
+/// added to it and the reported one is not.
+///
+/// note: the residual is worth inferring because an endpoint that bills for reasoning and reports
+/// none by name is the case where a turn's cost is otherwise invisible. There is nowhere else to
+/// find out where it went.
+fn usage_of(reported: &Value) -> Usage {
+    let input = reported["prompt_tokens"].as_u64();
+    let output = reported["completion_tokens"].as_u64();
+    let residual = || {
+        let total = reported["total_tokens"].as_u64()?;
+        total.checked_sub(input.unwrap_or_default() + output.unwrap_or_default())
+    };
+
+    let reported_reasoning = reported["completion_tokens_details"]["reasoning_tokens"].as_u64();
+    let inferred = reported_reasoning.is_none().then(residual).flatten();
+
+    Usage {
+        input_tokens: input,
+        output_tokens: match (output, inferred) {
+            (output, None) => output,
+            (output, Some(extra)) => Some(output.unwrap_or_default() + extra),
+        },
+        reasoning_tokens: reported_reasoning.or(inferred).filter(|tokens| *tokens > 0),
+        cached_input_tokens: reported["prompt_tokens_details"]["cached_tokens"].as_u64(),
+    }
+}
+
+/// Why the model stopped, in the kernel's vocabulary.
+fn stop_reason(finish: Option<&str>) -> StopReason {
+    match finish {
+        Some("stop") => StopReason::EndTurn,
+        Some("interrupted") => StopReason::Other("interrupted".to_owned()),
+        Some("tool_calls" | "function_call") => StopReason::ToolUse,
+        Some("length") => StopReason::Length,
+        Some("content_filter") => StopReason::Refusal,
+        Some(other) => StopReason::Other(other.to_owned()),
+        None => StopReason::Other("unreported".to_owned()),
     }
 }
 

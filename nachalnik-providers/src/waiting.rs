@@ -37,8 +37,18 @@ pub(crate) const QUIET: Duration = Duration::from_secs(10);
 /// How much longer it has to keep saying nothing before being mentioned again.
 pub(crate) const AGAIN: Duration = Duration::from_secs(30);
 
-/// How long it may say nothing before the request is given up on.
+/// How long a *stream* may say nothing before the request is given up on.
 pub(crate) const PATIENCE: Duration = Duration::from_secs(150);
+
+/// The same, for an answer that is not streamed at all.
+///
+/// note: ten minutes, and it has to be minutes rather than the two and a half above, because
+/// nothing arrives until the whole answer does: a model asked for a long answer says nothing for
+/// as long as it takes to write one, and there is no fragment to reset the watch. Measured on a
+/// reasoning model through OpenRouter that spent 16,754 output tokens on one question. A stream
+/// is different, and 150s of silence in the middle of one really is a stall.
+#[cfg(feature = "openai")]
+pub(crate) const WHOLE_ANSWER: Duration = Duration::from_secs(600);
 
 /// What a stream's silence has come to mean.
 pub(crate) enum Silence {
@@ -62,14 +72,22 @@ pub(crate) struct Vigil {
     last: Instant,
     /// The silence already mentioned, in whole seconds; zero when there is nothing to mention.
     said: u64,
+    /// How long a silence may run before this gives up on it.
+    patience: Duration,
 }
 
 impl Vigil {
-    /// Starts watching, now.
+    /// Starts watching, now, with the patience a stream gets.
     pub(crate) fn new() -> Self {
+        Self::waiting(PATIENCE)
+    }
+
+    /// The same, for a wait of a different shape; see [`WHOLE_ANSWER`].
+    pub(crate) fn waiting(patience: Duration) -> Self {
         Self {
             last: Instant::now(),
             said: 0,
+            patience,
         }
     }
 
@@ -92,7 +110,7 @@ impl Vigil {
     /// note: split out so that the rule can be tested without a socket and a wall clock. What is
     /// left in `waited` is the clock reading, which has nothing in it to get wrong.
     fn judge(&mut self, silent: Duration) -> Silence {
-        if silent >= PATIENCE {
+        if silent >= self.patience {
             return Silence::Enough;
         }
 
@@ -116,8 +134,9 @@ impl Vigil {
 pub(crate) enum Unsent {
     /// The transport gave up on it.
     Transport(reqwest::Error),
-    /// Nothing came back at all, for [`PATIENCE`].
-    Silent,
+    /// Nothing came back at all, for this long - [`PATIENCE`], or [`WHOLE_ANSWER`] where the
+    /// answer was never going to arrive in pieces.
+    Silent(Duration),
     /// Somebody pressed escape before the answer had started.
     Interrupted,
 }
@@ -129,7 +148,7 @@ impl Unsent {
             Self::Transport(e) => worth_waiting_out(e),
             // the same thing the transport's own timeout means, arrived at by counting rather
             // than by being told: a server that took the connection and went quiet is busy
-            Self::Silent => true,
+            Self::Silent(_) => true,
             Self::Interrupted => false,
         }
     }
@@ -139,7 +158,7 @@ impl Unsent {
         match self {
             // worth telling apart: one of them hung up, the other never spoke
             Self::Transport(_) => "did not answer in time",
-            Self::Silent => "has not answered at all",
+            Self::Silent(_) => "has not answered at all",
             Self::Interrupted => "was interrupted",
         }
     }
@@ -148,9 +167,9 @@ impl Unsent {
     pub(crate) fn giving_up(self, model: &str) -> BoxError {
         match self {
             Self::Transport(e) => e.into(),
-            Self::Silent => format!(
+            Self::Silent(waited) => format!(
                 "{model} never answered; giving up after {}s",
-                PATIENCE.as_secs()
+                waited.as_secs()
             )
             .into(),
             Self::Interrupted => "interrupted".into(),
@@ -190,9 +209,10 @@ pub(crate) async fn watched(
     deltas: &DeltaSink,
     model: &str,
     notice: &Mutex<Option<String>>,
+    patience: Duration,
 ) -> Result<reqwest::Response, Unsent> {
     let mut sending = std::pin::pin!(sending);
-    let mut vigil = Vigil::new();
+    let mut vigil = Vigil::waiting(patience);
 
     loop {
         if let Ok(sent) = tokio::time::timeout(HEARTBEAT, &mut sending).await {
@@ -204,7 +224,7 @@ pub(crate) async fn watched(
         }
 
         match vigil.waited() {
-            Silence::Enough => return Err(Unsent::Silent),
+            Silence::Enough => return Err(Unsent::Silent(patience)),
             Silence::Worth(seconds) => {
                 *notice.lock() = Some(format!(
                     "{model} has not answered for {seconds}s; esc gives up on it"
@@ -360,7 +380,7 @@ mod tests {
         // counting the silence ourselves has to mean what the transport's own timeout means,
         // because it is now the thing that usually notices first
         assert!(
-            Unsent::Silent.worth_waiting_out(),
+            Unsent::Silent(PATIENCE).worth_waiting_out(),
             "a server that took the request and said nothing is a busy one"
         );
 

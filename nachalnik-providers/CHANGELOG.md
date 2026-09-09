@@ -20,6 +20,39 @@ minor bump may break you.
   in a crate marked `publish = false` for ever. An adopter's first task was a thousand lines of
   streamed HTTP.
 
+- The second OpenAI-compatible implementation folds in. `nachalnik-utils` held one too - the one
+  `nachalnik`'s examples and its live suite talk through - and it could not be merged with
+  `kamchatka`'s while one crate was published and the other never would be. Six things it had and
+  the published one did not:
+
+  - `streaming(false)`, and the whole-answer path behind it. Worth having where nothing is
+    watching an answer arrive, and the only way to reach some endpoints' non-streaming code, which
+    is not always the same code as their streaming code.
+  - `recording(true)` and `requests()`: every request the provider was asked to send, in order,
+    for a caller that wants to assert on what actually went out rather than on what it believes
+    went out. Off by default, because a session that ran all afternoon would otherwise hold every
+    request it ever made.
+  - `client()` and `client_with()`, and `with_client()` to send through one: several models on one
+    host then share a connection pool, and the timeout is the caller's to set. Ten minutes by
+    default, because reqwest's covers the whole request and a shorter one fires *during
+    generation* - which surfaces as `error decoding response body` and looks like a network fault.
+  - `attempts()`, how many HTTP requests this has made in its life. The field existed and was a
+    backoff counter reset by every success; it is two fields now.
+  - `labelled()`, which is what `nachalnik::ModelInfo::provider` reports. A panel comparing four
+    models through three endpoints had three providers all called `openai-compatible`.
+  - `out_of_quota`, for telling a daily limit from a momentary one. They are the same status code
+    and the first is not worth waiting out.
+
+  One thing came the other way. The reasoning figure a turn reports is now inferred from a
+  `total_tokens` residual where the endpoint publishes no `reasoning_tokens` by name - the
+  unpublished copy did that and the published one did not, and it is the case where a turn's cost
+  is otherwise invisible. Both paths read it through one function now, and one `stop_reason`.
+
+- The conformance suite, as `conformance`, off by default. It was written to keep three copies of
+  this code honest and outlives them because what it holds is not agreement between copies but a
+  list of shapes some server really sent, asked through a real socket. It is here for whoever
+  writes a third provider.
+
 - `OpenAiCompatible::with_context_limit` and `Gemini::with_context_limit`, for the two cases
   `probe` cannot settle: an endpoint that publishes no context length, and one whose published
   length is not what the model is really being served with. It replaces a `KAMCHATKA_CONTEXT_LIMIT`

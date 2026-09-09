@@ -5,13 +5,16 @@
 //! HTTP that every one of these APIs happens to agree on, and each oddity below is one a server
 //! really sent.
 
-use std::sync::atomic::AtomicUsize;
+use std::{
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
+};
 
-use nachalnik::async_trait;
+use nachalnik::{ModelRequest, async_trait};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::{Endpoint, install_crypto, same_model};
+use crate::{Endpoint, install_crypto, same_model, waiting::WHOLE_ANSWER};
 
 mod wire;
 
@@ -64,8 +67,12 @@ pub struct OpenAiCompatible {
     /// about whichever model the session happens to be asking, and a `set_model` that quietly
     /// replaced it with whatever the endpoint advertises would be overruling them.
     configured: Option<usize>,
-    /// How many times this provider has backed off, so that a busy server cannot be retried
-    /// forever by a session that keeps making new requests.
+    /// How many times this provider has backed off *since the last answer*, so that a busy
+    /// server cannot be retried forever by a session that keeps making new requests. Reset by
+    /// every request that succeeds.
+    backoff: AtomicUsize,
+    /// How many HTTP requests this has made in its life, retries counted separately. Never reset:
+    /// what it answers is "what did this cost", which a run wants at the end of it.
     attempts: AtomicUsize,
     /// What the last retry was about, taken by [`Endpoint::take_notice`], for a client that has
     /// somewhere to put it and no stderr to spare.
@@ -73,6 +80,23 @@ pub struct OpenAiCompatible {
     /// Who to say these requests are on behalf of, where the endpoint asks. Set once, at
     /// construction: it is a property of the program making the request, not of the session.
     attribution: Option<Attribution>,
+    /// What this endpoint is called, as [`nachalnik::ModelInfo::provider`] reports it.
+    ///
+    /// note: worth setting when there are several. A panel comparing four models through three
+    /// endpoints has three providers whose `info()` all said `openai-compatible`, which told the
+    /// reader nothing about which was which.
+    label: String,
+    /// Whether to ask for a streamed answer at all; see [`Self::streaming`].
+    stream: bool,
+    /// Every request this was asked to send, in order, when [`Self::recording`] is on.
+    requests: Mutex<Vec<ModelRequest>>,
+    /// Whether to keep them.
+    ///
+    /// note: off by default, and it has to be: a session that runs all afternoon would hold every
+    /// request it ever made, which is the context several times over. What it is for is a test or
+    /// a run that wants to assert on what actually went out rather than on what it believes went
+    /// out, and those know they want it.
+    recording: bool,
 }
 
 /// The app a request is being made on behalf of, for an endpoint that keeps a ranking of them.
@@ -113,10 +137,85 @@ impl OpenAiCompatible {
             configured: None,
             parameters: Mutex::new(Vec::new()),
             every_parameter: Mutex::new(true),
+            backoff: AtomicUsize::new(0),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
             attribution: None,
+            label: "openai-compatible".to_owned(),
+            stream: true,
+            requests: Mutex::new(Vec::new()),
+            recording: false,
         }
+    }
+
+    /// A client with the timeout a slow endpoint wants, which is longer than reqwest's default.
+    ///
+    /// note: also where the cryptography `rustls` will use is installed, for a caller that builds
+    /// its own client and would otherwise find out at the first `https://`. See
+    /// [`crate::install_crypto`].
+    ///
+    /// note: worth choosing deliberately, because reqwest's timeout covers the *whole* request -
+    /// connect, generate and body - so it is an upper bound on how long a model may think and not
+    /// only on how long a dead socket may hang. Set it below what the work takes and every long
+    /// answer arrives as `error decoding response body`, which looks like a network fault and is
+    /// not one. The default here is ten minutes for that reason; what catches a socket with
+    /// nobody on the other end is the silence watch, which is counted rather than told.
+    pub fn client() -> reqwest::Client {
+        Self::client_with(WHOLE_ANSWER)
+    }
+
+    /// The same, with a timeout of the caller's choosing.
+    pub fn client_with(timeout: Duration) -> reqwest::Client {
+        install_crypto();
+        reqwest::Client::builder()
+            .timeout(timeout)
+            .build()
+            .expect("a default client is buildable")
+    }
+
+    /// Sends through a client of the caller's own, so that several models on one host share a
+    /// connection pool - and so that the timeout is the caller's to set.
+    #[must_use]
+    pub fn with_client(mut self, client: reqwest::Client) -> Self {
+        self.client = client;
+        self
+    }
+
+    /// Names this endpoint, as [`nachalnik::ModelInfo::provider`] will report it.
+    #[must_use]
+    pub fn labelled(mut self, label: impl Into<String>) -> Self {
+        self.label = label.into();
+        self
+    }
+
+    /// Whether to ask for a streamed answer at all. On unless turned off.
+    ///
+    /// note: a whole answer is worth having where nothing is watching one arrive - a benchmark
+    /// run, a batch, a test - and it is the only way to reach some endpoints' non-streaming
+    /// paths, which are not always the same code as their streaming ones. What it costs is every
+    /// [`nachalnik::DeltaSink`] fragment and, with them, the ability to stop a turn partway: an
+    /// answer that arrives in one piece has no middle to interrupt.
+    #[must_use]
+    pub fn streaming(mut self, stream: bool) -> Self {
+        self.stream = stream;
+        self
+    }
+
+    /// Whether to keep a copy of every request sent, for [`Self::requests`] to hand back.
+    #[must_use]
+    pub fn recording(mut self, on: bool) -> Self {
+        self.recording = on;
+        self
+    }
+
+    /// Every request this was asked to send, in order; empty unless [`Self::recording`] is on.
+    pub fn requests(&self) -> Vec<ModelRequest> {
+        self.requests.lock().clone()
+    }
+
+    /// How many HTTP requests this has made, retries counted separately.
+    pub fn attempts(&self) -> usize {
+        self.attempts.load(Ordering::SeqCst)
     }
 
     /// Says which app these requests are being made on behalf of.
@@ -169,6 +268,11 @@ impl OpenAiCompatible {
     /// Where the requests are going.
     pub fn endpoint(&self) -> String {
         self.base_url.lock().clone()
+    }
+
+    /// Which model is being asked.
+    pub fn model(&self) -> String {
+        self.model.lock().clone()
     }
 
     /// Just the authority of [`Self::endpoint`] - `openrouter.ai`, `localhost:11434` - for the
@@ -440,7 +544,7 @@ impl Endpoint for OpenAiCompatible {
     }
 
     fn model(&self) -> String {
-        self.model.lock().clone()
+        self.model()
     }
 
     fn lists_every_parameter(&self) -> bool {

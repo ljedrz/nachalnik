@@ -29,8 +29,10 @@ serde_json.workspace = true
 # network. The same self-referential trick `nachalnik` uses on itself: a feature turned on for
 # this crate's tests and off for its users
 nachalnik = { workspace = true, features = ["test"] }
-# the OpenAI-compatible provider the live suite and the `bench` example talk through. A
-# dev-dependency, and only ever a dev-dependency: cargo strips those from a published manifest,
-# which is what lets that crate stay unpublished at 0.0.0
-nachalnik-utils.workspace = true
+# the provider the live suite and the `bench` example talk through, and the environment they read
+# it out of. Both dev-dependencies, and both without a version, which is what makes cargo strip
+# them from the published manifest - see the same pair in `nachalnik/Cargo.toml` for why that
+# matters
+nachalnik-providers = { path = "../nachalnik-providers" }
+nachalnik-utils = { path = "../nachalnik-utils" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

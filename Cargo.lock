@@ -1388,6 +1388,7 @@ version = "0.3.3"
 dependencies = [
  "async-trait",
  "nachalnik",
+ "nachalnik-providers",
  "nachalnik-utils",
  "parking_lot",
  "reqwest",
@@ -1402,6 +1403,7 @@ version = "0.1.2"
 dependencies = [
  "async-trait",
  "nachalnik",
+ "nachalnik-providers",
  "nachalnik-utils",
  "parking_lot",
  "serde",
@@ -1426,7 +1428,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "nachalnik",
- "nachalnik-utils",
  "parking_lot",
  "reqwest",
  "rustls",
@@ -1438,13 +1439,8 @@ dependencies = [
 name = "nachalnik-utils"
 version = "0.0.0"
 dependencies = [
- "async-trait",
  "nachalnik",
- "parking_lot",
- "reqwest",
- "rustls",
- "serde_json",
- "tokio",
+ "nachalnik-providers",
 ]
 
 [[package]]

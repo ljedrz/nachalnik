@@ -1,9 +1,10 @@
 //! The little the networked examples share that is theirs alone: two formatting helpers.
 //!
 //! note: The provider they talk through used to live here, five hundred lines of it, and a second
-//! copy of the same thing lived in `tests/live.rs`. Both now come from `nachalnik-utils`, a
-//! workspace member that is never published and exists only so that this crate's own scaffolding
-//! is written once. What is left here is presentation, which is the examples' own business.
+//! copy of the same thing lived in `tests/live.rs`. It is `nachalnik-providers` now, a published
+//! crate; the environment it is built from comes from `nachalnik-utils`, which is never published
+//! and exists so that this crate's own scaffolding is written once. What is left here is
+//! presentation, which is the examples' own business.
 //!
 //! It is pulled in with `#[path = "common/mod.rs"] mod common;`, because a directory under
 //! `examples/` with no `main.rs` is not built as an example of its own.

@@ -1,14 +1,14 @@
-//! The path a *whole* answer takes, which is this provider's alone.
+//! The path a *whole* answer takes, which only one of the two dialects has.
 //!
-//! note: what every provider here has in common is in the conformance suite, and `streaming(false)`
-//! is not part of it: `kamchatka`'s two always ask for a stream, so there is no second
-//! implementation for them to agree with. This is what is left over - the answer that arrives in
-//! one piece, parsed by `parse` rather than by `parse_stream`.
+//! note: what the dialects have in common is in the conformance suite, and `streaming(false)` is
+//! not part of it - `Gemini` always asks for a stream, so there is nothing for this to agree
+//! with. This is what is left over: the answer that arrives in one piece, read by `whole` rather
+//! than assembled from fragments.
 
 use std::sync::Arc;
 
 use nachalnik::{Config, ContextItem, Kernel};
-use nachalnik_utils::OpenAiCompatible;
+use nachalnik_providers::OpenAiCompatible;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -23,16 +23,10 @@ const BROKEN_ARGS: &str = concat!(
 
 /// Asks once, and hands back what the provider made of the answer.
 async fn answered(body: &'static str, streaming: bool) -> std::sync::Arc<nachalnik::ModelResponse> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
     let kernel = Kernel::new(Config::default());
     kernel.set_provider(Arc::new(
-        OpenAiCompatible::new(
-            reqwest::Client::new(),
-            "streaming",
-            whole_server(body).await,
-            "no key needed",
-        )
-        .streaming(streaming),
+        OpenAiCompatible::new("streaming", whole_server(body).await, "no key needed")
+            .streaming(streaming),
     ));
     kernel.push(ContextItem::user("go"));
     kernel.step().await.expect("the request is answered");

@@ -68,7 +68,7 @@ use nachalnik::{
     selectors::Selector,
     test::{AllowAll, DenyAll, LargestFirstCompactor},
 };
-use nachalnik_utils::{OpenAiCompatible, out_of_quota};
+use nachalnik_providers::{OpenAiCompatible, out_of_quota};
 use serde_json::{Value, json};
 use tokio::sync::broadcast::Receiver;
 
@@ -155,10 +155,12 @@ async fn live_with(config: Config) -> Option<(Kernel, Arc<OpenAiCompatible>)> {
     // most of these are about what goes out rather than how it comes back; the one that is about
     // streaming turns it on through `params`, the same way a user would
     let provider = Arc::new(
-        OpenAiCompatible::from_env(OpenAiCompatible::client(), &model)
+        nachalnik_utils::provider(&model)
             .ok()?
             .labelled("openrouter")
-            .streaming(false),
+            .streaming(false)
+            // this suite asserts on what actually went out, which is what `requests` keeps
+            .recording(true),
     );
     provider.probe().await;
 
@@ -843,10 +845,11 @@ async fn the_model_can_be_swapped_mid_session() {
         .or_else(|_| env::var("NACHALNIK_TEST_MODEL"))
         .unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
     let second = Arc::new(
-        OpenAiCompatible::from_env(OpenAiCompatible::client(), &model)
+        nachalnik_utils::provider(&model)
             .expect("the key that got us this far")
             .labelled("openrouter")
-            .streaming(false),
+            .streaming(false)
+            .recording(true),
     );
     second.probe().await;
 

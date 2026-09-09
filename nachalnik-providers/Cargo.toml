@@ -26,6 +26,10 @@ openai = []
 # Google's own `generateContent`: `candidates[].content.parts`, whole calls, and ordered
 # `thought` parts - the dialect `nachalnik`'s `Content::Blocks` was built for.
 gemini = []
+# The suite the two above are held to, for anyone writing a third. It stands up real sockets and
+# wants `nachalnik/test`, so it is off unless asked for - a dev-dependency's feature, not a
+# dependency's.
+conformance = ["nachalnik/test", "tokio/io-util", "tokio/net"]
 
 [dependencies]
 nachalnik.workspace = true
@@ -38,10 +42,6 @@ tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
 [dev-dependencies]
 nachalnik = { workspace = true, features = ["test"] }
-# the conformance suite both dialects are held to. A *dev*-dependency, which is what lets an
-# unpublished crate be depended on by a published one: cargo strips these from the manifest it
-# uploads
-nachalnik-utils.workspace = true
 # `net` and `io-util` for the tests that need a real socket: a server that answers and then says
 # nothing, and one that breaks a stream at a chosen byte. Neither shape can be mocked
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread"] }

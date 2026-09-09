@@ -1,8 +1,8 @@
 //! Both dialects, against the suite every provider in this workspace has to pass.
 //!
-//! note: the suite is in `nachalnik-utils`, which is permanently unpublished, so it is reached
-//! the only way a published crate may reach one - as a dev-dependency, which cargo strips from
-//! the manifest it uploads.
+//! note: `#![cfg(feature = "conformance")]`, because the suite it runs is behind that feature -
+//! it is a dev tool for whoever is writing a third provider, not something a caller of this crate
+//! should be made to compile. CI turns every feature on.
 //!
 //! note: what the two dialects share is the *questions*. Every case in the suite is a bug that
 //! actually happened, and every one of them was fixed in one copy at a time back when there were
@@ -10,10 +10,12 @@
 //! fragments filed by a missing index in two. A case added there applies to both of these at
 //! once, with nothing edited here.
 
+#![cfg(feature = "conformance")]
+
 use std::sync::Arc;
 
+use nachalnik_providers::conformance::Conformance;
 use nachalnik_providers::{Gemini, OpenAiCompatible};
-use nachalnik_utils::conformance::Conformance;
 
 #[tokio::test]
 async fn the_openai_compatible_provider_conforms() {

@@ -56,6 +56,9 @@ pub struct Gemini {
     /// The limit the caller set by hand, if it set one, kept so that changing model or endpoint
     /// puts it back rather than dropping it.
     configured: Option<usize>,
+    /// Backed off since the last answer; see [`OpenAiCompatible`](crate::openai::OpenAiCompatible).
+    backoff: AtomicUsize,
+    /// Every HTTP request this has made, never reset.
     attempts: AtomicUsize,
     notice: Mutex<Option<String>>,
 }
@@ -86,9 +89,25 @@ impl Gemini {
             model: Mutex::new(model.into()),
             context_limit: Mutex::new(None),
             configured: None,
+            backoff: AtomicUsize::new(0),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
         }
+    }
+
+    /// Where the requests are going.
+    pub fn endpoint(&self) -> String {
+        self.base_url.lock().clone()
+    }
+
+    /// Which model is being asked.
+    pub fn model(&self) -> String {
+        self.model.lock().clone()
+    }
+
+    /// How many HTTP requests this has made, retries counted separately.
+    pub fn attempts(&self) -> usize {
+        self.attempts.load(Ordering::SeqCst)
     }
 
     /// Measures against this limit rather than against whatever the endpoint advertises.
@@ -417,6 +436,7 @@ impl Provider for Gemini {
         // the same bargain the other provider makes: waiting and trying again is the provider's
         // business, because the kernel must not send a request twice behind a caller's back
         let mut response = loop {
+            self.attempts.fetch_add(1, Ordering::SeqCst);
             let response = match watched(
                 self.client
                     .post(format!(
@@ -428,6 +448,7 @@ impl Provider for Gemini {
                 &deltas,
                 &model,
                 &self.notice,
+                PATIENCE,
             )
             .await
             {
@@ -437,10 +458,10 @@ impl Provider for Gemini {
                 // went away ended the turn whenever the operating system noticed - and said
                 // nothing at all in the meantime
                 Err(reason) if reason.worth_waiting_out() => {
-                    let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                    let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
                     let wait = Duration::from_secs(1 << attempt);
                     if attempt >= RETRIES {
-                        self.attempts.store(0, Ordering::SeqCst);
+                        self.backoff.store(0, Ordering::SeqCst);
                         return Err(reason.giving_up(&model));
                     }
 
@@ -462,14 +483,14 @@ impl Provider for Gemini {
                 // the budget belongs to a request, not to a session: without this an afternoon
                 // that had already ridden out four busy servers answered the fifth by giving up
                 // on the first try
-                self.attempts.store(0, Ordering::SeqCst);
+                self.backoff.store(0, Ordering::SeqCst);
                 break response;
             }
 
             let transient = status.as_u16() == 429 || status.is_server_error();
-            let attempt = self.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+            let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
             if !transient || attempt >= RETRIES {
-                self.attempts.store(0, Ordering::SeqCst);
+                self.backoff.store(0, Ordering::SeqCst);
                 let body = response.text().await.unwrap_or_default();
                 return Err(format!("{status}: {body}").into());
             }
@@ -684,11 +705,11 @@ impl Provider for Gemini {
 #[async_trait]
 impl Endpoint for Gemini {
     fn endpoint(&self) -> String {
-        self.base_url.lock().clone()
+        self.endpoint()
     }
 
     fn model(&self) -> String {
-        self.model.lock().clone()
+        self.model()
     }
 
     /// Both of the things the conventional dialect cannot take. This one's whole point is that
