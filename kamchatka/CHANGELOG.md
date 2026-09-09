@@ -55,6 +55,26 @@ minor bump may break you.
   knowing is not a fault. The line beside it that offers what else the model takes is qualified
   the same way.
 
+- Thinking an endpoint sends as a finished summary is thinking. `delta.reasoning` was the only
+  shape read, which is the thinking as fragments while it is generated; an endpoint may instead
+  send one whole summary of it, `{"content": ..., "status": "complete"}` on the chunk rather than
+  in the delta, after the answer it explains. Inception's does, and both of this workspace's
+  OpenAI-dialect providers threw it away: `mercury-2` asked with `reasoning_summary: true` answers
+  with eleven hundred reasoning tokens and a summary of them in that field, and the turn went onto
+  the context with nothing where the thinking was - the exact hole the note about a model billed
+  for reasoning it does not send back was written to describe, on an endpoint that was in fact
+  sending it. It is read now, drawn as it arrives and kept on the turn.
+
+  Two details worth having in writing. It sends more than one summary over a turn, each covering
+  the reasoning done since the last, so they are appended rather than replaced - the same
+  endpoint's non-streamed field is those same summaries joined, which settles what joining them
+  should look like. And a streamed request needs `reasoning_summary_wait: true` beside the first
+  parameter or the stream ends before any summary exists: measured, two of ten chunks carry one
+  with the wait and none of seven without it. This crate always streams, so both parameters are
+  what a person has to set. `mercury-2.5` accepts both, spends the reasoning tokens, and returns
+  `null` however it is asked - so the note about thinking that goes unseen is still exactly right
+  there, and is now silent on a model whose thinking arrives.
+
 ## [0.6.0] - 2026-09-08
 
 ### added

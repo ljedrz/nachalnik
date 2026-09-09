@@ -322,8 +322,14 @@ impl OpenAiCompatible {
                 .as_str()
                 .filter(|text| !text.is_empty())
                 .map(Content::text),
+            // note: the summary is on the body rather than on the message, and is read here for
+            // the reason `summarised` reads it off a chunk: an endpoint that reports the thinking
+            // only as a finished summary is an endpoint whose thinking is otherwise dropped. Not
+            // streamed, this one is already the several summaries joined, so there is nothing to
+            // append
             reasoning: message["reasoning"]
                 .as_str()
+                .or_else(|| body["reasoning_summary"]["content"].as_str())
                 .filter(|text| !text.is_empty())
                 .map(Content::text),
             tool_calls: message["tool_calls"]
@@ -466,6 +472,7 @@ impl OpenAiCompatible {
                     deltas.reasoning(fragment);
                     reasoning.push_str(fragment);
                 }
+                summarised(&chunk, &mut reasoning, deltas);
 
                 for requested in delta["tool_calls"].as_array().into_iter().flatten() {
                     // note: OpenAI numbers the calls in a message and streams each one's arguments
@@ -777,6 +784,47 @@ fn to_wire(message: &Message) -> Value {
     }
 
     wire
+}
+
+/// Reads a whole summary of the thinking off a chunk, where the endpoint sends one that way.
+///
+/// note: the other half of `delta.reasoning`, and a different shape rather than a second name for
+/// the same one. That field is a *fragment* of the thinking, pushed as it is generated; this one
+/// is a finished summary of it, `{"content": ..., "status": "complete"}` on the chunk rather than
+/// in the delta, arriving after the answer it explains. Inception's endpoint is the case -
+/// `reasoning_summary: true` among the parameters - and it sends more than one over a turn, each
+/// summarising the reasoning done since the last, which is why they are appended rather than
+/// replaced: that endpoint's *non*-streamed field is the same summaries joined.
+///
+/// note: a summary already held is not appended twice, and the status is not read for anything -
+/// a summary with words in it has arrived whatever is beside it, and `unavailable` and `skipped`
+/// carry no content. The one thing this must not do is put the word `unavailable` on a turn as if
+/// the model had thought it.
+///
+/// note: what a caller has to ask for, since the reading is only half of it: `reasoning_summary:
+/// true` among the parameters, *and* `reasoning_summary_wait: true` beside it whenever the request
+/// is streamed - which this crate's always are. Measured against `mercury-2`: with the wait, two
+/// of ten chunks carry a summary; without it the stream ends before any summary exists and none
+/// of seven do. A client that sets the first and not the second has asked for thinking that cannot
+/// then be sent to it, and this has nothing to read.
+fn summarised(chunk: &Value, reasoning: &mut String, deltas: &DeltaSink) {
+    let Some(summary) = chunk["reasoning_summary"]["content"]
+        .as_str()
+        .map(str::trim)
+        .filter(|summary| !summary.is_empty() && !reasoning.contains(*summary))
+    else {
+        return;
+    };
+
+    // a blank line between two of them, because they are separate summaries rather than one text
+    // arriving in pieces - and the sink is told what the turn is told, or a run watched live and
+    // one read back afterwards say different things
+    if !reasoning.is_empty() {
+        deltas.reasoning("\n\n");
+        reasoning.push_str("\n\n");
+    }
+    deltas.reasoning(summary);
+    reasoning.push_str(summary);
 }
 
 /// What the provider said a request cost.

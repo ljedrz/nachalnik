@@ -153,6 +153,10 @@ impl Conformance {
                 "a turn that thought reports the thinking inside what it generated",
                 self.reasoning_is_inside_what_was_generated().await,
             ),
+            (
+                "thinking that arrives as a finished summary is thinking",
+                self.a_summary_is_read_as_thinking().await,
+            ),
         ];
 
         let (mut failed, mut skipped) = (Vec::new(), Vec::new());
@@ -268,6 +272,74 @@ impl Conformance {
             ),
             other => Outcome::Failed(format!(
                 "30 generated, of which 20 was reasoning, came back as {other:?}"
+            )),
+        }
+    }
+
+    /// Thinking that arrives as a finished summary is thinking.
+    ///
+    /// note: the shape `delta.reasoning` is not. A dialect may hand the thinking over as fragments
+    /// while it is generated, or as one finished summary of it afterwards - `{"content": ...,
+    /// "status": "complete"}`, on the chunk rather than in the delta - and an endpoint that does
+    /// the second had its thinking read by nothing here. Measured: `mercury-2` asked with
+    /// `reasoning_summary: true` returns eleven hundred reasoning tokens and a summary of them
+    /// in that field, and both providers put the turn on the context with nothing in it where the
+    /// thinking was.
+    ///
+    /// note: two summaries in one turn, because that is what the endpoint sends - one per stretch
+    /// of reasoning it finishes - and the question is whether both are kept. Replacing rather than
+    /// appending loses the first, which is the half a reader wants: it is the one about the
+    /// working, and the second is usually the tidy paragraph. The same endpoint's non-streamed
+    /// field is these joined, so a provider that keeps one is answering a question its own dialect
+    /// has already settled.
+    async fn a_summary_is_read_as_thinking(&self) -> Outcome {
+        let body = match self.dialect {
+            Dialect::OpenAi => concat!(
+                "data: {\"choices\":[{\"delta\":{\"content\":\"9\"},\"index\":0}],",
+                "\"reasoning_summary\":null}\n\n",
+                "data: {\"choices\":[{\"delta\":{},\"index\":0}],\"reasoning_summary\":",
+                "{\"content\":\"all but 9 means 9 stay\",\"status\":\"complete\"}}\n\n",
+                "data: {\"choices\":[{\"delta\":{},\"index\":0,\"finish_reason\":\"stop\"}],",
+                "\"reasoning_summary\":{\"content\":\"so the answer is 9\",",
+                "\"status\":\"complete\"}}\n\n",
+                "data: [DONE]\n\n",
+            ),
+            // Google's dialect has no summary field: the thinking is parts of the turn, marked
+            // `thought`, and `cut_off_while_thinking` above is where that shape is asked about
+            Dialect::Gemini => {
+                return Outcome::Skipped(
+                    "this dialect sends the thinking as parts of the turn, not as a summary",
+                );
+            }
+        };
+
+        let response = match self.ask(body, Delivery::Whole).await {
+            Ok(response) => response,
+            Err(e) => return Outcome::Failed(e),
+        };
+
+        // `thinking()` rather than the field, for the reason the case above uses it
+        let thought = response
+            .thinking()
+            .map(|content| content.to_text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        match (
+            thought.contains("all but 9 means 9 stay"),
+            thought.contains("so the answer is 9"),
+        ) {
+            (true, true) => match text_of(&response).trim() {
+                "9" => Outcome::Passed,
+                said => Outcome::Failed(format!(
+                    "the summary went into the answer as well: the turn said {said:?}"
+                )),
+            },
+            (false, false) => Outcome::Failed(format!(
+                "a summary of the thinking was sent and none of it is on the turn: {thought:?}"
+            )),
+            _ => Outcome::Failed(format!(
+                "one of the two summaries the turn carried was dropped rather than kept: \
+                 {thought:?}"
             )),
         }
     }

@@ -230,6 +230,48 @@ fn said(value: &Value) -> Option<String> {
     Some(said)
 }
 
+/// Reads a whole summary of the thinking off a chunk, where the endpoint sends one that way.
+///
+/// note: the other half of `delta.reasoning`, and a different shape rather than a second name for
+/// the same one. That field is a *fragment* of the thinking, pushed as it is generated; this one
+/// is a finished summary of it, `{"content": ..., "status": "complete"}` on the chunk itself
+/// rather than in the delta, and it arrives after the answer it explains. Inception's endpoint is
+/// the case - `reasoning_summary: true` in the parameters - and it sends more than one over a
+/// turn, each a summary of the reasoning done since the last, which is why they are appended and
+/// not replaced: the same endpoint's *non*-streamed field is those same summaries joined, so
+/// joining them is reading it the way its author writes it.
+///
+/// note: a summary already held is not appended again. The status is not read for anything: a
+/// summary with words in it has arrived whichever word is beside it, and `unavailable` and
+/// `skipped` both carry no content, so the content is the whole of the question. What it must not
+/// do is put the word `unavailable` on the screen as if the model had thought it.
+///
+/// note: what a caller has to ask for, since the reading is only half of it: `reasoning_summary:
+/// true` among the parameters, *and* `reasoning_summary_wait: true` beside it whenever the request
+/// is streamed - which this crate's always are. Measured against `mercury-2`: with the wait, two
+/// of ten chunks carry a summary; without it the stream ends before any summary exists and none
+/// of seven do. A client that sets the first and not the second has asked for thinking that cannot
+/// then be sent to it, and this has nothing to read.
+fn summarised(chunk: &Value, reasoning: &mut String, deltas: &DeltaSink) {
+    let Some(summary) = chunk["reasoning_summary"]["content"]
+        .as_str()
+        .map(str::trim)
+        .filter(|summary| !summary.is_empty() && !reasoning.contains(*summary))
+    else {
+        return;
+    };
+
+    // a blank line between two of them, because they are separate summaries rather than one text
+    // arriving in pieces - and the screen is told the same thing the turn is, or a run that was
+    // watched live and one that was read back afterwards say different things
+    if !reasoning.is_empty() {
+        deltas.reasoning("\n\n");
+        reasoning.push_str("\n\n");
+    }
+    deltas.reasoning(summary);
+    reasoning.push_str(summary);
+}
+
 /// Installs the cryptography `rustls` will use, and says nothing if it is already installed.
 ///
 /// note: reqwest is built with `rustls-no-provider`, so there is no default waiting behind this -
@@ -855,6 +897,7 @@ impl Provider for OpenAiCompatible {
                     deltas.reasoning(fragment);
                     reasoning.push_str(fragment);
                 }
+                summarised(&chunk, &mut reasoning, &deltas);
 
                 for requested in delta["tool_calls"].as_array().into_iter().flatten() {
                     // note: OpenAI numbers the calls in a message and streams each one's arguments
