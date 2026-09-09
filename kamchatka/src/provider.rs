@@ -45,6 +45,28 @@ pub(crate) const AGAIN: Duration = Duration::from_secs(30);
 /// How long it may say nothing before the request is given up on.
 pub(crate) const PATIENCE: Duration = Duration::from_secs(150);
 
+/// Parameters that stop a stream being a stream, and what each one does instead.
+///
+/// note: a stream in this dialect is text arriving in order, and every client of it appends. One
+/// parameter breaks that, and it is not a fringe one: Inception's `diffusing`, documented as
+/// "show the diffusion effect in the streamed response", sends the *whole answer again* in
+/// `delta.content` at each denoising step. Measured against `mercury-2.5`: four fragments of 339,
+/// 339, 427 and 435 characters, the first three noise - `ThR rMmchatka tYS>rf5Ta in Russia` - and
+/// the last the finished paragraph. Appended, as this program and every other OpenAI-dialect
+/// client appends them, a 435-character answer became 1,540 characters of drafts, in the
+/// transcript, in the context, in the token count and in the session log.
+///
+/// note: a warning rather than a refusal, and rather than a reader that tries to cope. Parameters
+/// are the person's to set and are carried to the provider verbatim - that is the runtime's rule
+/// and this program does not get to break it - and there is nothing on the wire that marks a
+/// snapshot as one, so a reader coping would be a reader guessing. What this program owes is to
+/// not be quietly wrong about its own record, which is the whole of its case.
+pub(crate) const NOT_A_STREAM: [(&str, &str); 1] = [(
+    "diffusing",
+    "sends the whole answer again at each denoising step, and a stream is read here as text \
+     arriving in order - so the answer, the context and the log would keep every draft",
+)];
+
 /// What a stream's silence has come to mean.
 pub(crate) enum Silence {
     /// Long enough to be worth saying out loud, this many whole seconds in.

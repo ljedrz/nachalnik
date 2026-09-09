@@ -91,6 +91,23 @@ minor bump may break you.
   on the event and not on the outcome, so every refused request said itself and then said itself
   again with `the provider failed:` in front of it. It is one method both paths call now.
 
+### added
+
+- `/params` says when a parameter would make the answer unreadable. One does, and it is
+  documented rather than obscure: Inception's `diffusing`, "show the diffusion effect in the
+  streamed response", sends the *whole answer again* in `delta.content` at each denoising step.
+  This program reads a stream the way every client of that dialect reads one - as text arriving
+  in order - so it appends them. Measured against `mercury-2.5`: four fragments, the first three
+  noise (`ThR rMmchatka tYS>rf5Ta in Russia`) and the last the finished paragraph, and a
+  120-character answer arrived in the context as 1,443 characters of drafts - in the transcript,
+  in the token count, and in the session log, with nothing on screen to say why.
+
+  It is a warning and not a refusal. Parameters belong to the person and go to the provider
+  verbatim, which is the runtime's rule and not this program's to break, and nothing on the wire
+  marks a snapshot as one, so a reader trying to cope would be a reader guessing. What this
+  program owes is not to be quietly wrong about its own record. Setting it says what it does;
+  setting it to `false`, which is what it is unset, says nothing.
+
 ## [0.6.0] - 2026-09-08
 
 ### added

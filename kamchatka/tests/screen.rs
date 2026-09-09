@@ -5064,6 +5064,49 @@ async fn a_refused_request_says_what_was_wrong_with_it_once() {
     assert_eq!(said, 1, "one failure is one red line: {screen}");
 }
 
+/// note: `diffusing: true` is the case, and the wire is the argument: `mercury-2.5` answers with
+/// four fragments in `delta.content`, three of them noise and the last the finished paragraph,
+/// each one the whole answer at a denoising step. Appended - which is what a stream means here,
+/// and what every client of this dialect does - a 435-character answer arrives as 1,540
+/// characters of drafts, and the transcript, the context, the token count and the session log all
+/// keep them. Measured through this program: 1,443 characters where the answer was 120.
+#[tokio::test]
+async fn a_parameter_that_makes_the_stream_send_the_whole_answer_again_is_said_to_be_one() {
+    let mut harness = Harness::new([]);
+
+    harness.send("/params diffusing true").await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("diffusing sends the whole answer again"),
+        "what it does is named: {screen}"
+    );
+    assert!(
+        screen.contains("would keep every draft"),
+        "and where that lands: {screen}"
+    );
+
+    // it is still sent, because parameters are the person's to set and go to the provider verbatim
+    assert_eq!(
+        harness.app.kernel.params().get("diffusing"),
+        Some(&serde_json::json!(true)),
+        "a warning is not a refusal"
+    );
+
+    // and the default is not worth a warning: `false` is what it is unset
+    let mut harness = Harness::new([]);
+    harness.send("/params diffusing false").await;
+    let screen = harness.screen();
+    assert!(
+        !screen.contains("sends the whole answer again"),
+        "off is the ordinary case: {screen}"
+    );
+    harness.send("/params temperature 0.2").await;
+    assert!(
+        !harness.screen().contains("sends the whole answer again"),
+        "and nothing else draws it"
+    );
+}
+
 #[tokio::test]
 async fn an_endpoint_that_publishes_no_parameters_is_not_read_as_forbidding_them() {
     // ollama and a bare OpenAI-compatible proxy both say nothing about parameters. Silence is

@@ -2483,6 +2483,17 @@ impl App {
                 let json = serde_json::to_string(&params).unwrap_or_default();
                 self.say(Speaker::Note, format!("parameters: {json}"));
 
+                // note: before the listing is consulted, because this is not a claim about what
+                // the model takes - it is one about what this program can read back. A parameter
+                // that makes the stream send the whole answer again is one whose effect lands in
+                // the transcript, the context and the log, and an endpoint publishing no list at
+                // all (ollama, a bare proxy) returns early below and would never have been told
+                for (name, does) in crate::provider::NOT_A_STREAM {
+                    if params.get(name).is_some_and(|set| set != false) {
+                        self.say(Speaker::Error, format!("{name} {does}"));
+                    }
+                }
+
                 // an empty list means the endpoint published none, not that the model takes none;
                 // ollama and a bare OpenAI-compatible proxy both say nothing here, and inventing
                 // a restriction out of their silence would be worse than saying nothing back
