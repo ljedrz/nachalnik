@@ -66,7 +66,9 @@ the crate.
 
 | file | what lives there |
 | --- | --- |
-| `kernel.rs` | `Kernel`, `State`, the state machine, every public operation. The big one. |
+| `kernel/mod.rs` | `Kernel`, `State`, `StateChange`, the state machine and every public operation. The big one. |
+| `kernel/request.rs` | private: building a request, sending it, and repairing the call identifiers it came back with. |
+| `kernel/calls.rs` | private: asking the policy about a model's tool calls, running them, recording what they produced. |
 | `context.rs` | `Context`, `ContextItem`, `ContextId`, `ContextKind`, `ContextState`, undo/redo. |
 | `model.rs` | `Provider`, `Content`, `Message`, `ModelRequest`/`Response`, `ToolCall`, `Usage`, `Params`. |
 | `projection.rs` | `Projector`, `LinearProjector`, `Projection`, `Skipped` - context to wire messages. |

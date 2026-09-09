@@ -17,19 +17,24 @@ use crate::{
     config::Config,
     context::{Context, ContextId, ContextItem, ContextState},
     error::{Error, Result},
-    event::{DeltaSink, Event, OutputSink},
+    event::Event,
     model::{
-        Block, Content, ModelInfo, ModelRequest, ModelResponse, Params, Provider, StopReason,
-        ToolCall, ToolCallId,
+        Content, ModelInfo, ModelRequest, ModelResponse, Params, Provider, StopReason, ToolCall,
+        ToolCallId,
     },
     permissions::{
-        AskAlways, Grant, GrantSource, PermissionId, PermissionPolicy, PermissionRequest, Verdict,
+        AskAlways, Grant, GrantSource, PermissionId, PermissionPolicy, PermissionRequest,
     },
     projection::{LinearProjector, Projection, Projector},
     session::{Record, Session, Snapshot},
     tokens::{BytesPerToken, Calibrating, Calibration, TokenCounter},
     tool::{Tool, ToolOutput, ToolSpec},
 };
+
+mod calls;
+mod request;
+
+use request::projection_tokens;
 
 /// A sequential numeric identifier assigned to sessions that were not given a name.
 static SEQUENTIAL_SESSION_ID: AtomicU64 = AtomicU64::new(0);
@@ -532,9 +537,9 @@ impl Kernel {
     /// note: It stops the loop in three places, in increasing order of how much has to
     /// cooperate. Before a transition, [`Kernel::step`] and [`Kernel::turn`] spend one attempt
     /// acknowledging it and do nothing else. During a request, a [`Provider`] that checks
-    /// [`DeltaSink::is_interrupted`] can stop reading and hand back what it has. During a tool
-    /// call, a [`Tool`] that checks [`OutputSink::is_interrupted`] can do the same - and in the
-    /// serial case the kernel does not start the calls that had not begun.
+    /// [`crate::DeltaSink::is_interrupted`] can stop reading and hand back what it has. During a
+    /// tool call, a [`Tool`] that checks [`crate::OutputSink::is_interrupted`] can do the same -
+    /// and in the serial case the kernel does not start the calls that had not begun.
     ///
     /// note: The flag is cleared by the transition attempt that acts on it - [`Kernel::step`],
     /// including the one [`Kernel::turn`] is in the middle of making - so it can never outlive the
@@ -1453,409 +1458,6 @@ impl Kernel {
 
     // -------------------------------------------------------------------------------- internals
 
-    /// Builds and sends a request, records the answer, and prepares whatever it asked for.
-    async fn request(&self) -> Result<State> {
-        // whatever happens - an error, or this future being dropped - the kernel does not stay
-        // in `Requesting`
-        let mut restore = Restore::new(self, State::Idle);
-
-        self.maybe_compact().await;
-
-        // a step that gets this far and then cannot proceed says why, rather than showing up on
-        // the stream as a pair of state changes with nothing between them
-        let prepared = self
-            .provider()
-            .ok_or(Error::NoProvider)
-            .and_then(|provider| self.build_request().map(|built| (provider, built)));
-        let (provider, (request, projection, tokens)) = match prepared {
-            Ok(prepared) => prepared,
-            Err(e) => {
-                self.emit(Event::StepFailed {
-                    error: e.to_string(),
-                });
-                return Err(e);
-            }
-        };
-
-        // the provider's own account of what it is about to send, when it can give one and the
-        // user has asked for it to be kept; see `Config::record_payloads` for why it is not free
-        if self.0.config.record_payloads
-            && let Some(payload) = provider.render(&request)
-        {
-            self.emit(Event::ModelPayload { payload });
-        }
-
-        self.emit(Event::ModelRequested {
-            model: provider.info(),
-            messages: request.messages.len(),
-            tools: request.tools.len(),
-            tokens,
-            items: projection.included,
-            skipped: projection.skipped,
-            repairs: projection.repairs,
-        });
-
-        let mut response = match provider
-            .respond(request, DeltaSink::new(self.clone()))
-            .await
-        {
-            Ok(response) => response,
-            Err(e) => {
-                self.emit(Event::ModelFailed {
-                    error: e.to_string(),
-                });
-                return Err(Error::Provider(e));
-            }
-        };
-        // the provider has just said what the request it was handed actually cost, beside the
-        // estimate that was made of it; the counter is told, and decides for itself whether that
-        // is worth anything to it
-        if let Some(reported) = response.usage.and_then(|usage| usage.input_tokens) {
-            self.counter().observe(tokens, reported as usize);
-        }
-
-        // a model's tool calls are only useful if their identifiers are, and in practice they
-        // sometimes are not (a streamed call whose first fragment carried no id, a provider that
-        // numbers them all `0`)
-        self.repair_call_ids(&mut response);
-
-        let response = Arc::new(response);
-        *self.0.last_response.write() = Some(response.clone());
-        // gathered once, because a turn recorded as ordered blocks keeps its calls inside its
-        // content and `response.tool_calls` is empty for it; everything below wants the calls
-        // themselves rather than where they happen to be written down
-        let calls: Vec<ToolCall> = response.calls().cloned().collect();
-
-        // note: the reasoning is recorded on the turn that produced it, so that it is counted
-        // and prunable like everything else, and so that a provider whose API insists on seeing
-        // its own thinking again can get it back; whether it is *sent* is the projector's call
-        let content = response.content.clone().unwrap_or_default();
-        let item = self.add_item(
-            ContextItem::assistant(content, response.tool_calls.clone())
-                .with_reasoning(response.reasoning.clone()),
-            true,
-        );
-        self.emit(Event::ModelFinished {
-            stop: response.stop.clone(),
-            usage: response.usage,
-            tool_calls: calls.iter().map(|c| c.id.clone()).collect(),
-            item,
-        });
-
-        let to = if calls.is_empty() {
-            let to = State::Finished {
-                item,
-                stop: response.stop.clone(),
-            };
-            self.transition(&mut self.0.machine.lock(), to.clone());
-            to
-        } else {
-            self.prepare_calls(&calls).await
-        };
-        restore.disarm();
-
-        Ok(to)
-    }
-
-    /// Gives every tool call a usable identifier that is unique *within the session*, announcing
-    /// each change.
-    ///
-    /// note: This runs before the model's turn is recorded, so the call and its result always
-    /// agree. Doing nothing instead would mean recording a pair that cannot be matched up -
-    /// which most providers reject, and which is very hard to see afterwards.
-    ///
-    /// note: The identifiers a whole session has used are remembered, not just the ones in the
-    /// response being repaired. A provider that numbers its calls from zero on every turn - and
-    /// they exist - would otherwise produce a request carrying the same `tool_call_id` twice,
-    /// and, worse, one in which pruning a single result silently leaves a call unanswered,
-    /// because a set of identifiers cannot tell the two apart.
-    ///
-    /// note: a turn recorded as ordered blocks keeps its calls in its content, so repairing one
-    /// means rewriting the sequence. That is only done when something actually needed repairing -
-    /// which is almost never - so the ordinary turn pays a walk over its own blocks and nothing
-    /// else.
-    fn repair_call_ids(&self, response: &mut ModelResponse) {
-        let Some(blocks) = response.content.as_ref().and_then(Content::as_blocks) else {
-            self.rename_calls(&mut response.tool_calls);
-            return;
-        };
-
-        let mut calls: Vec<ToolCall> = blocks.iter().filter_map(Block::call).cloned().collect();
-        if !self.rename_calls(&mut calls) {
-            return;
-        }
-
-        let mut renamed = calls.into_iter();
-        let rebuilt: Vec<Block> = blocks
-            .iter()
-            .map(|block| match block {
-                Block::Call(_) => match renamed.next() {
-                    Some(call) => Block::Call(call),
-                    // unreachable: as many went in as came out
-                    None => block.clone(),
-                },
-                _ => block.clone(),
-            })
-            .collect();
-        response.content = Some(Content::Blocks(rebuilt.into()));
-    }
-
-    /// Renames whatever needs renaming, returning whether anything did.
-    fn rename_calls(&self, calls: &mut [ToolCall]) -> bool {
-        let mut repairs = Vec::new();
-        {
-            let mut seen = self.0.seen_calls.lock();
-            let mut in_response: HashSet<ToolCallId> = HashSet::with_capacity(calls.len());
-
-            for (index, call) in calls.iter_mut().enumerate() {
-                let reason = if call.id.0.is_empty() {
-                    "the provider left the identifier empty"
-                } else if in_response.contains(&call.id) {
-                    "the provider used the identifier twice in one response"
-                } else if seen.contains(&call.id) {
-                    "the provider reused an identifier from earlier in the session"
-                } else {
-                    seen.insert(call.id.clone());
-                    in_response.insert(call.id.clone());
-                    continue;
-                };
-
-                let was = std::mem::take(&mut call.id.0);
-                let mut attempt = 0;
-                call.id = loop {
-                    let candidate = match attempt {
-                        0 => ToolCallId(format!("call_{index}")),
-                        n => ToolCallId(format!("call_{index}_{n}")),
-                    };
-                    if !seen.contains(&candidate) {
-                        break candidate;
-                    }
-                    attempt += 1;
-                };
-                seen.insert(call.id.clone());
-                in_response.insert(call.id.clone());
-
-                repairs.push(Event::ToolCallRepaired {
-                    call: call.id.clone(),
-                    was,
-                    reason: reason.to_owned(),
-                });
-            }
-        }
-
-        let repaired = !repairs.is_empty();
-        for repair in repairs {
-            self.emit(repair);
-        }
-
-        repaired
-    }
-
-    /// Matches the model's calls to tools, asks the policy about each, and queues them.
-    ///
-    /// note: Nothing about a permission is announced until every call is queued and the state
-    /// machine has moved. A client's whole job here is to answer the question it is handed, and
-    /// it would not be much of a runtime if [`Kernel::decide`] could fail purely because the
-    /// client was quick about it - which it did, for as long as the policy was still being
-    /// consulted about the *next* call in the batch.
-    async fn prepare_calls(&self, calls: &[ToolCall]) -> State {
-        let mut prepared = Vec::with_capacity(calls.len());
-        let mut announcements = Vec::with_capacity(calls.len());
-
-        for call in calls {
-            self.emit(Event::ToolRequested {
-                call: call.id.clone(),
-                tool: call.tool.clone(),
-                args: call.args.clone(),
-            });
-
-            let Some(tool) = self.tool(&call.tool) else {
-                self.emit(Event::ToolUnknown {
-                    call: call.id.clone(),
-                    tool: call.tool.clone(),
-                });
-                self.record_tool_result(
-                    call,
-                    ToolOutput::error(format!("there is no tool named `{}`", call.tool)),
-                    None,
-                    None,
-                    true,
-                );
-                continue;
-            };
-
-            let spec = tool.spec();
-            let id = PermissionId(self.0.next_permission.fetch_add(1, SeqCst));
-            let request = PermissionRequest::new(id, call, spec.capabilities.clone());
-
-            let grant = match self.policy().evaluate(&request).await {
-                Verdict::Allow => Some((Grant::Allow, GrantSource::Policy)),
-                Verdict::Deny => Some((Grant::Deny, GrantSource::Policy)),
-                Verdict::Ask => None,
-            };
-
-            announcements.push(match grant {
-                Some((grant, source)) => Event::PermissionDecided {
-                    id,
-                    call: call.id.clone(),
-                    tool: call.tool.clone(),
-                    grant,
-                    source,
-                },
-                None => Event::PermissionRequested {
-                    request: request.clone(),
-                },
-            });
-
-            prepared.push(PreparedCall {
-                call: call.clone(),
-                tool,
-                spec,
-                request,
-                grant,
-            });
-        }
-
-        // the calls are queued, announced and the machine moved without letting go of the lock,
-        // so that by the time anybody can see a `permission.requested` there is a request to
-        // answer, and a `Kernel::decide` racing this simply waits its turn
-        let mut machine = self.0.machine.lock();
-        let to = Self::state_for(&prepared);
-        machine.pending = prepared;
-        for announcement in announcements {
-            self.emit(announcement);
-        }
-        self.transition(&mut machine, to.clone());
-
-        to
-    }
-
-    /// Runs the claimed calls, in the order the model asked for them.
-    async fn execute(&self, prepared: Vec<PreparedCall>) -> Result<State> {
-        // note: if this future is dropped, the calls it had claimed are gone with it; their
-        // results are simply never recorded, and the projector drops the orphaned calls from
-        // the next request
-        let mut restore = Restore::new(self, State::Idle);
-
-        if self.0.config.parallel_tool_calls {
-            // whatever order they finished in, they are recorded in the order the model asked
-            // for them, so that a context does not depend on which tool happened to be quick
-            let outputs = self.invoke_together(&prepared).await;
-            for (prepared, output) in prepared.iter().zip(outputs) {
-                self.record_output(prepared, output);
-            }
-        } else {
-            // one at a time, and each one recorded before the next begins, so that a client
-            // watching the stream sees a call finish rather than a batch of them
-            for prepared in &prepared {
-                // an interrupt stops the ones that have not started. They are still recorded,
-                // and recorded as not having run, because a call with no result at all would
-                // leave the model looking at a question nobody answered
-                let output = match self.is_interrupted() {
-                    true => ToolOutput::error("interrupted before this call was made"),
-                    false => {
-                        self.invoke(prepared.tool.clone(), prepared.call.clone(), prepared.grant)
-                            .await
-                    }
-                };
-                self.record_output(prepared, output);
-            }
-        }
-
-        self.transition(&mut self.0.machine.lock(), State::Idle);
-        restore.disarm();
-
-        Ok(State::Idle)
-    }
-
-    /// Runs the calls at the same time; see [`Config::parallel_tool_calls`].
-    async fn invoke_together(&self, prepared: &[PreparedCall]) -> Vec<ToolOutput> {
-        let mut running = tokio::task::JoinSet::new();
-        for (index, call) in prepared.iter().enumerate() {
-            let (kernel, tool, grant) = (self.clone(), call.tool.clone(), call.grant);
-            let call = call.call.clone();
-            running.spawn(async move { (index, kernel.invoke(tool, call, grant).await) });
-        }
-
-        let mut outputs: Vec<Option<ToolOutput>> = (0..prepared.len()).map(|_| None).collect();
-        while let Some(finished) = running.join_next().await {
-            match finished {
-                Ok((index, output)) => outputs[index] = Some(output),
-                // a tool that panics unwinds through `step` exactly as it does when the calls
-                // run one at a time; being run beside another one does not make it survivable
-                Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
-                Err(_) => {}
-            }
-        }
-
-        outputs
-            .into_iter()
-            .map(|output| {
-                output.unwrap_or_else(|| ToolOutput::error("the call did not run to completion"))
-            })
-            .collect()
-    }
-
-    /// Runs one call. A refusal and a failure are both outputs, because the model is told about
-    /// them either way.
-    async fn invoke(
-        &self,
-        tool: Arc<dyn Tool>,
-        call: ToolCall,
-        grant: Option<(Grant, GrantSource)>,
-    ) -> ToolOutput {
-        let (grant, source) = grant.expect("every claimed call has been decided");
-        if grant == Grant::Deny {
-            return ToolOutput::error(refusal(source, self.policy().why(&call.id)));
-        }
-
-        self.emit(Event::ToolStarted {
-            call: call.id.clone(),
-            tool: call.tool.clone(),
-        });
-
-        // a tool that fails is not a kernel failure: the model is told, and the loop goes on
-        let sink = OutputSink::new(self.clone(), call.id.clone(), call.tool.clone());
-        match tool.invoke(&call, sink).await {
-            Ok(output) => output,
-            Err(e) => ToolOutput::error(e.to_string()),
-        }
-    }
-
-    /// Records what a call produced, keeping the whole of it when a limit shortened it.
-    fn record_output(&self, prepared: &PreparedCall, mut output: ToolOutput) {
-        // an output limit decides what the *model* is shown. It is not permission to throw the
-        // rest away, so unless the user has said otherwise the whole of it goes into the context
-        // too - archived, listed, inspectable, and restorable like anything else
-        let limit = prepared
-            .spec
-            .output_limit
-            .or(self.0.config.default_tool_output_limit);
-        let over = limit.is_some_and(|limit| output.content.byte_len() > limit);
-
-        let whole = (over && self.0.config.keep_truncated_output).then(|| {
-            let mut item = ContextItem::tool_result(
-                prepared.call.id.clone(),
-                prepared.call.tool.clone(),
-                output.content.clone(),
-                output.is_error,
-            );
-            item.state = ContextState::Archived;
-            // the note says why it is archived, which is what a note is for and which stops being
-            // true the moment somebody activates it. The `because` is the half that does not:
-            // this item is the whole of an output that was shortened, whatever state it ends up in
-            item.note = Some("the whole output; the model was shown a truncated copy".to_owned());
-            item.included_because =
-                Some("the whole of a tool output an output limit shortened".to_owned());
-
-            // the pair is one thing that happened, so it gets one checkpoint, taken here
-            self.add_item(item, true)
-        });
-
-        let truncated = limit.and_then(|limit| output.content.truncate_to(limit));
-        self.record_tool_result(&prepared.call, output, truncated, whole, whole.is_none());
-    }
-
     /// Returns the state a set of prepared calls implies.
     fn state_for(prepared: &[PreparedCall]) -> State {
         if prepared.is_empty() {
@@ -1883,11 +1485,11 @@ impl Kernel {
     /// turn it was asked of is over and there is nothing left in flight for it to stop. Without
     /// this the flag outlived the request it was meant for in the one case
     /// [`Kernel::step_once`] cannot catch: a [`Provider`] that watches
-    /// [`DeltaSink::is_interrupted`] and hands back what it had *honoured* the interrupt itself,
-    /// so no step was ever spent acknowledging it - and the next turn was, transitioning nothing
-    /// and returning the state it was already in. Measured through a client: press stop, type a
-    /// message, and it lands in the context with nothing answering it; the message after that is
-    /// the one that gets a reply.
+    /// [`crate::DeltaSink::is_interrupted`] and hands back what it had *honoured* the interrupt
+    /// itself, so no step was ever spent acknowledging it - and the next turn was, transitioning
+    /// nothing and returning the state it was already in. Measured through a client: press stop,
+    /// type a message, and it lands in the context with nothing answering it; the message after
+    /// that is the one that gets a reply.
     ///
     /// note: only [`State::Finished`]. The resting states an interrupt is *for* -
     /// [`State::Ready`], [`State::Idle`] mid-loop, [`State::Deciding`] - are exactly the ones
@@ -1906,54 +1508,6 @@ impl Kernel {
         let from = std::mem::replace(&mut machine.state, to.clone());
         self.emit(Event::StateChanged { from, to });
     }
-
-    /// Records a tool result in the context and broadcasts [`Event::ToolFinished`].
-    ///
-    /// note: `checkpoint` is false only when the caller has already taken one for this result -
-    /// a truncated output is recorded as two items, and one [`Kernel::undo`] should take back
-    /// both of them rather than leaving half a tool call behind.
-    fn record_tool_result(
-        &self,
-        call: &ToolCall,
-        output: ToolOutput,
-        truncated: Option<usize>,
-        whole: Option<ContextId>,
-        checkpoint: bool,
-    ) -> ContextId {
-        let is_error = output.is_error;
-        let mut item =
-            ContextItem::tool_result(call.id.clone(), call.tool.clone(), output.content, is_error);
-        // note: `included_because` and not `note`, which is documented as why an item is in its
-        // *current state* and is replaced whenever that changes. This item is `Active`, so it has
-        // no state to explain - and being a shortened copy is a fact about what it holds, which
-        // outlives every state it will ever be in. Kept in the note, it was destroyed the first
-        // time anybody pressed `space` on the row: a live session cycled the pair looking at it
-        // and lost the only sentence saying which item held the whole.
-        item.included_because = match (truncated, whole) {
-            (Some(bytes), Some(whole)) => Some(format!(
-                "{bytes} bytes were truncated by the output limit; the whole output is item {whole}"
-            )),
-            (Some(bytes), None) => {
-                Some(format!("{bytes} bytes were truncated by the output limit"))
-            }
-            (None, _) => None,
-        };
-
-        let id = self.add_item(item, checkpoint);
-        let tokens = self.item(id).map(|i| i.tokens).unwrap_or(0);
-        self.emit(Event::ToolFinished {
-            call: call.id.clone(),
-            tool: call.tool.clone(),
-            is_error,
-            truncated,
-            tokens,
-            item: id,
-            whole,
-        });
-
-        id
-    }
-
     /// Adds an item to the context, optionally checkpointing it for [`Kernel::undo`] first.
     fn add_item(&self, item: ContextItem, checkpoint: bool) -> ContextId {
         let counter = self.counter();
@@ -2032,125 +1586,4 @@ impl Kernel {
 
         Some(from)
     }
-
-    /// Builds the next request, along with the projection it came from and its estimated size.
-    fn build_request(&self) -> Result<(ModelRequest, Projection, usize)> {
-        let counter = self.counter();
-        let tools = self.tool_specs();
-        let tool_tokens = tool_tokens(&tools, &*counter);
-
-        let (projection, context_tokens) = self.projected();
-
-        if projection.messages.is_empty() {
-            return Err(Error::EmptyProjection);
-        }
-
-        let request = ModelRequest {
-            messages: projection.messages.clone(),
-            tools,
-            params: self.params(),
-        };
-
-        Ok((request, projection, context_tokens + tool_tokens))
-    }
-
-    /// Asks the compactor whether the context needs managing, and applies whatever it says.
-    async fn maybe_compact(&self) {
-        let Some(compactor) = self.compactor() else {
-            return;
-        };
-
-        let budget = self.budget();
-        if !compactor.should_compact(&budget) {
-            return;
-        }
-
-        let items = self.items();
-        if let Some(plan) = compactor.plan(&items, &budget).await {
-            self.apply_compaction(plan);
-        }
-    }
-
-    /// Projects the context and reports what the projection costs.
-    ///
-    /// note: Both [`Kernel::budget`] and the request builder go through here, so that the number
-    /// a client is shown is the number that is about to be sent.
-    ///
-    /// note: counted over the messages that came out, not over the items that went in. They are
-    /// not the same figure: a reference is labelled on its way out, and an elided item is a marker
-    /// the size of a line where the item behind it may be ten thousand tokens. Summing the items
-    /// would have the budget report what the context is holding, which is not what the request
-    /// costs - and a compactor that elides would watch the total refuse to move and elide again.
-    fn projected(&self) -> (Projection, usize) {
-        let projector = self.projector();
-        let counter = self.counter();
-        let context = self.0.context.read();
-        let projection = projector.project(context.items());
-        let tokens = projection_tokens(&projection, &*counter);
-
-        (projection, tokens)
-    }
-
-    /// Returns the estimated size of the tool definitions.
-    fn tool_tokens(&self) -> usize {
-        let counter = self.counter();
-
-        tool_tokens(&self.tool_specs(), &*counter)
-    }
-}
-
-/// What a refused call is told, which is the policy's reason and the kernel's own account of
-/// what kind of refusal it was.
-///
-/// note: `the call was not permitted` on its own is true and close to useless. It leaves the one
-/// question a refused agent has to answer - is trying again worth anything? - entirely open, so
-/// a model refused by a standing rule will keep asking, and a model refused once by a person
-/// will give up on an approach that was never the problem. The kernel cannot know *why*; it does
-/// know which of those two happened, because it is the thing that resolved the grant.
-///
-/// note: written for a reader who has never heard of this runtime. No `at the terminal`, no
-/// `verdict`, no `grant`: a tool result is read by a model, and a sentence in a codebase's own
-/// idiom reads to one like a state it is supposed to recognise.
-fn refusal(source: GrantSource, why: Option<String>) -> String {
-    let reason = why.unwrap_or_else(|| "the permission policy refused it".to_owned());
-
-    match source {
-        // a standing rule: the same call will meet the same answer, and so will a paraphrase of
-        // it, so the useful move is a different approach or a question to whoever set the rule
-        GrantSource::Policy => format!(
-            "the call was not permitted: {reason}. That is a standing rule rather than an \
-             answer to this one call, so making the same call again will be refused the same way."
-        ),
-        // asked and answered: this call was refused, and nothing was said about the next one
-        GrantSource::User => "the call was not permitted: this call was refused when it was \
-                              asked about. That is an answer to this call rather than a standing \
-                              rule, so a different approach may well be allowed."
-            .to_owned(),
-        other => format!("the call was not permitted: {other:?}"),
-    }
-}
-
-/// Counts what a projection costs, which is what a request carrying it would cost.
-///
-/// note: the one definition of "the projected total", because there are two callers and they were
-/// not agreeing. Counted over the messages that came out rather than the items that went in: a
-/// reference is labelled on its way out, and an elided item is a marker the size of a line where
-/// the item behind it may be ten thousand tokens.
-fn projection_tokens(projection: &Projection, counter: &dyn TokenCounter) -> usize {
-    projection
-        .messages
-        .iter()
-        .map(|message| counter.count_message(message))
-        .sum()
-}
-
-/// Estimates the size of the given tool definitions: the schemas plus the descriptions.
-fn tool_tokens(specs: &[ToolSpec], counter: &dyn TokenCounter) -> usize {
-    specs
-        .iter()
-        .map(|spec| {
-            counter.count_schema(&spec.schema)
-                + counter.count(&Content::text(format!("{} {}", spec.id, spec.description)))
-        })
-        .sum()
 }
