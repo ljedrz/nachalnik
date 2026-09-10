@@ -176,40 +176,75 @@ pub enum Speaker {
     Error,
 }
 
-/// One contribution to the conversation.
+/// One line of the chat that is not a context item.
+///
+/// note: everything else on the chat *is* one, and is read off the context every frame by
+/// [`App::conversation`]. What is left over is two kinds of line, and they are one type because
+/// they have to keep their order among each other: the fragments arriving between a model
+/// starting to speak and the kernel recording what it said, and the chrome that is nobody's
+/// context at all - a slash command's output, a compaction notice, "stopped", a provider's
+/// error.
+///
+/// note: the first kind is [`Entry::transient`] and is dropped the moment the item exists; the
+/// second stays for the session. Neither carries an identifier, because neither has one.
 pub struct Entry {
-    /// Who said it.
+    /// Who is saying it.
     pub speaker: Speaker,
-    /// What they said.
+    /// What it says.
     pub text: String,
     /// Whether more of it is still arriving.
     pub open: bool,
-    /// The context item this line became, once there is one.
+    /// Whether it arrived as fragments, and so is a context item's to say once there is one.
     ///
-    /// note: what the screen says and what the context holds do not arrive together, so this is
-    /// filled in by `App::attribute` when the item exists rather than when the line is printed.
-    /// A streamed answer is on screen fragment by fragment and has no identifier until
-    /// `ModelFinished`; a call is printed after the turn that asked for it; a message typed into a
-    /// running turn is said at once and pushed when the turn stops.
+    /// note: not the same question as [`Entry::open`], which is only whether *more* is coming. A
+    /// streamed answer stops being open the moment the stream ends and is still the item's a
+    /// beat later, when the kernel records it.
+    pub streamed: bool,
+    /// The newest context item that existed when it was said, if any did.
     ///
-    /// note: `None` means *nothing here knows*, not *not going*. The chat leaves those lines
-    /// alone rather than guessing, which is why a site this was never wired into shows an
-    /// unmarked row instead of quietly claiming the model still reads it.
-    pub item: Option<ContextId>,
-    /// The item this line used to be, if somebody edited it here.
+    /// note: what puts it back in its place. A line like this belongs *between* two turns rather
+    /// than at an index, because the turns around it can be excluded, edited, undone or
+    /// compacted and it still happened where it happened. Anchoring to an identifier survives
+    /// all of that, the anchor itself going away included: the line simply renders before
+    /// whatever the next surviving item is.
+    pub after: Option<ContextId>,
+    /// Whether it was said while something was still arriving, and so belongs after whatever
+    /// that arrival turns into.
     ///
-    /// note: an edit supersedes, so the line shows what the *new* item says, in the place the old
-    /// one occupied. That is the conversation the model is really in - the alternative, a
-    /// replacement said at the end of the transcript, puts a turn edited twenty exchanges ago
-    /// after everything that followed it and describes an order no request ever had. What this
-    /// keeps is the thread back: the row says which item it was, and the old words are a page of
-    /// the item that replaced it - `App::faces` builds them out of `App::versions`, which
-    /// `App::commit_edit` files under the *new* identifier for exactly this reason.
+    /// note: the one case an identifier cannot answer on its own. "stopped" is said while a
+    /// model is mid-sentence, so the newest item at the time is the *question*, and anchoring
+    /// there puts the interruption above the half-answer it interrupted. The turn is recorded a
+    /// moment later with a higher identifier; this is what re-anchors to it. Without it the
+    /// conversation reads in an order the session never had.
+    pub arriving: bool,
+}
+
+impl Entry {
+    /// Whether the context is going to say this line itself, once it catches up.
     ///
-    /// note: [`Entry::text`] is left holding what was said at the time, and the new words are read
-    /// out of the item by [`App::said`]. So this is a pointer to the edit rather than a copy of
-    /// it, which is what lets an `undo` of the edit reach the screen.
-    pub was: Option<ContextId>,
+    /// note: whether it *streamed*, and not whether its speaker is one that gets context items.
+    /// The difference is a message typed into a running turn: said by a person, so it will be an
+    /// item eventually, but not until the turn it was typed into has ended - and dropping it
+    /// when some other turn was recorded took it off the screen for as long as that took. What
+    /// an arriving item replaces is what was arriving.
+    pub fn transient(&self) -> bool {
+        self.streamed
+    }
+}
+
+/// One line of the conversation as it stands now, ready to be drawn.
+///
+/// note: built per frame by [`App::conversation`] and held by nobody. A line that *is* a context
+/// item carries it, so the drawing can ask the one question that is about the request rather
+/// than about the text - is this going, and if not why - without a second lookup and a second
+/// chance to disagree with itself.
+pub struct Said<'a> {
+    /// Who said it.
+    pub speaker: Speaker,
+    /// What it says now.
+    pub text: Cow<'a, str>,
+    /// The context item this line is part of, where it is part of one.
+    pub item: Option<&'a Arc<ContextItem>>,
 }
 
 /// What the next request does with each context item.
@@ -292,8 +327,12 @@ pub struct App {
     /// applying a ruleset in a child process and that is not something a frame should be doing
     /// sixty times a second. It cannot change while the program runs.
     pub confinement: Confinement,
-    /// The conversation.
-    pub transcript: Vec<Entry>,
+    /// The lines of the chat that are not context items, in the order they were said.
+    ///
+    /// note: not "the conversation". The conversation is the context, and
+    /// [`App::conversation`] reads it every frame; this is what that reading cannot account
+    /// for. See [`Entry`].
+    pub loose: Vec<Entry>,
     /// Every event, name and detail.
     pub trace: VecDeque<Traced>,
     /// The prompt.
@@ -367,14 +406,6 @@ pub struct App {
     pub question_scroll: usize,
     /// A message somebody sent into a turn that was already running, waiting for it to end.
     typed_ahead: Option<String>,
-    /// Whether the response being awaited has put anything on the screen of its own.
-    streamed: bool,
-    /// The turn the calls being printed came out of.
-    ///
-    /// note: `ToolRequested` names the call and the tool and not the item that proposed them, and
-    /// by the time it arrives the turn has finished - so the identifier is kept from
-    /// `ModelFinished`, which is the last event before it that has one.
-    last_turn: Option<ContextId>,
     /// How much the running tool has said so far, for the one trace line that counts it.
     streamed_bytes: usize,
     /// Where a finished turn reports itself.
@@ -410,7 +441,7 @@ impl App {
             // the terminal's own default, for a screen test that never spawns anything; the
             // program overwrites it with what a child process actually reported
             confinement: Confinement::Unsupported,
-            transcript: Vec::new(),
+            loose: Vec::new(),
             trace: VecDeque::new(),
             input,
             focus: Focus::Input,
@@ -437,8 +468,6 @@ impl App {
             since: Instant::now(),
             question_scroll: 0,
             typed_ahead: None,
-            streamed: false,
-            last_turn: None,
             streamed_bytes: 0,
             outcomes,
         }
@@ -453,34 +482,36 @@ impl App {
     /// to yank the window back to the newest of them on every fragment, so reading anything it
     /// had said thirty seconds ago was impossible until the turn ended.
     pub fn say(&mut self, speaker: Speaker, text: impl Into<String>) {
-        let text = text.into();
+        let text = unpadded(&text.into()).to_owned();
+        // whether something was arriving is read *before* closing it, because closing is what
+        // makes it stop arriving and this line was said while it still was
+        let arriving = self.arriving();
         self.close();
-        self.transcript.push(Entry {
+        self.loose.push(Entry {
             speaker,
-            text: unpadded(&text).to_owned(),
+            text,
             open: false,
-            item: None,
-            was: None,
+            streamed: false,
+            after: self.kernel.items().last().map(|item| item.id),
+            arriving,
         });
         if speaker == Speaker::User {
             self.follow = true;
         }
     }
 
-    /// Says a message of the person's own, puts it in the context, and ties the two together.
+    /// Says a message of the person's own and puts it in the context.
     ///
-    /// note: one method rather than the three lines it replaces, and the third line is the point.
-    /// A transcript line that cannot name its item is a line the chat cannot hide when the item
-    /// is excluded and cannot update when something rewrites it - it reads as live for the rest
-    /// of the session whatever happens to the context, which is the one thing this program
-    /// exists not to do. `--message` was doing exactly that from the first frame: said, pushed,
-    /// and never attributed.
+    /// note: it does not say it on the chat, and that is the whole of what this method is now.
+    /// The item *is* the line: the conversation is read off the context every frame, so pushing
+    /// is saying. It used to be three statements - say it, push it, tie the two together - and
+    /// the third one is the one `--message` forgot, which left the opening line of every `-m`
+    /// session unable to be hidden, updated or undone for the rest of it. There is no third
+    /// statement left to forget.
     pub fn ask(&mut self, text: &str) -> ContextId {
-        self.say(Speaker::User, text);
-        let id = self.kernel.push(ContextItem::user(text));
-        self.attribute(Speaker::User, id);
+        self.follow = true;
 
-        id
+        self.kernel.push(ContextItem::user(text))
     }
 
     /// Says an error, unless the last thing said was the same error in a smaller envelope.
@@ -488,17 +519,9 @@ impl App {
     /// note: one provider failure is reported twice - once as the event the kernel emitted and
     /// once as the outcome the turn came to, the second wrapping the first - and two red lines
     /// saying the same thing is one more than the news warrants; the trace pane has both either
-    /// way. This was guarded on the event and not on the outcome, so it went on happening for
-    /// every refused request: a 400 naming a bad parameter arrived, said itself, and said itself
-    /// again with `the provider failed:` in front of it. It is one method now, because the guard
-    /// belongs to the *reporting* rather than to either of the two places that report.
-    ///
-    /// note: the containment test is the new text against what is already there, in that order,
-    /// because it is the second one that wraps the first. Nothing is suppressed unless it repeats
-    /// the line immediately above it - two different failures in a row are two lines, and a
-    /// failure repeated after something else was said is news about a second attempt.
+    /// way.
     fn say_error(&mut self, error: String) {
-        let repeat = self.transcript.last().is_some_and(|last| {
+        let repeat = self.loose.last().is_some_and(|last| {
             last.speaker == Speaker::Error && unpadded(&error).contains(&last.text)
         });
         if !repeat {
@@ -506,16 +529,22 @@ impl App {
         }
     }
 
-    /// Appends to the open entry from this speaker, opening one if there is none.
+    /// Whether something is part-way through arriving.
+    fn arriving(&self) -> bool {
+        self.loose.last().is_some_and(|entry| entry.open)
+    }
+
+    /// Appends to the line still arriving from this speaker, starting one if there is none.
     ///
     /// note: the bound is on a tool's output and on nothing else, which it did not used to be. A
-    /// `find /` should not be able to fill the transcript up, and the whole of it is in the
-    /// context either way - but a model writing a long answer had its first paragraphs eaten
-    /// while it was still writing the last one, and nothing ever put them back: the finished item
-    /// is read back off the kernel only for a provider that did not stream. A message is what
-    /// somebody came here to read. It is never shortened.
+    /// `find /` should not be able to fill the screen up, and the whole of it is in the context
+    /// either way - but a model writing a long answer had its first paragraphs eaten while it
+    /// was still writing the last one. A message is what somebody came here to read, and it is
+    /// never shortened; the moment the turn is recorded the line is dropped and the item is what
+    /// gets drawn.
     fn append(&mut self, speaker: Speaker, fragment: &str) {
-        match self.transcript.last_mut() {
+        let after = self.kernel.items().last().map(|item| item.id);
+        match self.loose.last_mut() {
             Some(entry) if entry.open && entry.speaker == speaker => {
                 entry.text.push_str(fragment);
                 if speaker == Speaker::Result && entry.text.len() > LIVE_OUTPUT {
@@ -534,154 +563,67 @@ impl App {
             }
             _ => {
                 self.close();
-                self.transcript.push(Entry {
+                self.loose.push(Entry {
                     speaker,
                     text: fragment.to_owned(),
                     open: true,
-                    item: None,
-                    was: None,
+                    streamed: true,
+                    after,
+                    arriving: false,
                 });
             }
         }
     }
 
-    /// Records which context item the last thing this speaker said became.
-    ///
-    /// note: bounded to the tail this turn owns - the walk back stops at the first line belonging
-    /// to a *different* item - so a turn can only ever claim its own lines. Unbounded, a turn
-    /// whose text was empty because it did nothing but ask for tools would walk past its own
-    /// silence and stamp the *previous* answer with its identifier, which is a row confidently
-    /// marked with the wrong item. The chrome in between (a note, an error) carries no item and
-    /// does not stop the walk, which is what lets it reach past "the turn paused" to the answer
-    /// above it.
-    ///
-    /// note: lines already attributed to *this* item do not stop it either, and that is not a
-    /// nicety. A turn puts two of them on the screen - what it thought and what it said - and
-    /// stopping at the first would leave the thinking unmarked beside a marked answer, which a
-    /// live run does and no test did.
-    fn attribute(&mut self, speaker: Speaker, id: ContextId) {
-        if let Some(entry) = self
-            .transcript
-            .iter_mut()
-            .rev()
-            .take_while(|entry| entry.item.is_none() || entry.item == Some(id))
-            .find(|entry| entry.speaker == speaker && entry.item.is_none())
-        {
-            entry.item = Some(id);
-        }
-    }
-
-    /// Moves the lines that were showing an item onto the one that has replaced it.
-    ///
-    /// note: in place, rather than saying the new text at the end. An edit does not add a turn to
-    /// the conversation, it changes one - and the request the model gets says so, with the new
-    /// words where the old ones were. A transcript that appended them would be the only account
-    /// of this session in a different order from the request it produced.
-    ///
-    /// note: what moves is the attribution and nothing else. The new words are not written into
-    /// the entry, they are read out of the item every frame by [`App::said`] - which is what makes
-    /// an `undo` of the edit reach the screen. See the note there.
-    fn resay(&mut self, old: ContextId, new: ContextId) {
-        for entry in self
-            .transcript
-            .iter_mut()
-            .filter(|entry| entry.item == Some(old))
-        {
-            entry.was = Some(old);
-            entry.item = Some(new);
-        }
-    }
-
-    /// What an edit moved a line between - the item it used to be, and the item it is now - for as
-    /// long as the replacement is in the context.
-    ///
-    /// note: asked every frame rather than settled when the edit was made, because `undo` takes
-    /// the replacement back out and tells the screen nothing about which line had been moved onto
-    /// it. With the item gone this is `None`, the line is the one it was again, and a `redo` puts
-    /// the edit back - all three without anything here keeping a second account of it. It is the
-    /// same reading the withheld mark does of the projection, for the same reason: an edit is a
-    /// fact about the context, not about the transcript.
-    pub fn edit_of(&self, entry: &Entry) -> Option<(ContextId, Arc<ContextItem>)> {
-        Some((entry.was?, self.kernel.item(entry.item?)?))
-    }
-
-    /// What a line says: whatever the item behind it says now, or the words that were said if
-    /// nothing here knows which item that is.
-    ///
-    /// note: the item's words rather than the entry's, for every attributed line and not only an
-    /// edited one. The entry's text is what arrived; the item is what the model is being sent,
-    /// and those stop agreeing the moment anything rewrites content in place - which `amend
-    /// revise` does, and which a terminal edit deliberately does not. So the chat showed the
-    /// pre-amend words while the context tab, the `enter` overlay and the request itself all
-    /// showed the new ones, and nothing on the screen said which of the two a model had read.
-    /// Reading through the item is also what makes an `undo` reach the screen without anything
-    /// here keeping a second account of it.
-    ///
-    /// note: only the lines that showed what the item *said*. A turn is several entries and they
-    /// are not all its content: its thinking and the calls it asked for are their own text, and
-    /// an edit carries the kind over whole, so those lines still show the truth. What they need
-    /// is the identifier, which [`App::resay`] gives them.
-    ///
-    /// note: borrowed where the content is already text, which is the shape nearly everything in
-    /// a transcript has. This runs for every entry on every frame, and a `Cow::Owned` here would
-    /// copy the whole conversation once a frame to show what it was already showing.
-    pub fn said<'a>(&self, entry: &'a Entry, item: Option<&'a ContextItem>) -> Cow<'a, str> {
-        let says = matches!(
-            entry.speaker,
-            Speaker::User | Speaker::Model | Speaker::Result
-        );
-
-        match item.filter(|_| says).map(|item| item.content.to_text()) {
-            Some(Cow::Borrowed(text)) => Cow::Borrowed(unpadded(text)),
-            Some(Cow::Owned(text)) => Cow::Owned(unpadded(&text).to_owned()),
-            None => Cow::Borrowed(&entry.text),
-        }
-    }
-
-    /// Records the item for a line that was said long before it could be pushed.
-    ///
-    /// note: for the message typed into a running turn, which is on screen immediately and goes
-    /// into the context when the turn stops - with everything the turn said in between, all of it
-    /// attributed, so [`App::attribute`] would stop dead before reaching it. Searching forwards
-    /// is exact rather than a guess: only one message can be waiting at a time, and every earlier
-    /// one was attributed as it was pushed, so the first unattributed line from that speaker is
-    /// the one that just went in.
-    fn attribute_waiting(&mut self, speaker: Speaker, id: ContextId) {
-        if let Some(entry) = self
-            .transcript
-            .iter_mut()
-            .find(|entry| entry.speaker == speaker && entry.item.is_none())
-        {
-            entry.item = Some(id);
-        }
-    }
-
     /// Closes whatever was still arriving, and drops it if it turned out to be nothing.
     fn close(&mut self) {
-        let Some(entry) = self.transcript.last_mut() else {
+        let Some(entry) = self.loose.last_mut() else {
             return;
         };
 
         entry.open = false;
         entry.text = unpadded(entry.text.trim_end()).to_owned();
         if entry.text.is_empty() {
-            self.transcript.pop();
+            self.loose.pop();
         }
     }
 
-    /// Renders a context that already exists as a conversation, for a session picked back up.
+    /// Hands the lines that were arriving over to the item that now holds them.
     ///
-    /// note: A resumed session arrives as one [`Event::SessionResumed`] rather than a thousand
-    /// additions, which is the truthful thing for the runtime to broadcast - what happened is
-    /// that a session was picked up, not that a thousand things were said. It does leave the
-    /// screen with nothing on it, so this reads the conversation back off the context. It is a
-    /// rendering of state rather than a replay of events, and it says so at the end, because the
-    /// items it draws as a conversation are not all necessarily going to be sent.
+    /// note: called with no thought about *what* arrived, which is the point. The old code
+    /// remembered whether a provider had streamed so it would not print a non-streaming answer
+    /// twice, popped the open tool result so the recorded one could take its place, and walked
+    /// the tail backwards stamping identifiers onto lines. All three answered the same question -
+    /// which lines has the context caught up with - and the answer is now always "all of them".
+    ///
+    /// note: what was said *while* they were arriving is re-anchored to the item rather than
+    /// dropped, because it is not the item's and it did not happen before it. "stopped" is said
+    /// mid-sentence, so the newest item at the time was the question; left there it would read
+    /// above the half-answer it interrupted.
+    fn caught_up(&mut self, item: ContextId) {
+        self.loose.retain(|entry| !entry.transient());
+        for entry in &mut self.loose {
+            if entry.arriving {
+                entry.after = Some(item);
+                entry.arriving = false;
+            }
+        }
+    }
+
+    /// Says what a resumed session picked up.
+    ///
+    /// note: it says it and nothing else, which is the whole of what a resume needs now. It used
+    /// to walk the context turning every item into a transcript line, because the transcript was
+    /// a log and a resumed session had no log to show - and that walk was a *second*
+    /// implementation of "what does this item look like as a conversation", beside the one the
+    /// live path built event by event. They disagreed, as two of anything do: a resumed turn
+    /// showed none of its thinking, and a resumed tool result's line left out what the output
+    /// limit had taken. There is one implementation now, [`App::conversation`], and a resumed
+    /// session is drawn by it without being told that it was resumed.
     pub fn replay(&mut self) {
         let items = self.kernel.items();
-        self.retell(&items);
-
         let withheld = items.iter().filter(|item| !item.is_projected()).count();
+
         self.say(
             Speaker::Note,
             format!(
@@ -697,53 +639,150 @@ impl App {
         );
     }
 
-    /// Puts a run of context items on the transcript as the conversation they were.
-    fn retell(&mut self, items: &[Arc<ContextItem>]) {
+    /// How many earlier versions of an item are kept, for the line that says a turn was
+    /// rewritten.
+    ///
+    /// note: asked of the item rather than remembered against a transcript line, which is the
+    /// same move the rest of this made. An edit used to be recorded on the entry - the item it
+    /// *was* - so that the drawing could put a stub above it; that pointer had to be maintained
+    /// by `resay`, went stale on an `undo`, and existed only for edits made at this terminal. A
+    /// count of what is kept is true of whatever did the rewriting, `amend` included, and is
+    /// nothing when an undo has taken the edit away.
+    pub fn rewrites(&self, id: ContextId) -> usize {
+        self.versions.get(&id).map_or(0, Vec::len)
+    }
+
+    /// The conversation as it stands: every context item that is going, in order, with the
+    /// asides that were said between them and whatever is arriving at the end.
+    ///
+    /// note: **the one place a context item becomes a line of chat.** Everything the screen
+    /// shows of the conversation is worked out here, from the context, every frame - so an item
+    /// that was excluded is not in it, an item that was rewritten reads as it is now, an item an
+    /// `undo` took away is gone and one a `redo` brought back is there, and none of those needed
+    /// an event, a back-pointer or a second copy of the words. What used to do this was a log
+    /// with three patches on it: a live text lookup for edits, a withheld lookup for exclusions,
+    /// and a backwards walk stamping identifiers onto lines so the other two could find them.
+    ///
+    /// note: `is_projected` and not `sends_content`, so an *elided* item keeps its place. It is
+    /// in the request as a marker, which is what the model reads there; the drawing marks it.
+    /// A turn whose call has not come back yet also stays: the projector repairs one of those
+    /// out of the request, and that is a momentary, mechanical absence rather than anything
+    /// anybody decided - hiding on it blanked a call out of the conversation at the moment a
+    /// permission question was asking about it.
+    ///
+    /// note: the items are the caller's, because they are `Arc`s the kernel hands out by clone
+    /// and the lines borrow their text rather than copying it. A frame that copied every word it
+    /// was about to draw would copy the whole conversation to show what it was already showing.
+    pub fn conversation<'a>(&'a self, items: &'a [Arc<ContextItem>]) -> Vec<Said<'a>> {
+        let mut said = Vec::new();
+        let mut loose = self.loose.iter().peekable();
+        let loosed = |entry: &'a Entry| Said {
+            speaker: entry.speaker,
+            text: Cow::Borrowed(&entry.text),
+            item: None,
+        };
+
         for item in items {
-            match &item.kind {
-                ContextKind::UserMessage => {
-                    self.say(Speaker::User, item.content.to_text());
-                    self.attribute(Speaker::User, item.id);
-                }
-                ContextKind::AssistantMessage { .. } => {
-                    let text = item.content.to_text();
-                    if !text.trim().is_empty() {
-                        self.say(Speaker::Model, text);
-                        self.attribute(Speaker::Model, item.id);
-                    }
-                    // `calls()`, so a turn the provider recorded as ordered blocks reads back
-                    // with the tools it asked for rather than as bare text
-                    for call in item.calls() {
-                        let args = one_line(&call.args.to_string());
-                        self.say(Speaker::Call, format!("{}({args})", call.tool));
-                        // the calls belong to the turn that asked for them, so a superseded
-                        // answer takes its calls down with it on screen as it does in the request
-                        self.attribute(Speaker::Call, item.id);
-                    }
-                }
-                ContextKind::ToolResult { tool, is_error, .. } => {
-                    self.say(Speaker::Result, head(&item.content.to_text(), 6));
-                    self.attribute(Speaker::Result, item.id);
-                    self.say(
-                        Speaker::Note,
-                        format!(
-                            "{tool}: {} tokens{}",
-                            item.tokens,
-                            match is_error {
-                                true => ", reported as an error",
-                                false => "",
-                            }
-                        ),
-                    );
-                }
-                _ => self.say(
-                    Speaker::Note,
-                    format!(
-                        "[{}] {} ({}), {} tokens",
-                        item.id, item.label, item.source, item.tokens
-                    ),
-                ),
+            // what was said before this item existed goes before it, in the order it was said
+            while let Some(entry) = loose.next_if(|entry| entry.after < Some(item.id)) {
+                said.push(loosed(entry));
             }
+            if item.state.is_projected() {
+                Self::as_conversation(item, &mut said);
+            }
+        }
+        said.extend(loose.map(loosed));
+        // and last, the message typed into a turn that is still running. It is drawn from the
+        // field holding it rather than said onto the screen, for the same reason the fragments
+        // are drawn from the context: it is state waiting to become an item, and the moment it
+        // becomes one the item is what gets drawn, in the same place, with nothing to clean up
+        if let Some(waiting) = &self.typed_ahead {
+            said.push(Said {
+                speaker: Speaker::User,
+                text: Cow::Borrowed(waiting),
+                item: None,
+            });
+        }
+
+        said
+    }
+
+    /// The same text without the blank lines a provider put in front of it, and without
+    /// copying it to find out there were none.
+    ///
+    /// note: applied to what an item says rather than to what the item holds. The item keeps
+    /// what arrived - a record of "what arrived, tidied up" cannot answer what arrived - and the
+    /// screen declines to spend rows on it. `App::say` has always done this to a line said
+    /// outright, and the lines are read off items now, so this is where it moved to.
+    fn trimmed(text: Cow<'_, str>) -> Cow<'_, str> {
+        match text {
+            Cow::Borrowed(text) => Cow::Borrowed(unpadded(text)),
+            Cow::Owned(text) => Cow::Owned(unpadded(&text).to_owned()),
+        }
+    }
+
+    /// Turns one context item into the lines it reads as.
+    ///
+    /// note: a turn is more than one line - what it thought, what it said, and each tool it
+    /// asked for - and all of them are the same item. That is why the drawing dedupes the
+    /// withheld mark by identifier rather than by line: one turn says once why it is not going.
+    fn as_conversation<'a>(item: &'a Arc<ContextItem>, said: &mut Vec<Said<'a>>) {
+        let mut line = |speaker, text| {
+            said.push(Said {
+                speaker,
+                text,
+                item: Some(item),
+            })
+        };
+
+        match &item.kind {
+            ContextKind::System => {}
+            ContextKind::UserMessage => line(Speaker::User, Self::trimmed(item.content.to_text())),
+            ContextKind::AssistantMessage { .. } => {
+                // the thinking first, because that is the order it happened in and the order a
+                // turn recorded as ordered blocks holds it in
+                for thought in item.thinking() {
+                    let text = Self::trimmed(thought.to_text());
+                    if !text.trim().is_empty() {
+                        line(Speaker::Reasoning, text);
+                    }
+                }
+                let text = Self::trimmed(item.content.to_text());
+                if !text.trim().is_empty() {
+                    line(Speaker::Model, text);
+                }
+                // `calls()`, so a turn a provider recorded as ordered blocks reads back with the
+                // tools it asked for rather than as bare text
+                for call in item.calls() {
+                    let args = one_line(&call.args.to_string());
+                    line(Speaker::Call, Cow::Owned(format!("{}({args})", call.tool)));
+                }
+            }
+            ContextKind::ToolResult { tool, is_error, .. } => {
+                line(
+                    Speaker::Result,
+                    Cow::Owned(head(&item.content.to_text(), 6)),
+                );
+
+                let mut note = format!("{tool}: {} tokens", item.tokens);
+                if *is_error {
+                    note.push_str(", reported as an error");
+                }
+                // what the output limit took, in the item's own words rather than a second
+                // account of them assembled here - it is the one place the fact survives a
+                // restart, since the event that carried it is long gone
+                if let Some(why) = &item.included_because {
+                    note.push_str(&format!("; {why}"));
+                }
+                line(Speaker::Note, Cow::Owned(note));
+            }
+            _ => line(
+                Speaker::Note,
+                Cow::Owned(format!(
+                    "[{}] {} ({}), {} tokens",
+                    item.id, item.label, item.source, item.tokens
+                )),
+            ),
         }
     }
 
@@ -889,9 +928,12 @@ impl App {
 
         // a message somebody sent into this turn has waited for it to end; now it goes in, and
         // unless the turn was stopped or stepped it gets a turn of its own
+        // note: `caught_up` because the line saying it was waiting is a live one - it was said
+        // when there was no item to say it from - and pushing is what gives it one. The item is
+        // drawn in its place, at the end of the conversation, which is where the request has it
         if ended && let Some(message) = self.typed_ahead.take() {
             let id = self.kernel.push(ContextItem::user(message));
-            self.attribute_waiting(Speaker::User, id);
+            self.caught_up(id);
             if carry_on {
                 self.start_turn();
             }
@@ -929,10 +971,7 @@ impl App {
 
         match event {
             Event::ModelDelta { delta } => match delta {
-                Delta::Text(fragment) => {
-                    self.streamed = true;
-                    self.append(Speaker::Model, &fragment);
-                }
+                Delta::Text(fragment) => self.append(Speaker::Model, &fragment),
                 Delta::Reasoning(fragment) => self.append(Speaker::Reasoning, &fragment),
                 // the arguments are shown once they parse, as the call the model actually made
                 _ => {}
@@ -940,7 +979,6 @@ impl App {
             Event::ModelRequested {
                 repairs, skipped, ..
             } => {
-                self.streamed = false;
                 self.close();
 
                 // the kernel altering what the model is told is not a detail for the trace pane.
@@ -1010,28 +1048,11 @@ impl App {
                             .to_owned(),
                     );
                 }
-                // a provider that does not stream leaves nothing on the screen, so the answer is
-                // read back off the item the kernel recorded. Whether it streamed is remembered
-                // rather than guessed at from the transcript: something else may well have been
-                // said in between - "stopped", for one - and guessing wrong prints the answer
-                // twice
-                if !self.streamed
-                    && let Some(recorded) = self.kernel.item(item)
-                {
-                    let text = recorded.content.to_text();
-                    if !text.trim().is_empty() {
-                        self.say(Speaker::Model, text);
-                    }
-                }
-                self.streamed = false;
-                self.close();
-                // after `close`, which drops an entry that turned out to be empty: attributing
-                // first would stamp a line that is about to be thrown away and leave the real one
-                // bare. Whether it streamed or was read back, this is the first moment the answer
-                // on screen has an item to be judged by
-                self.attribute(Speaker::Model, item);
-                self.attribute(Speaker::Reasoning, item);
-                self.last_turn = Some(item);
+                // the turn is recorded, so whatever streamed is now the item's to say. This is
+                // also what makes a provider that does not stream work without being detected:
+                // there was nothing on the screen and there is an item, and the item is what
+                // gets drawn either way
+                self.caught_up(item);
             }
             Event::ModelFailed { error } | Event::StepFailed { error } => {
                 self.close();
@@ -1057,48 +1078,16 @@ impl App {
             // once the undo window closes; the viewer reads it back off `←` and `→`
             Event::ContextReplaced { id, was, .. } => self.remember(id, was),
             Event::ToolStarted { .. } => self.streamed_bytes = 0,
-            Event::ToolRequested { tool, args, .. } => {
-                self.close();
-                self.say(
-                    Speaker::Call,
-                    format!("{tool}({})", one_line(&args.to_string())),
-                );
-                // the event names the call, not the turn that proposed it - and the projector
-                // takes a turn's calls down with the turn, so the screen has to as well
-                if let Some(turn) = self.last_turn {
-                    self.attribute(Speaker::Call, turn);
-                }
-            }
+            // note: nothing. The calls a turn asked for are on the turn's own item and are
+            // drawn from it, so they arrive with the answer rather than one event later - and
+            // they go when it goes, without anybody having to remember which turn proposed them
+            Event::ToolRequested { .. } => {}
             Event::ToolOutput { chunk, .. } => self.append(Speaker::Result, &chunk),
-            Event::ToolFinished {
-                tool,
-                tokens,
-                is_error,
-                truncated,
-                item,
-                ..
-            } => {
-                // whatever streamed in is replaced by the thing the model was actually given
-                if self
-                    .transcript
-                    .last()
-                    .is_some_and(|entry| entry.open && entry.speaker == Speaker::Result)
-                {
-                    self.transcript.pop();
-                }
-                if let Some(recorded) = self.kernel.item(item) {
-                    self.say(Speaker::Result, head(&recorded.content.to_text(), 6));
-                    self.attribute(Speaker::Result, item);
-                }
-
-                let mut note = format!("{tool}: {tokens} tokens");
-                if is_error {
-                    note.push_str(", reported as an error");
-                }
-                if let Some(bytes) = truncated {
-                    note.push_str(&format!(", {bytes} bytes held back"));
-                }
-                self.say(Speaker::Note, note);
+            Event::ToolFinished { item, .. } => {
+                // whatever streamed in is dropped for the item, which holds what the model was
+                // actually given - and the line about what it cost is read off the item too,
+                // truncation included, so a resumed session says the same thing this one does
+                self.caught_up(item);
             }
             Event::Compacted { report } => {
                 let mut note = format!(

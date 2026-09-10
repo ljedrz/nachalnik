@@ -682,7 +682,7 @@ async fn f_lists_only_what_the_next_request_carries_and_keeps_the_item_it_was_on
     harness.press(KeyCode::Char('G')).await;
     let note = harness
         .app
-        .transcript
+        .loose
         .last()
         .map(|entry| entry.text.clone())
         .unwrap_or_default();

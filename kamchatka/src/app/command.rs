@@ -36,8 +36,8 @@ impl App {
         // says a message *without* an item to tie it to is the one path that has no item yet.
         // Everywhere else goes through `App::ask`, which cannot forget the third step
         if self.busy || !self.kernel.pending_permissions().is_empty() {
-            self.say(Speaker::User, line);
             self.typed_ahead = Some(line.to_owned());
+            self.follow = true;
             // said out loud, because until the turn ends this is the one thing on the screen that
             // the context does not have: a session saved now would not contain it
             self.say(
@@ -811,7 +811,6 @@ impl App {
         self.kernel.set_params(snapshot.params);
 
         let loaded: Vec<_> = ids.iter().filter_map(|id| self.kernel.item(*id)).collect();
-        self.retell(&loaded);
         self.say(
             Speaker::Note,
             format!(

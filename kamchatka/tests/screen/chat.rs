@@ -65,6 +65,15 @@ async fn an_answer_stopped_partway_is_shown_once_rather_than_twice() {
         "{screen}"
     );
     assert!(screen.contains("stopped"), "{screen}");
+
+    // and it reads in the order it happened. "stopped" is said mid-sentence, so the newest item
+    // at the time is the *question* - anchoring there would put the interruption above the
+    // half-answer it interrupted, describing an order the session never had
+    let row = |needle: &str| screen.lines().position(|line| line.contains(needle));
+    assert!(
+        row("the beginning of a sentence") < row("stopped"),
+        "the interruption goes after what it interrupted: {screen}"
+    );
 }
 
 #[tokio::test]
@@ -546,7 +555,7 @@ async fn a_long_answer_is_not_shortened_while_it_arrives() {
 
     let said = &harness
         .app
-        .transcript
+        .loose
         .last()
         .expect("the model said something")
         .text;
@@ -575,7 +584,7 @@ async fn a_long_message_of_your_own_is_not_shortened_either() {
     );
     harness.app.say(kamchatka::app::Speaker::User, long.clone());
 
-    let said = &harness.app.transcript.last().expect("it is there").text;
+    let said = &harness.app.loose.last().expect("it is there").text;
     assert_eq!(said, &long);
 }
 
@@ -831,9 +840,9 @@ async fn an_edited_turn_reads_where_it_was_and_says_what_it_used_to_be() {
     );
     // in the place the old turn had, rather than after everything
     assert!(row("do crabs think") < row("of course they do"), "{screen}");
-    // and the line says what it used to be, and where what it said has gone
-    assert!(screen.contains("[2] → [3]"), "{screen}");
-    assert!(screen.contains("edited here"), "{screen}");
+    // and the line says that it was rewritten, and where the old words are
+    assert!(screen.contains("rewritten here"), "{screen}");
+    assert!(screen.contains("1 earlier version(s)"), "{screen}");
     assert!(
         screen.contains("reads what it said"),
         "the row should say where the old words went: {screen}"
@@ -872,7 +881,7 @@ async fn undoing_an_edit_takes_it_off_the_conversation_too() {
         "the edit is out of the context, so it is off the chat: {undone}"
     );
     assert!(
-        !undone.contains("edited here"),
+        !undone.contains("rewritten here"),
         "and nothing points at the item the undo took away: {undone}"
     );
 
@@ -882,7 +891,7 @@ async fn undoing_an_edit_takes_it_off_the_conversation_too() {
     harness.tab(Tab::Chat);
     let redone = harness.screen();
     assert!(redone.contains("of course they do"), "{redone}");
-    assert!(redone.contains("[2] → [3]"), "{redone}");
+    assert!(redone.contains("rewritten here"), "{redone}");
 }
 
 /// The blank lines a provider puts in front of a turn do not reach the screen.
@@ -895,6 +904,11 @@ async fn undoing_an_edit_takes_it_off_the_conversation_too() {
 /// note: the thinking rather than the answer, because the answer is rendered as markdown and the
 /// renderer swallows them already. Everything else - the thinking, a tool's output, an item's
 /// pages - is shown as the text it is, and that is where the padding was being read.
+///
+/// note: the padding is on the *item* as well as on the fragments, and it has to be, because the
+/// item is what ends up drawn. A turn that streams thinking the recorded turn does not carry
+/// loses it the moment the turn is recorded - which is right, since the chat shows what is being
+/// sent and nothing unrecorded is - so this records it the way a provider that streams it does.
 #[tokio::test]
 async fn a_turn_that_arrives_padded_is_not_read_padded() {
     let mut harness = Harness::new([]);
@@ -903,10 +917,10 @@ async fn a_turn_that_arrives_padded_is_not_read_padded() {
     harness.app.on_event(Event::ModelDelta {
         delta: Delta::Reasoning("\n\nweighing it up".to_owned()),
     });
-    let answered = harness
-        .app
-        .kernel
-        .push(ContextItem::assistant("no, crabs do not", vec![]));
+    let answered = harness.app.kernel.push(
+        ContextItem::assistant("no, crabs do not", vec![])
+            .with_reasoning(Some(nachalnik::Content::text("\n\nweighing it up"))),
+    );
     harness.app.on_event(Event::ModelFinished {
         item: answered,
         tool_calls: vec![],

@@ -35,7 +35,7 @@ use crate::{
     },
 };
 
-use super::{Scrolled, faint, quiet, thousands};
+use super::{Scrolled, faint, quiet};
 
 // ------------------------------------------------------------------------------ the conversation
 
@@ -45,79 +45,50 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     // the item the last marked line belonged to, so that a turn and the calls it asked for say
     // once between them why they are not going rather than once each
     let mut marked: Option<ContextId> = None;
-    // the same, for the line that says a turn was edited: a turn is several entries and the edit
-    // happened once
+    // the same, for the line that says a turn was rewritten: a turn is several lines and the
+    // rewrite happened once
     let mut stubbed: Option<ContextId> = None;
-    for entry in &app.transcript {
-        // fetched once and shared by all three questions below - is it in the request, what does
-        // it say now, is its content going - because they are three readings of one item and a
-        // second lookup is a second chance for them to disagree
-        //
-        // note: `None` means nothing here knows which item this line became, not that there is
-        // no item. Those lines are left exactly as they are rather than guessed at: a slash
-        // command's output and an error are nobody's context item and never will be
-        let item = entry.item.and_then(|id| app.kernel.item(id));
+    // held by the loop, because the lines borrow their words out of these rather than copying
+    // the whole conversation once a frame to show what it was already showing
+    let items = app.kernel.items();
+    for said in app.conversation(&items) {
+        let item = said.item;
 
-        // taken out of the conversation is taken off the conversation. The chat is what the
-        // model is being sent; the context tab is the record of everything that ever happened,
-        // where an excluded turn is still listed, still holding what it held, and one keystroke
-        // from coming back. Two views saying the same thing left nowhere to read what is
-        // actually going out
-        //
-        // note: the *state* rather than `Going`, and the difference is a turn whose call has not
-        // been answered yet. The projector repairs one of those out of the request - a call with
-        // no result is a shape most providers reject - so `Going` says it is not going, and
-        // hiding on that blanked the call out of the conversation at the exact moment a
-        // permission question was asking about it. That is a mechanical, momentary absence and
-        // not a decision anybody made; it stays, marked, and comes back on its own.
-        //
-        // note: `is_projected` and not `sends_content`, so an *elided* item stays too. It is in
-        // the request as a marker, so the conversation keeps its place and marks it below, which
-        // is what the model gets as well
-        if let Some(item) = &item
-            && !item.state.is_projected()
-        {
-            continue;
-        }
+        // what the model is no longer shown is drawn so that the eye can tell without reading
+        // it. `going.sends_content` rather than the state, for the reason it exists: an item the
+        // projector repaired away is `Active` and is not in the request. A line that is nobody's
+        // item - a note, an error, something still arriving - is left exactly as it is
+        let held = item.filter(|item| !going.sends_content(item));
 
-        // what the model is no longer shown is drawn so that the eye can tell without reading it.
-        // `going.sends_content` rather than the state, for the reason it exists: an item the
-        // projector repaired away is `Active` and is not in the request
-        let held = item.clone().filter(|item| !going.sends_content(item));
-
-        // an edited line shows what the item says *now*, in the place the old one had, and says
-        // so - with the identifier it used to carry, which is what `←` pages back through
+        // a turn somebody rewrote says so, once, above itself. What it used to say is a page of
+        // the item, which is what `enter` opens and `←` pages back through
         //
-        // note: `App::edit_of` rather than the entry's own `was`, so that an edit which has been
-        // undone stops claiming to be one. The item it named is gone, and a row offering
-        // `enter on [3]` for an item nothing can open is worse than no row
-        match app.edit_of(entry) {
-            Some((was, now)) if stubbed != Some(was) => {
-                let then = app.kernel.item(was).map(|item| item.tokens).unwrap_or(0);
-                let now = now.id.0;
+        // note: asked of the item rather than of the line, so an `undo` that takes the rewrite
+        // away takes the stub with it, and so a rewrite by `amend` gets one too - it never did,
+        // because the pointer this replaces was only ever set by an edit made at this terminal
+        match item.map(|item| (item.id, app.rewrites(item.id))) {
+            Some((id, kept)) if kept > 0 && stubbed != Some(id) => {
                 lines.push(Line::styled(
                     format!(
-                        "~ [{}] → [{now}] · edited here, {} tokens replaced · enter on [{now}] \
+                        "~ [{}] · rewritten here, {kept} earlier version(s) · enter on [{}] \
                          reads what it said",
-                        was.0,
-                        thousands(then)
+                        id.0, id.0
                     ),
                     quiet().italic(),
                 ));
-                stubbed = Some(was);
+                stubbed = Some(id);
             }
-            Some(_) => {}
-            None => stubbed = None,
+            Some((_, kept)) if kept > 0 => {}
+            _ => stubbed = None,
         }
-        // what the line says now, which is the item's words rather than the ones that arrived -
-        // they differ whenever anything rewrote the content in place; see `App::said`
-        let said = app.said(entry, item.as_deref());
+        let speaker = said.speaker;
+        let said = said.text;
 
         if let Some(item) = held {
             if marked != Some(item.id) {
                 let (mark, _) = state_mark(item.state);
                 lines.push(Line::styled(
-                    format!("{mark} [{}] {}", item.id.0, withheld_why(&item, going)),
+                    format!("{mark} [{}] {}", item.id.0, withheld_why(item, going)),
                     quiet().italic(),
                 ));
                 marked = Some(item.id);
@@ -146,7 +117,7 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         // the punctuation instead of the emphasis. Nothing else here is markdown: a tool's output
         // is whatever the tool said, and running it through a renderer would be inventing
         // structure the tool did not put there
-        if entry.speaker == Speaker::Model {
+        if speaker == Speaker::Model {
             let split = chunks(&said);
             let last = split.len().saturating_sub(1);
             for (nth, chunk) in split.into_iter().enumerate() {
@@ -196,7 +167,7 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
             continue;
         }
 
-        let (prefix, style) = match entry.speaker {
+        let (prefix, style) = match speaker {
             Speaker::User => ("> ", Style::default().fg(Color::White).bold()),
             Speaker::Reasoning => ("", quiet().italic()),
             Speaker::Call => ("⟩ ", Style::default().fg(Color::Cyan)),

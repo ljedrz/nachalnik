@@ -147,11 +147,11 @@ impl App {
                 let history = self.versions.get(&id).cloned().unwrap_or_default();
                 self.versions.insert(new, history);
                 self.remember(new, old.content.clone());
-
-                // and the conversation shows the edit where the turn was, rather than the turn it
-                // replaced sitting there greyed out with nothing on the screen saying what the
-                // model now reads in its place
-                self.resay(id, new);
+                // and nothing has to be told about the conversation. The superseded item stops
+                // being projected and the new one takes its place in the context, so the next
+                // frame draws the edit where the turn was - which is also why an `undo` of it
+                // reaches the screen with nothing here keeping a second account of what to
+                // put back
             }
             Err(e) => self.say(Speaker::Error, e.to_string()),
         }

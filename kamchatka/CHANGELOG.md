@@ -9,10 +9,35 @@ minor bump may break you.
 
 ### changed
 
+- **The chat is derived from the context rather than accumulated beside it.** `App::transcript`
+  is gone. `App::conversation` reads the context every frame and turns it into the lines it
+  reads as; `App::loose` holds the only two things that reading cannot account for - the
+  fragments arriving between a model starting to speak and the kernel recording what it said,
+  and the chrome that is nobody's context at all.
+
+  What goes with it: `Entry::item` and `Entry::was`, the back-pointers a line carried so the
+  drawing could find its item; `App::attribute`, the backwards walk that set them, with its two
+  stopping rules and the live-run regression each of them was written for;
+  `App::attribute_waiting`; `App::resay`; `App::edit_of`; `App::said`; `App::retell`;
+  `App::last_turn`; and the flag that remembered whether a provider had streamed so the answer
+  would not be printed twice. All of them answered one question - which line goes with which
+  item - and a derived conversation never has to ask it.
+
+  `App::replay` says what a resumed session picked up and nothing else. It used to walk the
+  context turning items into lines, which was a *second* implementation of "what does this item
+  look like as a conversation" beside the one the live path built event by event, and the two
+  disagreed: a resumed turn showed none of its thinking, and a resumed tool result's line left
+  out what the output limit had taken.
+
+  A line that is not a context item is anchored to the newest item that existed when it was
+  said, so it keeps its place while the turns around it are excluded, edited, undone or
+  compacted - the anchor itself going away included. One said *while* something was still
+  arriving is re-anchored to whatever that arrival becomes, because "stopped" is said
+  mid-sentence and belongs after the half-answer it interrupted, not above it.
+
 - **The chat shows the conversation the model is in.** An item that is not projected - excluded,
-  archived, superseded - comes off the transcript entirely rather than being greyed out and
-  marked, and an item whose content is rewritten in place reads as it is now rather than as it
-  arrived.
+  archived, superseded - is not on it, rather than being greyed out and marked, and an item
+  whose content is rewritten in place reads as it is now rather than as it arrived.
 
   This reverses a decision, and the reason is that there are two views and only one of them was
   answering. The argument for marking was that the chat is the record of what happened - but the
@@ -28,16 +53,17 @@ minor bump may break you.
   blanked the call out of the conversation at the exact moment a permission question was asking
   about it. The check is the item's state, not the projection.
 
-- `App::said` reads the item behind a line for every attributed entry, not only an edited one.
-  The entry's text is what arrived and the item is what is being sent, and those stop agreeing
-  the moment anything rewrites content in place - which `amend revise` does through
-  `Kernel::replace`, and which a terminal edit deliberately does not. The chat showed the
-  pre-amend words while the context tab, the `enter` overlay and the request itself all showed
-  the new ones, with nothing on screen to say which of the two a model had read.
+- A turn rewritten in place reads as it is now. The line's words used to be a copy taken when
+  it arrived, and those stop agreeing with the item the moment anything rewrites content in
+  place - which `amend revise` does through `Kernel::replace`, and which a terminal edit
+  deliberately does not. The chat showed the pre-amend words while the context tab, the `enter`
+  overlay and the request itself all showed the new ones, with nothing on screen to say which
+  of the two a model had read. There is no copy now.
 
-  It takes the item as an argument now rather than looking it up: `draw_chat` had already
-  fetched it, and three lookups per line per frame were three chances for the drawing to
-  disagree with itself.
+- The line saying a turn was rewritten is `~ [id] · rewritten here, N earlier version(s)` and
+  is drawn for any rewrite, `amend`'s included. It was `~ [old] → [new] · edited here`, and it
+  appeared only for an edit made at this terminal, because it was drawn off a pointer only that
+  path set.
 
 - `App::ask` says a message of the person's own, pushes it and attributes it, as one act.
   `--message` did the first two and not the third, so the opening message of every `-m` session
