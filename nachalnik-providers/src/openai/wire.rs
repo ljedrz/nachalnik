@@ -13,8 +13,8 @@
 use std::{sync::atomic::Ordering, time::Duration};
 
 use nachalnik::{
-    Block, BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse, Provider,
-    Role, StopReason, ToolCall, ToolCallId, Usage, async_trait,
+    Blob, Block, BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse,
+    Provider, Role, StopReason, ToolCall, ToolCallId, Usage, async_trait,
 };
 use serde_json::{Value, json};
 
@@ -748,14 +748,30 @@ fn stop_reason(finish: Option<&str>) -> StopReason {
 /// screenshot it is about - and it is the one a caller building a multimodal client reaches for.
 /// The blocks are read through [`Block::said`], so a turn's thinking and its calls stay where
 /// they belong, which is the `tool_calls` array below and nowhere at all.
+///
+/// note: two shapes for a blob, chosen by media type - `image_url` for a picture and `file` for
+/// everything else - because this dialect gives an attachment its own part and refuses one sent
+/// as an image. There is a third, `input_audio`, and it is deliberately not here: nothing in this
+/// workspace produces a recording, so it would be a shape written from documentation and pinned by
+/// no test. A caller sending one gets the `file` part, which is the best guess available and is
+/// wrong in a way the endpoint will say out loud.
 fn parts_of(content: &Content) -> Option<Value> {
     fn part(content: &Content) -> Value {
+        let data = |blob: &Blob| format!("data:{};base64,{}", blob.media_type, blob.data);
+
         match content.as_blob() {
-            Some(blob) => json!({
+            // note: a picture and a document are two different parts in this dialect, and the
+            // media type is the only thing that says which. Sending a PDF as `image_url` is a 400
+            // from every endpoint that implements the spec - the field means an image, not an
+            // attachment - and it was the shape everything went out in until something that was
+            // not a picture had to
+            Some(blob) if blob.media_type.starts_with("image/") => json!({
                 "type": "image_url",
-                "image_url": {
-                    "url": format!("data:{};base64,{}", blob.media_type, blob.data),
-                },
+                "image_url": { "url": data(blob) },
+            }),
+            Some(blob) => json!({
+                "type": "file",
+                "file": { "filename": filename(blob), "file_data": data(blob) },
             }),
             None => json!({ "type": "text", "text": content.to_text() }),
         }
@@ -775,6 +791,30 @@ fn parts_of(content: &Content) -> Option<Value> {
                     .collect()
             }),
         _ => None,
+    }
+}
+
+/// What to call a payload that is not a picture, because this dialect's `file` part will not go
+/// out without a name.
+///
+/// note: `meta["name"]` first, which is the producer saying what the file was called. The kernel
+/// never reads [`Blob::meta`] and neither does anything else here - it is a free-form value for
+/// facts a byte length cannot reach, and which file this was is one of them. A client that has the
+/// path already, as `kamchatka`'s `/attach` does, costs nothing to fill it in.
+///
+/// note: and a derived name when nobody supplied one, rather than no field at all. The endpoint
+/// refuses the part without it, and `file.pdf` is a worse label than `quarterly-results.pdf` and a
+/// far better one than a 400. The media type is where it comes from because the media type is what
+/// there is: it is the same string the `file_data` URI declares, so the two cannot disagree.
+fn filename(blob: &Blob) -> String {
+    match blob.meta.get("name").and_then(Value::as_str) {
+        Some(name) => name.to_owned(),
+        // `application/pdf` -> `file.pdf`; a type with no slash in it is not one this can improve
+        // on, so it keeps the whole of it and lets the endpoint say what it makes of that
+        None => match blob.media_type.split_once('/') {
+            Some((_, subtype)) => format!("file.{subtype}"),
+            None => format!("file.{}", blob.media_type),
+        },
     }
 }
 

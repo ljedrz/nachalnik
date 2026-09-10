@@ -118,6 +118,52 @@ fn googles_dialect_sends_inline_data_beside_the_text_parts() {
     );
 }
 
+/// A document is not a picture, and the conventional dialect has a separate part for saying so.
+///
+/// note: the case `/attach` in `kamchatka` exists for. `image_url` means an image in this dialect
+/// rather than "an attachment", so a PDF sent that way is a 400 from anything implementing the
+/// spec - and until something that was not a picture had to go out, every blob went that way.
+/// Google's dialect has no equivalent split: `inline_data` takes a mime type and carries whatever
+/// it names, which is why only one of these two tests is about placement.
+#[cfg(feature = "openai")]
+#[test]
+fn a_document_goes_out_as_a_file_part_and_not_as_a_picture() {
+    use nachalnik::Blob;
+    use nachalnik_providers::OpenAiCompatible;
+
+    let provider = || {
+        Arc::new(OpenAiCompatible::new(
+            "m",
+            "https://example.invalid/v1",
+            "k",
+        ))
+    };
+    let named = Blob::new("application/pdf", PIXEL).with_meta(json!({ "name": "results.pdf" }));
+    let body = rendered(
+        provider(),
+        vec![ContextItem::user(Content::Blob(Arc::new(named)))],
+    );
+    let parts = &body["messages"][0]["content"];
+
+    assert_eq!(parts[0]["type"], "file", "{parts}");
+    assert_eq!(
+        parts[0]["file"]["file_data"],
+        json!(format!("data:application/pdf;base64,{PIXEL}"))
+    );
+    // what the producer called it, because it is the one thing that knew
+    assert_eq!(parts[0]["file"]["filename"], "results.pdf");
+
+    // and with nobody to say, a name derived from the media type - the part is refused without
+    // one, so there is no option of leaving it out
+    let bare = Content::blob("application/pdf", PIXEL);
+    let body = rendered(provider(), vec![ContextItem::user(bare)]);
+
+    assert_eq!(
+        body["messages"][0]["content"][0]["file"]["filename"],
+        "file.pdf"
+    );
+}
+
 /// A turn that is a sentence *and* a picture goes out as both.
 ///
 /// note: the shape a caller building a multimodal client reaches for, and the one a byte-for-byte

@@ -9,6 +9,23 @@ minor bump may break you.
 
 ### added
 
+- **A blob that is not a picture goes out as a `file` part.** The OpenAI dialect has two shapes
+  for a payload and the media type is the only thing that picks between them: `image_url` means an
+  image, and a PDF sent that way is a 400 from anything implementing the specification. Every blob
+  went out as `image_url`, which was right for the only thing the workspace could produce at the
+  time and wrong the moment a document could be attached.
+
+  `filename` comes from `Blob::meta["name"]`, which is the caller saying what the file was called -
+  the field's second reader, and the first outside a `TokenCounter`. The part is refused without a
+  name, so one is derived from the media type when nobody supplied it: `application/pdf` becomes
+  `file.pdf`, which is a worse label than the real one and a far better outcome than a refusal.
+
+  There is a third shape in this dialect, `input_audio`, and it is deliberately absent. Nothing in
+  this workspace produces a recording, so it would be a shape written from documentation and
+  pinned by no test; a recording gets the `file` part, which is the best guess available and wrong
+  in a way the endpoint says out loud. Google's dialect needs none of this - `inline_data` takes a
+  mime type and carries whatever it names.
+
 - The crate: the two providers this workspace already had, taken out of `kamchatka` and published
   on their own. `OpenAiCompatible` speaks the OpenAI chat-completions dialect and `Gemini` speaks
   Google's, both streamed, both retried, both interruptible, and both answering `Endpoint` as well
