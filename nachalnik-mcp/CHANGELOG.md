@@ -7,6 +7,19 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- A live test: a real model, offered a real server's tools, calls one and reads what came back.
+  The suites here prove the mapping and the child-process transport and then hand the result to a
+  scripted provider that was always going to agree with it. What none of that settles is whether
+  the thing on the other side of the bridge is *usable* - whether the identifier survives a
+  provider's charset, whether the schema is one a model fills in correctly, and whether the
+  description is enough to pick the right tool from three. Measured: `arith__add` offered
+  alongside two others, the model picked it, the Python server answered 42, and the model read it.
+  It skips without a key, the way the rest of the file skips without `python3`.
+
+## [unreleased]
+
 ### changed
 
 - Requires `nachalnik` 0.4.0. Nothing in this crate's own API moved, but it names runtime types

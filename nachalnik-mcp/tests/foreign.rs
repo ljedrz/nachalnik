@@ -160,3 +160,84 @@ async fn the_session_ends_when_it_is_told_to() {
     assert_eq!(kernel.tool_ids().len(), 3);
     assert_eq!(installed.remove_from(&kernel), 3);
 }
+
+/// A real model, offered a real server's tools, calls one and reads what came back.
+///
+/// note: the one claim neither suite above can make. `bridge.rs` and the tests here prove the
+/// mapping and the transport - a `ToolSpec` comes out, a call goes in, an answer comes back - and
+/// then hand the result to a scripted provider that was always going to agree with it. What none
+/// of that settles is whether the thing on the other side of the bridge is usable: whether the
+/// identifier survives a provider's charset, whether the schema is one a model fills in
+/// correctly, and whether the description is enough to pick the right tool from three.
+///
+/// note: skipped without a key, and without `python3`, for the reason every test in this file is.
+#[tokio::test]
+async fn a_real_model_uses_a_tool_from_a_foreign_server() {
+    let Some(provider) = nachalnik_utils::provider(
+        &std::env::var("NACHALNIK_TEST_MODEL").unwrap_or_else(|_| "mercury-2.5".to_owned()),
+    )
+    .ok()
+    .map(Arc::new) else {
+        eprintln!("skipped: no key in the environment");
+        return;
+    };
+    let server = foreign!("arith");
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    kernel.set_policy(Arc::new(AllowAll));
+    server.install(&kernel).await.expect("the tools install");
+
+    // the identifier the model will be offered, which is the bridge's own making
+    let offered: Vec<_> = kernel
+        .tool_specs()
+        .into_iter()
+        .map(|spec| spec.id)
+        .collect();
+    println!("  offered: {offered:?}");
+    assert!(
+        offered.iter().all(|id| id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')),
+        "every one has to be a name a provider accepts: {offered:?}"
+    );
+
+    kernel.push(ContextItem::user(
+        "Use the tools you have been given to add 40 and 2. Then say the number.",
+    ));
+    let state = match kernel.turn().await {
+        Ok(state) => state,
+        Err(e) => {
+            eprintln!("skipped: {e}");
+            return;
+        }
+    };
+    let State::Finished { .. } = state else {
+        panic!("it stopped somewhere: {state:?}")
+    };
+
+    let results: Vec<String> = kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    println!("  results: {results:?}");
+    assert!(
+        !results.is_empty(),
+        "the model was offered three tools and reached for none of them"
+    );
+
+    let said = kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    println!("  it said: {}", said.trim());
+    assert!(
+        said.contains("42"),
+        "the server's answer should have reached the model: {said}"
+    );
+}
