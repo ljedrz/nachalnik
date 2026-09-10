@@ -5,6 +5,41 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- A test that a refusal can name the argument that earned it: two calls to one tool, the same
+  capability twice, one of the two paths ending in `.env`, and a policy that holds nothing at all.
+  It is the case the old signature could not reach - the identifiers are the kernel's to hand out
+  and the tool and the capability are the same one twice, so the arguments are the only thing that
+  tells the pair apart.
+
+### breaking
+
+- `PermissionPolicy::why` is asked with the `PermissionRequest`, where it was asked with a
+  `ToolCallId`. A policy that overrides it - one that has something to say, which is the only
+  reason the method exists - changes the signature and reads `request.call` wherever it read the
+  argument.
+
+  The two halves of the seam were being asked different questions about the same call. `evaluate`
+  is handed everything known about it; `why` was handed its name. So a policy whose reason is a
+  function of the arguments - *the rule for `**/.env` refused `deploy/.env`* - had to write that
+  sentence down at the moment it decided and find it again when it was asked, which is a map keyed
+  by call. A map wants a bound, and a bound is a number of refusals in one step past which the
+  reason is simply gone; `kamchatka`'s remembers sixty-four. None of that is a policy's problem to
+  have.
+
+  The kernel was holding the request the whole time. `PreparedCall` has carried it since
+  permission stopped being decided inside execution, so this hands over a field that was already
+  there rather than building one to answer with, and what a policy sees in `why` is the identical
+  value it saw in `evaluate`.
+
+  What the model reads is unchanged, and no policy in this workspace answers differently:
+  `kamchatka`'s `Careful` keeps its own copy either way, because its other reader is a screen with
+  nothing but an identifier - `Event::PermissionDecided` carries no arguments. This moves the seam
+  rather than the program, which is the honest summary of a release with one signature in it.
+
 ## [0.4.0] - 2026-09-10
 
 ### added

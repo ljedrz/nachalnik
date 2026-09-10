@@ -88,7 +88,7 @@ impl PermissionPolicy for Granted {
         }
     }
 
-    fn why(&self, _call: &nachalnik::ToolCallId) -> Option<String> {
+    fn why(&self, _request: &nachalnik::PermissionRequest) -> Option<String> {
         Some("only the two handles this experiment installed are granted here".to_owned())
     }
 }

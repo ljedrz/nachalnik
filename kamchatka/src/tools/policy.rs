@@ -401,8 +401,8 @@ impl PermissionPolicy for Careful {
     /// note: the same sentence both of them read. A model told `refused by the rule for
     /// `**/.env`` can do something with that - stop asking for it, ask what to use instead - and
     /// one told only that a call was not permitted cannot tell a standing rule from a bad moment.
-    fn why(&self, call: &ToolCallId) -> Option<String> {
-        Careful::why(self, call)
+    fn why(&self, request: &PermissionRequest) -> Option<String> {
+        Careful::why(self, &request.call)
     }
 
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {

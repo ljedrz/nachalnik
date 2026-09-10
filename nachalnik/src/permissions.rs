@@ -210,8 +210,16 @@ pub trait PermissionPolicy: Send + Sync {
     /// and until this existed the answer was on the person's screen and nowhere else - a policy
     /// that knew exactly why had no way to say so. A downstream policy needing a core change to
     /// do an ordinary thing is the sign of a seam that is not finished.
-    fn why(&self, call: &ToolCallId) -> Option<String> {
-        let _ = call;
+    ///
+    /// note: the argument is the whole of the [`PermissionRequest`] [`Self::evaluate`] was asked
+    /// about, and it is the same value rather than one built again to answer this - the kernel is
+    /// holding it either way. The two methods are halves of one question, *what do you say about
+    /// this call* and *why did you say it*, and asking the second with only an identifier meant a
+    /// policy whose reason is a function of the arguments had to remember what it had decided a
+    /// moment earlier, keyed by call. Remembering means bounding, and a bound means the reason
+    /// can have fallen out of it by the time the kernel asks.
+    fn why(&self, request: &PermissionRequest) -> Option<String> {
+        let _ = request;
 
         None
     }

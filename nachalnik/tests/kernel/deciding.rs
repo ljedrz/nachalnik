@@ -1,11 +1,14 @@
 //! Who decides: what the policy is asked, what it is told, and what a refusal reaches the model
 //! as.
 //!
-//! note: two policies here rather than one, and the difference is the whole subject. `Fussy`
-//! refuses by standing rule; `Fussy2` asks, and the answer comes from `Kernel::decide`. A model
-//! reads those two refusals differently and should - one says the same call will be refused
-//! again, the other says nothing about the next one - so the kernel words them differently and
-//! these check that it does.
+//! note: two of the policies here are one subject. `Fussy` refuses by standing rule; `Fussy2`
+//! asks, and the answer comes from `Kernel::decide`. A model reads those two refusals
+//! differently and should - one says the same call will be refused again, the other says nothing
+//! about the next one - so the kernel words them differently and these check that it does.
+//!
+//! note: `ByPath` is the third and a different subject: a reason made of the arguments. It is
+//! what a policy can do now that both halves of the seam are asked about the same
+//! `PermissionRequest`, and it holds nothing to do it.
 
 use std::sync::Arc;
 
@@ -29,7 +32,7 @@ impl nachalnik::PermissionPolicy for Fussy {
         Verdict::Deny
     }
 
-    fn why(&self, _call: &nachalnik::ToolCallId) -> Option<String> {
+    fn why(&self, _request: &nachalnik::PermissionRequest) -> Option<String> {
         Some("`shell` is off for the whole of this session".to_owned())
     }
 }
@@ -99,7 +102,7 @@ impl nachalnik::PermissionPolicy for Fussy2 {
         Verdict::Ask
     }
 
-    fn why(&self, _call: &nachalnik::ToolCallId) -> Option<String> {
+    fn why(&self, _request: &nachalnik::PermissionRequest) -> Option<String> {
         Some("`shell` is off for the whole of this session".to_owned())
     }
 }
@@ -188,4 +191,64 @@ async fn a_partly_permitted_batch_waits_for_the_whole_answer() {
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].content.to_text(), "fn main() {}");
     assert!(results[1].content.to_text().contains("not permitted"));
+}
+
+/// A policy that refuses by path, and whose reason names the file the model actually asked for.
+///
+/// note: a unit struct on purpose. It writes nothing down when it decides and looks nothing up
+/// when it is asked why - the argument it needs is in front of it both times.
+struct ByPath;
+
+impl ByPath {
+    /// The path a call was for, as its arguments have it.
+    fn path(request: &nachalnik::PermissionRequest) -> &str {
+        request.args["path"].as_str().unwrap_or_default()
+    }
+}
+
+#[nachalnik::async_trait]
+impl nachalnik::PermissionPolicy for ByPath {
+    async fn evaluate(&self, request: &nachalnik::PermissionRequest) -> Verdict {
+        match Self::path(request).ends_with(".env") {
+            true => Verdict::Deny,
+            false => Verdict::Allow,
+        }
+    }
+
+    fn why(&self, request: &nachalnik::PermissionRequest) -> Option<String> {
+        let path = Self::path(request);
+
+        path.ends_with(".env")
+            .then(|| format!("the rule for `**/.env` refused `{path}`"))
+    }
+}
+
+#[tokio::test]
+async fn a_reason_can_be_made_of_the_arguments_rather_than_remembered() {
+    let (kernel, _) = inquisitive([
+        ModelResponse::tool_calls(vec![
+            call("c1", "read", json!({ "path": "src/a.rs" })),
+            call("c2", "read", json!({ "path": "deploy/.env" })),
+        ]),
+        ModelResponse::text("ok"),
+    ]);
+    kernel.set_policy(Arc::new(ByPath));
+    kernel.add_tool(Arc::new(
+        ConstTool::new("read", "fn main() {}").with_capabilities([Capability::Read]),
+    ));
+    kernel.push(ContextItem::user("read both of them"));
+    kernel.turn().await.unwrap();
+
+    // two calls to one tool, one refusal, and the refusal names the argument that earned it.
+    // Nothing else tells the pair apart: the identifiers are the kernel's to hand out, and the
+    // tool and the capability are the same one twice - so a policy asked with an identifier
+    // could only answer this by writing the sentence down in `evaluate` and finding it again
+    let results = tool_results(&kernel);
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].content.to_text(), "fn main() {}");
+    let said = results[1].content.to_text();
+    assert!(
+        said.contains("the rule for `**/.env` refused `deploy/.env`"),
+        "{said}"
+    );
 }

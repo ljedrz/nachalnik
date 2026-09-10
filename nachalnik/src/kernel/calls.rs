@@ -121,8 +121,13 @@ impl Kernel {
                 let output = match self.is_interrupted() {
                     true => ToolOutput::error("interrupted before this call was made"),
                     false => {
-                        self.invoke(prepared.tool.clone(), prepared.call.clone(), prepared.grant)
-                            .await
+                        self.invoke(
+                            prepared.tool.clone(),
+                            prepared.call.clone(),
+                            prepared.request.clone(),
+                            prepared.grant,
+                        )
+                        .await
                     }
                 };
                 self.record_output(prepared, output);
@@ -140,8 +145,9 @@ impl Kernel {
         let mut running = tokio::task::JoinSet::new();
         for (index, call) in prepared.iter().enumerate() {
             let (kernel, tool, grant) = (self.clone(), call.tool.clone(), call.grant);
+            let request = call.request.clone();
             let call = call.call.clone();
-            running.spawn(async move { (index, kernel.invoke(tool, call, grant).await) });
+            running.spawn(async move { (index, kernel.invoke(tool, call, request, grant).await) });
         }
 
         let mut outputs: Vec<Option<ToolOutput>> = (0..prepared.len()).map(|_| None).collect();
@@ -169,11 +175,12 @@ impl Kernel {
         &self,
         tool: Arc<dyn Tool>,
         call: ToolCall,
+        request: PermissionRequest,
         grant: Option<(Grant, GrantSource)>,
     ) -> ToolOutput {
         let (grant, source) = grant.expect("every claimed call has been decided");
         if grant == Grant::Deny {
-            return ToolOutput::error(refusal(source, self.policy().why(&call.id)));
+            return ToolOutput::error(refusal(source, self.policy().why(&request)));
         }
 
         self.emit(Event::ToolStarted {
