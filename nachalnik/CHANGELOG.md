@@ -9,6 +9,42 @@ minor bump may break you.
 
 ### added
 
+- `tests/invariants.rs`: what holds of a context and its projection after every operation of a
+  generated sequence. Invariants rather than a reference model, because a model faithful enough to
+  compare against is a second implementation of the context that has to be kept honest, and a
+  wrong model reads exactly like a broken kernel. What is checked instead are sentences this
+  crate had already written down - `set_state`'s note that an operation changing nothing takes no
+  checkpoint, `undo`'s that the granularity is one operation and not one item, `Projection`'s that
+  a repair is named rather than done quietly - and the family where two things must agree about
+  one request, which is where every bug worth fixing in the recent releases lived.
+
+  The alphabet is the whole of context control: `push`, `push_all`, the five moves over one
+  identifier or several, `replace`, `supersede`, `undo`, `redo`. Sequences run past the default
+  undo depth, because an undo stack is a bounded thing and the interesting arithmetic is at its
+  bound. The checks run after *every* operation rather than at the end, so a counterexample is the
+  shortest prefix that breaks something.
+
+  Measured, mutation by mutation: a `set_state` that spends a checkpoint on a no-op, a projector
+  that stops repairing orphaned calls, one that holds an item back without saying so, a
+  `push_all` that takes a checkpoint per item, and a budget that reports every request as fully
+  counted. Each is caught, and each by the assertion it was aimed at.
+
+  Two of those needed the suite strengthened first, and that is the part worth reading. The
+  granularity `undo` documents is invisible to a round trip - undoing everything and redoing
+  everything restores the context whether a checkpoint was spent per operation or per item - so it
+  took an assertion of its own. And the invariant about `uncounted` could not fail at all until
+  the alphabet could push a `Content::Blob`: with nothing unpriced in any generated context, a
+  kernel changed to report every request as fully counted broke nothing. An invariant that cannot
+  fire reads exactly like one that holds.
+
+  It also found something, which is written down in the file rather than fixed here: a tool result
+  is projected out of position when another assistant turn stands between it and the call it
+  answers. `projection.rs` tracks what a turn is waiting for as a count and a new turn resets it,
+  so a result belonging to an older turn has nothing anchoring it - and the request goes out with
+  a `tool` message that does not follow its call, which is the shape the conventional dialect
+  refuses. The suite asserts the weaker property that holds today; the stronger one is what a fix
+  would let it say.
+
 - A test that a refusal can name the argument that earned it: two calls to one tool, the same
   capability twice, one of the two paths ending in `.env`, and a policy that holds nothing at all.
   It is the case the old signature could not reach - the identifiers are the kernel's to hand out

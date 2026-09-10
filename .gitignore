@@ -15,6 +15,7 @@ recorded/
 # a file of opaque hashes is the shape of a regression suite nobody can read, and half of these
 # are seeds for implementations that no longer exist.
 **/proptest-regressions/
+**/*.proptest-regressions
 
 # rustfmt's backups and the counters a profiled run drops
 **/*.rs.bk

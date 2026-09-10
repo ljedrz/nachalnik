@@ -54,5 +54,6 @@ nachalnik = { path = ".", features = ["selectors", "test"] } # a workaround to u
 # ever after, which is a lot to pay for a version number nobody reads.
 nachalnik-providers = { path = "../nachalnik-providers" }
 nachalnik-utils = { path = "../nachalnik-utils" }
+proptest = { workspace = true }
 reqwest.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
