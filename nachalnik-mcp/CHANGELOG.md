@@ -18,8 +18,6 @@ minor bump may break you.
   alongside two others, the model picked it, the Python server answered 42, and the model read it.
   It skips without a key, the way the rest of the file skips without `python3`.
 
-## [unreleased]
-
 ### changed
 
 - Requires `nachalnik` 0.4.0. Nothing in this crate's own API moved, but it names runtime types

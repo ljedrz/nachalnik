@@ -493,9 +493,9 @@ README and the crate docs in longer form:
 - **Seams identify themselves.** `Projector`, `TokenCounter`, `PermissionPolicy` and `Compactor`
   each carry a `name()` defaulting to the implementing type's path, so a client can put the six
   seams on a screen (`/seams` in `kamchatka`). It is for showing a person, not for matching on.
-- **Changelogs** are per crate (`nachalnik/`, `nachalnik-mcp/`, `nachalnik-eval/`, `kamchatka/`),
-  Keep a Changelog format, and are expected to be current before a release rather than
-  reconstructed after one.
+- **Changelogs** are per crate (`nachalnik/`, `nachalnik-mcp/`, `nachalnik-providers/`,
+  `nachalnik-eval/`, `kamchatka/`), Keep a Changelog format, and are expected to be current
+  before a release rather than reconstructed after one.
 - **Which number moves is a fact about the public API, not about how the work felt.** Cargo reads
   `0.x.y` with the middle number as the major - `^0.3.2` resolves to `>=0.3.2, <0.4.0` - so `x` is
   the compatibility boundary and `y` carries everything a 1.0 crate would split between a minor and
