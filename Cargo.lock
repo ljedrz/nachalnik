@@ -1209,7 +1209,7 @@ dependencies = [
 
 [[package]]
 name = "kamchatka"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1399,7 +1399,7 @@ dependencies = [
 
 [[package]]
 name = "nachalnik-eval"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "nachalnik",
@@ -1413,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "nachalnik-mcp"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "nachalnik",
