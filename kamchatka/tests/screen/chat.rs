@@ -8,7 +8,8 @@
 use crossterm::event::KeyCode;
 use kamchatka::app::{Outcome, Speaker, Tab};
 use nachalnik::{
-    ContextItem, ContextState, Delta, Event, ModelInfo, ModelResponse, State, StopReason, Usage,
+    ContextItem, ContextKind, ContextState, Delta, Event, ModelInfo, ModelResponse, State,
+    StopReason, Usage,
 };
 use ratatui::style::{Color, Modifier};
 
@@ -1077,4 +1078,104 @@ async fn an_edit_to_an_early_turn_stays_where_that_turn_was() {
         row("the second question") < row("the second answer"),
         "{screen}"
     );
+}
+
+/// The chat shows exactly the conversation the model is in, after any sequence of changes.
+///
+/// note: a property rather than a case. Three of this session's bugs were the chat and the
+/// request disagreeing - an item drawn that was not being sent, a line drawn twice, a line drawn
+/// as withheld that was mid-flight - and each was found by looking rather than by a test. What
+/// holds after every one of them is the same sentence the redesign was for: what a person reads
+/// is what the model reads. So this drives the operations that move an item between states and
+/// checks that sentence after each one.
+#[tokio::test]
+async fn the_chat_is_the_conversation_the_model_is_in() {
+    let mut harness = Harness::new([
+        ModelResponse::text("an answer of BETAWORD"),
+        ModelResponse::text("an answer of DELTAWORD"),
+    ]);
+    harness.send("a question of ALPHAWORD").await;
+    harness.settle().await;
+    harness.send("a question of GAMMAWORD").await;
+    harness.settle().await;
+
+    let ids: Vec<_> = harness.app.kernel.items().iter().map(|it| it.id).collect();
+    enum Move {
+        Exclude(usize),
+        Restore(usize),
+        Elide(usize),
+        Edit(usize),
+        Undo,
+        Redo,
+    }
+    let moves = [
+        ("excluded", Move::Exclude(0)),
+        ("restored", Move::Restore(0)),
+        ("elided", Move::Elide(1)),
+        ("edited", Move::Edit(2)),
+        ("undone", Move::Undo),
+        ("redone", Move::Redo),
+    ];
+
+    for (what, move_) in moves {
+        let kernel = &harness.app.kernel;
+        match move_ {
+            Move::Exclude(at) => kernel.set_state([ids[at]], ContextState::Excluded, None),
+            Move::Restore(at) => kernel.set_state([ids[at]], ContextState::Active, None),
+            Move::Elide(at) => {
+                kernel.set_state([ids[at]], ContextState::Elided, Some("taken".into()))
+            }
+            Move::Edit(at) => {
+                kernel
+                    .replace(ids[at], "a question of EPSILONWORD")
+                    .expect("edited");
+                Default::default()
+            }
+            Move::Undo => {
+                kernel.undo();
+                Default::default()
+            }
+            Move::Redo => {
+                kernel.redo();
+                Default::default()
+            }
+        };
+        harness.drain();
+        harness.tab(Tab::Chat);
+        let screen = harness.flat();
+        let going = harness.app.going();
+
+        for item in harness.app.kernel.items() {
+            // only the two kinds the chat draws as speech; a reference or a tool result reads
+            // as its own kind of line and is not what this is about
+            if !matches!(
+                item.kind,
+                ContextKind::UserMessage | ContextKind::AssistantMessage { .. }
+            ) {
+                continue;
+            }
+            // the one nonsense word each fixture carries, so a match cannot be some other
+            // item's wording - which is what the first draft of this got wrong
+            let text = item.content.to_text();
+            let Some(distinctive) = text.split_whitespace().find(|word| word.ends_with("WORD"))
+            else {
+                continue;
+            };
+
+            match going.sends_content(&item) {
+                true => assert!(
+                    screen.contains(distinctive),
+                    "after {what}: [{}] is in the request and not on the chat \
+                     (looking for {distinctive:?}): {screen}",
+                    item.id
+                ),
+                false => assert!(
+                    !screen.contains(distinctive),
+                    "after {what}: [{}] is not in the request and is on the chat \
+                     (found {distinctive:?}): {screen}",
+                    item.id
+                ),
+            }
+        }
+    }
 }

@@ -1579,7 +1579,7 @@ impl App {
     /// here: it counts an excluded, archived or elided item and misses one the projector repaired
     /// away, because that one's state says it is sending. `/budget` and the context tab have to
     /// agree about this figure or they are two accounts of one request again.
-    fn withheld(&self, going: &Going) -> (usize, usize) {
+    pub(crate) fn withheld(&self, going: &Going) -> (usize, usize) {
         self.kernel
             .items()
             .iter()

@@ -645,13 +645,7 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
     // note: counted over the request rather than over the states, so this and `/budget` and the
     // `held` column are one answer. `tokens_withheld` misses an item the projector repaired away,
     // which is holding as much as any excluded one
-    let withheld: usize = app
-        .kernel
-        .items()
-        .iter()
-        .filter(|item| !going.sends_content(item))
-        .map(|item| item.tokens)
-        .sum();
+    let (withheld, _) = app.withheld(going);
     if withheld != 0 {
         add(format!("{} held back", thousands(withheld)), dim);
     }
