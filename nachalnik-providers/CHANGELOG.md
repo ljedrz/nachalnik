@@ -93,6 +93,18 @@ minor bump may break you.
 
 ### fixed
 
+- A refusal whose body is a web page is reported as its words, not its markup. `complaint`
+  already strips the envelope off a JSON error - that is what it is for - and then quoted its
+  input verbatim for anything that was not JSON. A base URL pointing at a site rather than an API
+  is a common typo, and `https://example.com/v1` answers 405 with a whole HTML document: the
+  first three hundred characters are a doctype, a `<link rel=icon>` and the opening of a
+  stylesheet, so four lines of CSS went into the conversation, the session log, and the file
+  somebody sends on. Tags come off now, and `<style>` and `<script>` go whole, because their
+  contents are markup wearing the shape of text. A short page keeps its sentence:
+  `<html>gateway timeout</html>` from a proxy that speaks no JSON says the one thing worth
+  knowing, and that is still what it says.
+
+
 - `stream_options` follows whatever the request's parameters settled `stream` on, rather than
   whichever way the provider was built. It is wrong in both directions otherwise, and one of them
   is silent: sent to an endpoint that was asked for a whole answer it is a 400 about a field
