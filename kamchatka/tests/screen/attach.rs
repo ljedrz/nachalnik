@@ -67,7 +67,7 @@ async fn a_pdf_is_attached_as_bytes_and_nothing_pretends_to_price_it() {
 
     let screen = harness.flat();
     assert!(
-        screen.contains("results.pdf (file), application/pdf"),
+        screen.contains("results.pdf (file) [application/pdf,"),
         "the line should name what went in: {screen}"
     );
     // the tokens on it are the path travelling beside the payload; the payload itself is the
@@ -119,6 +119,35 @@ async fn an_attachment_tells_the_model_which_file_it_was() {
         carried,
         "the name is not in the request: {:?}",
         request.messages
+    );
+}
+
+/// The context pane's busiest column says what the payload is, not what the label already said.
+///
+/// note: this is what decides the order of the two blocks. That column shows the *first line* of
+/// `to_text()`, so with the path first every attachment reads back the label from two columns
+/// over, clipped to fit, and what the payload actually is sits on a second line nothing displays.
+#[tokio::test]
+async fn the_context_pane_says_what_an_attachment_is() {
+    use kamchatka::app::Tab;
+
+    let dir = scratch("attach-pane");
+    let path = dir.join("diagram.png");
+    std::fs::write(&path, PNG).expect("written");
+
+    let mut harness = Harness::new([ModelResponse::text("looking")]);
+    harness.send(&format!("/attach {}", path.display())).await;
+    harness.tab(Tab::Context);
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("[image/png,"),
+        "the row should say what it is carrying: {screen}"
+    );
+    // and the `+`, because the figure beside it is a floor
+    assert!(
+        screen.contains("+ "),
+        "an unpriced row is marked as one: {screen}"
     );
 }
 

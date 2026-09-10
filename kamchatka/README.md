@@ -85,19 +85,25 @@ takes an edit back takes it off here too. **context** is why this exists:
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
 │  id  label         kind               sending   held  what it says, or why it is not being sent            │
 │  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                    │
-│  2 · user          user_message             6         what does the kernel do?                              │
-│  3 · assistant     assistant_message        7         asked for read                                        │
-│  4 - read          tool_result              0     15  excluded: at the terminal, by `tool:read`             │
-│  5 · assistant     assistant_message        7         asked for shell                                       │
-│  6 … shell         tool_result             11  9,004  compaction: compacted to make room                    │
-│  7 · assistant     assistant_message       62         The kernel is a state machine with five states. …     │
+│  2 ▪ q3.pdf        reference                6+        [application/pdf, 292.47kB]                           │
+│  3 · user          user_message             6         what does the kernel do?                              │
+│  4 · assistant     assistant_message        7         asked for read                                        │
+│  5 - read          tool_result              0     15  excluded: at the terminal, by `tool:read`             │
+│  6 · assistant     assistant_message        7         asked for shell                                       │
+│  7 … shell         tool_result             11  9,004  compaction: compacted to make room                    │
+│  8 · assistant     assistant_message       62         The kernel is a state machine with five states. …     │
 │                                                                                                              │
-└────────────────────────────────────────────────────────────────────────────── 7 items, 2 not going, 1 elided ┘
+└────────────────────────────────────────────────────────────────────────────── 8 items, 2 not going, 1 elided ┘
 ```
 
 That is not a summary and not a debug view. It is the list of items the runtime is holding, in
 order, with what each one costs, whether it is going into the next request — and the column that
 matters most, what the model will actually read of it.
+
+Row 2 is the other thing this column is for. `6+` is not six tokens: the `+` says the counter
+would not put a figure on part of that item, so six is a **floor**. Nothing here has a
+tokenizer for a PDF, and a bare `0` would have made the largest thing in the request read as the
+cheapest row in the pane you opened to decide what to delete.
 
 **sending** is what an item puts into the next request; **held** is what it is keeping out of one.
 For most rows the first is everything and the second is blank. The two that differ are the ones
@@ -544,7 +550,7 @@ Nothing here has a tokenizer for a picture, and it says so rather than putting a
 number should be:
 
 ```text
-· [1] q3.pdf (file), application/pdf, 214 KB, 6 tokens and 1 piece(s) nothing here can price
+· [1] q3.pdf (file) [application/pdf, 292.47kB], 6 tokens and 1 piece(s) nothing here can price
 ```
 
 That is not a rounding. A 535-byte one-page PDF was charged 6,500 tokens by Gemini in the test
@@ -772,16 +778,19 @@ presence_penalty, reasoning, response_format, structured_outputs, temperature, t
 tools, top_p
 ```
 
-## 📏 the number in the status line is a guess, and says so
+## 📏 the number in the status line is a guess, and says which kind
 
 Nothing here has the model's tokenizer, so the figure the status line leads with is an estimate —
 it is written `~2,460` for that reason. The percentage beside it names the total it is a
 percentage of (`0.9% (128k)`), because a fraction of an unstated number is not something anybody
 can act on, and it turns yellow past 70% and red past 90%. Then comes what the provider actually
-charged for the last request, and `/budget` is where the two are reconciled:
+charged for the last request, and `/budget` is where all of it is reconciled:
 
 ```text
 the next request: ~20,125 tokens, 19,953 of context and 172 of tool definitions
+
+anchored on the last response: ~20,188 tokens - the provider's own 20,063 for the
+request it answered, plus what has changed since
 
 the limit: 1,048,576, which the next request would fill 1.9% of
 
@@ -791,9 +800,27 @@ the counter has learned from 2 request(s) and scaled itself by 1.131: its own gu
 came to 35,447 tokens where the provider counted 40,073
 ```
 
-That correction is the runtime's `Calibrating` counter: every response tells it what the request
-it just estimated really cost, and it adjusts. Over a real session against Gemini it went from 13%
-low to within 0.3%. A budget nobody can check is a decoration.
+The first line is the counter estimating the whole request from scratch. The second is the one the
+corner shows once there has been a response to anchor on, and it is a different method rather than
+a better guess: it starts from what the provider charged, adds what the context estimates *now*,
+and subtracts what the estimator says the items that figure already covered would cost now. An
+item that has not moved appears in both estimates and cancels — so it contributes its measured
+cost and no error at all, and only what has changed since the last request is being guessed at.
+The error is a few percent of the change instead of a few percent of the context, which is the
+difference between a thousand tokens and thirty on a context of a hundred thousand.
+
+It also absorbs, exactly and for nothing, the three things the counter is structurally blind to:
+per-message framing, the tool schemas, and any payload it refuses to price. A PDF the counter
+cannot put a number on is inside the provider's figure the moment it has gone out once.
+
+That correction on the last line is the runtime's `Calibrating` counter: every response tells it
+what the request it just estimated really cost, and it adjusts. Over a real session against Gemini
+it went from 13% low to within 0.3%. A budget nobody can check is a decoration.
+
+Before any response, on an endpoint that reports no usage, and after a change of model until the
+next answer, the corner falls back to the plain estimate. And where something in the context has
+no number on it at all, `/budget` says how many pieces — a figure that is a floor is never shown
+as one that is complete.
 
 The compactor shortens the oldest tool results to a marker once the context passes `--compact`
 (0.8 by default) of the limit. It does not summarize them — it never read them — and it touches

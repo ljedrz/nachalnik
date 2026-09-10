@@ -63,13 +63,21 @@ fn media_type(path: &str) -> Option<&'static str> {
 /// The item is neither pinned nor given a reason; that is the caller's, because the two callers
 /// have different ones to give.
 ///
-/// note: the bytes case is a [`Content::Blocks`] of two - the path, then the payload - rather
-/// than a bare [`Content::Blob`], and the extra block is not decoration.
-/// [`LinearProjector`](nachalnik::LinearProjector) labels a reference by prepending its label to
-/// the *text*, so a reference that is not text loses its label on the way out: the model would be
-/// handed a document with nothing saying which file it was, in a conversation where the person had
-/// just typed the name. Both dialects already carry a sentence beside a payload - it is the shape
-/// a turn takes when it is a question about a screenshot - so the name travels as one.
+/// note: the bytes case is a [`Content::Blocks`] of two rather than a bare [`Content::Blob`], and
+/// the extra block is not decoration. [`LinearProjector`](nachalnik::LinearProjector) labels a
+/// reference by prepending its label to the *text*, so a reference that is not text loses its
+/// label on the way out: the model would be handed a document with nothing saying which file it
+/// was, in a conversation where the person had just typed the name. Both dialects already carry a
+/// sentence beside a payload - it is the shape a turn takes when it is a question about a
+/// screenshot - so the name travels as one.
+///
+/// note: the payload first and the name after it, which is the opposite of the way a person would
+/// caption something and is decided by a different reader. The context pane shows the **first
+/// line** of `to_text()`, so with the path first every attachment's most useful column reads back
+/// the label from two columns over, clipped, and what the payload actually is - the one thing that
+/// column could have said - is on a second line nothing displays. Payload first makes that cell
+/// `[application/pdf, 292.47kB]` at any terminal width, and costs the model nothing: a
+/// document followed by the path it came from reads as a caption, which is what it is.
 pub fn attached(path: &str) -> Result<ContextItem> {
     let size = std::fs::metadata(path)
         .with_context(|| format!("could not read {path}"))?
@@ -105,31 +113,25 @@ pub fn attached(path: &str) -> Result<ContextItem> {
     Ok(ContextItem::file(
         path,
         Content::blocks([
-            Block::text(Content::text(format!("{path}:"))),
             Block::text(Content::Blob(blob.into())),
+            Block::text(Content::text(format!("(attached from {path})"))),
         ]),
     ))
 }
 
-/// What went in, for the line that says so: the media type and the size on disk, or `None` for a
-/// file that went in as text.
+/// What an item is carrying, for the line that says so, or `None` for one that is only text.
 ///
 /// note: read back off the item rather than returned beside it, so that the sentence the person
 /// reads cannot describe something other than what was pushed.
+///
+/// note: the blob's own `Display` - `[application/pdf, 292.47kB]` - rather than a size formatted
+/// here. That notation is already what the context pane shows, what a dialect with nowhere to put
+/// a payload sends, and what `nachalnik-mcp` answers with, so a second one would be a second
+/// format to keep in step and a second number to reconcile. It was briefly both: this reported
+/// the length on disk while the pane reported the base64, so one file had two sizes on one
+/// screen.
 pub fn describe(item: &ContextItem) -> Option<String> {
     let blobs = item.content.blobs();
-    let blob = blobs.first()?;
 
-    // the payload is base64 and the person is thinking of the file, so this is the length they
-    // would see in a directory listing rather than the one that goes on the wire
-    let bytes = blob.byte_len() * 3 / 4;
-
-    Some(match bytes >= 1024 {
-        true => format!("{}, {} KB", blob.media_type, bytes / 1024),
-        // note: and not `0 KB`, which is what a small one rounded to. An eight-pixel PNG is a
-        // hundred bytes and can still be 255 tokens at a vendor charging by the tile, so a size
-        // that reads as nothing at all is the wrong impression to leave beside a figure that is
-        // already saying nobody could price it
-        false => format!("{}, {bytes} bytes", blob.media_type),
-    })
+    Some(blobs.first()?.to_string())
 }

@@ -158,7 +158,7 @@ impl Compactor for Trim {
             // note: the blobs get their own clause, and they need one. What the model is left
             // reading in place of an elided item is the pass's `reason`, which says the context
             // was full and says nothing about what used to be there - so a picture named
-            // `[image/png, 12048 bytes]` a moment ago becomes a sentence about a token limit, and
+            // `[image/png, 12.05kB]` a moment ago becomes a sentence about a token limit, and
             // the model has no way left to know an image was ever in the conversation. A gap
             // where a picture was is worse than a sentence saying there was one; this is the
             // sentence, and it is the only place in the plan there is room for it

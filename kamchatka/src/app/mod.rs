@@ -873,7 +873,7 @@ impl App {
                     item.label,
                     item.source,
                     match crate::attach::describe(item) {
-                        Some(what) => format!(", {what}"),
+                        Some(what) => format!(" {what}"),
                         None => String::new(),
                     },
                     item.tokens,

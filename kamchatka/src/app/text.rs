@@ -292,6 +292,11 @@ fn without_blobs(value: &Value) -> Value {
 }
 
 /// What is shown where a payload was.
+///
+/// note: an exact count, and deliberately not the `292.47kB` `Blob`'s own `Display` gives. This
+/// one stands inside `/payload`, which is the request byte for byte with the base64 taken out -
+/// so the number is the length of the exact string that was removed from the JSON being read,
+/// and rounding it would make the one view whose promise is exactness stop keeping it.
 fn named(media_type: &str, bytes: usize) -> String {
     format!("[ base64 blob, {media_type}, {bytes} bytes ]")
 }

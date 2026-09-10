@@ -86,7 +86,7 @@ minor bump may break you.
 ### changed
 
 - The chat line for a reference names what the item carries and what nobody could price:
-  `[1] results.pdf (file), application/pdf, 34 KB, 18 tokens and 1 piece(s) nothing here can
+  `[1] results.pdf (file) [application/pdf, 292.47kB], 6 tokens and 1 piece(s) nothing here can
   price`. It is derived off the item like every other line, which is why `/attach` says nothing
   for itself - a command that pushed an item and then announced it would be two accounts of one
   thing, with only one of them able to go out of date.
@@ -199,7 +199,7 @@ minor bump may break you.
 
 - The pass's summary names the blobs it took. What a model reads in place of an elided item is
   the pass's reason, which says the context was full and nothing about what used to be there - so
-  a turn that read `[image/png, 12048 bytes]` a moment earlier became a sentence about a token
+  a turn that read `[image/png, 12.05kB]` a moment earlier became a sentence about a token
   limit, with nothing left to say a picture had ever been in the conversation.
 
 - `/budget` says how many pieces of content the counter would not price, and names the counter
@@ -224,7 +224,7 @@ minor bump may break you.
 ### added
 
 - A context item holding `nachalnik::Content::Blob` - bytes that are not text - draws, as the row
-  naming what it is and what it costs: `[image/png, 12048 bytes]`. This program renders no
+  naming what it is and what it costs: `[image/png, 12.05kB]`. This program renders no
   pictures and is not going to: a terminal cell is not a pixel, and a half-hearted attempt would
   be worse than none. What it owes a picture is what it owes anything else it cannot show, which
   is to say that it was there - and that is what `to_text` already answers, so every view got it
