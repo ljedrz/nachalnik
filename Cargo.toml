@@ -23,7 +23,7 @@ rust-version = "1.88"
 # arrives in this workspace, `nachalnik` itself is not to grow a sixth without a reason.
 [workspace.dependencies]
 nachalnik = { version = "0.5.0", path = "nachalnik" }
-nachalnik-mcp = { version = "0.4.0", path = "nachalnik-mcp" }
+nachalnik-mcp = { version = "0.5.0", path = "nachalnik-mcp" }
 nachalnik-providers = { version = "0.1.0", path = "nachalnik-providers" }
 # no version: it is never published, so nothing may depend on it except as a dev-dependency
 nachalnik-utils = { path = "nachalnik-utils" }
