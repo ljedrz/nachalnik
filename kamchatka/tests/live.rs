@@ -1750,3 +1750,91 @@ async fn a_resumed_session_carries_on_and_the_endpoint_accepts_it() {
         "what was carried should still be in front of the model: {said}"
     );
 }
+
+/// `--mcp`: somebody else's server, this program's policy, a real model.
+///
+/// note: the headline the flag exists for, and the one path that joins all three crates - the
+/// bridge maps a foreign server's tools, `Careful` gates them by the capability the bridge
+/// assigned, and the model has to pick one out of the same list as the built-in ones. Each half
+/// is tested where it lives and nothing has ever run the three together against a real endpoint.
+///
+/// note: the server is the Python one `nachalnik-mcp` keeps for its own tests, reached by path
+/// rather than copied. Skipped when it is not there, which is what a published tarball looks
+/// like, and skipped without `python3` for the reason that suite is.
+#[cfg(feature = "mcp")]
+#[tokio::test]
+async fn a_foreign_server_s_tools_reach_a_real_model() {
+    let script = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../nachalnik-mcp/tests/foreign_server.py"
+    );
+    if !std::path::Path::new(script).exists() {
+        eprintln!("skipped: the foreign server is not beside this crate");
+        return;
+    }
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("skipped: python3 is not on the path");
+        return;
+    }
+    let Some(provider) = endpoint().await else {
+        eprintln!("no key in the environment; skipping");
+        return;
+    };
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    let policy = Arc::new(Careful::new());
+    kernel.set_policy(policy.clone());
+
+    // exactly what `--mcp 'arith=python3 …'` does, minus the argument parsing
+    let mut command = tokio::process::Command::new("python3");
+    command.arg(script);
+    let server = nachalnik_mcp::Server::spawn("arith", command)
+        .await
+        .expect("the server answers the handshake");
+    server.install(&kernel).await.expect("its tools install");
+
+    // gated the way this program gates everything, by capability rather than by tool name -
+    // and the capability is the bridge's, which is the part only these three together decide
+    let offered: Vec<_> = kernel.tool_specs().into_iter().collect();
+    let capabilities: Vec<_> = offered
+        .iter()
+        .flat_map(|spec| spec.capabilities.iter().map(|c| c.to_string()))
+        .collect();
+    println!(
+        "  offered {:?} carrying {capabilities:?}",
+        offered.iter().map(|s| &s.id).collect::<Vec<_>>()
+    );
+    for capability in offered.iter().flat_map(|spec| spec.capabilities.clone()) {
+        policy.set(&Subject::Capability(capability), Verdict::Allow);
+    }
+
+    let (outcomes, mut finished) = tokio::sync::mpsc::unbounded_channel();
+    let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
+    send(
+        &mut app,
+        &mut finished,
+        "Use the tools you have to add 40 and 2, then say the number.",
+    )
+    .await;
+
+    let results = results(&app);
+    println!("  results: {results:?}");
+    let said = app
+        .kernel
+        .items()
+        .iter()
+        .rev()
+        .find(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .unwrap_or_default();
+    println!("  it said: {}", said.trim());
+    assert!(
+        said.contains("42"),
+        "a foreign server's answer should have reached the model: {said}"
+    );
+}

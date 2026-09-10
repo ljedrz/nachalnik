@@ -769,13 +769,18 @@ impl App {
         // note: printed straight after the two figures it qualifies, because it decides how to
         // read them. Every number above is a floor when this is not zero, and the person has no
         // way to tell that from a context that is genuinely small - both look like a low
-        // percentage. The counter is the one saying so, so the line says which counter
+        // percentage.
+        //
+        // note: it used to name the counter, and `TokenCounter::name` defaults to the type path -
+        // so the sentence read "of content
+        // `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` would not put a
+        // number on", sixty-two characters of Rust in the middle of a line meant to be read.
+        // `/seams` answers which counter, in a table where a full path is the useful form
         if !budget.fully_counted() {
             lines.push(format!(
-                "unpriced: {} piece(s) of content `{}` would not put a number on, so every \
-                 figure above is a floor and the real request is larger",
+                "unpriced: {} piece(s) of content the counter would not put a number on, so \
+                 every figure above is a floor and the real request is larger",
                 budget.uncounted,
-                self.kernel.counter().name(),
             ));
         }
         if withheld != 0 {

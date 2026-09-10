@@ -120,6 +120,12 @@ minor bump may break you.
   every `/attach`. The derived line is the one that cannot go out of date, so it is the one that
   stays - and it counts in thousands now, like every other figure on the screen.
 
+- `/budget` no longer puts a Rust type path in the middle of a sentence. `TokenCounter::name`
+  defaults to the type, so the unpriced line read "of content
+  `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` would not put a number on" -
+  sixty-two characters of generics in a line meant to be read. `/seams` answers which counter, in
+  a table where a full path is the useful form.
+
 - **The compactor filled the context it was clearing.** Every pass wrote a summary and nothing
   ever took one back out - a summary is a `Reference`, and this pass only ever considers a tool
   result. Measured live at a 6,000-token limit: twenty-one identical summaries of 67 tokens each,
