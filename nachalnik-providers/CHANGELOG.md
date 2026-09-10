@@ -5,6 +5,17 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- Requires `nachalnik` 0.5.0. Nothing in this crate's own API moved, and nothing here implements
+  the trait that changed - a provider speaks to an endpoint and has no opinion about who may run a
+  tool - but it names runtime types throughout its public interface, so a caller cannot mix this
+  release with a `nachalnik` from the 0.4 series. The runtime's 0.5.0 re-signed
+  `PermissionPolicy::why` to take the `PermissionRequest` it was asked about rather than a
+  `ToolCallId`.
+
 ## [0.1.0] - 2026-09-10
 
 ### added
