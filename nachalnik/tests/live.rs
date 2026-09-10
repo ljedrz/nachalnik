@@ -1532,6 +1532,24 @@ async fn a_document_goes_out_as_a_document() {
         said.to_lowercase().contains("marmalade"),
         "the model should have read the document: {said}"
     );
+
+    // and the size of the gap the abstention was covering, which is the argument for it in one
+    // pair of numbers
+    let reported = kernel
+        .budget()
+        .reported
+        .and_then(|usage| usage.input_tokens)
+        .expect("the provider reports usage");
+    println!(
+        "  estimated {} (with {} unpriced) · really {reported}",
+        before.used(),
+        before.uncounted
+    );
+    assert!(
+        reported as usize > before.used(),
+        "the document cost something the estimate did not have: {reported} vs {}",
+        before.used()
+    );
 }
 
 /// A kernel wired to a model that takes images.
