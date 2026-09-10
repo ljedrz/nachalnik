@@ -147,6 +147,12 @@ impl App {
                 if !rest.is_empty() {
                     let (provider, model) = (self.provider.clone(), rest.to_owned());
                     self.say(Speaker::Note, format!("switching to {model}"));
+                    // and the anchor goes with it: it is one model's tokenizer counting one
+                    // model's request, and carrying it across is the corner reporting what the
+                    // *last* model would have charged for a request going to a different one.
+                    // `App::anchored` has always said it falls back after a change of model;
+                    // this is the line that makes that true
+                    self.anchor = None;
                     // the new model has a context limit of its own, and finding it out is a round
                     // trip; the screen should not stop for it
                     tokio::spawn(async move { provider.set_model(model).await });
@@ -257,6 +263,9 @@ impl App {
                         ),
                     },
                 );
+                // for the reason `/model` drops it, and more so: the same name at a different
+                // address is a different model, and this is the command that says so
+                self.anchor = None;
                 // the new endpoint has a context limit of its own, and a list of what it serves;
                 // both are round trips and the screen should not stop for them
                 tokio::spawn(async move { provider.set_endpoint(url, model).await });

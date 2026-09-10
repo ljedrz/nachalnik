@@ -1353,3 +1353,47 @@ async fn the_question_expands_a_selector_into_the_items_it_matches() {
         "a selector has to be expanded or the question cannot be answered: {screen}"
     );
 }
+
+/// A call waiting on a decision is not reported as something the model is not being shown.
+///
+/// note: the projector leaves a turn out while one of its calls has no result - it has to, since
+/// a call with no answer is a request most providers reject - so `sends_content` says no for the
+/// whole of the time the permission prompt is open. The chat read that as "left out" and drew
+/// `[2] an assistant turn with no content and no answered calls` directly above the call the
+/// person was being asked to authorise, describing it as a fault. It fired on every prompt, which
+/// is the most common interactive path there is.
+#[tokio::test]
+async fn a_call_waiting_on_a_decision_is_not_drawn_as_withheld() {
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "dig",
+        json!({ "where": "here" }),
+    )])]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+    ));
+
+    harness.send("what is here?").await;
+    harness.settle().await;
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("a tool wants to run"),
+        "the prompt should be open, or this is testing nothing: {screen}"
+    );
+    assert!(
+        !screen.contains("no content and no answered calls"),
+        "a call being asked about is mid-flight, not withheld: {screen}"
+    );
+    // the call itself is still on the chat, as a call
+    assert!(screen.contains("dig("), "{screen}");
+
+    // and once it is refused, the turn really is left out - and then the line belongs there
+    harness.answer(KeyCode::Char('n')).await;
+    harness.settle().await;
+    let screen = harness.flat();
+    assert!(
+        screen.contains("dig("),
+        "the call it made is still what happened: {screen}"
+    );
+}

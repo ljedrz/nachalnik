@@ -48,6 +48,19 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     // held by the loop, because the lines borrow their words out of these rather than copying
     // the whole conversation once a frame to show what it was already showing
     let items = app.kernel.items();
+    // the turns holding a call that is waiting on an answer, which the projector leaves out of
+    // the request and which is not the same thing as being left out; see `held` below
+    let waiting: Vec<_> = app
+        .kernel
+        .pending_permissions()
+        .into_iter()
+        .map(|request| request.call)
+        .collect();
+    let deciding: Vec<ContextId> = items
+        .iter()
+        .filter(|item| item.calls().any(|call| waiting.contains(&call.id)))
+        .map(|item| item.id)
+        .collect();
     for said in app.conversation(&items) {
         let item = said.item;
 
@@ -59,7 +72,17 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         // item a *projector* took out of a request it is otherwise in - a second result for a
         // call that already has one. That is not a decision anybody made and there is no marker
         // for it, so it keeps the rule down its left and the line saying why
-        let held = item.filter(|item| !going.sends_content(item) && !item.state.is_elided());
+        // note: and not one whose call is only waiting to be answered. The projector leaves a
+        // turn out while a call of its has no result - it has to, a call with no answer is a
+        // request most providers reject - so `sends_content` says no for the whole of the time
+        // the permission prompt is open. The line that produced read
+        // `[2] an assistant turn with no content and no answered calls`, sitting directly above
+        // the call the person was being asked to authorise and describing it as a fault. It is
+        // not left out; it is mid-flight, and answering the question that is already on screen
+        // is what puts it in
+        let held = item.filter(|item| {
+            !going.sends_content(item) && !item.state.is_elided() && !deciding.contains(&item.id)
+        });
 
         let speaker = said.speaker;
         // an elided item is in the request as a marker, so the marker is what the conversation

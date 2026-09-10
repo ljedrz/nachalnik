@@ -105,6 +105,28 @@ minor bump may break you.
 
 ### fixed
 
+- **The compactor filled the context it was clearing.** Every pass wrote a summary and nothing
+  ever took one back out - a summary is a `Reference`, and this pass only ever considers a tool
+  result. Measured live at a 6,000-token limit: twenty-one identical summaries of 67 tokens each,
+  1,407 tokens, a quarter of the budget, all of it the same sentence. Each pass now supersedes
+  the last one's, so exactly one is in the request, and it counts every elision rather than the
+  handful this pass made. `remove` and not `elide`, because a marker where a summary was is a
+  line of text saying a line of text has been taken away; the superseded ones stay in the
+  context, on the tab, restorable.
+
+- **A call waiting on a decision was drawn as something the model is not being shown.** The
+  projector leaves a turn out while one of its calls has no result, so `sends_content` says no
+  for the whole of the time a permission prompt is open - and the chat read that as "left out"
+  and drew `[2] an assistant turn with no content and no answered calls` directly above the call
+  the person was being asked to authorise. It fired on every prompt, which is the most common
+  interactive path in the program.
+
+- **Switching model kept the old model's anchor.** `App::anchored` has always documented a
+  fallback "after a change of model until the next response" and nothing implemented it: the
+  anchor was set on a response and never cleared. `/model` and `/provider` drop it now. What it
+  cost was one request's worth of confidently wrong, since the previous model's reported figure
+  is that model's tokenizer counting that model's framing.
+
 - **The figure in the corner could fall to `~0` and stay there.** Reported from a real session:
   attach a 12,278-token file, elide it, ask one more question, and a context of twelve thousand
   tokens describes itself as empty for the rest of the session - which is the one direction that

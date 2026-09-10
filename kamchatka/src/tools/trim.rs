@@ -21,7 +21,8 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    Budget, CompactionPlan, Compactor, Content, ContextItem, ContextKind, ContextState, async_trait,
+    Budget, CompactionPlan, Compactor, Content, ContextId, ContextItem, ContextKind, ContextState,
+    async_trait,
 };
 
 /// Elides any tool result carrying a blob, then the oldest of the rest, once the context gets
@@ -151,6 +152,45 @@ impl Compactor for Trim {
             return None;
         }
 
+        // note: the last pass's summary goes out as this one goes in, and this is the difference
+        // between a compactor that manages a context and one that fills it. Every pass leaves a
+        // sentence behind; a summary is a `Reference` and this pass only ever takes a tool
+        // result, so nothing was ever going to take one back out. Measured against a real
+        // endpoint at a 6,000-token limit: **twenty-one identical summaries, 67 tokens each** -
+        // 1,407 tokens, a quarter of the budget, all of it the same sentence, in a context the
+        // pass was called on to make room in.
+        //
+        // note: `remove` and not `elide`, because a marker where a summary was is a line of text
+        // saying a line of text has been taken away. The warning on `CompactionPlan::remove` is
+        // about tool results, whose call goes down with them; a summary answers nothing, so
+        // excluding it takes nothing with it. It stays in the context, on the tab, restorable -
+        // the state is the mechanism, as everywhere else here.
+        //
+        // note: not the pinned ones. The kernel refuses those and reports the refusal, and a
+        // plan that names what it may not have is the same mistake the candidate filter above
+        // exists to avoid.
+        let superseded: Vec<ContextId> = items
+            .iter()
+            .filter(|item| {
+                item.source == "compaction"
+                    && item.state.sends_content()
+                    && item.state != ContextState::Pinned
+            })
+            .map(|item| item.id)
+            .collect();
+
+        // so the standing sentence has to speak for every pass rather than for this one, since
+        // it is the only one left saying anything
+        let (elided_before, blobs_before) = items
+            .iter()
+            .filter(|item| {
+                item.state.is_elided() && matches!(item.kind, ContextKind::ToolResult { .. })
+            })
+            .fold((0, 0), |(all, with_blob), item| {
+                (all + 1, with_blob + carries_blob(&item.content) as usize)
+            });
+        let (elided_now, blobs_now) = (elided_before + elide.len(), blobs_before + blob_count);
+
         // elided rather than removed, so that the call each of these answers keeps its answer.
         // Removing them would have the projector take the calls down as well - it has to, a call
         // with no result is a request most providers reject - and the model would then be reading
@@ -168,22 +208,21 @@ impl Compactor for Trim {
             // the model has no way left to know an image was ever in the conversation. A gap
             // where a picture was is worse than a sentence saying there was one; this is the
             // sentence, and it is the only place in the plan there is room for it
-            summary: Some(ContextItem::summary(match blob_count {
+            summary: Some(ContextItem::summary(match blobs_now {
                 0 => format!(
-                    "{} earlier tool result(s) were elided to make room: each is now a one-line \
-                     marker where its content was. Ask again for anything you still need.",
-                    elide.len()
+                    "{elided_now} earlier tool result(s) have been elided to make room: each is \
+                     now a one-line marker where its content was. Ask again for anything you \
+                     still need."
                 ),
                 blobs => format!(
-                    "{} tool result(s) were elided to make room, {blobs} of them carrying an \
-                     image or other non-text payload: each is now a one-line marker where its \
-                     content was. Ask again for anything you still need.",
-                    elide.len()
+                    "{elided_now} tool result(s) have been elided to make room, {blobs} of them \
+                     carrying an image or other non-text payload: each is now a one-line marker \
+                     where its content was. Ask again for anything you still need."
                 ),
             })),
             reason,
             elide,
-            remove: Vec::new(),
+            remove: superseded,
         })
     }
 }

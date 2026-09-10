@@ -5,6 +5,7 @@
 //! honoured, a marker is not swapped in for something smaller than itself, and a compactor with
 //! nothing left to elide is asked once and then left alone.
 
+use kamchatka::tools::Trim;
 use nachalnik::{ContextItem, ContextState, test::call};
 use serde_json::json;
 
@@ -495,4 +496,78 @@ async fn an_unpriced_item_the_pass_may_not_take_produces_no_plan() {
     }
     assert_eq!(kernel.items().len(), items, "and the context did not grow");
     assert_eq!(kernel.with_context(|c| c.undo_len()), undo);
+}
+
+/// The pass leaves one standing summary, not one per pass.
+///
+/// note: found live. Against a real endpoint at a 6,000-token limit, a tool loop left **twenty-one
+/// identical summaries of 67 tokens each** - 1,407 tokens, a quarter of the budget, all of it the
+/// same sentence, in a context the compactor had been called on to make room in. Every pass wrote
+/// one and nothing ever took one back out: a summary is a `Reference`, and this pass only ever
+/// considers a tool result.
+#[tokio::test]
+async fn compaction_summaries_do_not_pile_up() {
+    use nachalnik::{Budget, Compactor};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    let trim = Trim {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    let budget = || Budget {
+        limit: Some(1_000),
+        ..kernel.budget()
+    };
+
+    // four passes with something new to take each time, which is what a tool loop looks like
+    for n in 0..4 {
+        let call = call(&format!("c{n}"), "peek", json!({}));
+        kernel.push(ContextItem::assistant("looking", vec![call.clone()]));
+        kernel.push(ContextItem::tool_result(
+            call.id.clone(),
+            "peek",
+            "a line of routine diagnostic output. ".repeat(60),
+            false,
+        ));
+
+        let plan = trim
+            .plan(&kernel.items(), &budget())
+            .await
+            .expect("something to take");
+        kernel.apply_compaction(plan);
+    }
+
+    let items = kernel.items();
+    let standing: Vec<_> = items
+        .iter()
+        .filter(|item| item.source == "compaction" && item.state.sends_content())
+        .collect();
+
+    assert_eq!(
+        standing.len(),
+        1,
+        "one summary belongs in the request, not one per pass: {:?}",
+        standing
+            .iter()
+            .map(|item| item.content.to_text().into_owned())
+            .collect::<Vec<_>>()
+    );
+
+    // and it speaks for every pass, since it is the only one left saying anything
+    let said = standing[0].content.to_text();
+    let elided = items.iter().filter(|item| item.state.is_elided()).count();
+    assert!(
+        said.starts_with(&format!("{elided} ")),
+        "the standing sentence should count all {elided} of them: {said}"
+    );
+
+    // superseded rather than destroyed, like everything else here: the earlier ones are still
+    // in the context to look at, and `u` puts one back
+    assert!(
+        items
+            .iter()
+            .any(|item| item.source == "compaction" && !item.state.sends_content()),
+        "the earlier passes' summaries are kept, not dropped"
+    );
 }

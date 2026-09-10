@@ -860,3 +860,51 @@ async fn an_item_already_elided_is_not_subtracted_as_though_it_had_been_sent() {
         "restoring a twelve-thousand-token file should show up: {anchored} -> {restored}"
     );
 }
+
+/// Switching model drops the anchor, because it was the other model's arithmetic.
+///
+/// note: `App::anchored` has always documented a fallback "after a change of model until the next
+/// response", and nothing implemented it - the anchor was set on a response and never cleared by
+/// anything. Found by switching models against a real endpoint and watching the corner not move.
+/// What it costs is one request's worth of confidently wrong: the previous model's reported figure
+/// is that model's tokenizer counting that model's framing, and applied to another it is a number
+/// with no relationship to what is about to be charged.
+#[tokio::test]
+async fn a_change_of_model_drops_the_anchor() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(900),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("notes.md", "a sentence. ".repeat(200)));
+
+    harness.send("go").await;
+    harness.settle().await;
+
+    let going = harness.app.going();
+    let budget = harness.app.kernel.budget();
+    assert!(
+        harness.app.anchored(&going, &budget).is_some(),
+        "a response reported a figure, so there is something to anchor on"
+    );
+
+    harness.send("/model something-else").await;
+    let going = harness.app.going();
+    let budget = harness.app.kernel.budget();
+    assert_eq!(
+        harness.app.anchored(&going, &budget),
+        None,
+        "the anchor belonged to the model that was answered by, and that model is gone"
+    );
+    // and the corner falls back to the plain estimate rather than showing nothing
+    let screen = harness.flat();
+    assert!(
+        screen.contains("~") && screen.contains("tokens"),
+        "the corner should fall back to the plain estimate rather than showing nothing: {screen}"
+    );
+}
