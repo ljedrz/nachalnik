@@ -106,18 +106,33 @@ impl Tool for Secret {
 }
 
 /// The terminal, wired to a real endpoint, or `None` when there is no key to reach it with.
-fn live() -> Option<(
-    App,
-    tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
-)> {
+/// The endpoint these tests talk to, built the way the program builds it.
+///
+/// note: one builder for both harnesses below, and the reason is the line in the middle. They
+/// each rolled their own and each left out the configured limit, so `budget.limit` was `None`
+/// on any endpoint that does not publish one - which makes `fraction_used` `None`, which means
+/// a threshold compactor never fires. The compaction case skipped when
+/// `KAMCHATKA_CONTEXT_LIMIT` was unset and failed when it was set: between them, every state
+/// anybody would try it in.
+async fn endpoint() -> Option<Arc<OpenAiCompatible>> {
     let key = std::env::var("KAMCHATKA_API_KEY")
         .or_else(|_| std::env::var("NACHALNIK_API_KEY"))
         .ok()?;
-    let base = base_url();
-    let model = std::env::var("KAMCHATKA_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
+    let provider = Arc::new(
+        OpenAiCompatible::new(model_in_use(), base_url(), key)
+            .with_context_limit(kamchatka::provider::configured_limit()),
+    );
+    provider.probe().await;
 
+    Some(provider)
+}
+
+async fn live() -> Option<(
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
+)> {
     let kernel = Kernel::new(Config::default());
-    let provider = Arc::new(OpenAiCompatible::new(model, base, key));
+    let provider = endpoint().await?;
     kernel.set_provider(provider.clone());
 
     // the tool is allowed outright: what is under test is the shape of the request, and a
@@ -137,7 +152,7 @@ fn live() -> Option<(
 
 macro_rules! live {
     () => {
-        match live() {
+        match live().await {
             Some(pair) => pair,
             None => {
                 eprintln!("no key in the environment; skipping");
@@ -166,6 +181,13 @@ async fn send(
         "a permission prompt is open, so {line:?} would go nowhere: allow what the tool needs"
     );
 
+    // subscribed before the turn starts and drained after it, which is what `main` does with
+    // the same stream. Without it this suite drove the app through its keys and its outcomes
+    // and never once through `on_event` - so everything the program learns from the runtime
+    // rather than from the kernel's public values was untested against a real provider, the
+    // budget's anchor included
+    let mut events = app.kernel.subscribe();
+
     if app.focus != Focus::Input {
         app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
             .await;
@@ -181,6 +203,9 @@ async fn send(
         .await
         .expect("the turn should have finished")
         .expect("the channel outlives the turn");
+    while let Ok(event) = events.try_recv() {
+        app.on_event(event);
+    }
     app.on_outcome(outcome);
 }
 
@@ -448,6 +473,83 @@ async fn the_status_line_reports_a_real_endpoint_and_a_corrected_budget() {
     );
 }
 
+/// The figure in the corner is built on what the provider charged, and only what has changed
+/// since is estimated.
+///
+/// note: the one claim in this program's accounting that a mock cannot check, because the whole
+/// of it is about a real tokenizer disagreeing with the counter. What is asserted is not that
+/// the anchored figure is *close* - the next request is not sent, so nothing here can know what
+/// it would have cost - but that it is built the stated way: the provider's own number for the
+/// request it answered, plus the estimate of what has appeared since, and nothing of the
+/// context re-estimated a second time.
+#[tokio::test]
+async fn the_corner_is_anchored_on_what_the_provider_charged() {
+    let _serial = SERIAL.lock().await;
+    let (mut app, mut finished) = live!();
+
+    app.kernel.push(nachalnik::ContextItem::file(
+        "notes.txt",
+        "a line of perfectly ordinary notes. ".repeat(200),
+    ));
+    send(&mut app, &mut finished, "Say the single word: ready.").await;
+
+    let budget = app.kernel.budget();
+    let going = app.going();
+    let reported = budget
+        .reported
+        .and_then(|u| u.input_tokens)
+        .expect("the provider reports usage") as usize;
+    let anchored = app
+        .anchored(&going, &budget)
+        .expect("a response has reported what a request cost");
+
+    // what the anchor did not cover is the answer, and on this turn that is all of it
+    let answered = app.kernel.items().last().expect("a turn").clone();
+    let since = going.costs.get(&answered.id).copied().unwrap_or_default();
+    println!(
+        "  reported {reported} · estimated {} · anchored {anchored} (= {reported} + {since})",
+        budget.used()
+    );
+    assert_eq!(
+        anchored,
+        reported + since,
+        "the provider's figure plus what came after it, and no more"
+    );
+
+    // the counter on its own is wrong by an amount worth caring about, which is the reason any
+    // of this exists. It has one observation and a scale fitted to exactly this request, and it
+    // still does not land on it
+    let drift = budget.used().abs_diff(reported);
+    println!("  the estimate alone is out by {drift}");
+
+    // and the corner shows the anchored figure rather than the estimate
+    let status = status_line(&mut app, 140);
+    assert!(
+        status.contains(&thousands(anchored)),
+        "the corner should read the anchored figure: {status}"
+    );
+
+    // a message being typed lands on it before it is sent, and says how much of it is not
+    // context yet
+    type_line_without_sending(
+        &mut app,
+        "and here is a question of some length to be counted",
+    )
+    .await;
+    let drafted = app.drafted();
+    assert!(drafted > 0, "a typed message costs something");
+    let typing = status_line(&mut app, 160);
+    println!("  typing {drafted} tokens: {}", typing.trim());
+    assert!(
+        typing.contains(&format!("{drafted} of it typed")),
+        "the corner should say how much is not sent yet: {typing}"
+    );
+    assert!(
+        typing.contains(&thousands(anchored + drafted)),
+        "and count it into the total: {typing}"
+    );
+}
+
 /// A long message wraps in the prompt and is sent whole - the wrapping is a drawing decision and
 /// must not touch what goes on the wire.
 #[tokio::test]
@@ -479,7 +581,7 @@ async fn a_wrapped_message_is_sent_as_one_line() {
 #[tokio::test]
 async fn this_crates_provider_can_do_a_tool_call() {
     let _serial = SERIAL.lock().await;
-    let Some((app, _finished)) = live() else {
+    let Some((app, _finished)) = live().await else {
         eprintln!("no key; skipping");
         return;
     };
@@ -823,19 +925,15 @@ async fn the_introspection_tools_read_an_ordered_turn() {
 /// all text aimed at a reader nobody here can interview, and the only way to find out that the
 /// reader loops on it is to watch one do so - which is how four of the notes in this section got
 /// written.
-fn agent(
+async fn agent(
     dir: &std::path::Path,
 ) -> Option<(
     App,
     Limits,
     tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
 )> {
-    let key = std::env::var("KAMCHATKA_API_KEY")
-        .or_else(|_| std::env::var("NACHALNIK_API_KEY"))
-        .ok()?;
-
     let kernel = Kernel::new(Config::default());
-    let provider = Arc::new(OpenAiCompatible::new(model_in_use(), base_url(), key));
+    let provider = endpoint().await?;
     kernel.set_provider(provider.clone());
 
     let policy = Arc::new(Careful::new());
@@ -885,7 +983,7 @@ fn agent(
 }
 
 /// The same, with `introspect` and `amend` offered as well.
-fn introspecting(
+async fn introspecting(
     dir: &std::path::Path,
     ask_about_amend: bool,
 ) -> Option<(
@@ -893,7 +991,7 @@ fn introspecting(
     Limits,
     tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
 )> {
-    let (mut app, limits, finished) = agent(dir)?;
+    let (mut app, limits, finished) = agent(dir).await?;
     for capability in ["introspect", "amend"] {
         let verdict = match ask_about_amend && capability == "amend" {
             true => Verdict::Ask,
@@ -911,7 +1009,7 @@ fn introspecting(
 
 macro_rules! agent {
     ($dir:expr) => {
-        match agent($dir) {
+        match agent($dir).await {
             Some(it) => it,
             None => {
                 eprintln!("no key in the environment; skipping");
@@ -923,7 +1021,7 @@ macro_rules! agent {
 
 macro_rules! introspecting {
     ($dir:expr, $ask:expr) => {
-        match introspecting($dir, $ask) {
+        match introspecting($dir, $ask).await {
             Some(it) => it,
             None => {
                 eprintln!("no key in the environment; skipping");
@@ -958,6 +1056,35 @@ async fn type_line(app: &mut App, line: &str) {
     }
     app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .await;
+}
+
+/// Types a line and leaves it in the prompt, which is where a draft has to be to be counted.
+async fn type_line_without_sending(app: &mut App, line: &str) {
+    if app.focus != Focus::Input {
+        app.on_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE))
+            .await;
+    }
+    for c in line.chars() {
+        app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+            .await;
+    }
+}
+
+/// A number as the screen writes it, because that is what these look for on it.
+///
+/// note: `kamchatka::ui::thousands` is the program's own and is `pub(crate)`, which is right -
+/// a formatter is not API. Five lines here beats widening that for a test.
+fn thousands(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (at, c) in digits.chars().enumerate() {
+        if at != 0 && (digits.len() - at).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+
+    out
 }
 
 /// Sends a slash command, which produces no turn to wait for.
