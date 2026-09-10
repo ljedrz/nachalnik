@@ -5,11 +5,11 @@
 //! that costs more than the content did. A compactor that did not check would watch the total
 //! refuse to move and elide everything it had.
 //!
-//! note: with one exception, and it is the whole reason `carries_blob` is here. A
+//! note: with one exception, and it is the whole reason blobs are partitioned out first. A
 //! [`Content::Blob`](nachalnik::Content::Blob) is counted at `0` by every counter in this
-//! workspace - see "postponed, on purpose" in `AGENTS.md` - so that same check reads a picture as
-//! recovering nothing and skips it, which makes the largest thing in the context the one thing
-//! this can never take.
+//! workspace, because what a picture costs is a formula over its dimensions and no byte length
+//! reaches one - so that same check reads a picture as recovering nothing and skips it, which
+//! made the largest thing in the context the one thing this could never take.
 //!
 //! note: so size decides nothing about a blob, in *either* direction - not which one goes first,
 //! and not whether a small one is worth taking at all. The second half is not an oversight: a
@@ -21,8 +21,7 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    Block, Budget, CompactionPlan, Compactor, Content, ContextItem, ContextKind, ContextState,
-    async_trait,
+    Budget, CompactionPlan, Compactor, Content, ContextItem, ContextKind, ContextState, async_trait,
 };
 
 /// Elides any tool result carrying a blob, then the oldest of the rest, once the context gets
@@ -49,10 +48,22 @@ pub struct Trim {
 
 #[async_trait]
 impl Compactor for Trim {
+    /// note: the threshold, *or* anything in the request the counter would not price. The second
+    /// half is what makes taking blobs first worth anything: a context that is mostly pictures
+    /// reports a handful of tokens, so the fraction never reaches the threshold, so `plan` is
+    /// never called and the pass that would have taken them never runs. The one state in which
+    /// this compactor is most needed was the one state it slept through.
+    ///
+    /// note: it is not a second threshold in disguise. `plan` still takes only what it may, and
+    /// still answers `None` when there is nothing worth taking - so a context whose only
+    /// unpriced item is pinned, or already elided, asks once and gets no plan, which is the
+    /// same answer a pinned oversized result has always got.
     fn should_compact(&self, budget: &Budget) -> bool {
-        budget
+        let over = budget
             .fraction_used()
-            .is_some_and(|used| used >= self.threshold)
+            .is_some_and(|used| used >= self.threshold);
+
+        over || !budget.fully_counted()
     }
 
     async fn plan(&self, items: &[Arc<ContextItem>], budget: &Budget) -> Option<CompactionPlan> {
@@ -192,26 +203,13 @@ fn marker_tokens(reason: &str) -> usize {
 
 /// Whether the content is a blob or has one somewhere inside it.
 ///
-/// note: here rather than on [`Content`] because it is implementable on top, which is the rule
-/// that keeps the runtime the size it is. What this client pays for that is the two wildcards
-/// below: `Content` and [`Block`] are both `#[non_exhaustive]`, so a variant added later that
-/// carries bytes reads as `false` here and a picture quietly stops going first. There is no arm
-/// this file can write today that would catch one - the question is whether the *workspace* grew
-/// a variant, which a match cannot ask - so what guards it is
-/// `blobs_are_taken_before_anything_else` failing on the day that variant is what a tool returns.
-///
-/// note: it recurses, because a `Block` holds a `Content` and the sentence-and-a-screenshot turn
-/// `nachalnik-providers` sends is exactly a blob one level down. Reasoning blocks are walked as
-/// well as text ones: nothing produces a thought that is a picture, and a compactor that missed
-/// one because nothing was *supposed* to produce it would be the wrong place to find that out. A
-/// [`Block::Call`] is not walked, because a call is a name and its arguments and both are JSON.
+/// note: [`Content::blobs`] does the walking, and it is worth saying why this does not. The
+/// nesting is the hard part - a sentence-and-a-screenshot turn is a blob one level down inside
+/// `Content::Blocks` - and `Content` and `Block` are both `#[non_exhaustive]`, so a walk written
+/// out here would answer `false` for a variant added later and a picture would quietly stop
+/// going first, with no arm this file could have written to catch it. The runtime grew the seam
+/// because its own counter needs the same walk for the same reason; this client should not be
+/// keeping a second copy that goes stale on a day nobody is looking at this file.
 fn carries_blob(content: &Content) -> bool {
-    match content {
-        Content::Blob(_) => true,
-        Content::Blocks(blocks) => blocks.iter().any(|block| match block {
-            Block::Text(part) | Block::Reasoning(part) => carries_blob(&part.content),
-            _ => false,
-        }),
-        _ => false,
-    }
+    !content.blobs().is_empty()
 }

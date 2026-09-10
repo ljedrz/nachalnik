@@ -434,10 +434,65 @@ async fn a_blob_goes_even_when_the_count_says_there_is_room() {
         budget().used() <= (budget().limit.unwrap() as f64 * trim.target) as usize,
         "the target is already met on the counted tokens, so the ordinary loop stops at once"
     );
+    assert!(
+        budget().fraction_used().unwrap() < trim.threshold,
+        "and the threshold is nowhere near, which is what a context of pictures always reports"
+    );
+    // so the pass is only reached at all because the budget says something in it has no price
+    // on it. Without that, `should_compact` sleeps through the one state it is most needed in
+    assert_eq!(budget().uncounted, 1);
+    assert!(trim.should_compact(&budget()));
 
     let plan = trim
         .plan(&kernel.items(), &budget())
         .await
         .expect("a plan all the same");
     assert_eq!(plan.elide, vec![blob], "the picture, and nothing else");
+
+    // and once it is a marker there is nothing unpriced left, so the pass stops being asked -
+    // an abstention that outlived the content would ask for a plan before every request for the
+    // rest of the session
+    kernel.apply_compaction(plan);
+    assert_eq!(budget().uncounted, 0);
+    assert!(!trim.should_compact(&budget()));
+}
+
+/// A picture the pass may not touch does not turn into a plan. `should_compact` now answers yes
+/// to anything unpriced, and a pinned one stays unpriced forever - so the pass is asked before
+/// every request for the rest of the session, and each of those asks has to come back empty. A
+/// plan is not nothing: it is a summary in the context and an undo spent.
+#[tokio::test]
+async fn an_unpriced_item_the_pass_may_not_take_produces_no_plan() {
+    use kamchatka::tools::Trim;
+    use nachalnik::{Budget, Compactor, Content};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    // a user's own attachment: not a tool result, so not a candidate at all, and this pass has
+    // no business eliding what the person themselves put there
+    kernel.push(ContextItem::user(Content::blob(
+        "image/png",
+        "A".repeat(600_000),
+    )));
+
+    let trim = Trim {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    let budget = || Budget {
+        limit: Some(1_000_000),
+        ..kernel.budget()
+    };
+    assert!(trim.should_compact(&budget()), "something here is unpriced");
+
+    let (items, undo) = (kernel.items().len(), kernel.with_context(|c| c.undo_len()));
+    for _ in 0..5 {
+        assert!(
+            trim.plan(&kernel.items(), &budget()).await.is_none(),
+            "there is nothing here it may take, so there is no plan to make"
+        );
+    }
+    assert_eq!(kernel.items().len(), items, "and the context did not grow");
+    assert_eq!(kernel.with_context(|c| c.undo_len()), undo);
 }

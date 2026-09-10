@@ -7,6 +7,36 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- `Trim` takes a tool result carrying a blob before it takes anything else, and the size
+  arithmetic gets no say about one. It could not take one at all before: every counter in this
+  workspace puts a `Content::Blob` at `0` tokens, and the pass runs on two rules that both read
+  that figure - oldest first, and nothing smaller than the marker replacing it - so the largest
+  thing in the context was ranked last by age and then skipped for recovering nothing.
+
+  Size decides nothing about a blob in *either* direction, including "too small to bother", and
+  that half is deliberate: a small blob is small in base64, which is the one measure that says
+  nothing about what it costs. An eight-pixel PNG is a hundred bytes and 255 tokens at a vendor
+  charging 85 plus 170 a tile.
+
+- `Trim::should_compact` answers yes to anything in the request the counter would not price, as
+  well as to the threshold. Without it, taking blobs first bought nothing: a context that is
+  mostly pictures reports a handful of tokens, so the fraction never reached the threshold, so
+  `plan` was never called and the pass slept through the one state it is most needed in. It is
+  not a second threshold - `plan` still answers `None` when there is nothing it may take, so an
+  unpriced item that is pinned, elided, or not a tool result costs one empty ask per request and
+  never a summary or an undo.
+
+- The pass's summary names the blobs it took. What a model reads in place of an elided item is
+  the pass's reason, which says the context was full and nothing about what used to be there - so
+  a turn that read `[image/png, 12048 bytes]` a moment earlier became a sentence about a token
+  limit, with nothing left to say a picture had ever been in the conversation.
+
+- `/budget` says how many pieces of content the counter would not price, and names the counter
+  saying so. Every figure above that line is a floor when it is not zero, and nothing else
+  distinguished that from a context that is genuinely small: both look like a low percentage.
+
 ### removed
 
 - `kamchatka::provider::OpenAiCompatible`, `kamchatka::gemini::Gemini`, `provider::Endpoint`,

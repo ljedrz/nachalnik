@@ -629,6 +629,18 @@ impl App {
             ),
             None => "the limit: unknown, so there is nothing to measure against".to_owned(),
         });
+        // note: printed straight after the two figures it qualifies, because it decides how to
+        // read them. Every number above is a floor when this is not zero, and the person has no
+        // way to tell that from a context that is genuinely small - both look like a low
+        // percentage. The counter is the one saying so, so the line says which counter
+        if !budget.fully_counted() {
+            lines.push(format!(
+                "unpriced: {} piece(s) of content `{}` would not put a number on, so every \
+                 figure above is a floor and the real request is larger",
+                budget.uncounted,
+                self.kernel.counter().name(),
+            ));
+        }
         if withheld != 0 {
             // and "not sending" is not what an elided item has done either: it is in the request,
             // as a line saying it used to be something else
