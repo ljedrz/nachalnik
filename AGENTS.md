@@ -240,8 +240,14 @@ about tool calls that never happened rather than about the model being wrong. Tw
 want more than a key: `KAMCHATKA_CONTEXT_LIMIT` small enough for the fixture to breach, since the
 compactor fires on a fraction and a generous limit means it never runs and the test says so
 obscurely (`12288` works; `32768` leaves the context at a third of it), and
-`KAMCHATKA_DOCUMENT_MODEL` for the one that attaches a PDF. `nachalnik-eval` reads the
-`NACHALNIK_` ones, since it talks through the same provider:
+`KAMCHATKA_DOCUMENT_MODEL` for the one that attaches a PDF. Four more want
+`KAMCHATKA_GEMINI_API_KEY`: they drive Google's *native* dialect, where a turn is an order of
+blocks, and they will not borrow `KAMCHATKA_API_KEY` unless the base URL is plausibly Google's -
+deliberately, because borrowing it once sent an OpenRouter key to
+`generativelanguage.googleapis.com` and reported the 400 as three broken tests about turn order.
+So a whole-suite run against an OpenAI-compatible endpoint leaves five tests unrun and the
+ordered-blocks path unexercised, which is worth knowing before reading the count as a clean
+sweep. `nachalnik-eval` reads the `NACHALNIK_` ones, since it talks through the same provider:
 
 ```console
 $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
