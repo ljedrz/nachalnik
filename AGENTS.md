@@ -211,6 +211,7 @@ if a claim in there stops being true, the fix is a new recording rather than a n
 
 ```console
 cargo test --workspace --all-features       # everything; the live suite skips itself with no key
+cargo test --workspace --all-features --no-fail-fast   # when measuring what a test is worth
 cargo test -p nachalnik                     # the runtime's offline suite
 cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets -- -D warnings
@@ -280,7 +281,8 @@ for, so there is nothing for it to agree with.
 ## invariants
 
 Break one of these and something in `tests/` should go red. If it does not, the missing test is
-part of the change.
+part of the change - and **measure** that rather than assuming it: see *a test's worth is
+measured* under conventions, because it is cheap to get wrong in both directions.
 
 - **Nothing is destroyed.** Removal is a state change. An excluded, archived or superseded item
   keeps its identifier, is still listed and inspectable, and comes back with a `set_state`, an
@@ -493,6 +495,46 @@ README and the crate docs in longer form:
 - **Seams identify themselves.** `Projector`, `TokenCounter`, `PermissionPolicy` and `Compactor`
   each carry a `name()` defaulting to the implementing type's path, so a client can put the six
   seams on a screen (`/seams` in `kamchatka`). It is for showing a person, not for matching on.
+- **A test's worth is measured, not assumed, and the measurement is one command.** Break the
+  thing the test is about, run `cargo test --workspace --all-features --no-fail-fast`, and read
+  *which* tests failed rather than whether any did. The question worth asking is never "was it
+  caught" - it is "did anything **other** than the new test catch it", because a test that only
+  duplicates coverage costs CI time and buys a false sense of a well-guarded seam.
+
+  This has caught three different mistakes here, none of which reading the test would have found.
+  A property whose generators never reached the case it was named after, so breaking that case
+  failed nothing at all - which happened four times, and is why the generated suites carry a
+  reachability check of their own. Two hand-written cases that duplicated
+  `tests/context/undo.rs`, deleted once measured, because a duplicated case passes and reads
+  exactly like coverage. And a mutation that had *not compiled*, which any script grepping for
+  failing tests reports as a green suite - so build first, and treat "nothing failed" as three
+  possibilities rather than one.
+
+  `scripts/mutate.sh <patch> [pattern]` is the mechanics, and the only script in here: it refuses
+  a dirty tree (a mutation goes into the working tree and comes back out of it), builds before it
+  tests, takes a patch so that `git apply -R` reverts exactly what went in, and splits the
+  failures into the tests being measured and everything else. The mutations themselves are not
+  committed - they are ad hoc per investigation and a patch rots as soon as its context moves.
+
+  `--no-fail-fast` is not optional. `cargo test` stops after the first failing test *binary*, so
+  without it you see one binary's failures and nothing after them - which reads as "only the old
+  tests caught this" and is the most misleading shape the answer can take.
+
+  A test that is measured and found redundant is not automatically wasted: the projection
+  invariants duplicate a lot and still found the ordering bug that a suite of five hundred and
+  ninety-seven passing tests could not see. The point is to know which half of that is true
+  before writing the changelog entry.
+- **Before writing a test, look for it.** `tests/context/undo.rs`'s module note says what counts
+  as one operation; two cases derived from `Kernel::undo`'s doc comment were written anyway, and
+  both already existed there. Reading the source's own prose is a good way to find an invariant
+  and a bad way to find out whether it is already checked.
+- **Property suites keep no seed file.** `failure_persistence` is `None` in every one of them, and
+  `**/proptest-regressions/` is ignored besides. A failure is reproduced by lifting the
+  counterexample it printed into a named case with a note saying what it was, which is what every
+  other test in here looks like; a file of opaque hashes is a regression suite nobody can read.
+  The cost is that the seed is random each run, so a latent bug surfaces on some later run rather
+  than the one that introduced it - accepted, because a suite that only ever tries the same cases
+  is the thing generation was supposed to replace.
 - **Changelogs** are per crate (`nachalnik/`, `nachalnik-mcp/`, `nachalnik-providers/`,
   `nachalnik-eval/`, `kamchatka/`), Keep a Changelog format, and are expected to be current
   before a release rather than reconstructed after one.
@@ -607,3 +649,6 @@ README and the crate docs in longer form:
 `cargo test --workspace --all-features`, and the changelog entry. If the change touches the
 request path, run one of the networked examples or the live suite against a real endpoint - a mock
 cannot tell you that an API accepts what was built.
+
+If the change adds a test, two more: look for the test first, and break what it is about to see
+what fails. Both are a sentence under conventions and both have caught something real.
