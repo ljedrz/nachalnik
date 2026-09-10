@@ -332,6 +332,23 @@ part of the change.
   recording's seconds nowhere to go, and a `tokens: Option<usize>` on `Blob` is a per-model
   figure on a model-agnostic type, wrong the moment the model changes.
 
+- **A media type is a claim, and nothing in here guesses one.** Three places act on it and all
+  three would be wrong if it were inferred. `kamchatka`'s `attach::TYPES` maps ten extensions and
+  refuses anything else that is not valid text, rather than sniffing the bytes - an uncompressed
+  PDF is valid UTF-8 for pages at a time, so "is this text?" answers yes and the model is sent
+  PDF source. The OpenAI dialect then reads the media type to pick between `image_url` and
+  `file`, because in that dialect `image_url` means an image and a PDF sent through it is a 400;
+  Google's `inline_data` needs no such split. And `Blob::meta["name"]` is what fills that `file`
+  part's required filename - a convention between a caller and a provider, *not* a key the kernel
+  knows, which is the whole point of `meta` being free-form. A derived `file.pdf` is the fallback
+  because the part is refused without one.
+
+  `nachalnik-providers` deliberately does not implement this dialect's third payload shape,
+  `input_audio`. Nothing in the workspace produces a recording, so it would be a shape written
+  from a specification and pinned by no test - which is exactly what the `file` part was until
+  `a_document_goes_out_as_a_document` in `nachalnik/tests/live.rs` sent one at a real endpoint.
+  That test is the reason to trust the shape; there is no offline equivalent.
+
 ---
 
 ## postponed, on purpose
@@ -366,20 +383,13 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   about the one that goes out. That is the only place in this workspace where those two differ
   in a way a figure can see.
 
-- **A `TokenCounter` that reads `Blob::meta`.** The 0.4.0 seam has no user. `Blob::meta` is a
-  field nothing reads and "put a real tokenizer behind `Kernel::set_counter`" is advice nobody
-  has demonstrated, so this workspace's answer to "how do I price a picture?" is a paragraph
-  rather than a program. An example under `nachalnik/examples/` applying one vendor's formula to
-  `{"w": .., "h": ..}` would settle it, and `examples/` is where this workspace keeps
-  implementations of its own traits. An example and not a crate, for the reason the counting
-  invariant gives: a formula that ships is a price list somebody has to maintain.
-
-- **`/attach` in `kamchatka`.** Nothing in the program can produce a `Content::Blob`, so the
-  whole multimodal path is unreachable from the client this workspace ships - a tool would have
-  to return one, and none does. A command that reads a file, encodes it, and pushes a blob with
-  its dimensions in `meta` would make the path reachable and give the counter above something to
-  count. **Not a decision about rendering:** `kamchatka` draws no pictures and is not going to,
-  and sending one is a different question from drawing one.
+- **Reading a picture back out of a blob, anywhere.** `kamchatka` can now send one and still
+  draws none, and that split is deliberate rather than unfinished: a terminal cell is not a
+  pixel. What follows from it is worth stating, because it looks like a gap - an attached image
+  is the one item in the context whose *content* nobody at this end can inspect. The context tab
+  names it, `enter` on it names it, and the person's own knowledge of the file is the only
+  account of what was sent. A client that renders is a different client, and the runtime already
+  supports it; see `Blob::meta` and `pricing_a_picture.rs` for the half that is not rendering.
 
 ---
 
