@@ -91,6 +91,10 @@ async fn a_pdf_is_attached_as_bytes_and_nothing_pretends_to_price_it() {
 
     // and the whole budget says so, which is what `Trim` reads to decide it should run at all
     assert!(!harness.app.kernel.budget().fully_counted());
+
+    // not pinned: a file brought into a conversation gets old like anything else in it, and
+    // `-f` is the one that means "this is part of the setup"
+    assert_eq!(item.state, nachalnik::ContextState::Active);
 }
 
 /// The path travels with the payload, because the projector cannot label a reference that is not

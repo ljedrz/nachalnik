@@ -131,15 +131,15 @@ impl App {
             // the ones that are refused, plus the ones nobody has decided about yet, plus what
             // each of them covers - and every row can be changed where it is read
             "policy" | "permissions" => self.show(Tab::Permissions),
+            // note: the same function `-f` goes through. Putting a file in the context at startup
+            // and putting one there at the prompt are the same act at two moments, and a second
+            // implementation of it is a second place for the media types to go stale
+            "attach" => self.attach(rest),
             // note: one word per mechanism, and the mechanism here is a state. `/prune` moved an
             // item to `excluded` and every place the result is read back said `excluded`, so the
             // command is named for that now - and `amend`'s own five moves are named the same way,
             // so the person and the model reach for the same word. The old spellings still work:
             // accepting a word somebody typed costs nothing
-            // note: the same function `-f` goes through. Putting a file in the context at startup
-            // and putting one there at the prompt are the same act at two moments, and a second
-            // implementation of it is a second place for the media types to go stale
-            "attach" => self.attach(rest),
             "exclude" | "prune" => self.by_selector("exclude", rest),
             "pin" | "keep" => self.by_selector("pin", rest),
             "restore" => self.by_selector("restore", rest),
@@ -414,10 +414,17 @@ impl App {
     /// to be gained by queueing it, because a file attached to steer a turn that has already
     /// decided what to read is a file that arrives too late to be what it was for.
     ///
-    /// note: pinned, which is what `-f` does and what the person plainly meant. It also happens to
-    /// be the difference between an attachment surviving and not: the compactor here takes
-    /// anything carrying a blob first and on principle, and a pin is the one thing the kernel
-    /// refuses it. `p` on the context tab takes it back off.
+    /// note: **not** pinned, where `-f` is, and the two differ because the acts differ. A file
+    /// named on the command line is part of how the session was set up - it is meant to still be
+    /// there at the end. One attached at the prompt is a thing brought into a conversation, as
+    /// ordinary as a message, and it should get old and be compacted like one. `p` pins it if
+    /// this one is meant to last.
+    ///
+    /// note: it was pinned, and the argument for it was wrong twice over. A pin here protects
+    /// against nothing: `Trim` only ever considers a `ContextKind::ToolResult`, so an attachment
+    /// is a `Reference` it was never going to take, pinned or not. And where a compactor *could*
+    /// take one, silently making it the one thing in the context that cannot be compacted is the
+    /// decision least likely to be what somebody attaching a 200-page PDF wanted.
     fn attach(&mut self, rest: &str) {
         if rest.is_empty() {
             self.say(
@@ -446,7 +453,7 @@ impl App {
             false => rest.split_once(' ').unwrap_or((rest, "")),
         };
         let item = match crate::attach::attached(path) {
-            Ok(item) => item.because("attached at the prompt").pinned(),
+            Ok(item) => item.because("attached at the prompt"),
             // `{e:#}` for the whole chain: what could not be done, and then the operating
             // system's own account of why
             Err(e) => {

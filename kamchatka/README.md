@@ -539,12 +539,14 @@ listed type nor readable as text is refused rather than guessed at — a media t
 what the bytes are, and inventing one buys you an error message about a shape instead of one about
 a file.
 
-Either way it goes in **pinned**, which is what you meant, and it is what keeps it: the compactor
-here takes anything carrying a payload first and on principle, and a pin is the one thing the
-kernel refuses it. <kbd>p</kbd> on the context tab takes that back.
-
 `-f` at startup is the same thing at a different moment — one function, so `kamchatka -f
 diagram.png` works the same way — and with no question after the path, `/attach` just puts it in.
+
+The one difference between them is the pin, and it follows from what the two acts are. A file
+named on the command line is part of how the session was set up and is meant to still be there at
+the end, so `-f` pins it. One attached at the prompt is something brought into a conversation, as
+ordinary as a message, and it gets old the same way — so `/attach` does not, and <kbd>p</kbd> on
+the context tab is there for the one that is meant to last.
 
 Nothing here has a tokenizer for a picture, and it says so rather than putting a `0` where a
 number should be:

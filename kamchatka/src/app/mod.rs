@@ -256,9 +256,25 @@ impl Entry {
 /// everything the counter is structurally blind to: per-message framing, the tool schemas, and
 /// any picture that has already been sent - a `Content::Blob` the counter refuses to price is
 /// inside this number, so it stops being unaccounted for the moment it has gone out once.
+#[derive(Default)]
 pub struct Anchor {
-    /// The items the request was projected from.
-    pub items: Vec<ContextId>,
+    /// The items whose own content was in that request.
+    ///
+    /// note: whose content, which is not the same as which items were in it. An elided one is in
+    /// a request as a marker, and recording it here would have the arithmetic below take the
+    /// whole of what it *holds* back out of a figure that only ever had a line of text in it.
+    /// That is not a rounding error: it made the corner read `~0` for the rest of a session
+    /// after one 12,278-token attachment was elided and one request went out without it.
+    pub sent: Vec<ContextId>,
+    /// What everything else in it came to - the markers standing where an elided item was.
+    ///
+    /// note: a stored figure, where everything else here is re-estimated on the way past, and
+    /// the exception is deliberate. Re-estimating is what makes an unchanged item cancel exactly
+    /// against itself, but it needs the *text* that was sent, and the text of a marker is gone
+    /// as soon as the item stops being elided. A marker is one line, so what is lost by storing
+    /// it in older money is a fraction of twenty tokens - against the twelve thousand that
+    /// getting it wrong costs.
+    pub markers: usize,
     /// The provider's own figure for the whole of it, tool definitions and framing included.
     pub reported: usize,
 }
@@ -373,7 +389,7 @@ pub struct App {
     ///
     /// note: two events, because the runtime reports what went out and what came back
     /// separately and neither is any use here without the other.
-    pending: Vec<ContextId>,
+    pending: Anchor,
     /// The lines of the chat that are not context items, in the order they were said.
     ///
     /// note: not "the conversation". The conversation is the context, and
@@ -489,7 +505,7 @@ impl App {
             // program overwrites it with what a child process actually reported
             confinement: Confinement::Unsupported,
             anchor: None,
-            pending: Vec::new(),
+            pending: Anchor::default(),
             loose: Vec::new(),
             trace: VecDeque::new(),
             input,
@@ -1083,7 +1099,23 @@ impl App {
                 ..
             } => {
                 self.close();
-                self.pending = items;
+                // note: split here rather than when the response lands, because *here* is the
+                // one moment the two are the same thing: the context has just been projected
+                // into that request and has not moved yet. Asked later, an item elided in the
+                // meantime would look as though it had gone out as a marker
+                let going = self.going();
+                self.pending = items.iter().fold(Anchor::default(), |mut anchor, id| {
+                    match self
+                        .kernel
+                        .item(*id)
+                        .is_some_and(|it| going.sends_content(&it))
+                    {
+                        true => anchor.sent.push(*id),
+                        false => anchor.markers += going.costs.get(id).copied().unwrap_or(0),
+                    }
+
+                    anchor
+                });
 
                 // the kernel altering what the model is told is not a detail for the trace pane.
                 // One compaction pass can orphan half a dozen calls at once, though, and six
@@ -1157,8 +1189,8 @@ impl App {
                 // exact figure in this program's accounting; see `Anchor`
                 if let Some(reported) = usage.and_then(|usage| usage.input_tokens) {
                     self.anchor = Some(Anchor {
-                        items: std::mem::take(&mut self.pending),
                         reported: reported as usize,
+                        ..std::mem::take(&mut self.pending)
                     });
                 }
                 // the turn is recorded, so whatever streamed is now the item's to say. This is
@@ -1490,7 +1522,15 @@ impl App {
     /// The context is the part that moves.
     pub fn anchored(&self, going: &Going, budget: &Budget) -> Option<usize> {
         let anchor = self.anchor.as_ref()?;
-        let covered: usize = anchor.items.iter().map(|id| self.valued(going, *id)).sum();
+        // the markers are what they were - see `Anchor::markers` - and everything whose content
+        // was really in that request is re-estimated now, which is what makes an item that has
+        // not moved cancel against itself exactly
+        let covered: usize = anchor.markers
+            + anchor
+                .sent
+                .iter()
+                .map(|id| self.valued(going, *id))
+                .sum::<usize>();
 
         Some(
             (anchor.reported as i64 + budget.context_tokens as i64 - covered as i64).max(0)
@@ -1501,14 +1541,17 @@ impl App {
     /// What one item would cost the request if it were sending its content, as the counter sees
     /// it now.
     ///
+    /// Only ever asked about an item whose content really was in the anchored request - see
+    /// [`Anchor::sent`] - which is what makes the middle arm below true rather than a guess.
+    ///
     /// note: three answers rather than one, and the middle one is the reason. An item that is
     /// still sending its content is worth what the projection says it costs - the message it
-    /// becomes, which is the figure the budget is built from. One that is *not* - excluded,
-    /// archived, or elided to a marker - is worth what it holds, because that is what it
+    /// becomes, which is the figure the budget is built from. One that is *not* any more -
+    /// excluded, archived, or elided since - is worth what it holds, because that is what it
     /// contributed to the provider's figure and that is what has to come back out of it; the
-    /// marker in its place is already counted on the other side. One that no longer exists at
-    /// all, because an undo took it, is worth nothing anybody can recover, and the next request
-    /// puts the accounting straight.
+    /// marker standing in its place now is already counted on the other side. One that no longer
+    /// exists at all, because an undo took it, is worth nothing anybody can recover, and the next
+    /// request puts the accounting straight.
     fn valued(&self, going: &Going, id: ContextId) -> usize {
         match self.kernel.item(id) {
             Some(item) if going.sends_content(&item) => {

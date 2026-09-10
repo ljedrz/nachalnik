@@ -30,9 +30,10 @@ minor bump may break you.
   its label on the way out, and the model would be handed a document with nothing saying which
   file it was in a conversation where the person had just typed the name.
 
-  Attached pinned, which is what `-f` does and what a person plainly means. It is also the
-  difference between an attachment surviving and not: `Trim` takes anything carrying a blob first
-  and on principle, and a pin is the one thing the kernel refuses it.
+  Not pinned, where `-f` is, and the two differ because the acts differ: a file named on the
+  command line is part of how the session was set up, and one attached at the prompt is something
+  brought into a conversation, as ordinary as a message and getting old the same way. `p` pins the
+  one that is meant to last.
 
   Measured against Gemini through OpenRouter, in the live test that pins it: a 535-byte one-page
   PDF, a request the counter puts at 19 tokens with one piece unpriced, and 540 charged. Dividing
@@ -84,6 +85,39 @@ minor bump may break you.
 - `/budget` says which of the two figures the corner is showing, and what the anchored one is
   built from. The estimate and the provider's number were already side by side there; what was
   missing is that they are answers to the same question by different methods.
+
+
+- A context item holding `nachalnik::Content::Blob` - bytes that are not text - draws, as the row
+  naming what it is and what it costs: `[image/png, 12.05kB]`. This program renders no
+  pictures and is not going to: a terminal cell is not a pixel, and a half-hearted attempt would
+  be worse than none. What it owes a picture is what it owes anything else it cannot show, which
+  is to say that it was there - and that is what `to_text` already answers, so every view got it
+  without a line of drawing code. `tests/edges.rs` pins that it really does, at every size.
+
+  `/request`, `/payload` and `/raw` name it too, rather than printing it. Those three are the only
+  places this program shows raw JSON, and a blob in any of them is several megabytes of
+  `AAAAAAAA` where somebody was looking for the shape of a request - so the payload is replaced
+  with `[ base64 blob, image/png, 12048 bytes ]` and the rest of the body is left alone. By shape
+  rather than by length, in all three of the shapes this workspace produces - the kernel's own
+  `Content::Blob`, a `data:` URI, and Google's `inline_data` - because a long tool *result* is
+  something somebody opened `/request` to read and must not be cut. The session log keeps the
+  whole of it; these are views.
+
+### fixed
+
+- **The figure in the corner could fall to `~0` and stay there.** Reported from a real session:
+  attach a 12,278-token file, elide it, ask one more question, and a context of twelve thousand
+  tokens describes itself as empty for the rest of the session - which is the one direction that
+  number must never be wrong in.
+
+  An elided item is still *in* a request, as a marker. `Anchor` recorded every item the request
+  was built from and then took the whole of what each one **holds** back out of the provider's
+  figure, so an item that had contributed one line of text had twelve thousand tokens subtracted
+  for it and the total ran off the bottom of the clamp. It now records which items' *content* was
+  in that request and what the markers came to, separately: the content is re-estimated on the
+  way past, so an item that has not moved still cancels exactly against itself, and the marker
+  figure is stored, because the text of a marker is gone the moment the item stops being elided
+  and a line of text in older money is worth a fraction of a token.
 
 ### changed
 
@@ -208,6 +242,16 @@ minor bump may break you.
   saying so. Every figure above that line is a floor when it is not zero, and nothing else
   distinguished that from a context that is genuinely small: both look like a low percentage.
 
+
+- `provider::connect` and the new `provider::gemini::connect` are what is left here, and they are
+  the part that was always this program's: `KAMCHATKA_API_KEY`, `KAMCHATKA_BASE_URL`,
+  `KAMCHATKA_CONTEXT_LIMIT` and `KAMCHATKA_NO_ATTRIBUTION` are read here and passed in. The
+  providers read no environment at all now, which is not a library's to read. Nothing changes for
+  anyone running the program: the same four variables do the same four things.
+
+- Two fewer direct dependencies. `reqwest` and `rustls` were here for the providers and are
+  theirs now.
+
 ### removed
 
 - `kamchatka::provider::OpenAiCompatible`, `kamchatka::gemini::Gemini`, `provider::Endpoint`,
@@ -222,35 +266,6 @@ minor bump may break you.
   thing an adopter of the runtime had to write was a thousand lines of streamed HTTP, and the two
   copies of it in this workspace could not be merged: a published crate may not depend on one that
   is not.
-
-### added
-
-- A context item holding `nachalnik::Content::Blob` - bytes that are not text - draws, as the row
-  naming what it is and what it costs: `[image/png, 12.05kB]`. This program renders no
-  pictures and is not going to: a terminal cell is not a pixel, and a half-hearted attempt would
-  be worse than none. What it owes a picture is what it owes anything else it cannot show, which
-  is to say that it was there - and that is what `to_text` already answers, so every view got it
-  without a line of drawing code. `tests/edges.rs` pins that it really does, at every size.
-
-  `/request`, `/payload` and `/raw` name it too, rather than printing it. Those three are the only
-  places this program shows raw JSON, and a blob in any of them is several megabytes of
-  `AAAAAAAA` where somebody was looking for the shape of a request - so the payload is replaced
-  with `[ base64 blob, image/png, 12048 bytes ]` and the rest of the body is left alone. By shape
-  rather than by length, in all three of the shapes this workspace produces - the kernel's own
-  `Content::Blob`, a `data:` URI, and Google's `inline_data` - because a long tool *result* is
-  something somebody opened `/request` to read and must not be cut. The session log keeps the
-  whole of it; these are views.
-
-### changed
-
-- `provider::connect` and the new `provider::gemini::connect` are what is left here, and they are
-  the part that was always this program's: `KAMCHATKA_API_KEY`, `KAMCHATKA_BASE_URL`,
-  `KAMCHATKA_CONTEXT_LIMIT` and `KAMCHATKA_NO_ATTRIBUTION` are read here and passed in. The
-  providers read no environment at all now, which is not a library's to read. Nothing changes for
-  anyone running the program: the same four variables do the same four things.
-
-- Two fewer direct dependencies. `reqwest` and `rustls` were here for the providers and are
-  theirs now.
 
 ## [0.6.1] - 2026-09-09
 

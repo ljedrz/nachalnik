@@ -766,9 +766,97 @@ async fn a_failed_request_does_not_leave_an_anchor_behind() {
         .expect("the second one reported");
     assert_eq!(anchor.reported, 500);
     assert_eq!(
-        anchor.items,
+        anchor.sent,
         vec![asked, more],
         "the 500 covers what the *second* request carried, not the failed one's"
     );
     let _: ContextId = asked;
+}
+
+/// An item elided *before* a request does not come back out of what that request cost.
+///
+/// note: reported from a real session, and the figure was not slightly wrong. Attach a
+/// 12,278-token file, elide it, ask one more question, and the corner reads `~0 tokens` for the
+/// rest of the session - a context of twelve thousand tokens describing itself as empty, which
+/// is the one direction this number must never be wrong in.
+///
+/// note: the cause is that an elided item is still *in* the request, as a marker. The anchor
+/// recorded every item the request was built from and then took the whole of what each one
+/// **holds** back out of the provider's figure - so an item that contributed a line of text had
+/// twelve thousand tokens subtracted for it, and the subtraction ran away with the total.
+#[tokio::test]
+async fn an_item_already_elided_is_not_subtracted_as_though_it_had_been_sent() {
+    let mut harness = Harness::new([
+        ModelResponse {
+            usage: Some(Usage {
+                input_tokens: Some(12_800),
+                ..Default::default()
+            }),
+            ..ModelResponse::text("first")
+        },
+        ModelResponse {
+            usage: Some(Usage {
+                input_tokens: Some(1_485),
+                ..Default::default()
+            }),
+            ..ModelResponse::text("second")
+        },
+    ]);
+    let big = harness
+        .app
+        .kernel
+        .push(ContextItem::file("AGENTS.md", "a file. ".repeat(6_000)).pinned());
+
+    // one request with the file in it, then the file is elided, then another without it
+    harness.send("is this a clear AGENTS file?").await;
+    harness.settle().await;
+    harness.app.kernel.set_state(
+        [big],
+        ContextState::Elided,
+        Some("removed from view by the user".into()),
+    );
+    harness.send("and now?").await;
+    harness.settle().await;
+
+    // the anchor is the *second* request: the file was a marker in it, so it is not among the
+    // items whose content that 1,485 covered
+    let anchor = harness.app.anchor.as_ref().expect("a reported request");
+    assert_eq!(anchor.reported, 1_485);
+    assert!(
+        !anchor.sent.contains(&big),
+        "an elided item's content was not in that request: {:?}",
+        anchor.sent
+    );
+    assert!(
+        anchor.markers > 0,
+        "it was in it as a marker, which costs something"
+    );
+
+    let going = harness.app.going();
+    let budget = harness.app.kernel.budget();
+    let anchored = harness.app.anchored(&going, &budget).expect("anchored");
+    assert!(
+        anchored >= 1_485,
+        "the context has not shrunk since that request, so the figure cannot be below it: \
+         {anchored}"
+    );
+    // and the screen says a number rather than nothing
+    let screen = harness.flat();
+    assert!(
+        !screen.contains("~0 tokens"),
+        "a context of twelve thousand tokens is not empty: {screen}"
+    );
+
+    // putting it back puts its cost back, which is the other half of the same arithmetic
+    harness
+        .app
+        .kernel
+        .set_state([big], ContextState::Active, None);
+    let going = harness.app.going();
+    let budget = harness.app.kernel.budget();
+    let restored = harness.app.anchored(&going, &budget).expect("anchored");
+    assert!(
+        restored > anchored + 10_000,
+        "restoring a twelve-thousand-token file should show up: {anchored} -> {restored}"
+    );
 }
