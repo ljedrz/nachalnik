@@ -1,6 +1,6 @@
 [package]
 name = "nachalnik-eval"
-version = "0.1.2"
+version = "0.2.0"
 description = "A benchmark for model introspection: elicit a claim about its own state, intervene, and measure whether the claim was true."
 documentation = "https://docs.rs/nachalnik-eval"
 readme = "README.md"

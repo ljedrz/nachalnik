@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- Requires `nachalnik` 0.4.0. Nothing in this crate's own API moved, but it names runtime types
+  in its public interface - so a caller cannot mix this release with a `nachalnik` from the
+  0.3 series, and cargo reads the middle number as the major. The runtime's 0.4.0 added
+  `Budget::uncounted`, `ContextItem::uncounted` and `Blob::meta`, each a public field on a
+  struct that is not `#[non_exhaustive]`, and dropped `Eq` from `Blob`.
+
 ## [0.1.2] - 2026-09-09
 
 ### added
