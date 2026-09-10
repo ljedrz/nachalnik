@@ -104,6 +104,13 @@ pub struct Blob {
     ///
     /// note: whoever produced the base64 had the payload decoded a moment earlier, which is why
     /// this costs a caller nothing to fill in and is the only place that knows.
+    ///
+    /// note: a counter is the reason this exists and not the only thing entitled to read it. A
+    /// [`Provider`] may too, and one does: the conventional dialect's attachment part will not go
+    /// out without a filename, so `nachalnik-providers` reads `name` here and derives one from the
+    /// media type when nobody set it. That is a convention between a caller and a provider rather
+    /// than anything this crate enforces - there is no key here the kernel knows the meaning of,
+    /// which is the entire point of the field.
     #[serde(default = "null", skip_serializing_if = "is_null")]
     pub meta: Arc<Value>,
 }

@@ -65,6 +65,12 @@ minor bump may break you.
   counter could read. A fact left on `ContextItem::meta` reaches `count_item` and never reaches
   the figure a `Compactor` acts on.
 
+  A counter is the reason it exists and not the only thing entitled to read it. A `Provider` may
+  too, and one already does: the conventional dialect's attachment part will not go out without a
+  filename, so `nachalnik-providers` reads `name` here. That is a convention between a caller and
+  a provider rather than anything this crate enforces - there is no key here whose meaning the
+  kernel knows, which is the entire point of the field.
+
 - `Content::blobs`, which collects every `Blob` in a piece of content **including those nested in
   a `Content::Blocks` turn**. This is the seam a counter needs and could not build for itself, and
   the nesting is the whole reason; see the fix below. `Blob::wire_len` is the payload and the
