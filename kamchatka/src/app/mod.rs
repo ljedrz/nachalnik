@@ -467,6 +467,22 @@ impl App {
         }
     }
 
+    /// Says a message of the person's own, puts it in the context, and ties the two together.
+    ///
+    /// note: one method rather than the three lines it replaces, and the third line is the point.
+    /// A transcript line that cannot name its item is a line the chat cannot hide when the item
+    /// is excluded and cannot update when something rewrites it - it reads as live for the rest
+    /// of the session whatever happens to the context, which is the one thing this program
+    /// exists not to do. `--message` was doing exactly that from the first frame: said, pushed,
+    /// and never attributed.
+    pub fn ask(&mut self, text: &str) -> ContextId {
+        self.say(Speaker::User, text);
+        let id = self.kernel.push(ContextItem::user(text));
+        self.attribute(Speaker::User, id);
+
+        id
+    }
+
     /// Says an error, unless the last thing said was the same error in a smaller envelope.
     ///
     /// note: one provider failure is reported twice - once as the event the kernel emitted and
@@ -589,23 +605,36 @@ impl App {
         Some((entry.was?, self.kernel.item(entry.item?)?))
     }
 
-    /// What a line says: the words that were said, or - where an edit moved it onto the item that
-    /// replaced them - what that item says instead.
+    /// What a line says: whatever the item behind it says now, or the words that were said if
+    /// nothing here knows which item that is.
     ///
-    /// note: only the line that showed what the item *said*. An edit carries the kind over whole,
-    /// so the turn's calls and its thinking are unchanged and the lines showing them still show
-    /// the truth; what they need is the new identifier, and `App::resay` gives them that.
-    pub fn said<'a>(&'a self, entry: &'a Entry) -> Cow<'a, str> {
-        match self.edit_of(entry) {
-            Some((_, now))
-                if matches!(
-                    entry.speaker,
-                    Speaker::User | Speaker::Model | Speaker::Result
-                ) =>
-            {
-                Cow::Owned(unpadded(&now.content.to_text()).to_owned())
-            }
-            _ => Cow::Borrowed(&entry.text),
+    /// note: the item's words rather than the entry's, for every attributed line and not only an
+    /// edited one. The entry's text is what arrived; the item is what the model is being sent,
+    /// and those stop agreeing the moment anything rewrites content in place - which `amend
+    /// revise` does, and which a terminal edit deliberately does not. So the chat showed the
+    /// pre-amend words while the context tab, the `enter` overlay and the request itself all
+    /// showed the new ones, and nothing on the screen said which of the two a model had read.
+    /// Reading through the item is also what makes an `undo` reach the screen without anything
+    /// here keeping a second account of it.
+    ///
+    /// note: only the lines that showed what the item *said*. A turn is several entries and they
+    /// are not all its content: its thinking and the calls it asked for are their own text, and
+    /// an edit carries the kind over whole, so those lines still show the truth. What they need
+    /// is the identifier, which [`App::resay`] gives them.
+    ///
+    /// note: borrowed where the content is already text, which is the shape nearly everything in
+    /// a transcript has. This runs for every entry on every frame, and a `Cow::Owned` here would
+    /// copy the whole conversation once a frame to show what it was already showing.
+    pub fn said<'a>(&self, entry: &'a Entry, item: Option<&'a ContextItem>) -> Cow<'a, str> {
+        let says = matches!(
+            entry.speaker,
+            Speaker::User | Speaker::Model | Speaker::Result
+        );
+
+        match item.filter(|_| says).map(|item| item.content.to_text()) {
+            Some(Cow::Borrowed(text)) => Cow::Borrowed(unpadded(text)),
+            Some(Cow::Owned(text)) => Cow::Owned(unpadded(&text).to_owned()),
+            None => Cow::Borrowed(&entry.text),
         }
     }
 

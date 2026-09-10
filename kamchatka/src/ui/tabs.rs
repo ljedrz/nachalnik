@@ -49,14 +49,41 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     // happened once
     let mut stubbed: Option<ContextId> = None;
     for entry in &app.transcript {
+        // fetched once and shared by all three questions below - is it in the request, what does
+        // it say now, is its content going - because they are three readings of one item and a
+        // second lookup is a second chance for them to disagree
+        //
+        // note: `None` means nothing here knows which item this line became, not that there is
+        // no item. Those lines are left exactly as they are rather than guessed at: a slash
+        // command's output and an error are nobody's context item and never will be
+        let item = entry.item.and_then(|id| app.kernel.item(id));
+
+        // taken out of the conversation is taken off the conversation. The chat is what the
+        // model is being sent; the context tab is the record of everything that ever happened,
+        // where an excluded turn is still listed, still holding what it held, and one keystroke
+        // from coming back. Two views saying the same thing left nowhere to read what is
+        // actually going out
+        //
+        // note: the *state* rather than `Going`, and the difference is a turn whose call has not
+        // been answered yet. The projector repairs one of those out of the request - a call with
+        // no result is a shape most providers reject - so `Going` says it is not going, and
+        // hiding on that blanked the call out of the conversation at the exact moment a
+        // permission question was asking about it. That is a mechanical, momentary absence and
+        // not a decision anybody made; it stays, marked, and comes back on its own.
+        //
+        // note: `is_projected` and not `sends_content`, so an *elided* item stays too. It is in
+        // the request as a marker, so the conversation keeps its place and marks it below, which
+        // is what the model gets as well
+        if let Some(item) = &item
+            && !item.state.is_projected()
+        {
+            continue;
+        }
+
         // what the model is no longer shown is drawn so that the eye can tell without reading it.
         // `going.sends_content` rather than the state, for the reason it exists: an item the
-        // projector repaired away is `Active` and is not in the request. An entry nothing
-        // attributed is left exactly as it was - `None` here means nothing knows, not "not going"
-        let held = entry
-            .item
-            .and_then(|id| app.kernel.item(id))
-            .filter(|item| !going.sends_content(item));
+        // projector repaired away is `Active` and is not in the request
+        let held = item.clone().filter(|item| !going.sends_content(item));
 
         // an edited line shows what the item says *now*, in the place the old one had, and says
         // so - with the identifier it used to carry, which is what `←` pages back through
@@ -82,9 +109,9 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
             Some(_) => {}
             None => stubbed = None,
         }
-        // what the line says now, which for an edited one is the item's words rather than the ones
-        // that were said at the time; see `App::said`
-        let said = app.said(entry);
+        // what the line says now, which is the item's words rather than the ones that arrived -
+        // they differ whenever anything rewrote the content in place; see `App::said`
+        let said = app.said(entry, item.as_deref());
 
         if let Some(item) = held {
             if marked != Some(item.id) {

@@ -281,8 +281,7 @@ async fn terminal() -> Result<()> {
         false => app.say(Speaker::Note, ui::GREETING),
     }
     if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
-        app.say(Speaker::User, &message);
-        app.kernel.push(ContextItem::user(message));
+        app.ask(&message);
         app.start_turn();
     }
 

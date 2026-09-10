@@ -642,68 +642,120 @@ async fn the_two_ends_of_the_conversation_are_one_key_each() {
     );
 }
 
-/// What the model is no longer shown says so where somebody reads it, and is still readable.
+/// What the model is no longer shown comes off the conversation, and is still on the record.
 ///
-/// note: marked rather than hidden, which is the whole decision. The chat is the record of what
-/// happened and the context is what will be sent; a chat that quietly dropped the superseded turn
-/// would let you see what the model sees and lose what you did to it, which is the one thing this
-/// program exists not to do.
+/// note: dropped rather than marked, which is the whole decision, and it is the opposite of the
+/// one this file used to make. The argument for marking was that the chat is the record of what
+/// happened - but there are two views here and the context tab is already that record: an
+/// excluded turn is listed on it, holding everything it held, one keystroke from coming back.
+/// What nothing showed was the conversation the model is actually in, and a transcript that
+/// keeps every turn anybody ever took it out of is not that conversation. So the chat answers
+/// "what is being sent" and the context tab answers "what happened", and neither has to answer
+/// both badly.
 #[tokio::test]
-async fn the_chat_marks_what_the_model_is_no_longer_shown() {
+async fn the_chat_drops_what_the_model_is_no_longer_shown() {
     let mut harness = Harness::new([ModelResponse::text("crabs probably do not wonder about it")]);
     harness.send("do crabs think that fish can fly?").await;
     harness.settle().await;
 
     let before = harness.screen();
     assert!(before.contains("crabs probably do not wonder"), "{before}");
-    // the composed mark rather than a bare `~`, which the status line spends on `~19 tokens`
-    assert!(!before.contains("~ ["), "nothing is withheld yet: {before}");
 
-    // the answer the model gave, replaced by one it did not - which is `e` on the context tab
+    // taken out of the request by hand, which is `space` on the context tab or `/exclude`
     let answered = harness.app.kernel.items()[1].id;
     harness
         .app
         .kernel
-        .supersede(
-            answered,
-            ContextItem::assistant("of course they do", vec![]),
-        )
-        .expect("the item is there to be replaced");
+        .set_state([answered], ContextState::Excluded, Some("by hand".into()));
 
     let after = harness.screen();
-    // it is still there to be read ...
     assert!(
-        after.contains("crabs probably do not wonder"),
-        "the superseded turn should still be readable: {after}"
+        !after.contains("crabs probably do not wonder"),
+        "an excluded turn is in no request, so it is in no conversation: {after}"
     );
-    // ... and says, where it is read, that the model is not being shown it any more, in the
-    // projector's own words rather than a second account assembled for this screen
-    assert!(after.contains("~ ["), "it should be marked: {after}");
     assert!(
-        after.contains("replaced by item"),
-        "it should say why: {after}"
+        after.contains("do crabs think"),
+        "and the question that is still going is still here: {after}"
     );
 
-    // and putting it back takes the mark off, because the mark is a reading of the request
+    // nothing was destroyed to do it: the turn is still a row on the context tab, still holding
+    // what it holds - the row spends its last column on why it is out rather than on the words,
+    // and `enter` on it is still the way to read them
+    harness.tab(Tab::Context);
+    let listed = harness.screen();
+    assert!(
+        listed.contains("assistant_message"),
+        "the record keeps the row: {listed}"
+    );
+    assert!(listed.contains("excluded: by hand"), "and why: {listed}");
+    assert_eq!(
+        harness.app.kernel.item(answered).unwrap().content.to_text(),
+        "crabs probably do not wonder about it",
+        "and the item still holds every byte of it, which is what `enter` on the row reads"
+    );
+
+    // and putting it back puts it back, because the chat is a reading of the context and not a
+    // second account of it
     harness
         .app
         .kernel
         .set_state([answered], ContextState::Active, None);
+    harness.tab(Tab::Chat);
     let restored = harness.screen();
     assert!(
-        !restored.contains("~ ["),
-        "the mark should be gone: {restored}"
+        restored.contains("crabs probably do not wonder"),
+        "restored to the request is restored to the conversation: {restored}"
     );
 }
 
-/// Both halves of a turn are marked, not just the one the walk reached first.
+/// An elided turn stays, because an elided turn is still in the request.
 ///
-/// note: the regression a live run found and this file did not. A turn puts what it thought and
-/// what it said on the screen as two entries; attributing the second stamped it, and attributing
-/// the first then stopped at the stamp - so a superseded answer was marked and the thinking above
-/// it went on reading as though the model were still being shown it.
+/// note: the line between the two, and the reason the check is the item's state rather than
+/// whether the projector emitted content for it. Excluded is gone from the request entirely and
+/// goes; elided is in the request as a one-line marker, so the conversation keeps its place and
+/// marks it - which is what the model is reading there too.
 #[tokio::test]
-async fn a_turn_marks_what_it_thought_as_well_as_what_it_said() {
+async fn an_elided_turn_keeps_its_place_and_says_it_is_a_marker() {
+    let mut harness = Harness::new([ModelResponse::text("a long and detailed answer")]);
+    harness.send("go on").await;
+    harness.settle().await;
+
+    let answered = harness.app.kernel.items()[1].id;
+    harness.app.kernel.set_state(
+        [answered],
+        ContextState::Elided,
+        Some("compacted to make room".into()),
+    );
+
+    let screen = harness.screen();
+    assert!(
+        screen.contains("a long and detailed answer"),
+        "it is still in the request, so it is still readable: {screen}"
+    );
+    assert!(
+        screen.contains("compacted to make room"),
+        "and says why the model is only getting a marker: {screen}"
+    );
+    let marked = screen
+        .lines()
+        .any(|row| row.contains("a long and detailed answer") && row.contains('╎'));
+    assert!(
+        marked,
+        "drawn so the eye can tell without reading: {screen}"
+    );
+}
+
+/// Both halves of a turn go, not just the one the walk reached first.
+///
+/// note: the regression a live run found and this file did not, and it outlived the change from
+/// marking to dropping because its cause is the attribution rather than the drawing. A turn puts
+/// what it thought and what it said on the screen as two entries; attributing the second stamped
+/// it, and attributing the first then stopped at the stamp - so one of the two carried the
+/// turn's identifier and the other carried none. Under marking that left the thinking reading as
+/// live above a marked answer; under dropping it leaves the thinking on the screen with the
+/// answer gone, which is worse. Same bug, same test, louder failure.
+#[tokio::test]
+async fn a_turn_drops_what_it_thought_as_well_as_what_it_said() {
     let mut harness = Harness::new([]);
     harness.app.kernel.push(ContextItem::user("go on then"));
 
@@ -731,19 +783,18 @@ async fn a_turn_marks_what_it_thought_as_well_as_what_it_said() {
         .set_state([answered], ContextState::Excluded, Some("by hand".into()));
 
     let screen = harness.screen();
-    // one header between them, because they are one item ...
-    assert_eq!(
-        screen.matches("excluded: by hand").count(),
-        1,
-        "the turn should say why once, not once per line: {screen}"
-    );
-    // ... and both halves carry the rule, the thinking included
+    // both halves go, the thinking included: half a turn on the screen is an account of a
+    // conversation nobody had
     for line in ["weighing it up", "here is the answer"] {
-        let marked = screen
-            .lines()
-            .any(|row| row.contains(line) && row.contains('╎'));
-        assert!(marked, "{line:?} should be marked as withheld: {screen}");
+        assert!(
+            !screen.contains(line),
+            "{line:?} is not in the request, so it should not be on the chat: {screen}"
+        );
     }
+    // and the reason it went is on the tab that keeps the record, not on this one
+    harness.tab(Tab::Context);
+    let listed = harness.screen();
+    assert!(listed.contains("by hand"), "{listed}");
 }
 
 /// An edit reads where the turn was, and says what it used to be.
@@ -878,5 +929,81 @@ async fn a_turn_that_arrives_padded_is_not_read_padded() {
         2,
         "expected one blank row between them, got {}",
         gap - 1
+    );
+}
+
+/// A turn rewritten in place reads as it is now, not as it arrived.
+///
+/// note: the gap between the two ways content changes, and the one nothing covered. A terminal
+/// edit *supersedes*: a new item, a new identifier, and the transcript line is re-pointed at it.
+/// `amend revise` **replaces**, in place, so the identifier never moves - and the chat went on
+/// showing the words that had streamed in while the context tab, the `enter` overlay and the
+/// request itself all showed the new ones. Nothing on the screen said which of the two the model
+/// had actually read.
+///
+/// note: so the entry's own text is what arrived and the item is what is being sent, and the
+/// chat reads the item. Which also means an `undo` reaches the screen without anything here
+/// keeping a second account of what to put back.
+#[tokio::test]
+async fn a_turn_rewritten_in_place_reads_as_it_is_now() {
+    let mut harness = Harness::new([ModelResponse::text("the words that streamed in")]);
+    harness.send("say something").await;
+    harness.settle().await;
+    assert!(harness.screen().contains("the words that streamed in"));
+
+    // what `amend revise` does: same item, different content, no new identifier
+    let answered = harness.app.kernel.items()[1].id;
+    harness
+        .app
+        .kernel
+        .replace(answered, "the words somebody put in its mouth")
+        .expect("the item is there");
+
+    let after = harness.screen();
+    assert!(
+        after.contains("the words somebody put in its mouth"),
+        "the chat should read the item, not the fragments: {after}"
+    );
+    assert!(
+        !after.contains("the words that streamed in"),
+        "and not both at once, which would be two accounts of one turn: {after}"
+    );
+
+    // and it is not a copy written into the transcript: undo takes it back and the screen agrees
+    harness.app.kernel.undo();
+    let undone = harness.screen();
+    assert!(
+        undone.contains("the words that streamed in"),
+        "undo puts the words back in the context, so it puts them back here: {undone}"
+    );
+    assert!(!undone.contains("put in its mouth"), "{undone}");
+}
+
+/// A message sent with `--message` is tied to its item like any other.
+///
+/// note: it was not, and the way that showed is the reason `App::ask` exists. Startup said the
+/// line and pushed the item as two statements and never attributed them to each other, so the
+/// first message of every `-m` session was a transcript line no context change could reach: it
+/// could not be dropped when excluded and could not be updated when rewritten, for the whole
+/// session. Three lines in a row, one of them forgotten in one of the three places.
+#[tokio::test]
+async fn a_message_from_the_command_line_is_tied_to_its_item() {
+    let mut harness = Harness::new([]);
+
+    let asked = harness.app.ask("what main does with -m");
+    assert_eq!(
+        harness.app.kernel.item(asked).unwrap().content.to_text(),
+        "what main does with -m"
+    );
+    assert!(harness.screen().contains("what main does with -m"));
+
+    harness
+        .app
+        .kernel
+        .set_state([asked], ContextState::Excluded, Some("by hand".into()));
+    let screen = harness.screen();
+    assert!(
+        !screen.contains("what main does with -m"),
+        "an attributed line goes when its item does: {screen}"
     );
 }

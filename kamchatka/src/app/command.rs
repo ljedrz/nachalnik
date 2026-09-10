@@ -4,7 +4,7 @@
 //! know about. `/context`, `/seams` and `/budget` read public values off a [`nachalnik::Kernel`]
 //! and print them; nothing in this file is a capability the runtime had to grow.
 
-use nachalnik::{ContextItem, ContextState, selectors::Selector};
+use nachalnik::{ContextState, selectors::Selector};
 
 use crate::{tools::Limits, ui::thousands};
 
@@ -21,7 +21,6 @@ impl App {
             return;
         }
 
-        self.say(Speaker::User, line);
         // note: a message sent while a turn is running waits for the end of it rather than going
         // into the context there and then. Both of the obvious alternatives are worse. Pushed
         // immediately, it lands *before* the answer the model is still writing - so the next
@@ -32,7 +31,12 @@ impl App {
         // message typed to steer a turn does not reach it - it is answered after, not during
         // ... and the same holds while a question is open: the turn is paused rather than over,
         // and the call it is waiting on still has a result to come
+        //
+        // note: checked before the line is said rather than after, so that the one path which
+        // says a message *without* an item to tie it to is the one path that has no item yet.
+        // Everywhere else goes through `App::ask`, which cannot forget the third step
         if self.busy || !self.kernel.pending_permissions().is_empty() {
+            self.say(Speaker::User, line);
             self.typed_ahead = Some(line.to_owned());
             // said out loud, because until the turn ends this is the one thing on the screen that
             // the context does not have: a session saved now would not contain it
@@ -44,8 +48,7 @@ impl App {
         }
 
         // this is all "sending a message" is: one context item, and then the loop
-        let id = self.kernel.push(ContextItem::user(line));
-        self.attribute(Speaker::User, id);
+        self.ask(line);
         self.start_turn();
     }
 
@@ -62,9 +65,7 @@ impl App {
             // send one - which runs the whole turn, and there is nothing left to step through
             "step" => {
                 if !rest.is_empty() {
-                    self.say(Speaker::User, rest);
-                    let id = self.kernel.push(ContextItem::user(rest));
-                    self.attribute(Speaker::User, id);
+                    self.ask(rest);
                 }
                 self.start_step();
             }

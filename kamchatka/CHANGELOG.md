@@ -9,6 +9,41 @@ minor bump may break you.
 
 ### changed
 
+- **The chat shows the conversation the model is in.** An item that is not projected - excluded,
+  archived, superseded - comes off the transcript entirely rather than being greyed out and
+  marked, and an item whose content is rewritten in place reads as it is now rather than as it
+  arrived.
+
+  This reverses a decision, and the reason is that there are two views and only one of them was
+  answering. The argument for marking was that the chat is the record of what happened - but the
+  context tab is already that record: an excluded turn is still a row on it, still holding every
+  byte, one keystroke from coming back. What nothing showed was what is actually being sent, and
+  a transcript that keeps every turn anybody ever took out is not that. So the chat answers
+  "what is going" and the context tab answers "what happened", and neither has to answer both
+  badly.
+
+  An **elided** item stays, marked, because an elided item is in the request - as a one-line
+  marker, which is what the model reads there too. So is a turn whose tool call has not been
+  answered yet: the projector repairs one of those out of the request, and hiding on that basis
+  blanked the call out of the conversation at the exact moment a permission question was asking
+  about it. The check is the item's state, not the projection.
+
+- `App::said` reads the item behind a line for every attributed entry, not only an edited one.
+  The entry's text is what arrived and the item is what is being sent, and those stop agreeing
+  the moment anything rewrites content in place - which `amend revise` does through
+  `Kernel::replace`, and which a terminal edit deliberately does not. The chat showed the
+  pre-amend words while the context tab, the `enter` overlay and the request itself all showed
+  the new ones, with nothing on screen to say which of the two a model had read.
+
+  It takes the item as an argument now rather than looking it up: `draw_chat` had already
+  fetched it, and three lookups per line per frame were three chances for the drawing to
+  disagree with itself.
+
+- `App::ask` says a message of the person's own, pushes it and attributes it, as one act.
+  `--message` did the first two and not the third, so the opening message of every `-m` session
+  was a transcript line no context change could reach - it could not be dropped when excluded
+  and could not be updated when rewritten, for the whole session.
+
 - `Trim` takes a tool result carrying a blob before it takes anything else, and the size
   arithmetic gets no say about one. It could not take one at all before: every counter in this
   workspace puts a `Content::Blob` at `0` tokens, and the pass runs on two rules that both read
