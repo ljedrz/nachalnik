@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### added
 
+- The context pane marks a row the counter would not price: its figure reads `0+` rather than
+  `0`. The two things that zero meant - "measured, and free" and "there is a picture here and
+  nothing priced it" - were the same cell, which invites the wrong conclusion from a pane
+  somebody opens to decide what to get rid of. A picture is the most expensive thing in the
+  request and was reading as the cheapest row in the list.
+
 - **The figure in the corner is anchored on what the provider charged.** `App::anchored` takes
   the reported cost of the last request, adds what the context estimates now, and subtracts
   what the estimator says the items that figure covered would cost now. An item that has not

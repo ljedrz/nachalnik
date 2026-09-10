@@ -309,6 +309,8 @@ pub(super) fn draw_context(
                 ),
             };
 
+            let cost = going.costs.get(&item.id).copied().unwrap_or(0);
+
             ListItem::new(Line::from(vec![
                 Span::styled(
                     format!(
@@ -328,11 +330,15 @@ pub(super) fn draw_context(
                 // what it costs in the next request, and what it is keeping out of it. For most
                 // items the first is everything and the second is blank; the two that differ are
                 // exactly the ones somebody opens this pane to find
+                // note: a `+` where the counter would not price part of what this item holds,
+                // because otherwise the two things `0` can mean are the same cell. A picture
+                // reads as the cheapest row in the pane and is the most expensive thing in the
+                // request, which is the wrong conclusion to invite from a column of numbers
                 Span::styled(
-                    format!(
-                        "{:>8}",
-                        fitted(going.costs.get(&item.id).copied().unwrap_or(0), 8)
-                    ),
+                    match item.uncounted {
+                        0 => format!("{:>8}", fitted(cost, 8)),
+                        _ => format!("{:>7}+", fitted(cost, 7)),
+                    },
                     style,
                 ),
                 Span::styled(

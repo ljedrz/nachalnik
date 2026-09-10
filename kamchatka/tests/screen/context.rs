@@ -1044,3 +1044,48 @@ async fn a_padded_tool_result_does_not_spend_its_preview_on_nothing() {
         "the blank rows should not have cost it the last two lines: {screen}"
     );
 }
+
+/// A row the counter would not price says so, rather than reading as the cheapest thing here.
+///
+/// note: the two meanings of `0` in that column. One is "measured, and free"; the other is
+/// "there is a picture here and nothing priced it", and until the `+` they were the same cell -
+/// which invites exactly the wrong conclusion from a pane somebody opens to decide what to get
+/// rid of. The picture is the most expensive thing in the request and was reading as the
+/// cheapest row in the list.
+#[tokio::test]
+async fn a_row_nobody_priced_does_not_read_as_a_free_one() {
+    use nachalnik::Content;
+
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("what is on the screen?"));
+    let shot = harness.app.kernel.push(ContextItem::user(Content::blob(
+        "image/png",
+        "A".repeat(4_000),
+    )));
+
+    harness.tab(Tab::Context);
+    let screen = harness.screen();
+
+    assert_eq!(
+        harness.app.kernel.item(shot).unwrap().tokens,
+        0,
+        "the counter declines it, which is the trap this is about"
+    );
+    let row = screen
+        .lines()
+        .find(|line| line.contains("image/png"))
+        .unwrap_or_else(|| panic!("the picture is listed: {screen}"));
+    assert!(
+        row.contains("0+"),
+        "its figure should say it is a floor: {row:?}"
+    );
+    // and a row that really is fully counted carries no `+`
+    let prose = screen
+        .lines()
+        .find(|line| line.contains("what is on the screen"))
+        .expect("the question is listed");
+    assert!(!prose.contains('+'), "{prose:?}");
+}

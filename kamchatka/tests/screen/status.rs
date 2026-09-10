@@ -690,3 +690,85 @@ async fn a_message_being_typed_is_counted_before_it_is_sent() {
     harness.press(KeyCode::Char('b')).await;
     assert_eq!(harness.app.drafted(), 0, "a command is not a message");
 }
+
+/// A request that failed does not leave its item set to be paired with somebody else's figure.
+///
+/// note: the anchor is assembled from two events - `ModelRequested` names what went out,
+/// `ModelFinished` says what it cost - and between them is every way a request can go wrong. If
+/// a failure left the first half standing, the next successful response would be paired with
+/// the *failed* request's item set, and the budget would subtract items that figure never
+/// covered. It cannot happen, because `ModelRequested` fires before every attempt and
+/// overwrites what is pending; this is the test that says so, since "cannot happen" is a claim
+/// about ordering and nothing else here checks it.
+#[tokio::test]
+async fn a_failed_request_does_not_leave_an_anchor_behind() {
+    use nachalnik::{ContextId, Delta, Event, StopReason};
+
+    let mut harness = Harness::new([]);
+    let asked = harness
+        .app
+        .kernel
+        .push(ContextItem::user("the first question"));
+
+    // a request that went out naming one item, and then failed
+    harness.app.on_event(Event::ModelRequested {
+        model: ModelInfo::new("scripted", "scripted"),
+        messages: 1,
+        tools: 0,
+        tokens: 9,
+        items: vec![asked],
+        skipped: Vec::new(),
+        repairs: Vec::new(),
+    });
+    harness.app.on_event(Event::ModelFailed {
+        error: "502 from somewhere".to_owned(),
+    });
+    assert!(
+        harness.app.anchor.is_none(),
+        "a request that failed reported no cost, so there is nothing to anchor on"
+    );
+
+    // a second request, naming a different item, which succeeds
+    let more = harness
+        .app
+        .kernel
+        .push(ContextItem::user("the second question"));
+    harness.app.on_event(Event::ModelRequested {
+        model: ModelInfo::new("scripted", "scripted"),
+        messages: 2,
+        tools: 0,
+        tokens: 18,
+        items: vec![asked, more],
+        skipped: Vec::new(),
+        repairs: Vec::new(),
+    });
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Text("an answer".to_owned()),
+    });
+    let answered = harness
+        .app
+        .kernel
+        .push(ContextItem::assistant("an answer", vec![]));
+    harness.app.on_event(Event::ModelFinished {
+        item: answered,
+        tool_calls: vec![],
+        stop: StopReason::EndTurn,
+        usage: Some(Usage {
+            input_tokens: Some(500),
+            ..Default::default()
+        }),
+    });
+
+    let anchor = harness
+        .app
+        .anchor
+        .as_ref()
+        .expect("the second one reported");
+    assert_eq!(anchor.reported, 500);
+    assert_eq!(
+        anchor.items,
+        vec![asked, more],
+        "the 500 covers what the *second* request carried, not the failed one's"
+    );
+    let _: ContextId = asked;
+}
