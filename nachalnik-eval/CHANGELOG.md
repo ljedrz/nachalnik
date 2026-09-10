@@ -5,6 +5,19 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- Requires `nachalnik` 0.5.0, whose 0.5.0 re-signed `PermissionPolicy::why` to take the
+  `PermissionRequest` it was asked about rather than a `ToolCallId`. `Granted` - the policy the
+  `handles` experiment installs, which refuses everything but its own two tools - implements that
+  method and follows the signature; what it answers is the same sentence it always answered, since
+  its reason never depended on which call it was.
+
+  No experiment changes and no template changes, so every digest is untouched and the instrument
+  is still `v5`: a run taken last week is comparable with one taken today.
+
 ## [0.2.0] - 2026-09-10
 
 ### changed
