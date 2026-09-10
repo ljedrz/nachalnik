@@ -1152,7 +1152,11 @@ fn the_chat_is_the_conversation_the_model_is_in() {
     ];
 
     proptest!(
-        ProptestConfig { cases: 48, ..ProptestConfig::default() },
+        ProptestConfig {
+            cases: 48,
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        },
         |(moves in prop::collection::vec(move_, 1..14))| {
             let outcome: Result<(), TestCaseError> = runtime.block_on(async {
                 let mut harness = Harness::new([

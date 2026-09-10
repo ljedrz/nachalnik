@@ -323,6 +323,13 @@ mod tests {
     }
 
     proptest! {
+        // note: no seed file, the way the runtime's properties are configured. A failure is
+        // reproduced by lifting the counterexample it prints into a named case
+        #![proptest_config(ProptestConfig {
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        })]
+
         #[test]
         fn a_rewritten_name_is_one_a_provider_will_take(name in a_name()) {
             let id = sanitize(&name);

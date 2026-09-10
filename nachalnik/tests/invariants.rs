@@ -14,6 +14,16 @@
 //! file; the assertion that found it is `a_context_and_its_projection_agree_after_every_operation`
 //! below, and it is stated at full strength rather than narrowed to what held at the time.
 //!
+//! note: what is *not* here: a case asserting that an operation changing nothing takes no
+//! checkpoint, and one asserting that a bulk operation is a single undo. Both were written here
+//! and both were deleted, because `tests/context/undo.rs` already had them - as
+//! `an_operation_that_does_nothing_does_not_spend_an_undo` and
+//! `undo_reverts_a_whole_operation`, and each covers more than the version written here did.
+//! They were derived from the doc comments on `Kernel::set_state` and `Kernel::undo` without
+//! anybody checking whether the tests next door already made the same claims, which is a cheaper
+//! mistake to make than it looks: a duplicated case passes, measures nothing, and reads like
+//! coverage. The properties below are what this file is for, and what it should stay.
+//!
 //! note: the family worth the most is the one where two things must agree about one request. Every
 //! bug worth fixing in the recent releases was a member of it: the chat drawn from one account and
 //! the request built from another, a figure in a corner that counted an item the projection had
@@ -419,7 +429,14 @@ fn ops() -> impl Strategy<Value = Vec<Op>> {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 96, ..ProptestConfig::default() })]
+    #![proptest_config(ProptestConfig {
+        cases: 96,
+        // note: no seed file. The gitignore keeps one out of the tree and this keeps one off the
+        // disk, which is the half that belongs in the code: a failure here is reproduced by
+        // lifting the counterexample it prints into a named case, not by replaying a hash
+        failure_persistence: None,
+        ..ProptestConfig::default()
+    })]
 
     /// note: checked after *every* operation rather than at the end of the sequence, so that a
     /// counterexample is the shortest prefix that breaks something rather than a sequence with
@@ -490,74 +507,6 @@ proptest! {
     }
 }
 
-/// An operation that changes nothing takes no checkpoint, so the next undo walks back the last
-/// operation that *did* something rather than doing nothing at all.
-///
-/// note: a case rather than a property, because the state to set is the state the item is already
-/// in and a generator asked for that would mostly be asked for something else. The cost of
-/// getting it wrong is the whole undo stack becoming unreliable in exactly the situation where
-/// somebody reaches for it - a client whose keybinding sets a state unconditionally would spend
-/// every checkpoint on nothing.
-#[test]
-fn a_change_that_changes_nothing_is_not_undoable() {
-    let kernel = Kernel::new(Config::default());
-    let first = kernel.push(ContextItem::user("a question"));
-    kernel.set_state([first], ContextState::Excluded, None);
-
-    let after_real_work = kernel.items();
-
-    // the same state again, and again: nothing changes, so nothing is checkpointed
-    for _ in 0..3 {
-        let outcome = kernel.set_state([first], ContextState::Excluded, None);
-        assert!(outcome.changed.is_empty(), "{outcome:?}");
-        assert_eq!(outcome.unchanged, vec![first]);
-    }
-    assert_eq!(kernel.items(), after_real_work, "a no-op moved the context");
-
-    // one undo, and it reaches past all three of them to the exclusion
-    assert!(kernel.undo());
-    assert_eq!(
-        kernel.item(first).unwrap().state,
-        ContextState::Active,
-        "the undo spent itself on a no-op instead of the exclusion"
-    );
-}
-
-/// One operation is one undo, whatever it touched.
-///
-/// note: the property above cannot see this. Undoing everything and redoing everything restores
-/// the context whether a checkpoint was spent per operation or per item, so the round trip holds
-/// either way and the granularity - the thing `Kernel::undo` actually documents - goes unchecked.
-/// This is the assertion that fails when a bulk operation quietly becomes several.
-#[test]
-fn one_operation_is_one_undo_however_many_items_it_touched() {
-    let kernel = Kernel::new(Config::default());
-
-    // several items in, in one operation, and one undo takes all of them away
-    let pushed = kernel.push_all((0..5).map(|n| ContextItem::user(format!("question {n}"))));
-    assert_eq!(pushed.len(), 5);
-    assert!(kernel.undo());
-    assert!(
-        kernel.items().is_empty(),
-        "one push_all took {} undo(s)",
-        kernel.items().len()
-    );
-    assert!(kernel.redo());
-    assert_eq!(kernel.items().len(), 5);
-
-    // and the same for a state change over several of them at once
-    let outcome = kernel.set_state(pushed.iter().copied(), ContextState::Excluded, None);
-    assert_eq!(outcome.changed.len(), 5);
-    assert!(kernel.undo());
-    for id in &pushed {
-        assert_eq!(
-            kernel.item(*id).unwrap().state,
-            ContextState::Active,
-            "item {id} needed an undo of its own"
-        );
-    }
-}
-
 /// What a run of the generators above actually reaches.
 ///
 /// note: this exists because three of the properties in this workspace were measurably weaker
@@ -599,6 +548,7 @@ fn the_generators_reach_what_the_properties_are_about() {
 
     let mut runner = TestRunner::new(RunnerConfig {
         cases: 512,
+        failure_persistence: None,
         ..RunnerConfig::default()
     });
     let strategy = ops();

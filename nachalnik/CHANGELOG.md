@@ -23,12 +23,19 @@ minor bump may break you.
 - `the_generators_reach_what_the_properties_are_about`, which counts the states the properties
   above have a branch for and fails if a run produces none of one.
 
-  This exists because three properties in this workspace were measurably weaker than they read,
+  This exists because four properties in this workspace were measurably weaker than they read,
   and each was found the slow way - by breaking the implementation on purpose and noticing that
   nothing failed. A name strategy that topped out below the length limit it was written to test.
   An alphabet with nothing unpriced in it, so the invariant about abstaining could not fail. An
   alphabet in which a result never preceded its call, so the branch that holds one back was never
   entered. Every one of them read like a thorough test.
+
+  Two hand-written cases that were here are not any more: one asserting that an operation changing
+  nothing takes no checkpoint, one that a bulk operation is a single undo. `tests/context/undo.rs`
+  already had both, written first and covering more, and the audit above is what found that out.
+  They were derived from the doc comments on `Kernel::set_state` and `Kernel::undo` without anyone
+  checking the tests next door - a cheap mistake to make, because a duplicated case passes,
+  measures nothing, and reads like coverage.
 
   It is not a coverage measurement and does not try to be one. It is a short list of specific
   configurations - a sequence longer than the undo depth, an unpriced payload, a result before its
@@ -37,7 +44,7 @@ minor bump may break you.
   each asserted to occur. Checked by taking generators away: removing the payload, the early
   result, the two-call turn or the long sequences fails it by name.
 
-  It found a fourth hole while being written, which is the argument for it. `Call` made turns with
+  It found one of those four while being written, which is the argument for it. `Call` made turns with
   exactly one call, so two branches had never run: the arithmetic deciding whether a turn's
   results were already beside it, and the half of the adjacency rule saying nothing else may
   arrive until *every* call in a turn has an answer. `Calls` is in the alphabet now, and so is
@@ -59,18 +66,24 @@ minor bump may break you.
   bound. The checks run after *every* operation rather than at the end, so a counterexample is the
   shortest prefix that breaks something.
 
-  Measured, mutation by mutation: a `set_state` that spends a checkpoint on a no-op, a projector
-  that stops repairing orphaned calls, one that holds an item back without saying so, a
-  `push_all` that takes a checkpoint per item, and a budget that reports every request as fully
-  counted. Each is caught, and each by the assertion it was aimed at.
+  What it is worth was measured rather than argued, and the measurement is the interesting part.
+  Ten mutations of the runtime, each run against the *whole* workspace suite, asking not whether
+  something caught it but whether anything **other** than these properties did. Most of it is
+  ground already held: a projector that stops repairing orphaned calls fails thirteen existing
+  tests, a budget that reports every request as fully counted fails six, a `push_all` that
+  checkpoints per item fails two. What nothing else holds is narrow and real - a `resume` that
+  forgets which identifiers are spent, and the projection bug below, which lived in a suite of
+  five hundred and ninety-seven passing tests and is caught by these and by nothing at all.
 
-  Two of those needed the suite strengthened first, and that is the part worth reading. The
-  granularity `undo` documents is invisible to a round trip - undoing everything and redoing
-  everything restores the context whether a checkpoint was spent per operation or per item - so it
-  took an assertion of its own. And the invariant about `uncounted` could not fail at all until
-  the alphabet could push a `Content::Blob`: with nothing unpriced in any generated context, a
-  kernel changed to report every request as fully counted broke nothing. An invariant that cannot
-  fire reads exactly like one that holds.
+  So the honest account of this file is that it earns its place on the projection ordering and on
+  resume, and duplicates existing coverage everywhere else. That is a reasonable trade for a
+  property suite - the duplication costs a second of CI - but it is not the same claim as "five
+  mutations caught", which is what a run against the properties alone would have reported.
+
+  The invariant about `uncounted` could not fail at all until the alphabet could push a
+  `Content::Blob`: with nothing unpriced in any generated context, a kernel changed to report
+  every request as fully counted broke nothing here. An invariant that cannot fire reads exactly
+  like one that holds.
 
   It found the projection bug below on its fourth generated sequence, and the assertion that found
   it is stated at full strength rather than narrowed to what held while the bug did: a tool result
