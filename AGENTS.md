@@ -346,13 +346,25 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   the blocker is gone: a budget now says how many pieces it could not price, and `kamchatka`'s
   compactor takes an unpriced tool result first.
 
-  What is left is the bridge itself and one decision inside it: an MCP image block carries a
-  mime type and base64 and *no dimensions*, so there is nothing to put in `Blob::meta` and the
-  budget will report the picture as unpriced for as long as it is in the context. Carry it
-  anyway. That is exactly the state the abstention was built to make visible rather than silent,
-  and it has been measured against a real endpoint - a 48x48 PNG estimated at 27 tokens with one
-  piece unpriced, charged at 99. Naming rather than carrying stays the right answer for a
-  payload the model cannot use at all.
+  **The blocker was never only the counter, and this entry said it was.** Neither dialect
+  accepts a picture in a *tool result* - `tool` content is a string in one and a
+  `functionResponse` in the other - so a `Content::Blob` in one is flattened to
+  `[image/png, N bytes]` on the way out, deliberately, and `blobs.rs` pins that. Carrying an MCP
+  picture would therefore put megabytes of base64 in the context, send the model the same
+  sentence it already gets, and - measured - make `Budget::uncounted` report one unpriced piece
+  for a request whose actual content is twenty-four characters of text. That is the budget
+  naming a hole the request does not have, which is the thing the elided-item rule exists to
+  prevent.
+
+  So what would unblock it is not a counter. It is a decision about **where a tool's picture
+  reaches the model**, since the one place it cannot is where it currently sits: a picture has
+  to be hoisted into a message that accepts one, which is a `Projector`'s business or a
+  provider's, and neither has been asked. Nothing about the bridge changes until that does.
+
+  Worth knowing for whoever picks this up: the kernel's projection carries the blob and the
+  *provider* flattens it, so the kernel's budget is right about the request it built and wrong
+  about the one that goes out. That is the only place in this workspace where those two differ
+  in a way a figure can see.
 
 - **A `TokenCounter` that reads `Blob::meta`.** The 0.4.0 seam has no user. `Blob::meta` is a
   field nothing reads and "put a real tokenizer behind `Kernel::set_counter`" is advice nobody
