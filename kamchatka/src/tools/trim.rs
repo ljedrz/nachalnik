@@ -55,9 +55,15 @@ impl Compactor for Trim {
     /// this compactor is most needed was the one state it slept through.
     ///
     /// note: it is not a second threshold in disguise. `plan` still takes only what it may, and
-    /// still answers `None` when there is nothing worth taking - so a context whose only
-    /// unpriced item is pinned, or already elided, asks once and gets no plan, which is the
-    /// same answer a pinned oversized result has always got.
+    /// still answers `None` when there is nothing worth taking, which is the same answer a
+    /// pinned oversized result has always got.
+    ///
+    /// note: and where the unpriced thing is one nothing may take - a pinned attachment, most of
+    /// them - this stays `true` for the rest of the session, so `plan` is asked before every
+    /// request and declines every time. That is the intended answer rather than a wasted pass:
+    /// the alternative is a rule for when to stop asking, and any such rule is a way to be
+    /// holding an unpriced item and not know it. What it costs is one walk of the items per
+    /// request, which is what the projection already does twice.
     fn should_compact(&self, budget: &Budget) -> bool {
         let over = budget
             .fraction_used()
