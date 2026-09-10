@@ -729,6 +729,13 @@ async fn eliding_a_tool_result_keeps_the_call_and_the_api_accepts_it() {
 /// note: what the model *says* is deliberately not asserted. The default model is small and free
 /// and this test is about a request being accepted rather than about comprehension; the eliding
 /// test above is where the code word earns its keep.
+///
+/// note: the position of the result is asserted and not just the acceptance of the request, and
+/// that is load-bearing rather than thorough. Run against the pre-fix projector, this same test
+/// sent `[User, Assistant, Assistant, Tool, User]` to Inception Labs' `mercury-2.5` and the turn
+/// *finished*: the endpoint took the malformed order, answered it, and reported no error at all.
+/// So "a real API accepted it" is not evidence that the order is right, on that endpoint or on
+/// any other that is equally forgiving. Only `answered_at == asked_at + 1` is.
 #[tokio::test]
 async fn a_result_recorded_after_a_later_turn_still_reaches_the_api() {
     let _serial = serialize().await;
@@ -764,8 +771,7 @@ async fn a_result_recorded_after_a_later_turn_still_reaches_the_api() {
 
     let state = turn!(kernel);
 
-    // and this is the half it cannot: a real API took a request whose messages were reordered,
-    // rather than refusing the whole of it and naming the identifier that went unanswered
+    // and this is the half it cannot: a real API took a request whose messages were reordered
     assert!(matches!(state, State::Finished { .. }), "{state:?}");
 
     let last = provider.requests().pop().unwrap();

@@ -232,8 +232,15 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
 It reads `OPENROUTER_API_KEY` or `NACHALNIK_API_KEY` (never a stray `OPENAI_API_KEY`), with
 `NACHALNIK_BASE_URL`, `NACHALNIK_TEST_MODEL` and `NACHALNIK_CONTEXT_LIMIT` to point it elsewhere -
 Google AI Studio's OpenAI-compatible endpoint and a local ollama both work. It skips rather than
-fails without a key, or when a free tier has spent its allowance. `kamchatka` reads
-`KAMCHATKA_API_KEY` / `KAMCHATKA_MODEL` / `KAMCHATKA_BASE_URL` instead. `nachalnik-eval` reads the
+fails without a key, or when a free tier has spent its allowance. `kamchatka`'s live suite reads
+`KAMCHATKA_API_KEY` / `KAMCHATKA_TEST_MODEL` / `KAMCHATKA_BASE_URL` instead - **`_TEST_MODEL`**,
+where the binary's own flag is `KAMCHATKA_MODEL`, and getting that wrong is quiet: the suite falls
+back to its default model, the endpoint refuses a name it does not serve, and eleven tests fail
+about tool calls that never happened rather than about the model being wrong. Two of its tests
+want more than a key: `KAMCHATKA_CONTEXT_LIMIT` small enough for the fixture to breach, since the
+compactor fires on a fraction and a generous limit means it never runs and the test says so
+obscurely (`12288` works; `32768` leaves the context at a third of it), and
+`KAMCHATKA_DOCUMENT_MODEL` for the one that attaches a PDF. `nachalnik-eval` reads the
 `NACHALNIK_` ones, since it talks through the same provider:
 
 ```console

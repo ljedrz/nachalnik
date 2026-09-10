@@ -22,6 +22,14 @@ minor bump may break you.
   property suite and the screen tests all talk to scripted providers, and none of them can refuse
   a request the way an endpoint does.
 
+  Run, and it found something the fix's own reasoning had wrong. Against the pre-fix projector
+  this test sends `[User, Assistant, Assistant, Tool, User]`, and Inception Labs' `mercury-2.5`
+  **accepts it**: the turn finishes, the answer comes back, no error at all. So the claim that an
+  OpenAI-compatible API refuses a misplaced result is true of the specification and of a strict
+  endpoint, and is not true of every endpoint - which means "a real API accepted it" was never
+  going to be evidence that the order was right. The test asserts the *position* of the result for
+  that reason, and the comment in `projection.rs` that said otherwise now says what was measured.
+
 - A property that a snapshot resumes into the session it was taken from, over the same generated
   sequences. `session.rs` has had this as three cases; what the property adds is the shapes nobody
   writes by hand - a context in the middle of an undo stack, an item superseded and then excluded,

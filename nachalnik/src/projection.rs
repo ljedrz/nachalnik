@@ -484,10 +484,19 @@ impl Projector for LinearProjector {
             built.push((item.id, message));
         }
 
-        // A result has to reach the wire immediately after the call it answers: an
-        // OpenAI-compatible API refuses the whole request otherwise, naming the `tool_call_id`
-        // that went unanswered. So each turn's results are gathered to it, and everything else
-        // keeps the order the context had it in.
+        // A result has to reach the wire immediately after the call it answers: it is what the
+        // dialect specifies, and a strict endpoint refuses the whole request otherwise, naming
+        // the `tool_call_id` that went unanswered. So each turn's results are gathered to it, and
+        // everything else keeps the order the context had it in.
+        //
+        // note: *a* strict endpoint, not every endpoint, and the difference was measured rather
+        // than assumed. Inception Labs' `mercury-2.5` accepts the malformed order without
+        // complaint - a `tool` message two messages away from its call went out and came back
+        // answered - so an endpoint that tolerates it is not hypothetical and a test that only
+        // checks "the API accepted it" would pass on the broken order there. Which is why the
+        // property in `tests/invariants.rs` asserts the adjacency itself rather than trusting a
+        // provider to complain, and why the live test asserts the *position* of the result and
+        // not merely that the request went through.
         //
         // note: a pass rather than bookkeeping inside the loop above, and the difference is a bug
         // that lived here. What the loop kept was a *count* of what the current turn was waiting
