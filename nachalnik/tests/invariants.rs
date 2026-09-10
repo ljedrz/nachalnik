@@ -7,6 +7,13 @@
 //! note on `Kernel::undo` about granularity - checked after every operation of a generated
 //! sequence rather than after the one sequence somebody thought of.
 //!
+//! note: it earned its place on its fourth generated sequence, with a request in which a tool
+//! result sat four messages away from the call it answered - the shape every OpenAI-compatible
+//! API refuses. `projection.rs` counted what a turn was waiting for and reset the count on the
+//! next turn, so a result belonging to an older turn had nothing anchoring it. The fix is in that
+//! file; the assertion that found it is `a_context_and_its_projection_agree_after_every_operation`
+//! below, and it is stated at full strength rather than narrowed to what held at the time.
+//!
 //! note: the family worth the most is the one where two things must agree about one request. Every
 //! bug worth fixing in the recent releases was a member of it: the chat drawn from one account and
 //! the request built from another, a figure in a corner that counted an item the projection had
@@ -51,6 +58,14 @@ enum Pushed {
     Answer,
     /// A result answering a call nobody made.
     Orphan,
+    /// A result answering the call the *next* `Call` will ask for, so that a result can precede
+    /// the turn that asked for it.
+    ///
+    /// note: in the alphabet because without it the ordering pass's deferral cannot be tested at
+    /// all. `Answer` only ever answers a call that already exists, so every result it makes is
+    /// already after its call, and the branch that holds a result back until its turn has been
+    /// emitted is never reached - measured, by taking the branch out and watching nothing fail.
+    Early,
     /// Bytes that are not text, which the default counter will not price.
     ///
     /// note: in the alphabet because without it the invariant about `uncounted` cannot fail.
@@ -108,6 +123,11 @@ impl World {
                 None => ContextItem::user("nothing to answer"),
             },
             Pushed::Picture => ContextItem::user(Content::blob("image/png", "aGVsbG8=")),
+            Pushed::Early => {
+                let next = format!("c{}", self.calls.len());
+
+                ContextItem::tool_result(ToolCallId::from(next.as_str()), "peek", "early", false)
+            }
             Pushed::Orphan => ContextItem::tool_result(
                 ToolCallId::from("never-asked"),
                 "peek",
@@ -245,29 +265,43 @@ fn holds(world: &mut World) -> Result<(), TestCaseError> {
         .collect();
     prop_assert_eq!(&asked, &answered, "an orphan survived the projection");
 
-    // and the reason the order gives way: a result answers a call the request has already made.
+    // and the reason the order gives way: a result reaches the wire immediately after the call it
+    // answers, with nothing in between and nothing else until every call in that turn has one.
+    // This is the shape the conventional dialect requires and refuses the whole request over,
+    // naming the identifier that went unanswered.
     //
-    // note: the dialect wants more than this - a result *immediately* after the call it answers -
-    // and that is deliberately not asserted, because it does not currently hold. Two assistant
-    // turns in a row, the first with a call whose result is recorded after the second, and the
-    // result arrives several messages late: `projection.rs` tracks what a turn is waiting for as
-    // a count and resets it on the next turn, so a result belonging to an older turn has nothing
-    // anchoring it. The weaker property below is what holds today; the stronger one is what a
-    // fix would let this say instead, and it is the reason this file exists.
-    let mut asked_so_far: BTreeSet<ToolCallId> = BTreeSet::new();
+    // note: this is the assertion the file was written for. It failed on its fourth generated
+    // sequence - two assistant turns in a row, the first one's result recorded after the second -
+    // because the projector tracked what a turn was waiting for as a count and reset it on the
+    // next turn, leaving a result belonging to an older turn with nothing anchoring it. The
+    // ordering is a pass over the whole list now, and this says the strong thing rather than the
+    // weaker one that held while the bug did.
+    let mut outstanding: BTreeSet<ToolCallId> = BTreeSet::new();
     for message in &projection.messages {
         match message.tool_call_id.as_ref() {
             Some(answers) => prop_assert!(
-                asked_so_far.remove(answers),
-                "a result for {answers} before anything asked for it"
+                outstanding.remove(answers),
+                "a result for {answers} that no call immediately before it was waiting for"
             ),
-            None => asked_so_far.extend(message.tool_calls.iter().map(|one| one.id.clone())),
+            None => {
+                prop_assert!(
+                    outstanding.is_empty(),
+                    "a {:?} message arrived with {} call(s) of the turn before still unanswered",
+                    message.role,
+                    outstanding.len()
+                );
+                outstanding = message
+                    .tool_calls
+                    .iter()
+                    .map(|one| one.id.clone())
+                    .collect();
+            }
         }
     }
     prop_assert!(
-        asked_so_far.is_empty(),
+        outstanding.is_empty(),
         "the request ends with {} call(s) nobody answered",
-        asked_so_far.len()
+        outstanding.len()
     );
 
     // the two accounts of one request. A budget is counted over the projected messages, so a
@@ -316,6 +350,7 @@ fn ops() -> impl Strategy<Value = Vec<Op>> {
         2 => Just(Pushed::Answer),
         1 => Just(Pushed::Orphan),
         2 => Just(Pushed::Picture),
+        2 => Just(Pushed::Early),
     ];
     let state = prop_oneof![
         Just(ContextState::Active),

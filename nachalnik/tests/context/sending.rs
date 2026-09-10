@@ -223,7 +223,7 @@ fn a_result_follows_the_call_it_answers_whatever_lands_between_them() {
         projection
             .repairs
             .iter()
-            .any(|said| said.contains("held item")),
+            .any(|said| said.contains("moved item")),
         "the move is on the record: {:?}",
         projection.repairs
     );

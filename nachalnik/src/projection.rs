@@ -261,14 +261,6 @@ impl Projector for LinearProjector {
             }
         }
 
-        /// Puts back whatever was held out of a turn, in the order it arrived.
-        fn flush(projection: &mut Projection, held: &mut Vec<(ContextId, Message)>) {
-            for (id, message) in held.drain(..) {
-                projection.included.push(id);
-                projection.messages.push(message);
-            }
-        }
-
         /// Claims one of the remaining counterparts for a call identifier, if there is one left.
         fn claim(remaining: &mut HashMap<ToolCallId, usize>, id: &ToolCallId) -> bool {
             match remaining.get_mut(id) {
@@ -280,10 +272,9 @@ impl Projector for LinearProjector {
             }
         }
 
-        // what arrived in the middle of a turn, and how many of that turn's calls are still
-        // waiting to be answered
-        let mut held: Vec<(ContextId, Message)> = Vec::new();
-        let mut outstanding = 0usize;
+        // built in the order the context has them; the order the *request* has them is a pass of
+        // its own, below
+        let mut built: Vec<(ContextId, Message)> = Vec::with_capacity(items.len());
 
         for item in items {
             if !item.is_projected() {
@@ -414,10 +405,9 @@ impl Projector for LinearProjector {
                     }
 
                     // note: whichever shape it goes out in, the message falls through to the
-                    // bookkeeping at the foot of the loop rather than being pushed here. It has
-                    // to: that is where a turn's outstanding calls are counted, and a turn that
-                    // skipped it would leave whatever landed mid-turn sitting between the call
-                    // and its result - the request every OpenAI-compatible API refuses
+                    // foot of the loop rather than being pushed here, because that is where the
+                    // repair above has finished taking calls down - and the ordering pass reads
+                    // the calls a message actually kept
                     if self.send_blocks {
                         Message::assistant(Some(Content::Blocks(kept.into())), Vec::new())
                     } else {
@@ -491,40 +481,80 @@ impl Projector for LinearProjector {
                 }
             };
 
-            // a result has to reach the wire immediately after the call it answers: an
-            // OpenAI-compatible API refuses the whole request otherwise, naming the
-            // `tool_call_id` that went unanswered, and a tool that writes into the context - a
-            // note the model asks for while the rest of its calls are still running - lands
-            // exactly there. So anything that is not a result waits until the turn has had them
-            match &item.kind {
-                ContextKind::ToolResult { .. } => outstanding = outstanding.saturating_sub(1),
-                ContextKind::AssistantMessage { .. } => {
-                    // a new turn ends the last one, whatever is still unanswered in it
-                    flush(&mut projection, &mut held);
-                    // `calls()` rather than the kind's own list: with `send_blocks` a turn keeps
-                    // its calls in its content, and the repair above may have taken some down
-                    outstanding = message.calls().count();
-                }
-                _ if outstanding > 0 => {
-                    projection.repairs.push(format!(
-                        "held item {} back until the turn it landed in had its results: a tool \
-                         result has to follow the call it answers",
-                        item.id
-                    ));
-                    held.push((item.id, message));
-                    continue;
-                }
-                _ => {}
-            }
+            built.push((item.id, message));
+        }
 
-            projection.included.push(item.id);
-            projection.messages.push(message);
-            if outstanding == 0 {
-                flush(&mut projection, &mut held);
+        // A result has to reach the wire immediately after the call it answers: an
+        // OpenAI-compatible API refuses the whole request otherwise, naming the `tool_call_id`
+        // that went unanswered. So each turn's results are gathered to it, and everything else
+        // keeps the order the context had it in.
+        //
+        // note: a pass rather than bookkeeping inside the loop above, and the difference is a bug
+        // that lived here. What the loop kept was a *count* of what the current turn was waiting
+        // for, reset on the next turn - so a result whose turn was no longer the current one had
+        // nothing anchoring it, and two turns in a row with the first one's result recorded after
+        // the second put a `tool` message several messages away from its call. A count also let
+        // any result decrement it, including one answering somebody else. Reading the whole list
+        // at once costs one walk and cannot get either wrong: a result goes where its own call
+        // is, and a call is a place in a list rather than a number that has to be kept.
+        let mut results: HashMap<&ToolCallId, Vec<usize>> = HashMap::new();
+        for (at, (_, message)) in built.iter().enumerate() {
+            if let Some(answers) = &message.tool_call_id {
+                results.entry(answers).or_default().push(at);
             }
         }
-        // a turn whose results never arrived still must not swallow what came after it
-        flush(&mut projection, &mut held);
+
+        let mut placed = vec![false; built.len()];
+        let mut order: Vec<usize> = Vec::with_capacity(built.len());
+        for (at, (_, message)) in built.iter().enumerate() {
+            // a result waits for the call it answers to place it - unless nothing in the request
+            // asks for it, which `repair_orphans` normally takes care of and a caller can turn
+            // off; then it keeps the place it had rather than being lost
+            let deferred = message
+                .tool_call_id
+                .as_ref()
+                .is_some_and(|answers| results.contains_key(answers));
+            if placed[at] || deferred {
+                continue;
+            }
+
+            placed[at] = true;
+            order.push(at);
+
+            // `calls()` rather than the kind's own list: with `send_blocks` a turn keeps its
+            // calls in its content, and the repair above may have taken some down
+            let mut adjacent = at + 1;
+            for call in message.calls() {
+                for answer in results.get(&call.id).into_iter().flatten() {
+                    if placed[*answer] {
+                        continue;
+                    }
+                    if *answer != adjacent {
+                        projection.repairs.push(format!(
+                            "moved item {} up behind the call `{}` it answers: a tool result has \
+                             to reach the wire immediately after the call it answers",
+                            built[*answer].0, call.id
+                        ));
+                    }
+                    placed[*answer] = true;
+                    order.push(*answer);
+                    adjacent += 1;
+                }
+            }
+        }
+        // nothing is dropped to achieve an order. A result whose call is in the request is placed
+        // by it above; one that got here another way keeps its place at the end rather than going
+        // missing, which is the guarantee `Projection::included` is read for
+        order.extend((0..built.len()).filter(|at| !placed[*at]));
+
+        // taken rather than cloned: a projection is built for every budget and every preview, and
+        // an order is a permutation - each message is wanted exactly once, somewhere else
+        let mut built: Vec<Option<(ContextId, Message)>> = built.into_iter().map(Some).collect();
+        for at in order {
+            let (id, message) = built[at].take().expect("an order places each message once");
+            projection.included.push(id);
+            projection.messages.push(message);
+        }
 
         projection
     }

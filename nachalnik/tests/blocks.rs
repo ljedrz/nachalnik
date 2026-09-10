@@ -547,11 +547,12 @@ async fn a_session_of_ordered_turns_resumes_as_one() {
 // --------------------------------------------------------------- what the two shapes must share
 
 /// The shape of a request is not the projector's only job: a tool result has to reach the wire
-/// immediately after the call it answers, and an item that lands mid-turn has to wait its turn.
-/// That held for the conventional shape and not for this one, because the branch that sends
-/// ordered blocks used to push its message and skip the bookkeeping underneath.
+/// immediately after the call it answers, whatever the context put between the two. That held for
+/// the conventional shape and not for this one, because the branch that sends ordered blocks used
+/// to push its message and skip the bookkeeping underneath - and the ordering is a pass over the
+/// whole list now, which is what makes one arm unable to skip it.
 #[test]
-fn an_ordered_turn_holds_back_what_landed_in_the_middle_of_it() {
+fn an_ordered_turn_keeps_a_result_next_to_the_call_it_answers() {
     let items: Vec<Arc<ContextItem>> = [
         ContextItem::user("what is the weather?"),
         ContextItem::assistant(
@@ -596,7 +597,7 @@ fn an_ordered_turn_holds_back_what_landed_in_the_middle_of_it() {
             projection
                 .repairs
                 .iter()
-                .any(|said| said.contains("held item")),
+                .any(|said| said.contains("moved item")),
             "send_blocks: {send_blocks} - moving somebody's item is on the record: {:?}",
             projection.repairs
         );

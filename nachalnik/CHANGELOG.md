@@ -37,19 +37,49 @@ minor bump may break you.
   kernel changed to report every request as fully counted broke nothing. An invariant that cannot
   fire reads exactly like one that holds.
 
-  It also found something, which is written down in the file rather than fixed here: a tool result
-  is projected out of position when another assistant turn stands between it and the call it
-  answers. `projection.rs` tracks what a turn is waiting for as a count and a new turn resets it,
-  so a result belonging to an older turn has nothing anchoring it - and the request goes out with
-  a `tool` message that does not follow its call, which is the shape the conventional dialect
-  refuses. The suite asserts the weaker property that holds today; the stronger one is what a fix
-  would let it say.
+  It found the projection bug below on its fourth generated sequence, and the assertion that found
+  it is stated at full strength rather than narrowed to what held while the bug did: a tool result
+  reaches the wire immediately after the call it answers, with nothing between them and nothing
+  else until that turn has all of its results.
+
+  A third hole turned up while the fix was being pinned, the same way as the other two. The
+  alphabet's `Answer` only ever answers a call that already exists, so every result it produced was
+  already after its call and the ordering pass's deferral - what holds a result back until the turn
+  that asked for it has gone out - was never reached at all. `Early`, a result answering the call
+  the *next* turn will ask for, is in the alphabet for that; without it, taking the deferral out
+  broke nothing, and with it, two tests.
 
 - A test that a refusal can name the argument that earned it: two calls to one tool, the same
   capability twice, one of the two paths ending in `.env`, and a policy that holds nothing at all.
   It is the case the old signature could not reach - the identifiers are the kernel's to hand out
   and the tool and the capability are the same one twice, so the arguments are the only thing that
   tells the pair apart.
+
+### fixed
+
+- **A tool result reaches the wire immediately after the call it answers, whatever the context put
+  between the two.** It did not when another assistant turn stood between a call and its result:
+  `LinearProjector` kept a *count* of what the current turn was still waiting for and reset that
+  count on the next turn, so a result belonging to an older turn had nothing anchoring it and went
+  out wherever the context happened to hold it. Two turns in a row with the first one's result
+  recorded after the second put a `tool` message four messages from its call - the shape the
+  comment three lines above that code says an OpenAI-compatible API refuses outright, naming the
+  identifier that went unanswered. A count also let *any* result decrement it, including one
+  answering a different turn.
+
+  The order is a pass over the whole list now rather than bookkeeping carried through the loop that
+  builds it. Each turn's results are gathered to it and everything else keeps the order the context
+  had, which cannot get either half wrong: a result goes where its own call is, and a call is a
+  place in a list rather than a number something has to maintain. It costs one walk, drops nothing -
+  a result whose call is not in the request at all, which `repair_orphans` normally takes care of
+  and a caller can turn off, keeps its place rather than going missing - and takes the messages
+  rather than copying them, since a projection is built for every budget and every preview.
+
+  What a client sees change: the repair reads `moved item 5 up behind the call \`c0\` it answers`
+  where it read `held item 2 back until the turn it landed in had its results`. One repair per
+  result that moved, rather than one per item it moved past, which is also the truer account of
+  what happened. The messages a valid context projected to are unchanged, which is what the
+  existing tests for both projector shapes check and go on checking.
 
 ### breaking
 
