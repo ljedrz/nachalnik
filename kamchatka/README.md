@@ -514,6 +514,49 @@ cut is recovered a different way: its whole is archived beside the copy the mode
 it sends that instead — the projector answers one call with one result, so the whole takes the
 call and the short copy drops out.
 
+## 📎 putting a file in, and asking about it
+
+`/attach` takes a path and then whatever you want to ask about it, so the file and the question
+go out as one request:
+
+```text
+/attach ~/reports/q3.pdf what is the headline number, and what is it compared against?
+```
+
+What goes in depends on what the file is. Source, markdown, logs, CSV — anything this program has
+no media type for — goes in as **text**, which is countable, readable on the context tab and
+compactable like everything else. A PDF, an image or a recording goes in as **bytes**, and the
+endpoint is told what they are. The extension decides, and only for the ten types in the table;
+sniffing the content instead gets the interesting case wrong, because an uncompressed PDF is valid
+UTF-8 for pages at a time and would be sent to the model as PDF source. A file that is neither a
+listed type nor readable as text is refused rather than guessed at — a media type is a claim about
+what the bytes are, and inventing one buys you an error message about a shape instead of one about
+a file.
+
+Either way it goes in **pinned**, which is what you meant, and it is what keeps it: the compactor
+here takes anything carrying a payload first and on principle, and a pin is the one thing the
+kernel refuses it. <kbd>p</kbd> on the context tab takes that back.
+
+`-f` at startup is the same thing at a different moment — one function, so `kamchatka -f
+diagram.png` works the same way — and with no question after the path, `/attach` just puts it in.
+
+Nothing here has a tokenizer for a picture, and it says so rather than putting a `0` where a
+number should be:
+
+```text
+· [1] q3.pdf (file), application/pdf, 214 KB, 6 tokens and 1 piece(s) nothing here can price
+```
+
+That is not a rounding. A 535-byte one-page PDF was charged 6,500 tokens by Gemini in the test
+that pins this; four bytes a token would have called it 134. The row on the context tab reads
+`0+` for the same reason, `/budget` counts how many pieces are in that state, and the figure in
+the corner stops being a floor the moment the request has gone out once — because from then on
+the provider's own number has the document inside it. If you want the estimate to be right
+*before* that, `Kernel::set_counter` takes a counter that knows your vendor's formula, and
+[`pricing_a_picture.rs`][pricing] in the runtime is forty lines showing one.
+
+[pricing]: https://github.com/ljedrz/nachalnik/blob/master/nachalnik/examples/pricing_a_picture.rs
+
 ## 🔎 letting the agent read and manage its own context
 
 `--introspect`, or `/introspect` at any point, offers two more tools. They are off by default,
@@ -832,7 +875,8 @@ kamchatka [OPTIONS] [MESSAGE]...
   -m, --model <MODEL>       the model to talk to            [env: KAMCHATKA_MODEL]
                             [default: openai/gpt-4o-mini, or gemini-3.6-flash
                             with --gemini]
-  -f, --file <PATH>         put a file in the context, pinned; may be repeated
+  -f, --file <PATH>         put a file in the context, pinned; a PDF or an image
+                            goes in as itself. May be repeated
   -s, --system <TEXT>       a system instruction; the runtime ships none of its own
   -r, --resume <PATH>       carry on from a session written by /save
       --mcp <COMMAND>       an MCP server to run, as `[name=]command`; may be repeated

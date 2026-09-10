@@ -17,6 +17,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod attach;
 mod chat;
 mod compaction;
 mod context;

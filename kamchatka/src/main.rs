@@ -26,7 +26,7 @@ use tokio_stream::StreamExt;
 
 use kamchatka::{
     app::{App, Outcome, Speaker},
-    introspect, provider, sandbox, tools, ui,
+    attach, introspect, provider, sandbox, tools, ui,
 };
 
 /// How often the screen is redrawn when nothing at all is happening.
@@ -64,7 +64,8 @@ struct Args {
     #[arg(long)]
     gemini: bool,
 
-    /// A file to put in the context, pinned. May be repeated.
+    /// A file to put in the context, pinned; a PDF or an image goes in as itself. May be
+    /// repeated, and `/attach` is the same thing at the prompt.
     #[arg(short, long, value_name = "PATH")]
     file: Vec<String>,
 
@@ -261,10 +262,8 @@ async fn terminal() -> Result<()> {
         kernel.push(ContextItem::system(system.clone()).pinned());
     }
     for path in &args.file {
-        let content =
-            std::fs::read_to_string(path).with_context(|| format!("could not read {path}"))?;
         kernel.push(
-            ContextItem::file(path, content)
+            attach::attached(path)?
                 .because("named on the command line")
                 .pinned(),
         );

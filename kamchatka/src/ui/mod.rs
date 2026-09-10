@@ -141,6 +141,11 @@ pub const HELP: &str = "  THE TABS
     /request            the request that would go next
     /payload            the provider's own rendering of it, byte for byte
     /raw                the provider's own last answer
+    /attach PATH [TEXT] put a file in the context, pinned, and ask about it in
+                        the same breath. Source and markdown go in as text; a
+                        PDF, an image or a recording goes in as itself, which
+                        nothing here can price. With no question it just goes
+                        in, which is what -f does at startup
     /exclude SELECTOR   take items out of the request; also /prune. With no
                         selector, the whole selector language
     /pin SELECTOR       protect them from compaction; also /keep

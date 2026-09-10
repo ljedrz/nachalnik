@@ -13,6 +13,12 @@
 //! Nothing is inferred and nothing is hidden: the context tab is a list of ordinary values the
 //! runtime hands out, and `ctrl+p` prints the exact request they add up to.
 //!
+//! `/attach PATH [TEXT]` puts a file in the context and asks about it in one go, and `-f` is the
+//! same act at startup. Source and markdown go in as text; a PDF, an image or a recording goes in
+//! as [`nachalnik::Content::Blob`], which nothing here can price - so the row, the chat line and
+//! `/budget` all say a piece of the figure is missing rather than putting a `0` where a number
+//! should be. It sends pictures and draws none: a terminal cell is not a pixel.
+//!
 //! `--introspect`, or `/introspect` at any point, adds two more tools for reading and managing a
 //! context from the inside. [`introspect`] lists what is being carried and what each item costs,
 //! reports the budget against what the last request really cost, shows the request about to go
@@ -41,6 +47,7 @@
 #![deny(unsafe_code)]
 
 pub mod app;
+pub mod attach;
 pub mod introspect;
 pub mod provider;
 pub mod sandbox;

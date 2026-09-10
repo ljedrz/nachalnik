@@ -115,11 +115,21 @@ impl Tool for Secret {
 /// `KAMCHATKA_CONTEXT_LIMIT` was unset and failed when it was set: between them, every state
 /// anybody would try it in.
 async fn endpoint() -> Option<Arc<OpenAiCompatible>> {
+    talking_to(model_in_use()).await
+}
+
+/// The same, against a named model rather than the one this run is pointed at.
+///
+/// note: for the one case that needs a *capability* rather than an endpoint. Reading a document
+/// is narrower than answering a question, so that test names its own model and skips without
+/// one - and naming it by setting `KAMCHATKA_TEST_MODEL` from inside a test would be reaching
+/// into the environment every other test in the file reads.
+async fn talking_to(model: String) -> Option<Arc<OpenAiCompatible>> {
     let key = std::env::var("KAMCHATKA_API_KEY")
         .or_else(|_| std::env::var("NACHALNIK_API_KEY"))
         .ok()?;
     let provider = Arc::new(
-        OpenAiCompatible::new(model_in_use(), base_url(), key)
+        OpenAiCompatible::new(model, base_url(), key)
             .with_context_limit(kamchatka::provider::configured_limit()),
     );
     provider.probe().await;
@@ -131,8 +141,17 @@ async fn live() -> Option<(
     App,
     tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
 )> {
+    with(endpoint().await?)
+}
+
+/// The terminal around an endpoint already built.
+fn with(
+    provider: Arc<OpenAiCompatible>,
+) -> Option<(
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
+)> {
     let kernel = Kernel::new(Config::default());
-    let provider = endpoint().await?;
     kernel.set_provider(provider.clone());
 
     // the tool is allowed outright: what is under test is the shape of the request, and a
@@ -1520,5 +1539,121 @@ async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
     assert!(
         panel.contains("really") || panel.contains("charged"),
         "and says what was really charged: {panel}"
+    );
+}
+
+// ----------------------------------------------------------------------------------- `/attach`
+
+/// A valid one-page PDF carrying one word, built here so the fixture is readable.
+///
+/// note: written out rather than pasted in as base64, because a fixture nobody can read is a
+/// fixture nobody can fix. The xref offsets have to be right - they are byte positions into this
+/// exact string - which is the whole reason this is a function and not a constant.
+fn one_word_pdf(word: &str) -> Vec<u8> {
+    let stream = format!("BT /F1 24 Tf 20 40 Td ({word}) Tj ET");
+    let objects = [
+        "<</Type/Catalog/Pages 2 0 R>>".to_owned(),
+        "<</Type/Pages/Kids[3 0 R]/Count 1>>".to_owned(),
+        "<</Type/Page/Parent 2 0 R/MediaBox[0 0 220 100]/Contents 4 0 R\
+          /Resources<</Font<</F1 5 0 R>>>>>>"
+            .to_owned(),
+        format!("<</Length {}>>stream\n{stream}\nendstream", stream.len()),
+        "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>".to_owned(),
+    ];
+
+    let mut out = String::from("%PDF-1.4\n");
+    let mut offsets = Vec::new();
+    for (n, body) in objects.iter().enumerate() {
+        offsets.push(out.len());
+        out.push_str(&format!("{} 0 obj{body}endobj\n", n + 1));
+    }
+    let xref = out.len();
+    out.push_str(&format!(
+        "xref\n0 {}\n0000000000 65535 f \n",
+        objects.len() + 1
+    ));
+    for offset in offsets {
+        out.push_str(&format!("{offset:010} 00000 n \n"));
+    }
+    out.push_str(&format!(
+        "trailer<</Size {}/Root 1 0 R>>\nstartxref\n{xref}\n%%EOF\n",
+        objects.len() + 1
+    ));
+
+    out.into_bytes()
+}
+
+/// A PDF attached at the prompt reaches the model, and the question goes with it.
+///
+/// note: the whole of `/attach` end to end, and the two halves fail differently. If the media
+/// type were wrong the endpoint refuses the request outright; if the encoding or the placement
+/// were wrong it takes it and the model reads nothing. Only an answer naming the word says both
+/// were right.
+///
+/// note: it needs a model that reads documents, which is a narrower thing than one that reads
+/// images - `KAMCHATKA_DOCUMENT_MODEL` rather than the model the rest of this suite uses, and
+/// skipped when it is not set.
+#[tokio::test]
+async fn a_pdf_attached_at_the_prompt_is_read_by_the_model() {
+    let Ok(model) = std::env::var("KAMCHATKA_DOCUMENT_MODEL") else {
+        eprintln!("no KAMCHATKA_DOCUMENT_MODEL in the environment; skipping");
+        return;
+    };
+    let Some((mut app, mut finished)) = talking_to(model).await.and_then(with) else {
+        eprintln!("no key in the environment; skipping");
+        return;
+    };
+
+    let dir = common::scratch("live-attach");
+    let path = dir.join("marmalade.pdf");
+    std::fs::write(&path, one_word_pdf("MARMALADE")).expect("written");
+
+    send(
+        &mut app,
+        &mut finished,
+        &format!(
+            "/attach {} This PDF contains exactly one word. Reply with that word and nothing else.",
+            path.display()
+        ),
+    )
+    .await;
+
+    // the file went in as bytes, and everything counting says it could not price them
+    let items = app.kernel.items();
+    let attached = items.first().expect("the attachment");
+    assert_eq!(
+        attached.uncounted, 1,
+        "a PDF is not priced by anything here"
+    );
+    assert!(!app.kernel.budget().fully_counted());
+
+    let said = app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    println!("  it said: {}", said.trim());
+    assert!(
+        said.to_lowercase().contains("marmalade"),
+        "the model should have read the attachment: {said}"
+    );
+
+    // and the corner is anchored on what that request really cost, picture and all
+    command(&mut app, "/budget").await;
+    let panel = flat(&mut app);
+    println!(
+        "  /budget: {}",
+        panel
+            .split("  ")
+            .filter(|piece| piece.contains("unpriced") || piece.contains("anchored"))
+            .collect::<Vec<_>>()
+            .join(" | ")
+    );
+    assert!(
+        panel.contains("unpriced"),
+        "the budget names the piece it could not reach: {panel}"
     );
 }

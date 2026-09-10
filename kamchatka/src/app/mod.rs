@@ -854,11 +854,33 @@ impl App {
                     );
                 }
             }
+            // note: this line is what `/attach` and `-f` say for themselves, and neither of them
+            // says anything else. A command that pushed an item and then announced it would be
+            // describing the context from beside the context, which is the arrangement the whole
+            // chat was rewritten to get rid of: two accounts of one item, and only one of them
+            // able to be wrong. What a person needs to see is here because it is *read off* the
+            // item - which file, what it is, what it costs
+            //
+            // note: the `+` is the context pane's, for the same reason: a file attached as bytes
+            // is counted at `0` by everything in this workspace, and a line saying `0 tokens`
+            // about the largest thing in the request is the one number on this screen that reads
+            // as good news when it is the opposite
             _ => line(
                 Speaker::Note,
                 Cow::Owned(format!(
-                    "[{}] {} ({}), {} tokens",
-                    item.id, item.label, item.source, item.tokens
+                    "[{}] {} ({}){}, {} tokens{}",
+                    item.id,
+                    item.label,
+                    item.source,
+                    match crate::attach::describe(item) {
+                        Some(what) => format!(", {what}"),
+                        None => String::new(),
+                    },
+                    item.tokens,
+                    match item.uncounted {
+                        0 => String::new(),
+                        n => format!(" and {n} piece(s) nothing here can price"),
+                    }
                 )),
             ),
         }

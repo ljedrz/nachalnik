@@ -9,6 +9,35 @@ minor bump may break you.
 
 ### added
 
+- **`/attach PATH [TEXT]` puts a file in the context and asks about it in the same breath.**
+  Source and markdown go in as text, exactly as `-f` has always read them; a PDF, an image or a
+  recording goes in as `Content::Blob`, which nothing here can price and which everything that
+  reports a number now says so about. With no question after the path it just goes in, which is
+  what `-f` does at startup - and it *is* `-f`, one function reached two ways, so `-f report.pdf`
+  no longer fails with a decoding error at the one moment a person has the least idea what this
+  program can do.
+
+  The extension decides, and only for the ten types listed in `attach::TYPES`. Sniffing the
+  content was the obvious alternative and it gets the interesting case wrong: an uncompressed PDF
+  is valid UTF-8 for pages at a time, so "is this text?" answers yes and sends the model PDF
+  source where the endpoint has a part that would have carried the document. A file that is
+  neither a listed type nor valid text is refused rather than guessed at - a media type is a
+  claim about what the bytes are, and an invented one buys an error message about a shape instead
+  of one about a file.
+
+  The path travels *with* the payload, as a text block beside it, because `LinearProjector`
+  labels a reference by prepending its label to the text - so a reference that is not text loses
+  its label on the way out, and the model would be handed a document with nothing saying which
+  file it was in a conversation where the person had just typed the name.
+
+  Attached pinned, which is what `-f` does and what a person plainly means. It is also the
+  difference between an attachment surviving and not: `Trim` takes anything carrying a blob first
+  and on principle, and a pin is the one thing the kernel refuses it.
+
+  Measured against Gemini through OpenRouter: a 535-byte one-page PDF was charged at 6,500 tokens.
+  Four bytes a token would have called it 134, and the counter declining to answer is the reason
+  the budget said `unpriced: 1 piece(s)` rather than a figure forty-eight times too small.
+
 - The context pane marks a row the counter would not price: its figure reads `0+` rather than
   `0`. The two things that zero meant - "measured, and free" and "there is a picture here and
   nothing priced it" - were the same cell, which invites the wrong conclusion from a pane
@@ -55,6 +84,16 @@ minor bump may break you.
   missing is that they are answers to the same question by different methods.
 
 ### changed
+
+- The chat line for a reference names what the item carries and what nobody could price:
+  `[1] results.pdf (file), application/pdf, 34 KB, 18 tokens and 1 piece(s) nothing here can
+  price`. It is derived off the item like every other line, which is why `/attach` says nothing
+  for itself - a command that pushed an item and then announced it would be two accounts of one
+  thing, with only one of them able to go out of date.
+
+- `-f` takes any file, not only a text one. It goes through the same `attach::attached` the new
+  command does, so a PDF named on the command line is attached rather than refused by
+  `read_to_string`.
 
 - **The chat is derived from the context rather than accumulated beside it.** `App::transcript`
   is gone. `App::conversation` reads the context every frame and turns it into the lines it

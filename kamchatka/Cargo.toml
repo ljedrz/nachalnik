@@ -52,6 +52,10 @@ tokio = { workspace = true, features = [
 ] }
 
 anyhow = "1"
+# `/attach` reads a file off the disk and `Content::Blob` holds its payload already encoded, so
+# something here has to do the encoding. Hand-rolling a codec in the one place that decides what
+# bytes a paid endpoint is charged for is not a trade worth making for forty lines
+base64 = "0.22"
 clap = { version = "4", features = ["derive", "env"] }
 # `event-stream` so that the terminal's keys arrive as a `Stream` and can be selected on
 # alongside the kernel's events; the same crossterm `ratatui` is built against

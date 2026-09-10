@@ -136,6 +136,10 @@ impl App {
             // command is named for that now - and `amend`'s own five moves are named the same way,
             // so the person and the model reach for the same word. The old spellings still work:
             // accepting a word somebody typed costs nothing
+            // note: the same function `-f` goes through. Putting a file in the context at startup
+            // and putting one there at the prompt are the same act at two moments, and a second
+            // implementation of it is a second place for the media types to go stale
+            "attach" => self.attach(rest),
             "exclude" | "prune" => self.by_selector("exclude", rest),
             "pin" | "keep" => self.by_selector("pin", rest),
             "restore" => self.by_selector("restore", rest),
@@ -398,6 +402,69 @@ impl App {
                      carrying and walk its own changes back. It cannot touch anything you pinned",
                 );
             }
+        }
+    }
+
+    /// Reads a file into the context, pinned, as text or as bytes depending on what it is - and
+    /// asks whatever was typed after the path.
+    ///
+    /// note: refused while a turn is running, for the reason [`App::submit`] gives at length about
+    /// a message. An item pushed now lands between an assistant's call and that call's result,
+    /// which is a shape most of these APIs reject outright - and unlike a message there is nothing
+    /// to be gained by queueing it, because a file attached to steer a turn that has already
+    /// decided what to read is a file that arrives too late to be what it was for.
+    ///
+    /// note: pinned, which is what `-f` does and what the person plainly meant. It also happens to
+    /// be the difference between an attachment surviving and not: the compactor here takes
+    /// anything carrying a blob first and on principle, and a pin is the one thing the kernel
+    /// refuses it. `p` on the context tab takes it back off.
+    fn attach(&mut self, rest: &str) {
+        if rest.is_empty() {
+            self.say(
+                Speaker::Error,
+                "`/attach` takes a path, and then anything you want to ask about it: `/attach \
+                 report.pdf what is wrong with this?`. A file it has no media type for goes in \
+                 as text, which is right for source and markdown and wrong for a PDF",
+            );
+            return;
+        }
+        if self.busy || !self.kernel.pending_permissions().is_empty() {
+            self.say(
+                Speaker::Error,
+                "not while a turn is running or a call is waiting to be answered",
+            );
+            return;
+        }
+
+        // note: the whole of it is tried as a path first, because a path with a space in it is an
+        // ordinary path and splitting on the first space would turn `/attach my report.pdf` into
+        // a complaint about a file called `my`. Only when that is not a file does the first word
+        // become the path and the rest the question - which is the usual way to want this, and
+        // the reason it is one command rather than two things to type
+        let (path, asked) = match std::fs::metadata(rest).is_ok() {
+            true => (rest, ""),
+            false => rest.split_once(' ').unwrap_or((rest, "")),
+        };
+        let item = match crate::attach::attached(path) {
+            Ok(item) => item.because("attached at the prompt").pinned(),
+            // `{e:#}` for the whole chain: what could not be done, and then the operating
+            // system's own account of why
+            Err(e) => {
+                self.say(Speaker::Error, format!("{e:#}"));
+                return;
+            }
+        };
+        // note: nothing is said about what went in. The chat derives a line for a reference off
+        // the item itself - which file, what it is, what it costs, and whether anything here
+        // could price it - so a sentence here would be a second account of one item, written
+        // somewhere it can go out of date. See `App::as_conversation`
+        self.kernel.push(item);
+
+        // and the question, if there was one, exactly as typing it would have: one item, then
+        // the loop. The file is already in the context, so it goes out with it rather than after
+        if !asked.is_empty() {
+            self.ask(asked);
+            self.start_turn();
         }
     }
 
