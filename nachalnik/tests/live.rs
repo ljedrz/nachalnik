@@ -602,8 +602,22 @@ async fn eliding_a_tool_result_keeps_the_call_and_the_api_accepts_it() {
         answer(&kernel)
     );
 
-    // the content goes, the call keeps its answer
-    let noisy: Vec<_> = results(&kernel).iter().map(|i| i.id).collect();
+    // the content goes, the call keeps its answer.
+    //
+    // note: everything holding the word, not only the tool result. The turn above asserts that
+    // the model *said* it, so its own answer is in the context carrying the word - and eliding
+    // the result alone left the model reading it there, correctly, while this test called that
+    // inventing an answer. It failed against `mercury-2.5`, which reads its own transcript; it
+    // passed against models that reason about where the word came from. The question here is
+    // whether a marker reaches the model intact, so the word has to be gone from the request
+    // for the answer to mean anything
+    let noisy: Vec<_> = kernel
+        .items()
+        .iter()
+        .filter(|item| item.content.to_text().contains("APRICOT"))
+        .map(|item| item.id)
+        .collect();
+    assert_eq!(noisy.len(), 2, "the result, and the turn that repeated it");
     assert_eq!(
         kernel
             .set_state(
@@ -612,7 +626,7 @@ async fn eliding_a_tool_result_keeps_the_call_and_the_api_accepts_it() {
                 Some("removed from view by the user".into())
             )
             .len(),
-        1
+        2
     );
     let projection = kernel.project();
     assert!(
@@ -659,6 +673,12 @@ async fn eliding_a_tool_result_keeps_the_call_and_the_api_accepts_it() {
     assert!(
         last.messages.iter().any(|m| !m.tool_calls.is_empty()),
         "and the call that asked for it is still on the record: {:?}",
+        last.messages
+    );
+    // nowhere in the request at all, which is what makes the answer below worth reading
+    assert!(
+        !format!("{:?}", last.messages).contains("APRICOT"),
+        "the word is gone from the whole request: {:?}",
         last.messages
     );
 
@@ -1353,4 +1373,113 @@ async fn a_reasoning_models_own_turn_comes_back_as_it_went_out() {
     if carried.iter().any(|(_, extra)| !extra.is_null()) {
         eprintln!("this model signs its calls, and the signature survived the round trip");
     }
+}
+
+/// A picture goes out as a picture, and the model reads it.
+///
+/// note: the one claim about `Content::Blob` that no offline test can make. `blobs.rs` in
+/// `nachalnik-providers` pins where each dialect *puts* one; whether a real endpoint accepts
+/// that placement, and whether what arrives is still an image at the other end, is a question
+/// only an endpoint answers. It needs a model that takes images, so it names one rather than
+/// following `NACHALNIK_TEST_MODEL` - most of what this suite is run against is text-only, and
+/// a run pointed at one of those should skip this rather than fail it.
+///
+/// note: the accounting is the other half, and it is the part 0.4.0 was for. The counter
+/// refuses to price the picture, so the budget says one piece of it is unaccounted for; the
+/// provider then charges for the whole request, and from that point the picture is inside a
+/// number that is exact. An estimate that could not say it was missing something would have
+/// reported the same figure in both states.
+#[tokio::test]
+async fn a_picture_goes_out_as_a_picture() {
+    // a 48x48 PNG: red, with a blue square in the bottom-right quadrant. Small enough to sit in
+    // this file and distinctive enough that an answer naming both colours cannot be a guess
+    const SQUARE: &str = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAPElEQVR42u3OsQkAAAgEsd9/ad1BLAQDVx9JJacKEBAQEBAQEBAQEBAQ0Gy0dQICAgICAgICAgICAvoFamNX93l2WWcMAAAAAElFTkSuQmCC";
+
+    let Some((kernel, provider)) = vision().await else {
+        eprintln!("no key in the environment; skipping");
+        return;
+    };
+
+    kernel.push(ContextItem::user(Content::blocks([
+        Block::text(Content::text(
+            "Name the two colours in this image, and say which corner the second one is in. \
+             Answer in one short sentence.",
+        )),
+        Block::text(Content::blob("image/png", SQUARE)),
+    ])));
+
+    // the counter will not price a picture, and the budget says so rather than reporting a
+    // figure that quietly leaves it out
+    let before = kernel.budget();
+    assert_eq!(before.uncounted, 1, "the picture is not priced by anything");
+    assert!(!before.fully_counted());
+
+    let State::Finished { .. } = turn!(kernel) else {
+        panic!("nothing needed deciding")
+    };
+
+    let said = kernel
+        .last_response()
+        .and_then(|r| r.content.clone())
+        .map(|c| c.to_text().into_owned())
+        .unwrap_or_default();
+    println!("  it said: {}", said.trim());
+    let said = said.to_lowercase();
+    assert!(
+        said.contains("red") && said.contains("blue"),
+        "the model should have seen the picture: {said}"
+    );
+
+    // and the endpoint took the shape this crate built, rather than the base64 arriving as
+    // prose in a text part
+    let sent = provider.requests().pop().expect("a recorded request");
+    let body = nachalnik::Provider::render(&*provider, &sent).expect("this provider renders");
+    println!("  parts: {}", body["messages"][0]["content"]);
+    assert!(
+        body["messages"][0]["content"]
+            .as_array()
+            .is_some_and(|parts| parts.iter().any(|part| part["type"] == "image_url")),
+        "it should go as an image part: {body}"
+    );
+
+    // the provider has now charged for a request with a picture in it, so what the counter
+    // could not price is inside a figure that is exact
+    let after = kernel.budget();
+    let reported = after
+        .reported
+        .and_then(|usage| usage.input_tokens)
+        .expect("the provider reports usage");
+    println!(
+        "  estimated {} (with {} unpriced) · really {reported}",
+        before.used(),
+        before.uncounted
+    );
+    assert!(
+        reported as usize > before.used(),
+        "the picture cost something the estimate did not have: {reported} vs {}",
+        before.used()
+    );
+}
+
+/// A kernel wired to a model that takes images.
+///
+/// note: its own name, because `NACHALNIK_TEST_MODEL` is usually text-only and sending a
+/// picture to one of those is a 400 that says nothing about this crate.
+async fn vision() -> Option<(Kernel, Arc<OpenAiCompatible>)> {
+    let model = env::var("NACHALNIK_VISION_MODEL").ok()?;
+    let provider = Arc::new(
+        nachalnik_utils::provider(&model)
+            .ok()?
+            .labelled("openrouter")
+            .streaming(false)
+            .recording(true),
+    );
+    provider.probe().await;
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    kernel.set_policy(Arc::new(AllowAll));
+    kernel.set_params(params(500));
+
+    Some((kernel, provider))
 }
