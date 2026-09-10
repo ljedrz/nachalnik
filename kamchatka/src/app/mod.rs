@@ -15,8 +15,8 @@ use std::{
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    Capability, Content, ContextId, ContextItem, ContextKind, Delta, Event, Grant, GrantSource,
-    Kernel, PermissionRequest, State, Verdict, selectors::Selector,
+    Budget, Capability, Content, ContextId, ContextItem, ContextKind, Delta, Event, Grant,
+    GrantSource, Kernel, PermissionRequest, State, Verdict, selectors::Selector,
 };
 use nachalnik_providers::Endpoint;
 use ratatui_textarea::{TextArea, WrapMode};
@@ -232,6 +232,28 @@ impl Entry {
     }
 }
 
+/// What a provider actually charged for a request, and what that request was made of.
+///
+/// note: the one exact number in this program's accounting, and the point of keeping it is that
+/// an estimate does not have to carry the whole context any more. A counter without the model's
+/// tokenizer is out by a few percent of *everything it is asked about*; measured here, a third
+/// low on a short request with tool definitions and about 7% low on a long one, and
+/// `Calibrating` brings the second to within 1%. One percent of a hundred thousand tokens is a
+/// thousand tokens, which is a poor thing to be reading while deciding whether the next message
+/// fits.
+///
+/// note: so the figures on screen are this plus what has changed since, and the error is a few
+/// percent of *the change* rather than of the context. It also absorbs, exactly and for free,
+/// everything the counter is structurally blind to: per-message framing, the tool schemas, and
+/// any picture that has already been sent - a `Content::Blob` the counter refuses to price is
+/// inside this number, so it stops being unaccounted for the moment it has gone out once.
+pub struct Anchor {
+    /// The items the request was projected from.
+    pub items: Vec<ContextId>,
+    /// The provider's own figure for the whole of it, tool definitions and framing included.
+    pub reported: usize,
+}
+
 /// One line of the conversation as it stands now, ready to be drawn.
 ///
 /// note: built per frame by [`App::conversation`] and held by nobody. A line that *is* a context
@@ -327,6 +349,14 @@ pub struct App {
     /// applying a ruleset in a child process and that is not something a frame should be doing
     /// sixty times a second. It cannot change while the program runs.
     pub confinement: Confinement,
+    /// What the provider charged for the last request, and what was in it. See [`Anchor`].
+    pub anchor: Option<Anchor>,
+    /// The items the request now in flight was built from, until there is a figure to pair
+    /// them with.
+    ///
+    /// note: two events, because the runtime reports what went out and what came back
+    /// separately and neither is any use here without the other.
+    pending: Vec<ContextId>,
     /// The lines of the chat that are not context items, in the order they were said.
     ///
     /// note: not "the conversation". The conversation is the context, and
@@ -441,6 +471,8 @@ impl App {
             // the terminal's own default, for a screen test that never spawns anything; the
             // program overwrites it with what a child process actually reported
             confinement: Confinement::Unsupported,
+            anchor: None,
+            pending: Vec::new(),
             loose: Vec::new(),
             trace: VecDeque::new(),
             input,
@@ -977,9 +1009,13 @@ impl App {
                 _ => {}
             },
             Event::ModelRequested {
-                repairs, skipped, ..
+                repairs,
+                skipped,
+                items,
+                ..
             } => {
                 self.close();
+                self.pending = items;
 
                 // the kernel altering what the model is told is not a detail for the trace pane.
                 // One compaction pass can orphan half a dozen calls at once, though, and six
@@ -1047,6 +1083,15 @@ impl App {
                          thinking is a number in /budget and nowhere else"
                             .to_owned(),
                     );
+                }
+                // the provider has just said what that request really cost, and what it was
+                // made of is still here from the event that sent it. Paired, they are the one
+                // exact figure in this program's accounting; see `Anchor`
+                if let Some(reported) = usage.and_then(|usage| usage.input_tokens) {
+                    self.anchor = Some(Anchor {
+                        items: std::mem::take(&mut self.pending),
+                        reported: reported as usize,
+                    });
                 }
                 // the turn is recorded, so whatever streamed is now the item's to say. This is
                 // also what makes a provider that does not stream work without being detected:
@@ -1329,6 +1374,75 @@ impl App {
                 .into_iter()
                 .map(|skipped| (skipped.id, skipped.reason))
                 .collect(),
+        }
+    }
+
+    /// What the next request is expected to cost, taken from what the last one really cost.
+    ///
+    /// note: **the anchored figure**, and the arithmetic is one line of intent: the provider's
+    /// number, plus what the context estimates now, minus what the estimator says the items
+    /// that number covered would cost now. An item that has not moved appears in both estimates
+    /// and cancels, so it contributes its *measured* cost and no error at all; only what
+    /// changed since the last request is estimated. Add a message to a hundred-thousand-token
+    /// context and the error is a few tokens rather than a few hundred.
+    ///
+    /// note: both estimates are taken *now*, with the counter as it currently stands, which is
+    /// what makes the cancellation exact. Storing what each item was estimated at when the
+    /// request went out would not: `Calibrating` revises its scale on the way past, when the
+    /// very response this figure comes from is observed, so every stored figure would be in
+    /// older money than the ones it is subtracted from and a context that had not changed at
+    /// all would drift.
+    ///
+    /// note: `None` before any response, on an endpoint that reports no usage, and after a
+    /// change of model until the next response - all three being cases where there is nothing
+    /// exact to build on, and the caller falls back to [`Budget::used`].
+    ///
+    /// note: what it does not catch, until the next request re-anchors it: a tool added or
+    /// dropped, since the schemas are inside the provider's figure and are not itemised in it.
+    /// The context is the part that moves.
+    pub fn anchored(&self, going: &Going, budget: &Budget) -> Option<usize> {
+        let anchor = self.anchor.as_ref()?;
+        let covered: usize = anchor.items.iter().map(|id| self.valued(going, *id)).sum();
+
+        Some(
+            (anchor.reported as i64 + budget.context_tokens as i64 - covered as i64).max(0)
+                as usize,
+        )
+    }
+
+    /// What one item would cost the request if it were sending its content, as the counter sees
+    /// it now.
+    ///
+    /// note: three answers rather than one, and the middle one is the reason. An item that is
+    /// still sending its content is worth what the projection says it costs - the message it
+    /// becomes, which is the figure the budget is built from. One that is *not* - excluded,
+    /// archived, or elided to a marker - is worth what it holds, because that is what it
+    /// contributed to the provider's figure and that is what has to come back out of it; the
+    /// marker in its place is already counted on the other side. One that no longer exists at
+    /// all, because an undo took it, is worth nothing anybody can recover, and the next request
+    /// puts the accounting straight.
+    fn valued(&self, going: &Going, id: ContextId) -> usize {
+        match self.kernel.item(id) {
+            Some(item) if going.sends_content(&item) => {
+                going.costs.get(&id).copied().unwrap_or(item.tokens)
+            }
+            Some(item) => item.tokens,
+            None => 0,
+        }
+    }
+
+    /// What the message being typed would add to the next request.
+    ///
+    /// note: the counter rather than a rule of thumb, so that a draft is measured the same way
+    /// as everything already in the context - including whatever `Calibrating` has learnt about
+    /// this model. It is worth showing at all only because the figure it is added to is
+    /// anchored: a draft moving a number that is itself a thousand tokens uncertain would be
+    /// precision theatre.
+    pub fn drafted(&self) -> usize {
+        let draft = self.input.lines().join("\n");
+        match draft.trim().is_empty() || draft.starts_with('/') {
+            true => 0,
+            false => self.kernel.counter().count(&Content::text(draft)),
         }
     }
 

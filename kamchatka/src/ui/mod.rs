@@ -575,9 +575,23 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
     }
 
     let budget = app.kernel.budget();
-    let used = thousands(budget.used());
+    // what the next request would cost with the message being typed in it, taken from what the
+    // last one really cost wherever there is one to take it from. The `~` stays either way -
+    // both are predictions - but an anchored one is out by a few percent of what has changed
+    // since the last request rather than of the whole context, and a draft moving the figure is
+    // only worth showing at that accuracy. See `App::anchored`
+    let draft = app.drafted();
+    let next = app
+        .anchored(going, &budget)
+        .unwrap_or_else(|| budget.used())
+        + draft;
+    let used = thousands(next);
+    let fraction = budget
+        .limit
+        .filter(|limit| *limit != 0)
+        .map(|limit| next as f64 / limit as f64);
     add(
-        match (budget.fraction_used(), budget.limit) {
+        match (fraction, budget.limit) {
             // a decimal place, because rounding a large context down to "0%" reads like a
             // measurement that is not being taken; and the limit itself, because a percentage
             // of an unstated total is not a fact anybody can act on
@@ -590,13 +604,18 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
             }
             _ => format!("~{used} tokens, of an unknown limit"),
         },
-        match budget.fraction_used() {
+        match fraction {
             Some(fraction) if fraction >= 0.9 => Style::default().fg(Color::Red),
             Some(fraction) if fraction >= 0.7 => Style::default().fg(Color::Yellow),
             Some(_) => Style::default().fg(Color::Green),
             None => dim,
         },
     );
+    // and what of that figure is the thing not yet sent, because a number that moves as
+    // somebody types is worth reading only if it says which part is theirs
+    if draft != 0 {
+        add(format!("{} of it typed", thousands(draft)), dim);
+    }
 
     // the `~` above is not decoration: that figure is an estimate from a counter that does not
     // have the model's tokenizer. This one is what the provider charged for, and the two being

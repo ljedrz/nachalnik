@@ -7,6 +7,7 @@
 
 use std::{sync::Arc, time::Duration};
 
+use crossterm::event::KeyCode;
 use nachalnik::{
     ContextItem, ContextState, ModelInfo, ModelResponse, Usage, test::ScriptedProvider,
 };
@@ -551,4 +552,141 @@ async fn an_endpoint_that_publishes_no_parameters_is_not_read_as_forbidding_them
         "nothing is claimed about a model that said nothing: {screen}"
     );
     assert!(!screen.contains("also takes"), "{screen}");
+}
+
+/// The figure in the corner starts from what the provider charged and estimates only what has
+/// changed since.
+///
+/// note: the whole point of the arithmetic. A counter without the model's tokenizer is out by a
+/// few percent of everything it is asked about, so an estimate of a large context is out by a
+/// lot of tokens even when it is out by very little as a percentage - and "does the next
+/// message fit" is exactly the question that figure is read for. Anchored, an item that has not
+/// moved contributes what the provider *measured* and no error at all.
+#[tokio::test]
+async fn the_next_request_is_reckoned_from_what_the_last_one_really_cost() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(9_000),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }]);
+    // a context the counter is going to be wrong about, and a provider that says so: the
+    // estimate will be nowhere near 9,000
+    harness.app.kernel.push(ContextItem::file(
+        "haystack.txt",
+        "a needle in it. ".repeat(200),
+    ));
+
+    harness.send("go").await;
+    harness.settle().await;
+
+    let going = harness.app.going();
+    let budget = harness.app.kernel.budget();
+    let estimate = budget.used();
+    let anchored = harness
+        .app
+        .anchored(&going, &budget)
+        .expect("a response reported what it cost");
+
+    // the request carried the file and the question; what is in the context that was not in it
+    // is the answer, and that is the only thing the anchored figure has to estimate
+    let answered = harness.app.kernel.items().last().unwrap().clone();
+    assert_eq!(
+        anchored,
+        9_000 + going.costs.get(&answered.id).copied().unwrap_or(0),
+        "the provider's own figure for what it answered, plus what came after it"
+    );
+
+    // and the from-scratch estimate is a different number, which is the reason for any of this.
+    // `Calibrating` has pulled it towards the truth - one observation, so its scale is fitted to
+    // exactly this request - and it still lands 10% under, because that scale is a single
+    // multiplier standing in for per-message framing it cannot see
+    assert!(estimate < 9_000, "the counter is low, as it is: {estimate}");
+    assert!(
+        anchored - estimate > 500,
+        "and the two are far enough apart to change what somebody does: {estimate} vs {anchored}"
+    );
+
+    // the corner reads the anchored figure, so it says thousands where the estimate says
+    // hundreds - which is the difference somebody would actually have acted on
+    let screen = harness.screen();
+    assert!(
+        screen.contains("~9,"),
+        "the status line should show the anchored figure, not the estimate: {screen}"
+    );
+}
+
+/// Taking something out of the request takes it off the anchored figure too, by what it was
+/// holding rather than by what it costs as a marker.
+#[tokio::test]
+async fn what_stops_being_sent_comes_back_off_the_anchored_figure() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(9_000),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }]);
+    let file = harness.app.kernel.push(ContextItem::file(
+        "haystack.txt",
+        "a needle in it. ".repeat(200),
+    ));
+
+    harness.send("go").await;
+    harness.settle().await;
+    let before = harness
+        .app
+        .anchored(&harness.app.going(), &harness.app.kernel.budget())
+        .expect("anchored");
+
+    // excluded: it was in the request the 9,000 was charged for, so it has to come out of it
+    harness
+        .app
+        .kernel
+        .set_state([file], ContextState::Excluded, Some("by hand".into()));
+    let after = harness
+        .app
+        .anchored(&harness.app.going(), &harness.app.kernel.budget())
+        .expect("anchored");
+
+    let held = harness.app.kernel.item(file).unwrap().tokens;
+    assert_eq!(
+        before - after,
+        held,
+        "what came off should be what the item holds, not nothing and not the whole context"
+    );
+}
+
+/// A message being typed is in the corner before it is anywhere else.
+///
+/// note: it is not context and never will be until it is sent, so nothing in the runtime can
+/// answer for it - and it is the one number somebody actually wants while deciding whether to
+/// press enter. Worth showing only because the figure it lands on is anchored: a draft moving a
+/// total that is itself a thousand tokens uncertain would be precision theatre.
+#[tokio::test]
+async fn a_message_being_typed_is_counted_before_it_is_sent() {
+    let mut harness = Harness::new([]);
+
+    assert_eq!(harness.app.drafted(), 0, "nothing typed, nothing counted");
+
+    for c in "here is a question of some length".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+    let drafted = harness.app.drafted();
+    assert!(drafted > 0, "a typed message costs something");
+
+    let screen = harness.screen();
+    assert!(
+        screen.contains(&format!("{drafted} of it typed")),
+        "the corner should say how much of the figure is not sent yet: {screen}"
+    );
+
+    // a slash command is not a message and is not going into any request
+    for _ in 0.."here is a question of some length".len() {
+        harness.press(KeyCode::Backspace).await;
+    }
+    harness.press(KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('b')).await;
+    assert_eq!(harness.app.drafted(), 0, "a command is not a message");
 }

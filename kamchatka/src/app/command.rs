@@ -616,12 +616,47 @@ impl App {
         // ways of not being sent, and the context tab is drawing from the same answer
         let (withheld, out) = self.withheld(&self.going());
 
+        let going = self.going();
+        let anchored = self.anchored(&going, &budget);
         let mut lines = vec![format!(
             "the next request: ~{} tokens, {} of context and {} of tool definitions",
             thousands(budget.used()),
             thousands(budget.context_tokens),
             thousands(budget.tool_tokens),
         )];
+        // note: the two figures are answers to the same question by different methods, and
+        // which one somebody is reading matters more than either. The line above is the counter
+        // estimating the whole request from scratch; this one starts from what the provider
+        // charged for the last one and estimates only what has changed since, so its error is a
+        // few percent of the change rather than of the context. It is what the status line
+        // shows, and saying so here is the only place the difference is explained
+        match anchored {
+            Some(anchored) => lines.push(format!(
+                "anchored on the last response: ~{} tokens - the provider's own {} for the \
+                 request it answered, plus what the context has done since. This is the figure \
+                 in the corner",
+                thousands(anchored),
+                thousands(
+                    budget
+                        .reported
+                        .and_then(|usage| usage.input_tokens)
+                        .unwrap_or_default() as usize
+                ),
+            )),
+            None => lines.push(
+                "nothing to anchor on yet: no response has reported what a request cost, so \
+                 every figure here is the counter estimating the whole of it"
+                    .to_owned(),
+            ),
+        }
+        let draft = self.drafted();
+        if draft != 0 {
+            lines.push(format!(
+                "and ~{} tokens of message typed but not sent, which the corner is counting and \
+                 the context is not",
+                thousands(draft)
+            ));
+        }
         lines.push(match budget.limit {
             Some(limit) => format!(
                 "the limit: {}, which the next request would fill {:.1}% of",

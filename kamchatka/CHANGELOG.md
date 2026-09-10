@@ -7,6 +7,47 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **The figure in the corner is anchored on what the provider charged.** `App::anchored` takes
+  the reported cost of the last request, adds what the context estimates now, and subtracts
+  what the estimator says the items that figure covered would cost now. An item that has not
+  moved appears in both estimates and cancels, so it contributes its *measured* cost and no
+  error at all - only what changed since the last request is estimated.
+
+  The counter has no tokenizer and is out by a few percent of everything it is asked about, so
+  an estimate of a large context is out by a lot of tokens even where it is a good percentage:
+  1% of a hundred thousand is a thousand, and "does the next message fit" is exactly the
+  question that figure gets read for. Measured against a scripted provider reporting 9,000 for
+  a request the calibrated counter put at 8,060, the anchored figure is the 9,000 plus the cost
+  of the answer.
+
+  It also absorbs, exactly and for nothing, what the counter is structurally blind to:
+  per-message framing, the tool schemas, and any `Content::Blob` that has already been sent -
+  a picture the counter refuses to price is inside the provider's number, so it stops being
+  unaccounted for the moment it has gone out once.
+
+  Both estimates are taken with the counter as it currently stands, which is what makes the
+  cancellation exact: storing what each item was estimated at when the request went out would
+  not, because `Calibrating` revises its scale on the way past - when the very response the
+  figure comes from is observed - and every stored figure would be in older money than the ones
+  it is subtracted from.
+
+  It falls back to the plain estimate before any response, on an endpoint that reports no
+  usage, and after a change of model until the next response. What it does not catch until the
+  next request re-anchors it is a tool added or dropped, since the schemas are inside the
+  provider's figure and are not itemised in it.
+
+- **A message being typed is counted before it is sent.** `App::drafted` measures the prompt
+  with the same counter as everything else, and the status line adds it to the anchored figure
+  and says how much of the total is not sent yet. A slash command is not a message and counts
+  as nothing. Worth showing only because the figure it lands on is anchored - a draft moving a
+  total that is itself a thousand tokens uncertain would be precision theatre.
+
+- `/budget` says which of the two figures the corner is showing, and what the anchored one is
+  built from. The estimate and the provider's number were already side by side there; what was
+  missing is that they are answers to the same question by different methods.
+
 ### changed
 
 - **The chat is derived from the context rather than accumulated beside it.** `App::transcript`
