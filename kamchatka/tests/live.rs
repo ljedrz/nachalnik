@@ -1657,3 +1657,96 @@ async fn a_pdf_attached_at_the_prompt_is_read_by_the_model() {
         "the budget names the piece it could not reach: {panel}"
     );
 }
+
+/// A resumed session carries on, and what it sends next is a request the endpoint accepts.
+///
+/// note: `screen.rs` proves a resume reads back as the conversation it was. What it cannot
+/// settle is the next request. A snapshot carries states as well as words - an elided item, a
+/// tool exchange, the identifiers already spent - and the projection built from a context nobody
+/// assembled turn by turn is the one nothing has ever sent anywhere. So this one saves a session
+/// with something awkward in it, resumes into a kernel that has never seen a provider, and asks
+/// a question whose answer is only in the part that was carried.
+#[tokio::test]
+async fn a_resumed_session_carries_on_and_the_endpoint_accepts_it() {
+    let (mut app, mut finished) = live!();
+
+    // a tool exchange, so the snapshot carries a call and its answer, and a spent identifier
+    send(
+        &mut app,
+        &mut finished,
+        "Call the secret tool, then say the code word.",
+    )
+    .await;
+    // and something elided, which is the state most likely to project badly from a cold start
+    let result = app
+        .kernel
+        .items()
+        .iter()
+        .find(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .map(|item| item.id);
+    if let Some(result) = result {
+        app.kernel.set_state(
+            [result],
+            ContextState::Elided,
+            Some("taken at the terminal".into()),
+        );
+    }
+    app.kernel
+        .push(ContextItem::user("Remember the word LARKSPUR."));
+
+    // what `-r` does: a fresh kernel from the snapshot, and a terminal that has never run a turn
+    let snapshot = app.kernel.snapshot();
+    let carried = Kernel::resume(Config::default(), snapshot);
+    let provider = endpoint().await.expect("the same endpoint");
+    carried.set_provider(provider.clone());
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::Capability(Capability::Read), Verdict::Allow);
+    carried.set_policy(policy.clone());
+    carried.add_tool(Arc::new(Secret));
+    let (outcomes, mut finished) = tokio::sync::mpsc::unbounded_channel();
+    let mut app = App::new(carried, policy, provider, Limits::default(), outcomes);
+    app.replay();
+
+    // the awkward states really did come across, or the question below proves nothing
+    let carried = app.kernel.items();
+    println!(
+        "  resumed with {} item(s), {} elided",
+        carried.len(),
+        carried.iter().filter(|item| item.state.is_elided()).count()
+    );
+    assert!(
+        carried
+            .iter()
+            .any(|item| matches!(item.kind, ContextKind::ToolResult { .. })),
+        "the tool exchange should have come across"
+    );
+    assert!(
+        carried.iter().any(|item| item.state.is_elided()),
+        "and so should the elision, which is the state most likely to project badly"
+    );
+    send(
+        &mut app,
+        &mut finished,
+        "What word were you asked to remember? Reply with just that word.",
+    )
+    .await;
+
+    assert!(
+        matches!(app.kernel.state(), State::Finished { .. }),
+        "the request built from a resumed context was refused: {:?}",
+        app.kernel.state()
+    );
+    let said = app
+        .kernel
+        .items()
+        .iter()
+        .rev()
+        .find(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .unwrap_or_default();
+    println!("  it said: {}", said.trim());
+    assert!(
+        said.to_uppercase().contains("LARKSPUR"),
+        "what was carried should still be in front of the model: {said}"
+    );
+}
