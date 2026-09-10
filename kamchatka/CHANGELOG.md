@@ -5,6 +5,23 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- Requires `nachalnik` 0.5.0, whose 0.5.0 asks `PermissionPolicy::why` with the
+  `PermissionRequest` rather than a `ToolCallId`. `Careful`'s implementation of it reads
+  `request.call` and hands back the same sentence as before, so a refused model reads exactly what
+  it read yesterday.
+
+  `Careful` keeps its own record of the last sixty-four refusals rather than answering the kernel
+  from the request. The reason is its second reader: the permissions tab asks by identifier off
+  `Event::PermissionDecided`, which carries no arguments, so the record is what puts a refusal on
+  a screen at all. Answering the *model* from the request instead - which is now possible, and
+  would put that copy beyond the sixty-four - is a change with a different meaning, since a reason
+  computed on demand describes the stances as they stand and a remembered one describes the ones
+  that actually refused.
+
 ## [0.7.0] - 2026-09-10
 
 ### added
