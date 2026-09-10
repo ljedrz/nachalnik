@@ -553,8 +553,11 @@ number should be:
 · [1] q3.pdf (file) [application/pdf, 292.47kB], 6 tokens and 1 piece(s) nothing here can price
 ```
 
-That is not a rounding. A 535-byte one-page PDF was charged 6,500 tokens by Gemini in the test
-that pins this; four bytes a token would have called it 134. The row on the context tab reads
+That is not a rounding. In the live test that pins this, a 535-byte one-page PDF goes to Gemini
+through OpenRouter: the counter puts the whole request at **19 tokens** and says one piece of it
+has no number on it, and the provider charges **540**. Dividing the base64 by four — the thing the
+counter refuses to do — would have said 179, which is not the answer either. The row on the
+context tab reads
 `0+` for the same reason, `/budget` counts how many pieces are in that state, and the figure in
 the corner stops being a floor the moment the request has gone out once — because from then on
 the provider's own number has the document inside it. If you want the estimate to be right

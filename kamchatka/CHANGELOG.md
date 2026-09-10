@@ -34,9 +34,11 @@ minor bump may break you.
   difference between an attachment surviving and not: `Trim` takes anything carrying a blob first
   and on principle, and a pin is the one thing the kernel refuses it.
 
-  Measured against Gemini through OpenRouter: a 535-byte one-page PDF was charged at 6,500 tokens.
-  Four bytes a token would have called it 134, and the counter declining to answer is the reason
-  the budget said `unpriced: 1 piece(s)` rather than a figure forty-eight times too small.
+  Measured against Gemini through OpenRouter, in the live test that pins it: a 535-byte one-page
+  PDF, a request the counter puts at 19 tokens with one piece unpriced, and 540 charged. Dividing
+  the base64 by four would have said 179 for the document, which is not the answer either - a
+  number about an encoding never becomes a number about a model. Declining is what makes the
+  budget say `unpriced: 1 piece(s)` instead of picking one of the two wrong figures.
 
 - The context pane marks a row the counter would not price: its figure reads `0+` rather than
   `0`. The two things that zero meant - "measured, and free" and "there is a picture here and
