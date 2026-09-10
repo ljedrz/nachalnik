@@ -71,6 +71,14 @@ minor bump may break you.
   a provider rather than anything this crate enforces - there is no key here whose meaning the
   kernel knows, which is the entire point of the field.
 
+- A test that a payload survives a snapshot, nested where a client attaching a file actually puts
+  one and with its `meta` intact. Three things that each break silently and none of which the
+  session suite reached: serde carrying a `Content::Blob` inside a `Content::Blocks`, the two
+  different paths a `meta` that is set and a `meta` that is null take through one `Deserialize`,
+  and `uncounted` coming back the same on the other side - a resumed context reporting a picture
+  as free would be the abstention lost at the moment nobody would look for it. It round-trips;
+  what was missing was anything saying so.
+
 - `Content::blobs`, which collects every `Blob` in a piece of content **including those nested in
   a `Content::Blocks` turn**. This is the seam a counter needs and could not build for itself, and
   the nesting is the whole reason; see the fix below. `Blob::wire_len` is the payload and the

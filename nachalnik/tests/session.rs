@@ -462,3 +462,75 @@ async fn replacing_a_seam_is_an_event_that_names_it() {
         .expect("it was removed");
     assert!(removed.0.is_some() && removed.1.is_none(), "{removed:?}");
 }
+
+/// A payload survives a snapshot, nested where a real client puts one, with its `meta` intact.
+///
+/// note: three things that each break silently and none of which any other test here reaches. A
+/// `Content::Blob` inside a `Content::Blocks` is the one shape a client attaching a file actually
+/// produces - a sentence and the payload - and serde has to carry the nesting. `Blob::meta` is
+/// `skip_serializing_if = "is_null"`, so a blob with nothing on it and a blob with a filename on
+/// it take two different paths through the same `Deserialize`. And the count has to come back
+/// too: a resumed context that reported a picture as free would be the abstention lost at exactly
+/// the moment nobody would look for it.
+#[tokio::test]
+async fn a_payload_survives_a_snapshot_with_what_was_known_about_it() {
+    use nachalnik::{Blob, Block, Content};
+
+    let (kernel, _) = permissive([ModelResponse::text("unreached")]);
+    let named = Blob::new("application/pdf", "JVBERi0=").with_meta(json!({ "name": "q3.pdf" }));
+    kernel.push(
+        ContextItem::file(
+            "q3.pdf",
+            Content::blocks([
+                Block::text(Content::Blob(Arc::new(named))),
+                Block::text(Content::text("(attached from q3.pdf)")),
+            ]),
+        )
+        .pinned(),
+    );
+    // and one with nothing known about it, which is the other serde path
+    kernel.push(ContextItem::user(Content::blob("image/png", "iVBORw0=")));
+
+    let before = kernel.items();
+    let budget = kernel.budget();
+    assert_eq!(
+        budget.uncounted, 2,
+        "neither is priced by the default counter"
+    );
+
+    let json = serde_json::to_string(&kernel.snapshot()).unwrap();
+    let resumed = Kernel::resume(Config::default(), serde_json::from_str(&json).unwrap());
+
+    assert_eq!(
+        resumed.items(),
+        before,
+        "every item, payload and state included"
+    );
+
+    // the payload itself, through the nesting
+    let items = resumed.items();
+    let carried = items[0].content.blobs();
+    let blob = carried.first().expect("the blob is still in there");
+    assert_eq!(&*blob.media_type, "application/pdf");
+    assert_eq!(&*blob.data, "JVBERi0=");
+    // what the producer knew, which is what a provider reads to name the attachment part
+    assert_eq!(
+        blob.meta.get("name").and_then(|n| n.as_str()),
+        Some("q3.pdf")
+    );
+    // and the one with no meta comes back with none rather than with something invented
+    assert!(
+        resumed.items()[1]
+            .content
+            .as_blob()
+            .expect("a blob")
+            .meta
+            .is_null(),
+        "an empty meta is absent on the wire and null on the way back"
+    );
+
+    // the abstention is a property of the content, so it is recounted rather than restored - and
+    // it has to come out the same
+    assert_eq!(resumed.budget().uncounted, 2);
+    assert!(!resumed.budget().fully_counted());
+}
