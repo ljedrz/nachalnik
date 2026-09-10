@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### changed
 
+- A report marks its thousands. A whole suite against one model came to
+  `748 requests, 1380348 in / 791210 out`, which is a figure nobody reads at a glance and two
+  nobody compares; the per-experiment `cost:` lines had the same problem at six digits. The JSON
+  is unchanged and is still where anything computing on these should look.
+
 - Requires `nachalnik` 0.4.0. Nothing in this crate's own API moved, but it names runtime types
   in its public interface - so a caller cannot mix this release with a `nachalnik` from the
   0.3 series, and cargo reads the middle number as the major. The runtime's 0.4.0 added

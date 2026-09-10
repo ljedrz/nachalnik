@@ -87,6 +87,24 @@ impl Instrument {
     }
 }
 
+/// A count with its thousands marked, because these run to seven figures.
+///
+/// note: a whole run against one model came to `1380348 in / 791210 out`, which is a number
+/// nobody reads at a glance and two nobody compares. The same figures are in the JSON for
+/// anything that wants to compute with them; this side of it is for a person.
+fn thousands(n: impl fmt::Display) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+
+    out
+}
+
 impl fmt::Display for Instrument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if !self.is_stated() {
@@ -295,7 +313,10 @@ impl fmt::Display for Outcome {
         write!(
             f,
             "  {:<16}{} requests, {} in / {} out",
-            "cost:", self.spend.requests, self.spend.input, self.spend.output
+            "cost:",
+            thousands(self.spend.requests),
+            thousands(self.spend.input),
+            thousands(self.spend.output)
         )?;
         if let Some(failed) = &self.failed {
             write!(f, "\n  {:<16}{failed}", "stopped:")?;
@@ -402,9 +423,9 @@ impl fmt::Display for Report {
             f,
             "\npooled: {}\ntotal:  {} requests, {} in / {} out",
             self.scores(),
-            spend.requests,
-            spend.input,
-            spend.output
+            thousands(spend.requests),
+            thousands(spend.input),
+            thousands(spend.output)
         )
     }
 }
@@ -499,5 +520,19 @@ pub async fn evaluate(
             .map(|since| since.as_millis() as u64)
             .unwrap_or_default(),
         outcomes,
+    }
+}
+
+#[cfg(test)]
+mod thousands_tests {
+    use super::thousands;
+
+    /// note: a whole run came to `1380348 in / 791210 out`, which is a number nobody reads at a
+    /// glance and two nobody compares.
+    #[test]
+    fn a_seven_figure_count_is_readable() {
+        assert_eq!(thousands(0u64), "0");
+        assert_eq!(thousands(748usize), "748");
+        assert_eq!(thousands(1_380_348u64), "1,380,348");
     }
 }
