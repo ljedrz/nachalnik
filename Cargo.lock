@@ -1221,6 +1221,7 @@ dependencies = [
  "nachalnik-mcp",
  "nachalnik-providers",
  "parking_lot",
+ "proptest",
  "ratatui",
  "ratatui-textarea",
  "serde_json",

@@ -5,7 +5,7 @@
 //! that a stream of fragments is one paragraph, that indentation survives, that a table keeps its
 //! shape at any width, and that a long answer is never shortened on the way to the screen.
 
-use std::sync::Arc;
+use std::{cell::RefCell, sync::Arc};
 
 use crossterm::event::KeyCode;
 use kamchatka::app::{Outcome, Speaker, Tab};
@@ -14,6 +14,7 @@ use nachalnik::{
     StopReason, Usage,
     test::{ConstTool, call},
 };
+use proptest::{prelude::*, test_runner::TestCaseError};
 use ratatui::style::{Color, Modifier};
 use serde_json::json;
 
@@ -1090,97 +1091,195 @@ async fn an_edit_to_an_early_turn_stays_where_that_turn_was() {
 /// request disagreeing - an item drawn that was not being sent, a line drawn twice, a line drawn
 /// as withheld that was mid-flight - and each was found by looking rather than by a test. What
 /// holds after every one of them is the same sentence the redesign was for: what a person reads
-/// is what the model reads. So this drives the operations that move an item between states and
-/// checks that sentence after each one.
-#[tokio::test]
-async fn the_chat_is_the_conversation_the_model_is_in() {
-    let mut harness = Harness::new([
-        ModelResponse::text("an answer of BETAWORD"),
-        ModelResponse::text("an answer of DELTAWORD"),
-    ]);
-    harness.send("a question of ALPHAWORD").await;
-    harness.settle().await;
-    harness.send("a question of GAMMAWORD").await;
-    harness.settle().await;
-
-    let ids: Vec<_> = harness.app.kernel.items().iter().map(|it| it.id).collect();
+/// is what the model reads.
+///
+/// note: the sequence is generated now, where it used to be six moves somebody chose. The six
+/// were `excluded, restored, elided, edited, undone, redone` over three fixed items, which is one
+/// path through a space that has `pinned`, `archived` and `superseded` in it as well, and no
+/// interleaving at all - and the interleavings are where this went wrong before: a line drawn
+/// twice needs a state left and returned to, and the six could not do that. The shrinker is the
+/// other half of the reason. The hand-written version failed immediately on its own fixture, with
+/// two items ending in the same word, and it took reading to find out why; a generated one hands
+/// back the shortest sequence that still breaks.
+///
+/// note: a `tokio` runtime driven from inside a synchronous property, because `proptest!` builds
+/// a plain `#[test]` and the harness is async. One runtime for the whole run rather than one per
+/// case: nothing here outlives its case, and a fresh harness per case is the part that matters.
+#[test]
+fn the_chat_is_the_conversation_the_model_is_in() {
+    /// One thing somebody can do to an item, from the keys the context tab has.
+    #[derive(Debug, Clone, Copy)]
     enum Move {
         Exclude(usize),
         Restore(usize),
         Elide(usize),
+        Pin(usize),
+        Archive(usize),
+        /// New words under the same identifier, which is what `replace` does.
         Edit(usize),
+        /// New words beside it, with the old marked superseded - what `e` on the tab does.
+        Supersede(usize),
         Undo,
         Redo,
     }
-    let moves = [
-        ("excluded", Move::Exclude(0)),
-        ("restored", Move::Restore(0)),
-        ("elided", Move::Elide(1)),
-        ("edited", Move::Edit(2)),
-        ("undone", Move::Undo),
-        ("redone", Move::Redo),
+
+    /// What a run reached, so that a property over nine moves cannot quietly become one over two.
+    #[derive(Default, Debug)]
+    struct Reached {
+        withheld_an_item: usize,
+        sent_an_item: usize,
+        excluded: usize,
+        elided: usize,
+        pinned: usize,
+        archived: usize,
+        superseded: usize,
+        edited: usize,
+        undid_something: usize,
+    }
+
+    let runtime = tokio::runtime::Runtime::new().expect("a runtime to drive the harness");
+    let reached = RefCell::new(Reached::default());
+    let move_ = prop_oneof![
+        3 => (0usize..8).prop_map(Move::Exclude),
+        2 => (0usize..8).prop_map(Move::Restore),
+        3 => (0usize..8).prop_map(Move::Elide),
+        2 => (0usize..8).prop_map(Move::Pin),
+        2 => (0usize..8).prop_map(Move::Archive),
+        2 => (0usize..8).prop_map(Move::Edit),
+        2 => (0usize..8).prop_map(Move::Supersede),
+        2 => Just(Move::Undo),
+        2 => Just(Move::Redo),
     ];
 
-    for (what, move_) in moves {
-        let kernel = &harness.app.kernel;
-        match move_ {
-            Move::Exclude(at) => kernel.set_state([ids[at]], ContextState::Excluded, None),
-            Move::Restore(at) => kernel.set_state([ids[at]], ContextState::Active, None),
-            Move::Elide(at) => {
-                kernel.set_state([ids[at]], ContextState::Elided, Some("taken".into()))
-            }
-            Move::Edit(at) => {
-                kernel
-                    .replace(ids[at], "a question of EPSILONWORD")
-                    .expect("edited");
-                Default::default()
-            }
-            Move::Undo => {
-                kernel.undo();
-                Default::default()
-            }
-            Move::Redo => {
-                kernel.redo();
-                Default::default()
-            }
-        };
-        harness.drain();
-        harness.tab(Tab::Chat);
-        let screen = harness.flat();
-        let going = harness.app.going();
+    proptest!(
+        ProptestConfig { cases: 48, ..ProptestConfig::default() },
+        |(moves in prop::collection::vec(move_, 1..14))| {
+            let outcome: Result<(), TestCaseError> = runtime.block_on(async {
+                let mut harness = Harness::new([
+                    ModelResponse::text("an answer of A00WORD"),
+                    ModelResponse::text("an answer of A01WORD"),
+                ]);
+                harness.send("a question of Q00WORD").await;
+                harness.settle().await;
+                harness.send("a question of Q01WORD").await;
+                harness.settle().await;
 
-        for item in harness.app.kernel.items() {
-            // only the two kinds the chat draws as speech; a reference or a tool result reads
-            // as its own kind of line and is not what this is about
-            if !matches!(
-                item.kind,
-                ContextKind::UserMessage | ContextKind::AssistantMessage { .. }
-            ) {
-                continue;
-            }
-            // the one nonsense word each fixture carries, so a match cannot be some other
-            // item's wording - which is what the first draft of this got wrong
-            let text = item.content.to_text();
-            let Some(distinctive) = text.split_whitespace().find(|word| word.ends_with("WORD"))
-            else {
-                continue;
-            };
+                // fixed width, so that no distinctive word is a substring of another one - which
+                // is the mistake the hand-written version made and spent a debugging session on
+                let mut edits = 0;
+                for (n, move_) in moves.iter().enumerate() {
+                    let ids: Vec<_> = harness.app.kernel.items().iter().map(|it| it.id).collect();
+                    let at = |k: usize| ids[k % ids.len()];
+                    let kernel = &harness.app.kernel;
+                    let mut tally = reached.borrow_mut();
+                    match *move_ {
+                        Move::Exclude(k) => {
+                            kernel.set_state([at(k)], ContextState::Excluded, None);
+                            tally.excluded += 1;
+                        }
+                        Move::Restore(k) => {
+                            kernel.set_state([at(k)], ContextState::Active, None);
+                        }
+                        Move::Elide(k) => {
+                            kernel.set_state([at(k)], ContextState::Elided, Some("taken".into()));
+                            tally.elided += 1;
+                        }
+                        Move::Pin(k) => {
+                            kernel.set_state([at(k)], ContextState::Pinned, None);
+                            tally.pinned += 1;
+                        }
+                        Move::Archive(k) => {
+                            kernel.set_state([at(k)], ContextState::Archived, None);
+                            tally.archived += 1;
+                        }
+                        Move::Edit(k) => {
+                            let said = format!("a question of E{edits:02}WORD");
+                            edits += 1;
+                            let _ = kernel.replace(at(k), said);
+                            tally.edited += 1;
+                        }
+                        Move::Supersede(k) => {
+                            let said = format!("a question of S{edits:02}WORD");
+                            edits += 1;
+                            let _ = kernel.supersede(at(k), ContextItem::user(said));
+                            tally.superseded += 1;
+                        }
+                        Move::Undo => {
+                            if kernel.undo() {
+                                tally.undid_something += 1;
+                            }
+                        }
+                        Move::Redo => {
+                            kernel.redo();
+                        }
+                    }
+                    drop(tally);
 
-            match going.sends_content(&item) {
-                true => assert!(
-                    screen.contains(distinctive),
-                    "after {what}: [{}] is in the request and not on the chat \
-                     (looking for {distinctive:?}): {screen}",
-                    item.id
-                ),
-                false => assert!(
-                    !screen.contains(distinctive),
-                    "after {what}: [{}] is not in the request and is on the chat \
-                     (found {distinctive:?}): {screen}",
-                    item.id
-                ),
-            }
+                    harness.drain();
+                    harness.tab(Tab::Chat);
+                    let screen = harness.packed();
+                    let going = harness.app.going();
+
+                    for item in harness.app.kernel.items() {
+                        // only the two kinds the chat draws as speech; a reference or a tool
+                        // result reads as its own kind of line and is not what this is about
+                        if !matches!(
+                            item.kind,
+                            ContextKind::UserMessage | ContextKind::AssistantMessage { .. }
+                        ) {
+                            continue;
+                        }
+                        // the one nonsense word each item carries, so that a match cannot be some
+                        // other item's wording
+                        let text = item.content.to_text();
+                        let Some(distinctive) =
+                            text.split_whitespace().find(|word| word.ends_with("WORD"))
+                        else {
+                            continue;
+                        };
+
+                        let sending = going.sends_content(&item);
+                        match sending {
+                            true => reached.borrow_mut().sent_an_item += 1,
+                            false => reached.borrow_mut().withheld_an_item += 1,
+                        }
+                        prop_assert_eq!(
+                            screen.contains(distinctive),
+                            sending,
+                            "after move {} of {:?}: [{}] sends_content={} and the chat {} \
+                             {:?}",
+                            n,
+                            moves,
+                            item.id,
+                            sending,
+                            match sending { true => "does not have", false => "has" },
+                            distinctive
+                        );
+                    }
+                }
+
+                Ok(())
+            });
+
+            outcome?;
         }
+    );
+
+    // a property over nine moves that only ever reached two of them is one nobody should trust,
+    // and the way that happens is a reweighted `prop_oneof!` rather than anybody's decision
+    let reached = reached.into_inner();
+    for (what, count) in [
+        ("withheld_an_item", reached.withheld_an_item),
+        ("sent_an_item", reached.sent_an_item),
+        ("excluded", reached.excluded),
+        ("elided", reached.elided),
+        ("pinned", reached.pinned),
+        ("archived", reached.archived),
+        ("superseded", reached.superseded),
+        ("edited", reached.edited),
+        ("undid_something", reached.undid_something),
+    ] {
+        assert!(count > 0, "nothing generated reached {what}: {reached:#?}");
     }
 }
 

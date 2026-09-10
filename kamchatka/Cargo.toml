@@ -90,6 +90,9 @@ unicode-segmentation = "1.13"
 landlock = "0.4"
 
 [dev-dependencies]
+# the chat-against-the-request property in `tests/screen/chat.rs`, where the sequence of moves is
+# generated and the shrinker is what makes a failure readable
+proptest = { workspace = true }
 # the screen is tested by drawing it: a scripted provider answers, and the frame that comes out
 # is asserted against
 nachalnik = { workspace = true, features = ["selectors", "test"] }

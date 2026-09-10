@@ -9,6 +9,32 @@ minor bump may break you.
 
 ### changed
 
+- **The chat-against-the-request property drives a generated sequence of moves**, where it drove
+  six somebody chose. The sentence it checks is the one the chat was redesigned around and has
+  not moved: what a person reads is what the model reads, item by item, after every change.
+
+  The six were `excluded, restored, elided, edited, undone, redone` over three fixed items, which
+  is one path through a space that also has `pinned`, `archived` and `superseded` in it - and no
+  interleaving at all, when interleavings are where this went wrong before: a line drawn twice
+  needs a state left and returned to, and six moves in a fixed order cannot do that. Measured
+  rather than argued: drawing an **archived** item on the chat is caught by this property and by
+  nothing else in the suite, because no other test here ever archives anything. Drawing an
+  excluded or a superseded one was already caught several times over, which is the honest half of
+  the same measurement.
+
+  The shrinker is the other half of the reason. The hand-written version failed immediately on its
+  own fixture - two items ending in the same word - and finding out why took reading; a generated
+  one hands back the shortest sequence that still breaks. Distinctive words are fixed-width now so
+  that no item's marker can be a substring of another's, which is what that first failure was.
+
+  It carries its own reachability check, the way `nachalnik`'s invariants do: nine moves are in the
+  alphabet and a run that reached two of them is not a property anybody should trust, so what a
+  run reaches is counted and asserted. That failure mode is a reweighted `prop_oneof!` rather than
+  anybody's decision, which is exactly why nothing else would catch it.
+
+  A `tokio` runtime is driven from inside a synchronous property, because `proptest!` builds a
+  plain `#[test]` and this harness is async. One runtime for the run, a fresh harness per case.
+
 - Requires `nachalnik` 0.5.0, whose 0.5.0 asks `PermissionPolicy::why` with the
   `PermissionRequest` rather than a `ToolCallId`. `Careful`'s implementation of it reads
   `request.call` and hands back the same sentence as before, so a refused model reads exactly what
