@@ -5,13 +5,17 @@
 //! that a stream of fragments is one paragraph, that indentation survives, that a table keeps its
 //! shape at any width, and that a long answer is never shortened on the way to the screen.
 
+use std::sync::Arc;
+
 use crossterm::event::KeyCode;
 use kamchatka::app::{Outcome, Speaker, Tab};
 use nachalnik::{
     ContextItem, ContextKind, ContextState, Delta, Event, ModelInfo, ModelResponse, State,
     StopReason, Usage,
+    test::{ConstTool, call},
 };
 use ratatui::style::{Color, Modifier};
+use serde_json::json;
 
 use crate::harness::Harness;
 
@@ -1178,4 +1182,78 @@ async fn the_chat_is_the_conversation_the_model_is_in() {
             }
         }
     }
+}
+
+/// A tool exchange leaves the chat the same way it leaves the request: together.
+///
+/// note: the other half of the property above, and the one with a repair in it. Excluding a tool
+/// result takes its *call* out too - the projector has no choice, a call with no result is a
+/// request most providers reject - so a chat that kept drawing the call would be showing a
+/// question the model is no longer being shown asking. Eliding is the opposite and deliberately
+/// so: the call keeps its answer and only the content goes.
+#[tokio::test]
+async fn a_tool_exchange_leaves_the_chat_the_way_it_leaves_the_request() {
+    let asked = call("c1", "peek", json!({}));
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![asked.clone()]),
+        ModelResponse::text("so it says MODELSAID"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("peek", "the tool said TOOLSAID")));
+    harness.send("have a look").await;
+    harness.settle().await;
+
+    let result = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .find(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .map(|item| item.id)
+        .expect("a tool result");
+
+    // elided: the call stays, and what it answered is a marker rather than the words
+    harness
+        .app
+        .kernel
+        .set_state([result], ContextState::Elided, Some("taken".into()));
+    harness.drain();
+    let screen = harness.flat();
+    assert!(
+        screen.contains("peek("),
+        "an elided result keeps its call, so the call is still what happened: {screen}"
+    );
+    assert!(
+        !screen.contains("TOOLSAID"),
+        "and the content is what went: {screen}"
+    );
+
+    // excluded: the projector takes the call down with it, and so does the chat
+    harness
+        .app
+        .kernel
+        .set_state([result], ContextState::Excluded, None);
+    harness.drain();
+    let screen = harness.flat();
+    let going = harness.app.going();
+    let call_item = harness
+        .app
+        .kernel
+        .items()
+        .into_iter()
+        .find(|item| item.calls().next().is_some())
+        .expect("the turn that asked");
+    assert!(
+        !going.sends_content(&call_item),
+        "the projector should have repaired the call away, or this tests nothing"
+    );
+    assert!(!screen.contains("TOOLSAID"), "the result is out: {screen}");
+    // the call is still drawn, but as something that is not being sent - never as an ordinary
+    // line, which would show the model asking a question it is not being shown asking
+    assert!(
+        !screen.contains("⟩ peek("),
+        "a call that is not in the request must not read as one that is: {screen}"
+    );
 }
