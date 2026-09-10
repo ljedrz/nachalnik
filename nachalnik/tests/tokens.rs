@@ -136,9 +136,9 @@ fn calibrating() -> Arc<Calibrating<BytesPerToken>> {
 /// is nowhere near full. What one really costs is a formula over its dimensions that every vendor
 /// publishes and each publishes differently, and none of them is reachable from a byte length.
 ///
-/// note: so the figure is a floor and this test pins that it is - a context holding pictures is
-/// bigger than the budget says. Saying *how much* bigger needs a number on `Budget` that is not
-/// there yet, which is why a real tokenizer is still the answer for anyone who needs this right.
+/// note: so the figure is a floor, and `uncounted` is what says so out loud. A count of `0` that
+/// meant "measured, and free" and a count of `0` that meant "there is a picture here and nothing
+/// priced it" were the same number until there was a second one beside it.
 #[test]
 fn the_default_counter_declines_a_blob_rather_than_guessing_at_it() {
     let counter = BytesPerToken::default();
@@ -150,8 +150,54 @@ fn the_default_counter_declines_a_blob_rather_than_guessing_at_it() {
         0,
         "base64 over four is a number about the encoding, not about the model"
     );
-    // and everything it can measure is measured exactly as before
-    assert_eq!(counter.count(&Content::text("a".repeat(400))), 100);
+    assert_eq!(
+        counter.uncounted(&blob),
+        1,
+        "and it says so rather than
+         letting the zero speak for itself"
+    );
+
+    // and everything it can measure is measured exactly as before, and disowns nothing
+    let text = Content::text("a".repeat(400));
+    assert_eq!(counter.count(&text), 100);
+    assert_eq!(counter.uncounted(&text), 0);
+}
+
+/// A picture inside a turn is a picture. The abstention was written as a match on
+/// `Content::Blob` and everything else fell through to `Content::byte_len`, which sums the blobs
+/// nested in a `Content::Blocks` - so the same 400 KB screenshot counted `0` on its own and
+/// 100,005 tokens in the sentence-and-a-screenshot turn both dialects actually send. Free or a
+/// hundred thousand tokens, depending on which shape it arrived in.
+#[test]
+fn a_blob_inside_a_turn_is_declined_like_any_other() {
+    use nachalnik::Block;
+
+    let counter = BytesPerToken::default();
+    let picture = Content::blob("image/png", "A".repeat(400_000));
+    let turn = Content::blocks([
+        Block::text(Content::text("here is what the screen looks like")),
+        Block::text(picture.clone()),
+    ]);
+
+    assert_eq!(
+        counter.count(&turn),
+        counter.count(&Content::text("here is what the screen looks like")),
+        "the sentence is counted and the picture is not, exactly as when they arrive apart"
+    );
+    assert_eq!(
+        counter.uncounted(&turn),
+        1,
+        "and the turn says it holds one"
+    );
+    assert_eq!(
+        turn.blobs().len(),
+        1,
+        "which is the seam a counter could not walk for itself"
+    );
+
+    // two of them, so the figure is a count and not a flag
+    let two = Content::blocks([Block::text(picture.clone()), Block::text(picture)]);
+    assert_eq!(counter.uncounted(&two), 2);
 }
 
 #[test]
@@ -494,4 +540,114 @@ fn recalibrating_a_counter_that_does_not_learn_does_nothing() {
         Some(Calibration::default())
     );
     assert!(events.try_recv().is_err(), "it recounted for nothing");
+}
+
+// -------------------------------------------------------------------------- abstaining out loud
+
+/// The budget carries the abstention up to whoever reads it, and it is counted over the
+/// projection rather than the context - so a picture that has been elided is not reported as a
+/// hole in a request that no longer carries it.
+#[test]
+fn the_budget_says_how_much_of_the_request_nobody_priced() {
+    let kernel = kernel();
+
+    kernel.push(ContextItem::user("what is on the screen?"));
+    assert!(
+        kernel.budget().fully_counted(),
+        "prose is priced, however badly"
+    );
+    assert_eq!(kernel.budget().uncounted, 0);
+
+    let shot = kernel.push(ContextItem::user(Content::blob(
+        "image/png",
+        "A".repeat(400_000),
+    )));
+    let budget = kernel.budget();
+    assert_eq!(budget.uncounted, 1, "one thing here has no number on it");
+    assert!(!budget.fully_counted());
+    assert_eq!(
+        kernel.item(shot).unwrap().uncounted,
+        1,
+        "and the row says which one it is, so a pane does not present it as the cheap item"
+    );
+    assert_eq!(
+        kernel.item(shot).unwrap().tokens,
+        0,
+        "while its token figure is the misleading one this exists to qualify"
+    );
+
+    // elided, the picture is a one-line marker: the request really is fully counted now, and a
+    // budget still naming a hole would send a compactor after a context that has nothing left
+    kernel.set_state(
+        [shot],
+        nachalnik::ContextState::Elided,
+        Some("taken".into()),
+    );
+    assert_eq!(
+        kernel.budget().uncounted,
+        0,
+        "what goes out is the marker, and the marker is text"
+    );
+    assert_eq!(
+        kernel.item(shot).unwrap().uncounted,
+        1,
+        "though the item still holds one, which is the honest answer for the item"
+    );
+}
+
+/// A request the counter could not fully price teaches it nothing, because the difference
+/// between the two numbers is not an error it can attribute.
+///
+/// note: `Calibrating` corrects with a single multiplier, so an unpriced screenshot does not
+/// stay a local gap - it gets spread over the bytes the counter *could* see. Prose beside one
+/// picture settles on a scale well above 1, and from then on the prose reads high while the
+/// picture still reads nothing: two figures wrong in opposite directions and no item's number
+/// right. The ratio is cumulative, so removing the picture does not undo it.
+#[tokio::test]
+async fn a_request_carrying_something_unpriced_teaches_the_counter_nothing() {
+    let kernel = kernel();
+    let counter = Arc::new(Calibrating::new(BytesPerToken::default()));
+    kernel.set_counter(counter.clone());
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse {
+            usage: Some(Usage {
+                input_tokens: Some(1_500),
+                output_tokens: Some(12),
+                ..Usage::default()
+            }),
+            ..ModelResponse::text("a screenshot")
+        },
+        ModelResponse {
+            usage: Some(Usage {
+                input_tokens: Some(900),
+                output_tokens: Some(12),
+                ..Usage::default()
+            }),
+            ..ModelResponse::text("prose only")
+        },
+    ])));
+
+    kernel.push(ContextItem::user("a".repeat(400)));
+    let shot = kernel.push(ContextItem::user(Content::blob(
+        "image/png",
+        "A".repeat(400_000),
+    )));
+
+    kernel.turn().await.unwrap();
+    assert_eq!(
+        counter.calibration(),
+        Calibration::default(),
+        "1,500 tokens against an estimate that admits it is missing a picture says nothing \
+         about the ratio, and learning from it would inflate the prose instead"
+    );
+
+    // take the picture out and the very next request is one it can learn from, unpoisoned
+    kernel.set_state([shot], nachalnik::ContextState::Excluded, None);
+    kernel.turn().await.unwrap();
+    let learned = counter.calibration();
+    assert_eq!(
+        learned.observations, 1,
+        "the text-only request, and only it"
+    );
+    assert_eq!(learned.reported, 900);
 }

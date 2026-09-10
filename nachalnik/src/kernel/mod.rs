@@ -41,7 +41,7 @@ use crate::{
 mod calls;
 mod request;
 
-use request::projection_tokens;
+use request::projection_cost;
 
 /// A sequential numeric identifier assigned to sessions that were not given a name.
 static SEQUENTIAL_SESSION_ID: AtomicU64 = AtomicU64::new(0);
@@ -1038,8 +1038,11 @@ impl Kernel {
         let limit = self.model_info().and_then(|i| i.context_limit);
         let reported = self.last_response().and_then(|response| response.usage);
 
+        let context = self.projected().1;
+
         Budget {
-            context_tokens: self.projected().1,
+            context_tokens: context.tokens,
+            uncounted: context.uncounted,
             tool_tokens,
             limit,
             reported,
@@ -1122,7 +1125,7 @@ impl Kernel {
             // walk over the items that moves `Content` by pointer, and it happens once a request
             // at most
             let before = projector.project(context.items());
-            let tokens_before = projection_tokens(&before, &*counter);
+            let tokens_before = projection_cost(&before, &*counter).tokens;
             // what a pass may take is what the request is carrying, and the projection is the
             // only thing that knows. An item the projector repaired away - a second result for a
             // call that already has one - is `Active`, holds everything it holds, and is
@@ -1244,7 +1247,8 @@ impl Kernel {
                 summary: added,
                 reason,
                 tokens_before,
-                tokens_after: projection_tokens(&projector.project(context.items()), &*counter),
+                tokens_after: projection_cost(&projector.project(context.items()), &*counter)
+                    .tokens,
             };
 
             // still under the lock, and the pass's own events before the report of it: see the

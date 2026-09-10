@@ -23,6 +23,20 @@ pub struct Budget {
     pub context_tokens: usize,
     /// The estimated tokens of the tool definitions that would be sent.
     pub tool_tokens: usize,
+    /// How many pieces of content in the request the counter would not put a number on.
+    ///
+    /// note: what stops `context_tokens` above being a fiction. A counter that hits something it
+    /// cannot price - a picture, for the default one - has to return *some* figure, and `0` is
+    /// the only honest one available; the trouble is that `0` also means "measured, and free",
+    /// so a budget reading 4,000 of 100,000 could be a context that is nearly empty or one
+    /// carrying eight screenshots nobody has priced. This is the difference. It is a count of
+    /// pieces rather than of tokens, because a counter that could give tokens would not be
+    /// abstaining.
+    ///
+    /// note: when this is not `0`, **the request is bigger than `used()` says** - and by an
+    /// amount nothing here knows. A [`Compactor`] deserves to act on that, and
+    /// [`Budget::fully_counted`] is the question to ask.
+    pub uncounted: usize,
     /// The model's context limit, if the provider reports one.
     pub limit: Option<usize>,
     /// The token counts the provider reported for the most recent response, if it reported any.
@@ -43,8 +57,21 @@ impl Budget {
         self.context_tokens + self.tool_tokens
     }
 
+    /// Whether every piece of the next request has a number on it.
+    ///
+    /// note: the question worth asking before believing [`Budget::used`] or
+    /// [`Budget::fraction_used`]. When this is `false` both are floors, and a compactor that
+    /// treats a floor as a measurement will sit under its threshold while the real request runs
+    /// past the limit - which is the failure this whole field exists to make visible rather than
+    /// to fix. Fixing it is a counter's job.
+    pub fn fully_counted(&self) -> bool {
+        self.uncounted == 0
+    }
+
     /// Returns the fraction of the limit the next request would occupy, or `None` if the limit
     /// is unknown.
+    ///
+    /// note: a floor when [`Budget::fully_counted`] is `false`.
     pub fn fraction_used(&self) -> Option<f64> {
         self.limit
             .filter(|limit| *limit != 0)

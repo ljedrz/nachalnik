@@ -34,7 +34,7 @@ impl Kernel {
             .provider()
             .ok_or(Error::NoProvider)
             .and_then(|provider| self.build_request().map(|built| (provider, built)));
-        let (provider, (request, projection, tokens)) = match prepared {
+        let (provider, (request, projection, cost)) = match prepared {
             Ok(prepared) => prepared,
             Err(e) => {
                 self.emit(Event::StepFailed {
@@ -56,7 +56,7 @@ impl Kernel {
             model: provider.info(),
             messages: request.messages.len(),
             tools: request.tools.len(),
-            tokens,
+            tokens: cost.tokens,
             items: projection.included,
             skipped: projection.skipped,
             repairs: projection.repairs,
@@ -76,9 +76,20 @@ impl Kernel {
         };
         // the provider has just said what the request it was handed actually cost, beside the
         // estimate that was made of it; the counter is told, and decides for itself whether that
-        // is worth anything to it
-        if let Some(reported) = response.usage.and_then(|usage| usage.input_tokens) {
-            self.counter().observe(tokens, reported as usize);
+        // is worth anything to it.
+        //
+        // note: unless the counter said it could not price part of what went out, in which case
+        // the two numbers are not about the same thing and the difference between them is not an
+        // error to learn from. `Calibrating` corrects with a single multiplier, so a screenshot
+        // it estimated at nothing and the provider billed a thousand tokens for gets spread over
+        // the bytes it *could* see: two thousand tokens of prose beside one picture settles on a
+        // scale of about 1.5, and from then on the prose reads three thousand while the picture
+        // still reads nothing. The ratio is cumulative, so deleting the picture does not undo it.
+        // The counter disowned that content; respecting the disownment is the kernel's half
+        if let Some(reported) = response.usage.and_then(|usage| usage.input_tokens)
+            && cost.uncounted == 0
+        {
+            self.counter().observe(cost.tokens, reported as usize);
         }
 
         // a model's tool calls are only useful if their identifiers are, and in practice they
@@ -124,13 +135,13 @@ impl Kernel {
         Ok(to)
     }
 
-    /// Builds the next request, along with the projection it came from and its estimated size.
-    pub(super) fn build_request(&self) -> Result<(ModelRequest, Projection, usize)> {
+    /// Builds the next request, along with the projection it came from and what it costs.
+    pub(super) fn build_request(&self) -> Result<(ModelRequest, Projection, Cost)> {
         let counter = self.counter();
         let tools = self.tool_specs();
         let tool_tokens = tool_tokens(&tools, &*counter);
 
-        let (projection, context_tokens) = self.projected();
+        let (projection, context) = self.projected();
 
         if projection.messages.is_empty() {
             return Err(Error::EmptyProjection);
@@ -141,8 +152,14 @@ impl Kernel {
             tools,
             params: self.params(),
         };
+        // a tool schema is JSON and a counter always has a number for one, so the tool side
+        // contributes tokens and never an abstention
+        let cost = Cost {
+            tokens: context.tokens + tool_tokens,
+            uncounted: context.uncounted,
+        };
 
-        Ok((request, projection, context_tokens + tool_tokens))
+        Ok((request, projection, cost))
     }
 
     /// Asks the compactor whether the context needs managing, and applies whatever it says.
@@ -172,14 +189,14 @@ impl Kernel {
     /// the size of a line where the item behind it may be ten thousand tokens. Summing the items
     /// would have the budget report what the context is holding, which is not what the request
     /// costs - and a compactor that elides would watch the total refuse to move and elide again.
-    pub(super) fn projected(&self) -> (Projection, usize) {
+    pub(super) fn projected(&self) -> (Projection, Cost) {
         let projector = self.projector();
         let counter = self.counter();
         let context = self.0.context.read();
         let projection = projector.project(context.items());
-        let tokens = projection_tokens(&projection, &*counter);
+        let cost = projection_cost(&projection, &*counter);
 
-        (projection, tokens)
+        (projection, cost)
     }
 
     /// Returns the estimated size of the tool definitions.
@@ -290,12 +307,34 @@ impl Kernel {
 /// not agreeing. Counted over the messages that came out rather than the items that went in: a
 /// reference is labelled on its way out, and an elided item is a marker the size of a line where
 /// the item behind it may be ten thousand tokens.
-pub(super) fn projection_tokens(projection: &Projection, counter: &dyn TokenCounter) -> usize {
+/// note: the same walk answers both figures, which is the point of doing it in one place. An
+/// abstention counted over the *items* would report a picture inside an elided item as unpriced,
+/// when what goes out in its place is a one-line marker with no picture in it - the budget would
+/// name a hole in a request that does not have one.
+pub(super) fn projection_cost(projection: &Projection, counter: &dyn TokenCounter) -> Cost {
     projection
         .messages
         .iter()
-        .map(|message| counter.count_message(message))
-        .sum()
+        .fold(Cost::default(), |cost, message| Cost {
+            tokens: cost.tokens + counter.count_message(message),
+            uncounted: cost.uncounted + counter.uncounted_message(message),
+        })
+}
+
+/// What a projection costs: the estimate, and how much of the request the estimate does not
+/// cover.
+///
+/// note: the two travel together everywhere, and this type is why. `tokens` alone was threaded
+/// through three signatures, and each of them would otherwise have grown a second `usize` beside
+/// it - two bare numbers of the same type in the same order, for every reader to get right by
+/// remembering which was which. The pair has a name instead.
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct Cost {
+    /// The estimated tokens.
+    pub tokens: usize,
+    /// The pieces of content the counter would not put a number on, so that `tokens` can be read
+    /// as the floor it is.
+    pub uncounted: usize,
 }
 
 /// Estimates the size of the given tool definitions: the schemas plus the descriptions.

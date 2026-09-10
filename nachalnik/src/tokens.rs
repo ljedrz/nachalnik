@@ -98,6 +98,61 @@ pub trait TokenCounter: Send + Sync {
         tokens
     }
 
+    /// Returns how many pieces of content inside `content` this counter would not put a number
+    /// on.
+    ///
+    /// note: the way a count abstains out loud. A counter that returns `0` from
+    /// [`TokenCounter::count`] is indistinguishable from one that measured something and found
+    /// it free, and the difference matters more than the figure does: an estimate that is low by
+    /// a known amount is a floor somebody can act on, and one that is low by an unknown amount
+    /// is a fiction. Whatever this returns rides along to
+    /// [`Budget::uncounted`](crate::Budget::uncounted) and
+    /// [`ContextItem::uncounted`](crate::ContextItem::uncounted), so a client can say *this
+    /// context is bigger than the number* rather than showing the number alone.
+    ///
+    /// note: it counts pieces rather than bytes or tokens, because a counter that could put a
+    /// number on the bytes would not be abstaining. One is the honest unit for "there is a thing
+    /// here and I do not know what it costs".
+    ///
+    /// note: The default is `0` - nothing is disowned - which is the right answer for a real
+    /// tokenizer and is why this is not a required method.
+    fn uncounted(&self, content: &Content) -> usize {
+        let _ = content;
+
+        0
+    }
+
+    /// Returns how many pieces of a whole context item this counter would not put a number on.
+    ///
+    /// note: The counterpart of [`TokenCounter::count_item`], and it walks the same parts: the
+    /// content, and the reasoning an assistant turn carries.
+    fn uncounted_item(&self, item: &ContextItem) -> usize {
+        let mut uncounted = self.uncounted(&item.content);
+
+        if let ContextKind::AssistantMessage {
+            reasoning: Some(reasoning),
+            ..
+        } = &item.kind
+        {
+            uncounted += self.uncounted(reasoning);
+        }
+
+        uncounted
+    }
+
+    /// Returns how many pieces of a projected message this counter would not put a number on.
+    ///
+    /// note: The counterpart of [`TokenCounter::count_message`], and the one
+    /// [`Budget::uncounted`](crate::Budget::uncounted) is built from - for the same reason the
+    /// budget's tokens are counted over messages rather than items: what a request costs is what
+    /// was projected, and an elided picture is a marker with no picture in it.
+    fn uncounted_message(&self, message: &Message) -> usize {
+        let content = message.content.as_ref().map_or(0, |c| self.uncounted(c));
+        let reasoning = message.reasoning.as_ref().map_or(0, |r| self.uncounted(r));
+
+        content + reasoning
+    }
+
     /// Reports what a provider charged for a request this counter had estimated.
     ///
     /// note: The kernel calls this after every response that carries
@@ -168,28 +223,42 @@ impl Default for BytesPerToken {
 }
 
 impl TokenCounter for BytesPerToken {
-    /// note: a [`Content::Blob`] counts as nothing, which is wrong and is the least wrong thing
-    /// available here. Its bytes are base64, and base64 over four is a number about an encoding
-    /// rather than about a model: one screenshot would arrive as a quarter of a million tokens
-    /// and send a compactor after a context that is nowhere near full. What an image really costs
-    /// is a formula over its *dimensions* that every vendor publishes and each publishes
-    /// differently - 85 plus 170 a tile, width times height over 750, 258 a tile - and none of
-    /// them is reachable from a byte length.
+    /// note: every [`Blob`](crate::Blob) is subtracted before the division, so a picture counts
+    /// as nothing wherever it appears. That is wrong and it is the least wrong thing available
+    /// here. Its bytes are base64, and base64 over four is a number about an encoding rather
+    /// than about a model: one screenshot would arrive as a quarter of a million tokens and send
+    /// a compactor after a context that is nowhere near full. What an image really costs is a
+    /// formula over its *dimensions* that every vendor publishes and each publishes differently -
+    /// 85 plus 170 a tile, width times height over 750, 258 a tile - and none of them is
+    /// reachable from a byte length. [`Blob::meta`](crate::Blob::meta) is where the inputs to one
+    /// go, for a counter that has a formula to apply them to.
     ///
-    /// note: so this under-reports rather than over-reports, and it does so silently, which is
-    /// the part that is not good enough. Saying *how many* pieces of content a counter would not
-    /// put a number on means a figure on [`Budget`] that is not there yet, and adding one is a
-    /// breaking change to a struct whose fields are all public. Until then: a context carrying
-    /// images is larger than this says, and a real tokenizer put in with
+    /// note: *wherever it appears* is the part that was wrong before, and by a factor of
+    /// infinity. This matched on [`Content::Blob`] alone and fell through to
+    /// [`Content::byte_len`] for everything else - which sums the blobs nested inside a
+    /// [`Content::Blocks`] turn, the shape a sentence-and-a-screenshot arrives in from both
+    /// dialects. So the same 400 KB picture counted `0` on its own and 100,005 tokens in the
+    /// turn a model was actually shown it in. [`Content::blobs`] is the seam that fixes it, and
+    /// it exists because a counter cannot walk that nesting for itself.
+    ///
+    /// note: it under-reports rather than over-reports, and [`BytesPerToken::uncounted`] is what
+    /// stops it doing so silently. A context carrying pictures is larger than this says, by an
+    /// amount the budget now states in pieces; a real tokenizer put in with
     /// [`Kernel::set_counter`](crate::Kernel::set_counter) is the answer for anyone who needs the
-    /// number to be right.
+    /// number itself to be right.
     fn count(&self, content: &Content) -> usize {
-        if matches!(content, Content::Blob(_)) {
-            return 0;
-        }
-
         let divisor = self.bytes_per_token.max(1);
-        content.byte_len().div_ceil(divisor)
+        let blobs: usize = content.blobs().iter().map(|blob| blob.wire_len()).sum();
+
+        content.byte_len().saturating_sub(blobs).div_ceil(divisor)
+    }
+
+    /// note: one for every blob, at whatever depth. This is the whole of what this counter
+    /// declines to measure - text and JSON it will always put a number on, however bad the
+    /// number is - so the figure a client reads is exactly "how many pictures are in here that
+    /// nothing has priced".
+    fn uncounted(&self, content: &Content) -> usize {
+        content.blobs().len()
     }
 }
 
@@ -342,6 +411,22 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
 
     fn count_message(&self, message: &Message) -> usize {
         self.corrected(self.inner.count_message(message))
+    }
+
+    // not corrected, because a scale applies to tokens and these are pieces. Delegated all the
+    // same, so that a wrapped counter which disowns something keeps disowning it: a `Calibrating`
+    // that answered `0` here would tell a client the budget is whole while multiplying its way
+    // around the hole
+    fn uncounted(&self, content: &Content) -> usize {
+        self.inner.uncounted(content)
+    }
+
+    fn uncounted_item(&self, item: &ContextItem) -> usize {
+        self.inner.uncounted_item(item)
+    }
+
+    fn uncounted_message(&self, message: &Message) -> usize {
+        self.inner.uncounted_message(message)
     }
 
     fn calibration(&self) -> Option<Calibration> {

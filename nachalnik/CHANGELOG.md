@@ -27,6 +27,61 @@ minor bump may break you.
   `Content` is `#[non_exhaustive]`, so this breaks no `match` - and `nachalnik-providers` renders
   it in both dialects as of its first release.
 
+- `Budget::uncounted` and `ContextItem::uncounted`: how many pieces of content the active
+  `TokenCounter` would not put a number on, so that a count can **abstain out loud**. A counter
+  returning `0` because it measured something and found it free and a counter returning `0`
+  because there is a picture in front of it and nothing priced one were the same figure until
+  there was a second one beside them - and the difference is the difference between a floor
+  somebody can act on and a fiction. `Budget::fully_counted` is the question worth asking before
+  believing `used()` or `fraction_used()`.
+
+  The budget's figure is counted over the *projected messages*, like its tokens, so a picture
+  that has been elided is not reported as a hole in a request that no longer carries one. The
+  item's figure is about the item, and stays.
+
+- `TokenCounter::uncounted`, `uncounted_item` and `uncounted_message`: the trio behind those,
+  mirroring `count`, `count_item` and `count_message`. All three are defaulted to `0`, which is
+  the honest answer for a real tokenizer and is why implementing them is optional.
+
+- `Blob::meta`, an `Arc<Value>` the kernel never reads. The same bargain `ContextItem::meta`
+  strikes: somewhere to put a fact the runtime has no business having an opinion about. The fact
+  that matters here is whatever a counter would need to price a payload, because a byte length
+  cannot reach it - `{"w": 1024, "h": 768}` for a picture, `{"pages": 12}` for a document,
+  `{"seconds": 184, "fps": 30}` for a recording. Every vendor's formula is over figures like
+  those and each vendor's is different, so this crate carries none of them and carries the place
+  to put the inputs instead. Whoever produced the base64 had the payload decoded a moment
+  earlier, which is why it costs a caller nothing to fill in and is the only place that knows.
+
+  On the blob rather than on the item, and that is checkable rather than a preference: a budget
+  is counted over the projected messages, and a `Message` carries a `Content` and nothing else a
+  counter could read. A fact left on `ContextItem::meta` reaches `count_item` and never reaches
+  the figure a `Compactor` acts on.
+
+- `Content::blobs`, which collects every `Blob` in a piece of content **including those nested in
+  a `Content::Blocks` turn**. This is the seam a counter needs and could not build for itself, and
+  the nesting is the whole reason; see the fix below. `Blob::wire_len` is the payload and the
+  media type naming it, which is what a blob costs on the wire and what has to come off a byte
+  count.
+
+### fixed
+
+- `BytesPerToken` no longer counts a picture at four bytes a token when it arrives inside a turn.
+  The abstention was a match on `Content::Blob` and everything else fell through to
+  `Content::byte_len`, which sums the blobs nested in a `Content::Blocks` - so the same 400 KB
+  screenshot counted `0` on its own and **100,005 tokens** in the sentence-and-a-screenshot turn
+  both dialects actually send, which is the shape a model is realistically shown one in. Free or a
+  hundred thousand tokens depending on which shape it arrived in, and the hundred thousand is the
+  exact failure the abstention was written to prevent.
+
+- A request carrying something the counter would not price no longer teaches `Calibrating`
+  anything. It corrects with a single multiplier, so an unpriced screenshot did not stay a local
+  gap: it got spread over the bytes the counter *could* see. Two thousand tokens of prose beside
+  one picture settles on a scale of about 1.5, and from then on the prose reads three thousand
+  while the picture still reads nothing - two figures wrong in opposite directions and no item's
+  number right. The ratio is cumulative, so deleting the picture did not undo it; it diluted over
+  the next few text-only requests, and `BOUNDS` capped the damage at ten times and did nothing
+  else. The counter disowned that content and the kernel now respects the disownment.
+
 ### changed
 
 - `BytesPerToken` returns `0` for a `Content::Blob` rather than dividing its bytes by four. Those
@@ -36,12 +91,18 @@ minor bump may break you.
   every vendor publishes and each publishes differently, and none of them is reachable from a byte
   length.
 
-  So the figure is a **floor**: a context holding pictures is larger than the budget says, and it
-  is silently larger, which is the part that is not good enough. Saying how much a counter could
-  not account for needs a figure on `Budget` and on `ContextItem`, and those have public fields
-  and no `#[non_exhaustive]` - so it is a breaking change and it is not in this release. Until it
-  is, a real tokenizer through `Kernel::set_counter` is the answer for anyone who needs the number
-  to be right, and the doc on `BytesPerToken::count` says as much.
+  So the figure is a **floor**, and it no longer is one silently: `BytesPerToken::uncounted`
+  answers `1` per blob, and that rides up to `Budget::uncounted` and `ContextItem::uncounted`
+  above. A real tokenizer through `Kernel::set_counter` is still the answer for anyone who needs
+  the number itself to be right, and `Blob::meta` is where it gets the inputs.
+
+### breaking
+
+- `Budget`, `ContextItem` and `Blob` each grew a public field, and none of the three is
+  `#[non_exhaustive]`, so a struct literal for any of them no longer compiles. The fix is `..` or
+  the constructor; nothing was removed and no signature changed.
+- `Blob` no longer derives `Eq`, because `serde_json::Value` does not implement it. It is still
+  `PartialEq`, so `==` is unaffected; a bound that named `Eq` is the only thing that breaks.
 
 ## [0.3.3] - 2026-09-09
 

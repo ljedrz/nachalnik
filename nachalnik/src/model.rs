@@ -79,26 +79,63 @@ pub enum Content {
 /// note: nothing here validates it. A caller that hands over a string which is not base64 has
 /// built a request the endpoint will refuse, and it will say so; a runtime that checked would be
 /// deciding what a media type means, which is the thing this crate does not do.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Blob {
     /// What the payload is, as an IANA media type: `image/png`, `application/pdf`.
     pub media_type: Arc<str>,
     /// The payload, base64-encoded.
     pub data: Arc<str>,
+    /// Whatever the producer knows about the payload that a byte length does not say.
+    ///
+    /// note: The kernel never reads this, and the bargain is the one
+    /// [`ContextItem::meta`](crate::ContextItem::meta) already strikes: somewhere to put a fact
+    /// the runtime has no business having an opinion about. Here the fact that matters is what a
+    /// [`TokenCounter`](crate::TokenCounter) would need to price a payload, because a byte length
+    /// cannot reach it - `{"w": 1024, "h": 768}` for a picture, `{"pages": 12}` for a document,
+    /// `{"seconds": 184, "fps": 30}` for a recording. Every vendor's formula is over figures like
+    /// those and each vendor's is different, so the crate carries none of them and carries the
+    /// place to put the inputs instead.
+    ///
+    /// note: on the blob rather than on the item, which is the whole reason it is a field here.
+    /// A budget is counted over the *projected messages*, and a [`Message`] carries a [`Content`]
+    /// and nothing else a counter could read - so a fact left on `ContextItem::meta` reaches
+    /// [`TokenCounter::count_item`](crate::TokenCounter::count_item) and never reaches the figure
+    /// a [`Compactor`](crate::Compactor) acts on.
+    ///
+    /// note: whoever produced the base64 had the payload decoded a moment earlier, which is why
+    /// this costs a caller nothing to fill in and is the only place that knows.
+    #[serde(default = "null", skip_serializing_if = "is_null")]
+    pub meta: Arc<Value>,
 }
 
 impl Blob {
-    /// Creates a blob from a media type and an already-base64 payload.
+    /// Creates a blob from a media type and an already-base64 payload, with nothing known about
+    /// it beyond those two.
     pub fn new(media_type: impl Into<Arc<str>>, data: impl Into<Arc<str>>) -> Self {
         Self {
             media_type: media_type.into(),
             data: data.into(),
+            meta: null(),
         }
+    }
+
+    /// Attaches what the producer knows about the payload; see [`Blob::meta`].
+    pub fn with_meta(mut self, meta: impl Into<Arc<Value>>) -> Self {
+        self.meta = meta.into();
+        self
     }
 
     /// How large the payload is, as base64 - which is what goes on the wire.
     pub fn byte_len(&self) -> usize {
         self.data.len()
+    }
+
+    /// How large the whole blob is on the wire: the payload and the media type naming it.
+    ///
+    /// note: [`Blob::meta`] is not in it, because meta does not go on the wire at all - it is for
+    /// whoever is counting, and a provider never sees it.
+    pub fn wire_len(&self) -> usize {
+        self.byte_len() + self.media_type.len()
     }
 }
 
@@ -204,7 +241,45 @@ impl Content {
             // the base64 and the media type, because both go out and neither is free. It is not
             // what the *model* charges for a picture - that is a count no byte length can reach,
             // and see `TokenCounter` for what this crate does and does not claim about it
-            Self::Blob(blob) => blob.byte_len() + blob.media_type.len(),
+            Self::Blob(blob) => blob.wire_len(),
+        }
+    }
+
+    /// Collects every [`Blob`] in the content, including any nested in a [`Content::Blocks`]
+    /// turn.
+    ///
+    /// note: this is the seam a [`TokenCounter`](crate::TokenCounter) needs and could not build
+    /// for itself, and the nesting is the whole reason. A turn that is a sentence and a
+    /// screenshot is a `Blocks` holding a `Blob` one level down, which is the shape both dialects
+    /// send - so a counter matching only on `Content::Blob` sees a plain picture and misses every
+    /// picture a model was actually shown. `BytesPerToken` made exactly that mistake: a bare blob
+    /// counted `0` and the same blob inside a turn counted its base64 at four bytes a token, so a
+    /// 400 KB screenshot went from free to a hundred thousand tokens depending on which shape it
+    /// arrived in.
+    ///
+    /// note: it allocates only when there is something to put in the vector, which is what makes
+    /// it affordable on a path that runs for every item on every recount: text and JSON return an
+    /// empty `Vec` without touching the allocator.
+    pub fn blobs(&self) -> Vec<&Blob> {
+        let mut found = Vec::new();
+        self.collect_blobs(&mut found);
+
+        found
+    }
+
+    fn collect_blobs<'a>(&'a self, found: &mut Vec<&'a Blob>) {
+        match self {
+            Self::Blob(blob) => found.push(blob),
+            Self::Blocks(blocks) => {
+                for block in blocks.iter() {
+                    // a call is a name and its arguments, and both are JSON: there is nowhere in
+                    // one for a blob to be
+                    if let Block::Text(part) | Block::Reasoning(part) = block {
+                        part.content.collect_blobs(found);
+                    }
+                }
+            }
+            Self::Text(_) | Self::Json(_) => {}
         }
     }
 

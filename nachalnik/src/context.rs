@@ -197,6 +197,18 @@ pub struct ContextItem {
     /// The estimated size of the item as it would be sent, as counted by the active
     /// [`TokenCounter`].
     pub tokens: usize,
+    /// How many pieces of the item's content the active [`TokenCounter`] would not put a number
+    /// on.
+    ///
+    /// note: the per-item half of [`Budget::uncounted`](crate::Budget::uncounted), and it is
+    /// here rather than only on the budget so that a client showing a context can say *which*
+    /// row is the one nobody priced. A pane listing an item at `0 tokens` next to one at `12,000`
+    /// invites exactly the wrong conclusion about which of the two to get rid of.
+    ///
+    /// note: set by the counter, whenever `tokens` is, and by the same rules - it does not
+    /// change by itself when the counter changes, and [`Kernel::recount`](crate::Kernel::recount)
+    /// is what brings both into line.
+    pub uncounted: usize,
     /// Whether the item takes part in the next request.
     pub state: ContextState,
     /// Anything the user, a client or an extension wants to attach.
@@ -238,6 +250,7 @@ impl ContextItem {
             label: label.into(),
             content: content.into(),
             tokens: 0,
+            uncounted: 0,
             state: ContextState::Active,
             meta: Value::Null,
             included_because: None,
@@ -545,7 +558,7 @@ impl Context {
         let id = ContextId(self.next_id);
         self.next_id += 1;
         item.id = id;
-        item.tokens = counter.count_item(&item);
+        measure(&mut item, counter);
         self.items.push(Arc::new(item));
 
         id
@@ -600,7 +613,7 @@ impl Context {
         let before = item.tokens;
         // a pointer, not a copy - which is what makes recording it affordable
         let was = std::mem::replace(&mut item.content, content);
-        item.tokens = counter.count_item(item);
+        measure(item, counter);
 
         Some((was, before, item.tokens))
     }
@@ -619,7 +632,7 @@ impl Context {
         let mut items: Vec<_> = items
             .into_iter()
             .map(|mut item| {
-                item.tokens = counter.count_item(&item);
+                measure(&mut item, counter);
                 Arc::new(item)
             })
             .collect();
@@ -648,8 +661,7 @@ impl Context {
     /// Recounts every item's tokens.
     pub(crate) fn recount(&mut self, counter: &dyn TokenCounter) {
         for item in &mut self.items {
-            let item = Arc::make_mut(item);
-            item.tokens = counter.count_item(item);
+            measure(Arc::make_mut(item), counter);
         }
     }
 
@@ -707,4 +719,16 @@ impl Context {
         }
         self.undo.push_back(self.items.clone());
     }
+}
+
+/// Puts the counter's two figures on an item: what it costs, and how much of it the counter
+/// would not price.
+///
+/// note: one function rather than the four assignments it replaces, because the two fields have
+/// to move together and nothing in the type system says so. `uncounted` left behind by a path
+/// that recounted `tokens` is worse than no field at all: it reads as a definite "everything
+/// here is priced" while the tokens beside it have just been rewritten by a different counter.
+fn measure(item: &mut ContextItem, counter: &dyn TokenCounter) {
+    item.tokens = counter.count_item(item);
+    item.uncounted = counter.uncounted_item(item);
 }
