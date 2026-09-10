@@ -9,6 +9,19 @@ minor bump may break you.
 
 ### added
 
+- A live test that a tool result recorded after a *later* turn still reaches a real endpoint
+  beside the call it answers. The fourth of these and the first about the *order* of the messages
+  rather than which of them are there: the other three take something out of a valid conversation
+  and ask whether the API still accepts what is left, and this one hands the projector a
+  conversation that was never valid. Pushed by hand, because the loop cannot produce that order -
+  a client importing turns it did not issue can, which is the client `Kernel::reserve_calls`
+  exists for, so the identifiers are claimed here the way it would claim them.
+
+  It is the check the fix below was missing. A projector change is a change to the request path,
+  and the rule about those is that a mock cannot tell you an API accepts what was built - the
+  property suite and the screen tests all talk to scripted providers, and none of them can refuse
+  a request the way an endpoint does.
+
 - A property that a snapshot resumes into the session it was taken from, over the same generated
   sequences. `session.rs` has had this as three cases; what the property adds is the shapes nobody
   writes by hand - a context in the middle of an undo stack, an item superseded and then excluded,

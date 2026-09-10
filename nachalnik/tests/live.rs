@@ -64,9 +64,9 @@ use std::{
 use nachalnik::{
     Blob, Block, BoxError, BytesPerToken, Calibrating, Capability, Config, Content, ContextItem,
     ContextKind, ContextState, Delta, Event, Grant, Kernel, LinearProjector, OutputSink, Params,
-    Record, Role, State, StopReason, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
+    Record, Role, State, StopReason, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, async_trait,
     selectors::Selector,
-    test::{AllowAll, DenyAll, LargestFirstCompactor},
+    test::{AllowAll, DenyAll, LargestFirstCompactor, call},
 };
 use nachalnik_providers::{OpenAiCompatible, out_of_quota};
 use serde_json::{Value, json};
@@ -709,6 +709,86 @@ async fn eliding_a_tool_result_keeps_the_call_and_the_api_accepts_it() {
         !said.to_lowercase().contains("apricot"),
         "the code word is not in the request any more, so it should not be in the answer: {said}"
     );
+}
+
+/// A tool result recorded after a *later* turn still reaches the wire beside the call it answers.
+///
+/// note: the fourth of these, and the one that is about the order of the messages rather than
+/// which of them are there. The other three take something out of a valid conversation - a
+/// result, a result's content, an oversized output - and ask whether the API still accepts what
+/// is left. This one hands the projector a conversation that was never valid: the call, a turn
+/// after it, and only then the answer. The projector moves the answer up to its call, says so in
+/// `Projection::repairs`, and what a mock cannot tell anybody is whether the request that comes
+/// out the other end is one a real endpoint takes.
+///
+/// note: pushed by hand, because the loop cannot produce this order and that is the point. A
+/// client importing turns it did not issue can - a session read back from somewhere else, a
+/// result that arrived while the model was already talking - and `Kernel::reserve_calls` exists
+/// for exactly that client, so the identifiers are claimed here the way it would claim them.
+///
+/// note: what the model *says* is deliberately not asserted. The default model is small and free
+/// and this test is about a request being accepted rather than about comprehension; the eliding
+/// test above is where the code word earns its keep.
+#[tokio::test]
+async fn a_result_recorded_after_a_later_turn_still_reaches_the_api() {
+    let _serial = serialize().await;
+    let (kernel, provider) = live!();
+
+    kernel.add_tool(Secret::new("The secret code word is APRICOT."));
+
+    // claimed first, so that the next response cannot be handed one of them back
+    let asked = ToolCallId::from("call_imported_0");
+    assert_eq!(kernel.reserve_calls([asked.clone()]), 1);
+
+    kernel.push(ContextItem::user("Use the secret tool."));
+    kernel.push(ContextItem::assistant(
+        "Looking it up.",
+        vec![call(asked.0.as_str(), "secret", json!({}))],
+    ));
+    // the turn that used to break it: a second one, between the call and its answer
+    kernel.push(ContextItem::assistant("Still working on it.", Vec::new()));
+    kernel.push(ContextItem::tool_result(
+        asked.clone(),
+        "secret",
+        "The secret code word is APRICOT.",
+        false,
+    ));
+    kernel.push(ContextItem::user("What was the code word?"));
+
+    // said before anything is sent, which is the half a mock can check
+    let repairs = kernel.project().repairs;
+    assert!(
+        repairs.iter().any(|said| said.contains("moved item")),
+        "the projector should say it moved the result: {repairs:?}"
+    );
+
+    let state = turn!(kernel);
+
+    // and this is the half it cannot: a real API took a request whose messages were reordered,
+    // rather than refusing the whole of it and naming the identifier that went unanswered
+    assert!(matches!(state, State::Finished { .. }), "{state:?}");
+
+    let last = provider.requests().pop().unwrap();
+    let asked_at = last
+        .messages
+        .iter()
+        .position(|message| message.tool_calls.iter().any(|one| one.id == asked))
+        .expect("the call went out");
+    let answered_at = last
+        .messages
+        .iter()
+        .position(|message| message.tool_call_id.as_ref() == Some(&asked))
+        .expect("and so did its result");
+    assert_eq!(
+        answered_at,
+        asked_at + 1,
+        "the result has to be the very next message: {:?}",
+        last.messages
+            .iter()
+            .map(|message| message.role)
+            .collect::<Vec<_>>()
+    );
+    assert!(!answer(&kernel).is_empty());
 }
 
 #[tokio::test]
