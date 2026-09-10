@@ -1598,3 +1598,91 @@ async fn document() -> Option<(Kernel, Arc<OpenAiCompatible>)> {
 
     Some((kernel, provider))
 }
+
+/// Several calls run at once, and the request that follows still pairs each with its answer.
+///
+/// note: `concurrency.rs` proves they overlap in time, against a scripted provider that always
+/// asks for exactly three. What it cannot settle is the half a server decides: whether a real
+/// model asked for several at all, and whether the messages built from results that finished in
+/// a different order from the one they were asked in are messages an API accepts. Results are
+/// pushed as tasks finish, so the slow one lands after the quick one that was asked for later -
+/// and every one of these dialects pairs a result to a call by identifier and rejects a `tool`
+/// message whose identifier it has not seen.
+#[tokio::test]
+async fn calls_that_ran_at_once_still_each_answer_their_own_call() {
+    let Some((kernel, provider)) = live_with(Config {
+        parallel_tool_calls: true,
+        ..Default::default()
+    })
+    .await
+    else {
+        eprintln!("no key in the environment; skipping");
+        return;
+    };
+    let _guard = serialize().await;
+
+    // two tools rather than one twice, because a model that will not repeat itself will still
+    // reach for two different names - and the answers are distinguishable, which is the point
+    kernel.add_tool(Secret::new("APRICOT"));
+    kernel.add_tool(Arc::new(nachalnik::test::ConstTool::new(
+        "colour",
+        "the colour is CINNABAR",
+    )));
+    kernel.push(ContextItem::user(
+        "Call both tools - `secret` and `colour` - and then say both answers.",
+    ));
+
+    let State::Finished { .. } = turn!(kernel) else {
+        panic!("it stopped to ask about something")
+    };
+
+    let results: Vec<_> = kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .cloned()
+        .collect();
+    println!("  {} result(s) came back", results.len());
+    if results.len() < 2 {
+        eprintln!("skipped: the model asked for one tool at a time, so nothing ran at once");
+        return;
+    }
+
+    // the pairing, which is what an out-of-order finish threatens: every result names a call
+    // the request actually contains, and no call has two
+    let sent = provider.requests().pop().expect("a recorded request");
+    let calls: Vec<_> = sent
+        .messages
+        .iter()
+        .flat_map(|message| message.calls())
+        .map(|call| call.id.clone())
+        .collect();
+    let answered: Vec<_> = sent
+        .messages
+        .iter()
+        .filter_map(|message| message.tool_call_id.clone())
+        .collect();
+    println!("  calls {calls:?}\n  answered {answered:?}");
+
+    for id in &answered {
+        assert!(
+            calls.contains(id),
+            "a result answers a call the request does not contain: {id:?} in {calls:?}"
+        );
+    }
+    let mut once = answered.clone();
+    once.sort();
+    once.dedup();
+    assert_eq!(once.len(), answered.len(), "a call was answered twice");
+
+    // and the endpoint took it, which is the claim no offline test can make
+    let said = answer(&kernel).to_lowercase();
+    println!(
+        "  it said: {}",
+        said.trim().chars().take(120).collect::<String>()
+    );
+    assert!(
+        said.contains("apricot") || said.contains("cinnabar"),
+        "it should have read what the tools returned: {said}"
+    );
+}
