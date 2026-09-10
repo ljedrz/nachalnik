@@ -748,6 +748,24 @@ impl App {
             ),
             None => "the limit: unknown, so there is nothing to measure against".to_owned(),
         });
+        // note: the corner says the short version of this; here there is room for why. A pass
+        // runs when a request is *built* rather than when a turn ends, so a tool loop leaves the
+        // context over the limit and the next request is the thing that brings it back under -
+        // which makes every figure above true of the context and not of what goes out
+        //
+        // note: the compactor is not named here, though it could be. `name()` defaults to the
+        // type path, so this would read `kamchatka::tools::trim::Trim` in the middle of a
+        // sentence - and `/seams` is the place that answers "which one", in a table where a
+        // full path is the useful form
+        if budget.fraction_used().is_some_and(|used| used >= 1.0)
+            && self.kernel.compactor().is_some()
+        {
+            lines.push(
+                "over the limit, so the compactor runs before the next request is sent: it may \
+                 bring that figure down, and it may find that everything it would take is pinned"
+                    .to_owned(),
+            );
+        }
         // note: printed straight after the two figures it qualifies, because it decides how to
         // read them. Every number above is a floor when this is not zero, and the person has no
         // way to tell that from a context that is genuinely small - both look like a low

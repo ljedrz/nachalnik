@@ -892,7 +892,7 @@ impl App {
                         Some(what) => format!(" {what}"),
                         None => String::new(),
                     },
-                    item.tokens,
+                    crate::ui::thousands(item.tokens),
                     match item.uncounted {
                         0 => String::new(),
                         n => format!(" and {n} piece(s) nothing here can price"),
@@ -1255,16 +1255,11 @@ impl App {
                 Speaker::Error,
                 format!("the model asked for `{tool}`, which is not a tool here"),
             ),
-            Event::ContextAdded {
-                source,
-                label,
-                tokens,
-                id,
-                ..
-            } if source == "file" => self.say(
-                Speaker::Note,
-                format!("[{id}] {label} is in the context, {tokens} tokens"),
-            ),
+            // note: a file added to the context used to be said out loud here, and the chat then
+            // drew it twice - `[1] notes.md (file), 10 tokens` off the item, and
+            // `[1] notes.md is in the context, 10 tokens` off this event, one above the other,
+            // for every `-f` and every `/attach`. The derived line is the one that cannot go out
+            // of date, so it is the one that stays. See `App::as_conversation`
             _ => {}
         }
     }

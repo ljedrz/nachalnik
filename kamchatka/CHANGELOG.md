@@ -105,6 +105,21 @@ minor bump may break you.
 
 ### fixed
 
+- **Past the limit, the corner says the compactor stands between that figure and the request.**
+  A pass runs when a request is *built*, not when a turn ends, so a tool loop leaves the context
+  fat: the corner sat at `~16,254 tokens, 270.9% (6.0k)` in red while the request that followed
+  cost 1,100. The number was true of the context and false of what was about to be sent, and
+  nothing said which. It reads `· the compactor runs first` now, and `/budget` has the half the
+  corner has no room for - including that the pass may find everything it would take is pinned,
+  which is the case where the figure means exactly what it says. With no compactor it claims
+  nothing.
+
+- A file put in the context is announced once, not twice. `Event::ContextAdded` said
+  `[1] notes.md is in the context, 10 tokens` and the chat derived
+  `[1] notes.md (file), 10 tokens` off the item, one directly above the other, for every `-f` and
+  every `/attach`. The derived line is the one that cannot go out of date, so it is the one that
+  stays - and it counts in thousands now, like every other figure on the screen.
+
 - **The compactor filled the context it was clearing.** Every pass wrote a summary and nothing
   ever took one back out - a summary is a `Reference`, and this pass only ever considers a tool
   result. Measured live at a 6,000-token limit: twenty-one identical summaries of 67 tokens each,

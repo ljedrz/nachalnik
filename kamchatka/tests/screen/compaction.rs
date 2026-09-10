@@ -5,6 +5,8 @@
 //! honoured, a marker is not swapped in for something smaller than itself, and a compactor with
 //! nothing left to elide is asked once and then left alone.
 
+use std::sync::Arc;
+
 use kamchatka::tools::Trim;
 use nachalnik::{ContextItem, ContextState, test::call};
 use serde_json::json;
@@ -569,5 +571,65 @@ async fn compaction_summaries_do_not_pile_up() {
             .iter()
             .any(|item| item.source == "compaction" && !item.state.sends_content()),
         "the earlier passes' summaries are kept, not dropped"
+    );
+}
+
+/// Past the limit, the corner says the compactor stands between that figure and the request.
+///
+/// note: found live. A tool loop leaves the context fat, because a pass runs when a request is
+/// *built* rather than when a turn ends - so the corner sat at `~16,254 tokens, 270.9% (6.0k)` in
+/// red while the request that followed cost 1,100. The number was true of the context and false
+/// of what was about to be sent, and nothing on the screen said which.
+#[tokio::test]
+async fn over_the_limit_the_corner_says_the_compactor_goes_first() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(Some(Arc::new(Trim {
+        threshold: 0.8,
+        target: 0.5,
+    })));
+    // a context that is genuinely over whatever the endpoint published
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    harness.app.kernel.push(ContextItem::file(
+        "big.txt",
+        "a line of routine diagnostic output. ".repeat(limit),
+    ));
+    harness.drain();
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("the compactor runs first"),
+        "the corner should name what stands between the figure and the request: {screen}"
+    );
+
+    // and `/budget` has room for the half the corner cannot fit
+    harness.send("/budget").await;
+    let panel = harness.flat();
+    assert!(
+        panel.contains("runs before the next request is sent"),
+        "{panel}"
+    );
+    assert!(
+        panel.contains("everything it would take is pinned"),
+        "it says what it cannot promise, too: {panel}"
+    );
+}
+
+/// With no compactor there is nothing between the figure and the request, and it does not claim
+/// otherwise.
+#[tokio::test]
+async fn over_the_limit_with_no_compactor_promises_nothing() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(None);
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    harness.app.kernel.push(ContextItem::file(
+        "big.txt",
+        "a line of routine diagnostic output. ".repeat(limit),
+    ));
+    harness.drain();
+
+    let screen = harness.flat();
+    assert!(
+        !screen.contains("the compactor runs first"),
+        "there is no compactor, so the request really is this big: {screen}"
     );
 }

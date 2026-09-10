@@ -33,6 +33,13 @@ async fn a_markdown_file_is_attached_as_text() {
         !screen.contains("nothing here can price"),
         "text is priced like anything else: {screen}"
     );
+    // once, not twice: the event that announced a file and the line derived from the item were
+    // both on the chat, one above the other, for every -f and every /attach
+    assert_eq!(
+        screen.matches("notes.md").count(),
+        1,
+        "one account of one item: {screen}"
+    );
 
     let items = harness.app.kernel.items();
     let item = items.last().expect("the attachment");

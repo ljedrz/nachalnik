@@ -616,6 +616,19 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
             None => dim,
         },
     );
+    // note: past the limit the figure above stops describing the next request, and until this
+    // said so it read as a catastrophe that resolved itself on the next keystroke. A tool loop
+    // leaves the context fat - compaction runs when a request is *built*, not when a turn ends -
+    // so the corner sat at `~16,254 tokens, 270.9% (6.0k)` in red while the request that
+    // followed cost 1,100. What was missing is not a number, it is the mechanism between them.
+    //
+    // note: "runs", not "will fix it". Whether the pass finds anything it may take is its own
+    // business - everything it wants may be pinned - so this says what is certain and leaves
+    // `/budget` to say the rest.
+    if fraction.is_some_and(|fraction| fraction >= 1.0) && app.kernel.compactor().is_some() {
+        add("the compactor runs first".to_owned(), dim);
+    }
+
     // and what of that figure is the thing not yet sent, because a number that moves as
     // somebody types is worth reading only if it says which part is theirs
     if draft != 0 {
