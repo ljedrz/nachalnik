@@ -344,10 +344,30 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   - and the reason to wait was that a server offering a 4 MB screenshot would put 5.5 MB of
   base64 into a context whose budget could not count it. **The counter is in as of 0.4.0**, so
   the blocker is gone: a budget now says how many pieces it could not price, and `kamchatka`'s
-  compactor takes an unpriced tool result first. What is left is the bridge itself, and one
-  decision inside it - what, if anything, it can put in `Blob::meta`, given that an MCP image
-  block carries a mime type and base64 and no dimensions at all. Naming it is still the right
-  answer where the payload is not an image the model can use.
+  compactor takes an unpriced tool result first.
+
+  What is left is the bridge itself and one decision inside it: an MCP image block carries a
+  mime type and base64 and *no dimensions*, so there is nothing to put in `Blob::meta` and the
+  budget will report the picture as unpriced for as long as it is in the context. Carry it
+  anyway. That is exactly the state the abstention was built to make visible rather than silent,
+  and it has been measured against a real endpoint - a 48x48 PNG estimated at 27 tokens with one
+  piece unpriced, charged at 99. Naming rather than carrying stays the right answer for a
+  payload the model cannot use at all.
+
+- **A `TokenCounter` that reads `Blob::meta`.** The 0.4.0 seam has no user. `Blob::meta` is a
+  field nothing reads and "put a real tokenizer behind `Kernel::set_counter`" is advice nobody
+  has demonstrated, so this workspace's answer to "how do I price a picture?" is a paragraph
+  rather than a program. An example under `nachalnik/examples/` applying one vendor's formula to
+  `{"w": .., "h": ..}` would settle it, and `examples/` is where this workspace keeps
+  implementations of its own traits. An example and not a crate, for the reason the counting
+  invariant gives: a formula that ships is a price list somebody has to maintain.
+
+- **`/attach` in `kamchatka`.** Nothing in the program can produce a `Content::Blob`, so the
+  whole multimodal path is unreachable from the client this workspace ships - a tool would have
+  to return one, and none does. A command that reads a file, encodes it, and pushes a blob with
+  its dimensions in `meta` would make the path reachable and give the counter above something to
+  count. **Not a decision about rendering:** `kamchatka` draws no pictures and is not going to,
+  and sending one is a different question from drawing one.
 
 ---
 
