@@ -292,7 +292,7 @@ in `Projection::repairs` rather than doing it quietly.
 
 ---
 
-### 🎯 a budget that corrects itself
+### 🎯 a budget that corrects itself, and admits what it cannot reach
 
 Every token figure the kernel reports comes from a `TokenCounter`, and the estimate underneath the
 default one - `bytes / 4` - is admittedly that. How wrong it is depends on the shape of what you
@@ -323,6 +323,36 @@ silently rewrite themselves, because that is exactly the sort of thing this crat
 
 The hook is `TokenCounter::observe`, whose default does nothing. As everywhere else, the kernel
 supplies the facts and your code supplies the judgement.
+
+And where a counter cannot reach something at all, it says so instead of returning `0`. That is a
+different problem from being a few percent out, and no amount of calibration touches it:
+`Content::Blob` holds base64, and base64 over four is a number about an encoding rather than about
+a model — a 400 KB screenshot would arrive as a hundred thousand tokens and send a compactor after
+a context that is nowhere near full. What a picture really costs is a formula over its
+*dimensions*, every vendor publishes one, and each publishes a different one, so this crate
+carries none of them.
+
+What it carries is the two halves that let you supply one. `TokenCounter::uncounted` is a *count*
+of the pieces a counter declined to price, and it rides up to `Budget::uncounted` and
+`ContextItem::uncounted` — so `budget.fully_counted()` is the difference between a figure that is
+complete and a figure that is a floor, and the row holding the picture can be marked as the one
+nobody priced. `Blob::meta` is a free-form value the kernel never reads, for whatever that counter
+would need: `{"w": 1024, "h": 768}` for a picture, `{"pages": 12}` for a document. Whoever encoded
+the payload had it decoded a moment earlier, so they are the one who knows.
+
+```console
+$ cargo run --example pricing_a_picture
+```
+
+That counts one context three ways — the default counter, one applying a vendor's tiling formula
+from `meta`, and that same formula handed a blob nobody measured — and the third is the one worth
+reading: knowing a formula does not help if the payload has no dimensions on it, so it abstains
+exactly as the default one does.
+
+One rule follows and it is load-bearing: a request carrying anything unpriced never reaches
+`observe`. `Calibrating` corrects with a single multiplier, so a gap it cannot see would be spread
+over the bytes it can — prose beside one screenshot ends up reading 50% high while the screenshot
+still reads nothing.
 
 ---
 
@@ -452,7 +482,7 @@ Both are off by default, because neither is part of the runtime:
 
 ### 📚 examples
 
-Two offline, and API-key-free:
+Three offline, and API-key-free:
 
 * **[transparency][ex-transparency]** - the whole philosophy in one run: what will be sent, a
   permission prompt, a tool that floods the context, and pruning it away. It also contains the
@@ -460,6 +490,9 @@ Two offline, and API-key-free:
   `cargo run --example transparency --features selectors`
 * **[compaction][ex-compaction]** - a compactor that summarizes what it drops, and the user
   putting it back anyway: `cargo run --example compaction`
+* **[pricing_a_picture][ex-pricing]** - one context counted three ways, and what `Blob::meta` and
+  `TokenCounter::uncounted` are for: a counter that knows a vendor's tiling formula, and the same
+  counter handed a payload nobody measured. `cargo run --example pricing_a_picture`
 
 Two that talk to a model:
 
@@ -581,5 +614,6 @@ Licensed under the MIT License ([LICENSE-MIT][license]).
 [ex-panel]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/panel.rs
 [ex-transparency]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/transparency.rs
 [ex-compaction]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compaction.rs
+[ex-pricing]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/pricing_a_picture.rs
 [ex-common]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/common/mod.rs
 [license]: https://github.com/ljedrz/nachalnik/blob/HEAD/LICENSE-MIT

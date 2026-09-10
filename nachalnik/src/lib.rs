@@ -171,7 +171,13 @@
 //! - The token figures are a [`TokenCounter`]'s, and the default one is an estimate that comes
 //!   out low. [`Calibrating`] closes the loop instead of guessing better: the kernel reports what
 //!   a request was estimated at beside what the provider charged for it, and the counter corrects
-//!   itself from the first response.
+//!   itself from the first response. Where a counter cannot reach something at all it says so
+//!   rather than returning `0` - [`TokenCounter::uncounted`] rides up to [`Budget::uncounted`]
+//!   and [`ContextItem::uncounted`], so a figure that is a *floor* is never mistaken for a
+//!   figure that is complete. A [`Content::Blob`] is the case that forced it: what a picture
+//!   costs is a formula over its dimensions, every vendor publishes a different one, and none of
+//!   them is reachable from a byte length. [`Blob::meta`] is where a counter gets the inputs, and
+//!   `examples/pricing_a_picture.rs` is one written out.
 //! - [`Snapshot`] is where it all ended up, which is a different question: [`Kernel::snapshot`]
 //!   and [`Kernel::resume`] carry a session across processes, because a log of events that name
 //!   their items cannot rebuild the items.

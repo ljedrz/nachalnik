@@ -21,7 +21,7 @@ minor bump may break you.
   recording. The runtime does not look inside one. It carries it, measures it and hands it to a
   `Provider`, the same as everything else, and *names* it wherever it has to become text, because
   a gap where a picture was is worse than a sentence saying there was one:
-  `[image/png, 12048 bytes]` is what `to_text` answers, and `as_blob` is how anything that wants
+  `[image/png, 12.05kB]` is what `to_text` answers, and `as_blob` is how anything that wants
   the payload asks for it.
 
   The payload is held **already base64**, which is deliberate. It is the form both dialects put it
@@ -97,6 +97,15 @@ minor bump may break you.
   else. The counter disowned that content and the kernel now respects the disownment.
 
 ### changed
+
+- A blob names its size the way a person reads one: `[image/png, 12.05kB]` rather than
+  `[image/png, 12048 bytes]`. That string lands in a terminal's narrowest column, in a model's
+  context, and in the sentence a dialect sends where it has nowhere to put a payload, and in all
+  three the digits past the third are noise. Two decimals, because these figures get compared
+  against each other and `1.05MB` beside `1.10MB` is a comparison where `1MB` beside `1MB` is
+  not; thousands rather than 1024, and `kB` rather than `KiB`, because what they get compared
+  against is an API's documented limit and those are quoted decimal. Under a thousand it stays an
+  exact count with no decimals at all.
 
 - `BytesPerToken` returns `0` for a `Content::Blob` rather than dividing its bytes by four. Those
   bytes are base64, and base64 over four is a number about an encoding and not about a model: a

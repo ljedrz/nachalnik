@@ -152,7 +152,33 @@ impl fmt::Display for Blob {
     /// note: the same shape `nachalnik-mcp` has always used for a tool result it could not carry,
     /// because the useful facts are the same two: what it was, and how much of it there was.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}, {} bytes]", self.media_type, self.byte_len())
+        write!(f, "[{}, {}]", self.media_type, sized(self.byte_len()))
+    }
+}
+
+/// A byte count in the unit a person reads it in, rather than as a row of digits.
+///
+/// note: `292.47kB` and not `292468 bytes`. This string lands in a terminal's narrowest column,
+/// in a model's context, and in a sentence standing where a payload was - and in all three the
+/// digits past the third are noise. Two decimals keep it a *measurement*: `1.05MB` and `1.10MB`
+/// are different files, where `1MB` and `1MB` are not.
+///
+/// note: thousands, not 1024, and `kB` rather than `KiB`. What these figures get compared against
+/// is an API's documented limit, and those are quoted in the decimal unit.
+fn sized(bytes: usize) -> String {
+    const UNITS: [&str; 4] = ["B", "kB", "MB", "GB"];
+
+    let mut size = bytes as f64;
+    let mut unit = 0;
+    while size >= 1000.0 && unit + 1 < UNITS.len() {
+        size /= 1000.0;
+        unit += 1;
+    }
+
+    match unit {
+        // no decimals on a count of bytes, which is already exact
+        0 => format!("{bytes}B"),
+        _ => format!("{size:.2}{}", UNITS[unit]),
     }
 }
 
@@ -212,7 +238,7 @@ impl Content {
     /// that was never in the output.
     ///
     /// note: for [`Content::Blob`] there is no faithful answer, so this names it rather than
-    /// giving one - `[image/png, 12048 bytes]`. The alternatives were an empty string, which
+    /// giving one - `[image/png, 12.05kB]`. The alternatives were an empty string, which
     /// makes a picture vanish from a transcript with nothing to say it was ever there, and the
     /// base64 itself, which is six hundred thousand characters of noise wherever anything expects
     /// prose. Anything that wants the payload asks [`Content::as_blob`] for it.
@@ -1165,6 +1191,24 @@ mod tests {
         assert_eq!(copy.byte_len(), 100);
     }
 
+    /// A size is written the way a person reads one, and stays a measurement while it does.
+    ///
+    /// note: the boundaries are the whole of it. Under a thousand it is a count and gets no
+    /// decimals; at a thousand it changes unit; and two decimals are kept because one file
+    /// against another is the comparison these figures exist for - `1.05MB` and `1.10MB` are
+    /// different, where `1MB` and `1MB` are not.
+    #[test]
+    fn a_size_is_written_in_the_unit_a_person_reads_it_in() {
+        assert_eq!(sized(0), "0B");
+        assert_eq!(sized(999), "999B");
+        assert_eq!(sized(1_000), "1.00kB");
+        assert_eq!(sized(292_468), "292.47kB");
+        assert_eq!(sized(1_500_000), "1.50MB");
+        assert_eq!(sized(2_000_000_000), "2.00GB");
+        // nothing above the last unit, so a preposterous payload is still readable
+        assert_eq!(sized(5_000_000_000_000), "5000.00GB");
+    }
+
     /// A blob names itself wherever it has to be text, and is its base64 wherever it has to be
     /// a size.
     ///
@@ -1177,7 +1221,7 @@ mod tests {
     fn a_blob_names_itself_as_text_and_measures_as_what_goes_out() {
         let content = Content::blob("image/png", "aGVsbG8=");
 
-        assert_eq!(content.to_text(), "[image/png, 8 bytes]");
+        assert_eq!(content.to_text(), "[image/png, 8B]");
         assert_eq!(content.byte_len(), 8 + "image/png".len());
         assert_eq!(content.as_blob().map(|b| &*b.media_type), Some("image/png"));
         assert!(content.as_text().is_none(), "it is not text and says so");
@@ -1197,7 +1241,7 @@ mod tests {
             content.as_blob().is_none(),
             "half a picture is not one: {said}"
         );
-        assert!(said.starts_with("[image/png, 4000 bytes]"), "{said}");
+        assert!(said.starts_with("[image/png, 4.00kB]"), "{said}");
         assert!(said.contains("truncated by an output limit"), "{said}");
         assert!(
             dropped > 3_000,
