@@ -9,6 +9,41 @@ minor bump may break you.
 
 ### added
 
+- A property that a snapshot resumes into the session it was taken from, over the same generated
+  sequences. `session.rs` has had this as three cases; what the property adds is the shapes nobody
+  writes by hand - a context in the middle of an undo stack, an item superseded and then excluded,
+  a result recorded before the call it answers. The assertion is that the resumed session projects
+  to the same *request*, not merely that it holds the same items: items equal and request
+  differing is precisely the kind of disagreement this file exists to find. Through serde on the
+  way, because a field that serialises and does not come back reads as an empty one. `Snapshot`
+  derives `PartialEq`, so a snapshot of the resumed session equalling the original is one
+  assertion covering the whole of it - and that is a real claim rather than a tautology, since
+  resuming recounts.
+
+- `the_generators_reach_what_the_properties_are_about`, which counts the states the properties
+  above have a branch for and fails if a run produces none of one.
+
+  This exists because three properties in this workspace were measurably weaker than they read,
+  and each was found the slow way - by breaking the implementation on purpose and noticing that
+  nothing failed. A name strategy that topped out below the length limit it was written to test.
+  An alphabet with nothing unpriced in it, so the invariant about abstaining could not fail. An
+  alphabet in which a result never preceded its call, so the branch that holds one back was never
+  entered. Every one of them read like a thorough test.
+
+  It is not a coverage measurement and does not try to be one. It is a short list of specific
+  configurations - a sequence longer than the undo depth, an unpriced payload, a result before its
+  call, a turn with two answers, an ordering pass that actually moved something, an orphan
+  dropped, an undo that undid, a redo that redid, something superseded, a reserved identifier -
+  each asserted to occur. Checked by taking generators away: removing the payload, the early
+  result, the two-call turn or the long sequences fails it by name.
+
+  It found a fourth hole while being written, which is the argument for it. `Call` made turns with
+  exactly one call, so two branches had never run: the arithmetic deciding whether a turn's
+  results were already beside it, and the half of the adjacency rule saying nothing else may
+  arrive until *every* call in a turn has an answer. `Calls` is in the alphabet now, and so is
+  `Reserve`, because `Snapshot::used_calls` was always empty - no turn runs in these sequences, so
+  no call was ever issued.
+
 - `tests/invariants.rs`: what holds of a context and its projection after every operation of a
   generated sequence. Invariants rather than a reference model, because a model faithful enough to
   compare against is a second implementation of the context that has to be kept honest, and a
