@@ -327,13 +327,54 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   750, 258 a tile), and none of them is reachable from a byte length. So the counter returns `0`
   and the budget is a floor: **a context holding pictures is larger than it says.**
 
-  The fix is for a count to be able to abstain out loud - a figure on `Budget` and on `ContextItem`
-  saying how many pieces of content the counter would not measure, and a defaulted
-  `TokenCounter::counts` for a counter to disown what it cannot reach. Both of those structs have
-  public fields and no `#[non_exhaustive]`, so adding one is a breaking change: it is `nachalnik`
-  0.4.0 and it re-cuts `nachalnik-mcp` under it. **The trigger is somebody actually running a
-  multimodal session** - until then a real tokenizer through `Kernel::set_counter` is the answer
-  for anyone who needs the number to be right, and the doc on `BytesPerToken::count` says so.
+  **And it is worse than a floor, because of `Calibrating`.** The default counter is a
+  `Calibrating<BytesPerToken>`, and after every response the kernel hands it the whole-request
+  estimate beside what the provider charged for the same bytes (`kernel/request.rs`). A blob
+  estimated at nothing and billed a thousand tokens does not stay a local error: it arrives as a
+  systematic shortfall, and a single multiplier can only correct one by spreading it over the
+  bytes it *can* see. Two thousand tokens of prose and one screenshot settle on a scale of about
+  1.5, and from then on the prose reads three thousand while the picture still reads nothing - two
+  figures wrong in opposite directions and no item's number right. The ratio is cumulative, so
+  deleting the picture does not undo it; it dilutes over the next few text-only requests. `BOUNDS`
+  caps that at ten times and does nothing else. Second-order and sharper: an item counted at `0`
+  is the *last* thing a largest-first compactor takes and the largest thing in the context.
+
+  The fix is two halves, and it is `nachalnik` 0.4.0 - `Budget` and `ContextItem` have public
+  fields and no `#[non_exhaustive]`, so either one alone is already breaking - and it re-cuts
+  `nachalnik-mcp` under it:
+
+  1. **A count that can abstain out loud.** A figure on `Budget` and on `ContextItem` saying how
+     many pieces of content the counter would not measure, and a defaulted `TokenCounter::counts`
+     for a counter to disown what it cannot reach. `Calibrating` then has something to check
+     before it learns: a request carrying an uncounted piece says nothing trustworthy about the
+     ratio, and observing it is how the prose gets inflated.
+  2. **Somewhere to put what a counter would need.** A `meta: Value` on `Blob` that the kernel
+     never reads - the same bargain `ContextItem::meta` already strikes, and for the same reason:
+     `{"w":1024,"h":768}` for a picture, `{"pages":12}` for a PDF, `{"seconds":184,"fps":30}` for
+     a video, in a vocabulary the caller owns and this crate never learns. It goes on the blob
+     rather than the item because the budget is counted over the *projected messages*
+     (`projection_tokens`), and a `Message` carries a `Content` and nothing else a counter could
+     read - no meta, no item, no id. A fact stashed on `ContextItem::meta` reaches `count_item`
+     and never reaches the figure a compactor acts on.
+
+  Three answers that look right and are not, so nobody re-proposes them:
+
+  - **The vendor formulas, in `nachalnik-providers`.** A dialect is a shape that changes over
+    years; a price list is a per-model fact that changes whenever a vendor ships a model. That
+    crate promises to speak two dialects, and this would quietly turn it into a promise to track
+    what every model on them charges for a picture - a subscription rather than a feature, and
+    wrong silently, which is the thing the abstention figure exists to end. The three formula
+    *shapes* stay where they are: prose, on `BytesPerToken::count`, illustrating what kind of
+    function somebody is about to write without claiming any of the numbers are current.
+  - **A typed `dimensions` on `Blob`.** Covers pictures and nothing else. A PDF is pages, a video
+    is a duration and a frame rate, an audio clip is seconds, and enumerating those is this crate
+    growing a vocabulary for media it has a rule against knowing anything about.
+  - **A `tokens: Option<usize>` on `Blob`.** A per-model figure on a model-agnostic content type,
+    wrong the moment the model changes, and the first model assumption in `model.rs`.
+
+  **The trigger is somebody actually running a multimodal session** - until then a real tokenizer
+  through `Kernel::set_counter` is the answer for anyone who needs the number to be right, and the
+  doc on `BytesPerToken::count` says so.
 
 - **`nachalnik-mcp` naming a picture rather than carrying one.** The bridge answers an image
   block with `[an image (image/png), not carried into the context]`, which was the only thing it
