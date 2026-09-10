@@ -4,20 +4,42 @@
 //! elided item leaves behind a sentence carrying the reason for eliding it - and on a short result
 //! that costs more than the content did. A compactor that did not check would watch the total
 //! refuse to move and elide everything it had.
+//!
+//! note: with one exception, and it is the whole reason `carries_blob` is here. A
+//! [`Content::Blob`](nachalnik::Content::Blob) is counted at `0` by every counter in this
+//! workspace - see "postponed, on purpose" in `AGENTS.md` - so that same check reads a picture as
+//! recovering nothing and skips it, which makes the largest thing in the context the one thing
+//! this can never take.
+//!
+//! note: so size decides nothing about a blob, in *either* direction - not which one goes first,
+//! and not whether a small one is worth taking at all. The second half is not an oversight: a
+//! small blob is small in base64, which is the one measure that says nothing about what it costs.
+//! An eight-pixel PNG is a hundred bytes and 255 tokens at a vendor charging 85 plus 170 a tile,
+//! so "too small to be worth eliding" is a judgement this pass can make about prose and cannot
+//! make about a picture. Where it cannot judge, it takes.
 
 use std::sync::Arc;
 
 use nachalnik::{
-    Budget, CompactionPlan, Compactor, ContextItem, ContextKind, ContextState, async_trait,
+    Block, Budget, CompactionPlan, Compactor, Content, ContextItem, ContextKind, ContextState,
+    async_trait,
 };
 
-/// Elides the oldest tool results once the context gets full, and says so.
+/// Elides any tool result carrying a blob, then the oldest of the rest, once the context gets
+/// full - and says so.
 ///
 /// note: It does not summarize what it elided, and the note it leaves behind claims only that
 /// the content existed and is gone - a compactor that invented a paraphrase of output it never
 /// read would be putting words in a tool's mouth. Every elision is reversible: the items keep
 /// what they hold, they stay in the context pane with it counted as held back, and restoring one
 /// is a keystroke. Anything pinned is refused by the kernel and reported as refused.
+///
+/// note: blobs go first on principle rather than on measurement, and the principle is that this
+/// is a *terminal* client. It renders no pictures and is not going to, so a blob here is a cost
+/// the person cannot see, paid out of a budget that cannot count it, for a payload the screen
+/// will only ever name. Every one of those is a reason to be the first thing out and none of them
+/// is visible to an arithmetic over `tokens`. A client that shows pictures should want a
+/// different rule, which is why this one is `kamchatka`'s and not the runtime's.
 pub struct Trim {
     /// How full the context has to be before this bothers.
     pub threshold: f64,
@@ -69,10 +91,31 @@ impl Compactor for Trim {
                 && item.state != ContextState::Pinned
                 && matches!(item.kind, ContextKind::ToolResult { .. })
         });
+        // blobs first and unconditionally, which is the one place this pass does not consult a
+        // size. A picture is the largest thing in the context and the counter puts it at `0`, so
+        // every arithmetic below would rank it last and then decline to take it at all - and a
+        // compactor that skips the biggest item because it was told the item is free is not
+        // making a decision, it is reporting one that was made by a gap in the estimate. Taken
+        // first, before age is consulted: whatever a byte of prose is worth here, a megabyte of
+        // base64 nothing can count is worth less
+        let (blobs, rest): (Vec<_>, Vec<_>) =
+            candidates.partition(|item| carries_blob(&item.content));
 
         let mut used = budget.used();
         let mut elide = Vec::new();
-        for item in candidates {
+        let blob_count = blobs.len();
+        for item in blobs {
+            // the same arithmetic the loop below uses, and it is here for what it will be worth
+            // later rather than for what it is worth now: today a blob is counted at `0`, so this
+            // credits the pass with nothing, which is the honest figure for a saving nobody can
+            // measure. Put a counter that does know what a picture costs behind `set_counter` and
+            // the same line starts crediting the real one, without this pass learning a formula.
+            // `saturating_sub` rather than the `checked_sub` below, because there the `None` is a
+            // decision - too small to be worth taking - and here nothing is allowed to be one
+            used -= item.tokens.saturating_sub(marker).min(used);
+            elide.push(item.id);
+        }
+        for item in rest {
             if used <= target {
                 break;
             }
@@ -101,11 +144,26 @@ impl Compactor for Trim {
             // `prune` takes, and the word the runtime's state is called. It said `shortened to a
             // marker`, which is a third name for the thing - and a fourth mechanism away from
             // `truncated`, which is what an output limit does and is not this at all
-            summary: Some(ContextItem::summary(format!(
-                "{} earlier tool result(s) were elided to make room: each is now a one-line \
-                 marker where its content was. Ask again for anything you still need.",
-                elide.len()
-            ))),
+            // note: the blobs get their own clause, and they need one. What the model is left
+            // reading in place of an elided item is the pass's `reason`, which says the context
+            // was full and says nothing about what used to be there - so a picture named
+            // `[image/png, 12048 bytes]` a moment ago becomes a sentence about a token limit, and
+            // the model has no way left to know an image was ever in the conversation. A gap
+            // where a picture was is worse than a sentence saying there was one; this is the
+            // sentence, and it is the only place in the plan there is room for it
+            summary: Some(ContextItem::summary(match blob_count {
+                0 => format!(
+                    "{} earlier tool result(s) were elided to make room: each is now a one-line \
+                     marker where its content was. Ask again for anything you still need.",
+                    elide.len()
+                ),
+                blobs => format!(
+                    "{} tool result(s) were elided to make room, {blobs} of them carrying an \
+                     image or other non-text payload: each is now a one-line marker where its \
+                     content was. Ask again for anything you still need.",
+                    elide.len()
+                ),
+            })),
             reason,
             elide,
             remove: Vec::new(),
@@ -130,4 +188,30 @@ impl Compactor for Trim {
 fn marker_tokens(reason: &str) -> usize {
     // `[... ` and ` ...]`, which the projector supplies and this does not get to choose
     (reason.len() + 10).div_ceil(4)
+}
+
+/// Whether the content is a blob or has one somewhere inside it.
+///
+/// note: here rather than on [`Content`] because it is implementable on top, which is the rule
+/// that keeps the runtime the size it is. What this client pays for that is the two wildcards
+/// below: `Content` and [`Block`] are both `#[non_exhaustive]`, so a variant added later that
+/// carries bytes reads as `false` here and a picture quietly stops going first. There is no arm
+/// this file can write today that would catch one - the question is whether the *workspace* grew
+/// a variant, which a match cannot ask - so what guards it is
+/// `blobs_are_taken_before_anything_else` failing on the day that variant is what a tool returns.
+///
+/// note: it recurses, because a `Block` holds a `Content` and the sentence-and-a-screenshot turn
+/// `nachalnik-providers` sends is exactly a blob one level down. Reasoning blocks are walked as
+/// well as text ones: nothing produces a thought that is a picture, and a compactor that missed
+/// one because nothing was *supposed* to produce it would be the wrong place to find that out. A
+/// [`Block::Call`] is not walked, because a call is a name and its arguments and both are JSON.
+fn carries_blob(content: &Content) -> bool {
+    match content {
+        Content::Blob(_) => true,
+        Content::Blocks(blocks) => blocks.iter().any(|block| match block {
+            Block::Text(part) | Block::Reasoning(part) => carries_blob(&part.content),
+            _ => false,
+        }),
+        _ => false,
+    }
 }

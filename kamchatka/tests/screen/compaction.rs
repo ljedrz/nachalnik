@@ -310,3 +310,134 @@ async fn compaction_does_not_elide_a_result_smaller_than_the_marker_replacing_it
         "and does not say nothing moved: {screen}"
     );
 }
+
+/// A blob goes first, ahead of results older than it, and the arithmetic gets no say. Every
+/// counter in this workspace puts a `Content::Blob` at `0` tokens, so the two rules the rest of
+/// this pass runs on - oldest first, and nothing smaller than its own marker - between them made
+/// the largest thing in the context the one thing `Trim` could never take: ranked last by age,
+/// then skipped for recovering nothing.
+#[tokio::test]
+async fn blobs_are_taken_before_anything_else() {
+    use kamchatka::tools::Trim;
+    use nachalnik::{Budget, Compactor, Content};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    // the older of the two, and the one the pass would otherwise reach first
+    let read = call("c1", "read", json!({"path": "big.rs"}));
+    kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![read.clone()],
+    ));
+    let text = kernel.push(ContextItem::tool_result(
+        read.id.clone(),
+        "read",
+        "x".repeat(4_000),
+        false,
+    ));
+
+    // the newest item in the context, and by a distance the biggest: 600 KB of base64 that the
+    // budget is about to report as free
+    let shot = call("c2", "screenshot", json!({}));
+    kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![shot.clone()],
+    ));
+    let blob = kernel.push(ContextItem::tool_result(
+        shot.id.clone(),
+        "screenshot",
+        Content::blob("image/png", "A".repeat(600_000)),
+        false,
+    ));
+
+    assert_eq!(
+        kernel.item(blob).unwrap().tokens,
+        0,
+        "the trap this is about: the counter abstains, so every size test here reads a \
+         600 KB picture as free"
+    );
+
+    let trim = Trim {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    let budget = || Budget {
+        limit: Some(1_000),
+        ..kernel.budget()
+    };
+
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("over the threshold on the text alone");
+    assert_eq!(
+        plan.elide,
+        vec![blob, text],
+        "the blob goes first, though it is the newest item and the one counted at nothing"
+    );
+    assert!(
+        plan.summary
+            .as_ref()
+            .is_some_and(|summary| summary.content.to_text().contains("1 of them carrying an")),
+        "and the model is told a picture was among them, since the marker it reads will only \
+         mention a token limit: {:?}",
+        plan.summary.as_ref().map(|s| s.content.to_text())
+    );
+
+    let report = kernel.apply_compaction(plan);
+    assert_eq!(report.elided.len(), 2);
+    let request = kernel.preview_request().expect("a request");
+    let sent = format!("{:?}", request.messages);
+    assert!(
+        !sent.contains("AAAA"),
+        "and the base64 is out of the request: {}",
+        &sent[..sent.len().min(400)]
+    );
+}
+
+/// The same, with the budget already where the pass wants it. A blob is not taken because taking
+/// it helps the arithmetic - the arithmetic cannot see it - but because nothing here can say what
+/// it costs, and an unbounded payload nobody can measure is the wrong thing to be carrying on a
+/// guess.
+#[tokio::test]
+async fn a_blob_goes_even_when_the_count_says_there_is_room() {
+    use kamchatka::tools::Trim;
+    use nachalnik::{Budget, Compactor, Content};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    let shot = call("c1", "screenshot", json!({}));
+    kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![shot.clone()],
+    ));
+    let blob = kernel.push(ContextItem::tool_result(
+        shot.id.clone(),
+        "screenshot",
+        Content::blob("image/png", "A".repeat(600_000)),
+        false,
+    ));
+
+    let trim = Trim {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    // a limit the counted content is nowhere near, which is exactly the state a context full of
+    // pictures reports: `used` is a handful of tokens and the request is megabytes
+    let budget = || Budget {
+        limit: Some(1_000_000),
+        ..kernel.budget()
+    };
+    assert!(
+        budget().used() <= (budget().limit.unwrap() as f64 * trim.target) as usize,
+        "the target is already met on the counted tokens, so the ordinary loop stops at once"
+    );
+
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("a plan all the same");
+    assert_eq!(plan.elide, vec![blob], "the picture, and nothing else");
+}
