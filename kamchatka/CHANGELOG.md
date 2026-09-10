@@ -76,6 +76,28 @@ minor bump may break you.
   arriving is re-anchored to whatever that arrival becomes, because "stopped" is said
   mid-sentence and belongs after the half-answer it interrupted, not above it.
 
+- **An elided turn reads as the marker the model reads.** It used to print the content behind
+  a rule down its left, which is a picture of the model still having it - and the one thing an
+  elision means is that it does not. What is drawn now is the projector's own sentence in the
+  brackets it put round it, taken out of the projection rather than assembled a second time
+  here, with the speaker's usual prefix: an elided question still reads as a question.
+  `Going::marker` is where it comes from.
+
+- **An edit reads where the turn it replaced was.** An edit supersedes, so the new words are a
+  new item appended to the context and the highest identifier in it - and a conversation read
+  off the context in identifier order put a correction to the first question after everything
+  that followed it, which is an order no request ever had. `App::in_order` places an item that
+  replaces another in the other's place, following a chain so a turn edited twice stays put;
+  `commit_edit` records which item that is on `meta`, where it rides in the snapshot, so a
+  resumed session draws the edit where it was too.
+
+- **The chat says less.** The line naming what a tool call cost, the one saying how much the
+  output limit took, and the stub above a rewritten turn are all gone. Each is a fact about an
+  item rather than anything anybody said, each is a column on the context tab already, and a
+  conversation with a line of accountancy under every tool call is one you have to read
+  around. What survives is `{tool} reported an error`, because that is the one of them that
+  changes how the turns either side of it read.
+
 - **The chat shows the conversation the model is in.** An item that is not projected - excluded,
   archived, superseded - is not on it, rather than being greyed out and marked, and an item
   whose content is rewritten in place reads as it is now rather than as it arrived.

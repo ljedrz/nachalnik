@@ -353,7 +353,7 @@ async fn a_path_rule_is_finer_than_the_capability_above_it() {
 
     let screen = harness.screen();
     assert!(
-        screen.contains("src/main.rs") && screen.contains("read: 2 tokens"),
+        screen.contains("src/main.rs") && screen.contains("contents"),
         "the ordinary one ran without being asked about: {screen}"
     );
     let asked = screen

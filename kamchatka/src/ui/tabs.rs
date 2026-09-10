@@ -12,7 +12,7 @@
 //! a row per undecided thing: `ask` is what this policy does when nobody has told it anything, and
 //! a screenful of it buries the one line that says what can happen without stopping.
 
-use std::time::Duration;
+use std::{borrow::Cow, time::Duration};
 
 use nachalnik::{ContextId, ContextItem, ContextKind, ContextState, Verdict};
 use ratatui::{
@@ -45,9 +45,6 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     // the item the last marked line belonged to, so that a turn and the calls it asked for say
     // once between them why they are not going rather than once each
     let mut marked: Option<ContextId> = None;
-    // the same, for the line that says a turn was rewritten: a turn is several lines and the
-    // rewrite happened once
-    let mut stubbed: Option<ContextId> = None;
     // held by the loop, because the lines borrow their words out of these rather than copying
     // the whole conversation once a frame to show what it was already showing
     let items = app.kernel.items();
@@ -58,31 +55,28 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         // it. `going.sends_content` rather than the state, for the reason it exists: an item the
         // projector repaired away is `Active` and is not in the request. A line that is nobody's
         // item - a note, an error, something still arriving - is left exactly as it is
-        let held = item.filter(|item| !going.sends_content(item));
+        // note: `is_elided` is handled above, on its own terms, so what is left here is the
+        // item a *projector* took out of a request it is otherwise in - a second result for a
+        // call that already has one. That is not a decision anybody made and there is no marker
+        // for it, so it keeps the rule down its left and the line saying why
+        let held = item.filter(|item| !going.sends_content(item) && !item.state.is_elided());
 
-        // a turn somebody rewrote says so, once, above itself. What it used to say is a page of
-        // the item, which is what `enter` opens and `←` pages back through
-        //
-        // note: asked of the item rather than of the line, so an `undo` that takes the rewrite
-        // away takes the stub with it, and so a rewrite by `amend` gets one too - it never did,
-        // because the pointer this replaces was only ever set by an edit made at this terminal
-        match item.map(|item| (item.id, app.rewrites(item.id))) {
-            Some((id, kept)) if kept > 0 && stubbed != Some(id) => {
-                lines.push(Line::styled(
-                    format!(
-                        "~ [{}] · rewritten here, {kept} earlier version(s) · enter on [{}] \
-                         reads what it said",
-                        id.0, id.0
-                    ),
-                    quiet().italic(),
-                ));
-                stubbed = Some(id);
-            }
-            Some((_, kept)) if kept > 0 => {}
-            _ => stubbed = None,
-        }
         let speaker = said.speaker;
-        let said = said.text;
+        // an elided item is in the request as a marker, so the marker is what the conversation
+        // shows - the projector's own words, with the brackets it put round them, which is
+        // exactly the text the model reads there. Drawn with the speaker's own prefix and
+        // dimmed, so a `> ` still says whose turn it was and the dimming says there is nothing
+        // left of it to read
+        //
+        // note: this used to print the *content* behind a rule, which read as the model still
+        // having it. The one thing an elision means is that it does not
+        let said = match item.filter(|item| item.state.is_elided()) {
+            Some(item) => match going.marker.get(&item.id) {
+                Some(marker) => Cow::Borrowed(marker.as_str()),
+                None => said.text,
+            },
+            None => said.text,
+        };
 
         if let Some(item) = held {
             if marked != Some(item.id) {

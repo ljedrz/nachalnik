@@ -20,6 +20,7 @@ use nachalnik::{
 };
 use nachalnik_providers::Endpoint;
 use ratatui_textarea::{TextArea, WrapMode};
+use serde_json::Value;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
@@ -43,6 +44,14 @@ const TRACE_DEPTH: usize = 400;
 /// in the context either way, one keystroke from being read - but a *message* is never shortened
 /// on the way to the screen, however long it is. See [`App::append`].
 const LIVE_OUTPUT: usize = 8_000;
+
+/// How far a chain of edits is followed before the conversation stops asking where an item
+/// belongs.
+///
+/// note: a bound rather than a cycle check, because the thing being followed is a number in a
+/// free-form `meta` that nothing in this program wrote alone - a hand-written snapshot can
+/// point two items at each other, and a screen is a poor place to find out.
+const HOPS: usize = 16;
 
 /// Which half of the window the keys are talking to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -279,6 +288,14 @@ pub struct Going {
     pub costs: BTreeMap<ContextId, usize>,
     /// Why each item that is not in the request was left out, in the projector's own words.
     pub left_out: BTreeMap<ContextId, String>,
+    /// What the model reads in place of an item whose content is not going but which is still
+    /// in the request - that is, an elided one.
+    ///
+    /// note: taken out of the projection rather than assembled from the item's state and note,
+    /// for the same reason [`Going::left_out`] is. The brackets are the projector's, the words
+    /// inside them are whoever elided it, and a screen that put its own version of the sentence
+    /// next to the one the model is reading would be showing a third thing that is neither.
+    pub marker: BTreeMap<ContextId, String>,
 }
 
 impl Going {
@@ -671,19 +688,6 @@ impl App {
         );
     }
 
-    /// How many earlier versions of an item are kept, for the line that says a turn was
-    /// rewritten.
-    ///
-    /// note: asked of the item rather than remembered against a transcript line, which is the
-    /// same move the rest of this made. An edit used to be recorded on the entry - the item it
-    /// *was* - so that the drawing could put a stub above it; that pointer had to be maintained
-    /// by `resay`, went stale on an `undo`, and existed only for edits made at this terminal. A
-    /// count of what is kept is true of whatever did the rewriting, `amend` included, and is
-    /// nothing when an undo has taken the edit away.
-    pub fn rewrites(&self, id: ContextId) -> usize {
-        self.versions.get(&id).map_or(0, Vec::len)
-    }
-
     /// The conversation as it stands: every context item that is going, in order, with the
     /// asides that were said between them and whatever is arriving at the end.
     ///
@@ -714,9 +718,9 @@ impl App {
             item: None,
         };
 
-        for item in items {
+        for (at, item) in Self::in_order(items) {
             // what was said before this item existed goes before it, in the order it was said
-            while let Some(entry) = loose.next_if(|entry| entry.after < Some(item.id)) {
+            while let Some(entry) = loose.next_if(|entry| entry.after < Some(at)) {
                 said.push(loosed(entry));
             }
             if item.state.is_projected() {
@@ -751,6 +755,49 @@ impl App {
             Cow::Borrowed(text) => Cow::Borrowed(unpadded(text)),
             Cow::Owned(text) => Cow::Owned(unpadded(&text).to_owned()),
         }
+    }
+
+    /// The items in the order the conversation had them, each with the place it occupies.
+    ///
+    /// note: not the order the context holds them in, and the difference is an edit. An edit
+    /// *supersedes*: the new words are a new item, appended, so its identifier is the highest
+    /// in the context and reading the context in order puts a correction to a turn from twenty
+    /// exchanges ago after everything that followed it. That is an order no request ever had -
+    /// the request has the new words where the old ones were - so an item that replaces another
+    /// takes its place, and its identifier is only the tie-break between two that claim the
+    /// same one.
+    ///
+    /// note: the chain is followed rather than the one hop, because a turn can be edited twice
+    /// and the second edit replaces the first. Bounded, because nothing here wrote the number
+    /// it is following: `meta` is a free-form value and a hand-written snapshot could point one
+    /// item at another in a circle.
+    fn in_order(items: &[Arc<ContextItem>]) -> Vec<(ContextId, &Arc<ContextItem>)> {
+        let replaces = |item: &ContextItem| {
+            item.meta
+                .get("replaces")
+                .and_then(Value::as_u64)
+                .map(ContextId)
+        };
+        let by_id: BTreeMap<_, _> = items.iter().map(|item| (item.id, item)).collect();
+
+        let mut placed: Vec<_> = items
+            .iter()
+            .map(|item| {
+                let mut at = item.id;
+                for _ in 0..HOPS {
+                    match by_id.get(&at).and_then(|item| replaces(item)) {
+                        Some(prior) if by_id.contains_key(&prior) => at = prior,
+                        _ => break,
+                    }
+                }
+
+                (at, item)
+            })
+            .collect();
+        // stable, so two items in the same place keep the order the context has them in
+        placed.sort_by_key(|(at, _)| *at);
+
+        placed
     }
 
     /// Turns one context item into the lines it reads as.
@@ -795,18 +842,17 @@ impl App {
                     Speaker::Result,
                     Cow::Owned(head(&item.content.to_text(), 6)),
                 );
-
-                let mut note = format!("{tool}: {} tokens", item.tokens);
+                // note: what a tool cost and what the output limit took are *not* here, and
+                // used to be. Both are facts about an item rather than anything said, both are
+                // a column on the context tab already, and a conversation with a line of
+                // accountancy under every tool call is one somebody has to read around. What
+                // survives is the one thing that changes how the turn above and below it reads
                 if *is_error {
-                    note.push_str(", reported as an error");
+                    line(
+                        Speaker::Note,
+                        Cow::Owned(format!("{tool} reported an error")),
+                    );
                 }
-                // what the output limit took, in the item's own words rather than a second
-                // account of them assembled here - it is the one place the fact survives a
-                // restart, since the event that carried it is long gone
-                if let Some(why) = &item.included_because {
-                    note.push_str(&format!("; {why}"));
-                }
-                line(Speaker::Note, Cow::Owned(note));
             }
             _ => line(
                 Speaker::Note,
@@ -1353,6 +1399,26 @@ impl App {
         let paired = projection.included.len() == projection.messages.len();
 
         Going {
+            // what the model reads where an elided item's content was, which only a paired
+            // projection can answer: it is the message that came out, not anything the item
+            // holds
+            marker: match paired {
+                false => BTreeMap::new(),
+                true => projection
+                    .included
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, id)| {
+                        self.kernel
+                            .item(**id)
+                            .is_some_and(|item| item.state.is_elided())
+                    })
+                    .filter_map(|(at, id)| {
+                        let said = projection.messages[at].content.as_ref()?;
+                        Some((*id, said.to_text().into_owned()))
+                    })
+                    .collect(),
+            },
             costs: projection
                 .included
                 .iter()

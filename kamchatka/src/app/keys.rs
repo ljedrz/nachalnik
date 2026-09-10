@@ -8,6 +8,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nachalnik::{Capability, Content, ContextId, ContextItem, ContextState, Grant, Verdict};
 use ratatui_textarea::CursorMove;
+use serde_json::json;
 
 use super::{
     App, Focus, Overlay, Page, Speaker, Tab,
@@ -124,6 +125,15 @@ impl App {
             text.to_owned(),
         )
         .because("edited at the terminal");
+        // where it belongs in the conversation, which is not where its identifier puts it. A
+        // superseding item is appended, so it is the newest thing in the context and the chat
+        // would draw it last - an edit to a turn from twenty exchanges ago landing after
+        // everything that followed it, which describes an order no request ever had. The
+        // request has the new words in the old place, so this says which place that is.
+        //
+        // note: on `meta`, which is the field for exactly this - a hint the runtime never reads
+        // - and it rides in the snapshot, so a resumed session draws the edit where it was too
+        edited.meta = json!({ "replaces": id.0 });
         // editing something decides what it says, not whether it is sent - so whatever it was
         // doing, it goes on doing. `ContextItem::new` starts out Active, and carrying over only
         // the pin meant editing a pruned item quietly put it back into the next request, and

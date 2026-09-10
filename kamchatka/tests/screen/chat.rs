@@ -717,40 +717,44 @@ async fn the_chat_drops_what_the_model_is_no_longer_shown() {
     );
 }
 
-/// An elided turn stays, because an elided turn is still in the request.
+/// An elided turn stays, and reads as the marker the model reads.
 ///
-/// note: the line between the two, and the reason the check is the item's state rather than
-/// whether the projector emitted content for it. Excluded is gone from the request entirely and
-/// goes; elided is in the request as a one-line marker, so the conversation keeps its place and
-/// marks it - which is what the model is reading there too.
+/// note: the line between the two states, and the reason the check is the item's state rather
+/// than whether the projector emitted content for it. Excluded is gone from the request
+/// entirely and goes; elided is in the request as a one-line marker, so the conversation keeps
+/// its place and shows *that* - the projector's own sentence, in the brackets it put round it,
+/// which is exactly the text the model has there.
+///
+/// note: it used to print the content behind a rule down the left, which read as the model
+/// still having it. The one thing an elision means is that it does not.
 #[tokio::test]
-async fn an_elided_turn_keeps_its_place_and_says_it_is_a_marker() {
+async fn an_elided_turn_reads_as_the_marker_the_model_reads() {
     let mut harness = Harness::new([ModelResponse::text("a long and detailed answer")]);
     harness.send("go on").await;
     harness.settle().await;
 
+    let asked = harness.app.kernel.items()[0].id;
     let answered = harness.app.kernel.items()[1].id;
     harness.app.kernel.set_state(
-        [answered],
+        [asked, answered],
         ContextState::Elided,
         Some("compacted to make room".into()),
     );
 
     let screen = harness.screen();
     assert!(
-        screen.contains("a long and detailed answer"),
-        "it is still in the request, so it is still readable: {screen}"
+        !screen.contains("a long and detailed answer"),
+        "the model is not being shown it, so neither is anybody: {screen}"
     );
     assert!(
-        screen.contains("compacted to make room"),
-        "and says why the model is only getting a marker: {screen}"
+        screen.contains("[... compacted to make room ...]"),
+        "the marker it is being shown instead, in the projector's own words: {screen}"
     );
-    let marked = screen
-        .lines()
-        .any(|row| row.contains("a long and detailed answer") && row.contains('╎'));
+    // and whose turn it was is still legible, because the marker takes the speaker's own
+    // prefix rather than a rule of its own: the question reads as a question
     assert!(
-        marked,
-        "drawn so the eye can tell without reading: {screen}"
+        screen.contains("> [... compacted to make room ...]"),
+        "the elided question should keep its `>`: {screen}"
     );
 }
 
@@ -840,13 +844,10 @@ async fn an_edited_turn_reads_where_it_was_and_says_what_it_used_to_be() {
     );
     // in the place the old turn had, rather than after everything
     assert!(row("do crabs think") < row("of course they do"), "{screen}");
-    // and the line says that it was rewritten, and where the old words are
-    assert!(screen.contains("rewritten here"), "{screen}");
-    assert!(screen.contains("1 earlier version(s)"), "{screen}");
-    assert!(
-        screen.contains("reads what it said"),
-        "the row should say where the old words went: {screen}"
-    );
+    // and nothing else: what it used to say, how many versions are kept and what it cost are
+    // all on the context tab, and a conversation is easier to read without them
+    assert!(!screen.contains("rewritten"), "{screen}");
+    assert!(!screen.contains("earlier version"), "{screen}");
 }
 
 /// An edit that has been undone comes off the conversation with the item it named.
@@ -881,8 +882,8 @@ async fn undoing_an_edit_takes_it_off_the_conversation_too() {
         "the edit is out of the context, so it is off the chat: {undone}"
     );
     assert!(
-        !undone.contains("rewritten here"),
-        "and nothing points at the item the undo took away: {undone}"
+        undone.lines().filter(|row| row.contains("nay")).count() == 1,
+        "and the answer is there once, not beside the edit it replaced: {undone}"
     );
 
     // and `U` is the way back, all the way back
@@ -891,7 +892,7 @@ async fn undoing_an_edit_takes_it_off_the_conversation_too() {
     harness.tab(Tab::Chat);
     let redone = harness.screen();
     assert!(redone.contains("of course they do"), "{redone}");
-    assert!(redone.contains("rewritten here"), "{redone}");
+    assert!(!redone.contains("nay"), "{redone}");
 }
 
 /// The blank lines a provider puts in front of a turn do not reach the screen.
@@ -1019,5 +1020,61 @@ async fn a_message_from_the_command_line_is_tied_to_its_item() {
     assert!(
         !screen.contains("what main does with -m"),
         "an attributed line goes when its item does: {screen}"
+    );
+}
+
+/// An edit to an old turn reads where that turn was, not at the end of the conversation.
+///
+/// note: the case a two-turn conversation cannot show, and the one somebody actually hits. An
+/// edit *supersedes* - the new words are a new item, appended - so its identifier is the
+/// highest in the context, and a conversation read off the context in identifier order puts a
+/// correction to the first question after everything that followed it. The request has the new
+/// words in the old place; this is the screen agreeing with it.
+#[tokio::test]
+async fn an_edit_to_an_early_turn_stays_where_that_turn_was() {
+    let mut harness = Harness::new([
+        ModelResponse::text("the first answer"),
+        ModelResponse::text("the second answer"),
+    ]);
+    harness.send("the first question").await;
+    harness.settle().await;
+    harness.send("the second question").await;
+    harness.settle().await;
+
+    // `e` on the *first* question, which is four items back
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Char('e')).await;
+    assert_eq!(harness.app.input.lines(), ["the first question"]);
+    for _ in 0.."the first question".len() {
+        harness.press(KeyCode::Backspace).await;
+    }
+    harness.send("the question as it should have been").await;
+
+    harness.tab(Tab::Chat);
+    let screen = harness.screen();
+    let row = |needle: &str| {
+        screen
+            .lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} should be on the screen: {screen}"))
+    };
+
+    assert!(
+        !screen.contains("the first question"),
+        "the superseded turn is not in the request: {screen}"
+    );
+    // the edit is first, where the turn it replaced was - not last, where its identifier is
+    assert!(
+        row("the question as it should have been") < row("the first answer"),
+        "the edit should read in the old turn's place: {screen}"
+    );
+    assert!(
+        row("the first answer") < row("the second question"),
+        "{screen}"
+    );
+    assert!(
+        row("the second question") < row("the second answer"),
+        "{screen}"
     );
 }
