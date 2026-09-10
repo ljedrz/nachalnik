@@ -82,7 +82,7 @@ fn the_conventional_dialect_sends_a_data_uri_in_a_content_part() {
     assert_eq!(result["role"], "tool");
     assert_eq!(
         result["content"],
-        json!(format!("[image/png, {} bytes]", PIXEL.len())),
+        json!(format!("[image/png, {}B]", PIXEL.len())),
         "a picture cannot be a `tool` message's content in this dialect"
     );
 }
@@ -114,7 +114,7 @@ fn googles_dialect_sends_inline_data_beside_the_text_parts() {
     assert_eq!(answer["role"], "user");
     assert_eq!(
         answer["parts"][0]["functionResponse"]["response"]["result"],
-        json!(format!("[image/png, {} bytes]", PIXEL.len()))
+        json!(format!("[image/png, {}B]", PIXEL.len()))
     );
 }
 

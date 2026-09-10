@@ -78,7 +78,7 @@ minor bump may break you.
 
   Neither dialect accepts one in a *tool result*: `tool` content is a string in the first and a
   `functionResponse` object in the second. A tool that returned a picture therefore sends the
-  sentence naming it, `[image/png, 12048 bytes]`, which is the answer `nachalnik-mcp` has always
+  sentence naming it, `[image/png, 12.05kB]`, which is the answer `nachalnik-mcp` has always
   given and beats a 400 by enough to be deliberate about.
 
 - The conformance suite, as `conformance`, off by default. It was written to keep three copies of
