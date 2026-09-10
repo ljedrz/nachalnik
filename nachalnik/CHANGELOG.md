@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### added
 
+- `examples/pricing_a_picture.rs`, which is what `Blob::meta` and
+  `TokenCounter::uncounted` are *for*. It counts one context three ways - with the default
+  counter, with one that applies a vendor's tiling formula to `{"w": .., "h": ..}`, and with
+  the same formula handed a blob nobody measured - so that "put a real tokenizer behind
+  `Kernel::set_counter`" stops being advice and becomes forty lines somebody can copy. The
+  third case is the one worth reading: a counter that knows a formula still abstains on a
+  payload with no dimensions on it, exactly as the default one does.
+
 - `Content::Blob`, and the `Blob` it holds: bytes that are not text - an image, a document, a
   recording. The runtime does not look inside one. It carries it, measures it and hands it to a
   `Provider`, the same as everything else, and *names* it wherever it has to become text, because
