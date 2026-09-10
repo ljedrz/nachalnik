@@ -37,6 +37,19 @@ tokio = { version = "1" }
 # `rustls-no-provider` rather than `default-tls`: in reqwest 0.13 that name resolves to rustls
 # with `aws-lc-rs`, which is 1,659 C files and, on some platforms, cmake and NASM to build them.
 # The provider is named below instead, which is what `no-provider` means.
+# generated cases and, the half that matters, a shrinker: a property that fails comes back as the
+# smallest input that still fails it rather than as whatever random string found it.
+#
+# note: dev-only, so nothing that depends on a crate in here ever builds it - cargo does not build
+# the dev-dependencies of a dependency. It does stay in the published manifest, which is the part
+# `nachalnik-utils` gets out of by being a path dependency with no version; a versioned
+# dev-dependency is recorded there and simply never reached.
+#
+# note: `default-features = false` with `std` drops `fork` and `timeout`, which run each case in a
+# subprocess so that a panicking or hanging case cannot take the harness with it. That is eleven
+# crates - `rusty-fork`, `tempfile`, `rustix` and the rest - to guard against something that would
+# fail the run anyway, and a property here is a pure function over a string.
+proptest = { version = "1", default-features = false, features = ["std"] }
 reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "json", "rustls-no-provider"] }
 # the cryptography under the TLS, chosen here because reqwest was told to bring none. `ring` is
 # 17 C and assembly files, wants no cmake and no NASM, and is what rustls shipped with for years.

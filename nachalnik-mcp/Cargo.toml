@@ -42,6 +42,9 @@ nachalnik = { workspace = true, features = ["test"] }
 # the one live test: a real model, offered a real server's tools. No version, because this crate
 # is never published and cargo strips a versionless dev-dependency from the manifest
 nachalnik-utils = { workspace = true }
+# the identifier rewriting is a pure function with a collision in its history, which is what a
+# generated case and a shrinker are for; see `tool::tests`
+proptest = { workspace = true }
 # the tests stand up a real MCP server in-process and talk to it over a pipe, so that what is
 # being tested is the protocol rather than a mock of it
 rmcp = { version = "3.1", features = ["server", "transport-async-rw"] }

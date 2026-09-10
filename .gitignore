@@ -8,6 +8,14 @@ kamchatka-*/
 # what `cargo run --example recorded` writes: whole sessions, regenerated on demand
 recorded/
 
+# where proptest writes the seed of a case that failed. Deliberately not tracked, against
+# proptest's own advice: a failure worth keeping is worth reading, and every test in this
+# workspace is a sentence with a note saying what was wrong. The discipline is to lift a
+# counterexample into a named case with that note and let the property go on guarding the class -
+# a file of opaque hashes is the shape of a regression suite nobody can read, and half of these
+# are seeds for implementations that no longer exist.
+**/proptest-regressions/
+
 # rustfmt's backups and the counters a profiled run drops
 **/*.rs.bk
 *.profraw

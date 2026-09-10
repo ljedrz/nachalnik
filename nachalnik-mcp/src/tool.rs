@@ -282,3 +282,123 @@ pub(crate) fn tool_id(prefix: Option<&str>, remote: &str) -> String {
         false => format!("{prefix}{SEPARATOR}{remote}"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+
+    use super::*;
+
+    /// Whether an identifier is one a model provider will take, which is the whole of what
+    /// [`sanitize`] promises.
+    fn acceptable(id: &str) -> bool {
+        !id.is_empty()
+            && id.chars().count() <= LIMIT
+            && id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    }
+
+    /// The names to try: short ones, ones that straddle the limit, and long ones.
+    ///
+    /// note: `(?s).` rather than a charset, because the input is a name an MCP server chose and
+    /// the point of this function is that a server is under no obligation to have heard of the
+    /// restriction. Emoji, CJK, newlines, control characters and the empty string are all things
+    /// a server may legitimately send, and each is a way for an identifier to reach a provider as
+    /// something it rejects.
+    ///
+    /// note: the lengths are stated, and they are stated because the first version of this was
+    /// `(?s).*` and was measurably weaker than it read. proptest's `*` tops out around thirty
+    /// characters, so no single name it produced ever reached [`LIMIT`] - and doubling the cap in
+    /// the implementation broke none of the properties below. Truncation is half of what
+    /// [`sanitize`] does, `{60,70}` is the half of the strategy that reaches it, and it is
+    /// weighted highest because the boundary is where every bug in this function's history has
+    /// been.
+    fn a_name() -> impl Strategy<Value = String> {
+        prop_oneof![
+            2 => "(?s).{0,8}",
+            3 => "(?s).{60,70}",
+            1 => "(?s).{0,200}",
+        ]
+    }
+
+    proptest! {
+        #[test]
+        fn a_rewritten_name_is_one_a_provider_will_take(name in a_name()) {
+            let id = sanitize(&name);
+
+            prop_assert!(acceptable(&id), "{id:?} from {name:?}");
+        }
+
+        /// note: one character in, one character out, up to the cap - a rewrite rather than a
+        /// filter. It matters because the alternative reads the same on every name anybody would
+        /// think to try: dropping what it cannot use also produces something acceptable, and
+        /// turns two names that differ only outside the charset into one identifier.
+        #[test]
+        fn rewriting_replaces_rather_than_removes(name in a_name()) {
+            let expected = name.chars().count().clamp(1, LIMIT);
+
+            prop_assert_eq!(sanitize(&name).chars().count(), expected);
+        }
+
+        /// note: idempotent, so that a name arriving already acceptable is left exactly as the
+        /// server sent it. Nothing here calls it twice; what this pins is that it *could* be.
+        #[test]
+        fn rewriting_an_acceptable_name_changes_nothing(name in a_name()) {
+            let once = sanitize(&name);
+
+            prop_assert_eq!(sanitize(&once), once);
+        }
+
+        /// note: the property the 0.3.1 fix was about, stated over every pair of names rather
+        /// than over the sixty-two-character server that found it. The tool's own name is the
+        /// half that tells one of a server's tools from another, so it is the half that must
+        /// arrive whole however long the prefix was.
+        #[test]
+        fn a_tools_own_name_survives_however_long_the_prefix(
+            prefix in a_name(),
+            remote in a_name(),
+        ) {
+            let id = tool_id(Some(&prefix), &remote);
+
+            prop_assert!(acceptable(&id), "{id:?}");
+            prop_assert!(id.ends_with(&sanitize(&remote)), "{id:?} lost {remote:?}");
+        }
+
+        /// note: a server that was asked for no prefix gets none, not an empty one - the
+        /// difference being a leading `__` on every tool it offers.
+        #[test]
+        fn an_unprefixed_tool_is_its_own_rewritten_name(remote in a_name()) {
+            prop_assert_eq!(tool_id(None, &remote), sanitize(&remote));
+        }
+    }
+
+    /// A collision, constructed rather than found: two tools on one server arriving under one
+    /// identifier.
+    ///
+    /// note: this is not a bug and is not to be "fixed". [`sanitize`]'s own note says a rewrite
+    /// can collide, and [`Installed::replaced`](crate::Installed::replaced) is what the bridge
+    /// answers with instead of assuming it displaced nothing - `bridge.rs` checks that it does.
+    /// What this pins is the shape of the remaining case, so that nobody reads the 0.3.1 fix as
+    /// having made identifiers unique: it made the *tool's* name survive, which is a different
+    /// promise and the only one truncation can keep.
+    ///
+    /// note: no generator would find this. It needs the prefix to be truncated at a boundary the
+    /// longer of the two tool names then reproduces out of the separator, and the two characters
+    /// the cut lands on to be underscores - and the run that goes looking for it uniformly over
+    /// strings will not put a sixty-first character anywhere in particular.
+    #[test]
+    fn rewriting_can_still_collide_and_the_bridge_reports_it() {
+        // sixty-four characters after the rewrite, with underscores at the sixtieth and
+        // sixty-first - which is where `room` for the shorter tool name happens to cut
+        let server = format!("{}__{}", "y".repeat(59), "y".repeat(10));
+
+        let short = tool_id(Some(&server), "a");
+        let long = tool_id(Some(&server), "__a");
+
+        assert_eq!(short, long, "the pair collides");
+        assert_eq!(short, format!("{}____a", "y".repeat(59)));
+        // and the surviving half of the promise still holds for both of them
+        assert!(short.ends_with('a') && long.ends_with("__a"));
+    }
+}

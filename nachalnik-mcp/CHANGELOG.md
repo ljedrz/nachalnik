@@ -7,6 +7,44 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- Properties over the identifier rewriting, generated and shrunk rather than written out as
+  cases. `sanitize` and `tool_id` are the two functions in this crate that a model provider's
+  charset and length limit are enforced by, and they have a collision in their history: a server
+  whose name was sixty-two characters long once had every one of its tools arrive under the same
+  identifier. What holds for every pair of names is that the *tool's* own name arrives whole,
+  which is what 0.3.1 fixed and what this now states over generated pairs instead of over the one
+  server that found it. Four more go with it: the result is always something a provider will take,
+  a character in is a character out up to the cap, rewriting an acceptable name changes nothing,
+  and a server that asked for no prefix gets none rather than an empty one.
+
+  They live in `src/tool.rs` rather than in `tests/`, because both functions are `pub(crate)` -
+  which is also why coverage-guided fuzzing is the wrong instrument here and a property inside the
+  crate is the right one.
+
+  Measured rather than assumed: each of five mutations of the two functions is caught. Filtering
+  what it cannot use instead of rewriting it, truncating bytes where it truncates characters,
+  dropping the guard that stops an empty name becoming an empty identifier, and - the one that
+  matters - cutting the pair from the end so that the tool's own name is what gives way, which is
+  the 0.3.1 bug put back. The shrinker earns its place on the third of those: it hands back
+  `name = ""`.
+
+  The fifth mutation is why the strategies state their lengths. `(?s).*` was the first version and
+  it read exactly like a thorough one, but proptest's `*` tops out around thirty characters, so no
+  single name it produced ever reached the limit - and doubling that limit in the implementation
+  broke nothing at all. Truncation is half of what `sanitize` does and the strategy could not
+  reach it. With `{60,70}` in the mix, weighted highest because the boundary is where this
+  function's every bug has been, the same mutation fails every property that is about length.
+
+- A case that a rewrite can still collide, constructed rather than found: two tools on one server
+  arriving under one identifier, where the prefix is cut at a boundary the longer of the two names
+  reproduces out of the separator. It is not a bug and is not to be fixed - `sanitize` has always
+  said a rewrite can collide, and `Installed::replaced` is what the bridge answers with instead of
+  assuming it displaced nothing. What it pins is that 0.3.1 did not make identifiers unique; it
+  made the tool's name survive, which is a different promise and the only one truncation can keep.
+  No generator would have found this one, which is the honest reason it is written out.
+
 ### changed
 
 - Requires `nachalnik` 0.5.0. Nothing in this crate's own API moved, and nothing here implements
