@@ -88,17 +88,42 @@ impl Settings {
         let mut settings: Self =
             serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
 
-        for paths in [&mut settings.sandbox_allow, &mut settings.sandbox_read]
-            .into_iter()
-            .flatten()
-        {
-            for path in paths.iter_mut() {
-                *path = expanded(std::mem::take(path));
+        // note: the home directory is looked up once rather than per path, which is also what
+        // makes the expansion itself a function of a home rather than of the environment - see
+        // below. Nothing to expand against leaves every path exactly as it was written.
+        if let Some(home) = home() {
+            for paths in [&mut settings.sandbox_allow, &mut settings.sandbox_read]
+                .into_iter()
+                .flatten()
+            {
+                for path in paths.iter_mut() {
+                    *path = expanded(std::mem::take(path), &home);
+                }
             }
         }
 
         Ok(settings)
     }
+}
+
+/// Where the home directory is, according to the environment and nothing else.
+///
+/// note: `USERPROFILE` as well, because on Windows that is the variable with the answer in it and
+/// `HOME` is usually not set at all - which made a `~` in a settings file there a directory of
+/// that name, silently, on the one platform where nothing else in the program would have said so.
+/// `HOME` is still asked first: a shell that sets it on Windows - an MSYS one does - is a shell
+/// somebody is typing paths into, and that home is the one they mean.
+///
+/// note: the environment and nothing else, for the same reason `~user` is left alone below: the
+/// password database's answer and the one the person running this program is working from are
+/// allowed to differ, and a path that quietly goes somewhere else is worse than one that fails.
+fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| match cfg!(windows) {
+            true => std::env::var_os("USERPROFILE"),
+            false => None,
+        })
+        .map(PathBuf::from)
 }
 
 /// A leading `~`, made into the home directory it stands for.
@@ -114,17 +139,27 @@ impl Settings {
 ///
 /// note: `~user` is left alone. Resolving somebody else's home means asking the password database,
 /// and a path that is quietly not what it says is worse than one that is obviously wrong.
-fn expanded(path: PathBuf) -> PathBuf {
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+///
+/// note: the home is an argument rather than something this reads for itself, which is what lets
+/// the test below say what it is. A test that took the home from the environment was a test that
+/// could only run where the environment has one, and it duly failed on Windows - asserting
+/// nothing about this function on the platform where this function was in fact wrong.
+///
+/// note: `is_separator` rather than a literal `/`, so that `~\.cargo` is expanded on the platform
+/// that spells it that way and stays a path called `~\.cargo` on the platform where a backslash
+/// is a character a file may be named with.
+fn expanded(path: PathBuf, home: &Path) -> PathBuf {
+    let Some(rest) = path.to_str().and_then(|text| text.strip_prefix('~')) else {
         return path;
     };
-    match path.to_str() {
-        Some("~") => home,
-        Some(text) => match text.strip_prefix("~/") {
-            Some(rest) => home.join(rest),
-            None => path,
-        },
-        None => path,
+    let mut rest = rest.chars();
+    match rest.next() {
+        // `~` on its own
+        None => home.to_path_buf(),
+        // `~/x`, and `~\x` where that is a separator too
+        Some(sep) if std::path::is_separator(sep) => home.join(rest.as_str()),
+        // `~stuff`, `~root/.ssh`: a name that starts with the character, and not a home directory
+        Some(_) => path,
     }
 }
 
@@ -134,13 +169,23 @@ mod tests {
 
     #[test]
     fn a_leading_tilde_is_the_home_directory_and_nothing_else_is() {
-        let home = PathBuf::from(std::env::var_os("HOME").expect("a home directory"));
+        // a home this test says, rather than one the machine running it happens to have
+        let home = PathBuf::from("/home/somebody");
 
-        assert_eq!(expanded("~".into()), home);
-        assert_eq!(expanded("~/.rustup".into()), home.join(".rustup"));
+        assert_eq!(expanded("~".into(), &home), home);
+        assert_eq!(expanded("~/.rustup".into(), &home), home.join(".rustup"));
+        // and however this platform spells the separator, which on Windows is the other one
+        let native = format!("~{}.rustup", std::path::MAIN_SEPARATOR);
+        assert_eq!(expanded(native.into(), &home), home.join(".rustup"));
         // not a prefix, not somebody else's, and not one in the middle
-        assert_eq!(expanded("~stuff".into()), PathBuf::from("~stuff"));
-        assert_eq!(expanded("~root/.ssh".into()), PathBuf::from("~root/.ssh"));
-        assert_eq!(expanded("/srv/~/x".into()), PathBuf::from("/srv/~/x"));
+        assert_eq!(expanded("~stuff".into(), &home), PathBuf::from("~stuff"));
+        assert_eq!(
+            expanded("~root/.ssh".into(), &home),
+            PathBuf::from("~root/.ssh")
+        );
+        assert_eq!(
+            expanded("/srv/~/x".into(), &home),
+            PathBuf::from("/srv/~/x")
+        );
     }
 }
