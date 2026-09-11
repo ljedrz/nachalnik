@@ -399,14 +399,6 @@ measured* under conventions, because it is cheap to get wrong in both directions
 
 Known and decided against *for now*, so that nobody spends an afternoon rediscovering them:
 
-- **Three notices in `nachalnik-providers` name a key that a headless run has not got.**
-  `waiting.rs`, `gemini.rs` and `openai/wire.rs` each word a stall as
-  `{model} has not answered for {seconds}s; esc gives up on it`, which a live headless run prints
-  to a caller with no keyboard. The sentence is right for the terminal and the provider cannot
-  know who is reading, so the fix is to stop naming a key rather than to reword it per caller -
-  and that is three strings of user-visible prose in a published crate, which belongs in a commit
-  about that crate rather than in one about this one. Found by the first live headless run.
-
 - **`nachalnik-mcp` carrying a picture rather than naming one.** The bridge answers an image
   block with `[an image (image/png), not carried into the context]`, which was the only thing it
   could do and is no longer. Carrying it is a few lines - a `Content::Blob` instead of a sentence

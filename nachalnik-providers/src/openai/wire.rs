@@ -22,8 +22,8 @@ use crate::{
     openai::OpenAiCompatible,
     out_of_quota,
     waiting::{
-        HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, WHOLE_ANSWER, interrupted,
-        watched,
+        HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, WHOLE_ANSWER, gone_quiet,
+        interrupted, watched,
     },
 };
 
@@ -465,8 +465,8 @@ impl Provider for OpenAiCompatible {
         loop {
             // the timeout is what makes a model that says nothing at all interruptible; without
             // it this sits in `chunk` until the server feels like talking, and a request that
-            // stalls before its first byte leaves `esc` doing nothing whatever. The same reason
-            // the shell tool has one
+            // stalls before its first byte leaves an interrupt doing nothing at all. The same
+            // reason the shell tool has one
             let bytes = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
                 Ok(Ok(Some(bytes))) => {
                     if vigil.heard() {
@@ -519,10 +519,7 @@ impl Provider for OpenAiCompatible {
                             .into());
                         }
                         Silence::Worth(seconds) => {
-                            *self.notice.lock() = Some(format!(
-                                "{} has said nothing for {seconds}s; esc gives up on it",
-                                self.model.lock()
-                            ));
+                            *self.notice.lock() = Some(gone_quiet(&self.model.lock(), seconds));
                         }
                         Silence::Ordinary => {}
                     }

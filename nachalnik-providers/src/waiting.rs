@@ -192,13 +192,38 @@ pub(crate) fn interrupted() -> ModelResponse {
     }
 }
 
+/// What every notice about a silence ends with.
+///
+/// note: a constant because it is the part that must not drift, and because it is the part this
+/// crate is entitled to say. What it is handed is a [`DeltaSink`], and what it asks is whether
+/// that has been interrupted; how a caller decides to set it is none of its business. It used to
+/// name `esc`, which was true of the one client in this workspace and became advice nobody could
+/// take the moment a second one arrived - a headless run printed it down a pipe, telling whoever
+/// was reading to press a key at a program that has no keyboard.
+const GIVES_UP: &str = "an interrupt gives up on it";
+
+/// A model that has not said anything at all yet.
+pub(crate) fn not_answered(model: &str, seconds: u64) -> String {
+    format!("{model} has not answered for {seconds}s; {GIVES_UP}")
+}
+
+/// A model that started answering and then stopped.
+///
+/// note: told apart from [`not_answered`] because the two are different news. Nothing at all yet
+/// is a server that may never have got the request; a stream that stops halfway is one that took
+/// it and is in trouble - and a turn that asks for a tool makes two requests, so the second is
+/// the shape "it hangs whenever it uses a tool" really has.
+pub(crate) fn gone_quiet(model: &str, seconds: u64) -> String {
+    format!("{model} has said nothing for {seconds}s; {GIVES_UP}")
+}
+
 /// Waits for a request to be answered, watching the wait the way the stream itself is watched.
 ///
 /// note: `&mut sending` rather than `sending`. Handing `timeout` the future itself would drop it
 /// 120ms later and cancel the request that had just been made; borrowing it stops polling for
 /// that round and leaves the connection standing. The loop is the one the stream runs, for the
-/// same three reasons - `esc` is heard, the silence is said out loud, and it ends - and it is
-/// here because everything before the first byte had none of them. A server that accepted the
+/// same three reasons - an interrupt is heard, the silence is said out loud, and it ends - and it
+/// is here because everything before the first byte had none of them. A server that accepted the
 /// connection and then went away held the terminal for eighteen minutes with `asking` on the
 /// status line and no way to take it back.
 ///
@@ -225,11 +250,7 @@ pub(crate) async fn watched(
 
         match vigil.waited() {
             Silence::Enough => return Err(Unsent::Silent(patience)),
-            Silence::Worth(seconds) => {
-                *notice.lock() = Some(format!(
-                    "{model} has not answered for {seconds}s; esc gives up on it"
-                ));
-            }
+            Silence::Worth(seconds) => *notice.lock() = Some(not_answered(model, seconds)),
             Silence::Ordinary => {}
         }
     }
@@ -388,7 +409,27 @@ mod tests {
         // spends their money on an answer they asked not to have
         assert!(
             !Unsent::Interrupted.worth_waiting_out(),
-            "esc is a decision, not a delay"
+            "an interrupt is a decision, not a delay"
         );
+    }
+
+    /// note: the sentences a person actually reads when a model goes quiet, which until this was
+    /// written nothing in the workspace checked at all - the wording was changed in three places
+    /// and every suite stayed green. What it pins is the half that is a claim about *this* crate:
+    /// that it names the mechanism it really watches rather than a key, which is a fact about the
+    /// caller and one this crate had wrong for as long as it had one caller.
+    #[test]
+    fn a_silence_names_no_key() {
+        for said in [not_answered("a-model", 40), gone_quiet("a-model", 40)] {
+            assert!(said.contains("a-model"), "{said}");
+            assert!(said.contains("40s"), "{said}");
+            assert!(said.ends_with("an interrupt gives up on it"), "{said}");
+            assert!(
+                !said.contains("esc") && !said.contains("key"),
+                "a library does not know what its caller's keyboard does: {said}"
+            );
+        }
+        // and they are different news: nothing yet, against a stream that stopped halfway
+        assert_ne!(not_answered("m", 40), gone_quiet("m", 40));
     }
 }

@@ -36,7 +36,7 @@ use serde_json::{Map, Value, json};
 
 use crate::{
     Endpoint, install_crypto, same_model,
-    waiting::{PATIENCE, RETRIES, Silence, Unsent, Vigil, interrupted, watched},
+    waiting::{PATIENCE, RETRIES, Silence, Unsent, Vigil, gone_quiet, interrupted, watched},
 };
 
 /// How long a stream may say nothing before the provider looks up to check whether it has been
@@ -538,7 +538,7 @@ impl Provider for Gemini {
 
         loop {
             // without the timeout this sits in `chunk` until the server feels like talking, and a
-            // request that stalls before its first byte leaves `esc` doing nothing whatever
+            // request that stalls before its first byte leaves an interrupt doing nothing at all
             let bytes = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
                 Ok(Ok(Some(bytes))) => {
                     if vigil.heard() {
@@ -591,9 +591,7 @@ impl Provider for Gemini {
                             .into());
                         }
                         Silence::Worth(seconds) => {
-                            *self.notice.lock() = Some(format!(
-                                "{model} has said nothing for {seconds}s; esc gives up on it"
-                            ));
+                            *self.notice.lock() = Some(gone_quiet(&model, seconds));
                         }
                         Silence::Ordinary => {}
                     }

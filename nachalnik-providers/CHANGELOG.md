@@ -9,6 +9,25 @@ minor bump may break you.
 
 ### changed
 
+- **A stall says an interrupt gives up on it, where it used to say `esc` does.** The same sentence
+  in three places - the wait before the first byte, and a stream that goes quiet in either dialect.
+
+  What this crate is handed is a `DeltaSink`, and what it asks is whether that has been
+  interrupted; how a caller decides to set it is none of its business. Naming a key was true of
+  the one client in this workspace and became advice nobody could take the moment a second arrived
+  - a headless run printed `esc gives up on it` down a pipe, telling whoever was reading to press
+  a key at a program with no keyboard. The three comments and the one test that also said `esc`
+  now say the same thing, so that the next reader of them is not told the caller has a terminal.
+
+  The sentence is written once now, in `waiting`, which is where both dialects already keep the
+  rules they share - `not_answered` for a model that has said nothing at all yet and `gone_quiet`
+  for a stream that stopped halfway, since those are different news. It was three `format!`s, and
+  a wording fix was therefore a three-place edit that nothing would have caught half of.
+
+  It is also the first test of what either sentence says. Measured, and the measurement is the
+  argument: changing the wording in all three places broke no test in the workspace, and putting
+  `esc` back now fails exactly one.
+
 - Requires `nachalnik` 0.5.0. Nothing in this crate's own API moved, and nothing here implements
   the trait that changed - a provider speaks to an endpoint and has no opinion about who may run a
   tool - but it names runtime types throughout its public interface, so a caller cannot mix this
