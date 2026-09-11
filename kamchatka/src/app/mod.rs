@@ -148,6 +148,7 @@ pub struct Traced {
 }
 
 /// What is being shown over the top of everything else.
+#[derive(Clone)]
 pub enum Overlay {
     /// Something long enough to need its own screen.
     Text {
@@ -167,6 +168,7 @@ pub enum Overlay {
 /// note: a context item has more than one honest answer to "what is this?" - what the request
 /// will contain, what the item says, and what it said before somebody rewrote it - and picking
 /// one of them to show was how the viewer came to be quietly wrong about the other two.
+#[derive(Clone)]
 pub struct Page {
     /// What to call it on the strip along the top.
     pub name: String,
@@ -204,6 +206,7 @@ pub enum Speaker {
 ///
 /// note: the first kind is [`Entry::transient`] and is dropped the moment the item exists; the
 /// second stays for the session. Neither carries an identifier, because neither has one.
+#[derive(Clone)]
 pub struct Entry {
     /// Who is saying it.
     pub speaker: Speaker,
@@ -347,6 +350,51 @@ pub enum Outcome {
     Failed(String),
 }
 
+/// What one line handed to [`App::submit`] did.
+///
+/// note: three answers rather than two, because "it was queued" is a different thing to tell
+/// somebody than "it was asked". A line sent into a running turn waits for the end of that turn -
+/// see the note on [`App::submit`] for why it cannot go in any earlier - and a caller that read
+/// that as "asked" would be waiting for an answer to a question the model has not been given yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Did {
+    /// It went into the context as a message, and a turn was started for it.
+    Asked(ContextId),
+    /// A turn was already running, so it waits for the end of that one and then gets its own.
+    Queued,
+    /// It began with `/`, so it was a command, and it has been run.
+    Ran,
+}
+
+/// What came back from one line: what it did, what was said about it, and any page it opened.
+///
+/// note: this is the half of `submit` that used to be readable only by watching [`App::loose`]
+/// and [`App::overlay`] change - which is what a *screen* does, because a screen re-reads both
+/// every frame. A caller that is not a screen is answering a line rather than redrawing a
+/// window, and it asked a question: this is the answer to it.
+///
+/// note: what it carries is a copy rather than a move. The lines are still in [`App::loose`] and
+/// the page is still in [`App::overlay`], because the terminal reads them from there and a reply
+/// nobody collected must not take a command's output off the screen.
+pub struct Reply {
+    /// What the line did.
+    pub did: Did,
+    /// What the program said about it, in the order it said it.
+    pub said: Vec<Entry>,
+    /// The page it opened, if it opened one.
+    ///
+    /// note: an `Option` rather than an empty page, and it is the *new* one rather than whatever
+    /// the overlay happens to hold: a command that says a line while an earlier command's page is
+    /// still open opened nothing, and reporting that page again would have a headless caller
+    /// print `/seams` twice for two unrelated commands.
+    ///
+    /// note: the whole overlay rather than the [`Page`] inside it, because the title is on the
+    /// overlay and a `Page` opened by `App::preview` is deliberately nameless - there is one of
+    /// them, and the strip along the top of a one-page box would be saying nothing. A caller
+    /// handed the page alone gets `--- ---` where `--- the budget ---` belongs.
+    pub page: Option<Overlay>,
+}
+
 /// The whole of the terminal's state.
 pub struct App {
     /// The runtime.
@@ -484,6 +532,13 @@ pub struct App {
     streamed_bytes: usize,
     /// Where a finished turn reports itself.
     outcomes: UnboundedSender<Outcome>,
+    /// How many pages have been opened over the session.
+    ///
+    /// note: a counter rather than a flag, and it exists for one question: did *this* call open a
+    /// page? The overlay cannot answer it - it holds the last page opened, whenever that was -
+    /// and duplicating the page somewhere else so that it could would be two copies of one thing
+    /// to keep in step. See [`Reply::page`].
+    previews: usize,
 }
 
 impl App {
@@ -554,6 +609,7 @@ impl App {
             typed_ahead: None,
             streamed_bytes: 0,
             outcomes,
+            previews: 0,
         }
     }
 
@@ -1332,6 +1388,7 @@ impl App {
 
     /// The same, for something with more than one face; `at` is the one to open on.
     fn preview_pages(&mut self, title: impl Into<String>, pages: Vec<Page>, at: usize) {
+        self.previews += 1;
         self.overlay = Some(Overlay::Text {
             title: title.into(),
             page: at.min(pages.len().saturating_sub(1)),

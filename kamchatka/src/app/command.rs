@@ -9,7 +9,7 @@ use nachalnik::{ContextState, selectors::Selector};
 use crate::{app::text::thousands, tools::Limits};
 
 use super::{
-    App, Speaker, Tab,
+    App, Did, Reply, Speaker, Tab,
     text::{nothing_to_send, pretty, request_preview},
 };
 
@@ -23,14 +23,19 @@ impl App {
     /// this crate's parts instead of driving an [`App`]: to drive one, it would have had to type.
     /// A caller that is not a person at a terminal hands the same line to the same function.
     ///
-    /// note: what it *says* still goes where the screen reads it - [`App::say`] for a line and
-    /// `App::preview` for something long enough to need its own pane. A caller with no screen
-    /// can read both off [`App::loose`] and [`App::overlay`], which is honest but not yet
-    /// convenient; handing back what a command produced is the change this one does not make.
-    pub async fn submit(&mut self, line: &str) {
+    /// note: what it says still goes where the screen reads it - [`App::say`] for a line and
+    /// `App::preview` for a page - *and* comes back in the [`Reply`], because those are two
+    /// different questions. A screen re-reads [`App::loose`] and [`App::overlay`] every frame and
+    /// wants the whole of both; a caller answering one line wants what that line produced, and
+    /// was reduced to watching the two of them change to find out. The copy is cheap and the
+    /// alternative was a watermark kept by every caller.
+    pub async fn submit(&mut self, line: &str) -> Reply {
+        let (from, pages) = (self.loose.len(), self.previews);
+
         if let Some(command) = line.strip_prefix('/') {
             self.command(command).await;
-            return;
+
+            return self.replied(Did::Ran, from, pages);
         }
 
         // note: a message sent while a turn is running waits for the end of it rather than going
@@ -56,12 +61,28 @@ impl App {
                 Speaker::Note,
                 "this goes in when the turn stops, and gets a turn of its own",
             );
-            return;
+
+            return self.replied(Did::Queued, from, pages);
         }
 
         // this is all "sending a message" is: one context item, and then the loop
-        self.ask(line);
+        let id = self.ask(line);
         self.start_turn();
+
+        self.replied(Did::Asked(id), from, pages)
+    }
+
+    /// What the lines said and the pages opened since `from` and `pages` add up to.
+    fn replied(&self, did: Did, from: usize, pages: usize) -> Reply {
+        Reply {
+            did,
+            said: self.loose[from.min(self.loose.len())..].to_vec(),
+            // the page this call opened, which is the overlay only if this call is what put it
+            // there; see the note on `App::previews`
+            page: (self.previews > pages)
+                .then(|| self.overlay.clone())
+                .flatten(),
+        }
     }
 
     /// Runs one slash command.

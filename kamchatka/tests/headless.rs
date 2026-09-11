@@ -13,7 +13,7 @@
 use std::sync::Arc;
 
 use kamchatka::{
-    app::App,
+    app::{App, Did, Overlay, Speaker},
     headless::Headless,
     tools::{Careful, Limits, Subject},
 };
@@ -51,6 +51,26 @@ impl Run {
             .map(|record| record.event.name().to_owned())
             .collect()
     }
+}
+
+/// A kernel with a scripted model behind it, and the three other things `App::new` wants.
+fn parts(
+    script: Vec<ModelResponse>,
+) -> (
+    Kernel,
+    Arc<Careful>,
+    Arc<OpenAiCompatible>,
+    tokio::sync::mpsc::UnboundedSender<kamchatka::app::Outcome>,
+) {
+    let kernel = Kernel::new(Config::default());
+    let policy = Arc::new(Careful::new());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(script)));
+    kernel.set_policy(policy.clone());
+    let (outcomes, _) = tokio::sync::mpsc::unbounded_channel();
+    // never spoken to: `App` holds one for `/model` and `/params`, and these tests use neither
+    let endpoint = Arc::new(OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""));
+
+    (kernel, policy, endpoint, outcomes)
 }
 
 /// Drives a session with these lines typed into it and this script answering, and hands back what
@@ -321,6 +341,58 @@ async fn a_question_left_by_a_step_does_not_hang_the_session() {
     assert!(run.names().contains(&"permission.decided".to_owned()));
     // answered, and deliberately not carried on with: a step is somebody driving
     assert!(!run.names().contains(&"tool.started".to_owned()));
+}
+
+/// One line answers the caller that sent it, without a transcript to read back.
+///
+/// note: this is the half `Headless` no longer has to scrape. Every assertion here used to be a
+/// watermark over `App::loose` and a `take()` of `App::overlay` - which is how a *screen* finds
+/// out what happened, because a screen re-reads both every frame, and which an embedder driving
+/// one line at a time had no business having to do.
+#[tokio::test]
+async fn a_line_answers_the_caller() {
+    let (kernel, policy, endpoint, outcomes) = parts(vec![ModelResponse::text("hello")]);
+    let mut app = App::new(kernel, policy, endpoint, Limits::default(), outcomes);
+
+    // a command that opens a page hands the page back, title and all
+    let reply = app.submit("/seams").await;
+    assert_eq!(reply.did, Did::Ran);
+    let Some(Overlay::Text { title, pages, .. }) = reply.page else {
+        panic!("`/seams` opened no page");
+    };
+    assert_eq!(title, "what is plugged into the runtime");
+    assert!(pages[0].body.contains("projector"), "{}", pages[0].body);
+
+    // a command that only says a line hands back the line, and no page - the one `/seams` opened
+    // is still on the overlay, and reporting it again is what this is careful not to do
+    let reply = app.submit("/tools drop nothing").await;
+    assert!(reply.page.is_none(), "a stale page came back");
+    assert_eq!(reply.said.len(), 1);
+    assert_eq!(reply.said[0].speaker, Speaker::Error);
+    assert!(reply.said[0].text.contains("no tool called"));
+
+    // and a message says what it did with it
+    let reply = app.submit("hello").await;
+    assert!(matches!(reply.did, Did::Asked(_)));
+    assert!(reply.page.is_none());
+}
+
+/// A line sent into a running turn says that it is waiting, rather than that it was asked.
+#[tokio::test]
+async fn a_line_into_a_running_turn_says_it_is_queued() {
+    let (kernel, policy, endpoint, outcomes) = parts(vec![ModelResponse::text("one")]);
+    let mut app = App::new(kernel, policy, endpoint, Limits::default(), outcomes);
+
+    app.submit("first").await;
+    // the turn started by that line is still in flight, which is the state the headless loop
+    // refuses to read a line in and an embedder with its own loop can walk straight into
+    let reply = app.submit("second").await;
+    assert_eq!(reply.did, Did::Queued);
+    assert_eq!(
+        app.kernel.items().len(),
+        1,
+        "the second line went into the context while a turn was running"
+    );
 }
 
 /// `/quit` ends the session from a line, the way it does from a prompt.

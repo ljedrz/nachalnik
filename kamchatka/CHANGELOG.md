@@ -67,6 +67,21 @@ minor bump may break you.
 
 ### changed
 
+- **`App::submit` answers its caller**, returning a `Reply`: what the line did (`Did::Asked`,
+  `Did::Queued`, `Did::Ran`), the lines it said, and the page it opened. Breaking, and worth
+  breaking now rather than after somebody has embedded this.
+
+  What it replaces is a caller watching `App::loose` and `App::overlay` change to work out what
+  its own line had done - which is how a *screen* finds out, because a screen re-reads both every
+  frame, and which the headless loop was reduced to. The page is the half that had no other way
+  out: it came back by `take()`ing the overlay, and a command that opened no page would then have
+  reported the last one that did. `App::previews` counts pages opened so that "this call opened
+  one" and "one is open" are different questions; a test pins it, and it is the only test that
+  catches the difference.
+
+  The state changes are unchanged: the lines are still in `loose` and the page is still on
+  `overlay`, because the terminal draws both from there.
+
 - **`App::submit` and `App::interrupt` are `pub`.** Every verb this program has - `/model`,
   `/exclude`, `/limit`, `/step`, `/save`, `/load`, `/tools drop`, `/introspect` - is reachable
   only through `submit`, and while it was `pub(super)` the only way to reach any of them from

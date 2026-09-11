@@ -122,7 +122,18 @@ impl<'a> Headless<'a> {
                 // third line of a three-line script would have quietly replaced the second.
                 // Nothing here can be typed during a turn, so nothing is lost by reading it after
                 line = lines.next_line(), if reading && !app.busy => match line {
-                    Ok(Some(line)) => app.submit(line.trim_end()).await,
+                    Ok(Some(line)) => {
+                        // the lines it said are printed by `echo` below, which is watching
+                        // `App::loose` for the ones that arrive with no line to answer either;
+                        // the page is this call's alone and has no other way out
+                        let opened = app.submit(line.trim_end()).await.page;
+                        if let Some(Overlay::Text { title, pages, page, .. }) = opened {
+                            let body = pages.get(page).map(|it| it.body.as_str()).unwrap_or("");
+                            self.fresh_line()?;
+                            writeln!(self.prose, "--- {title} ---\n{body}")
+                                .map_err(|e| e.to_string())?;
+                        }
+                    }
                     // stdin has closed. Whatever is running still finishes, and the loop leaves
                     // when it has: a script that pipes one question in and goes away is asking
                     // for the answer, not for the turn to be abandoned
@@ -186,9 +197,10 @@ impl<'a> Headless<'a> {
     /// own words are printed from the fragments as they arrive, and they land in the same list, so
     /// echoing those as well would print every answer twice.
     ///
-    /// note: the overlay is taken rather than read. There is nothing here to close it, and a
-    /// second command would otherwise print the first one's page again.
-    fn echo(&mut self, app: &mut App, said: &mut usize) -> Result<(), String> {
+    /// note: pages are not read from here. A command's page comes back from `submit` itself, and
+    /// the overlay it also sets is left where it is: nothing in a headless run draws one, and
+    /// taking it would be this loop keeping a screen's state tidy on a screen's behalf.
+    fn echo(&mut self, app: &App, said: &mut usize) -> Result<(), String> {
         let fresh = app.loose[(*said).min(app.loose.len())..]
             .iter()
             .map(|entry| (entry.speaker, entry.text.clone()))
@@ -201,14 +213,6 @@ impl<'a> Headless<'a> {
         }
         *said = app.loose.len();
 
-        if let Some(Overlay::Text {
-            title, pages, page, ..
-        }) = app.overlay.take()
-        {
-            let body = pages.get(page).map(|it| it.body.as_str()).unwrap_or("");
-            self.fresh_line()?;
-            writeln!(self.prose, "--- {title} ---\n{body}").map_err(|e| e.to_string())?;
-        }
         self.prose.flush().map_err(|e| e.to_string())?;
 
         Ok(())
