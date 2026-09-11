@@ -1275,8 +1275,15 @@ async fn an_interrupt_stops_a_stream_that_is_watching() {
     assert_eq!(kernel.items().len(), 2);
 
     // the loop is at rest, and one transition attempt clears the outstanding interrupt
+    //
+    // note: what that attempt sends is a request ending with the model's own partial turn, which
+    // is a continuation and which not every endpoint takes: Google's OpenAI-compatible shim
+    // answers `400 Requests ending with a model turn are not supported`, where OpenAI's own API
+    // and OpenRouter carry on from it. So the result is deliberately not asserted - the claim here
+    // is that the *interrupt* is cleared by trying, which is this crate's business, and whether a
+    // particular endpoint will continue a half-finished turn is not
     assert!(!kernel.state().is_busy());
-    kernel.step().await.unwrap();
+    let _ = kernel.step().await;
     assert!(!kernel.is_interrupted());
 }
 

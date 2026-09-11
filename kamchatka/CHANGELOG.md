@@ -92,7 +92,35 @@ minor bump may break you.
   of names in a test that would go stale the day a field is added. A starting point missing the
   setting somebody is looking for is worth less than none, because they stop looking.
 
+- **A live test that a PDF goes out as a document in Google's native dialect**, which is the half
+  of `/attach` that had never been sent at a real endpoint. The OpenAI-dialect test for the same
+  act cannot be pointed at Google at all: its shim answers a `file` content part with
+  `400 Invalid content part type: file`, so that part is OpenAI's and OpenRouter's to accept, and
+  `inline_data` is how the same bytes reach the same model when the dialect is Google's own. Both
+  are this workspace's code and only one of them had been tried.
+
+  With it, `cargo test -p kamchatka --test live` passes in full against a single Google key -
+  every test, both dialects - where before, five of them were unrunnable without a second
+  endpoint.
+
 ### changed
+
+- The live test about a turn carrying its thinking asks a different question, because the one it
+  asked could not be answered any more. It wanted thinking, speech and a call in one turn;
+  measured on 2026-09-11, a response that makes a call carries no thought summary at all, in ten
+  of ten requests across two models. What it asserts now is that *wherever* a summary turns up it
+  is carried in the turn, in order, and findable through `thinking()` - which is this crate's
+  claim, where whether the endpoint summarises is not. It still tries the tools-in-place shape
+  first, since that is where the summary showed up in the runs this was written from.
+
+  The lite models return no summaries in any condition tried, so it skips there - and says which
+  condition it was in when it did. The note it replaces recorded a measurement that had gone
+  stale, and a test that skips for a reason nobody wrote down reads as a model's whim.
+
+- A live test whose model said nothing now says what the *program* said instead. A rejected
+  request leaves an empty answer and the reason on `App::loose`, so
+  `400 Invalid content part type: file` read as "the model should have read the attachment: " -
+  an empty string, and an hour spent looking at the wrong half of the program.
 
 - **`--sandbox-allow` and `--sandbox-read` take a comma-separated list**, the way `--allow` and
   `--deny` do: `--sandbox-allow /srv/repo,/tmp/work`. Both could already be repeated, which is the

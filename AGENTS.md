@@ -274,8 +274,13 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
 
 It reads `OPENROUTER_API_KEY` or `NACHALNIK_API_KEY` (never a stray `OPENAI_API_KEY`), with
 `NACHALNIK_BASE_URL`, `NACHALNIK_TEST_MODEL` and `NACHALNIK_CONTEXT_LIMIT` to point it elsewhere -
-Google AI Studio's OpenAI-compatible endpoint and a local ollama both work. It skips rather than
-fails without a key, or when a free tier has spent its allowance. `kamchatka`'s live suite reads
+Google AI Studio's OpenAI-compatible endpoint and a local ollama both work, and the whole of it
+passes against the first (27 tests, `NACHALNIK_VISION_MODEL` included). One endpoint difference
+worth knowing when it does not: a request *ending with a model turn* - which is what carrying on
+from an interrupted answer builds - is refused by that shim with a 400 and accepted by OpenAI's own
+API and OpenRouter, so the interrupt test asks whether the flag was cleared rather than whether the
+continuation was taken. It skips rather than fails without a key, or when a free tier has spent its
+allowance. `kamchatka`'s live suite reads
 `KAMCHATKA_API_KEY` / `KAMCHATKA_TEST_MODEL` / `KAMCHATKA_BASE_URL` instead - **`_TEST_MODEL`**,
 where the binary's own flag is `KAMCHATKA_MODEL`, and getting that wrong is quiet: the suite falls
 back to its default model, the endpoint refuses a name it does not serve, and eleven tests fail
@@ -283,14 +288,34 @@ about tool calls that never happened rather than about the model being wrong. Tw
 want more than a key: `KAMCHATKA_CONTEXT_LIMIT` small enough for the fixture to breach, since the
 compactor fires on a fraction and a generous limit means it never runs and the test says so
 obscurely (`12288` works; `32768` leaves the context at a third of it), and
-`KAMCHATKA_DOCUMENT_MODEL` for the one that attaches a PDF. Four more want
+`KAMCHATKA_DOCUMENT_MODEL` for the one that attaches a PDF. The rest want
 `KAMCHATKA_GEMINI_API_KEY`: they drive Google's *native* dialect, where a turn is an order of
 blocks, and they will not borrow `KAMCHATKA_API_KEY` unless the base URL is plausibly Google's -
 deliberately, because borrowing it once sent an OpenRouter key to
 `generativelanguage.googleapis.com` and reported the 400 as three broken tests about turn order.
-So a whole-suite run against an OpenAI-compatible endpoint leaves five tests unrun and the
-ordered-blocks path unexercised, which is worth knowing before reading the count as a clean
-sweep. `nachalnik-eval` reads the `NACHALNIK_` ones, since it talks through the same provider:
+So a whole-suite run against an OpenAI-compatible endpoint leaves the ordered-blocks path
+unexercised, which is worth knowing before reading the count as a clean sweep.
+
+**Pointing both halves at Google**, which is one key and covers everything except the `file` part:
+
+```console
+$ KAMCHATKA_GEMINI_API_KEY=... KAMCHATKA_GEMINI_MODEL=gemini-3.5-flash \
+  KAMCHATKA_API_KEY=... KAMCHATKA_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai \
+  KAMCHATKA_TEST_MODEL=gemini-3.5-flash-lite KAMCHATKA_CONTEXT_LIMIT=12288 \
+    cargo test -p kamchatka --test live -- --test-threads=1
+```
+
+Three things that cost an hour each and are facts about the endpoint rather than about this code,
+measured 2026-09-11. **`KAMCHATKA_DOCUMENT_MODEL` must not point at Google's shim**: it answers a
+`file` content part with `400 Invalid content part type: file`, so that test fails with an empty
+answer where the cause is a rejected request - the `file` part is OpenAI's and OpenRouter's to
+accept. The same PDF reaches the same model through the native dialect's `inline_data` and is
+read, which is what `a_pdf_goes_out_as_a_document_in_the_native_dialect` now pins. **A model that
+`models.list` returns may still be refused**: `gemini-2.5-flash-lite` is listed and answers
+`404 ... no longer available to new users`. And **the lite models return no thought summaries at
+all** - `gemini-3.5-flash-lite` gave none in ten requests across every condition tried - so the
+test about a turn carrying its thinking skips there and runs on `gemini-3.5-flash`.
+`nachalnik-eval` reads the `NACHALNIK_` ones, since it talks through the same provider:
 
 ```console
 $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \

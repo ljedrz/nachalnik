@@ -6,8 +6,16 @@
 //! KAMCHATKA_API_KEY=... \
 //! KAMCHATKA_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai \
 //! KAMCHATKA_TEST_MODEL=gemini-3.5-flash-lite \
+//! KAMCHATKA_GEMINI_API_KEY=... KAMCHATKA_GEMINI_MODEL=gemini-3.5-flash \
 //!   cargo test -p kamchatka --test live -- --test-threads=1 --nocapture
 //! ```
+//!
+//! note: one Google key runs every section of this file except the PDF. That one wants
+//! `KAMCHATKA_DOCUMENT_MODEL` **and** an endpoint whose OpenAI dialect accepts a `file` content
+//! part, which Google's shim does not - it answers `400 Invalid content part type: file`. The
+//! same bytes reach the same model through the native dialect, which is a test of its own in the
+//! middle section. And the *lite* models return no thought summaries, so
+//! `KAMCHATKA_GEMINI_MODEL` wants the full one or the test about thinking skips.
 //!
 //! note: `screen.rs` drives the same keys against a scripted model and asserts what is drawn.
 //! This file exists for the two things that cannot answer. The first is whether the request the
@@ -29,7 +37,7 @@ use std::{sync::Arc, time::Duration};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use kamchatka::{
-    app::{App, Focus, Tab},
+    app::{App, Focus, Speaker, Tab},
     tools::{Careful, Limits, Subject},
     ui,
 };
@@ -797,48 +805,102 @@ async fn a_real_turn_is_recorded_in_the_order_it_was_produced() {
     eprintln!("recorded as {names:?}");
 }
 
+/// A real turn carries its thinking in the order it was produced, beside what else it holds.
+///
+/// note: what it looks for is one turn holding more than one kind of thing with thinking among
+/// them, and what it no longer demands is the particular shape the note it replaces named -
+/// thinking, then speech, then a call, in that order. Whether a summary arrives at all is the
+/// endpoint's business and it is not promised; what is this crate's business is that the parts
+/// arrive where a turn keeps them, in the order they came, and that is what is asserted wherever
+/// one of them turns up.
+///
+/// note: measured on 2026-09-11, because the last note's measurement had gone stale and a stale
+/// one is worse than none. Through this harness against `gemini-3.5-flash`, three runs gave
+/// `[reasoning, call]`, `[reasoning, call]` and no summary at all; the same harness against
+/// `gemini-3.5-flash-lite` gave none in any of four turns, twice. By hand against the streaming
+/// endpoint with `includeThoughts: true`, five requests a condition: with a tool declared and no
+/// result yet in the conversation, no summary in ten of ten across those two models, and
+/// `gemini-3.6-flash` and `gemini-3.8-flash` answered the same way once each; with nothing
+/// declared, four of five on `gemini-3.5-flash` and none of five on the lite one.
+///
+/// note: so a hand-built request of apparently the same shape summarises where this harness does,
+/// and does not where it does. **I did not isolate why**, and the number of declared tools is not
+/// it - one and three answered alike, five requests each. It is written down rather than guessed
+/// at because the next person to read a skip here should know how far the ground has been covered.
+///
+/// note: the lite models return no summary in any condition, so this skips there - and says which
+/// condition it was in when it did. A test that skips for a reason nobody wrote down reads as a
+/// model's whim, which is what the last one did for however long the endpoint had been like this.
 #[tokio::test]
-async fn a_real_model_thinks_out_loud_between_what_it_says_and_what_it_asks_for() {
+async fn a_real_turn_carries_its_thinking_in_the_order_it_was_produced() {
     let _serial = SERIAL.lock().await;
     let (mut app, _introspect, mut finished) = gemini!();
 
-    // the claim the whole exercise rests on: one turn holding thinking *and* speech *and* a call,
-    // in the order the model produced them. Whether any one turn thinks aloud is the model's
-    // business, so this asks a few times and skips rather than failing - what is under test is
-    // whether the order survives when it happens, not whether it happens
-    for attempt in 1..=3 {
-        send(
-            &mut app,
-            &mut finished,
-            "A farmer has 17 sheep and all but 9 die. Work it out, then call the secret tool, \
-             then give me both answers.",
-        )
-        .await;
+    let thought = |app: &App| {
+        app.kernel
+            .items()
+            .into_iter()
+            .rev()
+            .filter(|item| {
+                item.content
+                    .as_blocks()
+                    .is_some_and(|blocks| blocks.len() > 1)
+            })
+            .find(|item| {
+                item.content
+                    .as_blocks()
+                    .is_some_and(|blocks| blocks.iter().any(|block| block.name() == "reasoning"))
+            })
+    };
 
-        let ordered = app.kernel.items().into_iter().rev().find(|item| {
-            item.content
-                .as_blocks()
-                .is_some_and(|blocks| blocks.len() > 1)
-        });
-        let Some(turn) = ordered else {
-            continue;
-        };
-        let blocks = turn.content.as_blocks().unwrap_or_default();
-        let names: Vec<_> = blocks.iter().map(Block::name).collect();
-        eprintln!("attempt {attempt}: {names:?}");
+    send(
+        &mut app,
+        &mut finished,
+        "A farmer has 17 sheep and all but 9 die. Work it out, then call the secret tool, \
+         then give me both answers.",
+    )
+    .await;
+    // whatever it holds, it is one turn holding more than one kind of thing with the thinking
+    // among them, which is the shape three slots cannot carry - and `thinking()` finds it where it
+    // is actually kept, rather than in the field a turn like this leaves empty
+    let mut found = thought(&app).map(|turn| (turn, "with the tools in place"));
 
-        if names.contains(&"reasoning") {
-            // more than one kind of thing in one turn, which is the shape three slots cannot hold
-            assert!(names.len() > 1, "{names:?}");
-            assert!(
-                turn.thinking().next().is_some(),
-                "and `thinking()` finds it where it is actually kept"
-            );
-            return;
+    if found.is_none() {
+        // nothing declared, which is the condition a summary arrived in four times out of five.
+        // The registry is live, which is the whole reason this can be a second question rather
+        // than a second harness
+        for tool in ["secret", "introspect", "amend"] {
+            app.kernel.remove_tool(tool);
+        }
+        for _ in 1..=3 {
+            send(
+                &mut app,
+                &mut finished,
+                "A farmer has 17 sheep and all but 9 die. Work it out step by step, then say the \
+                 number on a line of its own.",
+            )
+            .await;
+            found = thought(&app).map(|turn| (turn, "with nothing declared"));
+            if found.is_some() {
+                break;
+            }
         }
     }
 
-    eprintln!("skipped: the model returned no thought summary in three turns");
+    let Some((turn, how)) = found else {
+        eprintln!("skipped: no thought summary, in either condition, in four turns");
+        return;
+    };
+    let blocks = turn.content.as_blocks().unwrap_or_default();
+    let names: Vec<_> = blocks.iter().map(Block::name).collect();
+    eprintln!("{how}: {names:?}");
+
+    assert!(names.len() > 1, "{names:?}");
+    assert!(names.contains(&"reasoning"), "{names:?}");
+    assert!(
+        turn.thinking().next().is_some(),
+        "`thinking()` does not find what is in the turn: {names:?}"
+    );
 }
 
 #[tokio::test]
@@ -932,6 +994,59 @@ async fn the_introspection_tools_read_an_ordered_turn() {
         "a real request has been charged for by now: {budget}"
     );
     assert!(budget.contains("most expensive item(s)"), "{budget}");
+}
+
+/// A PDF goes out as a document in this dialect too, and the model reads it.
+///
+/// note: the other half of `a_pdf_attached_at_the_prompt_is_read_by_the_model`, and it exists
+/// because that one cannot be run against this endpoint at all. Google's OpenAI-compatible shim
+/// answers a `file` content part with `400 Invalid content part type: file` - measured on
+/// 2026-09-11 against `gemini-3.5-flash` through `/v1beta/openai`, with the same PDF this test
+/// sends. So the `file` part is OpenAI's and OpenRouter's to accept, and `inline_data` is how the
+/// same bytes reach the same model when the dialect is Google's own. Both are this workspace's
+/// code and only one of them had ever been sent at a real endpoint.
+///
+/// note: it asserts the word and the count. The word says the bytes arrived, were the right media
+/// type and were placed where the model looks; the `uncounted` says the thing nobody here can
+/// price is reported as unpriced rather than as nothing - which is the claim the budget rests on,
+/// and it is made in this dialect by different code than in the other.
+#[tokio::test]
+async fn a_pdf_goes_out_as_a_document_in_the_native_dialect() {
+    let _serial = SERIAL.lock().await;
+    let (mut app, _introspect, mut finished) = gemini!();
+
+    let path = common::scratch("live-gemini-attach").join("marmalade.pdf");
+    std::fs::write(&path, one_word_pdf("MARMALADE")).expect("written");
+
+    send(
+        &mut app,
+        &mut finished,
+        &format!(
+            "/attach {} This PDF contains exactly one word. Reply with that word and nothing else.",
+            path.display()
+        ),
+    )
+    .await;
+
+    let items = app.kernel.items();
+    assert_eq!(
+        items.first().expect("the attachment").uncounted,
+        1,
+        "a PDF is not priced by anything here"
+    );
+    assert!(!app.kernel.budget().fully_counted());
+
+    let said = items
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        said.to_lowercase().contains("marmalade"),
+        "the model should have read the attachment: {}",
+        what_went_wrong(&app, &said)
+    );
 }
 
 // ------------------------------------------- the tools, and what a model does with what they say
@@ -1549,6 +1664,32 @@ async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
 /// note: written out rather than pasted in as base64, because a fixture nobody can read is a
 /// fixture nobody can fix. The xref offsets have to be right - they are byte positions into this
 /// exact string - which is the whole reason this is a function and not a constant.
+/// What the model said, or - when it said nothing - what the program said instead.
+///
+/// note: an empty answer is the least informative failure there is, and it is what a rejected
+/// request leaves behind: the turn fails, nothing is recorded, and a test asserting on the answer
+/// reports a model that would not play along. The reason is on `App::loose` the whole time, put
+/// there by `say_error` - so a failure that was `400 Invalid content part type: file` read as
+/// "the model should have read the attachment: " until this was written, which cost an hour of
+/// looking at the wrong half of the program.
+fn what_went_wrong(app: &App, said: &str) -> String {
+    match said.trim().is_empty() {
+        false => said.to_owned(),
+        true => {
+            let errors: Vec<&str> = app
+                .loose
+                .iter()
+                .filter(|entry| entry.speaker == Speaker::Error)
+                .map(|entry| entry.text.as_str())
+                .collect();
+            match errors.is_empty() {
+                true => "it said nothing at all, and neither did the program".to_owned(),
+                false => format!("it said nothing; the program said {}", errors.join(" / ")),
+            }
+        }
+    }
+}
+
 fn one_word_pdf(word: &str) -> Vec<u8> {
     let stream = format!("BT /F1 24 Tf 20 40 Td ({word}) Tj ET");
     let objects = [
@@ -1638,7 +1779,8 @@ async fn a_pdf_attached_at_the_prompt_is_read_by_the_model() {
     println!("  it said: {}", said.trim());
     assert!(
         said.to_lowercase().contains("marmalade"),
-        "the model should have read the attachment: {said}"
+        "the model should have read the attachment: {}",
+        what_went_wrong(&app, &said)
     );
 
     // and the corner is anchored on what that request really cost, picture and all

@@ -7,6 +7,17 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- The live test about an interrupt no longer asserts that the endpoint took the continuation. What
+  the step after an interrupt sends is a request *ending with a model turn* - the model's own
+  partial answer, to be carried on from - and that is not something every endpoint accepts:
+  Google's OpenAI-compatible shim answers `400 Requests ending with a model turn are not
+  supported`, where OpenAI's own API and OpenRouter continue from it. The claim in that test is
+  that trying clears the outstanding interrupt, which is this crate's business; whether a given
+  endpoint will resume a half-finished turn is not, and it was being asserted by accident. With
+  it, the whole suite passes against Google AI Studio - 27 tests, the vision one included.
+
 ### added
 
 - A live test that a tool result recorded after a *later* turn still reaches a real endpoint
