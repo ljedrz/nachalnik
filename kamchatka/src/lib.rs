@@ -61,6 +61,7 @@
 
 pub mod app;
 pub mod attach;
+pub mod config;
 pub mod headless;
 pub mod introspect;
 #[cfg(feature = "mcp")]

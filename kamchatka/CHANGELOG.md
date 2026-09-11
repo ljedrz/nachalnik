@@ -47,6 +47,37 @@ minor bump may break you.
   run anyway, letting the headless loop go on reading lines it will only refuse, and raising the
   ceiling without letting a stopped session go again.
 
+- **`--config-file PATH`: a JSON file for the settings somebody would otherwise type every
+  time.** A model, a system instruction, MCP servers, the sandbox paths, the permission answers, a
+  spend ceiling - each key named after the argument it stands in for, and every one of them
+  optional. JSON because a project's settings are a handful of strings, numbers and lists, there
+  is a parser for that in the tree already, and a second grammar is a second thing to have
+  opinions about.
+
+  **The command line wins, and it wins over a value that happens to be the default.** That is the
+  whole of why the merge asks clap which arguments were *typed* rather than comparing against the
+  defaults: `--requests 8` is somebody saying eight, and a merge that could not tell the two apart
+  would let a file quietly override what was asked for. A list given on the command line replaces
+  the file's rather than adding to it - one rule for every key is the only kind anybody can
+  predict, and the other way round there is no way to ask for fewer than the file says. `--model`
+  is the one setting with a variable behind it, and it reads command line, then `KAMCHATKA_MODEL`,
+  then the file.
+
+  An unknown key is an error naming it and listing the ones that exist, because a settings file
+  that is accepted and ignored looks exactly like one that worked. A build without the `mcp`
+  feature refuses an `mcp` key rather than skipping it, for the same reason.
+
+  A leading `~` in the two sandbox lists is expanded, and that is the only place in this crate
+  that expands one. The exception is narrower than it looks: every other way of giving those paths
+  has a shell in front of it, so not expanding here would not be one rule applied evenly - it
+  would be `--sandbox-read ~/.rustup` working and the same path in a file silently reaching
+  nothing. The tools go on refusing a leading `~`, because those paths are written by a model
+  rather than by the person whose home it is.
+
+  What it does not carry is anything belonging to an invocation rather than to a project: a
+  message, `-r`, `-f`, and `--headless`, which decides for itself. There is no search for a file
+  either - one that applies because of where you are standing is one that surprises you.
+
 ### changed
 
 - **`--sandbox-allow` and `--sandbox-read` take a comma-separated list**, the way `--allow` and

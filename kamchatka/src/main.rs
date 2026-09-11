@@ -16,7 +16,7 @@ use std::{
 };
 
 use anyhow::{Context as _, Result};
-use clap::Parser;
+use clap::{CommandFactory as _, FromArgMatches as _, Parser, ValueEnum as _};
 #[cfg(feature = "tui")]
 use crossterm::{
     event::{DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent, EventStream},
@@ -27,6 +27,7 @@ use nachalnik_providers::Endpoint;
 
 use kamchatka::{
     app::App,
+    config::Settings,
     headless, provider, sandbox,
     tools::Subject,
     wiring::{Setup, Wired},
@@ -162,6 +163,85 @@ struct Args {
     /// not the only thing a run nobody is watching can spend; `/spend` changes it while it runs.
     #[arg(long, value_name = "TOKENS")]
     spend: Option<u64>,
+
+    /// A JSON file of settings, for the ones you would otherwise type every time. Anything given
+    /// here on the command line wins over what it says.
+    #[arg(long, value_name = "PATH")]
+    config_file: Option<std::path::PathBuf>,
+}
+
+impl Args {
+    /// Fills in everything the command line did not say from a settings file.
+    ///
+    /// note: it asks clap which arguments were *typed*, rather than comparing against the
+    /// defaults, because those are not the same question: `--requests 8` is the default value and
+    /// somebody meant it, and a merge that could not tell them apart would let a file quietly
+    /// override what was asked for. `ValueSource::CommandLine` is the only answer that counts, and
+    /// it is why `session` parses the matches as well as the struct.
+    ///
+    /// note: a list from the command line *replaces* the file's rather than adding to it. One rule
+    /// for every key is the only kind anybody can predict, and the other way round there is no way
+    /// to ask for fewer than the file says.
+    fn under(mut self, settings: Settings, matches: &clap::ArgMatches) -> Result<Self> {
+        let typed =
+            |name: &str| matches.value_source(name) == Some(clap::parser::ValueSource::CommandLine);
+        // one macro rather than eighteen `if`s, and it names the argument once: the string clap
+        // knows it by is the field's own name, so a field renamed without its entry here stops
+        // compiling rather than stopping working
+        macro_rules! fill {
+            ($($field:ident),* $(,)?) => {$(
+                if !typed(stringify!($field)) && let Some(value) = settings.$field {
+                    self.$field = value.into();
+                }
+            )*};
+        }
+
+        fill!(
+            gemini,
+            requests,
+            compact,
+            parallel,
+            introspect,
+            no_sandbox,
+            sandbox_allow,
+            sandbox_read,
+            allow,
+            deny,
+            deadline,
+            spend,
+            forget_truncated,
+            no_record,
+        );
+        // the four that are not a plain assignment: two are already `Option`, one is a list this
+        // build may not have, and one is a word that has to be a `ValueEnum`
+        //
+        // note: these two ask whether the field is empty rather than whether it was typed, and for
+        // `model` that is a decision rather than a shorthand. It is the one argument with an
+        // environment variable behind it, so "not typed" and "not set" differ - and a set
+        // `KAMCHATKA_MODEL` should beat a file the way a typed `-m` does. Command line, then
+        // environment, then file, which is the order everything else in this workspace reads in
+        if self.model.is_none() {
+            self.model = settings.model;
+        }
+        if self.system.is_none() {
+            self.system = settings.system;
+        }
+        if let Some(on_ask) = settings.on_ask.filter(|_| !typed("on_ask")) {
+            self.on_ask = OnAsk::from_str(&on_ask, true)
+                .map_err(|e| anyhow::anyhow!("`on-ask` in the settings file: {e}"))?;
+        }
+        match settings.mcp {
+            #[cfg(feature = "mcp")]
+            Some(mcp) if !typed("mcp") => self.mcp = mcp,
+            #[cfg(not(feature = "mcp"))]
+            Some(_) => anyhow::bail!(
+                "this build has no MCP support, so `mcp` in the settings file cannot be honoured"
+            ),
+            _ => {}
+        }
+
+        Ok(self)
+    }
 }
 
 /// What an unanswerable question is answered with.
@@ -195,7 +275,17 @@ fn main() -> Result<()> {
 
 /// The program proper: wired the same way whichever of the two drives it.
 async fn session() -> Result<()> {
-    let args = Args::parse();
+    // note: the matches as well as the struct, because the settings file needs to know which
+    // arguments were typed and the struct cannot say - a value that equals its default and a value
+    // somebody wrote out are the same field. See `Args::under`
+    let matches = Args::command().get_matches();
+    let mut args = Args::from_arg_matches(&matches)
+        .map_err(|e| e.exit())
+        .unwrap();
+    if let Some(path) = args.config_file.clone() {
+        let settings = Settings::read(&path).map_err(|e| anyhow::anyhow!("{e}"))?;
+        args = args.under(settings, &matches)?;
+    }
     // the screen is drawn to stdout, so a stdout that is nobody's terminal cannot have one. It is
     // announced rather than silently chosen: a program that draws or does not draw depending on
     // what is on the other end of a pipe should say which it decided, and `--headless` is how

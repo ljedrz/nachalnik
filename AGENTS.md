@@ -98,8 +98,10 @@ a session is assembled in, two of which are not guessable - the subscription has
 the wiring, and `introspect::install` hands back a handle the caller has to keep),
 `headless.rs` (the other loop: a line of stdin where the
 terminal has a key, the session log on stdout and what a person reads on stderr), `help.rs` (the
-key listing and the selector listing, which `/help` and the `amend` tool print), `mcp.rs`
-(feature `mcp`: somebody else's server spawned and its tools installed), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
+key listing and the selector listing, which `/help` and the `amend` tool print), `config.rs`
+(`Settings`: the JSON `--config-file` takes, one field per argument it stands in for - the merge
+itself is `Args::under` in `main.rs`, because only clap can say which arguments were typed),
+`mcp.rs` (feature `mcp`: somebody else's server spawned and its tools installed), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
 and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that floats over one,
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
 fitting), `tools/` (the four tools - `files.rs` for the three that run in process and `shell.rs` for

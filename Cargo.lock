@@ -1224,6 +1224,7 @@ dependencies = [
  "proptest",
  "ratatui",
  "ratatui-textarea",
+ "serde",
  "serde_json",
  "synoptic",
  "tokio",

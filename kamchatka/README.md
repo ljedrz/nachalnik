@@ -1045,6 +1045,49 @@ It names all of it now, in the same words the `shell` tool's description uses:
 be opened up and say what you need it for.
 ```
 
+## 🗂️ a settings file
+
+`--config-file kamchatka.json` stands in for the arguments you would otherwise type every time.
+JSON, because a project's settings are a handful of strings, numbers and lists and there is a
+parser for that in the tree already:
+
+```json
+{
+  "model": "mercury-2.5",
+  "system": "you are working in a Rust workspace; run `cargo test` before saying anything is done",
+  "mcp": ["files=npx -y @modelcontextprotocol/server-filesystem /srv"],
+  "sandbox-read": ["~/.rustup", "~/.cargo"],
+  "allow": ["read", "mcp:files"],
+  "spend": 200000
+}
+```
+
+Every key is optional, every one is named after the argument it stands in for, and **anything
+given on the command line wins** — including a value that happens to be the default, because
+`--requests 8` is somebody saying eight rather than somebody saying nothing. A list on the command
+line *replaces* the file's rather than adding to it: one rule for every key is the only kind worth
+predicting, and the other way round there is no way to ask for fewer. `--model` is the one setting
+with a variable behind it, so the order there is command line, then `KAMCHATKA_MODEL`, then the
+file.
+
+A leading `~` in `sandbox-allow` and `sandbox-read` is your home directory. That is the one place
+this program expands one, and the exception is narrower than it looks: every other way of giving
+those paths has a shell in front of it that expanded `~` before the program saw anything, and a
+file has nothing in front of it. The tools still refuse a leading `~` rather than expanding it,
+because those paths are written by a *model*.
+
+A key nothing reads is an error naming it, not a line that quietly does nothing:
+
+```console
+$ kamchatka --config-file kamchatka.json
+Error: kamchatka.json: unknown field `modle`, expected one of `model`, `gemini`, `system`, …
+```
+
+What it deliberately does not carry is anything belonging to one invocation rather than to the
+project: a message, `-r`, `-f`, and `--headless`, which decides for itself from whether stdout is a
+terminal. There is no search for a file either — a settings file that applies because of where you
+are standing is one that surprises you, so it is named or it is not read.
+
 ## 🎛️ options
 
 ```text
@@ -1086,6 +1129,8 @@ kamchatka [OPTIONS] [MESSAGE]...
       --no-sandbox          run the shell tool unconfined, reaching whatever you can
       --forget-truncated    drop the whole of a shortened tool output instead of
                             keeping it as an archived item you can still read
+      --config-file <PATH>  a JSON file of settings, for the ones you would otherwise
+                            type every time; anything given here wins over it
       --no-record           do not write the session out when it ends; it goes to a
                             temporary directory otherwise, named on the way out
 

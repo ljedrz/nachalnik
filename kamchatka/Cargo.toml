@@ -53,6 +53,8 @@ nachalnik-providers = { workspace = true, features = ["gemini"] }
 
 async-trait.workspace = true
 parking_lot.workspace = true
+# `derive` for the settings file, which is the one thing here with a shape somebody else writes
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tokio = { workspace = true, features = [
     "fs",
