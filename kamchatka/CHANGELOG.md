@@ -61,6 +61,12 @@ minor bump may break you.
   should not have to re-derive the one part of it that is not obvious, which is the name: it
   prefixes every tool the server offers and it is what `always, for mcp:<name>` grants.
 
+- **A headless run exits non-zero when its last turn failed.** It used to exit `0` with an
+  unreachable model: the loop had completed, which is not the same as the session having happened,
+  and a script would have reported a run that never got a single answer as a success. The *last*
+  turn rather than any, because a turn that failed and was then carried on from is a session that
+  recovered. Found by the first test to run the binary rather than the loop.
+
 - **A deadline and a `ctrl+c` that keep what arrived.** `--deadline 300` interrupts whatever is
   in flight, lets it be recorded, and leaves by the ordinary door; `ctrl+c` does the same once and
   leaves at once if pressed again. Until this there was nothing at all that could stop an

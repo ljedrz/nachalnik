@@ -444,6 +444,66 @@ async fn a_deadline_ends_a_session_that_is_waiting_for_nobody() {
     assert_eq!(names.last().map(String::as_str), Some("session.finished"));
 }
 
+/// The program itself runs headless, and keeps its two streams apart.
+///
+/// note: everything else here drives the loop in process, which says nothing about the half a
+/// caller actually meets: the arguments, the mode it chose, and which stream each thing goes to.
+/// This one runs the binary. It cannot get as far as a model - there is no endpoint to reach and
+/// no key to reach it with - and that is the case worth pinning anyway, because a program whose
+/// stdout is a stream of JSON must not put a sentence in it when something goes wrong. A reader
+/// would be part way through a session before hitting a line that is not a record.
+///
+/// note: no `--headless` in the arguments. The mode is chosen because stdout is a pipe here,
+/// which is the auto-detection doing its job, and the announcement is on stderr where it belongs.
+#[test]
+fn the_program_runs_headless_and_keeps_its_streams_apart() {
+    // the test binary lives beside it
+    let mut program = std::env::current_exe().expect("a test binary has a path");
+    program.pop();
+    if program.ends_with("deps") {
+        program.pop();
+    }
+    program.push("kamchatka");
+
+    let out = std::process::Command::new(&program)
+        .args(["-m", "nothing-serves-this", "--no-record", "hello"])
+        // an address nothing answers on: the session is set up, the request is built, and the
+        // send is what fails - which is the failure a piped run actually meets
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("stdout is not a terminal"),
+        "it did not say which mode it chose: {said}"
+    );
+    assert!(
+        said.contains("error sending request"),
+        "the failure was not reported: {said}"
+    );
+    assert!(
+        !out.status.success(),
+        "an unreachable model is not a success"
+    );
+
+    // not that stdout is empty - a session that failed still happened, and its log is the whole
+    // point of the stream. What matters is that every line of it is a record: one sentence in
+    // there and a reader is part way through a session before hitting something it cannot parse
+    let records = String::from_utf8(out.stdout).expect("the records are text");
+    assert!(
+        !records.is_empty(),
+        "the session was not written out at all"
+    );
+    for line in records.lines() {
+        serde_json::from_str::<Record>(line).unwrap_or_else(|e| {
+            panic!("a line of the record stream is not a record ({e}): {line}")
+        });
+    }
+}
+
 /// `/quit` ends the session from a line, the way it does from a prompt.
 #[tokio::test]
 async fn quit_ends_it() {

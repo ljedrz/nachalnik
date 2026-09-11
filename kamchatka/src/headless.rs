@@ -121,6 +121,10 @@ impl<'a> Headless<'a> {
         // the driver was built, since a caller may have held it for a while
         let mut ends = self.deadline.map(|after| Instant::now() + after);
         let mut stopping = false;
+        // note: the *last* one rather than any, because a turn that failed and was then carried on
+        // from is a session that recovered, and a run that reported it as a failure would have
+        // every script treating one provider hiccup as a dead session
+        let mut failed = None;
         // where the log had got to the last time it was written out, so that nothing is written
         // twice and nothing is missed
         let mut written = 0;
@@ -240,6 +244,10 @@ impl<'a> Headless<'a> {
                         self.say(&event)?;
                         app.on_event(event);
                     }
+                    failed = match &outcome {
+                        Outcome::Failed(e) => Some(e.clone()),
+                        _ => None,
+                    };
                     app.on_outcome(outcome);
                 }
             }
@@ -258,7 +266,14 @@ impl<'a> Headless<'a> {
         // parting line stuck to the end of it
         self.fresh_line()?;
 
-        Ok(())
+        // note: the reason is not repeated here. It has been on the prose since the moment it
+        // happened, and what the caller wants from this is the exit code - a piped run whose model
+        // could never be reached used to end in a `0`, which is the shape of thing that has a
+        // script reporting a session that never happened as a success
+        match failed {
+            Some(_) => Err("the last turn failed".to_owned()),
+            None => Ok(()),
+        }
     }
 
     /// Says what the program has said since the last look, and prints whatever a command opened.
