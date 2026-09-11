@@ -118,13 +118,14 @@ struct Args {
     #[arg(long)]
     no_record: bool,
 
-    /// A path outside the working directory the tools may also read and write. May be repeated.
-    #[arg(long, value_name = "PATH")]
+    /// A path outside the working directory the tools may also read and write. May be repeated,
+    /// and takes a comma-separated list.
+    #[arg(long, value_name = "PATH", value_delimiter = ',')]
     sandbox_allow: Vec<std::path::PathBuf>,
 
-    /// A path outside the working directory the tools may read but not change. May be repeated.
-    /// A toolchain is the usual one: `cargo` cannot start without `~/.rustup`.
-    #[arg(long, value_name = "PATH")]
+    /// A path outside the working directory the tools may read but not change. The same, and a
+    /// toolchain is the usual one: `cargo` cannot start without `~/.rustup`.
+    #[arg(long, value_name = "PATH", value_delimiter = ',')]
     sandbox_read: Vec<std::path::PathBuf>,
 
     /// Drop the whole of a tool's output once it has been shortened, rather than keeping it as an

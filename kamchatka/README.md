@@ -1005,12 +1005,13 @@ error: could not read settings file: '/home/you/.rustup/settings.toml': Permissi
 which looks exactly like a missing compiler. Hand it the toolchain, for reading and no more:
 
 ```console
-$ kamchatka --sandbox-read ~/.rustup --sandbox-read ~/.cargo -m …
+$ kamchatka --sandbox-read ~/.rustup,~/.cargo -m …
 ```
 
 Read-only rather than `--sandbox-allow`, because a model that can *replace* the toolchain it is
 about to run is not the trade anybody meant to make. The same goes for `~/.nvm`, `~/.pyenv`,
-`~/.rbenv` and the rest.
+`~/.rbenv` and the rest. Both flags take a comma-separated list and may also be repeated, so a
+checkout elsewhere and a scratch directory are one flag: `--sandbox-allow /srv/repo,/tmp/work`.
 
 **Git needs no flag.** It used to: under Landlock `access(2)` still answers from the file's own
 permissions, so git asked whether `~/.gitconfig` was readable, was told yes, opened it, got
@@ -1032,6 +1033,17 @@ below is the confinement rather than the file's own permissions. …]
 A refusal that names only paths the command *can* reach gets no such line: `cat /etc/shadow` is
 refused with or without a sandbox, and hedging about it would send a model looking for a boundary
 that had nothing to do with it.
+
+**And it says where the session does reach**, which is the other half and was missing from the
+three tools that run in process: their refusal named the working directory and called it as far as
+this session goes, so a path opened up with `--sandbox-allow` was one the model then never tried.
+It names all of it now, in the same words the `shell` tool's description uses:
+
+```text
+/home/you/.ssh/id_rsa: outside what this session reaches, which is /home/you/proj read-write,
+/tmp/work read-write, /home/you/.rustup read-only. Work where it does, or ask for this path to
+be opened up and say what you need it for.
+```
 
 ## 🎛️ options
 
@@ -1068,9 +1080,9 @@ kamchatka [OPTIONS] [MESSAGE]...
       --spend <TOKENS>      stop the session once the provider has charged this many
                             tokens for it, in and out; /spend changes it as it runs
       --sandbox-allow <PATH> a path outside the working directory the tools may also
-                            read and write; may be repeated
+                            read and write; comma-separated, may be repeated
       --sandbox-read <PATH> a path outside the working directory the tools may read
-                            but not change; may be repeated
+                            but not change; comma-separated, may be repeated
       --no-sandbox          run the shell tool unconfined, reaching whatever you can
       --forget-truncated    drop the whole of a shortened tool output instead of
                             keeping it as an archived item you can still read

@@ -408,6 +408,41 @@ pub enum Access {
 }
 
 impl Reach {
+    /// Everywhere it reaches and what may be done there, in the order the rules are consulted.
+    ///
+    /// note: it exists because the refusal below named the working directory and called it "as far
+    /// as this session reaches", which stopped being true the moment anybody passed
+    /// `--sandbox-allow` or `--sandbox-read`. A refusal that under-reports the reach is worse than
+    /// a vague one: a model reads it as the whole boundary and never goes near the path somebody
+    /// opened up for exactly this, and there is nothing in front of it to say otherwise.
+    /// [`Shell`](crate::tools::Shell) has named them in its description since the same thing
+    /// happened to a confined command; the tools that run in process were the half left behind.
+    ///
+    /// note: the spelling is [`Sandbox`]'s, down to the `read-write` after each path, because the
+    /// two say the same thing about the same session and a reader should not have to notice which
+    /// of them is talking.
+    fn range(&self) -> String {
+        std::iter::once(&self.workdir)
+            .chain(self.extra.iter())
+            .map(|path| format!("{} read-write", path.display()))
+            .chain(
+                self.readable
+                    .iter()
+                    .map(|path| format!("{} read-only", path.display())),
+            )
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// Everywhere it may change something, which is what a refused write needs to hear.
+    fn writable(&self) -> String {
+        std::iter::once(&self.workdir)
+            .chain(self.extra.iter())
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
     /// Returns the path to use, or what to tell the model instead.
     ///
     /// note: resolved before it is compared, so that `../` and a symlink out are the same question
@@ -484,18 +519,18 @@ impl Reach {
                     }) =>
             {
                 Err(format!(
-                    "{}: opened for reading only, so it cannot be changed. Write inside {} \
-                     instead, or ask for this path to be opened up for writing and say what you \
-                     need it for.",
+                    "{}: opened for reading only, so it cannot be changed. This session may write \
+                     in {} - write there instead, or ask for this path to be opened up for \
+                     writing and say what you need it for.",
                     path.display(),
-                    self.workdir.display()
+                    self.writable()
                 ))
             }
             false => Err(format!(
-                "{}: outside {}, which is as far as this session reaches. Work inside that \
-                 directory, or ask for this path to be opened up and say what you need it for.",
+                "{}: outside what this session reaches, which is {}. Work where it does, or ask \
+                 for this path to be opened up and say what you need it for.",
                 path.display(),
-                self.workdir.display()
+                self.range()
             )),
         }
     }

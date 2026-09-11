@@ -47,7 +47,28 @@ minor bump may break you.
   run anyway, letting the headless loop go on reading lines it will only refuse, and raising the
   ceiling without letting a stopped session go again.
 
+### changed
+
+- **`--sandbox-allow` and `--sandbox-read` take a comma-separated list**, the way `--allow` and
+  `--deny` do: `--sandbox-allow /srv/repo,/tmp/work`. Both could already be repeated, which is the
+  form that survives a path with a comma in it; what the list adds is the spelling people reach for
+  first. `--sandbox-allow a b` reads `b` as the message to send, which is clap doing exactly what
+  it was told and is a poor way to find out.
+
 ### fixed
+
+- **A refusal from the three file tools named the working directory and called it as far as the
+  session reached**, which stopped being true the moment anybody passed `--sandbox-allow` or
+  `--sandbox-read`. It names all of it now - `outside what this session reaches, which is /w
+  read-write, /tmp/work read-write, /home/you/.rustup read-only` - and a write refused for landing
+  on a read-only path names where it *may* write instead.
+
+  Under-reporting a boundary costs more than over-reporting it: a model reads a refusal as the
+  whole of the rule, so a path opened up for exactly this was one it then never tried, and there is
+  nothing in front of it to say otherwise. `shell` has named them in its own description since the
+  same thing happened to a confined command; the tools that run in process were the half left
+  behind. The words are `Sandbox`'s own, down to the `read-write` after each path, because the two
+  are describing one session.
 
 - **A line the program said while an answer was still arriving never reached the person reading
   it**, in a headless run. The driver marked its place in `App::loose` by length, and that list is

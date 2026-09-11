@@ -479,6 +479,15 @@ README and the crate docs in longer form:
   a `cargo` that was never missing. Say it at the point of failure, name the path, and say nothing
   where the refusal was not yours - a hedge on `cat /etc/shadow` sends a model looking for a
   boundary that had nothing to do with it. `Sandbox::note_for` is the shape.
+- **And a refusal names the whole of what the session *does* reach.** The other half of the same
+  rule, and the one that was quietly wrong for longer: `Reach`'s refusal named the working
+  directory and called it as far as the session went, which stopped being true the moment anybody
+  passed `--sandbox-allow` or `--sandbox-read`. Under-reporting a boundary costs more than
+  over-reporting it, because a model reads a refusal as the whole of the rule and never goes near
+  the path somebody opened for exactly this - and it is the one thing in a refusal the model cannot
+  work out for itself. `Reach::range` is the shape, and it is deliberately spelled the way
+  `Sandbox`'s `Display` is: two things saying the same thing about one session should not read as
+  two rules.
 - **A refusal closes the retry, and names no path but the one it refused.** Two rules about the
   wording, both bought by watching models read one. A refusal that does not say the same call will
   fail again is read as a reason it failed *this time*: one model sent an identical path back six

@@ -400,6 +400,97 @@ fn the_file_tools_are_held_to_the_same_boundary() {
     assert!(open.allows("/etc/passwd", Access::Reading).is_ok());
 }
 
+/// Two paths can be opened up in one flag, and both of them arrive.
+///
+/// note: through the program rather than through `Reach`, because what was in doubt is the
+/// argument: `--sandbox-allow` took one value per use, so two paths meant saying it twice and
+/// `--sandbox-allow a b` quietly read `b` as the message to send. It takes a comma-separated list
+/// now, the way `--allow` and `--deny` do, and this asks the program what it ended up with -
+/// `shell` names the paths that were opened up in its own description, so `/tools` is the answer
+/// without a model anywhere.
+#[test]
+fn two_paths_go_in_as_one_flag() {
+    if !enforced() {
+        return;
+    }
+
+    let mut child = Command::new(program())
+        .args([
+            "-m",
+            "nothing-serves-this",
+            "--no-record",
+            "--sandbox-allow",
+            "/usr/share,/usr/include",
+            "--sandbox-read",
+            "/usr/lib,/usr/bin",
+        ])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    {
+        use std::io::Write;
+        let mut stdin = child.stdin.take().expect("stdin is a pipe");
+        stdin.write_all(b"/tools\n").expect("the line was not sent");
+    }
+    let out = child.wait_with_output().expect("the program never ended");
+    let said = String::from_utf8_lossy(&out.stderr);
+
+    for path in [
+        "/usr/share read-write",
+        "/usr/include read-write",
+        "/usr/lib read-only",
+        "/usr/bin read-only",
+    ] {
+        assert!(said.contains(path), "`{path}` did not arrive: {said}");
+    }
+}
+
+/// A refusal names everywhere the session reaches, not only the directory it started in.
+///
+/// note: it used to say "outside {workdir}, which is as far as this session reaches", which was
+/// true until somebody passed `--sandbox-allow` and false afterwards - and false in the direction
+/// that costs something. A model reads a refusal as the whole boundary, so a path opened up for it
+/// on purpose is one it then never goes near, and nothing in front of it says otherwise. The
+/// `shell` tool has named them in its own description since the same thing happened to a confined
+/// command; these three run in process and were the half left behind.
+#[test]
+fn a_refusal_names_what_was_opened_up() {
+    use kamchatka::sandbox::{Access, Reach};
+
+    let dir = workdir("named").canonicalize().expect("it exists");
+    let reach = Reach {
+        workdir: dir.clone(),
+        extra: vec![PathBuf::from("/usr/share")],
+        readable: vec![PathBuf::from("/usr/lib")],
+        confined: true,
+    };
+
+    let refused = reach
+        .allows("/etc/passwd", Access::Reading)
+        .expect_err("it is outside");
+    assert!(
+        refused.contains(&format!("{} read-write", dir.display())),
+        "{refused}"
+    );
+    assert!(refused.contains("/usr/share read-write"), "{refused}");
+    assert!(refused.contains("/usr/lib read-only"), "{refused}");
+
+    // and a write refused for being read-only names where it *may* write, which is the same list
+    // minus the half that would be a second refusal
+    let refused = reach
+        .allows("/usr/lib/anything", Access::Writing)
+        .expect_err("a read-only path is not writable");
+    assert!(refused.contains("/usr/share"), "{refused}");
+    assert!(
+        !refused.contains("/usr/lib read-only"),
+        "it offered the path it had just refused: {refused}"
+    );
+}
+
 /// `~` is not expanded, and the model is told so rather than left with `No such file or directory`.
 ///
 /// note: the same trap as `access(2)` under Landlock, in a second form. Nothing expands `~` for
