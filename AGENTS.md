@@ -91,9 +91,10 @@ Read a request for a capability with that split in mind before deciding where it
 | `selectors.rs` | feature `selectors`: `17`, `tool:grep:latest`, `all:tool_results`, `file:src/foo.rs`. |
 | `test.rs` | feature `test`: `ScriptedProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |
 
-`kamchatka/src`: `app/` (the state - `mod.rs` is what the screen may ask of it and what a kernel
+`kamchatka/src`: `app/` (the state - `mod.rs` is what a caller may ask of it and what a kernel
 event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands and `text.rs`
-turns a runtime value into a line), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
+turns a runtime value into a line), `help.rs` (the key listing and the selector listing, which
+`/help` and the `amend` tool print), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
 and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that floats over one,
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
 fitting), `tools/` (the four tools - `files.rs` for the three that run in process and `shell.rs` for
@@ -102,7 +103,24 @@ the one that does not - with `policy.rs` for `Careful` and `trim.rs` for the com
 per file, with `mod.rs` holding `install` and the handful of things both of them use),
 `provider.rs` (**not a provider**: the four environment variables this program reads, and the two
 `connect` functions that turn them into one), `main.rs` (arguments and wiring). It is a library
-plus a binary only so the screen can be drawn against a `TestBackend` in tests.
+plus a binary so the screen can be drawn against a `TestBackend` in tests, and because the screen
+is not the program.
+
+**`tui` is a default feature, and the line it draws is load-bearing.** `ui/`, `app/keys.rs`, the
+prompt (`App::input`) and the two `ListState`s are behind it; `App` and everything else - the
+session, the tools, the policy, the trace, `submit`, `interrupt`, `on_event`, `write_session` - is
+not. The rule for anything new: if it takes a `KeyEvent` or a `ratatui` type it goes behind the
+feature, and if a *command* can reach it, it cannot. That is what `help.rs` and the two formatters
+in `app/text.rs` are doing where they are: `/prune` prints the selector listing and `introspect`
+formats token counts for a model to read, so neither can live in the module that draws.
+
+`cargo test -p kamchatka --no-default-features` is the check, and it runs three real suites
+(`policy`, `sandbox`, `introspect`); CI runs it. Be exact about what that is worth: **not one of
+those three builds an `App`**, so what is checked without a screen is that the program compiles
+and that its parts - the policy, the sandbox, the introspection tools - behave. A *session* driven
+without a screen is checked nowhere, because nothing drives one: `App::submit` takes the line, and
+the caller that hands it one without a keyboard is the next commit. The binary is
+`required-features = ["tui"]` for the same reason.
 
 `nachalnik-providers/src`: `openai/mod.rs` (`OpenAiCompatible`, where the requests go and what the
 endpoint says it serves), `openai/wire.rs` (one request sent and read back, streamed or whole),
@@ -213,6 +231,7 @@ if a claim in there stops being true, the fix is a new recording rather than a n
 cargo test --workspace --all-features       # everything; the live suite skips itself with no key
 cargo test --workspace --all-features --no-fail-fast   # when measuring what a test is worth
 cargo test -p nachalnik                     # the runtime's offline suite
+cargo test -p kamchatka --no-default-features          # the program with no screen and no MCP
 cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets -- -D warnings
 cargo doc --workspace --all-features --no-deps   # with RUSTDOCFLAGS=-D warnings, as CI does

@@ -12,7 +12,7 @@ use nachalnik::{
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::{tools::Limits, ui::thousands};
+use crate::{app::text::thousands, tools::Limits};
 
 use super::{Pinned, Reach, action, ids, protected, unknown};
 
@@ -273,7 +273,7 @@ impl Amend {
                 Err(e) => {
                     return ToolOutput::error(format!(
                         "`{input}` is not a selector: {e}\n\n{}",
-                        crate::ui::SELECTORS
+                        crate::help::SELECTORS
                     ));
                 }
             },

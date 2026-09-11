@@ -7,7 +7,48 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **A `tui` feature, on by default, holding the screen and the keys** - `ui`, the prompt and the
+  bindings - so that the rest of the library is the program without one. `App` keeps the session,
+  the tools, the policy, the trace and every verb; drawing it is one caller.
+
+  This is a boundary move rather than a new capability: nothing behaves differently, and the
+  binary declares `required-features = ["tui"]` because there is not yet a second way to drive a
+  session from outside. What it buys now is a measurement instead of a claim -
+  `cargo check -p kamchatka --no-default-features` builds, and `cargo tree -e normal` goes from
+  267 crates to 179 with MCP still on, six direct dependencies (`ratatui`, `ratatui-textarea`,
+  `crossterm`, `tui-markdown`, `synoptic`, `unicode-segmentation`) and 88 crates with them.
+
+  Three of the six test suites come with it: `policy`, `sandbox` and `introspect` never draw
+  anything, so `cargo test -p kamchatka --no-default-features` runs them and CI does. The other
+  three press keys or read characters off a frame and are `required-features = ["tui"]`. What that
+  is worth, exactly: none of the three builds an `App`, so a session driven without a screen is
+  still checked nowhere - there is nothing to drive one with yet. `examples/recorded.rs` does
+  compile with no features at all, which is the same point from the other side: the one headless
+  thing in this crate needed none of the terminal, and re-wired a kernel out of the parts instead.
+
 ### changed
+
+- **`App::submit` and `App::interrupt` are `pub`.** Every verb this program has - `/model`,
+  `/exclude`, `/limit`, `/step`, `/save`, `/load`, `/tools drop`, `/introspect` - is reachable
+  only through `submit`, and while it was `pub(super)` the only way to reach any of them from
+  outside was to synthesize a key press. That is why `examples/recorded.rs` re-wires a kernel out
+  of this crate's parts instead of driving an `App`: to drive one, it would have had to type. The
+  compiler said so as soon as the keys went behind a feature - with no screen, `submit` had no
+  caller and the whole command surface was dead code.
+
+  `interrupt` is the same argument from the other end: `esc` is one caller, and a deadline or a
+  budget ceiling watching from another task is another.
+
+  What a command *says* still goes where the screen reads it, `App::say` for a line and an overlay
+  for anything longer. Handing back what a command produced, rather than posting it to a
+  transcript, is the part this does not do.
+
+- `ui::HELP` is re-exported from a new private `help` module rather than declared in `ui`, and
+  the selector listing moved with it: `/prune` and the `amend` tool print them, and neither is
+  drawing. `thousands` and `charged` moved to `app::text` for the same reason - half the lines
+  they format are read by a *model* through `introspect`. The public path `ui::HELP` is unchanged.
 
 - **The chat-against-the-request property drives a generated sequence of moves**, where it drove
   six somebody chose. The sentence it checks is the one the chat was redesigned around and has

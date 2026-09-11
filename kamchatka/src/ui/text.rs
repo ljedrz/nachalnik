@@ -12,7 +12,8 @@ use ratatui::{
 
 use unicode_segmentation::UnicodeSegmentation as _;
 
-use super::{faint, thousands};
+use super::faint;
+use crate::app::text::thousands;
 
 /// The rows one logical line takes: fill with whole word-bound chunks, start a new row when the
 /// next one will not fit, and split a chunk that will not fit on a row of its own.

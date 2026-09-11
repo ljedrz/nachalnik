@@ -6,7 +6,7 @@
 //! the public surface.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use nachalnik::{Capability, Content, ContextId, ContextItem, ContextState, Grant, Verdict};
+use nachalnik::{Capability, ContextItem, ContextState, Grant, Verdict};
 use ratatui_textarea::CursorMove;
 use serde_json::json;
 
@@ -17,9 +17,6 @@ use super::{
 
 /// How many lines `pgup` and `pgdn` move an overlay.
 const PAGE: usize = 20;
-
-/// How many earlier versions of one item the viewer keeps.
-const VERSIONS: usize = 8;
 
 impl App {
     /// The tab after the open one, wrapping round.
@@ -38,13 +35,6 @@ impl App {
             Focus::Input => Focus::Body,
             Focus::Body => Focus::Input,
         };
-    }
-
-    /// Puts the prompt back to composing a message, whatever it was doing.
-    pub(super) fn cancel_edit(&mut self) {
-        if self.editing.take().is_some() {
-            self.clear_input();
-        }
     }
 
     /// Keys that belong to the prompt.
@@ -91,7 +81,7 @@ impl App {
     }
 
     /// Empties the prompt, wherever what was in it has just gone.
-    fn clear_input(&mut self) {
+    pub(super) fn clear_input(&mut self) {
         self.input.select_all();
         self.input.cut();
         self.input.move_cursor(CursorMove::End);
@@ -220,7 +210,7 @@ impl App {
             KeyCode::Char(digit) if digit.is_ascii_digit() => {
                 self.count = format!("{count}{digit}");
             }
-            KeyCode::Char('?') => self.preview("the keys", crate::ui::HELP),
+            KeyCode::Char('?') => self.preview("the keys", crate::help::HELP),
             KeyCode::Esc => self.cancel_edit(),
             // changing what an item says, which is the verb the other keys were missing: `space`
             // and `p` decide whether the model reads it, and this decides what it reads
@@ -367,21 +357,6 @@ impl App {
         (pages, usize::from(reads_it))
     }
 
-    /// Keeps what an item used to say, so that the viewer can still show it.
-    pub(super) fn remember(&mut self, id: ContextId, was: Content) {
-        let versions = self.versions.entry(id).or_default();
-        if versions.last() == Some(&was) {
-            return;
-        }
-
-        versions.push(was);
-        // the oldest goes rather than the newest: a rewrite somebody is asking about is nearly
-        // always the last one, and a cap that dropped from that end would answer nothing
-        if versions.len() > VERSIONS {
-            versions.remove(0);
-        }
-    }
-
     /// Keys that belong to the permissions tab.
     pub(super) fn permissions_key(&mut self, key: KeyEvent) {
         let rows = self.permissions();
@@ -409,7 +384,7 @@ impl App {
                 return;
             }
             KeyCode::Char('?') => {
-                self.preview("the keys", crate::ui::HELP);
+                self.preview("the keys", crate::help::HELP);
                 return;
             }
             KeyCode::Char(' ') => self.policy.cycle(&subject),
@@ -455,7 +430,7 @@ impl App {
             }
             KeyCode::End | KeyCode::Char('G') => self.trace_scroll = 0,
             KeyCode::Home | KeyCode::Char('g') => self.trace_scroll = usize::MAX,
-            KeyCode::Char('?') => self.preview("the keys", crate::ui::HELP),
+            KeyCode::Char('?') => self.preview("the keys", crate::help::HELP),
             _ => {}
         }
     }
@@ -664,34 +639,6 @@ impl App {
             true => self.say(Speaker::Note, "/step or /continue when you are ready"),
             false => self.start_turn(),
         }
-    }
-
-    /// Asks the running turn to stop at the next opportunity.
-    pub(super) fn interrupt(&mut self) {
-        self.interrupting = true;
-        self.kernel.interrupt();
-    }
-
-    /// Puts something long on the screen.
-    pub(super) fn preview(&mut self, title: impl Into<String>, body: impl Into<String>) {
-        self.preview_pages(
-            title,
-            vec![Page {
-                name: String::new(),
-                body: body.into(),
-            }],
-            0,
-        );
-    }
-
-    /// The same, for something with more than one face; `at` is the one to open on.
-    fn preview_pages(&mut self, title: impl Into<String>, pages: Vec<Page>, at: usize) {
-        self.overlay = Some(Overlay::Text {
-            title: title.into(),
-            page: at.min(pages.len().saturating_sub(1)),
-            pages,
-            scroll: 0,
-        });
     }
 
     /// Moves the transcript, and stops following the bottom if it moved up.

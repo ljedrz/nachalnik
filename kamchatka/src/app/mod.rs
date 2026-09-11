@@ -13,12 +13,14 @@ use std::{
     time::Instant,
 };
 
+#[cfg(feature = "tui")]
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
     Budget, Capability, Content, ContextId, ContextItem, ContextKind, Delta, Event, Grant,
     GrantSource, Kernel, PermissionRequest, State, Verdict, selectors::Selector,
 };
 use nachalnik_providers::Endpoint;
+#[cfg(feature = "tui")]
 use ratatui_textarea::{TextArea, WrapMode};
 use serde_json::Value;
 use tokio::sync::mpsc::UnboundedSender;
@@ -26,17 +28,23 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{
     sandbox::Confinement,
     tools::{Careful, Limits, Subject},
-    ui::thousands,
 };
 
 mod command;
+#[cfg(feature = "tui")]
 mod keys;
-mod text;
+pub(crate) mod text;
 
-use text::{head, moved, one_line, request_preview, trace_line, unpadded};
+use text::{head, moved, one_line, thousands, trace_line, unpadded};
+// only the key that prints a request without a command: `/request` imports its own
+#[cfg(feature = "tui")]
+use text::request_preview;
 
 /// How many trace lines are kept; the session log is the one that keeps everything.
 const TRACE_DEPTH: usize = 400;
+
+/// How many earlier versions of one item the viewer keeps.
+const VERSIONS: usize = 8;
 
 /// How much of a still-running tool's output the transcript holds on to.
 ///
@@ -399,6 +407,7 @@ pub struct App {
     /// Every event, name and detail.
     pub trace: VecDeque<Traced>,
     /// The prompt.
+    #[cfg(feature = "tui")]
     pub input: TextArea<'static>,
     /// Which pane the keys go to.
     pub focus: Focus,
@@ -409,6 +418,7 @@ pub struct App {
     /// that has been pruned, archived or superseded.
     pub sending_only: bool,
     /// Where the context pane is scrolled to, which it keeps between frames.
+    #[cfg(feature = "tui")]
     pub list: ratatui::widgets::ListState,
     /// What is on top, if anything.
     pub overlay: Option<Overlay>,
@@ -439,6 +449,7 @@ pub struct App {
     /// Which capability is picked out on the permissions tab.
     pub chosen: usize,
     /// Where the permissions tab is scrolled to, which it keeps between frames.
+    #[cfg(feature = "tui")]
     pub grants: ratatui::widgets::ListState,
     /// Whether the last stop was asked for rather than reached.
     interrupting: bool,
@@ -484,15 +495,20 @@ impl App {
         limits: Limits,
         outcomes: UnboundedSender<Outcome>,
     ) -> Self {
-        let mut input = TextArea::default();
-        input.set_placeholder_text("ask for something, or /help");
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        // a long message wraps rather than scrolling sideways: the default keeps one long line on
-        // one row and slides it under the left border, so what somebody typed a moment ago is off
-        // the screen while they are still typing it. `WordOrGlyph` breaks at spaces and splits a
-        // word only when it could not fit on a line of its own - a path or a URL, which is
-        // exactly the thing worth seeing all of
-        input.set_wrap_mode(WrapMode::WordOrGlyph);
+        #[cfg(feature = "tui")]
+        let input = {
+            let mut input = TextArea::default();
+            input.set_placeholder_text("ask for something, or /help");
+            input.set_cursor_line_style(ratatui::style::Style::default());
+            // a long message wraps rather than scrolling sideways: the default keeps one long line
+            // on one row and slides it under the left border, so what somebody typed a moment ago
+            // is off the screen while they are still typing it. `WordOrGlyph` breaks at spaces and
+            // splits a word only when it could not fit on a line of its own - a path or a URL,
+            // which is exactly the thing worth seeing all of
+            input.set_wrap_mode(WrapMode::WordOrGlyph);
+
+            input
+        };
 
         Self {
             kernel,
@@ -508,10 +524,12 @@ impl App {
             pending: Anchor::default(),
             loose: Vec::new(),
             trace: VecDeque::new(),
+            #[cfg(feature = "tui")]
             input,
             focus: Focus::Input,
             selected: 0,
             sending_only: false,
+            #[cfg(feature = "tui")]
             list: ratatui::widgets::ListState::default(),
             overlay: None,
             scroll: 0,
@@ -526,6 +544,7 @@ impl App {
             stepping: false,
             count: String::new(),
             chosen: 0,
+            #[cfg(feature = "tui")]
             grants: ratatui::widgets::ListState::default(),
             interrupting: false,
             thought_unseen: false,
@@ -892,7 +911,7 @@ impl App {
                         Some(what) => format!(" {what}"),
                         None => String::new(),
                     },
-                    crate::ui::thousands(item.tokens),
+                    thousands(item.tokens),
                     match item.uncounted {
                         0 => String::new(),
                         n => format!(" and {n} piece(s) nothing here can price"),
@@ -1264,9 +1283,67 @@ impl App {
         }
     }
 
+    // ------------------------------------------------------------------- what a caller asks of it
+
+    /// Keeps what an item used to say, so that the viewer can still show it.
+    pub(super) fn remember(&mut self, id: ContextId, was: Content) {
+        let versions = self.versions.entry(id).or_default();
+        if versions.last() == Some(&was) {
+            return;
+        }
+
+        versions.push(was);
+        // the oldest goes rather than the newest: a rewrite somebody is asking about is nearly
+        // always the last one, and a cap that dropped from that end would answer nothing
+        if versions.len() > VERSIONS {
+            versions.remove(0);
+        }
+    }
+
+    /// Asks the running turn to stop at the next opportunity.
+    ///
+    /// note: `pub` for the same reason [`App::submit`] is. `esc` is one caller; a deadline, a
+    /// budget ceiling or a request cap watching from another task is another, and the kernel
+    /// takes an interrupt from any thread. What it never does is discard what arrived.
+    pub fn interrupt(&mut self) {
+        self.interrupting = true;
+        self.kernel.interrupt();
+    }
+
+    /// Puts the prompt back to composing a message, whatever it was doing.
+    pub(super) fn cancel_edit(&mut self) {
+        if self.editing.take().is_some() {
+            #[cfg(feature = "tui")]
+            self.clear_input();
+        }
+    }
+
+    /// Puts something long on the screen.
+    pub(super) fn preview(&mut self, title: impl Into<String>, body: impl Into<String>) {
+        self.preview_pages(
+            title,
+            vec![Page {
+                name: String::new(),
+                body: body.into(),
+            }],
+            0,
+        );
+    }
+
+    /// The same, for something with more than one face; `at` is the one to open on.
+    fn preview_pages(&mut self, title: impl Into<String>, pages: Vec<Page>, at: usize) {
+        self.overlay = Some(Overlay::Text {
+            title: title.into(),
+            page: at.min(pages.len().saturating_sub(1)),
+            pages,
+            scroll: 0,
+        });
+    }
+
     // ----------------------------------------------------------------------------------- keys
 
     /// Takes in one key press.
+    #[cfg(feature = "tui")]
     pub async fn on_key(&mut self, key: KeyEvent) {
         // windows reports both halves of every press; everywhere else this is already true
         if key.kind != KeyEventKind::Press {
@@ -1321,7 +1398,7 @@ impl App {
                 self.follow = false;
             }
             (KeyCode::End, true) => self.follow = true,
-            (KeyCode::F(1), _) => self.preview("the keys", crate::ui::HELP),
+            (KeyCode::F(1), _) => self.preview("the keys", crate::help::HELP),
             // `tab` moves the keys to the other thing on the screen that wants them, and on a tab
             // with no prompt there is no other thing - so it means the one gesture that is always
             // worth having: back to where typing happens
@@ -1412,9 +1489,27 @@ impl App {
     /// sends. The editor underneath splits on newlines, so a pasted stack trace went in as one
     /// line with invisible characters where its breaks were and read as its lines run together -
     /// in the one place whose whole job is to show somebody what they are about to send.
+    #[cfg(feature = "tui")]
     pub fn paste(&mut self, text: &str) {
         self.input
             .insert_str(text.replace("\r\n", "\n").replace('\r', "\n"));
+    }
+
+    /// What is in the prompt.
+    #[cfg(feature = "tui")]
+    fn draft(&self) -> String {
+        self.input.lines().join("\n")
+    }
+
+    /// Nothing: there is no prompt in a build with no screen, so nothing is half-typed.
+    ///
+    /// note: a method rather than a `#[cfg]` at each of the two places that ask, because what
+    /// they ask for is a *figure* - `/budget` reports it and the status line adds it in - and an
+    /// empty draft is the honest answer to both. The alternative was gating [`App::drafted`],
+    /// which would have put a `#[cfg]` in the middle of `/budget`.
+    #[cfg(not(feature = "tui"))]
+    fn draft(&self) -> String {
+        String::new()
     }
 
     // -------------------------------------------------------------------- what the screen asks
@@ -1565,7 +1660,7 @@ impl App {
     /// anchored: a draft moving a number that is itself a thousand tokens uncertain would be
     /// precision theatre.
     pub fn drafted(&self) -> usize {
-        let draft = self.input.lines().join("\n");
+        let draft = self.draft();
         match draft.trim().is_empty() || draft.starts_with('/') {
             true => 0,
             false => self.kernel.counter().count(&Content::text(draft)),

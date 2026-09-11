@@ -39,9 +39,16 @@
 //! the providers next door in [`nachalnik_providers`]. The kernel supplies the state machine, the
 //! context and the paper trail.
 //!
-//! It is a library only so that the screen can be tested - [`ui::draw`] against a
-//! `TestBackend` is how the tests check that a pruned item really does leave the next request.
-//! The program is `kamchatka`.
+//! It is a library because the screen has to be testable - `ui::draw` against a `TestBackend` is
+//! how the tests check that a pruned item really does leave the next request - and because the
+//! screen is not the program. [`app::App`] holds the session, and what the keys do to it is one
+//! caller: `submit` takes the same line a person types, a command or a message, and `on_event`
+//! takes what the kernel says back. The program is `kamchatka`.
+//!
+//! The `tui` feature, on by default, is the drawing and the keys: `ui`, the prompt, and the
+//! bindings. Without it the library is the same program with nothing rendering it - and six
+//! fewer dependencies - which is what a session driven by something other than a person at a
+//! terminal needs. The binary requires the feature, for now.
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
@@ -52,4 +59,7 @@ pub mod introspect;
 pub mod provider;
 pub mod sandbox;
 pub mod tools;
+#[cfg(feature = "tui")]
 pub mod ui;
+
+mod help;

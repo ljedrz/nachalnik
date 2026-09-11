@@ -6,7 +6,7 @@
 
 use nachalnik::{ContextState, selectors::Selector};
 
-use crate::{tools::Limits, ui::thousands};
+use crate::{app::text::thousands, tools::Limits};
 
 use super::{
     App, Speaker, Tab,
@@ -14,8 +14,20 @@ use super::{
 };
 
 impl App {
-    /// Sends a message, or runs a command.
-    pub(super) async fn submit(&mut self, line: &str) {
+    /// Sends a message, or runs a command: one line of what somebody types at the prompt.
+    ///
+    /// note: `pub` because the prompt is not the only thing entitled to say a line. Every verb
+    /// this program has - `/model`, `/exclude`, `/limit`, `/step`, `/save`, `/load`, `/tools
+    /// drop` - is reachable only through here, and while this was `pub(super)` the only way in
+    /// was to synthesize a key press. That is why `examples/recorded.rs` re-wires a kernel from
+    /// this crate's parts instead of driving an [`App`]: to drive one, it would have had to type.
+    /// A caller that is not a person at a terminal hands the same line to the same function.
+    ///
+    /// note: what it *says* still goes where the screen reads it - [`App::say`] for a line and
+    /// `App::preview` for something long enough to need its own pane. A caller with no screen
+    /// can read both off [`App::loose`] and [`App::overlay`], which is honest but not yet
+    /// convenient; handing back what a command produced is the change this one does not make.
+    pub async fn submit(&mut self, line: &str) {
         if let Some(command) = line.strip_prefix('/') {
             self.command(command).await;
             return;
@@ -59,7 +71,7 @@ impl App {
 
         match command {
             "quit" | "exit" | "q" => self.quit = true,
-            "help" | "?" => self.preview("the keys", crate::ui::HELP),
+            "help" | "?" => self.preview("the keys", crate::help::HELP),
             "continue" => self.start_turn(),
             // with a message, because otherwise the only way to reach the first transition is to
             // send one - which runs the whole turn, and there is nothing left to step through
@@ -493,7 +505,7 @@ impl App {
         if input.is_empty() {
             self.preview(
                 format!("/{command} takes any of these"),
-                crate::ui::SELECTORS,
+                crate::help::SELECTORS,
             );
             return;
         }
@@ -825,7 +837,10 @@ impl App {
                 // of what the turn cost. A budget that accounts for the request and stays silent
                 // about the answer is half a budget
                 if let Some(usage) = budget.reported {
-                    lines.push(format!("and generated {}", crate::ui::charged(&usage)));
+                    lines.push(format!(
+                        "and generated {}",
+                        crate::app::text::charged(&usage)
+                    ));
                 }
             }
             None => lines.push("nothing has been sent yet, so there is no real figure".to_owned()),

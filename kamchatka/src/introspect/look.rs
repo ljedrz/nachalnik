@@ -14,7 +14,7 @@ use nachalnik::{
 };
 use serde_json::json;
 
-use crate::{tools::Limits, ui::thousands};
+use crate::{app::text::thousands, tools::Limits};
 
 use super::{Pinned, Reach, action, ids, protected, unknown};
 
@@ -369,7 +369,7 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
         Some(usage) => out.push_str(&format!(
             "the last request really cost {} in / {}, as the provider counted it\n",
             thousands(usage.input_tokens.unwrap_or_default() as usize),
-            crate::ui::charged(&usage),
+            crate::app::text::charged(&usage),
         )),
         None => out.push_str(
             "nothing has been charged for yet, so the figures above are only an estimate\n",
@@ -622,7 +622,7 @@ async fn branch(
         out.push_str(&format!(
             "it cost {} in / {}.\n",
             thousands(usage.input_tokens.unwrap_or_default() as usize),
-            crate::ui::charged(&usage),
+            crate::app::text::charged(&usage),
         ));
     }
     let said = response

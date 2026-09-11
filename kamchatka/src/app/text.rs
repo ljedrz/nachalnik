@@ -3,10 +3,17 @@
 //! note: every function in here takes a value the kernel made and returns a `String`. None of
 //! them touch [`super::App`], which is what makes them the part of the screen that can be read
 //! without knowing what a tab is.
+//!
+//! note: and none of them draw, which is why the two under *figures* are here rather than in
+//! `ui` where they were. `thousands` is in every line this program puts a token count on, and
+//! half of those lines are read by a model through `introspect` rather than by a person off a
+//! screen - so a build with no screen needs them both, and the feature that draws cannot own
+//! them.
 
-use nachalnik::{
-    Block, Content, ContextId, ContextItem, ContextKind, Event, GrantSource, Kernel, Projection,
-};
+use nachalnik::{Event, GrantSource, Kernel, Usage};
+// the item viewer's own: what one item says as stored, as sent, and as it said it before
+#[cfg(feature = "tui")]
+use nachalnik::{Block, Content, ContextId, ContextItem, ContextKind, Projection};
 use serde_json::{Map, Value};
 
 /// An event's name, and one line of whatever else it has to say.
@@ -33,7 +40,7 @@ pub(super) fn trace_line(event: &Event) -> (String, String) {
             Some(usage) => format!(
                 "{stop:?}, {} in / {} (reported)",
                 usage.input_tokens.unwrap_or(0),
-                crate::ui::charged(usage)
+                charged(usage)
             ),
             None => format!("{stop:?}"),
         },
@@ -312,6 +319,7 @@ fn named(media_type: &str, bytes: usize) -> String {
 /// per item, which is the dialect this program speaks. One that merges them - and the `Projector`
 /// documentation offers exactly that as an example - has no per-item answer to give, and saying
 /// so is better than pointing confidently at the wrong message.
+#[cfg(feature = "tui")]
 pub(super) fn projected(projection: &Projection, id: ContextId) -> String {
     if let Some(left_out) = projection.skipped.iter().find(|item| item.id == id) {
         return format!(
@@ -354,6 +362,7 @@ pub(super) fn projected(projection: &Projection, id: ContextId) -> String {
 /// `\n` on one enormous line, and the content is the whole of what this page is for - the same
 /// reason a permission question does not show somebody the JSON of what a tool is about to run.
 /// `ctrl+p` is still the byte-for-byte view, of this and of everything around it.
+#[cfg(feature = "tui")]
 fn as_sent(message: &nachalnik::Message) -> String {
     let mut out = format!("role: {}", message.role);
     if let Some(name) = &message.name {
@@ -381,6 +390,7 @@ fn as_sent(message: &nachalnik::Message) -> String {
 /// kind rather than in the content, so reading the content alone showed an empty box for a turn
 /// that was nothing but tool calls - which is most of them. One recorded as ordered blocks has
 /// all three in the content already, and `whole` lays those out in the order they were produced.
+#[cfg(feature = "tui")]
 pub(super) fn stored(item: &ContextItem) -> String {
     let mut out = whole(&item.content);
     // note: why the item is here at all, which outlives every state it passes through and is
@@ -414,6 +424,7 @@ pub(super) fn stored(item: &ContextItem) -> String {
 /// wrong on this screen, where the whole point is to be shown what the item really holds. The
 /// thinking and the calls are read out where they happened, because between two calls is where
 /// the thinking that led to the second one belongs.
+#[cfg(feature = "tui")]
 pub(super) fn whole(content: &Content) -> String {
     let Some(blocks) = content.as_blocks() else {
         return unpadded(&content.to_text()).to_owned();
@@ -482,4 +493,48 @@ pub(super) fn head(text: &str, lines: usize) -> String {
     }
 
     kept.join("\n")
+}
+
+// ----------------------------------------------------------------------------------- figures
+
+/// What a provider said one response cost, as `30 out` or `1,412 out, 1,139 of it reasoning`.
+///
+/// note: one renderer for the three places that report it - the trace, `/budget`, and the
+/// `introspect budget` a model reads about itself - because they were three sentences about the
+/// same two numbers and only one of them has to be got right. What it must never do is add the
+/// two: [`Usage::reasoning_tokens`] is a part of [`Usage::output_tokens`], so they are shown as a
+/// whole and a share of it.
+///
+/// note: a reasoning model that returns none of its reasoning still spends most of a turn on it -
+/// `mercury-2.5` answered one question with 1,139 reasoning tokens and 273 of answer - and until
+/// this said so there was nowhere in this program to find that out, on tokens somebody paid for.
+/// `None` is silence rather than zero: a provider that does not report reasoning is not a provider
+/// reporting none of it.
+pub(crate) fn charged(usage: &Usage) -> String {
+    let Some(out) = usage.output_tokens else {
+        return "nothing reported".to_owned();
+    };
+    match usage.reasoning_tokens.filter(|it| *it > 0) {
+        None => format!("{} out", thousands(out as usize)),
+        Some(thinking) => format!(
+            "{} out, {} of it reasoning",
+            thousands(out as usize),
+            thousands(thinking as usize)
+        ),
+    }
+}
+
+/// Formats a number with `,` as the thousands separator.
+pub(crate) fn thousands(n: usize) -> String {
+    let digits = n.to_string();
+
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+
+    out
 }

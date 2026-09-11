@@ -847,7 +847,17 @@ $ cargo install --path kamchatka              # from a clone
 
 Rust 1.88 or newer, and that is the whole list: no system libraries, no `pkg-config`, nothing
 to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
-looking for yours. Adding `--no-default-features` drops MCP support, and the `--mcp` flag with it.
+looking for yours.
+
+Two features, both on by default. `--no-default-features --features tui` drops MCP support and
+the `--mcp` flag with it. `tui` is the other one, and it is the screen and the keys: without it
+the library is this program with nothing drawing it — `App` still holds the session, the tools,
+the policy and every verb, and `App::submit` takes the same line the prompt does, a command or a
+message. That build has no binary in it (`required-features = ["tui"]`), because there is not yet
+a second way to drive a session from outside; what it has is 88 fewer crates and a suite that
+runs. The three tests that draw nothing — the policy's own questions, real commands under a real
+ruleset, and the introspection tools through the real loop — are exactly the ones that pass
+there.
 
 **The sandbox is Linux-only.** The `shell` tool is confined with [Landlock](https://landlock.io),
 which is a Linux LSM. Everywhere else the program builds and runs, but the shell is unconfined:
