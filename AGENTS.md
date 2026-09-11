@@ -113,9 +113,9 @@ the screen is not the program.
 
 **`main.rs` is arguments and a loop, and that is the shape to keep it in.** Everything it used to
 assemble is `wiring::Setup`, because it was assembled twice - here and in `examples/recorded.rs` -
-and an embedder would have written it a third time out of reading `main.rs`. Three callers now:
-the program, that example, and `tests/headless.rs`. If a fourth thing needs setting up, it is a
-field on `Setup` rather than a line in `main`.
+and an embedder would have written it a third time out of reading `main.rs`. Its callers now are
+the program, that example, and the suites that drive a session with no screen. If something else
+needs setting up, it is a field on `Setup` rather than a line in `main`.
 
 **`tui` is a default feature, and the line it draws is load-bearing.** `ui/`, `app/keys.rs`, the
 prompt (`App::input`) and the two `ListState`s are behind it; `App` and everything else - the
@@ -126,11 +126,13 @@ feature, and if a *command* can reach it, it cannot. That is what `help.rs` and 
 in `app/text.rs` are doing where they are: `/prune` prints the selector listing and `introspect`
 formats token counts for a model to read, so neither can live in the module that draws.
 
-`cargo test -p kamchatka --no-default-features` is the check, and it runs four suites: `policy`,
-`sandbox` and `introspect` never draw, and `headless` drives a whole session - a message, a
-command, a tool call, a question nobody can answer - through an `App` that has no screen at all.
-CI runs it. The binary builds in that configuration too and is headless in it, so
-`--no-default-features` is a program rather than a library.
+`cargo test -p kamchatka --no-default-features` is the check, and every suite it runs is about the
+program rather than the screen: `policy`, `sandbox` and `introspect` never draw, and `headless`
+drives a whole session - a message, a command, a tool call, a question nobody can answer - through
+an `App` that has no screen at all. CI runs it. Adding `--features mcp` adds the `mcp` suite, which
+spawns a real server and grants it with `--allow mcp:py`: somebody else's tools with no terminal
+anywhere, which is the configuration an embedder is most likely to be in. The binary builds in all
+of that too and is headless in it, so `--no-default-features` is a program rather than a library.
 
 `nachalnik-providers/src`: `openai/mod.rs` (`OpenAiCompatible`, where the requests go and what the
 endpoint says it serves), `openai/wire.rs` (one request sent and read back, streamed or whole),

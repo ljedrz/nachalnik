@@ -9,6 +9,36 @@ minor bump may break you.
 
 ### added
 
+- **A suite for the two flags that had never been run together: `--mcp` and `--headless`.** They
+  meet at a question. Every tool an MCP server offers declares `mcp:<server>` and nothing else,
+  `Careful` asks about whatever nobody has answered for, and a headless run has nobody to ask - so
+  a server's tools are all there and every call is refused unless `--allow mcp:<server>` was given
+  in advance. That grant is recorded while the session is being wired, *before* the server has been
+  spawned or said what it offers, and the ordering is the half worth pinning.
+
+  A real child process rather than an in-process fixture, because the child is the untested path:
+  `mcp::attach` is handed a command line, splits it on whitespace and spawns it. The server is a
+  short Python file in `tests/mcp_server.py` with one tool in it, and the suite skips without an
+  interpreter, the way the live tests skip without a key. It wants the `mcp` feature and not the `tui` one, so
+  `--no-default-features --features mcp` runs it: somebody else's tools, no screen compiled in.
+
+  Run against a real endpoint both ways, because a scripted model cannot decide to work around a
+  refusal. With `--allow mcp:py` the call is `grant: allow, source: policy` and `mercury-2.5` gets
+  its 42 back through a Python child process with nobody watching any of it. Without, the same run
+  is `grant: deny, source: user`, and what a refused model does next is the part worth having seen:
+  it tried `shell`, was refused, tried `write`, was refused, and then answered from its own
+  arithmetic - three refusals and their explanations at eighty to ninety tokens each, which is what
+  `--on-ask deny` costs when a model has other tools to reach for.
+
+  Measured, and it found that `--allow` had nothing testing it at all. Dropping the two lines in
+  `wiring` that record those verdicts breaks exactly one test in this crate, and it is the new one;
+  deriving the server's name from the program rather than from `name=` - so that the grant reads
+  `mcp:python3` and the tools are prefixed `python3__` - breaks three. What it does *not* catch is
+  `main` letting go of the servers: the tools stay registered when the child dies, so listing them
+  says nothing, and only a call notices. There is a test for the call, and what it pins is that a
+  dead server fails rather than hangs - the model is handed `the MCP server refused: …` and the
+  turn ends, which is what an unattended run needs it to do.
+
 - **`--headless`: the same program driven by lines instead of by keys.** A line of stdin is what a
   line typed at the prompt is - a message, or a command starting with `/` - the session log goes
   to stdout one JSON record per line, and what the model says goes to stderr. It is implied when

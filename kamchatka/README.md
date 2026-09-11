@@ -538,6 +538,13 @@ I’m not able to execute shell commands directly, but the command you asked abo
 straightforward. …
 ```
 
+Somebody else's tools are given the same way. Every tool an MCP server offers arrives carrying
+`mcp:<name>` and nothing else, so `--mcp files=… --allow mcp:files` is the whole of granting one
+server — the same subject the permissions tab writes when somebody answers **always** at the
+prompt, given before the server has been spawned or said what it offers. Without it the tools are
+there and every call is refused, which is the right way round: a server named on a command line is
+not thereby trusted to run.
+
 Nothing else can stop a run nobody is watching, so two things can. `--deadline 300` interrupts
 whatever is in flight and leaves by the ordinary door — what arrived is kept and the session is
 written out, which a killed process cannot say. <kbd>ctrl+c</kbd> does the same once, and leaves
