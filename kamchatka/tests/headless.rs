@@ -24,6 +24,7 @@ use nachalnik::{
 };
 use nachalnik_providers::OpenAiCompatible;
 use serde_json::json;
+use tokio::io::BufReader;
 
 /// What one headless run wrote.
 struct Run {
@@ -392,6 +393,55 @@ async fn a_line_into_a_running_turn_says_it_is_queued() {
         1,
         "the second line went into the context while a turn was running"
     );
+}
+
+/// A deadline ends a session that is waiting on an input that is never going to say anything.
+///
+/// note: the input here is a pipe whose other end is held open, so it neither yields a line nor
+/// closes - which is a session waiting for somebody who has gone away, and the shape a deadline
+/// exists for. Without one this test does not fail, it hangs, so the timeout around it is what
+/// turns that into a failure somebody can read.
+///
+/// note: and the deadline is the *driver's* rather than this timeout. That is the difference the
+/// commit was about: a `timeout` around the whole loop drops it where it stands, so the session
+/// is never finished and the last records are written nowhere. Here the records still arrive -
+/// `session.finished` among them - which is what the second assertion is checking.
+#[tokio::test]
+async fn a_deadline_ends_a_session_that_is_waiting_for_nobody() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(Vec::new());
+    // held open for the length of the test: dropping it would close the pipe and end the session
+    // by the ordinary door, which is the thing being told apart from a deadline
+    let (_held, reader) = tokio::io::duplex(64);
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        Headless::new(Grant::Deny, &mut records, &mut prose)
+            .deadline(std::time::Duration::from_millis(100))
+            .run(&mut app, &mut events, &mut finished, BufReader::new(reader))
+            .await
+            .expect("the run failed")
+    })
+    .await
+    .expect("the deadline did not end it");
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(prose.contains("out of time"), "{prose}");
+    let names: Vec<String> = String::from_utf8(records)
+        .expect("the records are text")
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<Record>(line)
+                .expect("every line is a record")
+                .event
+                .name()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(names.last().map(String::as_str), Some("session.finished"));
 }
 
 /// `/quit` ends the session from a line, the way it does from a prompt.

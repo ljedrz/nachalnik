@@ -19,12 +19,13 @@
 //! program above, because a run nobody is watching should not be able to do a thing nobody has
 //! allowed.
 
-use std::io::Write;
+use std::{io::Write, time::Duration};
 
 use nachalnik::{Delta, Event, Grant};
 use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt},
     sync::{broadcast, mpsc},
+    time::Instant,
 };
 
 use crate::app::{App, Outcome, Overlay, Speaker};
@@ -37,6 +38,10 @@ pub struct Headless<'a> {
     records: &'a mut dyn Write,
     /// The model's own words, and what the program has to say about the run.
     prose: &'a mut dyn Write,
+    /// How long the whole run may take, if anything says.
+    deadline: Option<Duration>,
+    /// Whether a `ctrl+c` stops the run rather than killing the process.
+    ctrl_c: bool,
     /// Whether the prose is part-way through a line somebody else would finish.
     ///
     /// note: the model's answer arrives in fragments and is printed as it does, so the last thing
@@ -54,8 +59,37 @@ impl<'a> Headless<'a> {
             on_ask,
             records,
             prose,
+            deadline: None,
+            ctrl_c: false,
             mid_line: false,
         }
+    }
+
+    /// Stops the run after this long, however far it has got.
+    ///
+    /// note: inside the loop rather than a `timeout` around it, which is where this was and what
+    /// it cost: a dropped future never reaches the end of `run`, so the session was never
+    /// finished and the last records - the turn it was interrupted in among them - were written
+    /// nowhere. A deadline reached here interrupts the turn, lets what arrived be recorded, and
+    /// leaves by the ordinary door.
+    pub fn deadline(mut self, after: Duration) -> Self {
+        self.deadline = Some(after);
+        self
+    }
+
+    /// Takes `ctrl+c` as "stop" rather than letting it kill the process.
+    ///
+    /// note: off by default, and that is not timidity. This is a library loop, and taking a
+    /// process-wide signal is the caller's decision to make - a host with its own shutdown has
+    /// one already and would find this competing with it. `kamchatka --headless` turns it on,
+    /// because there it *is* the program.
+    ///
+    /// note: one stop rather than a kill, for the same reason `esc` is: a run interrupted has a
+    /// half-answer, a tool result and a record worth keeping, and the whole point of stopping
+    /// cooperatively is that they survive. A second `ctrl+c` leaves at once.
+    pub fn stops_on_ctrl_c(mut self) -> Self {
+        self.ctrl_c = true;
+        self
     }
 
     /// Ends whatever half-written line the model left, so a whole one can follow it.
@@ -82,6 +116,11 @@ impl<'a> Headless<'a> {
     ) -> Result<(), String> {
         let mut lines = input.lines();
         let mut reading = true;
+        // note: an instant rather than a duration, so that it means the same thing however many
+        // times round the loop it is waited on; and taken once the run starts rather than when
+        // the driver was built, since a caller may have held it for a while
+        let mut ends = self.deadline.map(|after| Instant::now() + after);
+        let mut stopping = false;
         // where the log had got to the last time it was written out, so that nothing is written
         // twice and nothing is missed
         let mut written = 0;
@@ -158,6 +197,42 @@ impl<'a> Headless<'a> {
                     }
                     Err(broadcast::error::RecvError::Closed) => break,
                 },
+                // note: a deadline that is not set waits on a future that never completes, which
+                // is what `select!` does with a branch that must never win. The alternative is a
+                // precondition, and a disabled branch is a subtler thing to reason about than a
+                // future that is honestly never ready
+                () = async {
+                    match ends {
+                        Some(at) => tokio::time::sleep_until(at).await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    // cleared, or the instant is in the past from here on and this branch wins
+                    // every time round the loop for ever
+                    ends = None;
+                    reading = false;
+                    app.interrupt();
+                    self.fresh_line()?;
+                    writeln!(self.prose, "· out of time; stopping")
+                        .map_err(|e| e.to_string())?;
+                }
+                _ = tokio::signal::ctrl_c(), if self.ctrl_c => {
+                    match stopping {
+                        // the second one: whatever is still running is somebody else's problem now
+                        true => break,
+                        false => {
+                            stopping = true;
+                            reading = false;
+                            app.interrupt();
+                            self.fresh_line()?;
+                            writeln!(
+                                self.prose,
+                                "· stopping; what has arrived is kept, and again leaves at once"
+                            )
+                            .map_err(|e| e.to_string())?;
+                        }
+                    }
+                }
                 Some(outcome) = finished.recv() => {
                     // the turn's last events are still queued behind this one, and `select!` picks
                     // whichever branch is ready rather than whichever happened first
@@ -260,10 +335,17 @@ impl<'a> Headless<'a> {
 
     /// The part of an event a person watching wants to see go by.
     ///
-    /// note: a handful rather than `text::trace_line` over everything. The whole trace is in the
-    /// records, and a session that printed all of it would bury the answer somebody is waiting for
-    /// under the forty lines it took to get there. What is left is what an unattended run is
-    /// actually watched for: what it is saying, what it is about to run, and what that cost.
+    /// note: three, rather than `text::trace_line` over everything. The whole trace is in the
+    /// records, and a session that printed all of it would bury the answer somebody is waiting
+    /// for under the forty lines it took to get there.
+    ///
+    /// note: and three rather than six. `App::on_event` already says something about a stop, a
+    /// compaction and a failure, and those go out through `echo` - so an arm here for any of them
+    /// printed the same news twice in two wordings. A live run ended `out of time; stopping`,
+    /// `stopped; whatever arrived is kept` and `stopped`, which is one piece of information and
+    /// three lines. What is left is what nothing else says: the model's words, which `App` files
+    /// under a speaker `echo` skips precisely so that this one can stream them, and the two tool
+    /// lines, which the terminal draws from the context and a headless run has no other sight of.
     fn say(&mut self, event: &Event) -> Result<(), String> {
         // no newline after a fragment: this arrives in pieces and is a sentence being written.
         // Everything below it is a whole line, so each of them ends that one first
@@ -277,12 +359,7 @@ impl<'a> Headless<'a> {
         }
         if !matches!(
             event,
-            Event::ToolRequested { .. }
-                | Event::ToolFinished { .. }
-                | Event::ModelFailed { .. }
-                | Event::StepFailed { .. }
-                | Event::Interrupted
-                | Event::Compacted { .. }
+            Event::ToolRequested { .. } | Event::ToolFinished { .. }
         ) {
             return Ok(());
         }
@@ -304,15 +381,6 @@ impl<'a> Headless<'a> {
                     true => ", an error",
                     false => "",
                 }
-            ),
-            Event::ModelFailed { error } | Event::StepFailed { error } => {
-                writeln!(self.prose, "\n! {error}")
-            }
-            Event::Interrupted => writeln!(self.prose, "\n· stopped; whatever arrived is kept"),
-            Event::Compacted { report } => writeln!(
-                self.prose,
-                "· compacted: {} → {} tokens",
-                report.tokens_before, report.tokens_after
             ),
             _ => Ok(()),
         }

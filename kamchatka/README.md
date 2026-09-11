@@ -538,6 +538,11 @@ I’m not able to execute shell commands directly, but the command you asked abo
 straightforward. …
 ```
 
+Nothing else can stop a run nobody is watching, so two things can. `--deadline 300` interrupts
+whatever is in flight and leaves by the ordinary door — what arrived is kept and the session is
+written out, which a killed process cannot say. <kbd>ctrl+c</kbd> does the same once, and leaves
+at once if pressed again.
+
 A line is read only while the runtime is resting, which is the one place this differs from a
 person at a prompt and is what makes a piped script mean what it says: the lines of a script
 cannot overtake the turns they belong to. `--no-default-features --features mcp` builds this and
@@ -1016,6 +1021,8 @@ kamchatka [OPTIONS] [MESSAGE]...
       --deny <SUBJECT>      the same, refused
       --on-ask <ANSWER>     what a question nobody is there to answer gets, in a
                             headless run: deny or allow               [default: deny]
+      --deadline <SECONDS>  stop a headless run after this long, keeping what
+                            arrived and writing the session out as usual
       --sandbox-allow <PATH> a path outside the working directory the tools may also
                             read and write; may be repeated
       --sandbox-read <PATH> a path outside the working directory the tools may read

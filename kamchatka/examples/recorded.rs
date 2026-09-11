@@ -162,21 +162,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // every question granted, which is what a recording somebody is watching wants and the
     // opposite of what the program defaults to; see `OnAsk` in `main.rs`
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    let mut driver = Headless::new(Grant::Allow, &mut records, &mut prose);
+    // note: the deadline is the driver's rather than a `timeout` around it. Wrapped, the future
+    // was dropped where it stood - so the session was never finished and the records of the turn
+    // it was stopped in went nowhere, which is the one run worth reading afterwards
+    let mut driver =
+        Headless::new(Grant::Allow, &mut records, &mut prose).deadline(Duration::from_secs(600));
     // a turn that fails used to take the recording with it: `?` here skipped the write below, so
     // the runs worth reading afterwards - nine in a row against a provider that timed out - were
     // exactly the ones that left an empty file. The error is still the exit code; it just waits
     // until the record is on disk
-    let failed = match tokio::time::timeout(
-        Duration::from_secs(600),
-        driver.run(&mut app, &mut events, &mut finished, lines.as_bytes()),
-    )
-    .await
-    {
-        Ok(Ok(())) => None,
-        Ok(Err(e)) => Some(e),
-        Err(_) => Some("out of time".to_owned()),
-    };
+    let failed = driver
+        .run(&mut app, &mut events, &mut finished, lines.as_bytes())
+        .await
+        .err();
     if let Some(e) = &failed {
         eprintln!("the run failed: {e}");
     }

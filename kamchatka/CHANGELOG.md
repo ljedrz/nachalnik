@@ -61,6 +61,17 @@ minor bump may break you.
   should not have to re-derive the one part of it that is not obvious, which is the name: it
   prefixes every tool the server offers and it is what `always, for mcp:<name>` grants.
 
+- **A deadline and a `ctrl+c` that keep what arrived.** `--deadline 300` interrupts whatever is
+  in flight, lets it be recorded, and leaves by the ordinary door; `ctrl+c` does the same once and
+  leaves at once if pressed again. Until this there was nothing at all that could stop an
+  unattended run: `--requests` bounds one turn and says nothing about an hour spent.
+
+  Both are the driver's rather than a `timeout` around it, which is where `examples/recorded.rs`
+  had its deadline and what that cost — a dropped future never reaches the end of the loop, so the
+  session was never finished and the records of the turn it was stopped in went nowhere. That is
+  exactly the run worth reading afterwards. `Headless::stops_on_ctrl_c` is off by default, because
+  taking a process-wide signal is the caller's decision and a host with its own shutdown has one.
+
 - **`headless::Headless`**, which is that loop, over any `AsyncBufRead` and two `Write`s. It is
   what `examples/recorded.rs` now uses: the forty lines of turn loop, permission answering,
   follow-up pushing and deadline it had are one call, and what is left in the example is what the

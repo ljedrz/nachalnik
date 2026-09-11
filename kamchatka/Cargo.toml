@@ -63,6 +63,9 @@ tokio = { workspace = true, features = [
     "macros",
     "process",
     "rt-multi-thread",
+    # `ctrl+c` in a headless run means "stop, and keep what arrived" rather than the default,
+    # which is to kill the process and everything it had not written yet
+    "signal",
     "time",
 ] }
 

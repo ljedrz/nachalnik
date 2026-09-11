@@ -151,6 +151,11 @@ struct Args {
     /// What to do with a question nobody is there to answer, in a headless run.
     #[arg(long, value_name = "ANSWER", default_value = "deny")]
     on_ask: OnAsk,
+
+    /// Stop a headless run after this many seconds, however far it has got. What has arrived is
+    /// kept and the session is written out as usual.
+    #[arg(long, value_name = "SECONDS")]
+    deadline: Option<u64>,
 }
 
 /// What an unanswerable question is answered with.
@@ -299,7 +304,13 @@ async fn session() -> Result<()> {
     let outcome = match headless {
         true => {
             let (mut records, mut prose) = (stdout(), std::io::stderr());
-            let mut driver = headless::Headless::new(on_ask, &mut records, &mut prose);
+            let mut driver = headless::Headless::new(on_ask, &mut records, &mut prose)
+                // here rather than in the library's default: taking a process-wide signal is the
+                // program's decision, and here this *is* the program
+                .stops_on_ctrl_c();
+            if let Some(seconds) = args.deadline {
+                driver = driver.deadline(std::time::Duration::from_secs(seconds));
+            }
             driver
                 .run(
                     &mut app,
