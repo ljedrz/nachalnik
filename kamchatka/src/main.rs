@@ -10,27 +10,35 @@
 
 #![deny(unsafe_code)]
 
-use std::{io::stdout, sync::Arc, time::Duration};
+use std::{
+    io::{IsTerminal as _, stdout},
+    sync::Arc,
+};
 
 use anyhow::{Context as _, Result};
 use clap::Parser;
+#[cfg(feature = "tui")]
 use crossterm::{
     event::{DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent, EventStream},
     execute,
 };
-use nachalnik::{Config, ContextItem, Event, Kernel};
+use nachalnik::{Config, ContextItem, Grant, Kernel, Verdict};
 use nachalnik_providers::Endpoint;
-use ratatui::DefaultTerminal;
-use tokio::sync::{broadcast::error::RecvError, mpsc};
-use tokio_stream::StreamExt;
+use tokio::sync::mpsc;
 
+use kamchatka::{app::App, attach, headless, introspect, provider, sandbox, tools};
+// the drawing loop's own: the two channel payloads it has to name in a signature, and the screen
+#[cfg(feature = "tui")]
 use kamchatka::{
-    app::{App, Outcome, Speaker},
-    attach, introspect, provider, sandbox, tools, ui,
+    app::{Outcome, Speaker},
+    ui,
 };
+#[cfg(feature = "tui")]
+use nachalnik::Event;
 
 /// How often the screen is redrawn when nothing at all is happening.
-const TICK: Duration = Duration::from_millis(120);
+#[cfg(feature = "tui")]
+const TICK: std::time::Duration = std::time::Duration::from_millis(120);
 
 /// A terminal agent that shows you its context.
 ///
@@ -119,6 +127,40 @@ struct Args {
     /// archived item that can still be read.
     #[arg(long)]
     forget_truncated: bool,
+
+    /// Drive the session from lines on stdin instead of from a screen: the session log goes to
+    /// stdout, one JSON record per line, and what the model says goes to stderr. Implied when
+    /// stdout is not a terminal.
+    #[arg(long)]
+    headless: bool,
+
+    /// Allow a capability or a path outright, as `read`, `shell`, `mcp:files`, `.env*`. May be
+    /// repeated, and takes a comma-separated list. Answering at the prompt writes the same table.
+    #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
+    allow: Vec<String>,
+
+    /// Refuse one, the same way. The strictest of everything consulted wins, so this beats
+    /// `--allow`.
+    #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
+    deny: Vec<String>,
+
+    /// What to do with a question nobody is there to answer, in a headless run.
+    #[arg(long, value_name = "ANSWER", default_value = "deny")]
+    on_ask: OnAsk,
+}
+
+/// What an unanswerable question is answered with.
+///
+/// note: `deny` is the default, and it is the whole of the difference between this and
+/// `examples/recorded.rs`, which grants every question it is asked. That is right for a recording
+/// somebody is watching and wrong for a program: a run nobody is watching should not be able to do
+/// a thing nobody has allowed, and `--allow shell` is one flag away for anyone who means it.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum OnAsk {
+    /// Refuse it. The model is told, and told that it was this call rather than a standing rule.
+    Deny,
+    /// Grant it.
+    Allow,
 }
 
 fn main() -> Result<()> {
@@ -133,12 +175,24 @@ fn main() -> Result<()> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
-        .block_on(terminal())
+        .block_on(session())
 }
 
-/// The program proper.
-async fn terminal() -> Result<()> {
+/// The program proper: wired the same way whichever of the two drives it.
+async fn session() -> Result<()> {
     let args = Args::parse();
+    // the screen is drawn to stdout, so a stdout that is nobody's terminal cannot have one. It is
+    // announced rather than silently chosen: a program that draws or does not draw depending on
+    // what is on the other end of a pipe should say which it decided, and `--headless` is how
+    // somebody says it themselves
+    let headless = args.headless || !std::io::stdout().is_terminal();
+    if headless && !args.headless {
+        eprintln!("· stdout is not a terminal, so this is a headless run");
+    }
+    #[cfg(not(feature = "tui"))]
+    if !headless {
+        eprintln!("· built without the `tui` feature, so this is a headless run");
+    }
 
     // two wire formats, one trait. `--gemini` is what a person picks, and everything downstream -
     // the kernel, the screen, `/model`, `/provider` - is written against `Endpoint` and never
@@ -201,6 +255,13 @@ async fn terminal() -> Result<()> {
     let mut events = kernel.subscribe();
 
     let policy = Arc::new(tools::Careful::new());
+    // answered before anything runs, which is the only way to decide in advance: `ask` is what
+    // this policy does about whatever nobody has mentioned, and a headless run cannot be asked
+    for (subjects, verdict) in [(&args.allow, Verdict::Allow), (&args.deny, Verdict::Deny)] {
+        for subject in subjects {
+            policy.set(&tools::Subject::parse(subject), verdict);
+        }
+    }
     kernel.set_provider(provider.clone());
     kernel.set_policy(policy.clone());
     // the projector decides the shape of a turn on the wire, so the provider that owns that wire
@@ -273,46 +334,80 @@ async fn terminal() -> Result<()> {
     let mut app = App::new(kernel, policy, provider, limits, outcomes);
     app.confinement = confinement;
     app.introspect = introspect;
-    match args.resume.is_some() {
+    let on_ask = match args.on_ask {
+        OnAsk::Deny => Grant::Deny,
+        OnAsk::Allow => Grant::Allow,
+    };
+    match (args.resume.is_some(), headless) {
         // a resumed session has a conversation in it already, and it would be strange to have to
         // read it out of the context pane one item at a time
-        true => app.replay(),
-        false => app.say(Speaker::Note, ui::GREETING),
+        (true, _) => app.replay(),
+        (false, true) => headless::opening(&mut app, on_ask),
+        #[cfg(feature = "tui")]
+        (false, false) => app.say(Speaker::Note, ui::GREETING),
+        #[cfg(not(feature = "tui"))]
+        (false, false) => unreachable!("there is no screen in this build"),
     }
     if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
         app.ask(&message);
         app.start_turn();
     }
 
-    // ratatui installs a hook of its own that restores the terminal and then calls this one
-    let previous = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let _ = execute!(stdout(), DisableBracketedPaste);
-        previous(info);
-    }));
+    let outcome = match headless {
+        true => {
+            let (mut records, mut prose) = (stdout(), std::io::stderr());
+            let mut driver = headless::Headless::new(on_ask, &mut records, &mut prose);
+            driver
+                .run(
+                    &mut app,
+                    &mut events,
+                    &mut finished,
+                    tokio::io::BufReader::new(tokio::io::stdin()),
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))
+        }
+        #[cfg(feature = "tui")]
+        false => drawn(&mut app, &mut events, &mut finished).await,
+        #[cfg(not(feature = "tui"))]
+        false => unreachable!("there is no screen in this build"),
+    };
 
-    let mut terminal = ratatui::init();
-    let _ = execute!(stdout(), EnableBracketedPaste);
-    let outcome = run(&mut terminal, &mut app, &mut events, &mut finished).await;
-    let _ = execute!(stdout(), DisableBracketedPaste);
-    ratatui::restore();
-
-    app.kernel.finish();
-    println!(
+    // note: the headless driver has ended the session itself, so that the record saying so goes
+    // down the stream with the rest rather than being the one nobody was sent. `Kernel::finish`
+    // emits an event every time it is called, so this is an either-or rather than a belt and
+    // braces
+    if !headless {
+        app.kernel.finish();
+    }
+    // note: on stderr in a headless run, because stdout is the log. A line of prose in the middle
+    // of a stream of JSON is the one thing that would make it unparseable, and this is the last
+    // line written - so it would be the one nobody noticed until a reader fell over the end
+    let ending = format!(
         "{} · {} events recorded",
         app.kernel.session_name(),
         app.kernel.history().len()
     );
+    match headless {
+        true => eprintln!("{ending}"),
+        false => println!("{ending}"),
+    }
     // the record was only ever written if somebody thought to type `/save`, which is exactly the
     // wrong condition: a session that ended badly is the one worth reading afterwards, and it was
     // the one that left nothing. Nine runs against a provider that timed out left no trace of how
     // far any of them had got
     if !args.no_record {
         match record(&app) {
-            Ok((records, log, state)) => println!(
-                "{records} records in {log}, and a session in {state}\n\
-                 `kamchatka -r {state}` carries on from it"
-            ),
+            Ok((records, log, state)) => {
+                let where_it_went = format!(
+                    "{records} records in {log}, and a session in {state}\n\
+                     `kamchatka -r {state}` carries on from it"
+                );
+                match headless {
+                    true => eprintln!("{where_it_went}"),
+                    false => println!("{where_it_went}"),
+                }
+            }
             Err(e) => eprintln!("the session was not written: {e}"),
         }
     }
@@ -355,13 +450,44 @@ fn record(app: &App) -> Result<(usize, String, String)> {
     Ok((records, log, state))
 }
 
-/// Draws, waits for whichever of the three things happens first, and does it again.
-async fn run(
-    terminal: &mut DefaultTerminal,
+/// Takes the terminal, draws until there is nothing left to draw, and gives it back.
+///
+/// note: the terminal is taken here rather than in `session` so that the headless path never
+/// touches it. It used to be set up before either loop ran, which was harmless only for as long
+/// as there was one loop.
+#[cfg(feature = "tui")]
+async fn drawn(
     app: &mut App,
     events: &mut tokio::sync::broadcast::Receiver<Event>,
     finished: &mut mpsc::UnboundedReceiver<Outcome>,
 ) -> Result<()> {
+    // ratatui installs a hook of its own that restores the terminal and then calls this one
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = execute!(stdout(), DisableBracketedPaste);
+        previous(info);
+    }));
+
+    let mut terminal = ratatui::init();
+    let _ = execute!(stdout(), EnableBracketedPaste);
+    let outcome = run(&mut terminal, app, events, finished).await;
+    let _ = execute!(stdout(), DisableBracketedPaste);
+    ratatui::restore();
+
+    outcome
+}
+
+/// Draws, waits for whichever of the three things happens first, and does it again.
+#[cfg(feature = "tui")]
+async fn run(
+    terminal: &mut ratatui::DefaultTerminal,
+    app: &mut App,
+    events: &mut tokio::sync::broadcast::Receiver<Event>,
+    finished: &mut mpsc::UnboundedReceiver<Outcome>,
+) -> Result<()> {
+    use tokio::sync::broadcast::error::RecvError;
+    use tokio_stream::StreamExt as _;
+
     let mut keys = EventStream::new();
     let mut ticks = tokio::time::interval(TICK);
 

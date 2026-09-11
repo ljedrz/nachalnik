@@ -25,10 +25,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "kamchatka"
 path = "src/main.rs"
-# the binary is the terminal one, and there is not yet a second way to drive a session from
-# outside the library. `--no-default-features` therefore builds the library alone rather than a
-# program that starts up and has nothing to read its keys
-required-features = ["tui"]
 
 [features]
 default = ["mcp", "tui"]
@@ -60,6 +56,9 @@ parking_lot.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = [
     "fs",
+    # `io-std` for the headless loop's stdin, which has to be selected on alongside the kernel's
+    # events rather than read from a thread of its own
+    "io-std",
     "io-util",
     "macros",
     "process",
@@ -105,12 +104,11 @@ unicode-segmentation = { version = "1.13", optional = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"
 
-# three of the six suites are the terminal's: they draw a frame and read the characters back, or
-# press a key to get at a verb. The other three - the policy's own questions, real commands under
-# a real ruleset, and the two introspection tools through the real loop - are about the program
-# rather than the screen, so `cargo test --no-default-features` runs them instead of failing to
-# compile them. That is the only configuration in which anything is *tested* without a screen
-# until there is a way to drive a session from outside
+# three of the seven suites are the terminal's: they draw a frame and read the characters back, or
+# press a key to get at a verb. The other four - the policy's own questions, real commands under a
+# real ruleset, the two introspection tools through the real loop, and a whole session driven by
+# lines rather than keys - are about the program rather than the screen, so
+# `cargo test --no-default-features` runs them instead of failing to compile them
 [[test]]
 name = "edges"
 path = "tests/edges.rs"

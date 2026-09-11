@@ -40,6 +40,33 @@ impl fmt::Display for Subject {
     }
 }
 
+impl Subject {
+    /// Reads one back: `read`, `mcp:files`, `.env*`, `secrets/`.
+    ///
+    /// note: the exact rule is that anything holding a `/`, a `*` or a leading `.` is a path
+    /// pattern and everything else is a capability. It has to be a rule rather than a guess
+    /// because both kinds are spelled as bare words - a tool declares `Capability::Custom("mcp:
+    /// files")` and a rule matches `.env*`, and there is nothing in either string that says which
+    /// it is. The five the runtime names are matched first, so `read` cannot become a custom
+    /// capability by a typo somewhere else.
+    ///
+    /// note: it is the inverse of [`fmt::Display`] above for everything it can produce, which is
+    /// what makes `--deny "$(read a row off the permissions tab)"` mean what it says.
+    pub fn parse(text: &str) -> Self {
+        match text {
+            "read" => Self::Capability(Capability::Read),
+            "write" => Self::Capability(Capability::Write),
+            "edit" => Self::Capability(Capability::Edit),
+            "shell" => Self::Capability(Capability::Shell),
+            "network" => Self::Capability(Capability::Network),
+            _ if text.contains('/') || text.contains('*') || text.starts_with('.') => {
+                Self::Path(text.to_owned())
+            }
+            _ => Self::Capability(Capability::Custom(text.to_owned())),
+        }
+    }
+}
+
 /// The paths a fresh policy has something to say about.
 ///
 /// note: a short list of the names that are credentials by convention, and every one of them is

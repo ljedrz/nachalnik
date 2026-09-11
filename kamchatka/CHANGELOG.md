@@ -9,6 +9,43 @@ minor bump may break you.
 
 ### added
 
+- **`--headless`: the same program driven by lines instead of by keys.** A line of stdin is what a
+  line typed at the prompt is - a message, or a command starting with `/` - the session log goes
+  to stdout one JSON record per line, and what the model says goes to stderr. It is implied when
+  stdout is not a terminal, and says so when it decides that for itself.
+
+  ```console
+  $ printf 'what is 2+2? answer with just the number\n/budget\n' \
+      | kamchatka --headless -m mercury-2 > session.jsonl
+  ```
+
+  The records are taken out of `Kernel::history_since` rather than off the broadcast, so they are
+  the same bytes `/save` writes - including the `session.started` no subscriber can catch, and the
+  `session.finished` a caller that ended the session afterwards would have written every record
+  but. Verified against a real endpoint, which is where three of the four things below were found.
+
+  Permissions are the part a headless run cannot improvise: `--allow read,shell,mcp:files,.env*`
+  and `--deny` answer in advance and write the same table the prompt does, and `--on-ask` says
+  what happens to a question nobody is there for. It defaults to **deny**, which is the difference
+  between this and `examples/recorded.rs`: granting every question is right for a recording
+  somebody is watching and wrong for a program.
+
+  Four things the live runs settled, none of which a scripted provider would have shown. A line is
+  read only while the kernel rests, so a script's lines cannot overtake the turns they belong to -
+  a piped `/budget` ran *above* the answer it was asked after, and a message sent into a running
+  turn is held in a slot that holds one, so the third line of a three-line script would have
+  quietly replaced the second. A question is answered only once the kernel is resting, because it
+  is broadcast while the turn that raised it is still in flight. The model's own words end their
+  line before anything else writes one, or the closing line arrives stuck to the answer. And the
+  session is ended by the loop rather than by its caller, or the last record never reaches the
+  stream.
+
+- **`headless::Headless`**, which is that loop, over any `AsyncBufRead` and two `Write`s. It is
+  what `examples/recorded.rs` now uses: the forty lines of turn loop, permission answering,
+  follow-up pushing and deadline it had are one call, and what is left in the example is what the
+  example is actually for - a planted context, a small budget, and a `session.md` that is a
+  reading of the context rather than a log of the session.
+
 - **A `tui` feature, on by default, holding the screen and the keys** - `ui`, the prompt and the
   bindings - so that the rest of the library is the program without one. `App` keeps the session,
   the tools, the policy, the trace and every verb; drawing it is one caller.

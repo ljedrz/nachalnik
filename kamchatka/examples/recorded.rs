@@ -12,10 +12,10 @@
 
 use std::{fs, io::Write, path::PathBuf, sync::Arc, time::Duration};
 
-use kamchatka::{introspect, provider, sandbox, tools};
+use kamchatka::{app::App, headless::Headless, introspect, provider, sandbox, tools};
 use nachalnik::{
-    Block, Capability, Config, Content, ContextItem, ContextKind, Delta, Event, Grant, Kernel,
-    LinearProjector, State, Verdict,
+    Block, Capability, Config, Content, ContextItem, ContextKind, Event, Grant, Kernel,
+    LinearProjector, Verdict,
 };
 use nachalnik_providers::Endpoint;
 
@@ -85,7 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     });
     let mut events = kernel.subscribe();
-    kernel.set_provider(provider.clone());
+    kernel.set_provider(provider.clone() as Arc<dyn nachalnik::Provider>);
     if ordered {
         kernel.set_projector(Arc::new(LinearProjector {
             send_blocks: true,
@@ -158,51 +158,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     kernel.push(ContextItem::user(task()));
 
-    // the loop, with nobody at the terminal: anything the policy still wants asked about is
-    // granted once and recorded as such
+    // the loop is `kamchatka --headless`, driven from a string instead of a pipe. This used to be
+    // forty lines of its own - a turn loop, a permission answered, a follow-up pushed, a deadline -
+    // written that way because the only way into an `App` was to press a key. `TASK2` is now
+    // simply the second line somebody types
+    //
+    // note: what stays here rather than moving into the program is what this example is *for*: a
+    // planted context, a budget small enough that managing it is not optional, and `session.md`,
+    // which is a reading of the context rather than a log of the session
     let started = std::time::Instant::now();
-    let mut follow_up = std::env::var("TASK2").ok();
+    let mut lines = task();
+    if let Ok(next) = std::env::var("TASK2") {
+        lines.push('\n');
+        lines.push_str(&next);
+    }
+    lines.push('\n');
+
+    let (outcomes, mut finished) = tokio::sync::mpsc::unbounded_channel();
+    let mut app = App::new(kernel, policy, provider, limits, outcomes);
+    // every question granted, which is what a recording somebody is watching wants and the
+    // opposite of what the program defaults to; see `OnAsk` in `main.rs`
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    let mut driver = Headless::new(Grant::Allow, &mut records, &mut prose);
     // a turn that fails used to take the recording with it: `?` here skipped the write below, so
     // the runs worth reading afterwards - nine in a row against a provider that timed out - were
     // exactly the ones that left an empty file. The error is still the exit code; it just waits
     // until the record is on disk
-    let mut failed = None;
-    loop {
-        let turn = match kernel.turn().await {
-            Ok(state) => state,
-            Err(e) => {
-                eprintln!("the turn failed: {e}");
-                failed = Some(e);
-                break;
-            }
-        };
-        match turn {
-            State::Deciding { .. } => {
-                for pending in kernel.pending_permissions() {
-                    kernel.decide(pending.id, Grant::Allow)?;
-                }
-            }
-            // a second question, asked once the first is answered, so a session can be about
-            // something that only exists after a turn has happened
-            State::Finished { .. } | State::Idle => match follow_up.take() {
-                Some(next) => {
-                    kernel.push(ContextItem::user(next));
-                    continue;
-                }
-                None => break,
-            },
-            other => {
-                eprintln!("stopped at {other}");
-                break;
-            }
-        }
-        if started.elapsed() > Duration::from_secs(600) {
-            eprintln!("out of time");
-            break;
-        }
+    let failed = match tokio::time::timeout(
+        Duration::from_secs(600),
+        driver.run(&mut app, &mut events, &mut finished, lines.as_bytes()),
+    )
+    .await
+    {
+        Ok(Ok(())) => None,
+        Ok(Err(e)) => Some(e),
+        Err(_) => Some("out of time".to_owned()),
+    };
+    if let Some(e) = &failed {
+        eprintln!("the run failed: {e}");
     }
 
-    write(&kernel, budget, &mut events, started.elapsed())?;
+    write(&app.kernel, budget, &prose, started.elapsed())?;
     match failed {
         Some(e) => Err(e.into()),
         None => Ok(()),
@@ -213,16 +209,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn write(
     kernel: &Kernel,
     budget: usize,
-    events: &mut tokio::sync::broadcast::Receiver<Event>,
+    prose: &[u8],
     took: Duration,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut deltas = Vec::new();
-    while let Ok(event) = events.try_recv() {
-        if let Event::ModelDelta { delta } = event {
-            deltas.push(delta);
-        }
-    }
-
     let out = PathBuf::from(std::env::var("OUT").unwrap_or_else(|_| "recorded".into()));
     fs::create_dir_all(&out)?;
 
@@ -306,17 +295,11 @@ fn write(
         out.join("snapshot.json"),
         serde_json::to_string_pretty(&kernel.snapshot())?,
     )?;
-    fs::write(
-        out.join("streamed.txt"),
-        deltas
-            .iter()
-            .map(|delta| match delta {
-                Delta::Text(text) => text.clone(),
-                Delta::Reasoning(text) => format!("[thinking] {text}"),
-                _ => String::new(),
-            })
-            .collect::<String>(),
-    )?;
+    // note: what the driver printed, rather than the deltas drained off the broadcast at the end.
+    // That drain was quietly lossy - a subscriber nobody reads from until the session is over
+    // keeps the last few hundred events and drops the rest - and this is what a person watching
+    // the run actually saw
+    fs::write(out.join("streamed.txt"), prose)?;
 
     eprintln!(
         "wrote {}/session.md ({} items, {} events)",

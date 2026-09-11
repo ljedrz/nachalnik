@@ -55,6 +55,7 @@
 
 pub mod app;
 pub mod attach;
+pub mod headless;
 pub mod introspect;
 pub mod provider;
 pub mod sandbox;

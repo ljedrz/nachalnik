@@ -493,6 +493,57 @@ only checkpoint it has. Here the checkpoint is the state machine's own.
 the rest of the turn. While stepping, answering a permission does *not* quietly resume: you asked
 to drive.
 
+## 🤖 the same program, without a screen
+
+`--headless` drives the session from lines on stdin instead of from keys. A line is what a line
+typed at the prompt is: a message, or a command if it starts with `/`. It is implied when stdout
+is not a terminal, and it says so rather than deciding quietly.
+
+```console
+$ printf 'what is 2+2? answer with just the number\n/budget\n' \
+    | kamchatka --headless -m mercury-2 > session.jsonl
+4
+--- the budget ---
+the next request: ~571 tokens, 12 of context and 559 of tool definitions
+
+anchored on the last response: ~570 tokens - the provider's own 569 for the request it
+answered, plus what the context has done since. This is the figure in the corner
+…
+```
+
+**stdout is the session log**, one JSON record per line — the same bytes `/save` writes, so
+`jq 'select(.event.event == "tool.requested")' session.jsonl` is the whole of reading a run back.
+**stderr is a person's half**: what the model said, what a tool was asked to do, and what any
+command you sent answered. Every verb is there, because a command was never the keyboard's to
+begin with.
+
+Nothing can be asked at a prompt that is not there, so the answers are given in advance:
+
+| flag | what it does |
+| --- | --- |
+| `--allow read,shell` | answer `allow` for a capability, or a path rule: `--allow 'src/**'` |
+| `--deny write,.env*` | the same, refused; the strictest of everything consulted still wins |
+| `--on-ask deny` | what happens to a question nobody answered in advance. The default |
+
+`--on-ask deny` rather than `allow` is the one default worth arguing about, and it is deliberate:
+a run nobody is watching should not be able to do a thing nobody has allowed. The model is told,
+and told that it was *this call* rather than a standing rule — so it works around it rather than
+retrying:
+
+```text
+⟩ shell({"cmd":"echo hello"})
+· shell: deny, because nobody is here to be asked
+· shell: 48 tokens, an error
+I’m not able to execute shell commands directly, but the command you asked about is
+straightforward. …
+```
+
+A line is read only while the runtime is resting, which is the one place this differs from a
+person at a prompt and is what makes a piped script mean what it says: the lines of a script
+cannot overtake the turns they belong to. `--no-default-features --features mcp` builds this and
+nothing else — no screen compiled in, 88 crates lighter, and the same `--headless` behaviour
+whether or not the flag is given.
+
 ## 🔧 what it comes with
 
 Four tools — `read`, `write`, `edit`, `shell` — and a policy that asks about all of it. Nothing is
@@ -851,13 +902,7 @@ looking for yours.
 
 Two features, both on by default. `--no-default-features --features tui` drops MCP support and
 the `--mcp` flag with it. `tui` is the other one, and it is the screen and the keys: without it
-the library is this program with nothing drawing it — `App` still holds the session, the tools,
-the policy and every verb, and `App::submit` takes the same line the prompt does, a command or a
-message. That build has no binary in it (`required-features = ["tui"]`), because there is not yet
-a second way to drive a session from outside; what it has is 88 fewer crates and a suite that
-runs. The three tests that draw nothing — the policy's own questions, real commands under a real
-ruleset, and the introspection tools through the real loop — are exactly the ones that pass
-there.
+you get the same program, headless, 88 crates lighter.
 
 **The sandbox is Linux-only.** The `shell` tool is confined with [Landlock](https://landlock.io),
 which is a Linux LSM. Everywhere else the program builds and runs, but the shell is unconfined:
@@ -930,6 +975,15 @@ kamchatka [OPTIONS] [MESSAGE]...
                             one, so a turn keeps the order it was produced in
       --introspect          offer the model the two tools that read and manage its own
                             context; /introspect turns them on and off while it runs
+      --headless            drive the session from lines on stdin: the session log to
+                            stdout, one JSON record a line, and what the model says to
+                            stderr. Implied when stdout is not a terminal
+      --allow <SUBJECT>     answer `allow` in advance for a capability or a path rule,
+                            as read, shell, mcp:files, .env* ; comma-separated, may be
+                            repeated
+      --deny <SUBJECT>      the same, refused
+      --on-ask <ANSWER>     what a question nobody is there to answer gets, in a
+                            headless run: deny or allow               [default: deny]
       --sandbox-allow <PATH> a path outside the working directory the tools may also
                             read and write; may be repeated
       --sandbox-read <PATH> a path outside the working directory the tools may read

@@ -93,8 +93,9 @@ Read a request for a capability with that split in mind before deciding where it
 
 `kamchatka/src`: `app/` (the state - `mod.rs` is what a caller may ask of it and what a kernel
 event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands and `text.rs`
-turns a runtime value into a line), `help.rs` (the key listing and the selector listing, which
-`/help` and the `amend` tool print), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
+turns a runtime value into a line), `headless.rs` (the other loop: a line of stdin where the
+terminal has a key, the session log on stdout and what a person reads on stderr), `help.rs` (the
+key listing and the selector listing, which `/help` and the `amend` tool print), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
 and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that floats over one,
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
 fitting), `tools/` (the four tools - `files.rs` for the three that run in process and `shell.rs` for
@@ -109,18 +110,17 @@ is not the program.
 **`tui` is a default feature, and the line it draws is load-bearing.** `ui/`, `app/keys.rs`, the
 prompt (`App::input`) and the two `ListState`s are behind it; `App` and everything else - the
 session, the tools, the policy, the trace, `submit`, `interrupt`, `on_event`, `write_session` - is
-not. The rule for anything new: if it takes a `KeyEvent` or a `ratatui` type it goes behind the
+not, and neither is `headless.rs`, which is the second caller that proves the first one is not
+privileged. The rule for anything new: if it takes a `KeyEvent` or a `ratatui` type it goes behind the
 feature, and if a *command* can reach it, it cannot. That is what `help.rs` and the two formatters
 in `app/text.rs` are doing where they are: `/prune` prints the selector listing and `introspect`
 formats token counts for a model to read, so neither can live in the module that draws.
 
-`cargo test -p kamchatka --no-default-features` is the check, and it runs three real suites
-(`policy`, `sandbox`, `introspect`); CI runs it. Be exact about what that is worth: **not one of
-those three builds an `App`**, so what is checked without a screen is that the program compiles
-and that its parts - the policy, the sandbox, the introspection tools - behave. A *session* driven
-without a screen is checked nowhere, because nothing drives one: `App::submit` takes the line, and
-the caller that hands it one without a keyboard is the next commit. The binary is
-`required-features = ["tui"]` for the same reason.
+`cargo test -p kamchatka --no-default-features` is the check, and it runs four suites: `policy`,
+`sandbox` and `introspect` never draw, and `headless` drives a whole session - a message, a
+command, a tool call, a question nobody can answer - through an `App` that has no screen at all.
+CI runs it. The binary builds in that configuration too and is headless in it, so
+`--no-default-features` is a program rather than a library.
 
 `nachalnik-providers/src`: `openai/mod.rs` (`OpenAiCompatible`, where the requests go and what the
 endpoint says it serves), `openai/wire.rs` (one request sent and read back, streamed or whole),
@@ -388,6 +388,14 @@ measured* under conventions, because it is cheap to get wrong in both directions
 ## postponed, on purpose
 
 Known and decided against *for now*, so that nobody spends an afternoon rediscovering them:
+
+- **Three notices in `nachalnik-providers` name a key that a headless run has not got.**
+  `waiting.rs`, `gemini.rs` and `openai/wire.rs` each word a stall as
+  `{model} has not answered for {seconds}s; esc gives up on it`, which a live headless run prints
+  to a caller with no keyboard. The sentence is right for the terminal and the provider cannot
+  know who is reading, so the fix is to stop naming a key rather than to reword it per caller -
+  and that is three strings of user-visible prose in a published crate, which belongs in a commit
+  about that crate rather than in one about this one. Found by the first live headless run.
 
 - **`nachalnik-mcp` carrying a picture rather than naming one.** The bridge answers an image
   block with `[an image (image/png), not carried into the context]`, which was the only thing it

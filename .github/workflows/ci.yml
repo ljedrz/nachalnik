@@ -61,9 +61,9 @@ jobs:
       - name: nachalnik-mcp, no features
         run: cargo check -p nachalnik-mcp --no-default-features --locked
       # `test` rather than `check` for this one, because without `tui` there is a program left to
-      # run: the policy's own questions, real commands under a real ruleset, and the two
-      # introspection tools through the real loop all draw nothing. It is the only configuration
-      # in which any of this is exercised without a screen
+      # run: the policy's own questions, real commands under a real ruleset, the two introspection
+      # tools through the real loop, and a whole session driven through an `App` that has no
+      # screen. It is the only configuration in which any of that is exercised without one
       - name: kamchatka, no features
         run: cargo test -p kamchatka --no-default-features --locked
       # a dialect each, and the one nobody builds on purpose: `waiting.rs` is shared, so a
