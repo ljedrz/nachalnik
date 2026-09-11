@@ -340,7 +340,13 @@ it), drives the introspection tools through the real loop (`introspect`), runs r
 a real ruleset (`sandbox`), and asks the policy its own questions rather than reading the answers
 off the screen (`policy`). `edges` is the sweep: every tab at every window size from 1x1 up, every
 key at every tab with nothing to act on, and both scrolled past their own ends - a frame that
-panics takes the session with it, which is the one failure this program cannot report.
+panics takes the session with it, which is the one failure this program cannot report. `headless`
+is the program with nothing drawing it, and half of it runs the *binary*: a settings file, a
+signal, a pty, and a session written where it said it was. The program builds its own provider out
+of two environment variables in a process of its own, so a scripted one cannot be swapped into it
+- `endpoint` there answers on a socket instead, which is the only seam a child process has, and is
+what lets a tool call, a spend ceiling and a recorded session be driven without a key. `config` is
+the settings file through the same door, and `mcp` is somebody else's server spawned as a child.
 `nachalnik-providers/tests/` serves a recorded Gemini stream off a socket and checks what goes
 back out (`gemini`), checks what is volunteered to an endpoint about the calling program and to
 which one (`attribution`), answers two sockets that go silent, one before the first byte and one

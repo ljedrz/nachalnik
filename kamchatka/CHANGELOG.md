@@ -78,6 +78,29 @@ minor bump may break you.
   message, `-r`, `-f`, and `--headless`, which decides for itself. There is no search for a file
   either - one that applies because of where you are standing is one that surprises you.
 
+- **The headless suite drives the binary against a socket**, which is what lets the last of it be
+  tested without a key: the program builds its own provider out of two environment variables, in a
+  process of its own, so a scripted provider cannot be swapped into it and a listener is the only
+  seam a child process has. With one, a tool call, a spend ceiling, a recorded session and two
+  signals are all reachable from `cargo test`.
+
+  What that closed, in the order the questions were asked. **A second `ctrl+c` leaves a tool that
+  will not stop** - and finding a case to show it in took measuring three: a model that has gone
+  quiet ends on the *first* press in about 200ms, a `shell` command halfway through `sleep 30` is
+  killed by the first press, and neither is a turn the first press cannot stop. What is one is an
+  MCP server that never answers: a kernel interrupt lands between steps, and a call already in
+  flight is not between steps. So the guard has a test, and the test is also about the hazard -
+  somebody else's process, on the other side of a pipe, must not be able to hold this one hostage.
+
+  **The first press, too**: it stops a `shell` command that is running and keeps what arrived, which
+  is the re-exec being load-bearing rather than tidy. **`--spend` through the command line**, where
+  the ceiling had only been tested through the library and against a real endpoint. **The session
+  a run writes when nobody said `--no-record`** - what every real run does at the end, and the one
+  thing about a headless run that nothing checked, because every suite passes `--no-record` and a
+  test that wrote a file somewhere would be a test that left one. And **a screenless build at a
+  terminal**, under a pty, which is the shape of the bug below that shipped: with `tui` off, the
+  same command draws nothing and must run headless, and no piped test can tell you so.
+
 - **A starting point ships with the crate**, `kamchatka.json` beside the readme: every setting
   there is, each at the program's own default, so that setting one up is editing rather than
   remembering. It grants nothing, and that is the substance of it rather than a gap - `allow` is

@@ -12,8 +12,14 @@ Newline-delimited JSON-RPC over stdin and stdout, which is what the transport sp
 
 import json
 import sys
+import time
 
 TOOLS = [
+    {
+        "name": "hang",
+        "description": "never answers",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
     {
         "name": "add",
         "description": "adds two numbers",
@@ -39,6 +45,11 @@ def result_for(method, params):
         return {"tools": TOOLS}
     if method == "tools/call":
         args = params.get("arguments") or {}
+        # a tool that will not stop, for the test about what a second `ctrl+c` is for. Nothing else
+        # in that workspace refuses to stop: a provider watches the interrupt while it waits, and a
+        # `shell` command is killed outright
+        if params.get("name") == "hang":
+            time.sleep(600)
         if params.get("name") == "add":
             total = args.get("a", 0) + args.get("b", 0)
             return {"content": [{"type": "text", "text": str(total)}]}

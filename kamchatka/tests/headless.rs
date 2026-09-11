@@ -1028,3 +1028,458 @@ async fn quit_ends_it() {
         "the line after /quit was read anyway"
     );
 }
+
+// ------------------------------------------------------------------- the program, and a socket
+
+/// An endpoint the program can be pointed at, which answers the model listing and then hands out
+/// these bodies, one per request, as a stream.
+///
+/// note: a socket rather than a scripted provider, because what is under test here is the
+/// *program*: it builds its own provider out of two environment variables, in a process of its
+/// own, and nothing this test holds can be swapped into that. A listener is the only seam a child
+/// process has.
+///
+/// note: the bodies are SSE because the provider asks for a stream unless told not to, and the
+/// point of these tests is the path the program actually takes. `[DONE]` is appended here so that
+/// a case reads as what the model said rather than as protocol.
+#[cfg(unix)]
+async fn endpoint(answers: Vec<String>) -> String {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = listener.local_addr().expect("its address");
+    let answers = Arc::new(answers);
+    let nth = Arc::new(AtomicUsize::new(0));
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let (answers, nth) = (answers.clone(), nth.clone());
+            tokio::spawn(async move {
+                use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+                let mut buf = vec![0u8; 65536];
+                let read = socket.read(&mut buf).await.unwrap_or(0);
+                let head = String::from_utf8_lossy(&buf[..read]).into_owned();
+
+                let (kind, body) = match head.contains("/models") {
+                    true => (
+                        "application/json",
+                        r#"{"data":[{"id":"nothing","context_length":128000}]}"#.to_owned(),
+                    ),
+                    false => match answers.get(nth.fetch_add(1, SeqCst)) {
+                        Some(sse) => ("text/event-stream", format!("{sse}\n\ndata: [DONE]\n\n")),
+                        // a request nobody wrote an answer for is held open rather than refused,
+                        // which is a model that has gone quiet - and the one thing a test must not
+                        // do here is end the turn by accident
+                        None => return std::future::pending().await,
+                    },
+                };
+                let _ = socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+
+    format!("http://{at}/v1")
+}
+
+/// The binary under test.
+#[cfg(unix)]
+fn program() -> std::path::PathBuf {
+    let mut path = std::env::current_exe().expect("a test binary has a path");
+    path.pop();
+    if path.ends_with("deps") {
+        path.pop();
+    }
+
+    path.join("kamchatka")
+}
+
+/// `ctrl+c` stops a command that is running, and what arrived is kept.
+///
+/// note: the case this was written to test was a *second* press leaving a turn the first could not
+/// stop - and it turns out there is no such turn to be had out of this program. Measured: a model
+/// that has merely gone quiet ends the run in about 200ms on one press, because the provider
+/// watches the interrupt while it waits; and a `shell` command halfway through `sleep 30` is
+/// *killed* by one press, which is the re-exec being load-bearing rather than tidy. So what is
+/// asserted here is what actually happens, and the second press has a test of its own next to a
+/// tool that really will not stop - see `a_second_press_leaves_a_tool_that_will_not_stop`.
+///
+/// note: the endpoint is a socket rather than a scripted provider because the program builds its
+/// own provider in a process of its own, and a listener is the only seam a child process has.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
+    let base = endpoint(vec![format!(
+        "data: {}",
+        json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [
+            {"index": 0, "id": "c1", "type": "function",
+             "function": {"name": "shell", "arguments": "{\"cmd\": \"sleep 30\"}"}}
+        ]}, "finish_reason": "tool_calls"}]})
+    )])
+    .await;
+
+    let mut child = std::process::Command::new(program())
+        .args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing",
+            "--allow",
+            "shell",
+            "go",
+        ])
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+
+    let said = watch(child.stderr.take().expect("stderr is a pipe"));
+    let waited = std::time::Instant::now();
+    while !said.lock().contains("⟩ shell(") {
+        assert!(
+            waited.elapsed() < std::time::Duration::from_secs(20),
+            "it never reached the tool: {}",
+            said.lock()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    let pressed = std::time::Instant::now();
+    interrupt(child.id());
+    let status = waited_out(&mut child, std::time::Duration::from_secs(20), &said);
+
+    assert!(
+        status.success(),
+        "stopping is not a failure: {}",
+        said.lock()
+    );
+    assert!(
+        pressed.elapsed() < std::time::Duration::from_secs(20),
+        "`sleep 30` outlived the interrupt, so the command was waited for rather than stopped"
+    );
+    let said = said.lock().clone();
+    assert!(said.contains("what has arrived is kept"), "{said}");
+    // the result of the call it was in the middle of is on the record, which is the whole of what
+    // "what has arrived is kept" means
+    assert!(said.contains("· shell:"), "{said}");
+
+    let mut records = String::new();
+    std::io::Read::read_to_string(
+        &mut child.stdout.take().expect("stdout is a pipe"),
+        &mut records,
+    )
+    .expect("the records are text");
+    let last = records
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Record>(line).ok())
+        .next_back()
+        .expect("a record");
+    assert_eq!(last.event.name(), "session.finished");
+}
+
+/// Reads a child's output into a string as it arrives, so that a test can look at it without
+/// blocking on a pipe that may never say another word.
+#[cfg(unix)]
+fn watch(mut stream: std::process::ChildStderr) -> Arc<parking_lot::Mutex<String>> {
+    let said = Arc::new(parking_lot::Mutex::new(String::new()));
+    let writing = said.clone();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 1024];
+        while let Ok(read) = std::io::Read::read(&mut stream, &mut buf) {
+            if read == 0 {
+                break;
+            }
+            writing
+                .lock()
+                .push_str(&String::from_utf8_lossy(&buf[..read]));
+        }
+    });
+
+    said
+}
+
+/// Presses `ctrl+c` at a child process.
+#[cfg(unix)]
+fn interrupt(pid: u32) {
+    let sent = std::process::Command::new("kill")
+        .args(["-INT", &pid.to_string()])
+        .status()
+        .expect("`kill` is on the path");
+    assert!(sent.success());
+}
+
+/// Waits for a child to leave, or says what it had said when it did not.
+#[cfg(unix)]
+fn waited_out(
+    child: &mut std::process::Child,
+    within: std::time::Duration,
+    said: &Arc<parking_lot::Mutex<String>>,
+) -> std::process::ExitStatus {
+    let waited = std::time::Instant::now();
+    loop {
+        match child.try_wait().expect("it was spawned") {
+            Some(status) => break status,
+            None if waited.elapsed() > within => {
+                let _ = child.kill();
+                panic!("it did not leave: {}", said.lock());
+            }
+            None => std::thread::sleep(std::time::Duration::from_millis(50)),
+        }
+    }
+}
+
+/// A second `ctrl+c` leaves a tool that will not stop.
+///
+/// note: what the second press is *for*, and finding a case to show it in took measuring three.
+/// A model that has gone quiet ends on the first press in about 200ms, because the provider
+/// watches the interrupt while it waits; a `shell` command is killed by the first press, because
+/// the re-exec means the process that dies is the command. Neither is a turn the first press
+/// cannot stop. What is one is somebody else's tool: a kernel interrupt lands between steps, and
+/// an MCP call already in flight is not between steps - so a server that never answers holds the
+/// turn open for as long as it likes, and `sleep 600` in forty lines of Python is exactly that.
+///
+/// note: which makes this a test of the thing as well as of the guard. An MCP server that wedges
+/// is a real hazard - somebody else's process, on the other side of a pipe - and what it must not
+/// be able to do is hold the program hostage.
+#[cfg(all(unix, feature = "mcp"))]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_second_press_leaves_a_tool_that_will_not_stop() {
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("skipped: python3 is not on the path");
+        return;
+    }
+    let base = endpoint(vec![format!(
+        "data: {}",
+        json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [
+            {"index": 0, "id": "c1", "type": "function",
+             "function": {"name": "py__hang", "arguments": "{}"}}
+        ]}, "finish_reason": "tool_calls"}]})
+    )])
+    .await;
+
+    let server = format!(
+        "py=python3 {}",
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/mcp_server.py")
+    );
+    let mut child = std::process::Command::new(program())
+        .args(["--headless", "--no-record", "-m", "nothing"])
+        .args(["--mcp", &server, "--allow", "mcp:py", "go"])
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+
+    let said = watch(child.stderr.take().expect("stderr is a pipe"));
+    let waited = std::time::Instant::now();
+    while !said.lock().contains("⟩ py__hang(") {
+        assert!(
+            waited.elapsed() < std::time::Duration::from_secs(20),
+            "it never reached the tool: {}",
+            said.lock()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    interrupt(child.id());
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    assert!(
+        child.try_wait().expect("it was spawned").is_none(),
+        "the first press waits for the turn, and this turn is not coming back: {}",
+        said.lock()
+    );
+    assert!(
+        said.lock().contains("what has arrived is kept"),
+        "{}",
+        said.lock()
+    );
+
+    interrupt(child.id());
+    let pressed = std::time::Instant::now();
+    let status = waited_out(&mut child, std::time::Duration::from_secs(10), &said);
+
+    assert!(
+        status.success(),
+        "leaving is not a failure: {}",
+        said.lock()
+    );
+    assert!(
+        pressed.elapsed() < std::time::Duration::from_secs(5),
+        "the second press waited for the tool anyway: {:?}",
+        pressed.elapsed()
+    );
+}
+
+/// What one answer costs, through the flag, against something that reports a cost.
+///
+/// note: the ceiling has tests through the library and a live run behind it; what it had not had
+/// is the path a person takes - `--spend` on a command line, into `Setup`, into the `App` that
+/// enforces it. The stub reports 1,200 tokens for one answer, which is over any ceiling worth
+/// typing here.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_spend_ceiling_stops_the_program_itself() {
+    let base = endpoint(vec![answer("as much as it likes")]).await;
+
+    let out = std::process::Command::new(program())
+        .args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing",
+            "--spend",
+            "100",
+        ])
+        .arg("go")
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{said}");
+    assert!(
+        said.contains("spent 1,200 tokens of 100; stopping"),
+        "the ceiling did not stop it: {said}"
+    );
+}
+
+/// A run that was not told to keep quiet writes the session out, and says where.
+///
+/// note: what every real run does at the end, and the one thing about a headless run that nothing
+/// checked - the suites all pass `--no-record`, because a test that wrote a file somewhere would
+/// be a test that left one. This reads the path out of the line the program prints, which is also
+/// the only promise made about it: that the line names a file somebody can open.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_recorded_run_writes_the_session_where_it_says_it_did() {
+    let base = endpoint(vec![answer("something to keep")]).await;
+    let dir = common::scratch("recorded");
+
+    let out = std::process::Command::new(program())
+        .args(["--headless", "-m", "nothing", "go"])
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        // the program writes into a temporary directory of the system's choosing, and a test that
+        // let it use the real one would leave a session behind on every run
+        .env("TMPDIR", &dir)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{said}");
+    // the line reads `N records in <log>, and a session in <state>`, so the comma comes off
+    let path = said
+        .split_whitespace()
+        .find_map(|word| word.strip_suffix(',').filter(|it| it.ends_with(".jsonl")))
+        .unwrap_or_else(|| panic!("it named no log: {said}"));
+    let written = std::fs::read_to_string(path).expect("the file it named is there");
+    let names: Vec<String> = written
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<Record>(line)
+                .expect("every line is a record")
+                .event
+                .name()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(names.first().map(String::as_str), Some("session.started"));
+    assert_eq!(names.last().map(String::as_str), Some("session.finished"));
+    assert!(names.contains(&"model.finished".to_owned()), "{names:?}");
+
+    // and the snapshot beside it, which is what `-r` reads
+    let beside = path.replace(".jsonl", ".json");
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(&beside).expect("a session beside the log"))
+            .expect("it is a snapshot");
+    assert!(
+        !snapshot.items.is_empty(),
+        "the snapshot carries the context"
+    );
+}
+
+/// One streamed answer, with what it cost on the end of it.
+#[cfg(unix)]
+fn answer(text: &str) -> String {
+    format!(
+        "data: {}\n\ndata: {}",
+        json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "content": text},
+               "finish_reason": null}]}),
+        json!({"id": "1", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+               "usage": {"prompt_tokens": 700, "completion_tokens": 500, "total_tokens": 1200}})
+    )
+}
+
+/// A build with no screen runs headless at a terminal, rather than panicking at one.
+///
+/// note: the bug this is about shipped, and could not have been caught by anything else here:
+/// every other test of this binary pipes its stdout, and that is the one condition in which the
+/// missing case cannot arise. What it takes is a terminal, which `script` will allocate - so this
+/// is the one test in the crate that runs the program under a pty.
+///
+/// note: compiled only where it is true. With `tui` on, this same command would draw a screen and
+/// wait for a key, which is a test that hangs rather than one that passes; without it, there is
+/// nothing to draw and the run is headless whatever stdout is.
+#[cfg(all(target_os = "linux", not(feature = "tui")))]
+#[test]
+fn a_screenless_build_at_a_terminal_is_a_headless_run() {
+    if std::process::Command::new("script")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("skipped: `script` is not on the path, so there is no pty to be had");
+        return;
+    }
+
+    let out = std::process::Command::new("script")
+        .args([
+            "-q",
+            "-c",
+            &format!(
+                "{} --no-record -m nothing-serves-this hello",
+                program().display()
+            ),
+            "/dev/null",
+        ])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("`script` ran");
+
+    // a pty merges the two streams, which is what a person at one sees anyway
+    let said = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        said.contains("built without the `tui` feature"),
+        "it did not say why it was headless: {said}"
+    );
+    assert!(
+        !said.contains("there is no screen in this build"),
+        "it panicked on the `unreachable!`: {said}"
+    );
+    // and it got as far as trying: the model is the thing that fails here, not the program
+    assert!(said.contains("error sending request"), "{said}");
+}
