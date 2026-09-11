@@ -545,10 +545,25 @@ prompt, given before the server has been spawned or said what it offers. Without
 there and every call is refused, which is the right way round: a server named on a command line is
 not thereby trusted to run.
 
-Nothing else can stop a run nobody is watching, so two things can. `--deadline 300` interrupts
+Nothing else can stop a run nobody is watching, so three things can. `--deadline 300` interrupts
 whatever is in flight and leaves by the ordinary door — what arrived is kept and the session is
 written out, which a killed process cannot say. <kbd>ctrl+c</kbd> does the same once, and leaves
 at once if pressed again.
+
+`--spend 50000` is the third, and it is there because time is not the only thing one of these can
+spend: a model that has found a loop — a tool that fails the same way, a question it keeps
+re-asking — will stay inside any deadline you were willing to give it. The unit is tokens, `input
++ output` as the provider reports them, because nothing here carries a price list and a figure in
+money would be one. It is a stopping rule rather than a cap, since what a response cost is known
+only once it has arrived:
+
+```text
+· spent 2,264 tokens of 2,000; stopping
+```
+
+An endpoint that reports no usage at all says so, once, rather than holding a ceiling that nothing
+will ever reach — a limit quietly never met is worse than no limit, because whoever set it is
+reading the run as bounded. `--deadline` is the one that needs nobody's cooperation.
 
 A line is read only while the runtime is resting, which is the one place this differs from a
 person at a prompt and is what makes a piped script mean what it says: the lines of a script
@@ -1030,6 +1045,8 @@ kamchatka [OPTIONS] [MESSAGE]...
                             headless run: deny or allow               [default: deny]
       --deadline <SECONDS>  stop a headless run after this long, keeping what
                             arrived and writing the session out as usual
+      --spend <TOKENS>      stop one once the provider has charged this many tokens
+                            for it, in and out
       --sandbox-allow <PATH> a path outside the working directory the tools may also
                             read and write; may be repeated
       --sandbox-read <PATH> a path outside the working directory the tools may read

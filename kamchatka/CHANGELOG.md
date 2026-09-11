@@ -9,6 +9,36 @@ minor bump may break you.
 
 ### added
 
+- **`--spend TOKENS`: the other thing a run nobody is watching can run out of.** `--deadline` has
+  bounded the time since it existed, and time is the wrong guard for the failure that actually
+  happens: a model that has found a loop - a tool that fails the same way, a question it keeps
+  re-asking - will stay inside any deadline you were willing to give it and spend the whole of it
+  on requests. This adds up what the provider charged, `input + output` per response, and stops
+  the run the way the deadline does: interrupt what is in flight, keep what arrived, write the
+  session out, leave by the ordinary door.
+
+  In tokens, and it has to be. Nothing in this workspace carries a price list, and a figure in
+  money would be one - a table per model per endpoint, kept up to date by somebody, wrong quietly.
+  Tokens are what the provider reports, and `Usage` already defines `input + output` to be the
+  whole of a request's bill whichever dialect answered it.
+
+  It is a stopping rule rather than a cap, because what a response cost is known only once it has
+  arrived: the run ends a little over the line and says by how much. And an endpoint that reports
+  no usage is told about, once - a ceiling nothing can reach is worse than no ceiling, since
+  whoever set it is reading that run as bounded. `--deadline` is the guard that needs nobody's
+  cooperation, and the notice says so.
+
+  Live against `mercury-2.5`, where a model asked for five tool calls in one response and the
+  response itself crossed the line: `· spent 2,264 tokens of 2,000; stopping`, the first call ran,
+  the other four were dropped and the model was told why. The line is printed where the bill is
+  read - at the response - so the calls that response had already asked for are announced under
+  it; that is the same order `--deadline` prints in, and it is the event stream's own.
+
+  Measured in five places, one per moving part. Counting only the output half fails two of the new
+  tests; not interrupting the turn fails two; and the accounting is read in two places for a
+  reason - a turn whose steps are instant is drained behind its own outcome, a turn with a tool
+  that takes a moment is not, and taking the call out of either place fails the test for the other.
+
 - **A suite for the two flags that had never been run together: `--mcp` and `--headless`.** They
   meet at a question. Every tool an MCP server offers declares `mcp:<server>` and nothing else,
   `Careful` asks about whatever nobody has answered for, and a headless run has nobody to ask - so

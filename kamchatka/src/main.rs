@@ -156,6 +156,11 @@ struct Args {
     /// kept and the session is written out as usual.
     #[arg(long, value_name = "SECONDS")]
     deadline: Option<u64>,
+
+    /// Stop a headless run once the provider has charged this many tokens for it, in and out.
+    /// Time is not the only thing a run nobody is watching can spend.
+    #[arg(long, value_name = "TOKENS")]
+    spend: Option<u64>,
 }
 
 /// What an unanswerable question is answered with.
@@ -310,6 +315,9 @@ async fn session() -> Result<()> {
                 .stops_on_ctrl_c();
             if let Some(seconds) = args.deadline {
                 driver = driver.deadline(std::time::Duration::from_secs(seconds));
+            }
+            if let Some(tokens) = args.spend {
+                driver = driver.spend(tokens);
             }
             driver
                 .run(

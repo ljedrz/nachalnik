@@ -28,7 +28,7 @@ use tokio::{
     time::Instant,
 };
 
-use crate::app::{App, Outcome, Overlay, Speaker};
+use crate::app::{App, Outcome, Overlay, Speaker, text};
 
 /// A session driven by lines rather than by keys.
 pub struct Headless<'a> {
@@ -40,6 +40,12 @@ pub struct Headless<'a> {
     prose: &'a mut dyn Write,
     /// How long the whole run may take, if anything says.
     deadline: Option<Duration>,
+    /// How many tokens the whole run may be charged for, if anything says.
+    spend: Option<u64>,
+    /// What it has been charged so far: every response's own figure, added up.
+    spent: u64,
+    /// Whether it has already said that the endpoint reports no figures to add up.
+    quiet: bool,
     /// Whether a `ctrl+c` stops the run rather than killing the process.
     ctrl_c: bool,
     /// Whether the prose is part-way through a line somebody else would finish.
@@ -60,6 +66,9 @@ impl<'a> Headless<'a> {
             records,
             prose,
             deadline: None,
+            spend: None,
+            spent: 0,
+            quiet: false,
             ctrl_c: false,
             mid_line: false,
         }
@@ -74,6 +83,28 @@ impl<'a> Headless<'a> {
     /// leaves by the ordinary door.
     pub fn deadline(mut self, after: Duration) -> Self {
         self.deadline = Some(after);
+        self
+    }
+
+    /// Stops the run once the provider has charged this many tokens for it.
+    ///
+    /// note: the sibling of [`Headless::deadline`], and it exists for the same reason: a run with
+    /// nobody at it has nobody to notice. Time is not the only thing one of them can spend, and a
+    /// model that has found a loop - a tool that fails the same way, a question it keeps
+    /// re-answering - will do it inside any deadline you would have been willing to give it.
+    ///
+    /// note: in *tokens*, and it has to be. Nothing in this workspace carries a price list, and a
+    /// figure in money would be one: it would need a table of what each model costs, per endpoint,
+    /// kept up to date by somebody, and it would be wrong quietly. Tokens are what the provider
+    /// actually reports - `input + output`, which [`nachalnik::Usage`] defines to be the whole of
+    /// a request's bill whichever dialect answered - so this is a measurement rather than a
+    /// conversion.
+    ///
+    /// note: it stops *after* the response that crosses the line, because that is the first moment
+    /// anybody knows what the response cost. A ceiling is a stopping rule, not a cap: the run ends
+    /// having spent a little more than it, and the line it prints says how much.
+    pub fn spend(mut self, tokens: u64) -> Self {
+        self.spend = Some(tokens);
         self
     }
 
@@ -186,6 +217,9 @@ impl<'a> Headless<'a> {
                 event = events.recv() => match event {
                     Ok(event) => {
                         self.say(&event)?;
+                        if self.charge(app, &event)? {
+                            reading = false;
+                        }
                         app.on_event(event);
                     }
                     // note: the records are read out of the log rather than from here, so a
@@ -242,6 +276,9 @@ impl<'a> Headless<'a> {
                     // whichever branch is ready rather than whichever happened first
                     while let Ok(event) = events.try_recv() {
                         self.say(&event)?;
+                        if self.charge(app, &event)? {
+                            reading = false;
+                        }
                         app.on_event(event);
                     }
                     failed = match &outcome {
@@ -334,6 +371,56 @@ impl<'a> Headless<'a> {
         }
 
         Ok(())
+    }
+
+    /// Adds what a response cost to the running total, and stops the run if that was the last of
+    /// what it was given. Says whether it stopped.
+    ///
+    /// note: from the event rather than from [`nachalnik::Budget`], which is the kernel's estimate
+    /// of the request it is *about to* build. What is being added up here is what was charged for
+    /// the ones already sent, and the two are different numbers on purpose - see `Usage`.
+    ///
+    /// note: a response the provider reported no figures for adds nothing, and the first time that
+    /// happens it is said out loud. An endpoint that reports no usage is one this ceiling cannot
+    /// see over, and a limit that is quietly never reached is worse than no limit at all: whoever
+    /// set it would be reading a run as bounded when nothing is bounding it. `--deadline` is the
+    /// one that needs nobody's cooperation.
+    fn charge(&mut self, app: &mut App, event: &Event) -> Result<bool, String> {
+        let (Event::ModelFinished { usage, .. }, Some(limit)) = (event, self.spend) else {
+            return Ok(false);
+        };
+
+        let Some(usage) = usage else {
+            if !std::mem::replace(&mut self.quiet, true) {
+                self.fresh_line()?;
+                writeln!(
+                    self.prose,
+                    "· this endpoint reports no usage, so nothing is being counted against the \
+                     ceiling; only the deadline can stop this run"
+                )
+                .map_err(|e| e.to_string())?;
+            }
+
+            return Ok(false);
+        };
+        self.spent += usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0);
+        if self.spent < limit {
+            return Ok(false);
+        }
+
+        // cleared, or every further response crosses a line that has already been crossed
+        self.spend = None;
+        app.interrupt();
+        self.fresh_line()?;
+        writeln!(
+            self.prose,
+            "· spent {} tokens of {}; stopping",
+            text::thousands(self.spent as usize),
+            text::thousands(limit as usize)
+        )
+        .map_err(|e| e.to_string())?;
+
+        Ok(true)
     }
 
     /// Writes out every record the session has grown since the last time.

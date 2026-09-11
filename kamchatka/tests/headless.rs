@@ -19,7 +19,8 @@ use kamchatka::{
     wiring::{Setup, Wired},
 };
 use nachalnik::{
-    Capability, Grant, ModelResponse, Record, Verdict,
+    BoxError, Capability, Grant, ModelResponse, OutputSink, Record, Tool, ToolCall, ToolOutput,
+    ToolSpec, Usage, Verdict, async_trait,
     test::{ConstTool, ScriptedProvider, call},
 };
 use nachalnik_providers::OpenAiCompatible;
@@ -96,6 +97,68 @@ async fn run_with(
     on_ask: Grant,
     setup: impl FnOnce(&App),
 ) -> Run {
+    driven(input, script, on_ask, None, setup).await
+}
+
+/// The same again, with a ceiling on what the provider may charge before the run stops.
+///
+/// note: `Grant::Allow`, because the run these are about is one that was allowed to do things and
+/// then did too many of them. A ceiling over a session that is refused everything would be a
+/// ceiling over one request.
+async fn run_capped(
+    input: &str,
+    script: Vec<ModelResponse>,
+    tokens: u64,
+    setup: impl FnOnce(&App),
+) -> Run {
+    driven(input, script, Grant::Allow, Some(tokens), setup).await
+}
+
+/// A tool that takes a moment, so that a turn is still running when its response is read.
+///
+/// note: everything else here answers instantly, which means a whole turn's events and its outcome
+/// are ready at the same moment and the loop drains them together. That is a real path and it is
+/// not the only one: a turn with a tool that actually does something - every live run - leaves the
+/// loop waiting on events with no outcome behind them, and what a response cost has to be read
+/// there too. Both are measured; taking the accounting out of either place fails a test below.
+struct Slow;
+
+#[async_trait]
+impl Tool for Slow {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec::new("wait", "takes a moment")
+    }
+
+    async fn invoke(&self, _call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        Ok(ToolOutput::new("waited"))
+    }
+}
+
+/// A response that says what it cost, the way a provider's does.
+///
+/// note: both halves, because both are the bill. `Usage` defines `input + output` to be what a
+/// request came to whichever dialect answered it, and a ceiling that counted one of them would be
+/// under-reading every session with a context in it.
+fn priced(response: ModelResponse, input: u64, output: u64) -> ModelResponse {
+    ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(input),
+            output_tokens: Some(output),
+            ..Default::default()
+        }),
+        ..response
+    }
+}
+
+async fn driven(
+    input: &str,
+    script: Vec<ModelResponse>,
+    on_ask: Grant,
+    spend: Option<u64>,
+    setup: impl FnOnce(&App),
+) -> Run {
     let Wired {
         mut app,
         mut events,
@@ -105,6 +168,9 @@ async fn run_with(
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
     let mut driver = Headless::new(on_ask, &mut records, &mut prose);
+    if let Some(tokens) = spend {
+        driver = driver.spend(tokens);
+    }
     driver
         .run(&mut app, &mut events, &mut finished, input.as_bytes())
         .await
@@ -442,6 +508,131 @@ async fn a_deadline_ends_a_session_that_is_waiting_for_nobody() {
         })
         .collect();
     assert_eq!(names.last().map(String::as_str), Some("session.finished"));
+}
+
+/// A ceiling ends the session once the provider has charged past it, and the next line goes unread.
+///
+/// note: the sibling of the deadline above, and the same kind of guard for a different thing a run
+/// nobody is watching can spend. What it stops here is *between* turns: two lines were piped in,
+/// the second answer crossed the line, and the third was never read - which is the shape a script
+/// driving a long session has.
+#[tokio::test]
+async fn a_ceiling_ends_the_run_once_the_bill_passes_it() {
+    let script = vec![
+        priced(ModelResponse::text("one"), 400, 200),
+        priced(ModelResponse::text("two"), 400, 200),
+        priced(ModelResponse::text("three"), 400, 200),
+    ];
+    let run = run_capped("first\nsecond\nthird\n", script, 1000, |_| {}).await;
+
+    // 1,200 rather than 1,000: a ceiling is a stopping rule and not a cap, because what a response
+    // costs is known only once it has arrived. Both halves of the bill are in that figure
+    assert!(
+        run.prose.contains("spent 1,200 tokens of 1,000; stopping"),
+        "{}",
+        run.prose
+    );
+    assert_eq!(
+        run.names()
+            .iter()
+            .filter(|name| *name == "model.requested")
+            .count(),
+        2,
+        "the third line was read after the ceiling was reached"
+    );
+    // and it left by the ordinary door, which is the whole difference between this and a kill: the
+    // session is ended and the log says so
+    assert_eq!(
+        run.names().last().map(String::as_str),
+        Some("session.finished")
+    );
+}
+
+/// It stops a turn that is in flight, rather than waiting for one to end.
+///
+/// note: this is the case it exists for. A model that has found a loop - a tool that fails the
+/// same way every time, a question it keeps re-asking - spends its budget *inside* one turn, and a
+/// guard that only looked between them would watch the whole of it go. The script here is a tool
+/// call that would be answered and called again, and the ceiling is crossed on the first response.
+#[tokio::test]
+async fn a_ceiling_interrupts_the_turn_it_is_crossed_in() {
+    let script = vec![
+        priced(
+            ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+            900,
+            300,
+        ),
+        priced(
+            ModelResponse::tool_calls(vec![call("c2", "peek", json!({}))]),
+            900,
+            300,
+        ),
+        priced(ModelResponse::text("never reached"), 900, 300),
+    ];
+    let run = run_capped("go\n", script, 1000, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
+        ));
+    })
+    .await;
+
+    assert!(run.names().contains(&"turn.interrupted".to_owned()));
+    assert_eq!(
+        run.names()
+            .iter()
+            .filter(|name| *name == "model.requested")
+            .count(),
+        1,
+        "the turn asked again after the ceiling was reached"
+    );
+    assert!(!run.prose.contains("never reached"), "{}", run.prose);
+}
+
+/// It is charged where a live run charges it: off the events, with the turn still going.
+///
+/// note: the test above crosses the line in a turn whose every step was over before the loop looked
+/// again, so what read the response was the drain that runs behind a finished turn. This one has a
+/// tool that takes long enough for the loop to come round while the turn is still in flight, which
+/// is where a real one spends nearly all of its time - and the response is read on the ordinary
+/// event branch instead. Both are needed, and each of these fails if the other's is taken out.
+#[tokio::test]
+async fn a_ceiling_is_charged_while_the_turn_is_still_running() {
+    let script = vec![
+        priced(
+            ModelResponse::tool_calls(vec![call("c1", "wait", json!({}))]),
+            900,
+            300,
+        ),
+        priced(ModelResponse::text("never reached"), 900, 300),
+    ];
+    let run = run_capped("go\n", script, 1000, |app| {
+        app.kernel.add_tool(Arc::new(Slow));
+    })
+    .await;
+
+    assert!(
+        run.prose.contains("spent 1,200 tokens of 1,000; stopping"),
+        "{}",
+        run.prose
+    );
+    // the point of reading it there: the turn is stopped before it asks again, rather than after
+    assert!(!run.prose.contains("never reached"), "{}", run.prose);
+}
+
+/// An endpoint that reports no figures says so, rather than holding a ceiling nothing can reach.
+///
+/// note: the failure this is about is silence. A run given `--spend 50000` against a provider that
+/// reports no usage would go on for ever having spent nothing as far as anybody here can tell, and
+/// whoever set the number would read that run as bounded. It is said once, at the first response
+/// that came with nothing on it, and `--deadline` is the guard that needs nobody's cooperation.
+#[tokio::test]
+async fn a_ceiling_over_an_endpoint_that_reports_nothing_says_so() {
+    let script = vec![ModelResponse::text("no usage on this one")];
+    let run = run_capped("go\n", script, 1000, |_| {}).await;
+
+    assert!(run.prose.contains("reports no usage"), "{}", run.prose);
+    assert!(!run.prose.contains("stopping"), "{}", run.prose);
+    assert!(run.prose.contains("no usage on this one"), "{}", run.prose);
 }
 
 /// The program itself runs headless, and keeps its two streams apart.
