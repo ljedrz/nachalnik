@@ -888,6 +888,38 @@ counts what each elision actually recovers and leaves alone any result no bigger
 that would replace it. Eliding a `wrote 412 bytes to …` makes the request *bigger*, and a pass
 that took twenty of them is how that was found.
 
+## 🧩 embedding it
+
+The program is a library with a loop on top, and both halves are yours. `wiring::Setup` assembles
+a session — the kernel, the policy, the four tools, the sandbox and the `App` around them — in the
+order they have to go in, and hands back the two receivers a loop needs:
+
+```rust
+let wired = kamchatka::wiring::Setup {
+    introspect: true,
+    allow: vec![Subject::parse("read")],
+    system: Some("you are working in a Rust workspace".into()),
+    ..Default::default()
+}
+.wire(kamchatka::provider::connect("mercury-2").await?)?;
+```
+
+Two of those steps are not guessable and are the reason this exists rather than a page of
+instructions: the event subscription has to happen *before* anything is plugged in, or the trace
+is missing the wiring that set the session up; and the introspection tools hold a **weak** handle
+to something the caller has to keep alive.
+
+From there, `App::submit` takes a line — a message or a command — and answers with what it did,
+what it said, and any page it opened:
+
+```rust
+let reply = wired.app.submit("/budget").await;
+```
+
+`headless::Headless` is one loop over that, and the program's own is the other. A host with an
+event loop of its own wants neither: it holds the `App`, pumps `wired.events` into `on_event`, and
+hands in a line whenever it has one.
+
 ## 📦 installing
 
 ```console

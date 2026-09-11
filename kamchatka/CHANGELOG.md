@@ -40,6 +40,27 @@ minor bump may break you.
   session is ended by the loop rather than by its caller, or the last record never reaches the
   stream.
 
+- **`wiring::Setup`: a session, assembled.** A settings struct with a `Default`, the way
+  `nachalnik::Config` is, and `wire(provider)` hands back the `App` and the two receivers a loop
+  needs. It exists because it had been written twice — `main.rs` and `examples/recorded.rs` did
+  the same nine steps in the same order — and an embedder would have written it a third time out
+  of reading `main.rs` and hoping.
+
+  Two of those steps are not guessable, which is most of the argument: the subscription has to
+  happen *before* anything is plugged in or the trace is missing the wiring, and
+  `introspect::install` hands back a handle the caller has to keep, because the tools hold a weak
+  reference to it and stop the moment it is dropped.
+
+  Three callers now — the program, that example, and `tests/headless.rs`, which builds its
+  sessions through it rather than by hand. `main.rs` lost about 120 lines and is arguments and a
+  loop again. What `Setup` deliberately does not do is reach the network or read the environment:
+  it takes the provider already connected, because where the requests go and which key pays for
+  them are the caller's to decide.
+
+- **`mcp::attach`**, which was `main.rs`'s own. An embedder that wants somebody else's tools
+  should not have to re-derive the one part of it that is not obvious, which is the name: it
+  prefixes every tool the server offers and it is what `always, for mcp:<name>` grants.
+
 - **`headless::Headless`**, which is that loop, over any `AsyncBufRead` and two `Write`s. It is
   what `examples/recorded.rs` now uses: the forty lines of turn loop, permission answering,
   follow-up pushing and deadline it had are one call, and what is left in the example is what the

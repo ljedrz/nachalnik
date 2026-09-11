@@ -48,7 +48,13 @@
 //! The `tui` feature, on by default, is the drawing and the keys: `ui`, the prompt, and the
 //! bindings. Without it the library is the same program with nothing rendering it - and six
 //! fewer dependencies - which is what a session driven by something other than a person at a
-//! terminal needs. The binary requires the feature, for now.
+//! terminal needs.
+//!
+//! The way in is [`wiring::Setup`], which assembles a kernel, a policy, the tools, the sandbox
+//! and an [`app::App`] around them in the order they have to go in, and hands back the two
+//! receivers a loop needs. [`headless::Headless`] is one such loop and the program's own is the
+//! other; a host with an event loop of its own wants neither, and [`app::App::submit`] is where
+//! it hands in a line.
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
@@ -57,10 +63,13 @@ pub mod app;
 pub mod attach;
 pub mod headless;
 pub mod introspect;
+#[cfg(feature = "mcp")]
+pub mod mcp;
 pub mod provider;
 pub mod sandbox;
 pub mod tools;
 #[cfg(feature = "tui")]
 pub mod ui;
+pub mod wiring;
 
 mod help;

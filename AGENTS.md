@@ -93,9 +93,13 @@ Read a request for a capability with that split in mind before deciding where it
 
 `kamchatka/src`: `app/` (the state - `mod.rs` is what a caller may ask of it and what a kernel
 event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands and `text.rs`
-turns a runtime value into a line), `headless.rs` (the other loop: a line of stdin where the
+turns a runtime value into a line), `wiring.rs` (`Setup`: the nine steps
+a session is assembled in, two of which are not guessable - the subscription has to come before
+the wiring, and `introspect::install` hands back a handle the caller has to keep),
+`headless.rs` (the other loop: a line of stdin where the
 terminal has a key, the session log on stdout and what a person reads on stderr), `help.rs` (the
-key listing and the selector listing, which `/help` and the `amend` tool print), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
+key listing and the selector listing, which `/help` and the `amend` tool print), `mcp.rs`
+(feature `mcp`: somebody else's server spawned and its tools installed), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
 and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that floats over one,
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
 fitting), `tools/` (the four tools - `files.rs` for the three that run in process and `shell.rs` for
@@ -103,9 +107,15 @@ the one that does not - with `policy.rs` for `Careful` and `trim.rs` for the com
 `introspect/` (the two off-by-default tools an agent inspects and manages its own context with - one
 per file, with `mod.rs` holding `install` and the handful of things both of them use),
 `provider.rs` (**not a provider**: the four environment variables this program reads, and the two
-`connect` functions that turn them into one), `main.rs` (arguments and wiring). It is a library
-plus a binary so the screen can be drawn against a `TestBackend` in tests, and because the screen
-is not the program.
+`connect` functions that turn them into one), `main.rs` (arguments, and the loop that draws). It is
+a library plus a binary so the screen can be drawn against a `TestBackend` in tests, and because
+the screen is not the program.
+
+**`main.rs` is arguments and a loop, and that is the shape to keep it in.** Everything it used to
+assemble is `wiring::Setup`, because it was assembled twice - here and in `examples/recorded.rs` -
+and an embedder would have written it a third time out of reading `main.rs`. Three callers now:
+the program, that example, and `tests/headless.rs`. If a fourth thing needs setting up, it is a
+field on `Setup` rather than a line in `main`.
 
 **`tui` is a default feature, and the line it draws is load-bearing.** `ui/`, `app/keys.rs`, the
 prompt (`App::input`) and the two `ListState`s are behind it; `App` and everything else - the

@@ -12,10 +12,14 @@
 
 use std::{fs, io::Write, path::PathBuf, sync::Arc, time::Duration};
 
-use kamchatka::{app::App, headless::Headless, introspect, provider, sandbox, tools};
+use kamchatka::{
+    headless::Headless,
+    provider, sandbox,
+    tools::Subject,
+    wiring::{Setup, Wired},
+};
 use nachalnik::{
-    Block, Capability, Config, Content, ContextItem, ContextKind, Event, Grant, Kernel,
-    LinearProjector, Verdict,
+    Block, Capability, Content, ContextItem, ContextKind, Event, Grant, Kernel, LinearProjector,
 };
 use nachalnik_providers::Endpoint;
 
@@ -80,83 +84,64 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     .map_err(|e| format!("could not reach {model}: {e}"))?;
 
-    let kernel = Kernel::new(Config {
-        max_requests_per_turn: Some(40),
+    // the control arm of a comparison is the same model, on the same task, with no way to see or
+    // change what it is carrying: `INTROSPECT=off` is what takes its hands away
+    let introspecting = std::env::var("INTROSPECT").as_deref() != Ok("off");
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        // forty, because managing a context takes turns of its own and eight is the program's
+        // number for somebody sitting there to say `/continue`
+        requests: Some(40),
+        // no compactor: what is interesting is whether it manages the budget itself
+        compact: None,
+        allow: [
+            Capability::Read,
+            Capability::Shell,
+            Capability::Custom("introspect".into()),
+            Capability::Custom("amend".into()),
+        ]
+        .into_iter()
+        .map(Subject::Capability)
+        .collect(),
+        // refused outright rather than left to be asked about, and it reaches the shell:
+        // `Sandbox::of` leaves the working directory writable for anything short of a refusal, and
+        // a recorded demo is no reason to let a model edit the repository it is reading
+        deny: [Capability::Write, Capability::Edit]
+            .into_iter()
+            .map(Subject::Capability)
+            .collect(),
+        introspect: introspecting,
+        system: Some(std::env::var("BRIEF").unwrap_or_else(|_| BRIEF.to_owned())),
         ..Default::default()
-    });
-    let mut events = kernel.subscribe();
-    kernel.set_provider(provider.clone() as Arc<dyn nachalnik::Provider>);
+    }
+    .wire(provider)?;
+
     if ordered {
-        kernel.set_projector(Arc::new(LinearProjector {
+        app.kernel.set_projector(Arc::new(LinearProjector {
             send_blocks: true,
             ..Default::default()
         }));
     }
-
-    // no compactor: what is interesting is whether it manages the budget itself
-    let policy = Arc::new(tools::Careful::new());
-    for capability in [
-        Capability::Read,
-        Capability::Shell,
-        Capability::Custom("introspect".into()),
-        Capability::Custom("amend".into()),
-    ] {
-        policy.set(&tools::Subject::Capability(capability), Verdict::Allow);
-    }
-    // refused outright rather than left to be asked about, and it reaches the shell: `Sandbox::of`
-    // leaves the working directory writable for anything short of a refusal, and a recorded demo
-    // is no reason to let a model edit the repository it is reading
-    for capability in [Capability::Write, Capability::Edit] {
-        policy.set(&tools::Subject::Capability(capability), Verdict::Deny);
-    }
-    kernel.set_policy(policy.clone());
-
-    let program = std::env::current_exe()?;
-    let confinement = sandbox::available(&program);
-    let reach = sandbox::Reach {
-        workdir: std::env::current_dir()?,
-        extra: Vec::new(),
-        readable: Vec::new(),
-        confined: true,
-    };
-    let limits = tools::Limits::new();
-    for tool in tools::builtin(
-        tools::Shell {
-            policy: policy.clone(),
-            workdir: reach.workdir.clone(),
-            extra: reach.extra.clone(),
-            readable: reach.readable.clone(),
-            confiner: confinement.is_confined().then(|| program.clone()),
-            limits: limits.clone(),
-        },
-        reach,
-        limits.clone(),
-    ) {
-        kernel.add_tool(tool);
-    }
-    // the control arm of a comparison is the same model, on the same task, with no way to see or
-    // change what it is carrying: `INTROSPECT=off` is what takes its hands away
-    let introspecting = std::env::var("INTROSPECT").as_deref() != Ok("off");
-    let _introspect = introspecting.then(|| introspect::install(&kernel, limits.clone()));
     eprintln!(
-        "shell: {confinement}, model: {model}, budget: {budget}, ordered: {ordered}, \
-         introspect: {introspecting}"
+        "shell: {}, model: {model}, budget: {budget}, ordered: {ordered}, introspect: \
+         {introspecting}",
+        app.confinement
     );
 
-    let brief = std::env::var("BRIEF").unwrap_or_else(|_| BRIEF.to_owned());
-    kernel.push(ContextItem::system(brief).pinned());
     // `PLANT=label::content` puts something in the context before the question is asked, which is
     // how a run about *inspecting* a context gets one worth inspecting
     if let Ok(planted) = std::env::var("PLANT") {
         for item in planted.split("||") {
             let (label, content) = item.split_once("::").unwrap_or(("notes", item));
-            kernel.push(
+            app.kernel.push(
                 ContextItem::memory(label, content.to_owned())
                     .because("carried over from an earlier session"),
             );
         }
     }
-    kernel.push(ContextItem::user(task()));
 
     // the loop is `kamchatka --headless`, driven from a string instead of a pipe. This used to be
     // forty lines of its own - a turn loop, a permission answered, a follow-up pushed, a deadline -
@@ -174,8 +159,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     lines.push('\n');
 
-    let (outcomes, mut finished) = tokio::sync::mpsc::unbounded_channel();
-    let mut app = App::new(kernel, policy, provider, limits, outcomes);
     // every question granted, which is what a recording somebody is watching wants and the
     // opposite of what the program defaults to; see `OnAsk` in `main.rs`
     let (mut records, mut prose) = (Vec::new(), Vec::new());

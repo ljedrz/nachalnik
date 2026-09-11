@@ -22,11 +22,15 @@ use crossterm::{
     event::{DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent, EventStream},
     execute,
 };
-use nachalnik::{Config, ContextItem, Grant, Kernel, Verdict};
+use nachalnik::Grant;
 use nachalnik_providers::Endpoint;
-use tokio::sync::mpsc;
 
-use kamchatka::{app::App, attach, headless, introspect, provider, sandbox, tools};
+use kamchatka::{
+    app::App,
+    headless, provider, sandbox,
+    tools::Subject,
+    wiring::{Setup, Wired},
+};
 // the drawing loop's own: the two channel payloads it has to name in a signature, and the screen
 #[cfg(feature = "tui")]
 use kamchatka::{
@@ -215,11 +219,28 @@ async fn session() -> Result<()> {
     .map_err(|e| anyhow::anyhow!("{e}"))
     .context("could not reach the model")?;
 
-    let config = Config {
-        // the default is a counter that restarts at 1 with the process, which is fine as an
-        // identity and useless as a filename: every session would write over the last one's
-        // record. A resumed session keeps the name in its snapshot, so carrying on appends to
-        // the same session rather than starting a second one that looks unrelated
+    // note: the reading of the file is here rather than in `Setup`, because the two error
+    // messages worth writing - which path, and whether it was a session at all - belong to
+    // whoever was handed the path
+    let resume = match &args.resume {
+        Some(path) => Some(
+            serde_json::from_slice(
+                &std::fs::read(path).with_context(|| format!("could not read {path}"))?,
+            )
+            .with_context(|| format!("{path} is not a session"))?,
+        ),
+        None => None,
+    };
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        resume,
+        // the runtime's own default is a counter that restarts at 1 with the process, which is
+        // fine as an identity and useless as a filename: every session would write over the last
+        // one's record. A resumed session keeps the name in its snapshot, so carrying on appends
+        // to the same session rather than starting a second one that looks unrelated
         session_name: args.resume.is_none().then(|| {
             let started = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -228,112 +249,34 @@ async fn session() -> Result<()> {
 
             App::session_stamp(started)
         }),
-        max_requests_per_turn: (args.requests > 0).then_some(args.requests),
-        parallel_tool_calls: args.parallel,
+        requests: (args.requests > 0).then_some(args.requests),
+        parallel: args.parallel,
         // what the runtime keeps is a decision about retention, and retention here is a file
         // somebody has to store: `/save` writes the snapshot, and an archived output goes into it
         // whole. One `grep` that wandered into `./target/` is 11MB of build noise nobody will
         // read, and it is in every save of that session from then on
-        keep_truncated_output: !args.forget_truncated,
-        ..Default::default()
-    };
-    let kernel = match &args.resume {
-        Some(path) => {
-            let snapshot = serde_json::from_slice(
-                &std::fs::read(path).with_context(|| format!("could not read {path}"))?,
-            )
-            .with_context(|| format!("{path} is not a session"))?;
-            Kernel::resume(config, snapshot)
-        }
-        None => Kernel::new(config),
-    };
-
-    // note: subscribed before anything is plugged in, so that the wiring is on the trace like
-    // everything else. Setting the provider, the policy, the compactor and each tool are all
-    // events, and a screen that started listening afterwards drew a session whose first few facts
-    // were only in the log
-    let mut events = kernel.subscribe();
-
-    let policy = Arc::new(tools::Careful::new());
-    // answered before anything runs, which is the only way to decide in advance: `ask` is what
-    // this policy does about whatever nobody has mentioned, and a headless run cannot be asked
-    for (subjects, verdict) in [(&args.allow, Verdict::Allow), (&args.deny, Verdict::Deny)] {
-        for subject in subjects {
-            policy.set(&tools::Subject::parse(subject), verdict);
-        }
-    }
-    kernel.set_provider(provider.clone());
-    kernel.set_policy(policy.clone());
-    // the projector decides the shape of a turn on the wire, so the provider that owns that wire
-    // is the thing asked what it can carry - rather than this deciding a second time from the
-    // same flag, which is how the two came apart in the first place
-    kernel.set_projector(Arc::new(provider.projection()));
-    if args.compact < 1.0 {
-        kernel.set_compactor(Some(Arc::new(tools::Trim {
-            threshold: args.compact,
-            target: (args.compact - 0.2).max(0.1),
-        })));
-    }
-    // settled once, here, rather than asked per command: see the note on `Shell::confiner`
-    let program = std::env::current_exe()?;
-    let confinement = match args.no_sandbox {
-        true => sandbox::Confinement::Unsupported,
-        false => sandbox::available(&program),
-    };
-    // one table, shared by the tools that declare a limit and the `/limit` that changes them
-    let limits = tools::Limits::new();
-    let reach = sandbox::Reach {
-        workdir: std::env::current_dir()?,
-        extra: args.sandbox_allow.clone(),
+        keep_truncated: !args.forget_truncated,
+        compact: Some(args.compact),
+        confine: !args.no_sandbox,
+        reachable: args.sandbox_allow.clone(),
         readable: args.sandbox_read.clone(),
-        confined: !args.no_sandbox,
-    };
-    for tool in tools::builtin(
-        tools::Shell {
-            policy: policy.clone(),
-            workdir: reach.workdir.clone(),
-            extra: reach.extra.clone(),
-            readable: reach.readable.clone(),
-            // only when it would actually confine anything. A binary that has been replaced since
-            // this one started, or a kernel with no Landlock, is a `shell` that runs unconfined
-            // and a permissions tab that says so - rather than one whose every command comes back
-            // with an error nobody can account for
-            confiner: confinement.is_confined().then(|| program.clone()),
-            limits: limits.clone(),
-        },
-        reach,
-        limits.clone(),
-    ) {
-        kernel.add_tool(tool);
+        allow: args.allow.iter().map(|it| Subject::parse(it)).collect(),
+        deny: args.deny.iter().map(|it| Subject::parse(it)).collect(),
+        introspect: args.introspect,
+        system: args.system.clone(),
+        files: args.file.clone(),
+        ..Default::default()
     }
-
-    // the handle the two tools reach the kernel through, which `App` then holds so that `/introspect`
-    // can turn them off again; see `introspect::install` for why it is a weak handle to something out
-    // here rather than a kernel the tools hold
-    let introspect = args
-        .introspect
-        .then(|| introspect::install(&kernel, limits.clone()));
+    .wire(provider)
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // the servers have to outlive this scope: dropping one takes its child process, and its
     // tools, with it
     #[cfg(feature = "mcp")]
-    let _servers = attach_mcp(&kernel, &args.mcp).await?;
+    let _servers = kamchatka::mcp::attach(&app.kernel, &args.mcp)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    if let Some(system) = &args.system {
-        kernel.push(ContextItem::system(system.clone()).pinned());
-    }
-    for path in &args.file {
-        kernel.push(
-            attach::attached(path)?
-                .because("named on the command line")
-                .pinned(),
-        );
-    }
-
-    let (outcomes, mut finished) = mpsc::unbounded_channel();
-    let mut app = App::new(kernel, policy, provider, limits, outcomes);
-    app.confinement = confinement;
-    app.introspect = introspect;
     let on_ask = match args.on_ask {
         OnAsk::Deny => Grant::Deny,
         OnAsk::Allow => Grant::Allow,
@@ -459,7 +402,7 @@ fn record(app: &App) -> Result<(usize, String, String)> {
 async fn drawn(
     app: &mut App,
     events: &mut tokio::sync::broadcast::Receiver<Event>,
-    finished: &mut mpsc::UnboundedReceiver<Outcome>,
+    finished: &mut tokio::sync::mpsc::UnboundedReceiver<Outcome>,
 ) -> Result<()> {
     // ratatui installs a hook of its own that restores the terminal and then calls this one
     let previous = std::panic::take_hook();
@@ -483,7 +426,7 @@ async fn run(
     terminal: &mut ratatui::DefaultTerminal,
     app: &mut App,
     events: &mut tokio::sync::broadcast::Receiver<Event>,
-    finished: &mut mpsc::UnboundedReceiver<Outcome>,
+    finished: &mut tokio::sync::mpsc::UnboundedReceiver<Outcome>,
 ) -> Result<()> {
     use tokio::sync::broadcast::error::RecvError;
     use tokio_stream::StreamExt as _;
@@ -533,55 +476,4 @@ async fn run(
             }
         }
     }
-}
-
-/// Starts the MCP servers that were asked for, and puts their tools in the same list as the
-/// built-in ones.
-///
-/// note: The name matters more than it looks: it prefixes every tool the server offers and it is
-/// what "always, for `mcp:<name>`" grants permission to. Taken from the program it would be
-/// `npx` or `python3` for most of the servers people actually run, so `name=command` is accepted
-/// and worth using.
-#[cfg(feature = "mcp")]
-async fn attach_mcp(kernel: &Kernel, commands: &[String]) -> Result<Vec<nachalnik_mcp::Server>> {
-    let mut servers = Vec::new();
-
-    for spec in commands {
-        // `env FOO=bar cmd` is a command rather than a name, which is what the guard is for
-        let (name, line) = match spec.split_once('=') {
-            Some((name, rest))
-                if !name.is_empty()
-                    && !name.contains(char::is_whitespace)
-                    && !name.contains('/') =>
-            {
-                (name.to_owned(), rest.trim())
-            }
-            _ => (String::new(), spec.as_str()),
-        };
-
-        let mut words = line.split_whitespace();
-        let program = words.next().context("--mcp needs a command to run")?;
-        let name = match name.is_empty() {
-            false => name,
-            true => std::path::Path::new(program)
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .unwrap_or(program)
-                .to_owned(),
-        };
-
-        let mut command = tokio::process::Command::new(program);
-        command.args(words);
-
-        let server = nachalnik_mcp::Server::spawn(name, command)
-            .await
-            .with_context(|| format!("`{line}` did not answer the handshake"))?;
-        server
-            .install(kernel)
-            .await
-            .with_context(|| format!("`{line}` would not list its tools"))?;
-        servers.push(server);
-    }
-
-    Ok(servers)
 }

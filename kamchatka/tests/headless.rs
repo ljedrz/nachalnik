@@ -15,10 +15,11 @@ use std::sync::Arc;
 use kamchatka::{
     app::{App, Did, Overlay, Speaker},
     headless::Headless,
-    tools::{Careful, Limits, Subject},
+    tools::Subject,
+    wiring::{Setup, Wired},
 };
 use nachalnik::{
-    Capability, Config, Grant, Kernel, ModelResponse, Record, Verdict,
+    Capability, Grant, ModelResponse, Record, Verdict,
     test::{ConstTool, ScriptedProvider, call},
 };
 use nachalnik_providers::OpenAiCompatible;
@@ -53,33 +54,37 @@ impl Run {
     }
 }
 
-/// A kernel with a scripted model behind it, and the three other things `App::new` wants.
-fn parts(
-    script: Vec<ModelResponse>,
-) -> (
-    Kernel,
-    Arc<Careful>,
-    Arc<OpenAiCompatible>,
-    tokio::sync::mpsc::UnboundedSender<kamchatka::app::Outcome>,
-) {
-    let kernel = Kernel::new(Config::default());
-    let policy = Arc::new(Careful::new());
-    kernel.set_provider(Arc::new(ScriptedProvider::new(script)));
-    kernel.set_policy(policy.clone());
-    let (outcomes, _) = tokio::sync::mpsc::unbounded_channel();
-    // never spoken to: `App` holds one for `/model` and `/params`, and these tests use neither
-    let endpoint = Arc::new(OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""));
+/// A session wired the way the program wires one, with a scripted model behind it.
+///
+/// note: through `Setup` rather than by hand, which is the third caller of it and the point of
+/// its existing: what these tests want is what `main.rs` wants, minus the four tools and the
+/// child process it takes to find out what Landlock would allow. The model is swapped in
+/// afterwards because the runtime lets a seam be swapped while a session is running, and a
+/// scripted provider is not an `Endpoint`.
+fn wired(script: Vec<ModelResponse>) -> Wired {
+    let wired = Setup {
+        builtin_tools: false,
+        compact: None,
+        // never spoken to: `App` holds one for `/model` and `/params`, and these use neither
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    wired
+        .app
+        .kernel
+        .set_provider(Arc::new(ScriptedProvider::new(script)));
 
-    (kernel, policy, endpoint, outcomes)
+    wired
 }
 
 /// Drives a session with these lines typed into it and this script answering, and hands back what
 /// came out of both ends.
-async fn run(
-    input: &str,
-    script: Vec<ModelResponse>,
-    setup: impl FnOnce(&Kernel, &Careful),
-) -> Run {
+async fn run(input: &str, script: Vec<ModelResponse>, setup: impl FnOnce(&App)) -> Run {
     run_with(input, script, Grant::Deny, setup).await
 }
 
@@ -88,19 +93,14 @@ async fn run_with(
     input: &str,
     script: Vec<ModelResponse>,
     on_ask: Grant,
-    setup: impl FnOnce(&Kernel, &Careful),
+    setup: impl FnOnce(&App),
 ) -> Run {
-    let kernel = Kernel::new(Config::default());
-    let mut events = kernel.subscribe();
-    let policy = Arc::new(Careful::new());
-    kernel.set_provider(Arc::new(ScriptedProvider::new(script)));
-    kernel.set_policy(policy.clone());
-    setup(&kernel, &policy);
-
-    let (outcomes, mut finished) = tokio::sync::mpsc::unbounded_channel();
-    // never spoken to: `App` holds one for `/model` and `/params`, and this run uses neither
-    let endpoint = Arc::new(OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""));
-    let mut app = App::new(kernel, policy, endpoint, Limits::default(), outcomes);
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(script);
+    setup(&app);
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
     let mut driver = Headless::new(on_ask, &mut records, &mut prose);
@@ -122,7 +122,7 @@ async fn a_line_is_a_message_and_the_answer_is_printed() {
     let run = run(
         "what is 2+2\n",
         vec![ModelResponse::text("4, and I checked")],
-        |_, _| {},
+        |_| {},
     )
     .await;
 
@@ -144,7 +144,7 @@ async fn the_records_are_the_session_log() {
     let run = run(
         "hello\n",
         vec![ModelResponse::text("hello yourself")],
-        |_, _| {},
+        |_| {},
     )
     .await;
 
@@ -167,7 +167,7 @@ async fn the_records_are_the_session_log() {
 /// A command runs, and says what it has to say, with no keyboard anywhere.
 #[tokio::test]
 async fn a_command_needs_no_keys_and_is_not_silent() {
-    let run = run("/seams\n", Vec::new(), |_, _| {}).await;
+    let run = run("/seams\n", Vec::new(), |_| {}).await;
 
     // `/seams` answers in an overlay, which is the half that would have gone nowhere: the screen
     // is what reads one, and there is no screen
@@ -184,8 +184,8 @@ async fn an_unanswerable_question_is_denied_by_default() {
         ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
         ModelResponse::text("told it was refused"),
     ];
-    let run = run("look around\n", script, |kernel, _| {
-        kernel.add_tool(Arc::new(
+    let run = run("look around\n", script, |app| {
+        app.kernel.add_tool(Arc::new(
             ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
         ));
     })
@@ -215,8 +215,8 @@ async fn the_other_answer_lets_it_run() {
         ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
         ModelResponse::text("read it"),
     ];
-    let run = run_with("look around\n", script, Grant::Allow, |kernel, _| {
-        kernel.add_tool(Arc::new(
+    let run = run_with("look around\n", script, Grant::Allow, |app| {
+        app.kernel.add_tool(Arc::new(
             ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
         ));
     })
@@ -243,11 +243,12 @@ async fn a_pre_answered_capability_is_not_a_question() {
         ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
         ModelResponse::text("read it"),
     ];
-    let run = run("look around\n", script, |kernel, policy| {
-        kernel.add_tool(Arc::new(
+    let run = run("look around\n", script, |app| {
+        app.kernel.add_tool(Arc::new(
             ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
         ));
-        policy.set(&Subject::Capability(Capability::Read), Verdict::Allow);
+        app.policy
+            .set(&Subject::Capability(Capability::Read), Verdict::Allow);
     })
     .await;
 
@@ -271,8 +272,8 @@ async fn the_end_of_the_input_waits_for_the_turn() {
         ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
         ModelResponse::text("the whole turn ran"),
     ];
-    let run = run_with("go\n", script, Grant::Allow, |kernel, _| {
-        kernel.add_tool(Arc::new(
+    let run = run_with("go\n", script, Grant::Allow, |app| {
+        app.kernel.add_tool(Arc::new(
             ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
         ));
     })
@@ -288,7 +289,7 @@ async fn a_second_line_is_a_second_turn() {
     let run = run(
         "first\nsecond\n",
         vec![ModelResponse::text("one"), ModelResponse::text("two")],
-        |_, _| {},
+        |_| {},
     )
     .await;
 
@@ -329,8 +330,8 @@ async fn a_question_left_by_a_step_does_not_hang_the_session() {
     ];
     let run = tokio::time::timeout(
         std::time::Duration::from_secs(5),
-        run("/step look around\n", script, |kernel, _| {
-            kernel.add_tool(Arc::new(
+        run("/step look around\n", script, |app| {
+            app.kernel.add_tool(Arc::new(
                 ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
             ));
         }),
@@ -351,8 +352,7 @@ async fn a_question_left_by_a_step_does_not_hang_the_session() {
 /// one line at a time had no business having to do.
 #[tokio::test]
 async fn a_line_answers_the_caller() {
-    let (kernel, policy, endpoint, outcomes) = parts(vec![ModelResponse::text("hello")]);
-    let mut app = App::new(kernel, policy, endpoint, Limits::default(), outcomes);
+    let mut app = wired(vec![ModelResponse::text("hello")]).app;
 
     // a command that opens a page hands the page back, title and all
     let reply = app.submit("/seams").await;
@@ -380,8 +380,7 @@ async fn a_line_answers_the_caller() {
 /// A line sent into a running turn says that it is waiting, rather than that it was asked.
 #[tokio::test]
 async fn a_line_into_a_running_turn_says_it_is_queued() {
-    let (kernel, policy, endpoint, outcomes) = parts(vec![ModelResponse::text("one")]);
-    let mut app = App::new(kernel, policy, endpoint, Limits::default(), outcomes);
+    let mut app = wired(vec![ModelResponse::text("one")]).app;
 
     app.submit("first").await;
     // the turn started by that line is still in flight, which is the state the headless loop
@@ -401,7 +400,7 @@ async fn quit_ends_it() {
     let run = run(
         "/quit\nnever asked\n",
         vec![ModelResponse::text("unused")],
-        |_, _| {},
+        |_| {},
     )
     .await;
 
