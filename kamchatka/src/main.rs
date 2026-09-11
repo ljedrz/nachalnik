@@ -157,8 +157,8 @@ struct Args {
     #[arg(long, value_name = "SECONDS")]
     deadline: Option<u64>,
 
-    /// Stop a headless run once the provider has charged this many tokens for it, in and out.
-    /// Time is not the only thing a run nobody is watching can spend.
+    /// Stop the session once the provider has charged this many tokens for it, in and out. Time is
+    /// not the only thing a run nobody is watching can spend; `/spend` changes it while it runs.
     #[arg(long, value_name = "TOKENS")]
     spend: Option<u64>,
 }
@@ -267,6 +267,7 @@ async fn session() -> Result<()> {
         // read, and it is in every save of that session from then on
         keep_truncated: !args.forget_truncated,
         compact: Some(args.compact),
+        spend: args.spend,
         confine: !args.no_sandbox,
         reachable: args.sandbox_allow.clone(),
         readable: args.sandbox_read.clone(),
@@ -315,9 +316,6 @@ async fn session() -> Result<()> {
                 .stops_on_ctrl_c();
             if let Some(seconds) = args.deadline {
                 driver = driver.deadline(std::time::Duration::from_secs(seconds));
-            }
-            if let Some(tokens) = args.spend {
-                driver = driver.spend(tokens);
             }
             driver
                 .run(

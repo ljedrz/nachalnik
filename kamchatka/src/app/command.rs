@@ -157,6 +157,7 @@ impl App {
             // whole of a shortened result is archived beside the copy the model was shown, and
             // `space` on the context tab sends that instead
             "limit" => self.limit(rest),
+            "spend" => self.spend_command(rest),
             "budget" => self.budget(),
             "seams" => self.seams(),
             "introspect" => self.introspect(),
@@ -635,6 +636,61 @@ impl App {
     /// listing rather than to the tool; that is exactly why it is only worth printing if it can
     /// then be typed. The context tab settled the same argument the same way, and `23G` is there
     /// because the number in its first column is the one `/exclude` takes.
+    /// Says what the session has been charged, and changes the ceiling that stops it.
+    ///
+    /// note: named `spend_command` because `App::spend` is the ceiling itself and a method may not
+    /// be both. The command is `/spend`, which is the word on the command line too.
+    ///
+    /// note: it exists because a ceiling a session cannot see is a session that stops for no
+    /// reason anybody at it can read, and because somebody who set one and meant to set a larger
+    /// one should not have to start again. `0` takes it away, the way `--requests 0` does - the
+    /// same spelling for the same idea, rather than a second word for "none".
+    fn spend_command(&mut self, rest: &str) {
+        let spent = thousands(self.spent() as usize);
+        if !rest.trim().is_empty() {
+            let Ok(tokens) = rest.trim().parse::<u64>() else {
+                self.say(
+                    Speaker::Error,
+                    format!("`{}` is not a number of tokens", rest.trim()),
+                );
+                return;
+            };
+            self.set_spend((tokens > 0).then_some(tokens));
+            let said = match self.spend() {
+                // a ceiling under what has already gone is a session that stops here, and saying
+                // only what the new number is would leave somebody to find that out by being
+                // refused. It is a legitimate thing to want - one way to stop a session is to tell
+                // it that it has spent enough - so it is answered rather than argued with
+                Some(limit) if self.overspent() => format!(
+                    "the ceiling is {} tokens and {spent} have been spent, so nothing more will \
+                     be sent",
+                    thousands(limit as usize)
+                ),
+                Some(limit) => format!(
+                    "the ceiling is {} tokens; {spent} have been spent",
+                    thousands(limit as usize)
+                ),
+                None => format!("no ceiling; {spent} tokens have been spent"),
+            };
+            self.say(Speaker::Note, said);
+
+            return;
+        }
+
+        let said = match self.spend() {
+            Some(limit) => format!(
+                "{spent} tokens spent of {}, as the provider has reported them. `/spend N` changes \
+                 the ceiling and `/spend 0` takes it away",
+                thousands(limit as usize)
+            ),
+            None => format!(
+                "{spent} tokens spent, as the provider has reported them. There is no ceiling; \
+                 `/spend N` sets one, and the session stops when it is reached"
+            ),
+        };
+        self.say(Speaker::Note, said);
+    }
+
     fn limit(&mut self, rest: &str) {
         let table = |limits: &Limits| {
             let rows = limits.all();

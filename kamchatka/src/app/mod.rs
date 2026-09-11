@@ -17,7 +17,7 @@ use std::{
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
     Budget, Capability, Content, ContextId, ContextItem, ContextKind, Delta, Event, Grant,
-    GrantSource, Kernel, PermissionRequest, State, Verdict, selectors::Selector,
+    GrantSource, Kernel, PermissionRequest, State, Usage, Verdict, selectors::Selector,
 };
 use nachalnik_providers::Endpoint;
 #[cfg(feature = "tui")]
@@ -206,7 +206,7 @@ pub enum Speaker {
 ///
 /// note: the first kind is [`Entry::transient`] and is dropped the moment the item exists; the
 /// second stays for the session. Neither carries an identifier, because neither has one.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Entry {
     /// Who is saying it.
     pub speaker: Speaker,
@@ -482,6 +482,20 @@ pub struct App {
     pub busy: bool,
     /// Whether it is time to leave.
     pub quit: bool,
+    /// How many tokens the provider may charge for this session before it stops; `None` never
+    /// stops. [`App::set_spend`] is how it is changed, and [`App::spend`] reads it.
+    ///
+    /// note: here rather than in the loop that drives the session, which is where it started, and
+    /// the move is the whole of what makes it a ceiling rather than a headless flag. Every caller
+    /// hands events to [`App::on_event`] - the screen, the headless driver, and an embedder with a
+    /// loop of its own - so this is the one place where counting them reaches all three. A guard
+    /// that only the program's own loop applied would be no guard for the embedder who most needs
+    /// one.
+    ///
+    /// note: private, alone among the things a caller sets, because it is not the only field that
+    /// has to move: raising it has to let a stopped session go again, and a ceiling written
+    /// straight in would leave `overspent` latched over a limit nothing has reached.
+    spend: Option<u64>,
     /// How many wrapped lines the transcript came to, as of the last frame.
     pub rendered: usize,
     /// How many lines fit, as of the last frame.
@@ -539,6 +553,16 @@ pub struct App {
     /// and duplicating the page somewhere else so that it could would be two copies of one thing
     /// to keep in step. See [`Reply::page`].
     previews: usize,
+    /// What the provider has charged for this session so far: every response's own figure, added
+    /// up.
+    spent: u64,
+    /// Whether the ceiling has been reached, so that nothing else is sent until somebody says so.
+    overspent: bool,
+    /// Whether it has already said that the endpoint reports no figures to add up.
+    ///
+    /// note: a property of the endpoint rather than news about a turn, like `thought_unseen` above
+    /// and for the same reason.
+    unreported: bool,
 }
 
 impl App {
@@ -593,6 +617,7 @@ impl App {
             trace_scroll: 0,
             busy: false,
             quit: false,
+            spend: None,
             rendered: 0,
             viewport: 0,
             editing: None,
@@ -610,6 +635,9 @@ impl App {
             streamed_bytes: 0,
             outcomes,
             previews: 0,
+            spent: 0,
+            overspent: false,
+            unreported: false,
         }
     }
 
@@ -992,8 +1020,13 @@ impl App {
     // ---------------------------------------------------------------------- driving the kernel
 
     /// Starts, or carries on with, a turn.
+    ///
+    /// note: it refuses once the ceiling has been reached, and that refusal is what makes
+    /// [`App::spend`] a bound rather than a report. Stopping the turn that crossed the line is
+    /// only half of it: a loop that hands in the next line - a script, a person, an agent driving
+    /// this from somewhere else - would start spending again, and every caller goes through here.
     pub fn start_turn(&mut self) {
-        if self.busy {
+        if self.busy || self.broke() {
             return;
         }
 
@@ -1018,7 +1051,7 @@ impl App {
     /// what the model has asked for *before* any of it runs - which the kernel documents as a
     /// resting state on purpose, and which a whole turn walks straight through.
     pub fn start_step(&mut self) {
-        if self.busy {
+        if self.busy || self.broke() {
             return;
         }
 
@@ -1259,6 +1292,7 @@ impl App {
                             .to_owned(),
                     );
                 }
+                self.charge(usage);
                 // the provider has just said what that request really cost, and what it was
                 // made of is still here from the event that sent it. Paired, they are the one
                 // exact figure in this program's accounting; see `Anchor`
@@ -1354,6 +1388,112 @@ impl App {
         if versions.len() > VERSIONS {
             versions.remove(0);
         }
+    }
+
+    /// Adds what a response cost to the session's total, and stops the session if that was the
+    /// last of what it was given.
+    ///
+    /// note: from the event rather than from [`nachalnik::Budget`], which is the kernel's estimate
+    /// of the request it is *about to* build. What is added up here is what the provider charged
+    /// for the ones already sent - `input + output`, which [`Usage`] defines to be the whole of a
+    /// request's bill whichever dialect answered it - so this is a measurement rather than a
+    /// conversion. Tokens rather than money because nothing here carries a price list, and a
+    /// figure in money would be one: a table per model per endpoint, kept up to date by somebody,
+    /// wrong quietly.
+    ///
+    /// note: a response the provider reported no figures for adds nothing, and the first time that
+    /// happens it is said out loud. An endpoint that reports no usage is one this cannot see over,
+    /// and a limit quietly never reached is worse than no limit at all: whoever set it would be
+    /// reading the session as bounded when nothing is bounding it.
+    ///
+    /// note: it stops *after* the response that crosses the line, because that is the first moment
+    /// anybody knows what the response cost. A ceiling is a stopping rule, not a cap: the session
+    /// ends having spent a little more than it, and the line says how much.
+    fn charge(&mut self, usage: Option<Usage>) {
+        let Some(usage) = usage else {
+            // said only where it changes something: with no ceiling, a total nobody set a limit on
+            // being short by one response is not news
+            if self.spend.is_some() && !std::mem::replace(&mut self.unreported, true) {
+                self.say(
+                    Speaker::Note,
+                    "this endpoint reports no usage, so nothing is counted against the ceiling; \
+                     only a deadline can stop this session",
+                );
+            }
+
+            return;
+        };
+
+        // counted whether or not anything is watching the figure, which is not where this started:
+        // it was added up only under a ceiling, so a session that set one half way through began
+        // from zero and `/spend` answered `0 tokens spent` after a turn that plainly cost some.
+        // Found by reading what a live run printed
+        self.spent += usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0);
+        let Some(limit) = self.spend else {
+            return;
+        };
+        if self.spent < limit || self.overspent {
+            return;
+        }
+        self.overspent = true;
+        self.interrupt();
+        self.say(
+            Speaker::Note,
+            format!(
+                "spent {} tokens of {}; stopping. `/spend N` raises the ceiling",
+                thousands(self.spent as usize),
+                thousands(limit as usize)
+            ),
+        );
+    }
+
+    /// What the provider has charged for this session, as the responses have reported it.
+    pub fn spent(&self) -> u64 {
+        self.spent
+    }
+
+    /// The ceiling that stops it, if anything has set one.
+    pub fn spend(&self) -> Option<u64> {
+        self.spend
+    }
+
+    /// Whether the ceiling has been reached, so that nothing more will be sent.
+    ///
+    /// note: what a loop reads to decide whether to go on handing lines in. The refusal itself is
+    /// [`App::start_turn`]'s, so a caller that does not ask still cannot spend anything; this is
+    /// for the caller that would rather stop reading than be told `no` once a line.
+    pub fn overspent(&self) -> bool {
+        self.overspent
+    }
+
+    /// Whether a turn is being asked for after the session has spent what it was given, and says
+    /// so if it is.
+    ///
+    /// note: it speaks, because the alternative is a message that goes into the context and is
+    /// never sent with nothing on the screen accounting for it - which is the failure the whole
+    /// program is against. Said on each attempt rather than once: every line somebody hands in
+    /// gets an answer, and the answer is the same one.
+    fn broke(&mut self) -> bool {
+        if !self.overspent {
+            return false;
+        }
+        let spent = thousands(self.spent as usize);
+        let limit = thousands(self.spend.unwrap_or_default() as usize);
+        self.say(
+            Speaker::Note,
+            format!(
+                "nothing more is being sent: {spent} tokens spent of {limit}. `/spend N` \
+                     raises the ceiling, and `/spend 0` takes it away"
+            ),
+        );
+
+        true
+    }
+
+    /// Sets the ceiling, or takes it away, and lets a stopped session carry on under the new one.
+    pub fn set_spend(&mut self, limit: Option<u64>) {
+        self.spend = limit;
+        self.overspent = limit.is_some_and(|limit| self.spent >= limit);
     }
 
     /// Asks the running turn to stop at the next opportunity.

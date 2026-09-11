@@ -558,8 +558,15 @@ money would be one. It is a stopping rule rather than a cap, since what a respon
 only once it has arrived:
 
 ```text
-· spent 2,264 tokens of 2,000; stopping
+· spent 2,264 tokens of 2,000; stopping. `/spend N` raises the ceiling
 ```
+
+It belongs to the *session* rather than to this loop, which is why it is on
+[`wiring::Setup`](#-embedding-it) and not on the headless driver: what stops the turn that crossed
+the line is `App`, and so is what refuses the next one — so a screen session, a piped script and a
+host with a loop of its own are held to the same number, and none of them can get round it by not
+asking. `/spend` says what has been spent and against what, `/spend N` raises it, and `/spend 0`
+takes it away, which is the way back for whoever set it too low.
 
 An endpoint that reports no usage at all says so, once, rather than holding a ceiling that nothing
 will ever reach — a limit quietly never met is worse than no limit, because whoever set it is
@@ -905,6 +912,11 @@ next answer, the corner falls back to the plain estimate. And where something in
 no number on it at all, `/budget` says how many pieces — a figure that is a floor is never shown
 as one that is complete.
 
+`/budget` is about the next request; `/spend` is about the session. It adds up what the provider
+charged for every response — measured, never estimated — and says it against the ceiling, if one
+was set with `--spend` or with `/spend N`. The session stops at that ceiling, which is what it is
+for; see [the guards on a run nobody is watching](#-the-same-program-without-a-screen).
+
 The compactor shortens the oldest tool results to a marker once the context passes `--compact`
 (0.8 by default) of the limit. It does not summarize them — it never read them — and it touches
 nothing that is pinned, because the kernel refuses. Every one of them is still on the context tab,
@@ -926,6 +938,7 @@ let wired = kamchatka::wiring::Setup {
     introspect: true,
     allow: vec![Subject::parse("read")],
     system: Some("you are working in a Rust workspace".into()),
+    spend: Some(50_000),
     ..Default::default()
 }
 .wire(kamchatka::provider::connect("mercury-2").await?)?;
@@ -946,6 +959,13 @@ let reply = wired.app.submit("/budget").await;
 `headless::Headless` is one loop over that, and the program's own is the other. A host with an
 event loop of its own wants neither: it holds the `App`, pumps `wired.events` into `on_event`, and
 hands in a line whenever it has one.
+
+`spend` above is the one thing a host gets whether it asks or not, which is why it is here rather
+than on the headless driver where it started. `on_event` is the door every loop comes through, so
+that is where the provider's own figures are added up; once they pass the ceiling the turn in
+flight is interrupted and `App::start_turn` refuses the next one, so a host that keeps handing in
+lines is told rather than quietly billed. `App::spent`, `App::spend` and `App::set_spend` are the
+figure, the ceiling and the way to move it.
 
 ## 📦 installing
 
@@ -1045,8 +1065,8 @@ kamchatka [OPTIONS] [MESSAGE]...
                             headless run: deny or allow               [default: deny]
       --deadline <SECONDS>  stop a headless run after this long, keeping what
                             arrived and writing the session out as usual
-      --spend <TOKENS>      stop one once the provider has charged this many tokens
-                            for it, in and out
+      --spend <TOKENS>      stop the session once the provider has charged this many
+                            tokens for it, in and out; /spend changes it as it runs
       --sandbox-allow <PATH> a path outside the working directory the tools may also
                             read and write; may be repeated
       --sandbox-read <PATH> a path outside the working directory the tools may read

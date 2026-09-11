@@ -113,6 +113,8 @@ pub const HELP: &str = "  THE TABS
     /restore SELECTOR   put them back
     /budget             the estimate, what the last request really cost, and the
                         correction the counter has worked out from the difference
+    /spend [TOKENS]     what the provider has charged for this session, and the
+                        ceiling it stops at; 0 takes the ceiling away
     /seams              what is plugged into each of the runtime's six parts
     /tools              what the model is offered
     /tools drop ID      stop offering one of them, from now on

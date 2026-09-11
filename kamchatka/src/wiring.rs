@@ -56,6 +56,14 @@ pub struct Setup {
     /// How full the context may get before the oldest tool results are elided; `None` never
     /// compacts.
     pub compact: Option<f64>,
+    /// How many tokens the provider may charge for the whole session before it stops; `None`
+    /// never stops.
+    ///
+    /// note: the sibling of `requests` above, over a different unit and a different span. That one
+    /// is the kernel's and bounds a turn; this one is the session's, and it is the guard for the
+    /// failure nothing else here catches - a model that has found a loop and a caller that is not
+    /// watching. See [`App::set_spend`](crate::app::App::set_spend).
+    pub spend: Option<u64>,
     /// Whether to offer `read`, `write`, `edit` and `shell`.
     ///
     /// note: a caller whose tools all come from MCP servers, or who brings its own, turns this
@@ -92,6 +100,7 @@ impl Default for Setup {
             parallel: false,
             keep_truncated: true,
             compact: Some(0.8),
+            spend: None,
             builtin_tools: true,
             confine: true,
             reachable: Vec::new(),
@@ -222,6 +231,7 @@ impl Setup {
         let mut app = App::new(kernel, policy, provider, limits, outcomes);
         app.confinement = confinement;
         app.introspect = introspect;
+        app.set_spend(self.spend);
 
         Ok(Wired {
             app,

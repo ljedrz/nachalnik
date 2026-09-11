@@ -19,8 +19,8 @@ use kamchatka::{
     wiring::{Setup, Wired},
 };
 use nachalnik::{
-    BoxError, Capability, Grant, ModelResponse, OutputSink, Record, Tool, ToolCall, ToolOutput,
-    ToolSpec, Usage, Verdict, async_trait,
+    BoxError, Capability, DeltaSink, Grant, ModelInfo, ModelRequest, ModelResponse, OutputSink,
+    Provider, Record, Tool, ToolCall, ToolOutput, ToolSpec, Usage, Verdict, async_trait,
     test::{ConstTool, ScriptedProvider, call},
 };
 use nachalnik_providers::OpenAiCompatible;
@@ -64,9 +64,15 @@ impl Run {
 /// afterwards because the runtime lets a seam be swapped while a session is running, and a
 /// scripted provider is not an `Endpoint`.
 fn wired(script: Vec<ModelResponse>) -> Wired {
+    capped(script, None)
+}
+
+/// The same, with a ceiling on what the provider may charge before the session stops.
+fn capped(script: Vec<ModelResponse>, spend: Option<u64>) -> Wired {
     let wired = Setup {
         builtin_tools: false,
         compact: None,
+        spend,
         // never spoken to: `App` holds one for `/model` and `/params`, and these use neither
         ..Default::default()
     }
@@ -136,6 +142,43 @@ impl Tool for Slow {
     }
 }
 
+/// A model that streams its answer and then takes a moment to finish, the way a real one does.
+///
+/// note: `ScriptedProvider` streams too, but it does the whole of a response between two
+/// instructions - so the loop never looks at what has been said *while* an answer is half
+/// arrived, which is where a live run spends its time and where the only bug either of these
+/// found was hiding. The gap is the point of this type; the sleep is the gap.
+struct Trickle {
+    text: String,
+    input: u64,
+    output: u64,
+}
+
+#[async_trait]
+impl Provider for Trickle {
+    fn info(&self) -> ModelInfo {
+        ModelInfo {
+            context_limit: Some(128_000),
+            ..ModelInfo::new("trickle", "trickle")
+        }
+    }
+
+    async fn respond(
+        &self,
+        _request: ModelRequest,
+        deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        deltas.text(self.text.clone());
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        Ok(priced(
+            ModelResponse::text(self.text.clone()),
+            self.input,
+            self.output,
+        ))
+    }
+}
+
 /// A response that says what it cost, the way a provider's does.
 ///
 /// note: both halves, because both are the bill. `Usage` defines `input + output` to be what a
@@ -163,15 +206,11 @@ async fn driven(
         mut app,
         mut events,
         mut finished,
-    } = wired(script);
+    } = capped(script, spend);
     setup(&app);
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    let mut driver = Headless::new(on_ask, &mut records, &mut prose);
-    if let Some(tokens) = spend {
-        driver = driver.spend(tokens);
-    }
-    driver
+    Headless::new(on_ask, &mut records, &mut prose)
         .run(&mut app, &mut events, &mut finished, input.as_bytes())
         .await
         .expect("the run failed");
@@ -540,6 +579,13 @@ async fn a_ceiling_ends_the_run_once_the_bill_passes_it() {
         2,
         "the third line was read after the ceiling was reached"
     );
+    // and it was not read and refused, it was not read: a script piped into a session that has
+    // stopped should not come back as a refusal a line, which is what the loop stops reading for
+    assert!(
+        !run.prose.contains("nothing more is being sent"),
+        "{}",
+        run.prose
+    );
     // and it left by the ordinary door, which is the whole difference between this and a kill: the
     // session is ended and the log says so
     assert_eq!(
@@ -617,6 +663,134 @@ async fn a_ceiling_is_charged_while_the_turn_is_still_running() {
     );
     // the point of reading it there: the turn is stopped before it asks again, rather than after
     assert!(!run.prose.contains("never reached"), "{}", run.prose);
+}
+
+/// Nothing else is sent afterwards, however it is asked for.
+///
+/// note: this is what makes the ceiling a bound rather than a report, and it is the reason the
+/// counting lives on `App` rather than in the loop below. Stopping the turn that crossed the line
+/// is half of it; a caller that hands in the next line - a script, a person, an embedder with a
+/// loop of its own - would start spending again, and `start_turn` is where all three of them meet.
+#[tokio::test]
+async fn nothing_more_is_sent_once_the_ceiling_is_reached() {
+    let script = vec![
+        priced(ModelResponse::text("one"), 400, 800),
+        ModelResponse::text("never reached"),
+    ];
+    let mut app = run_capped("first\n", script, 1000, |_| {}).await.app;
+
+    // the run is over and the `App` is not: this is the embedder that carries on calling
+    let reply = app.submit("second").await;
+    assert!(!app.busy, "a turn started after the ceiling was reached");
+    assert!(
+        reply
+            .said
+            .iter()
+            .any(|entry| entry.text.contains("nothing more is being sent")),
+        "{:?}",
+        reply.said
+    );
+}
+
+/// And it can be raised from a line, which is the way back for whoever set it too low.
+///
+/// note: `/spend` rather than a public field, because raising the ceiling has to let a stopped
+/// session go again - two fields moving together, which is exactly what a setter is for.
+#[tokio::test]
+async fn the_ceiling_can_be_raised_and_taken_away() {
+    let script = vec![
+        priced(ModelResponse::text("one"), 400, 800),
+        ModelResponse::text("two"),
+    ];
+    let mut app = run_capped("first\n", script, 1000, |_| {}).await.app;
+
+    let reply = app.submit("/spend").await;
+    assert!(
+        reply.said[0].text.contains("1,200 tokens spent of 1,000"),
+        "{:?}",
+        reply.said
+    );
+
+    app.submit("/spend 5000").await;
+    app.submit("second").await;
+    assert!(app.busy, "raising the ceiling did not let it go again");
+
+    app.submit("/spend 0").await;
+    assert_eq!(app.spend(), None);
+    assert_eq!(
+        app.spent(),
+        1200,
+        "taking the ceiling away forgot the total"
+    );
+
+    // and one set under what has already gone stops the session there. That is a reasonable thing
+    // to ask for - it is one way to say "enough" - and a poor thing to find out by being refused
+    let reply = app.submit("/spend 100").await;
+    assert!(app.overspent());
+    assert!(
+        reply.said[0].text.contains("nothing more will be sent"),
+        "{:?}",
+        reply.said
+    );
+}
+
+/// What the program says while an answer is still arriving reaches the person reading it.
+///
+/// note: found live and then written down, which is the wrong order and the only one that was
+/// available. A model that streams leaves a line in `App::loose` that the *context* takes over
+/// once the turn is recorded, so the list shrinks - and the loop was marking its place in it by
+/// length, so anything said between a shrink and the next look was skipped. The ceiling's own
+/// notice was the line that went missing: decided, recorded, the turn interrupted, and nothing
+/// printed. Every note said in the same breath as a response was exposed to this, the reasoning
+/// notice included.
+///
+/// note: it needs a model that pauses mid-answer, because with a scripted one the whole turn
+/// happens between two looks at the list and nothing shrinks in between. That is why this is the
+/// one test here with a provider of its own.
+#[tokio::test]
+async fn a_line_said_while_an_answer_streams_is_not_swallowed() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = capped(Vec::new(), Some(1000));
+    app.kernel.set_provider(Arc::new(Trickle {
+        text: "here is a long answer that arrives before the turn is recorded".to_owned(),
+        input: 900,
+        output: 300,
+    }));
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, &b"go\n"[..])
+        .await
+        .expect("the run failed");
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(prose.contains("here is a long answer"), "{prose}");
+    assert!(prose.contains("spent 1,200 tokens of 1,000"), "{prose}");
+}
+
+/// The total is kept whether or not anything is watching it, so a ceiling set later means what it
+/// says.
+///
+/// note: also found by reading a live run rather than by thinking. The counting was inside the
+/// ceiling's own guard, so a session with no ceiling counted nothing - and `/spend` answered
+/// `0 tokens spent` after a turn that had plainly cost some, which is the figure being wrong in
+/// the one place somebody looks at it. Worse than wrong: `/spend N` half way through a session
+/// would then have started from zero and given away everything spent up to that point.
+#[tokio::test]
+async fn the_total_is_counted_with_no_ceiling_to_count_it_against() {
+    let script = vec![priced(ModelResponse::text("one"), 400, 200)];
+    let mut app = run("first\n", script, |_| {}).await.app;
+
+    assert_eq!(app.spent(), 600);
+    let reply = app.submit("/spend").await;
+    assert!(
+        reply.said[0].text.contains("600 tokens spent"),
+        "{:?}",
+        reply.said
+    );
 }
 
 /// An endpoint that reports no figures says so, rather than holding a ceiling nothing can reach.

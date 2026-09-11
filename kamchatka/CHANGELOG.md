@@ -9,13 +9,19 @@ minor bump may break you.
 
 ### added
 
-- **`--spend TOKENS`: the other thing a run nobody is watching can run out of.** `--deadline` has
-  bounded the time since it existed, and time is the wrong guard for the failure that actually
+- **A spend ceiling: `Setup::spend`, `--spend TOKENS` and `/spend`.** `--deadline` has bounded the
+  time since the headless mode existed, and time is the wrong guard for the failure that actually
   happens: a model that has found a loop - a tool that fails the same way, a question it keeps
   re-asking - will stay inside any deadline you were willing to give it and spend the whole of it
   on requests. This adds up what the provider charged, `input + output` per response, and stops
-  the run the way the deadline does: interrupt what is in flight, keep what arrived, write the
-  session out, leave by the ordinary door.
+  the session: the turn in flight is interrupted, what arrived is kept, the session is written out,
+  and it leaves by the ordinary door rather than by a kill.
+
+  It belongs to the **session**, not to the loop driving it. `App::on_event` is the door every
+  caller comes through - the screen, the headless driver, and a host with a loop of its own - so
+  that is where the figures are added up, and `App::start_turn` is where the next turn is refused.
+  A guard that only the program's own loop applied would be no guard for the embedder who most
+  needs one, and a caller cannot get round this one by not asking.
 
   In tokens, and it has to be. Nothing in this workspace carries a price list, and a figure in
   money would be one - a table per model per endpoint, kept up to date by somebody, wrong quietly.
@@ -23,10 +29,12 @@ minor bump may break you.
   whole of a request's bill whichever dialect answered it.
 
   It is a stopping rule rather than a cap, because what a response cost is known only once it has
-  arrived: the run ends a little over the line and says by how much. And an endpoint that reports
-  no usage is told about, once - a ceiling nothing can reach is worse than no ceiling, since
-  whoever set it is reading that run as bounded. `--deadline` is the guard that needs nobody's
-  cooperation, and the notice says so.
+  arrived: the session ends a little over the line and says by how much. `/spend` says what has
+  been charged and against what, `/spend N` raises the ceiling and `/spend 0` takes it away - the
+  way back for whoever set it too low, and the reason a screen session can be given one at all.
+  And an endpoint that reports no usage is told about, once: a ceiling nothing can reach is worse
+  than no ceiling, since whoever set it is reading that session as bounded. `--deadline` is the
+  guard that needs nobody's cooperation, and the notice says so.
 
   Live against `mercury-2.5`, where a model asked for five tool calls in one response and the
   response itself crossed the line: `· spent 2,264 tokens of 2,000; stopping`, the first call ran,
@@ -34,10 +42,33 @@ minor bump may break you.
   read - at the response - so the calls that response had already asked for are announced under
   it; that is the same order `--deadline` prints in, and it is the event stream's own.
 
-  Measured in five places, one per moving part. Counting only the output half fails two of the new
-  tests; not interrupting the turn fails two; and the accounting is read in two places for a
-  reason - a turn whose steps are instant is drained behind its own outcome, a turn with a tool
-  that takes a moment is not, and taking the call out of either place fails the test for the other.
+  Measured, one mutation per moving part, each caught by the test written for it: counting only the
+  output half of the bill, crossing the line without interrupting the turn, letting `start_turn`
+  run anyway, letting the headless loop go on reading lines it will only refuse, and raising the
+  ceiling without letting a stopped session go again.
+
+### fixed
+
+- **A line the program said while an answer was still arriving never reached the person reading
+  it**, in a headless run. The driver marked its place in `App::loose` by length, and that list is
+  not append-only: a turn being recorded takes back every line that streamed out of it, because
+  the context says those now. So the mark slid backwards under itself and everything said between
+  one shrink and the next look was skipped. It counts what it has *printed* now - the notes and
+  the errors, which are the part that never streams and so never goes away.
+
+  Invisible to every test in this crate, and it took a live run to see: a scripted model answers
+  between two looks at the list, so nothing shrinks in between. The test for it has a provider of
+  its own that pauses mid-answer. What went missing live was the ceiling's own `spent 1,106 tokens
+  of 500; stopping` - decided, recorded, the turn interrupted, and nothing printed - and the
+  reasoning notice went the same way whenever a model streamed any prose at all.
+
+- **`/spend` answered `0 tokens spent` after turns that had plainly cost some.** The counting was
+  inside the ceiling's own guard, so a session with no ceiling counted nothing - and a `/spend N`
+  half way through one then started from zero and gave away everything spent up to that point.
+  The total is kept whether or not anything is watching it. Also found by reading a live run.
+
+- `Entry` derives `Debug`. `Reply` hands a caller a `Vec<Entry>` and `Did` was already printable,
+  so the half of a reply that says what was *said* was the half nothing could print.
 
 - **A suite for the two flags that had never been run together: `--mcp` and `--headless`.** They
   meet at a question. Every tool an MCP server offers declares `mcp:<server>` and nothing else,

@@ -117,6 +117,15 @@ and an embedder would have written it a third time out of reading `main.rs`. Its
 the program, that example, and the suites that drive a session with no screen. If something else
 needs setting up, it is a field on `Setup` rather than a line in `main`.
 
+**A guard on a session belongs to the session, not to the loop driving it.** The spend ceiling
+started on `Headless` - where `--deadline` lives, and where it looked like it belonged - and every
+caller that was not the program's own headless loop was unguarded by it, which is the embedder who
+most needs one. It is on `App` now: `on_event` is the door all three loops come through, so that
+is where the provider's figures are added up, and `start_turn` is where the next turn is refused,
+so a caller cannot get round it by not asking. The deadline is the exception that proves the rule
+- wall-clock time is a property of a *run*, and a screen session waiting for somebody to type is
+not overrunning anything.
+
 **`tui` is a default feature, and the line it draws is load-bearing.** `ui/`, `app/keys.rs`, the
 prompt (`App::input`) and the two `ListState`s are behind it; `App` and everything else - the
 session, the tools, the policy, the trace, `submit`, `interrupt`, `on_event`, `write_session` - is
