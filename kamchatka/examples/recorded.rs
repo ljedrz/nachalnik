@@ -97,6 +97,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         requests: Some(40),
         // no compactor: what is interesting is whether it manages the budget itself
         compact: None,
+        // and a ceiling, because forty requests against a model that has found a loop is a
+        // recording nobody wanted and a bill somebody pays. The deadline below bounds the time;
+        // this bounds what the time can be spent on, which is the other half
+        spend: Some(200_000),
         allow: [
             Capability::Read,
             Capability::Shell,

@@ -130,6 +130,22 @@ minor bump may break you.
 
 ### fixed
 
+- **A build with no screen panicked the moment it was run in a terminal.** `--no-default-features`
+  is this crate's own headline configuration - the program, with nothing drawing it - and
+  `kamchatka -m … "a question"` at a prompt printed `built without the `tui` feature, so this is a
+  headless run` and then hit `unreachable!("there is no screen in this build")`. Having no screen
+  was written as a *notice* beside a decision that was never made: the mode was `--headless` or a
+  piped stdout, and neither is true of somebody typing at a terminal.
+
+  No test could have caught it as the suite is written - every test of this binary pipes its
+  stdout, which is the one condition where the missing case cannot arise. It was found by running
+  the thing. The decision is a named function now, with the four cases under it.
+
+- A resumed headless run says how it is driven. The opening line and the replay line were arms of
+  one match, so a session carried on from a file was told what it had picked up and not what a
+  question nobody is there to answer would get - which a resumed run needs exactly as much as a
+  fresh one.
+
 - **A refusal from the three file tools named the working directory and called it as far as the
   session reached**, which stopped being true the moment anybody passed `--sandbox-allow` or
   `--sandbox-read`. It names all of it now - `outside what this session reaches, which is /w

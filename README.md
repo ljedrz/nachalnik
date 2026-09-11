@@ -63,6 +63,14 @@ Ordinary user code on top of the crate, and nothing else: two providers, six too
 compactor and the drawing. Not one of them is a privileged feature of the runtime. See
 [its readme](kamchatka/README.md) for the sandbox, the keys, and the rest.
 
+**The screen is a feature, and the program without it is the same program.** `--headless` drives a
+session from lines on stdin instead of keys — the session log to stdout, one JSON record a line,
+what the model says to stderr — and it is implied when stdout is not a terminal.
+`--no-default-features` builds it with no screen compiled in at all, which is the shape to embed:
+`wiring::Setup` assembles a session and `App::submit` takes the line a person would have typed.
+Everything a run nobody is watching needs is a flag: answers given in advance with
+`--allow`/`--deny`, a `--deadline`, and a `--spend` ceiling in tokens.
+
 ---
 
 ### 🧩 do the seams hold?

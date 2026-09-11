@@ -277,6 +277,23 @@ fn main() -> Result<()> {
         .block_on(session())
 }
 
+/// Whether this run is driven by lines rather than by keys.
+///
+/// note: three ways into it and the third is the one that was missing. Somebody says so; or
+/// stdout is not a terminal, so there is nowhere to draw; or **this build has no screen in it**,
+/// which was written as a notice and not as a decision. `--no-default-features` in a terminal with
+/// no flag therefore printed `built without the tui feature, so this is a headless run` and then
+/// walked into the `unreachable!` below, which is the crate's own headline configuration failing
+/// at the first thing anybody would do with it.
+///
+/// note: no test caught it and none could have, as the suite is written: every test of this
+/// binary pipes its stdout, so `piped` is true in all of them and the missing case is the one
+/// where it is false. It was found by running the thing in a terminal. What is testable is this
+/// decision, which is why it is a function rather than an expression - the four cases are below.
+fn headless(asked: bool, piped: bool) -> bool {
+    asked || piped || cfg!(not(feature = "tui"))
+}
+
 /// The program proper: wired the same way whichever of the two drives it.
 async fn session() -> Result<()> {
     // note: the matches as well as the struct, because the settings file needs to know which
@@ -294,13 +311,13 @@ async fn session() -> Result<()> {
     // announced rather than silently chosen: a program that draws or does not draw depending on
     // what is on the other end of a pipe should say which it decided, and `--headless` is how
     // somebody says it themselves
-    let headless = args.headless || !std::io::stdout().is_terminal();
+    let piped = !std::io::stdout().is_terminal();
+    let headless = headless(args.headless, piped);
     if headless && !args.headless {
-        eprintln!("· stdout is not a terminal, so this is a headless run");
-    }
-    #[cfg(not(feature = "tui"))]
-    if !headless {
-        eprintln!("· built without the `tui` feature, so this is a headless run");
+        match piped {
+            true => eprintln!("· stdout is not a terminal, so this is a headless run"),
+            false => eprintln!("· built without the `tui` feature, so this is a headless run"),
+        }
     }
 
     // two wire formats, one trait. `--gemini` is what a person picks, and everything downstream -
@@ -387,15 +404,21 @@ async fn session() -> Result<()> {
         OnAsk::Deny => Grant::Deny,
         OnAsk::Allow => Grant::Allow,
     };
-    match (args.resume.is_some(), headless) {
-        // a resumed session has a conversation in it already, and it would be strange to have to
-        // read it out of the context pane one item at a time
-        (true, _) => app.replay(),
-        (false, true) => headless::opening(&mut app, on_ask),
-        #[cfg(feature = "tui")]
-        (false, false) => app.say(Speaker::Note, ui::GREETING),
-        #[cfg(not(feature = "tui"))]
-        (false, false) => unreachable!("there is no screen in this build"),
+    // note: three statements rather than one match over the pair, because a resumed headless run
+    // wants both of the first two and the match gave it one. The replay line says what was picked
+    // up; the opening says how this run is driven and what a question nobody can answer gets,
+    // which a session carried on from a file needs to know exactly as much as a fresh one
+    if headless {
+        headless::opening(&mut app, on_ask);
+    }
+    // a resumed session has a conversation in it already, and it would be strange to have to read
+    // it out of the context pane one item at a time
+    if args.resume.is_some() {
+        app.replay();
+    }
+    #[cfg(feature = "tui")]
+    if !headless && args.resume.is_none() {
+        app.say(Speaker::Note, ui::GREETING);
     }
     if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
         app.ask(&message);
@@ -587,5 +610,29 @@ async fn run(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The four ways a run can end up with or without a screen.
+    ///
+    /// note: the third case is a bug that shipped. A build with no `tui` has nothing to draw with,
+    /// so a run of it is headless whatever stdout is - and until this was written that was a
+    /// notice printed beside a decision that had not been made, followed by a panic. The other
+    /// three have been exercised by every piped test in this crate since the mode existed, which
+    /// is exactly why the fourth went unnoticed: a test that pipes stdout cannot reach it.
+    #[test]
+    fn a_build_with_no_screen_is_headless_wherever_its_output_goes() {
+        assert!(headless(true, false), "somebody asked for it");
+        assert!(headless(false, true), "nowhere to draw");
+        assert_eq!(
+            headless(false, false),
+            cfg!(not(feature = "tui")),
+            "a terminal and no flag: a screen if this build has one, and headless if it has not"
+        );
+        assert!(headless(true, true));
     }
 }

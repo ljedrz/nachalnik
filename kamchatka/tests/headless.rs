@@ -27,6 +27,8 @@ use nachalnik_providers::OpenAiCompatible;
 use serde_json::json;
 use tokio::io::BufReader;
 
+mod common;
+
 /// What one headless run wrote.
 struct Run {
     app: App,
@@ -867,6 +869,53 @@ fn the_program_runs_headless_and_keeps_its_streams_apart() {
             panic!("a line of the record stream is not a record ({e}): {line}")
         });
     }
+}
+
+/// A resumed run still says how it is being driven.
+///
+/// note: it used to say one or the other. The opening line and the replay line were arms of one
+/// match over `(resumed, headless)`, so a session carried on from a file was told what it had
+/// picked up and not what would happen to a question nobody is there to answer - which is the
+/// thing a headless run most needs said, and the thing a resumed one is no less headless for.
+///
+/// note: through the binary, because the branch is `main`'s. No key and no endpoint: resuming a
+/// file and printing two lines reaches neither.
+#[test]
+fn a_resumed_headless_run_says_both_what_it_picked_up_and_how_it_is_driven() {
+    let (wired, dir) = (wired(Vec::new()), common::scratch("resumed"));
+    wired
+        .app
+        .kernel
+        .push(nachalnik::ContextItem::user("the word is ZEPHYR"));
+    let path = dir.join("session.json");
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&wired.app.kernel.snapshot()).expect("a snapshot serializes"),
+    )
+    .expect("written");
+
+    let mut program = std::env::current_exe().expect("a test binary has a path");
+    program.pop();
+    if program.ends_with("deps") {
+        program.pop();
+    }
+    program.push("kamchatka");
+
+    let out = std::process::Command::new(&program)
+        .args(["--headless", "--no-record", "-r"])
+        .arg(&path)
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(said.contains("resumed session"), "{said}");
+    assert!(
+        said.contains("a question nobody can be asked is answered"),
+        "a resumed run was not told how it is driven: {said}"
+    );
 }
 
 /// `/quit` ends the session from a line, the way it does from a prompt.
