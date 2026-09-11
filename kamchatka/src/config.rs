@@ -18,7 +18,7 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// What a settings file may say, one field per argument it stands in for.
 ///
@@ -26,7 +26,13 @@ use serde::Deserialize;
 /// file is reading `--help`. The ones left out are the ones that are not settings: a message, a
 /// session to resume and a file to attach belong to an invocation rather than to a project, and
 /// `--headless` decides itself from whether stdout is a terminal.
-#[derive(Debug, Default, Clone, Deserialize)]
+/// note: it serializes as well as deserializes, and every field is written even when it is
+/// `null` - which is what makes a settings file something a program can produce rather than only
+/// consume. `kamchatka.json` beside this crate is the shipped one, and the suite holds it to
+/// having a key for every field here by writing this struct out and comparing the two sets: a
+/// starting point missing the setting somebody is looking for is worth less than no starting
+/// point, because they stop looking.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Settings {
     /// The model to talk to.

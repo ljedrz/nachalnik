@@ -78,6 +78,20 @@ minor bump may break you.
   message, `-r`, `-f`, and `--headless`, which decides for itself. There is no search for a file
   either - one that applies because of where you are standing is one that surprises you.
 
+- **A starting point ships with the crate**, `kamchatka.json` beside the readme: every setting
+  there is, each at the program's own default, so that setting one up is editing rather than
+  remembering. It grants nothing, and that is the substance of it rather than a gap - `allow` is
+  empty, both sandbox lists are empty and `on-ask` is `deny`. A shipped default that pre-granted
+  `read`, or opened up `~/.cargo` so that `cargo` works out of the box, would be this program
+  deciding on somebody's behalf the one class of thing it exists not to decide on their behalf;
+  `~/.cargo` holds a registry token. The single value in it that is not a default is a spend
+  ceiling, which is a tightening and the one thing a file adopted sight-unseen can safely offer.
+
+  `Settings` serializes as well as deserializes, which is what lets the suite hold the shipped
+  file to having a key for every field - written out and compared as key sets, rather than a list
+  of names in a test that would go stale the day a field is added. A starting point missing the
+  setting somebody is looking for is worth less than none, because they stop looking.
+
 ### changed
 
 - **`--sandbox-allow` and `--sandbox-read` take a comma-separated list**, the way `--allow` and

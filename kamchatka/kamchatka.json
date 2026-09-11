@@ -1,0 +1,24 @@
+{
+  "model": null,
+  "gemini": false,
+  "system": null,
+  "mcp": [],
+
+  "requests": 8,
+  "compact": 0.8,
+  "parallel": false,
+  "introspect": false,
+  "forget-truncated": false,
+
+  "no-sandbox": false,
+  "sandbox-allow": [],
+  "sandbox-read": [],
+
+  "allow": [],
+  "deny": [],
+  "on-ask": "deny",
+
+  "deadline": null,
+  "spend": 200000,
+  "no-record": false
+}

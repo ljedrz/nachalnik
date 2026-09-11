@@ -11,6 +11,9 @@
 
 use std::{io::Write, process::Command};
 
+use kamchatka::config::Settings;
+use serde_json::json;
+
 mod common;
 
 /// The binary under test.
@@ -201,6 +204,83 @@ fn an_unknown_key_is_refused_by_name() {
         said.contains("kamchatka.json"),
         "the file is not named: {said}"
     );
+}
+
+/// The one this crate ships works, names every setting there is, and grants nothing.
+///
+/// note: three claims, and the third is the one worth stating out loud. A starting point somebody
+/// adopts wholesale must not quietly widen anything - `allow` is empty, the sandbox lists are
+/// empty and `on-ask` is `deny`, so the file changes nothing about what may run. The only setting
+/// in it that is not the program's own default is the spend ceiling, which is a tightening: a
+/// session that cannot run up an unbounded bill is the one thing a default file can safely offer.
+///
+/// note: the completeness check is a key-set comparison against `Settings` written out, rather
+/// than a list of names here that would go stale the day a field is added. A file missing the
+/// setting somebody is looking for is worth less than no file, because they stop looking.
+#[test]
+fn the_shipped_file_is_complete_and_grants_nothing() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/kamchatka.json");
+    let text = std::fs::read_to_string(path).expect("the shipped settings file");
+    let shipped: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&text).expect("it is JSON");
+
+    let every: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_value(serde_json::to_value(Settings::default()).expect("it serializes"))
+            .expect("it is an object");
+    let mut missing: Vec<&String> = every
+        .keys()
+        .filter(|key| !shipped.contains_key(*key))
+        .collect();
+    missing.sort();
+    assert!(
+        missing.is_empty(),
+        "the shipped file has no key for {missing:?}"
+    );
+    let mut extra: Vec<&String> = shipped
+        .keys()
+        .filter(|key| !every.contains_key(*key))
+        .collect();
+    extra.sort();
+    assert!(
+        extra.is_empty(),
+        "the shipped file names {extra:?}, which nothing reads"
+    );
+
+    // nothing is granted, opened up or turned off by adopting it
+    for key in ["allow", "deny", "sandbox-allow", "sandbox-read"] {
+        assert_eq!(
+            shipped[key],
+            json!([]),
+            "`{key}` is not empty in the shipped file"
+        );
+    }
+    assert_eq!(shipped["on-ask"], json!("deny"));
+    assert_eq!(shipped["no-sandbox"], json!(false));
+
+    // and a session starts under it, with the one setting it does make
+    let (ok, said) = run(&["--config-file", path], "/spend\n");
+    assert!(ok, "{said}");
+    assert!(said.contains("of 200,000"), "{said}");
+}
+
+/// A build with no MCP refuses a server it cannot run, and says nothing about a key asking for
+/// none.
+///
+/// note: only compiled where it is true, which is `--no-default-features`. The empty half is the
+/// one that bit: the shipped starting point names every key, `mcp` among them, and a rule that
+/// refused the key rather than the request made that file unusable in exactly the build a settings
+/// file is most useful in.
+#[cfg(not(feature = "mcp"))]
+#[test]
+fn a_server_this_build_cannot_run_is_refused() {
+    let path = settings("no-mcp", r#"{ "mcp": ["files=npx -y whatever"] }"#);
+    let (ok, said) = run(&["--config-file", &path], "");
+    assert!(!ok, "a setting nobody can honour is not a success");
+    assert!(said.contains("no MCP support"), "{said}");
+
+    let path = settings("no-mcp-empty", r#"{ "mcp": [] }"#);
+    let (ok, said) = run(&["--config-file", &path], "");
+    assert!(ok, "an empty list asks for nothing: {said}");
 }
 
 /// A file that is not there says so, naming it.

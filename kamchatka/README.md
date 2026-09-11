@@ -1088,6 +1088,16 @@ project: a message, `-r`, `-f`, and `--headless`, which decides for itself from 
 terminal. There is no search for a file either — a settings file that applies because of where you
 are standing is one that surprises you, so it is named or it is not read.
 
+**A starting point ships with the crate**, as `kamchatka.json` beside this readme: every setting
+there is, so you edit rather than remember, and every one of them at the program's own default.
+Copying it wholesale changes exactly one thing — it sets a spend ceiling of 200,000 tokens, which
+is the only thing a file adopted sight-unseen can safely offer. It grants nothing: `allow` is
+empty, both sandbox lists are empty, `on-ask` is `deny`, and none of that is an oversight. A
+default that pre-granted `read`, or opened up `~/.cargo` so that `cargo` works, would be this
+program deciding on your behalf the one kind of thing it exists not to decide on your behalf —
+and `~/.cargo` holds a registry token. The suite holds the file to naming every key, so a setting
+added later cannot quietly go missing from it.
+
 ## 🎛️ options
 
 ```text

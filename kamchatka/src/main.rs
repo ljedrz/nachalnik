@@ -233,8 +233,12 @@ impl Args {
         match settings.mcp {
             #[cfg(feature = "mcp")]
             Some(mcp) if !typed("mcp") => self.mcp = mcp,
+            // note: a *server* that cannot be run is worth refusing over; an empty list asks for
+            // nothing and is honoured by doing nothing. The crate's own `kamchatka.json` carries
+            // every key, `mcp` among them, so the stricter rule made the shipped starting point
+            // unusable in the one build that has no MCP - which is how this was found
             #[cfg(not(feature = "mcp"))]
-            Some(_) => anyhow::bail!(
+            Some(mcp) if !mcp.is_empty() => anyhow::bail!(
                 "this build has no MCP support, so `mcp` in the settings file cannot be honoured"
             ),
             _ => {}
