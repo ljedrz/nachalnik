@@ -1483,3 +1483,47 @@ fn a_screenless_build_at_a_terminal_is_a_headless_run() {
     // and it got as far as trying: the model is the thing that fails here, not the program
     assert!(said.contains("error sending request"), "{said}");
 }
+
+/// `--deadline` ends a run that is waiting for somebody, through the flag.
+///
+/// note: the third of the guards, and the last to get a test at this level - the ceiling and
+/// `ctrl+c` have theirs above. The mechanism is tested through the library, with a pipe nobody
+/// writes to; what this adds is the flag, and that the program leaves rather than waiting on the
+/// blocking read that made every early stop hang until yesterday.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_deadline_ends_the_program_itself() {
+    // stdin is a pipe this test holds and never writes to, so nothing but the deadline can end it
+    let mut child = std::process::Command::new(program())
+        .args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing",
+            "--deadline",
+            "1",
+        ])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+
+    let said = watch(child.stderr.take().expect("stderr is a pipe"));
+    let started = std::time::Instant::now();
+    let status = waited_out(&mut child, std::time::Duration::from_secs(15), &said);
+
+    assert!(
+        status.success(),
+        "out of time is not a failure: {}",
+        said.lock()
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "it waited far longer than it was given: {:?}",
+        started.elapsed()
+    );
+    assert!(said.lock().contains("out of time"), "{}", said.lock());
+}
