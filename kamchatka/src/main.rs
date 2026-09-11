@@ -271,10 +271,23 @@ fn main() -> Result<()> {
         std::process::exit(code);
     }
 
-    tokio::runtime::Builder::new_multi_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()?
-        .block_on(session())
+        .build()?;
+    let outcome = runtime.block_on(session());
+    // note: the runtime is let go of rather than dropped, and without this the program *hangs*
+    // after every early stop there is. `tokio::io::stdin` reads on a blocking thread; a blocking
+    // read on a pipe nobody is writing to does not return; and dropping a runtime waits for its
+    // blocking threads. So a headless run that ended by `ctrl+c`, a deadline, a spend ceiling or
+    // `/quit` - anything but the input closing - wrote its session out, printed where it had gone,
+    // and then sat there until somebody killed it.
+    //
+    // note: it is safe here precisely because it is the last statement. The session has been
+    // written, the MCP servers were dropped with the scope that held them - which is what kills
+    // their child processes - and what is being abandoned is a thread waiting on a pipe.
+    runtime.shutdown_background();
+
+    outcome
 }
 
 /// Whether this run is driven by lines rather than by keys.

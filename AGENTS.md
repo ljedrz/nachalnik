@@ -466,6 +466,15 @@ Known and decided against *for now*, so that nobody spends an afternoon rediscov
   about the one that goes out. That is the only place in this workspace where those two differ
   in a way a figure can see.
 
+- **Getting the shipped settings file to somebody who installed the binary.** `kamchatka.json`
+  ships in the crate, so it reaches whoever clones the repository or unpacks the `.crate` - and
+  `cargo install` copies no files, so it reaches nobody else. Two ways to close that and they
+  compose: `include_str!` it into the binary behind a flag that prints it, or look for
+  `./kamchatka.json` (and an XDG path) when `--config-file` was not given. The second is the one
+  with a decision in it - a file that applies because of where you are standing is a file that
+  surprises you, and the answer to that is usually "say which one you read, on the way in". It is
+  open rather than decided, and `--config-file` works meanwhile.
+
 - **Reading a picture back out of a blob, anywhere.** `kamchatka` can now send one and still
   draws none, and that split is deliberate rather than unfinished: a terminal cell is not a
   pixel. What follows from it is worth stating, because it looks like a gap - an attached image

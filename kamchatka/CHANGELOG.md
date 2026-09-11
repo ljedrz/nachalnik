@@ -130,6 +130,27 @@ minor bump may break you.
 
 ### fixed
 
+- **Every early stop in a headless run left the process hung.** `ctrl+c`, `--deadline`, the spend
+  ceiling, `/quit` - each of them ended the session correctly, wrote the whole log with
+  `session.finished` on the end, printed where the recording had gone, and then sat there until
+  somebody killed it. The cause is one line and none of it is the loop's: `tokio::io::stdin` reads
+  on a blocking thread, a blocking read on a pipe nobody is writing to does not return, and
+  dropping a runtime waits for its blocking threads. So the program hung on the one thread that
+  had nothing left to do.
+
+  It only ever happened when stdin was still *open*, which is why nothing caught it: a piped run
+  ends because the input ended, and that is every test and most uses. A person at a terminal, or a
+  script that holds the pipe, got the hang - and the promise in the readme that `ctrl+c` "leaves at
+  once" was false for however long it had been there. The runtime is let go of with
+  `shutdown_background` now, which is safe exactly where it is: the last statement, after the
+  session is written and the MCP servers have been dropped with the scope that killed their
+  children.
+
+  There is a test for it, and it is the first here to send a signal: the run is a child process,
+  so `kill -INT` is a command. It asserts the difference between stopping and being killed - the
+  line that says so, `session.finished` at the end of the log, and an exit that is not a failure -
+  and it fails against a plain `drop`.
+
 - **A build with no screen panicked the moment it was run in a terminal.** `--no-default-features`
   is this crate's own headline configuration - the program, with nothing drawing it - and
   `kamchatka -m … "a question"` at a prompt printed `built without the `tui` feature, so this is a

@@ -1190,6 +1190,17 @@ assert!(!format!("{:?}", after.messages).contains("hunter2"));
 A terminal program whose tests only checked its own state would be testing the half nobody looks
 at.
 
+The other half is the program, and it is tested without a screen at all: the policy's own
+questions, real commands under a real Landlock ruleset, the two introspection tools through the
+real loop, a whole session driven by lines, somebody else's MCP server spawned as a child process,
+and the settings file. `cargo test -p kamchatka --no-default-features --features mcp` runs those
+and nothing else — which is also the check that the screen really is optional, since a suite that
+only ever compiled with it could not tell you.
+
+`cargo test -p kamchatka --test live` is the third kind and wants a key: it asks whether a request
+these keys produced is one a real API accepts, and whether the sentences these tools write are ones
+a model can act on. A scripted provider agrees with every refusal it is handed.
+
 ## 🎸 the name
 
 `nachalnik` is an homage to KINO's *Nachalnik Kamchatki*. Kamchatka was the boiler room Viktor

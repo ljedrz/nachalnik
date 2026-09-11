@@ -918,6 +918,100 @@ fn a_resumed_headless_run_says_both_what_it_picked_up_and_how_it_is_driven() {
     );
 }
 
+/// `ctrl+c` stops a run that is waiting for somebody, and the session survives it.
+///
+/// note: the last of the three things that can stop a run nobody is watching - the other two have
+/// had tests since they were written and this one had none, because it is a *signal* and the suite
+/// had no way to send one. It does: the run is a child process, and `kill -INT` is a command.
+/// What it asserts is the difference between stopping and being killed - the line that says so,
+/// the `session.finished` record at the end of the log, and an exit that is not a failure.
+///
+/// note: `#[cfg(unix)]` because that is where the mechanism is. Windows has `ctrl+c` and no
+/// `kill`, and a test that pretended otherwise would be testing its own shim.
+#[cfg(unix)]
+#[test]
+fn ctrl_c_stops_a_headless_run_rather_than_killing_it() {
+    use std::io::Read as _;
+
+    let mut program = std::env::current_exe().expect("a test binary has a path");
+    program.pop();
+    if program.ends_with("deps") {
+        program.pop();
+    }
+    program.push("kamchatka");
+
+    // stdin is a pipe this test holds open and never writes to, which is a run waiting for
+    // somebody who has not typed anything yet - the state `ctrl+c` is for
+    let mut child = std::process::Command::new(&program)
+        .args(["--headless", "--no-record", "-m", "nothing-serves-this"])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+
+    // once it has said what it is, it is in the loop with the signal branch armed
+    let mut said = String::new();
+    let mut stderr = child.stderr.take().expect("stderr is a pipe");
+    while !said.contains("headless:") {
+        let mut byte = [0u8; 1];
+        if stderr.read(&mut byte).expect("it is still running") == 0 {
+            panic!("it ended before it was interrupted: {said}");
+        }
+        said.push(byte[0] as char);
+    }
+
+    let killed = std::process::Command::new("kill")
+        .args(["-INT", &child.id().to_string()])
+        .status()
+        .expect("`kill` is on the path");
+    assert!(killed.success());
+
+    let status = {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            match child.try_wait().expect("it was spawned") {
+                Some(status) => break status,
+                None if std::time::Instant::now() > deadline => {
+                    let _ = child.kill();
+                    panic!("it did not stop: {said}");
+                }
+                None => std::thread::sleep(std::time::Duration::from_millis(50)),
+            }
+        }
+    };
+    stderr.read_to_string(&mut said).expect("the rest of it");
+
+    assert!(status.success(), "a stopped run is not a failure: {said}");
+    assert!(
+        said.contains("what has arrived is kept"),
+        "it did not say it was stopping: {said}"
+    );
+
+    // and the log is a whole session rather than however much of one had been flushed, which is
+    // the difference a cooperative stop is for
+    let mut records = String::new();
+    child
+        .stdout
+        .take()
+        .expect("stdout is a pipe")
+        .read_to_string(&mut records)
+        .expect("the records are text");
+    let names: Vec<String> = records
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<Record>(line)
+                .expect("every line is a record")
+                .event
+                .name()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(names.last().map(String::as_str), Some("session.finished"));
+}
+
 /// `/quit` ends the session from a line, the way it does from a prompt.
 #[tokio::test]
 async fn quit_ends_it() {

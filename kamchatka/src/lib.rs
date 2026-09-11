@@ -54,7 +54,12 @@
 //! and an [`app::App`] around them in the order they have to go in, and hands back the two
 //! receivers a loop needs. [`headless::Headless`] is one such loop and the program's own is the
 //! other; a host with an event loop of its own wants neither, and [`app::App::submit`] is where
-//! it hands in a line.
+//! it hands in a line. [`config::Settings`] is the JSON the program's `--config-file` takes, for
+//! a host that would rather read its defaults out of a file than hard-code them.
+//!
+//! What a session may spend is [`wiring::Setup::spend`], and it is enforced on the `App` rather
+//! than in either loop - the accounting is in `on_event` and the refusal in `start_turn`, which
+//! is how a host with a loop of its own gets the same ceiling as the program does.
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]

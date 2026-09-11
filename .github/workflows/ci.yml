@@ -62,10 +62,17 @@ jobs:
         run: cargo check -p nachalnik-mcp --no-default-features --locked
       # `test` rather than `check` for this one, because without `tui` there is a program left to
       # run: the policy's own questions, real commands under a real ruleset, the two introspection
-      # tools through the real loop, and a whole session driven through an `App` that has no
-      # screen. It is the only configuration in which any of that is exercised without one
+      # tools through the real loop, a whole session driven through an `App` that has no screen,
+      # and the settings file. It is the only configuration in which any of that is exercised
+      # without one
       - name: kamchatka, no features
         run: cargo test -p kamchatka --no-default-features --locked
+      # and the one the readme tells an embedder to build: somebody else's tools, no screen. It is
+      # a third feature combination rather than either of the two above, and nothing else here
+      # compiles it - which is how a settings file naming every key came to be unusable in exactly
+      # this configuration, for a day, over an `mcp` key that asked for nothing
+      - name: kamchatka, mcp and no screen
+        run: cargo test -p kamchatka --no-default-features --features mcp --locked
       # a dialect each, and the one nobody builds on purpose: `waiting.rs` is shared, so a
       # constant only one of them reads is dead code in the other's build. `--all-targets`
       # because the tests are gated by dialect too, and a test that names the provider that
