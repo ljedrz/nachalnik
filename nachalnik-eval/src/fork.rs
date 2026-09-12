@@ -6,6 +6,7 @@ use nachalnik::{Config, ContextId, ContextItem, Kernel, Projector, Provider, Sna
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    abreast::together,
     error::{Error, Result},
     intervene::{Applied, Intervention},
     probe::{Answer, Probe},
@@ -142,26 +143,23 @@ impl Ablation {
 
     /// Runs the copies under one condition and reads what they said.
     ///
-    /// note: The copies run one after another, not at once. Not for the runtime's reason - these
-    /// are separate kernels and could not interfere with each other - but for the provider's: a
-    /// fan-out of identical requests is what a rate limiter is for, and a run whose figures came
-    /// back differently depending on how many retries the third replicate needed would be
-    /// measuring somebody's traffic policy.
+    /// note: The copies run at the same time, and the record does not show it. Each is its own
+    /// kernel resumed from its own clone of the snapshot, so they cannot interfere; what they say
+    /// is collected in the order the replicates were asked for rather than the order they came
+    /// back, so two runs of this produce the same [`Observation`] either way.
+    ///
+    /// note: it used to run them one after another, on the reasoning that a fan-out of identical
+    /// requests is what a rate limiter is for. That reasoning was right and is now somebody
+    /// else's job: [`evaluate`](crate::evaluate) and
+    /// [`evaluate_with`](crate::evaluate_with) put the subject's provider under a shared ceiling
+    /// and a shared rate, so nothing here can exceed what the caller allowed however wide it
+    /// fans. Which is what lets this be the one place the fanning is written - an experiment gets
+    /// it by calling `observe`, including an experiment this crate has never seen.
     pub async fn observe(
         &self,
         origin: &Origin,
         intervention: Intervention,
     ) -> Result<Observation> {
-        let mut observation = Observation {
-            intervention: intervention.describe(),
-            applied: Applied::default(),
-            repairs: Vec::new(),
-            items: 0,
-            answers: Vec::new(),
-            said: Vec::new(),
-            spend: Spend::default(),
-        };
-
         // what every copy is held constant on, applied before what is being tested, so that the
         // record shows both and the two cannot be confused
         let intervention = match self.blind.is_empty() {
@@ -171,58 +169,114 @@ impl Ablation {
                 intervention,
             ]),
         };
-        observation.intervention = intervention.describe();
 
-        for _ in 0..self.replicates {
-            let mut snapshot = origin.snapshot.clone();
-            let name = format!("{}#copy", snapshot.session);
-            observation.applied = intervention.apply(&mut snapshot);
+        let copies = together((0..self.replicates).map(|_| self.once(origin, &intervention))).await;
 
-            let copy = Kernel::resume(
-                Config {
-                    session_name: Some(name),
-                    // it answers once and is thrown away: there is nothing for an undo stack to
-                    // be for, and nothing after the first request for a second one to build on
-                    context_undo_depth: 0,
-                    max_requests_per_turn: Some(1),
-                    ..Config::default()
-                },
-                snapshot,
-            );
-            copy.set_provider(origin.provider.clone());
-            copy.set_projector(origin.projector.clone());
-            // note: no tools, and that is the whole of the isolation. A copy that could run a
-            // command could go and find out what the answer is, and a measurement of what a
-            // context supports would become a measurement of what a shell can reach.
-            copy.push(ContextItem::system(self.preamble.clone()).pinned());
-            copy.push(
-                ContextItem::user(self.probe.asked()).because("put to a copy of this context"),
-            );
-
-            // what the copy will actually read, rather than what it was handed: the projector
-            // still has to repair the calls whose results were just excluded out from under
-            // them, and a count taken before it did would be one no copy ever saw
-            let projection = copy.project();
-            observation.items = projection.included.len();
-            observation.repairs = projection.repairs;
-
-            copy.turn().await?;
-            let Some(response) = copy.last_response() else {
-                return Err(Error::Silent);
-            };
-            let said = response
-                .content
-                .as_ref()
-                .map(|content| content.to_text().into_owned())
-                .unwrap_or_default();
-
-            observation.answers.push(self.probe.read(&said));
-            observation.said.push(said);
-            observation.spend += Spend::since(&copy, 0);
+        let mut observation = Observation {
+            intervention: intervention.describe(),
+            applied: Applied::default(),
+            repairs: Vec::new(),
+            items: 0,
+            answers: Vec::new(),
+            said: Vec::new(),
+            spend: Spend::default(),
+        };
+        // folded in the order they were asked for, so `applied`, `items` and `repairs` end up
+        // holding what the last replicate found exactly as they did when this was a loop
+        for copy in copies {
+            let copy = copy?;
+            observation.applied = copy.applied;
+            observation.items = copy.items;
+            observation.repairs = copy.repairs;
+            observation.answers.push(self.probe.read(&copy.said));
+            observation.said.push(copy.said);
+            observation.spend += copy.spend;
         }
 
         Ok(observation)
     }
+
+    /// The same, once per intervention, all at the same time.
+    ///
+    /// note: what an experiment with a sweep to run should reach for. Every ablation of a frozen
+    /// [`Origin`] is independent of every other - each is its own copy of the same snapshot, and
+    /// none can see what another was shown - so a battery of them is the one part of an
+    /// experiment that is safely concurrent, and writing it here means an experiment does not
+    /// have to know how. The results come back in the order the interventions were given, so the
+    /// caller records them exactly as it would have in a loop.
+    ///
+    /// note: a `Vec` of results rather than a result of a `Vec`, because an experiment records
+    /// what it got before it stops on what it did not - and one copy going silent should not
+    /// discard the eleven beside it that answered.
+    pub async fn observe_each(
+        &self,
+        origin: &Origin,
+        interventions: impl IntoIterator<Item = Intervention>,
+    ) -> Vec<Result<Observation>> {
+        together(
+            interventions
+                .into_iter()
+                .map(|intervention| self.observe(origin, intervention)),
+        )
+        .await
+    }
+
+    /// One copy, from its own clone of the snapshot.
+    async fn once(&self, origin: &Origin, intervention: &Intervention) -> Result<Copy> {
+        let mut snapshot = origin.snapshot.clone();
+        let name = format!("{}#copy", snapshot.session);
+        let applied = intervention.apply(&mut snapshot);
+
+        let copy = Kernel::resume(
+            Config {
+                session_name: Some(name),
+                // it answers once and is thrown away: there is nothing for an undo stack to
+                // be for, and nothing after the first request for a second one to build on
+                context_undo_depth: 0,
+                max_requests_per_turn: Some(1),
+                ..Config::default()
+            },
+            snapshot,
+        );
+        copy.set_provider(origin.provider.clone());
+        copy.set_projector(origin.projector.clone());
+        // note: no tools, and that is the whole of the isolation. A copy that could run a
+        // command could go and find out what the answer is, and a measurement of what a
+        // context supports would become a measurement of what a shell can reach.
+        copy.push(ContextItem::system(self.preamble.clone()).pinned());
+        copy.push(ContextItem::user(self.probe.asked()).because("put to a copy of this context"));
+
+        // what the copy will actually read, rather than what it was handed: the projector
+        // still has to repair the calls whose results were just excluded out from under
+        // them, and a count taken before it did would be one no copy ever saw
+        let projection = copy.project();
+
+        copy.turn().await?;
+        let Some(response) = copy.last_response() else {
+            return Err(Error::Silent);
+        };
+
+        Ok(Copy {
+            applied,
+            items: projection.included.len(),
+            repairs: projection.repairs,
+            said: response
+                .content
+                .as_ref()
+                .map(|content| content.to_text().into_owned())
+                .unwrap_or_default(),
+            spend: Spend::since(&copy, 0),
+        })
+    }
+}
+
+/// What one copy came back with, before it is folded into an [`Observation`] beside its siblings.
+struct Copy {
+    applied: Applied,
+    items: usize,
+    repairs: Vec<String>,
+    said: String,
+    spend: Spend,
 }
 
 /// What the copies said under one condition.

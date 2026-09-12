@@ -3,7 +3,6 @@
 use nachalnik::ContextId;
 
 use crate::{
-    abreast::together,
     async_trait,
     error::Result,
     experiment::{Experiment, Instrument},
@@ -222,19 +221,14 @@ impl Attribution {
 
         // note: the one loop in this battery that is not a conversation. Every copy here is made
         // from `origin`, which was frozen before any claim was made, so no ablation can see
-        // another's - which is what makes them safe to run at the same time where the two loops
-        // above are not. How many of them are actually on the wire at once is not decided here:
-        // `evaluate` puts the provider under a ceiling of one, so this is the `for` loop it
-        // replaced, request for request, and only `evaluate_with` opens it up.
-        let observed = together(notes.iter().map(|note| {
-            let (ablation, origin) = (&ablation, &origin);
-            async move {
-                ablation
-                    .observe(origin, Intervention::without([note.id]))
-                    .await
-            }
-        }))
-        .await;
+        // another's - which is what makes a sweep safe to run at once where the two loops above
+        // are not. How wide it actually goes is not decided here and not decided by this
+        // experiment: `observe_each` fans them out and the run's `Pace` bounds them.
+        let sweep: Vec<Intervention> = notes
+            .iter()
+            .map(|note| Intervention::without([note.id]))
+            .collect();
+        let observed = ablation.observe_each(&origin, sweep).await;
 
         // recorded in the order the notes are in rather than the order the copies came back, so
         // that the record is the same either way round

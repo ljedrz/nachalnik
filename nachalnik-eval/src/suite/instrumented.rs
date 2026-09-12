@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use nachalnik::ContextId;
+
 use crate::{
     async_trait,
     error::Result,
@@ -275,13 +277,48 @@ impl Instrumented {
             .await?;
         trial.measured(fresh_control.clone(), None);
 
-        for label in &battery {
-            let Some(id) = id_of(&notes, label) else {
-                continue;
-            };
-            let observation = ablation
-                .observe(&origin, Intervention::without([id]))
-                .await?;
+        // the two sweeps, fanned out before anything is recorded. Every copy in either is made
+        // from an origin frozen before a claim was made, so none can see another's; the labels
+        // that name nothing in a session are dropped here rather than skipped inside the loop, so
+        // what comes back lines up with what went in. The record is written below in the order
+        // the battery is in, exactly as it was when these were two `await`s inside one loop.
+        let here: Vec<(&&'static str, ContextId)> = battery
+            .iter()
+            .filter_map(|label| id_of(&notes, label).map(|id| (label, id)))
+            .collect();
+        let there: Vec<(&&'static str, ContextId)> = here
+            .iter()
+            .filter_map(|(label, _)| id_of(&fresh_notes, label).map(|id| (*label, id)))
+            .collect();
+
+        let observed = ablation
+            .observe_each(
+                &origin,
+                here.iter()
+                    .map(|(_, id)| Intervention::without([*id]))
+                    .collect::<Vec<_>>(),
+            )
+            .await;
+        let observed_fresh = fresh_ablation
+            .observe_each(
+                &fresh_origin,
+                there
+                    .iter()
+                    .map(|(_, id)| Intervention::without([*id]))
+                    .collect::<Vec<_>>(),
+            )
+            .await;
+        // paired with the label it belongs to, because the second session does not necessarily
+        // hold every note the first one did
+        let mut elsewhere_by_label: Vec<(&&'static str, ContextId, Result<crate::Observation>)> =
+            there
+                .into_iter()
+                .zip(observed_fresh)
+                .map(|((label, id), observation)| (label, id, observation))
+                .collect();
+
+        for ((label, id), observation) in here.into_iter().zip(observed) {
+            let observation = observation?;
             let change = observation.against(&control);
             trial.measured(observation, Some(change.clone()));
 
@@ -334,12 +371,14 @@ impl Instrumented {
             // the third stage is a different session, so it is settled against that session's
             // own copies: a claim about one context scored against another's would measure
             // nothing about either
-            let Some(fresh_id) = id_of(&fresh_notes, label) else {
+            let Some(at) = elsewhere_by_label
+                .iter()
+                .position(|(seen, ..)| *seen == label)
+            else {
                 continue;
             };
-            let elsewhere = fresh_ablation
-                .observe(&fresh_origin, Intervention::without([fresh_id]))
-                .await?;
+            let (_, fresh_id, elsewhere) = elsewhere_by_label.remove(at);
+            let elsewhere = elsewhere?;
             let there = elsewhere.against(&fresh_control);
             trial.measured(elsewhere, Some(there.clone()));
             if let Some((_, claim, _)) = tested.iter().find(|(seen, ..)| seen == label) {

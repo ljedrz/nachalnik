@@ -1,6 +1,6 @@
 //! Whether being told how it did makes a subject better at saying how it will do.
 
-use nachalnik::{ContextItem, ContextState};
+use nachalnik::{ContextId, ContextItem, ContextState};
 
 use crate::{
     async_trait,
@@ -136,14 +136,28 @@ impl Feedback {
             ),
         );
 
+        // the sweep, which is the one part of this that is not a conversation: every copy is made
+        // from `origin`, frozen before any claim was made, so none can see another's. The labels
+        // that name nothing are dropped before the fan-out rather than skipped inside it, so what
+        // comes back lines up with what went in
+        let sweep: Vec<(&&str, Answer, ContextId)> = battery
+            .iter()
+            .zip(claims)
+            .filter_map(|(label, claim)| id_of(&notes, label).map(|id| (label, claim, id)))
+            .collect();
+        let observed = ablation
+            .observe_each(
+                &origin,
+                sweep
+                    .iter()
+                    .map(|(_, _, id)| Intervention::without([*id]))
+                    .collect::<Vec<_>>(),
+            )
+            .await;
+
         let mut verdicts = Vec::with_capacity(battery.len());
-        for (label, claim) in battery.iter().zip(claims) {
-            let Some(id) = id_of(&notes, label) else {
-                continue;
-            };
-            let observation = ablation
-                .observe(&origin, Intervention::without([id]))
-                .await?;
+        for ((label, claim, id), observation) in sweep.into_iter().zip(observed) {
+            let observation = observation?;
             let change = observation.against(&control);
             trial.measured(observation, Some(change.clone()));
 
