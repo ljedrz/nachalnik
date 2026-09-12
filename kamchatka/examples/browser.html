@@ -115,6 +115,7 @@ const asked = document.getElementById("asked");
 
 let asking = [];        // the questions waiting on somebody, oldest first
 let open = null;        // the bubble a model is still writing into
+let streaming = false;  // whether the fragments arriving still belong to anything
 let wanted = new Set(); // items already asked about, so nothing is asked about twice
 let pending = [];       // lines this page drew on sending, not yet tied to an item
 let mine = new Set();   // the items those lines turned out to be
@@ -162,8 +163,10 @@ function claim(id) {
 function inspect(id, kind) {
   if (wanted.has(id)) return;
   wanted.add(id);
-  const el = say(kind, "…", id);
-  el.classList.add("pending");
+  // a place for it, unless something on screen is already showing this item
+  if (!log.querySelector(`[data-item="${id}"]`)) {
+    say(kind, "…", id).classList.add("pending");
+  }
   send({ do: "inspect", id });
 }
 
@@ -228,6 +231,7 @@ function heard(m) {
       log.replaceChildren();
       wanted.clear();
       open = null;
+      streaming = m.busy;
       for (const l of m.conversation) say(l.speaker, l.text, l.item ?? undefined);
       log.scrollTop = log.scrollHeight;
       asking = m.asking;
@@ -237,9 +241,14 @@ function heard(m) {
     }
     case "record": happened(m.event); break;
     case "progress": {
-      // a model still typing. These are in no log, so a page that was away for them asks for the
-      // item afterwards instead - see `model.finished` below
-      if (m.event.event === "model.delta" && m.event.delta.text !== undefined) {
+      // note: dropped unless something is actually arriving, and that is not a nicety. A fragment
+      // is unnumbered and best-effort, so a connection that has fallen behind is handed one *after*
+      // the record that ends the answer it belonged to - the server says so in as many words. A
+      // page that took those anyway started a second bubble underneath whatever had been drawn
+      // since, which is how one answer came to be shown twice, and how another arrived in two
+      // pieces with a message typed in between them. The terminal drops the same fragments under
+      // the name `Entry::transient`: once the item exists, the item is what says what was said
+      if (m.event.event === "model.delta" && m.event.delta.text !== undefined && streaming) {
         if (!open) open = say("model", "");
         open.textContent += m.event.delta.text;
         log.scrollTop = log.scrollHeight;
@@ -276,6 +285,8 @@ function happened(e) {
       // earns its place
       if (e.kind === "user_message" && !claim(e.id)) inspect(e.id, "user");
       break;
+    // a request is on its way, so whatever arrives next belongs to it and nothing before it does
+    case "model.requested": open = null; streaming = true; break;
     case "tool.requested": say("call", `${e.tool}(${JSON.stringify(e.args)})`); break;
     case "tool.finished":
       say("result", `${e.tool}: ${e.tokens} tokens${e.is_error ? ", an error" : ""}`);
@@ -286,11 +297,16 @@ function happened(e) {
       showQuestion();
       say("note", `${e.tool}: ${e.grant}`);
       break;
-    case "model.finished":
-      // the fragments were the live half and are gone; the item is what was kept. If this page
-      // caught them it already has the words, and if it did not it asks
-      if (open) { open = null; } else { inspect(e.item, "model"); }
+    case "model.finished": {
+      // the fragments were the live half and are over; the item is what was kept. The bubble is
+      // tied to it either way, so that anything asked for later lands in the right place - and the
+      // asking only happens where no words arrived, which is a page that was away, or behind
+      streaming = false;
+      const caught = open && open.textContent.trim().length > 0;
+      if (open) { open.dataset.item = e.item; open = null; }
+      if (!caught) inspect(e.item, "model");
       break;
+    }
     case "context.compacted": say("note", "the context was compacted"); break;
     case "session.finished": say("note", "the session ended"); break;
   }
@@ -311,6 +327,10 @@ function working(busy) {
 // note: no reconnection anywhere in this file. `EventSource` does it, and sends `Last-Event-ID` -
 // the last record this page was given - which the gateway hands to the session as `attach
 // { since }`. The whole of resume, for nothing
+// note: anything this page throws goes on the page, because the alternative is what it looked like
+// the first time something did: a blank screen and nothing to go on
+window.onerror = (message, src, line) => { say("error", `${message} (${src}:${line})`); };
+
 const events = new EventSource(`/events?tab=${tab}`);
 events.onmessage = (e) => heard(JSON.parse(e.data));
 events.onerror = () => {
