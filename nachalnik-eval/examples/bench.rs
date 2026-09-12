@@ -187,12 +187,6 @@ async fn main() -> Result<(), nachalnik::BoxError> {
         Ok(Subject::new(kernel))
     };
 
-    // one experiment at a time, and printed as it lands. `evaluate_with` prints nothing - a
-    // library has no business writing to somebody's terminal - and a run of a hundred requests
-    // that shows nothing until the last one is a run nobody can tell from a hung one.
-    //
-    // note: the concurrency is kept *inside* an experiment rather than across them, which is
-    // where nearly all of it is anyway: `attribution` ablates every note in every dossier, and
     // note: on by default, and named after the model and the hour if nobody said where. A run is
     // hours long and the console output is a summary - the scores, not the questions and answers
     // they were computed from - so a run whose terminal is closed used to leave nothing that
@@ -214,6 +208,11 @@ async fn main() -> Result<(), nachalnik::BoxError> {
     // every experiment that has finished, in the order they finished, which is what a checkpoint
     // is written from. The report at the end is the ordered one; this is only ever the record
     // that survives a run being killed
+    //
+    // note: printing is this example's job and not the library's. `evaluate_with` prints nothing -
+    // a library has no business writing to somebody's terminal - so `landed` is what lets a run
+    // that fans its experiments out still show progress as they finish, and a run of hundreds of
+    // requests that shows nothing until the last one is a run nobody can tell from a hung one
     let landed: Mutex<Vec<Outcome>> = Mutex::new(Vec::new());
     let tell = |outcome: &Outcome| {
         println!("{outcome}\n");

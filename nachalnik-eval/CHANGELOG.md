@@ -5,6 +5,172 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- **Independent work runs abreast, under a ceiling and a rate: `Pace`, `Permits`, `Permit`,
+  `Governor`, `Paced`, `together` and `evaluate_with`.** A whole suite against one model took three
+  hours and eight minutes, and almost none of that was arithmetic. `attribution` alone is 126
+  requests of the 723, because it ablates every note in every dossier one at a time, and each of
+  those was waiting for the one before it to come back.
+
+  Not all of it can run at once, and the distinction is the interesting part. The probes inside a
+  battery - solve, then introspect, then predict - are a conversation: each one extends the same
+  session and the next question is written out of the last answer. An ablation sweep is not. Every
+  copy there is resumed from the `Origin` frozen before a single claim was made, so no copy can see
+  another's. The sweep is fanned out; the conversations are left alone.
+
+  `evaluate` is unchanged and still says in its own doc comment that nothing runs concurrently.
+  `evaluate_with` is the opt-in, and the two are not interchangeable: the scores are the same
+  either way, since nothing a figure is computed from depends on what else was in flight, but
+  concurrency can make a run *fail* where a sequential one would have trickled through. A burst
+  collects 429s, the retries behind them eat the budget, probes come back `Unreadable`, and a
+  report quietly becomes a page of untested claims. Measured, and not hypothetically: a run at
+  eight in flight against a small free endpoint took it down inside a minute, and single requests
+  to it recovered ninety seconds after the run was stopped.
+
+  So there are two limits, because endpoints publish two kinds and neither implies the other.
+  `Permits` caps how many are in flight. A rate caps how many are *started* in a window, which is
+  how a free tier words it and which no count of things in flight can stand in for - eight at once
+  against a fast endpoint is eighty a second. A sliding window rather than a token bucket, because
+  the limit is worded as one: "20 per minute" refuses the twenty-first request within sixty seconds
+  of the first, where a bucket permits a burst of its whole capacity after any quiet spell. It
+  records when a request was admitted rather than when it finished, since a limit on how many may
+  be started is not a limit on how many may be outstanding, and on an endpoint that sometimes takes
+  ten minutes those come apart badly.
+
+  The ceiling is a `Provider` decorator rather than something wrapped around the loops, and a test
+  is why: the first version governed the ablation sweep, and a run of nine experiments promptly put
+  nine live probes on the wire underneath it. Wrapping the provider is the only place that cannot
+  be evaded, including by an experiment this crate has never seen. It is applied to the subject
+  rather than to each request because a subject hands its provider on - to the siblings raised for
+  its other dossiers and to every copy resumed from a snapshot of it - so one wrapping covers all
+  three.
+
+  `together` is written here rather than taken from `futures-util`. What that crate would buy over
+  eighty lines is an intrusive linked list making a wake O(1) instead of re-polling, which at a few
+  dozen network round trips is an optimisation of the cheapest thing in the run. Nothing spawns, so
+  there is one task and no question about what happens to a spawned request when a run is dropped
+  halfway. Results come back in the order they were asked for and never the order they arrived,
+  because a report whose rows move with the weather cannot be diffed against last week's.
+
+  The one new dependency is `tokio`'s `time` feature - not a new crate in anybody's tree, since
+  `nachalnik` already depends on tokio for `JoinSet` and `broadcast`, but worth saying plainly that
+  a rate-limited run now needs a running timer driver where a sequential one did not. The default
+  `Pace` sets no rate, so nothing pays that unasked. `Rate` reads `tokio::time::Instant` rather
+  than `std`'s, and that is correctness rather than convenience: the timestamps have to be on the
+  same clock as the sleep they are compared against, or a test on a paused clock ages nothing out
+  of the window and `admit` waits for room that never appears.
+
+  What is not here: what to do once a limit has been exceeded anyway. A `429` and its `Retry-After`
+  are answered in whichever `Provider` the caller supplied, because that is the layer that knows
+  the wire format they arrived in. These two are about not provoking one.
+
+  The instrument digests are untouched and
+  `the_instrument_is_pinned_so_that_it_cannot_change_quietly` still passes, so a run taken today
+  still pools with the v5 collection: concurrency changes the schedule, not the material.
+
+- **A minimum gap between admissions, alongside the window rather than instead of it.** A sliding
+  window of twenty a minute is obeyed perfectly by firing twenty requests in the window's first
+  instant and sitting out the other fifty-nine seconds. That is not a reading of the limit anyone
+  intends, and it is not what an endpoint's own limiter sees: measured, a run at eight in flight
+  with `--per-minute 18` took a small free model down inside a minute while staying well inside
+  eighteen a minute.
+
+  The gap is the window divided by what it allows. Neither it nor the window subsumes the other -
+  the window is the limit as the endpoint words it, the spacing is what stops a run from spending
+  the whole allowance in a second and then idling. It is the difference between not exceeding a
+  limit on average and not exceeding it at any moment, and it is what makes the two settings
+  independent rather than one covering for the other: before it, a rate constrained the average and
+  did nothing about burstiness, so the only thing standing between a run and a rejected burst was
+  `at_once` tuned by hand against an endpoint nobody has the numbers for.
+
+  The test asserts the shape of the traffic rather than its total - the tightest gap between any
+  two consecutive requests, against the spacing the rate implies. With the spacing taken back out
+  it fails at `0ns apart`, which is what a test of a total would have passed straight through.
+
+- **`Ablation::observe` runs its replicates at once, and `Ablation::observe_each` takes a sweep.**
+  The fan-out was first written into `attribution`'s sweep by hand. That works and does not scale:
+  every other experiment would need the same block written into it, and an experiment written next
+  year would get the ceiling and the rate for free - those are in the provider - while quietly
+  running its ablations one at a time because nobody told its author there was a way not to.
+
+  So it lives on `Ablation`, which is the type every experiment already reaches for. `observe` runs
+  its replicates at once, which no experiment has to know about at all: a run at three replicates
+  gets it by calling the same method it always called. `observe_each` takes many interventions and
+  runs them together, which is what an experiment with a sweep asks for instead of writing a loop.
+
+  Nothing about the record changes. Replicates are folded in the order they were asked for, so
+  `applied`, `items` and `repairs` still hold what the last one found; `observe_each` returns
+  results in the order the interventions were given, so the caller records them exactly as it did
+  in a loop. It hands back a `Vec` of results rather than a result of a `Vec` on purpose - an
+  experiment records what it got before it stops on what it did not, and one copy going silent
+  should not discard the eleven beside it that answered.
+
+  `attribution`, `feedback` and `instrumented` use it: 527 of the 723 requests a whole suite made.
+  Three are deliberately left alone. `repair` runs no ablations at all - it is a conversation, and
+  its only concurrent axis is across ladders, which record into the shared `Trial` as they go;
+  fanning those out would interleave the append-only record non-deterministically, and a study
+  artifact whose step order moves between runs is worse than a slow one. `privilege`, `recursion`,
+  `conflict`, `lie` and `provenance` are sixty-one requests between them, each interleaving two
+  ablations against two origins, which is more churn than eight per cent is worth in an instrument.
+
+- **`evaluate_with` takes `landed`, called with each outcome the moment that experiment finishes.**
+  Without it a caller had to choose between fanning the suite out and showing anything at all:
+  `evaluate_with` prints nothing, a library having no business writing to somebody's terminal, and
+  a run of hundreds of requests that shows nothing until the last one is a run nobody can tell from
+  a hung one. A concurrent run was also all-or-nothing for anyone checkpointing, writing nothing
+  until every experiment had finished. The `Report` still lists outcomes in the order they were
+  given; only the callback fires in the order they finish.
+
+### fixed
+
+- **An intra-doc link under `evaluate_with` named a type that was no longer in scope**, which
+  `cargo doc` is run with `-D warnings` and the docs job failed on. `Permits` stopped being
+  imported there when the ceiling moved behind `Governor`; it is qualified now rather than
+  re-imported, because the import would exist only to satisfy a doc comment. It is the one kind of
+  breakage the test suite cannot see.
+
+  Two other things in the same block were wrong in ways `rustdoc` does not check. The note said "a
+  count is not a rate, and this enforces only the count", which was true when it was written and
+  stopped being true when the rate went in - left alone it would have told a reader to go and solve
+  a problem that had already been solved, and read as a reason to set `at_once` high to compensate,
+  which is the thing that took an endpoint down. And three references to `at_once` were left over
+  from when it was this function's own parameter; they are `Pace::at_once` now, and links rather
+  than backticks, so the next rename is rustdoc's problem rather than a reader's.
+
+### changed
+
+- **The `bench` example keeps what landed, and takes the pace.** The report was written once, after
+  the last experiment, so a run that was killed - or that hung and had to be killed - left nothing
+  at all however many experiments had already finished. That happened twice in one day: a suite
+  stopped seven experiments in had seven complete outcomes in memory and wrote none of them, and
+  the console summary that survives is the scores, not the questions and answers they were computed
+  from, so there was nothing to score again.
+
+  It is written after every experiment now, and written atomically. Atomicity is the half that is
+  easy to skip and the half that matters: the file goes to `<path>.partial` and is renamed onto the
+  target, so a reader - or a process killed mid-write - sees either the whole previous checkpoint
+  or the whole new one, never the flushed half of one. The temporary is in the same directory,
+  because a rename across filesystems is not a rename. A failed checkpoint warns rather than
+  returns: losing one is worth saying loudly and is not worth throwing away the hours of run still
+  to come, and the final write is the one where a failure is fatal, so "the whole record is in X"
+  is never printed over a file that failed to write.
+
+  On by default, named from the model and the hour when nobody says otherwise - the model because a
+  directory of `report.json` tells nobody which model any of them measured, and the time because
+  the same model gets measured more than once and a second run silently overwriting the first is
+  how a day's work disappears. `--no-json` is the opt-out.
+
+  `-j` and `--per-minute` set the pace: one `Pace` for the whole run, built once and handed to
+  every experiment, because a rate is only obeyed if the window is shared - a limit of twenty a
+  minute applied afresh per experiment is nine times the limit. The example fans the suite out only
+  when the pace leaves room. At one request in flight there is none by definition, and starting all
+  nine anyway would interleave nine sessions through a single-file queue: the same total time, but
+  every experiment finishing near the end rather than one after another, which is the progress a
+  long run is read by and the partial record a killed one is left with.
+
 ## [0.3.0] - 2026-09-11
 
 ### changed

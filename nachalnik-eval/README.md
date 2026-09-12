@@ -277,6 +277,61 @@ stopped it.
 
 ---
 
+### ⏱️ how fast it is allowed to go
+
+A whole suite against one model is seven hundred-odd requests and used to be three hours and eight
+minutes of waiting for each one before starting the next. Most of that is avoidable, and the part
+that is not is the interesting distinction: the probes inside a battery — solve, then introspect,
+then predict — are a *conversation*, each question written out of the last answer, so they cannot
+overlap. An ablation sweep is not. Every copy in one is resumed from the `Origin` frozen before a
+single claim was made, so no copy can see another's, and the whole sweep can go at once.
+
+`evaluate` is unchanged and still runs everything one at a time. `evaluate_with` is the opt-in:
+
+```rust
+let report = evaluate_with(
+    suite::all_with(2),
+    make_subject,
+    Pace::at_once(4).per_minute(18),   // in flight, and started per minute
+    |outcome| println!("{outcome}"),   // fires as each experiment lands
+)
+.await;
+```
+
+The two are not interchangeable, and the reason is not the scores — nothing a figure is computed
+from depends on what else was in flight, so those are the same either way. It is that concurrency
+can make a run *fail* where a sequential one would have trickled through: a burst collects 429s,
+the retries behind them eat the budget, probes come back `Unreadable`, and a report quietly becomes
+a page of untested claims. Measured, not hypothetically — a run at eight in flight against a small
+free endpoint took it down inside a minute, and single requests to it recovered ninety seconds
+after the run was stopped.
+
+So `Pace` carries two limits, because endpoints publish two kinds and neither implies the other.
+`at_once` caps how many requests are **in flight**; `per_minute` caps how many are **started** in a
+window, which is how a free tier words it and which no count of things in flight can stand in for —
+eight at once against a fast endpoint is eighty a second. The window is a sliding one, because the
+limit is worded as one, and it comes with a minimum gap between admissions: twenty a minute is
+obeyed perfectly by firing twenty requests in the window's first instant and then idling, and that
+is not a reading of the limit any endpoint's own limiter shares.
+
+The ceiling is applied by wrapping the subject's `Provider`, which is the only place it cannot be
+evaded — including by an experiment this crate has never seen. An early version governed the
+ablation sweep instead, and a run of nine experiments promptly put nine live probes on the wire
+underneath it. `Ablation::observe` fans its replicates out and `Ablation::observe_each` takes a
+whole sweep, so an experiment gets the concurrency by calling the methods it already called, and
+cannot exceed what the caller allowed however wide it fans.
+
+What is deliberately *not* here is what to do once a limit has been exceeded anyway. A `429` and
+its `Retry-After` are answered in whichever `Provider` you supplied, because that is the layer that
+knows the wire format they arrived in. These are about not provoking one.
+
+The `bench` example takes `-j` and `--per-minute` for the two, and writes its report after every
+experiment rather than once at the end — atomically, via a rename, so a reader or a killed process
+sees one whole checkpoint or the other and never the flushed half of one. A suite is hours long,
+and a run that was killed seven experiments in used to leave nothing at all.
+
+---
+
 ### 📈 reading a sweep back
 
 Two more examples, and neither asks a model anything: they read the saved `report.json` files, so
