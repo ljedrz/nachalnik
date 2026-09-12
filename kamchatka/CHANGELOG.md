@@ -46,6 +46,29 @@ minor bump may break you.
   ask for the other five is a reference with most of itself missing. What that costs at the
   boundary is under `### breaking`.
 
+- **The gap column says nothing about how long a person took.** It answers *which step was slow*,
+  and a session spends most of its wall time in two places where nothing is stepping at all: a
+  permission question nobody has answered yet, and the wait between one turn and the next thing
+  somebody types. Both were drawn like any other gap, so the largest figure in the column was
+  routinely a measure of how long somebody had been reading - which is the one number in there
+  nobody should act on, and the one the eye goes to first. The readme's own example of the pane had
+  `+11.0s` beside `permission.decided` and described it as one of the interesting ones.
+
+  The line that ends such a wait keeps its clock and is given no gap. *When* a question was
+  answered is a real question, and somebody matching the pane against a server log needs it; only
+  *how long* the answering took is nobody's business.
+
+  `Traced::after_a_person` is what carries it, set at the two doors a person comes through -
+  `App::submit`, where a line is handed in, and the answer to a permission question. Set where the
+  program *learns* somebody acted rather than where the waiting begins, which is what makes it land
+  on the right line: a question opening emits itself, a state change and a recount in the same
+  millisecond, so a flag set there would be spent on one of those and the eleven seconds would
+  still be drawn beside `permission.decided`. `App::trace` takes it, so exactly one line is marked.
+
+  The clock behind the column is untouched - `replace` still runs on every line - so the line
+  *after* a person's still measures from the one before it. What is skipped is drawing the figure,
+  not keeping time.
+
 ### fixed
 
 - **`?` did nothing on an empty context or permissions tab.** Both handlers return early when their
@@ -178,12 +201,13 @@ minor bump may break you.
 
 ### breaking
 
-- `app::Traced` grew a public field. It carries a `wall: SystemTime` beside its `at: Instant`
-  now - the two clocks the trace pane needs, since neither answers the other's question - and the
-  struct has no private fields and is not `#[non_exhaustive]`, so `Traced { name, detail, at }` no
-  longer compiles. There is no `Default` to spread from, so the fix is the fourth field:
-  `SystemTime::now()` for something being built to draw, and the event's own arrival time for
-  anything reconstructing a trace that already happened.
+- `app::Traced` grew two public fields. It carries a `wall: SystemTime` beside its `at: Instant` -
+  the two clocks the trace pane needs, since neither answers the other's question - and an
+  `after_a_person: bool` saying whether the time before it was somebody thinking rather than the
+  program working. The struct has no private fields and is not `#[non_exhaustive]`, so
+  `Traced { name, detail, at }` no longer compiles. There is no `Default` to spread from, so the
+  fix is both fields: `SystemTime::now()` and `false` for something being built to draw, and the
+  event's own arrival time for anything reconstructing a trace that already happened.
 
   This is the one that moves the number, and it landed with the clock rather than with anything
   since. `app::App` grew one in the same cycle and is *not* breaking, which is the distinction

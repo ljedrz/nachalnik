@@ -624,8 +624,17 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         // brings to a log is which step was slow, and a column of timestamps makes them do the
         // subtraction. Blank under a tenth of a second, so the few that took real time are the
         // only ones with anything in the column at all
+        // note: `replace` runs either way, so the line after a person's still measures from this
+        // one. What is skipped is drawing the figure, not keeping the clock
         let gap = match (clock, before.replace(event.at)) {
-            (true, Some(previous)) => waited_since(event.at.saturating_duration_since(previous)),
+            // note: and not where the gap is somebody's. `after_a_person` marks the line that ends
+            // a wait for a person - an answered question, a message finally typed - and however
+            // long that took it is not a step this program spent any time on. It was also the
+            // biggest number in the column, so the one figure nobody should act on was the one the
+            // eye went to first
+            (true, Some(previous)) if !event.after_a_person => {
+                waited_since(event.at.saturating_duration_since(previous))
+            }
             _ => None,
         };
         let gap_span = match (clock, &gap) {

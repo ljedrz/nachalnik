@@ -226,6 +226,7 @@ async fn a_run_that_outlasts_a_day_says_which_day_each_line_is_on() {
             detail: "the long one".to_owned(),
             at: std::time::Instant::now(),
             wall: midnight + Duration::from_secs(86_400 * n as u64),
+            after_a_person: false,
         });
     }
 
@@ -244,5 +245,73 @@ async fn a_run_that_outlasts_a_day_says_which_day_each_line_is_on() {
     assert_ne!(
         dates[0], dates[1],
         "the second day should be a different date: {screen}"
+    );
+}
+
+/// The gap column answers "which step was slow", and a session spends most of its wall time in
+/// two places where nothing is stepping: a question nobody has answered yet, and the wait for the
+/// next message. `+11.0s permission.decided` is a person reading, and it was the biggest figure
+/// in the column - so the one number nobody should act on was the one the eye went to first.
+#[tokio::test]
+async fn the_gap_column_says_nothing_about_how_long_a_person_took() {
+    use std::time::{Duration, Instant, SystemTime};
+
+    use kamchatka::app::Traced;
+
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+
+    // eleven seconds of somebody reading a question, and then four of the program doing the thing
+    // they allowed. Both are real waits; only one of them is a step
+    let start = Instant::now();
+    let wall = SystemTime::now();
+    harness.app.trace.clear();
+    for (name, after, theirs) in [
+        ("permission.requested", 0, false),
+        ("permission.decided", 11_000, true),
+        ("tool.started", 11_010, false),
+        ("tool.finished", 15_010, false),
+    ] {
+        harness.app.trace.push_back(Traced {
+            name: name.to_owned(),
+            detail: "shell".to_owned(),
+            at: start + Duration::from_millis(after),
+            wall: wall + Duration::from_millis(after),
+            after_a_person: theirs,
+        });
+    }
+
+    harness.tab(Tab::Trace);
+    let screen = harness.sized(120, 30);
+
+    // the eleven seconds somebody spent deciding is drawn nowhere
+    assert!(
+        !screen.contains("11.0s"),
+        "how long a person took is not a step: {screen}"
+    );
+
+    // and the four the tool spent is drawn, on the line it belongs to
+    let gapped: Vec<&str> = screen
+        .lines()
+        .filter(|line| line.contains("+4.0s"))
+        .collect();
+    assert_eq!(
+        gapped.len(),
+        1,
+        "the program's wait is still drawn: {screen}"
+    );
+    assert!(
+        gapped[0].contains("tool.finished"),
+        "beside the line it ended on: {screen}"
+    );
+
+    // the clock stays on the answered question, because *when* it was answered is a real question
+    // - it is only *how long* that is nobody's business
+    let decided = screen
+        .lines()
+        .find(|line| line.contains("permission.decided"))
+        .unwrap_or_else(|| panic!("the line is drawn: {screen}"));
+    assert!(
+        decided.chars().filter(|c| *c == ':').count() >= 2,
+        "the wall clock stays: {decided}"
     );
 }

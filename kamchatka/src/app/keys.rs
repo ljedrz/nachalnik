@@ -609,6 +609,9 @@ impl App {
             self.policy.grant_the_network(&request.call);
         }
 
+        // the same, for the other thing a session waits on somebody for. Whatever the question
+        // cost in wall time was spent reading it, and `permission.decided` is the line it lands on
+        self.acted = true;
         if let Err(e) = self.kernel.decide(request.id, grant) {
             self.say(Speaker::Error, e.to_string());
         }

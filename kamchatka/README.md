@@ -199,7 +199,7 @@ made of:
 │14:22:13         permission.requested  shell (3)                                                              │
 │14:22:13         state.changed         requesting → deciding                                                  │
 │14:22:13         context.recounted     1425 → 1377 tokens                                                     │
-│14:22:24  +11.0s permission.decided    shell: allow, answered when it was asked about                         │
+│14:22:24         permission.decided    shell: allow, answered when it was asked about                         │
 │14:22:24         state.changed         deciding → ready                                                       │
 │14:22:24         state.changed         ready → executing                                                      │
 │14:22:24         tool.started          shell                                                                  │
@@ -223,9 +223,15 @@ that none of them is a name with an empty line beside it.
 **Two clocks, because neither answers the other's question.** The second column is the gap since
 the line above, blank under a tenth of a second. Nearly everything in a session happens between one
 frame and the next, so what is left with a number beside it is the interesting part: the model
-thinking, a command running, and the eleven seconds somebody spent deciding whether to allow a
-shell. That is the question people bring to a log — *which step was slow* — and here it is answered
-without subtracting a column of timestamps.
+thinking, and a command running. That is the question people bring to a log — *which step was
+slow* — and here it is answered without subtracting a column of timestamps.
+
+**What it never shows is how long you took.** A session spends most of its wall time in two places
+where nothing is stepping at all: a permission question nobody has answered yet, and the wait
+between one turn and the next thing somebody types. Those gaps used to be drawn like any other, so
+the largest figure in the column was routinely a measure of how long a person had been reading —
+which is the one number in there nobody should act on, and the one the eye goes to first. The line
+that ends such a wait keeps its clock and is given no gap.
 
 The first column is when it happened, which no amount of adding up deltas will give you. Matching
 the pane against a server log, a provider's dashboard, a ticket, or a memory of what happened

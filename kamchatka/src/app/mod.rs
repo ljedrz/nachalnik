@@ -162,6 +162,21 @@ pub struct Traced {
     /// has to know about time zones or about how wide a column is. Turning it into digits is the
     /// screen's job, and the screen is the only thing that has a width.
     pub wall: SystemTime,
+    /// Whether the time before this line was somebody thinking rather than the program working.
+    ///
+    /// note: the pane draws no gap where this is set, however long the gap was. The column exists
+    /// to answer *which step was slow*, and a session spends most of its wall time in two places
+    /// where nothing is stepping at all: a permission question nobody has answered yet, and the
+    /// wait between one turn and the next message. `+11.0s` beside `permission.decided` is not the
+    /// runtime taking eleven seconds - it is a person reading the question - and it was the
+    /// largest figure in the column, which made the one number nobody should act on the one the
+    /// eye goes to first.
+    ///
+    /// note: set on the line that *ends* the wait rather than the one that begins it, because the
+    /// gap belongs to the line it is drawn beside. `App::trace` takes it, so it marks exactly one
+    /// line: the first thing that happens after somebody acts, which is the line whose gap spans
+    /// their thinking.
+    pub after_a_person: bool,
 }
 
 /// What is being shown over the top of everything else.
@@ -497,6 +512,18 @@ pub struct App {
     pub trace_scroll: usize,
     /// Whether a turn is running.
     pub busy: bool,
+    /// Whether a person has just done something the trace has not drawn a line for yet.
+    ///
+    /// note: private, and set at the two doors a person comes through - `submit`, where a line is
+    /// handed in, and the answer to a permission question. [`Traced::after_a_person`] is what it
+    /// becomes, and `App::trace` takes it, so it marks the one line whose gap is somebody's
+    /// thinking rather than the program's working.
+    ///
+    /// note: set where the program learns a person acted rather than where the waiting begins.
+    /// A question opens and `state.changed`, a recount and the question itself all arrive in the
+    /// same millisecond, so a flag set at the opening would be spent on one of those and the
+    /// eleven seconds would still be drawn beside `permission.decided`.
+    acted: bool,
     /// Whether it is time to leave.
     pub quit: bool,
     /// How many tokens the provider may charge for this session before it stops; `None` never
@@ -639,6 +666,7 @@ impl App {
             tab: Tab::Chat,
             trace_scroll: 0,
             busy: false,
+            acted: false,
             quit: false,
             spend: None,
             rendered: 0,
@@ -1039,6 +1067,10 @@ impl App {
             detail: detail.into(),
             at: Instant::now(),
             wall: SystemTime::now(),
+            // taken rather than read, so that exactly one line is marked: the first thing that
+            // happens after somebody acts is the line whose gap spans their thinking, and every
+            // line after it is the program working again
+            after_a_person: std::mem::take(&mut self.acted),
         });
     }
 

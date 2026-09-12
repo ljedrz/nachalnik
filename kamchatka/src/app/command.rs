@@ -31,6 +31,9 @@ impl App {
     /// alternative was a watermark kept by every caller.
     pub async fn submit(&mut self, line: &str) -> Reply {
         let (from, pages) = (self.loose.len(), self.previews);
+        // whatever this line turns into, the time before it was somebody deciding what to type.
+        // The next line the trace draws is the one that gap belongs to
+        self.acted = true;
 
         if let Some(command) = line.strip_prefix('/') {
             self.command(command).await;
