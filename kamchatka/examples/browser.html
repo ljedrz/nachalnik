@@ -116,6 +116,8 @@ const asked = document.getElementById("asked");
 let asking = [];        // the questions waiting on somebody, oldest first
 let open = null;        // the bubble a model is still writing into
 let wanted = new Set(); // items already asked about, so nothing is asked about twice
+let pending = [];       // lines this page drew on sending, not yet tied to an item
+let mine = new Set();   // the items those lines turned out to be
 
 /** Sends one command. The answer comes back on the stream, not from here. */
 async function send(command) {
@@ -132,6 +134,28 @@ function say(kind, text, item) {
   log.append(el);
   if (stuck) log.scrollTop = log.scrollHeight;
   return el;
+}
+
+/**
+ * Ties the oldest line this page drew on sending to the item it turned out to be.
+ *
+ * note: what stops a message appearing twice. A line is drawn the moment it is sent, because a
+ * message handed into a running turn is *queued* and does not become an item until that turn ends -
+ * which can be minutes, and a page that waited would have swallowed it. But it does become one
+ * eventually, and `context.added` is how everybody hears about it, so without this the page
+ * inspected its own message and drew it a second time underneath the first.
+ *
+ * note: claimed from either direction, because the order is not guaranteed. `replied` carries the
+ * item a line was asked as and arrives on the command path; `context.added` arrives on the record
+ * path; whichever gets here first binds, and the second finds it already bound.
+ */
+function claim(id) {
+  if (mine.has(id)) return true;
+  const el = pending.shift();
+  if (!el) return false;
+  mine.add(id);
+  el.dataset.item = id;
+  return true;
 }
 
 /** Asks what an item actually says, once, and leaves somewhere to put it. */
@@ -171,9 +195,11 @@ prompt.onsubmit = (e) => {
   if (!text) return;
   line.value = "";
   line.style.height = "auto";
-  // said here rather than waiting for the record, because the record will not carry the words -
-  // this page is the only thing that knows them until it asks
-  say("user", text);
+  // drawn here rather than waiting for the record, because the record will not carry the words -
+  // this page is the only thing that knows them until it asks - and because a line sent into a
+  // running turn is queued, and would be invisible until that turn ended. `claim` is what stops
+  // it being drawn again when it does become an item
+  pending.push(say("user", text));
   send({ do: "submit", line: text });
 };
 
@@ -193,6 +219,9 @@ line.addEventListener("input", () => {
 function heard(m) {
   switch (m.is) {
     case "attached": {
+      // whatever this page had drawn belongs to the conversation it is about to be handed
+      pending = [];
+      mine.clear();
       document.getElementById("session").textContent = m.session;
       document.getElementById("model").textContent = m.model ? m.model.model : "no model";
       budget(m);
@@ -228,6 +257,7 @@ function heard(m) {
     case "busy": working(m.busy); break;
     case "replied": {
       working(m.busy);
+      if (m.did && m.did.asked !== undefined) claim(m.did.asked);
       if (m.page) for (const p of m.page.pages) say("note", `--- ${m.page.title} ---\n${p.body}`);
       break;
     }
@@ -240,9 +270,11 @@ function heard(m) {
 function happened(e) {
   switch (e.event) {
     case "context.added":
-      // somebody else typed, or something was attached. The record says an item exists and not one
-      // word of what it holds, so this is where `inspect` earns its place
-      if (e.kind === "user_message") inspect(e.id, "user");
+      // a message: this page's own, or somebody else's. `claim` answers which - it binds the line
+      // drawn on sending, and says so - and only what nobody here typed is worth asking about. The
+      // record says an item exists and not one word of what it holds, which is where `inspect`
+      // earns its place
+      if (e.kind === "user_message" && !claim(e.id)) inspect(e.id, "user");
       break;
     case "tool.requested": say("call", `${e.tool}(${JSON.stringify(e.args)})`); break;
     case "tool.finished":

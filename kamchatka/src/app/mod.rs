@@ -677,6 +677,18 @@ pub struct App {
     /// Whether the loop is being driven a transition at a time, so that answering a permission
     /// does not quietly run the rest of the turn.
     pub stepping: bool,
+    /// Whether somebody is at a screen, with this program's keys to press.
+    ///
+    /// note: what `/help` turns on, and it is a fact about the *caller* rather than about the
+    /// session - which is why the loop sets it and `App` cannot work it out. A run down a pipe and
+    /// a browser attached over a socket both have no `ctrl+p` to press, and both were being handed
+    /// six pages about one.
+    ///
+    /// note: `true` by default, and the direction is deliberate rather than convenient. This type
+    /// is the terminal's state - it holds a prompt, a focus, a tab and two scroll positions - so
+    /// the caller that departs from its shape is the one without keys, and it is the one that says
+    /// so. `headless.rs` and [`crate::remote`] are both driven by a loop that knows.
+    pub keys: bool,
     /// Digits typed at the context tab, waiting for the key that uses them.
     pub count: String,
     /// Which capability is picked out on the permissions tab.
@@ -833,6 +845,7 @@ impl App {
             search: None,
             editing: None,
             stepping: false,
+            keys: true,
             count: String::new(),
             chosen: 0,
             #[cfg(feature = "tui")]
@@ -1551,7 +1564,7 @@ impl App {
 
         let offered: Vec<&crate::help::Section> = crate::help::SECTIONS
             .iter()
-            .filter(|section| section.applies(asked))
+            .filter(|section| section.applies(asked, self.keys))
             .collect();
         // note: found rather than computed, because a section that is not offered shifts every
         // index after it - `question` is left out whenever nothing is waiting, which is nearly
@@ -1568,7 +1581,15 @@ impl App {
             })
             .collect();
 
-        self.preview_pages("the keys", pages, at);
+        // note: and what it is *called* follows the same rule. A caller with no keys was being
+        // handed a page of slash commands under the title `the keys`, which is the panel telling
+        // it that what it is reading is the thing it has not got
+        let title = match self.keys {
+            true => "the keys",
+            false => "the commands",
+        };
+
+        self.preview_pages(title, pages, at);
     }
 
     /// The same, for something with more than one face; `at` is the one to open on.

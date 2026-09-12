@@ -834,6 +834,49 @@ async fn a_command_answers_the_client_that_ran_it() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// `/help` from a client is the commands, and nothing about keys.
+///
+/// note: the second of these two found from a phone. A served session has no keys of this
+/// program's to press, and `/help` was handing a browser six pages of them - `ctrl+p` shows the
+/// next request, `g` goes to the top of the trace - which is a reference to a program the reader is
+/// not using. The greeting had the same shape and was fixed the same afternoon; both came of a
+/// question that had only ever had two answers, screen or pipe, being asked by a third thing.
+///
+/// note: the loop sets it rather than the caller, which is why this is a test of the *server*
+/// rather than of `main.rs`: a host embedding `Server::run` has no keys either.
+#[tokio::test]
+async fn help_from_a_client_is_the_commands() {
+    let session = served(vec![], |_| {}).await;
+
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.send(Command::Submit {
+        line: "/help".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Replied { .. }))
+        .await;
+    let Some(Message::Replied { page, .. }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    let page = page.as_ref().expect("`/help` opened nothing");
+
+    assert_eq!(page.title, "the commands");
+    assert_eq!(page.pages.len(), 1, "{:?}", page.pages);
+    let body = &page.pages[0].body;
+    assert!(body.contains("/attach"), "the commands are missing: {body}");
+    assert!(
+        !body.contains("ctrl+p"),
+        "a client was told about keys: {body}"
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A client can stop a turn somebody else started.
 #[tokio::test]
 async fn an_interrupt_from_a_client_stops_the_turn() {
