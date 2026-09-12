@@ -44,6 +44,21 @@ pub fn context_limit() -> Option<usize> {
         .and_then(|value| value.parse().ok())
 }
 
+/// The app these requests are made on behalf of, if the environment names one.
+///
+/// note: both halves or neither. A `NACHALNIK_APP_URL` with no title would be attributed to a
+/// bare address, which is a worse entry in somebody's rankings than no entry at all.
+///
+/// note: off unless asked for, like the header it feeds. Naming an app is a claim about which
+/// program is spending the tokens, and the honest default for a benchmark is to make no claim -
+/// the run is the example, not whatever harness happens to share its repository.
+pub fn attribution() -> Option<(String, String)> {
+    let url = env::var("NACHALNIK_APP_URL").ok()?;
+    let title = env::var("NACHALNIK_APP_TITLE").ok()?;
+
+    Some((url, title))
+}
+
 /// The models to use, from repeated flags or from `NACHALNIK_MODELS`.
 pub fn models(flags: Vec<String>) -> Vec<String> {
     if !flags.is_empty() {
@@ -67,9 +82,14 @@ pub fn models(flags: Vec<String>) -> Vec<String> {
 /// endpoints wants different names for them than a benchmark writing one into a report - and
 /// probing is a round trip a caller may not want to pay for.
 pub fn provider(model: &str) -> Result<OpenAiCompatible, BoxError> {
-    Ok(OpenAiCompatible::new(model, base_url(), api_key()?)
+    let mut provider = OpenAiCompatible::new(model, base_url(), api_key()?)
         .with_client(OpenAiCompatible::client())
-        .with_context_limit(context_limit()))
+        .with_context_limit(context_limit());
+    if let Some((url, title)) = attribution() {
+        provider = provider.on_behalf_of(url, title);
+    }
+
+    Ok(provider)
 }
 
 /// One provider per model, sharing a connection pool, each asked what its context limit is.
