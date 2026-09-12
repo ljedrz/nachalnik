@@ -40,10 +40,11 @@ minor bump may break you.
   with no screen. It was not true: `help` was private and the only way in was `ui::HELP`, behind
   the feature that draws. `ui` still re-exports it for whoever is on that path.
 
-  **`ui::HELP` is gone**, and `help::everything()` is the whole of it - the one a reader with no
-  way to turn a page is handed. A headless run is exactly that reader, so `/help` down a pipe now
-  prints every page with its name over it rather than the one the panel would have opened at; one
-  page of six with no key to ask for the other five is a reference with most of itself missing.
+  `help::everything()` is the whole of it - the one a reader with no way to turn a page is handed.
+  A headless run is exactly that reader, so `/help` down a pipe now prints every page with its
+  name over it rather than the one the panel would have opened at; one page of six with no key to
+  ask for the other five is a reference with most of itself missing. What that costs at the
+  boundary is under `### breaking`.
 
 ### fixed
 
@@ -174,6 +175,26 @@ minor bump may break you.
   it is spelled and a file named `~\x` here is still a file named `~\x`. The home is an argument
   rather than something `expanded` reads for itself, which is what lets the test run everywhere,
   pass with `HOME` unset, and put the native separator through as well.
+
+### breaking
+
+- `app::Traced` grew a public field. It carries a `wall: SystemTime` beside its `at: Instant`
+  now - the two clocks the trace pane needs, since neither answers the other's question - and the
+  struct has no private fields and is not `#[non_exhaustive]`, so `Traced { name, detail, at }` no
+  longer compiles. There is no `Default` to spread from, so the fix is the fourth field:
+  `SystemTime::now()` for something being built to draw, and the event's own arrival time for
+  anything reconstructing a trace that already happened.
+
+  This is the one that moves the number, and it landed with the clock rather than with anything
+  since. `app::App` grew one in the same cycle and is *not* breaking, which is the distinction
+  worth keeping straight: it has thirteen private fields, so nothing outside the crate could write
+  a literal for it in the first place.
+
+- `ui::HELP` is gone. The key reference is `help::SECTIONS`, one page per tab, and
+  `help::everything()` is the whole of it as one string - which is what `HELP` was, so a reader
+  that wants all of it changes the path and the call. `ui` re-exports both for whoever is on that
+  path already, and `help` is a public module now, so a build with no screen can reach the text
+  that a screenless build has always been able to *print*.
 
 ## [0.8.0] - 2026-09-11
 
