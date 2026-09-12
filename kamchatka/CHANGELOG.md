@@ -125,6 +125,33 @@ minor bump may break you.
 
 ### fixed
 
+- **`/help` described a terminal to callers that have none.** Six of its seven pages are key
+  bindings for tabs - `ctrl+p` shows the next request, `g` goes to the top of the trace - and both
+  a run down a pipe and a browser on a phone were handed all of them, under the title `the keys`.
+  What is left for a reader with no keys is the slash commands, which everybody can type, and that
+  is what `/help` gives them now. `help::Section` says per section whether it is about keys, rather
+  than the answer being worked out from a name; the loops that have none - `headless.rs` and
+  `remote::Server::run` - set `App::keys` themselves, so an embedder driving either gets the same
+  thing the program does.
+
+  The headless test for this asserted the opposite and had a reason: a caller handed one page of
+  six cannot press `←` for the other five. That was the right answer to the wrong question, and the
+  browser is what made the question visible.
+
+- **A page drew a message it had sent twice.** `examples/browser.html` renders a line the moment it
+  is sent - it has to, because a message handed into a running turn is queued and would otherwise
+  be invisible until that turn ended - and then drew it again when `context.added` arrived, because
+  the rule for "an item whose words this page has not got" caught its own. It binds the line it
+  drew to the item it turns out to be, from whichever of `replied` and `context.added` arrives
+  first.
+
+- **A served session greeted every client with the terminal's keyboard shortcuts.** `ctrl+p` shows
+  the next request and `F1` lists the keys - said once into the conversation, and therefore into
+  every projection every client has been handed since, including a browser with none of those keys
+  to press. The condition guarding it asked whether the run was headless, which was the right
+  question when there were two loops and a third answer to neither once there were three. Found by
+  opening the page.
+
 - **A question answered before the turn that raised it had finished unwinding stopped the session
   for good.** `permission.requested` is broadcast while that turn is still in flight, so an answer
   inside the window was recorded, found `start_turn` refusing because the old turn was still marked

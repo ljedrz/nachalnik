@@ -122,6 +122,11 @@ impl<'a> Headless<'a> {
         finished: &mut mpsc::UnboundedReceiver<Outcome>,
         input: impl AsyncBufRead + Unpin,
     ) -> Result<(), String> {
+        // note: this loop is the definition of a caller with no keys, so it says so rather than
+        // being told by whoever built it - which means an embedder that drives `Headless` gets the
+        // same `/help` the program does. See `App::keys`
+        app.keys = false;
+
         let mut lines = input.lines();
         let mut reading = true;
         // note: an instant rather than a duration, so that it means the same thing however many

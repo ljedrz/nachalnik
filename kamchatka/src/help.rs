@@ -24,6 +24,12 @@ pub struct Section {
     pub name: &'static str,
     /// The keys themselves.
     pub body: &'static str,
+    /// Whether this one is about keys, and so about a screen.
+    ///
+    /// note: stated per section rather than worked out from the name, because the question a
+    /// reader of this asks is "have I got keys to press" - and a section added later should have
+    /// to answer that rather than inherit an answer from what it happens to be called.
+    pub keys: bool,
 }
 
 /// Every section, in the order they are offered, which is the order the strip draws them in.
@@ -36,49 +42,72 @@ pub const SECTIONS: &[Section] = &[
     Section {
         name: "chat",
         body: CHAT,
+        keys: true,
     },
     Section {
         name: "question",
         body: QUESTION,
+        keys: true,
     },
     Section {
         name: "context",
         body: CONTEXT,
+        keys: true,
     },
     Section {
         name: "trace",
         body: TRACE,
+        keys: true,
     },
     Section {
         name: "permissions",
         body: PERMISSIONS,
+        keys: true,
     },
     Section {
         name: "commands",
         body: COMMANDS,
+        // the one page that is not about a screen: a slash command is typed, and every caller this
+        // program has can type
+        keys: false,
     },
     Section {
         name: "everywhere",
         body: EVERYWHERE,
+        keys: true,
     },
 ];
 
 impl Section {
-    /// Whether this one is worth offering at all right now.
+    /// Whether this one is worth offering at all, to this reader, right now.
     ///
-    /// note: only `question` is ever left out, and only because the keys it lists do not exist
-    /// until a tool asks for something. Every other section is offered from everywhere - a page
-    /// somebody has to go to is not the same as a page that is missing, and a reference that
-    /// rearranged itself under them would be one nobody could learn the shape of.
-    pub fn applies(&self, asked: bool) -> bool {
+    /// note: two questions and they are about different things. `asked` is about the *session* -
+    /// only `question` turns on it, because the keys it lists do not exist until a tool asks for
+    /// something. `keys` is about the *reader*: a session driven down a pipe or from a browser has
+    /// no keys of this program's to press, and handing it six pages of them is a reference to a
+    /// program it is not using. What is left for such a reader is the commands, which everybody
+    /// can type.
+    ///
+    /// note: everything else is offered from everywhere, and that is deliberate - a page somebody
+    /// has to go to is not the same as a page that is missing, and a reference that rearranged
+    /// itself under them would be one nobody could learn the shape of. The rule above is not that:
+    /// a caller with no keys is not somewhere else in the same program, it is somewhere the keys
+    /// are not.
+    pub fn applies(&self, asked: bool, keys: bool) -> bool {
+        if self.keys && !keys {
+            return false;
+        }
+
         self.name != "question" || asked
     }
 }
 
 /// The whole of it, every section in order, for a reader with no way to turn a page.
 ///
-/// note: what a headless run prints for `/help`, and what the tests scan. Both want all of it at
-/// once and for the same reason: neither is a person who can press `←`.
+/// note: every section, `keys` or not, which is why nothing outside the tests reads it any more:
+/// what a caller with no keys is shown for `/help` is decided by [`Section::applies`], and a
+/// run down a pipe used to be handed this. It is kept because a test that checks the words is
+/// checking all of them.
 pub fn everything() -> String {
     SECTIONS
         .iter()

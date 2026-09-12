@@ -215,6 +215,12 @@ impl Server {
         events: &mut broadcast::Receiver<Event>,
         finished: &mut mpsc::UnboundedReceiver<Outcome>,
     ) -> Result<(), String> {
+        // note: a client on the other end of a socket has no keys of this program's to press, and
+        // a browser has none at all - so `/help` gives it the commands. Set here rather than by the
+        // caller for the reason `headless.rs` sets it there: this loop is what knows. See
+        // `App::keys`
+        app.keys = false;
+
         let (voice, _) = broadcast::channel(VOICE);
         let (asks, mut asked) = mpsc::unbounded_channel();
         // how many of the program's own lines have gone out; see `App::notes` for why it counts
