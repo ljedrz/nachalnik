@@ -118,6 +118,7 @@ async fn a_paced_run_goes_abreast_but_no_wider_than_it_was_told() {
         suite::all(),
         |name| Ok(subject_on(provider.clone(), name)),
         Pace::at_once(at_once),
+        |_| {},
     )
     .await;
 
@@ -143,6 +144,7 @@ async fn pacing_does_not_change_how_many_requests_a_run_makes() {
         suite::all(),
         |name| Ok(subject_on(paced.clone(), name)),
         Pace::at_once(4),
+        |_| {},
     )
     .await;
 
@@ -166,6 +168,7 @@ async fn a_rate_limit_is_obeyed_over_the_window() {
         suite::all(),
         |name| Ok(subject_on(provider.clone(), name)),
         Pace::at_once(8).per(allowed, Duration::from_secs(10)),
+        |_| {},
     )
     .await;
 
@@ -193,6 +196,7 @@ async fn no_rate_means_no_waiting() {
         suite::all(),
         |name| Ok(subject_on(provider.clone(), name)),
         Pace::at_once(8),
+        |_| {},
     )
     .await;
 
@@ -212,6 +216,7 @@ async fn the_window_is_shared_rather_than_one_each() {
         suite::all(),
         |name| Ok(subject_on(provider.clone(), name)),
         Pace::at_once(9).per(4, Duration::from_secs(30)),
+        |_| {},
     )
     .await;
 

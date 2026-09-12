@@ -23,12 +23,12 @@
 
 use std::{
     env,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use nachalnik::{Config, Kernel, Params, Provider};
-use nachalnik_eval::{Pace, Report, Subject, evaluate_with, suite};
+use nachalnik_eval::{Outcome, Pace, Report, Subject, evaluate_with, suite};
 use nachalnik_utils::base_url;
 use serde_json::json;
 
@@ -193,9 +193,6 @@ async fn main() -> Result<(), nachalnik::BoxError> {
     //
     // note: the concurrency is kept *inside* an experiment rather than across them, which is
     // where nearly all of it is anyway: `attribution` ablates every note in every dossier, and
-    // that sweep is most of the requests a whole suite makes. Fanning the experiments out as well
-    // would finish sooner and would print nothing until it did, which is the trade this loop
-    // exists to refuse.
     // note: on by default, and named after the model and the hour if nobody said where. A run is
     // hours long and the console output is a summary - the scores, not the questions and answers
     // they were computed from - so a run whose terminal is closed used to leave nothing that
@@ -209,36 +206,59 @@ async fn main() -> Result<(), nachalnik::BoxError> {
     if let Some(path) = &json {
         println!("the record of this run is being written to {path}, after every experiment\n");
     }
-    // the accumulator is the report itself rather than a `Vec` turned into one at the end, so
-    // that what gets written after each experiment is the same value, and writing it costs no
-    // copy of everything that has landed so far
-    let mut report = Report {
-        at: started
-            .duration_since(UNIX_EPOCH)
-            .map(|since| since.as_millis() as u64)
-            .unwrap_or_default(),
-        outcomes: Vec::new(),
+    let at = started
+        .duration_since(UNIX_EPOCH)
+        .map(|since| since.as_millis() as u64)
+        .unwrap_or_default();
+
+    // every experiment that has finished, in the order they finished, which is what a checkpoint
+    // is written from. The report at the end is the ordered one; this is only ever the record
+    // that survives a run being killed
+    let landed: Mutex<Vec<Outcome>> = Mutex::new(Vec::new());
+    let tell = |outcome: &Outcome| {
+        println!("{outcome}\n");
+
+        let mut landed = landed
+            .lock()
+            .expect("nothing here panics while holding this");
+        landed.push(outcome.clone());
+
+        // written as each experiment finishes rather than once at the end. A suite is hours long
+        // and any of it can hang - measured, one experiment against a free endpoint sat on a
+        // single probe for over an hour - and a run killed at that point used to leave nothing at
+        // all, however many experiments had already finished.
+        if let Some(path) = &json {
+            let so_far = Report {
+                at,
+                outcomes: landed.clone(),
+            };
+            // warned rather than returned: losing a checkpoint is a reason to say so loudly, not
+            // a reason to throw away the hours of run still to come
+            if let Err(e) = checkpoint(path, &so_far) {
+                eprintln!("warning: could not write {path}: {e}");
+            }
+        }
     };
 
-    for experiment in experiments {
-        let one = evaluate_with([experiment], subject, pace).await;
-        for outcome in &one.outcomes {
-            println!("{outcome}\n");
+    // note: fanned out only when the pace leaves room for it. At one request in flight there is
+    // no room by definition, and starting all nine anyway would interleave nine sessions through
+    // a single-file queue - the same total time, but every experiment finishing near the end
+    // instead of one after another, which is the progress a long run is read by and the partial
+    // record a killed one is left with. Above one, they overlap and the ceiling decides how much.
+    let report = match at_once {
+        1 => {
+            let mut report = Report {
+                at,
+                outcomes: Vec::new(),
+            };
+            for experiment in experiments {
+                let one = evaluate_with([experiment], subject, pace, &tell).await;
+                report.outcomes.extend(one.outcomes);
+            }
+            report
         }
-        report.outcomes.extend(one.outcomes);
-
-        // written after every experiment rather than once at the end. A suite is hours long and
-        // any of it can hang - measured, one experiment against a free endpoint sat on a single
-        // probe for over an hour - and a run that is killed at that point used to leave nothing
-        // at all, however many experiments had already finished.
-        if let Some(path) = &json
-            && let Err(e) = checkpoint(path, &report)
-        {
-            // warned rather than returned: losing the checkpoint is a reason to say so loudly,
-            // not a reason to throw away the hours of run still to come
-            eprintln!("warning: could not write {path}: {e}");
-        }
-    }
+        _ => evaluate_with(experiments, subject, pace, &tell).await,
+    };
 
     println!("{}", summary(&report));
     print_curve(&report);

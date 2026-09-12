@@ -537,10 +537,18 @@ pub async fn evaluate(
 /// an endpoint publishes a rate rather than a concurrency limit, `at_once` has to be chosen with
 /// that in mind, and what catches the rest is the `Retry-After` handling in whichever
 /// [`Provider`](nachalnik::Provider) the caller supplied.
+/// note: `landed` is handed each outcome the moment that experiment finishes, in the order they
+/// finish rather than the order they were given. It is what lets a caller run the whole suite at
+/// once and still show progress - and, more to the point, still write the record of an experiment
+/// that has finished before the ones beside it have. Without it a concurrent run is all-or-nothing:
+/// nothing at all until the last experiment returns, which is the failure the checkpointing in the
+/// `bench` example exists to prevent. The [`Report`] this returns still lists them in the order
+/// they were given.
 pub async fn evaluate_with(
     experiments: impl IntoIterator<Item = Arc<dyn Experiment>>,
     make: impl Fn(&str) -> Result<Subject>,
     pace: Pace,
+    landed: impl Fn(&Outcome),
 ) -> Report {
     let governor = Governor::new(pace);
 
@@ -554,12 +562,17 @@ pub async fn evaluate_with(
         })
         .collect();
 
+    let landed = &landed;
     let outcomes = together(prepared.into_iter().map(|(experiment, subject)| {
         let governor = governor.clone();
         async move {
             let subject = match subject {
                 Ok(subject) => subject,
-                Err(e) => return unrun(&experiment, e.to_string()),
+                Err(e) => {
+                    let outcome = unrun(&experiment, e.to_string());
+                    landed(&outcome);
+                    return outcome;
+                }
             };
 
             under(&subject, &governor);
@@ -571,7 +584,10 @@ pub async fn evaluate_with(
                 .err()
                 .map(|e| e.to_string());
 
-            Outcome::of(&trial, failed)
+            let outcome = Outcome::of(&trial, failed);
+            landed(&outcome);
+
+            outcome
         }
     }))
     .await;
