@@ -660,8 +660,14 @@ async fn session() -> Result<()> {
         app.recall(Path::new(path));
         app.replay();
     }
+    // note: `server.is_none()` as well as `!headless`, because those are two different questions
+    // and this greeting is about the third answer to neither. `headless` says the session is driven
+    // by lines *here*; a served one is driven by neither lines nor keys, and told every client that
+    // `ctrl+p` shows the next request and `F1` lists the keys - into a browser, which has no keys of
+    // this program's to press. It said it once per session and then to everybody who ever attached,
+    // because the greeting goes into the conversation and the conversation is in every projection
     #[cfg(feature = "tui")]
-    if !headless && args.resume.is_none() {
+    if !headless && server.is_none() && args.resume.is_none() {
         app.say(Speaker::Note, ui::GREETING);
     }
     if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {

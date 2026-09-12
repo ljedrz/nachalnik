@@ -193,6 +193,28 @@ runs a session — which is the check on the claim that `protocol` is what moves
 needs to speak this. Its header carries the wire transcript, because a client in another language
 needs the JSON and none of the Rust.
 
+And `examples/gateway.rs` with `examples/browser.html` put the session in a browser, which is the
+one client that cannot reach it on its own: a browser has no TCP, so something has to terminate
+HTTP in front. Three routes, no framework, no build step, and one HTML file.
+
+```console
+$ kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2 &
+$ cargo run --example gateway -- tcp:127.0.0.1:7878 0.0.0.0:8080
+· a browser reaches tcp:127.0.0.1:7878 at port 8080 on every address this machine has
+```
+
+It is `text/event-stream` rather than a WebSocket because SSE already has this protocol's shape in
+it. An event may carry an `id:`, and a browser that loses the stream reconnects **by itself** and
+sends `Last-Event-ID:` — which is exactly `attach { since }`. So the browser does resume with no
+client code, and the negative space matches too: an event with no `id:` does not move
+`Last-Event-ID`, so records get one and the fragments of a model still typing do not. A browser
+never tries to resume from something that was never recoverable.
+
+The gateway has **no authentication and no encryption**, and says so when you point it at anything
+but loopback. `--serve` itself still refuses to. Whatever reaches the page reaches the `shell`
+tool, so it is a thing for a network you trust while you are watching it, and not a thing to leave
+running.
+
 ## 🧩 two dialects, and why one of them keeps the order
 
 `--gemini` talks to Google's own API instead of an OpenAI-compatible one. That is not a
