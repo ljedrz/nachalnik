@@ -93,6 +93,11 @@ minor bump may break you.
   from a quarter of a second towards five, for up to a minute, and says how long it waited when it
   gives up.
 
+  None of the three is observable through the protocol, so the one test about them is about the
+  *platform*: both options are set on a real loopback pair and read back, which is what catches a
+  machine that refuses one - `socket2` gates `with_interval` by operating system, and CI builds on
+  three of them.
+
 ### fixed
 
 - **A question answered before the turn that raised it had finished unwinding stopped the session

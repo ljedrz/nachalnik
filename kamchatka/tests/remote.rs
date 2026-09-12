@@ -1327,3 +1327,72 @@ async fn quitting_from_a_client_reads_as_an_ending() {
 
     session.ended().await.1.expect("the session failed");
 }
+
+/// A served run says the address it *got*, while it is still running, and a client can reach it.
+///
+/// note: `tcp:127.0.0.1:0` is the case this is for. Asking the kernel for a port is the sensible
+/// thing to do and it leaves the address as the one fact the person who typed the flag does not
+/// have - so a script starts a session, reads the line, and connects to what it says.
+/// `Server::address` asks the socket rather than repeating the argument, which is the whole of why
+/// that works, and this is what says so.
+///
+/// note: read off the *live* pipe rather than from a finished process, because a script does not
+/// get to wait for the session to end before connecting to it.
+///
+/// note: measured, and it is worth saying which half of it is its own. That a served run says
+/// something on stdout is shared with `the_program_serves_a_socket_and_a_second_one_drives_it`
+/// above, which reads it after the process ends; that `Server::address` asks the socket is covered
+/// by every test in this file, because they all connect to what it returns. What is only here is
+/// the port nobody chose, read while the session is still up and connected to - which is the whole
+/// of how a script is meant to use this.
+///
+/// note: what this is **not** about is flushing, and the first version of this note said it was. A
+/// session whose stdout had been redirected looked as though it were holding the line back, and
+/// that host had simply failed to bind, with the reason on stderr where it belonged. Rust's
+/// `Stdout` is a `LineWriter` whatever it points at, so `println!` has already flushed by the time
+/// it returns; the flush added here on the strength of that reading failed nothing when it was
+/// taken away again, and was taken away.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_served_run_says_the_address_it_got_and_a_client_can_reach_it() {
+    let base = common::endpoint(vec![answer("reached through a port nobody chose")]).await;
+
+    let mut host = tokio::process::Command::new(common::program())
+        .args(["--no-record", "-m", "nothing", "--serve", "tcp:127.0.0.1:0"])
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        // so a failing assertion below does not leave a session serving for the rest of the run
+        .kill_on_drop(true)
+        .spawn()
+        .expect("the host did not start");
+
+    let mut said = BufReader::new(host.stdout.take().expect("a pipe")).lines();
+    let line = tokio::time::timeout(PATIENCE, said.next_line())
+        .await
+        .expect("the host never said where it was listening")
+        .expect("the host's output stopped")
+        .expect("the host said nothing at all");
+    let at = line
+        .split_whitespace()
+        .next_back()
+        .expect("the line named no address");
+    assert!(at.starts_with("tcp:127.0.0.1:"), "{line}");
+    assert!(
+        !at.ends_with(":0"),
+        "it reported the port it asked for, not the one it got"
+    );
+
+    // and the address it printed is one a client can actually reach
+    let (mut peer, attached) = Peer::attached(at).await;
+    assert_eq!(attached.items.len(), 0);
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    tokio::time::timeout(PATIENCE, host.wait())
+        .await
+        .expect("the session did not end")
+        .expect("the host did not finish");
+}
