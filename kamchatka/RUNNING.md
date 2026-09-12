@@ -149,6 +149,25 @@ whatever reaches the port runs the `shell` tool as you. Listen on `tcp:127.0.0.1
 is the usual one
 ```
 
+So reaching a session from another machine is a tunnel, and that is a recommendation rather than a
+consolation: SSH already has the key management, so the session gets an authenticated, encrypted
+transport without this program growing either.
+
+```console
+host$  kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2
+other$ ssh -N -L 7878:127.0.0.1:7878 host &
+other$ kamchatka --connect tcp:127.0.0.1:7878
+```
+
+A port and a socket file are not the same thing to write a protocol over, and the difference is
+three settings rather than any of the above. Frames here are small — a line somebody typed, a
+fragment of a sentence — so `TCP_NODELAY` is on, because Nagle would hold each one back waiting for
+the last to be acknowledged. Keepalive is on, because a peer whose machine slept sends no `FIN` and
+a read on the other side would wait for ever. And a dropped connection is picked back up for a
+minute, backing off, rather than five times in a second and a quarter: that is right for a socket
+file, where the host either comes back at once or is not coming back, and wrong for a laptop
+changing access points.
+
 Several clients can watch one session, and they see the same thing: the program has one voice, so
 what a command answers and what the runtime says about a turn reach all of them. What it is *not*
 yet is arbitration — every attached client may submit, interrupt and answer questions, there is
