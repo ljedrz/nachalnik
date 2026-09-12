@@ -1227,6 +1227,7 @@ dependencies = [
  "serde",
  "serde_json",
  "synoptic",
+ "time",
  "tokio",
  "tokio-stream",
  "tui-markdown",

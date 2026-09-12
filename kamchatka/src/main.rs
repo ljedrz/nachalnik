@@ -271,6 +271,18 @@ fn main() -> Result<()> {
         std::process::exit(code);
     }
 
+    // and still before a runtime exists, for a reason of the same shape as the one above. Working
+    // out the local time of day means asking libc, which reads the process environment, and a
+    // thread setting a variable while another reads one is undefined behaviour - so `time`
+    // refuses to answer once a program is threaded. Here there is nobody to race, and the answer
+    // is good for the rest of the run: the trace pane needs an offset, not a calendar.
+    #[cfg(feature = "tui")]
+    kamchatka::ui::note_local_offset(
+        time::UtcOffset::current_local_offset()
+            .ok()
+            .map(time::UtcOffset::whole_seconds),
+    );
+
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;

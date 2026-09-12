@@ -165,3 +165,84 @@ async fn the_trace_says_what_each_event_carries_and_which_step_was_slow() {
     let narrow = harness.sized(46, 30);
     assert!(!narrow.contains("+4.0s"), "{narrow}");
 }
+
+#[tokio::test]
+async fn every_line_says_when_it_happened_and_not_only_how_long_it_took() {
+    /// `HH:MM:SS` anywhere in a line - the pane is drawn inside a border, so it does not start
+    /// in the first column.
+    fn stamped(line: &str) -> bool {
+        let glyphs: Vec<char> = line.chars().collect();
+        glyphs.windows(8).any(|at| {
+            at[2] == ':'
+                && at[5] == ':'
+                && [0, 1, 3, 4, 6, 7].iter().all(|n| at[*n].is_ascii_digit())
+        })
+    }
+
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+
+    harness.send("go").await;
+    harness.settle().await;
+    harness.tab(Tab::Trace);
+
+    // wide enough for both columns: the time of day answers "when", the gap answers "which step
+    // was slow", and neither can be got from the other
+    let screen = harness.sized(120, 30);
+    let count = screen.lines().filter(|line| stamped(line)).count();
+    assert!(
+        count >= 3,
+        "the trace should carry a time of day on every event, found {count}: {screen}"
+    );
+
+    // and a window too narrow for it spends its columns on what happened rather than on when
+    let narrow = harness.sized(48, 30);
+    assert!(
+        narrow.contains("model.requested"),
+        "the names survive a narrow window: {narrow}"
+    );
+    assert!(
+        !narrow.lines().any(stamped),
+        "a narrow window should drop the clock, not the event: {narrow}"
+    );
+}
+
+#[tokio::test]
+async fn a_run_that_outlasts_a_day_says_which_day_each_line_is_on() {
+    use std::time::{Duration, SystemTime};
+
+    use kamchatka::app::Traced;
+
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+    harness.send("go").await;
+    harness.settle().await;
+
+    // the shape of run this clock is for: one that was still going the next morning. Without the
+    // date these two are both `00:00:01` and nothing on the screen tells them apart
+    let midnight = SystemTime::UNIX_EPOCH + Duration::from_secs(1_789_171_201);
+    harness.app.trace.clear();
+    for (n, name) in ["tool.started", "tool.finished"].into_iter().enumerate() {
+        harness.app.trace.push_back(Traced {
+            name: name.to_owned(),
+            detail: "the long one".to_owned(),
+            at: std::time::Instant::now(),
+            wall: midnight + Duration::from_secs(86_400 * n as u64),
+        });
+    }
+
+    harness.tab(Tab::Trace);
+    let screen = harness.sized(120, 30);
+
+    let dates: Vec<&str> = screen
+        .lines()
+        .filter(|line| line.contains("──") && line.contains("-"))
+        .collect();
+    assert!(
+        dates.len() >= 2,
+        "two days should be marked, found {}: {screen}",
+        dates.len()
+    );
+    assert_ne!(
+        dates[0], dates[1],
+        "the second day should be a different date: {screen}"
+    );
+}

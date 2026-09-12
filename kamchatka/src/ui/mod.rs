@@ -37,6 +37,7 @@ use crate::ui::{
     tabs::{draw_chat, draw_context, draw_permissions, draw_trace},
     text::{compact, prefix_within, rows_for, suffix_within},
 };
+pub use tabs::note_local_offset;
 
 /// The first line of a session that is not being resumed.
 ///

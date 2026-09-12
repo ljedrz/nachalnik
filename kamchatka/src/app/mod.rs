@@ -10,7 +10,7 @@ use std::{
     borrow::Cow,
     collections::{BTreeMap, VecDeque},
     sync::Arc,
-    time::Instant,
+    time::{Instant, SystemTime},
 };
 
 #[cfg(feature = "tui")]
@@ -139,12 +139,25 @@ pub struct Traced {
     pub name: String,
     /// The rest of it.
     pub detail: String,
-    /// When it arrived.
+    /// When it arrived, on the clock that only goes forwards.
     ///
     /// note: what a log is missing without a clock is the question people actually bring to one:
     /// which step was slow. Kept as an instant rather than a rendered string because what the
-    /// pane shows is the gap to the line above, which is not a property of either line alone.
+    /// pane shows beside it is the gap to the line above, which is not a property of either line
+    /// alone - and because an `Instant` cannot be dragged backwards by the system clock being
+    /// set, which a duration computed from wall time can.
     pub at: Instant,
+    /// When it arrived, on the clock a person reads.
+    ///
+    /// note: both, because they answer different questions and neither can answer the other's.
+    /// `at` says how long a step took; this says when it happened, which is what somebody
+    /// matching the pane against a server log, a ticket or their own memory of the afternoon
+    /// needs. An `Instant` is deliberately opaque and has no rendering as a time of day.
+    ///
+    /// note: a `SystemTime` rather than something already formatted, so that nothing in `app`
+    /// has to know about time zones or about how wide a column is. Turning it into digits is the
+    /// screen's job, and the screen is the only thing that has a width.
+    pub wall: SystemTime,
 }
 
 /// What is being shown over the top of everything else.
@@ -1014,6 +1027,7 @@ impl App {
             name: name.into(),
             detail: detail.into(),
             at: Instant::now(),
+            wall: SystemTime::now(),
         });
     }
 

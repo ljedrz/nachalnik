@@ -12,9 +12,15 @@
 //! a row per undecided thing: `ask` is what this policy does when nobody has told it anything, and
 //! a screenful of it buries the one line that says what can happen without stopping.
 
-use std::{borrow::Cow, time::Duration};
+use std::{
+    borrow::Cow,
+    sync::OnceLock,
+    time::{Duration, SystemTime},
+};
 
 use nachalnik::{ContextId, ContextItem, ContextKind, ContextState, Verdict};
+use time::{OffsetDateTime, UtcOffset};
+
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -563,17 +569,28 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
 
 // ------------------------------------------------------------------------------------ the trace
 
-/// Every event, newest at the bottom, in two aligned columns.
+/// Every event, newest at the bottom, in aligned columns.
 ///
 /// note: The names are a column of their own rather than run together with what they say, which
 /// is what a whole window buys: `permission.requested` is the longest of them, so twenty-two
 /// columns line every event up under the last. Anything that still does not fit wraps under the
 /// column rather than being cut off - a log whose lines end in an ellipsis in the middle of the
 /// interesting part is not a log.
+///
+/// note: the time of day *and* the gap to the line above, which is a change from showing only the
+/// gap. The argument for the gap alone was that the question somebody brings to a log is which
+/// step was slow, and a column of timestamps makes them do the subtraction - that is right, and
+/// it is why the gap is still here and still the one painted yellow. What it missed is that a
+/// gap answers no question that starts "when": matching the pane against a server log, a
+/// provider's dashboard, a ticket, or a memory of what happened just before lunch all need an
+/// absolute time, and none of them can be reached by adding up a column of deltas. They cost
+/// nine columns together and both drop out on a narrow window, widest-first.
 pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
     const NAMES: usize = 22;
     /// How wide the gap column is, including the space after it.
     const GAP: usize = 8;
+    /// How wide `HH:MM:SS ` is.
+    const WHEN: usize = 9;
 
     let (width, height) = (inner.width as usize, inner.height as usize);
     let column = match width >= NAMES + 20 {
@@ -583,9 +600,11 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
     // the clock only where there is room for it: a narrow window spends its columns on what
     // happened rather than on when
     let clock = width >= NAMES + 20 + GAP;
+    let when = width >= NAMES + 20 + GAP + WHEN;
 
     let mut lines: Vec<Line> = Vec::new();
     let mut before: Option<std::time::Instant> = None;
+    let mut day: Option<String> = None;
     for event in &app.trace {
         // the gap to the line above rather than a wall clock, because the question somebody
         // brings to a log is which step was slow, and a column of timestamps makes them do the
@@ -595,7 +614,7 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
             (true, Some(previous)) => waited_since(event.at.saturating_duration_since(previous)),
             _ => None,
         };
-        let stamp = match (clock, &gap) {
+        let gap_span = match (clock, &gap) {
             (false, _) => Vec::new(),
             (true, Some(said)) => vec![Span::styled(
                 format!("{said:>7} "),
@@ -606,6 +625,37 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
             )],
             (true, None) => vec![Span::raw(" ".repeat(GAP))],
         };
+        // dimmer than the gap on purpose: the gap is the figure being looked for, the time is the
+        // one being looked *up*. A run whose zone could not be determined is shown in UTC and
+        // marked, rather than shown as though it were local
+        let read = when.then(|| read_off(event.wall)).flatten();
+        // note: the date is a rule across the pane rather than a column, and is drawn only where
+        // it changes. A session can outlast a day - that is the shape of run this clock is for -
+        // and `00:15` against two different Tuesdays says nothing; repeating the date on all
+        // eight hundred lines to disambiguate two of them would spend eleven columns on what is
+        // the same answer almost every time. It carries the zone as well, which is the one place
+        // that is worth saying out loud rather than implying with a colour.
+        if let Some(read) = &read
+            && day.replace(read.date.clone()).as_ref() != Some(&read.date)
+        {
+            let zone = match read.local {
+                true => "",
+                false => " UTC",
+            };
+            lines.push(Line::styled(format!("── {}{zone}", read.date), faint()));
+        }
+
+        let when_span = match &read {
+            None => Vec::new(),
+            Some(read) => vec![Span::styled(
+                format!("{} ", read.time),
+                match read.local {
+                    true => faint(),
+                    false => faint().fg(Color::DarkGray),
+                },
+            )],
+        };
+        let stamp = [when_span, gap_span].concat();
         let colour = match () {
             _ if event.name.ends_with(".failed") => Color::Red,
             _ if event.name.starts_with("permission") => Color::Yellow,
@@ -618,9 +668,10 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         let indent = " ".repeat(column.max(2));
         let mut detail = wrapped(&event.detail, width, &indent).into_iter();
 
-        let under = " ".repeat(match clock {
-            true => GAP,
-            false => 0,
+        let under = " ".repeat(match (when, clock) {
+            (true, _) => WHEN + GAP,
+            (false, true) => GAP,
+            (false, false) => 0,
         });
         match (event.name.is_empty(), event.detail.is_empty()) {
             // a continuation: something the event before it had more to say about
@@ -669,6 +720,66 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
 /// session happens between one frame and the next, and a log that stamped all of it would be
 /// asking somebody to find the slow line by reading every line. What is left is the model
 /// thinking, a command running, and a provider that has gone quiet.
+/// The local offset from UTC, in seconds, as it was before this program had more than one thread.
+///
+/// note: captured once at startup rather than read per event, and that is a soundness requirement
+/// rather than a saving. Working out a local time means asking libc, which reads the process
+/// environment; another thread setting an environment variable at the same moment is undefined
+/// behaviour, so the `time` crate refuses to answer at all once a program is threaded. `main`
+/// asks before it builds the runtime, which is the one moment there is nobody to race.
+///
+/// note: `None` twice over, and they mean different things that the pane renders the same way.
+/// Not yet set is a headless build or a test that never went through `main`; set to `None` is a
+/// platform that would not say. Either way the clock falls back to UTC and says so, because a
+/// column of times that is silently two hours out is worse than one that admits which zone it is
+/// in.
+static LOCAL_OFFSET: OnceLock<Option<i32>> = OnceLock::new();
+
+/// Records the local offset. Call once, from a program that has not started any threads yet.
+pub fn note_local_offset(seconds: Option<i32>) {
+    let _ = LOCAL_OFFSET.set(seconds);
+}
+
+/// When something happened, on the clock a person reads: the date, the time of day, and whether
+/// the two are local or UTC.
+///
+/// note: `time` does the calendar rather than three divisions here, which is a reversal of what
+/// this said when it only had to produce a time of day. Turning seconds into `HH:MM:SS` really is
+/// arithmetic; turning them into a *date* is leap years, and the crate is already compiled for
+/// this build. The date matters because a session can outlast a day, and a pane that showed
+/// `00:15` against two different Tuesdays would be worse than one showing no clock at all.
+///
+/// note: the offset arrives as a plain `i32` so that nothing below the screen has to know about
+/// time zones to record when something happened - `app` keeps a `SystemTime` and no more.
+fn read_off(wall: SystemTime) -> Option<When> {
+    let local = LOCAL_OFFSET.get().copied().flatten();
+    let offset = local
+        .and_then(|seconds| UtcOffset::from_whole_seconds(seconds).ok())
+        .unwrap_or(UtcOffset::UTC);
+    let at = OffsetDateTime::from(wall).to_offset(offset);
+
+    Some(When {
+        date: format!(
+            "{:04}-{:02}-{:02}",
+            at.year(),
+            u8::from(at.month()),
+            at.day()
+        ),
+        time: format!("{:02}:{:02}:{:02}", at.hour(), at.minute(), at.second()),
+        local: local.is_some(),
+    })
+}
+
+/// A rendered wall clock.
+pub(super) struct When {
+    /// `YYYY-MM-DD`.
+    pub date: String,
+    /// `HH:MM:SS`.
+    pub time: String,
+    /// Whether that is the local zone, or UTC because the local one could not be had.
+    pub local: bool,
+}
+
 fn waited_since(gap: Duration) -> Option<String> {
     let millis = gap.as_millis();
     match millis {
