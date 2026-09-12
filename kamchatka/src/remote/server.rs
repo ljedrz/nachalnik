@@ -187,11 +187,19 @@ impl Server {
     }
 
     /// Takes whatever connected next.
+    ///
+    /// note: a port gets the two options a socket file has no use for; see [`super::tuned`]. It is
+    /// done here rather than on the listener because neither of them is inherited - they are
+    /// properties of a connection, so every accepted one has to be told.
     async fn accept(&self) -> std::io::Result<Incoming> {
         match &self.listener {
             #[cfg(unix)]
             Listener::Unix(listener) => listener.accept().await.map(|(it, _)| Incoming::Unix(it)),
-            Listener::Tcp(listener) => listener.accept().await.map(|(it, _)| Incoming::Tcp(it)),
+            Listener::Tcp(listener) => listener.accept().await.map(|(it, _)| {
+                super::tuned(&it);
+
+                Incoming::Tcp(it)
+            }),
         }
     }
 

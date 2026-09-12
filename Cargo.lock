@@ -1352,6 +1352,7 @@ dependencies = [
  "ratatui-textarea",
  "serde",
  "serde_json",
+ "socket2",
  "synoptic",
  "time",
  "tokio",
