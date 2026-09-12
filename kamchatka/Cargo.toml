@@ -40,7 +40,6 @@ tui = [
     "dep:ratatui",
     "dep:ratatui-textarea",
     "dep:synoptic",
-    "dep:time",
     "dep:tui-markdown",
     "dep:unicode-segmentation",
 ]
@@ -97,11 +96,17 @@ tui-markdown = { version = "0.3", default-features = false, optional = true }
 synoptic = { version = "2.2", optional = true }
 
 tokio-stream = "0.1"
-# the local offset from UTC, asked once at startup and used to put a time of day beside every
-# line of the trace pane. Not a new crate in the tree: `ratatui-widgets` already builds it, so
-# this is the same compilation with `local-offset` turned on. No formatting feature - turning
-# seconds into `HH:MM:SS` is three divisions, and what a date library is for is calendars
-time = { version = "0.3", features = ["local-offset"], optional = true }
+# the local offset from UTC, asked once at startup, and the calendar behind the clock on every
+# trace line. Not optional, because what a line says about itself is what a search over the trace
+# matches on - so the stamp has to be built where the filtering is, which is `app`, not `ui`.
+# `ratatui-widgets` already builds this for a screen build; a headless one now pays for it too,
+# which is the price of the two panes agreeing about what an event says
+time = { version = "0.3", features = ["local-offset"] }
+# the fuzzy matcher behind `/` on the context and trace panes - Helix's, which is where the
+# expectation of what "fuzzy" feels like comes from. The matcher alone rather than `nucleo`: the
+# full crate brings a worker pool and an injector for streaming millions of candidates into a
+# picker, and what is being filtered here is a few hundred rows already in memory
+nucleo-matcher = "0.3"
 # the prompt box has to be as tall as its wrapped text, and `ratatui-textarea` wraps when it draws
 # without reporting how many rows that came to. `ui::wrapped_rows` counts them, and counting them
 # the same way means breaking where it breaks: at unicode word bounds, which is why `/` in a long

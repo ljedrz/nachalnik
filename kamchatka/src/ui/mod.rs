@@ -37,7 +37,6 @@ use crate::ui::{
     tabs::{draw_chat, draw_context, draw_permissions, draw_trace},
     text::{compact, prefix_within, rows_for, suffix_within},
 };
-pub use tabs::note_local_offset;
 
 /// The first line of a session that is not being resumed.
 ///
@@ -85,9 +84,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // other tabs are read and operated rather than typed into, and a box there was a mode: every
     // letter on them was a key or a character depending on where the focus had got to
     let prompted = app.prompted();
-    let input_height = match prompted {
-        true => (wrapped_rows(app.input.lines(), inner) as u16).clamp(1, most) + 2,
-        false => 0,
+    // the search box goes in the prompt's place, which on the panes that have a search is empty.
+    // One row: what is being typed is a phrase, not a message, and a box that grew would be
+    // taking rows from the very thing it is filtering
+    let searching = app.search.is_some();
+    let input_height = match (prompted, searching) {
+        (_, true) => 1,
+        (true, false) => (wrapped_rows(app.input.lines(), inner) as u16).clamp(1, most) + 2,
+        (false, false) => 0,
     };
     // in the prompt's place rather than laid over the middle of the screen, so that everything the
     // question is about stays reachable while it waits: a question covering the context tab is a
@@ -127,8 +131,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         // same write-back the overlay does
         app.question_scroll = draw_question(frame, app, asked);
     }
-    if prompted {
-        draw_input(frame, app, input);
+    match (searching, prompted) {
+        (true, _) => draw_search(frame, app, input),
+        (false, true) => draw_input(frame, app, input),
+        (false, false) => {}
     }
     draw_status(frame, app, &going, status);
 
@@ -396,6 +402,38 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 // ------------------------------------------------------------------------------- the status line
+
+/// The `/` box: what is being searched for, and how much of the pane is left.
+///
+/// note: the count is the point of the line as much as the query is. A filter that found nothing
+/// and a filter that found everything look identical from a pane you have scrolled halfway down,
+/// and the number is what tells them apart without scrolling back.
+fn draw_search(frame: &mut Frame, app: &mut App, area: Rect) {
+    let Some(search) = &app.search else {
+        return;
+    };
+
+    let found = match app.tab {
+        Tab::Trace => app.traced().len(),
+        _ => app.listed().len(),
+    };
+    let of = match app.tab {
+        Tab::Trace => app.trace.len(),
+        _ => app.kernel.items().len(),
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("/", Style::default().fg(Color::Yellow)),
+            Span::raw(search.query.clone()),
+            // the block is a cursor: the box has the keys, and nothing else on the screen should
+            // look like it does
+            Span::styled("▏", Style::default().fg(Color::Yellow)),
+            Span::styled(format!("  {found} of {of} · esc clears"), quiet()),
+        ])),
+        area,
+    );
+}
 
 fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
     let dim = quiet();

@@ -11,7 +11,7 @@ use ratatui_textarea::CursorMove;
 use serde_json::json;
 
 use super::{
-    App, Focus, Overlay, Page, Speaker, Tab,
+    App, Focus, Overlay, Page, Search, Speaker, Tab,
     text::{projected, stored, whole},
 };
 
@@ -173,6 +173,7 @@ impl App {
         let picked = items[self.selected].clone();
 
         match key.code {
+            KeyCode::Char('/') => self.search = Some(Search::new()),
             KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
             KeyCode::Down | KeyCode::Char('j') => {
                 self.selected = (self.selected + 1).min(items.len() - 1)
@@ -416,6 +417,35 @@ impl App {
     }
 
     /// Keys that belong to the trace tab, which is a log and therefore worth reading backwards.
+    /// Keys the search box wants while it is open; `false` to let the pane underneath have it.
+    ///
+    /// note: the arrows and the paging are deliberately *not* taken. The point of filtering eight
+    /// hundred events down to nine is to then read the nine, and a box that swallowed the scroll
+    /// keys would mean closing the search - and so losing the filter - to look at what it found.
+    pub(super) fn search_key(&mut self, key: KeyEvent) -> bool {
+        let Some(search) = &mut self.search else {
+            return false;
+        };
+
+        match key.code {
+            KeyCode::Esc => {
+                self.search = None;
+                true
+            }
+            KeyCode::Backspace => {
+                search.backspace();
+                true
+            }
+            // a modifier means it is somebody reaching past the box for one of the keys that work
+            // everywhere, not a character
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                search.push(c);
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub(super) fn trace_key(&mut self, key: KeyEvent) {
         // the pane draws the tail, so scrolling counts upwards from the newest line; the frame
         // clamps it to what there is
@@ -430,6 +460,7 @@ impl App {
             }
             KeyCode::End | KeyCode::Char('G') => self.trace_scroll = 0,
             KeyCode::Home | KeyCode::Char('g') => self.trace_scroll = usize::MAX,
+            KeyCode::Char('/') => self.search = Some(Search::new()),
             KeyCode::Char('?') => self.preview("the keys", crate::help::HELP),
             _ => {}
         }

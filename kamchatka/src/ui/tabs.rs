@@ -12,15 +12,9 @@
 //! a row per undecided thing: `ask` is what this policy does when nobody has told it anything, and
 //! a screenful of it buries the one line that says what can happen without stopping.
 
-use std::{
-    borrow::Cow,
-    sync::OnceLock,
-    time::{Duration, SystemTime},
-};
+use std::{borrow::Cow, time::Duration};
 
 use nachalnik::{ContextId, ContextItem, ContextKind, ContextState, Verdict};
-use time::{OffsetDateTime, UtcOffset};
-
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -32,6 +26,7 @@ use ratatui::{
 use tui_markdown::StyleSheet as _;
 
 use crate::{
+    app::when::read_off,
     app::{App, Focus, Going, Speaker},
     tools::Careful,
     ui::{
@@ -605,7 +600,11 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
     let mut lines: Vec<Line> = Vec::new();
     let mut before: Option<std::time::Instant> = None;
     let mut day: Option<String> = None;
-    for event in &app.trace {
+    // note: `traced` rather than the whole of `app.trace`, and collected before anything is
+    // written back, so the borrow ends before `trace_scroll` is clamped below
+    let events = app.traced();
+    let found = events.len();
+    for event in events {
         // the gap to the line above rather than a wall clock, because the question somebody
         // brings to a log is which step was slow, and a column of timestamps makes them do the
         // subtraction. Blank under a tenth of a second, so the few that took real time are the
@@ -699,6 +698,13 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         }
     }
 
+    if found == 0 {
+        lines.push(Line::styled(
+            "nothing here matches; esc clears the search".to_owned(),
+            quiet(),
+        ));
+    }
+
     // it is a log, so it is read from the bottom; `trace_scroll` counts upwards from there
     let bottom = lines.len().saturating_sub(height);
     app.trace_scroll = app.trace_scroll.min(bottom);
@@ -720,66 +726,6 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
 /// session happens between one frame and the next, and a log that stamped all of it would be
 /// asking somebody to find the slow line by reading every line. What is left is the model
 /// thinking, a command running, and a provider that has gone quiet.
-/// The local offset from UTC, in seconds, as it was before this program had more than one thread.
-///
-/// note: captured once at startup rather than read per event, and that is a soundness requirement
-/// rather than a saving. Working out a local time means asking libc, which reads the process
-/// environment; another thread setting an environment variable at the same moment is undefined
-/// behaviour, so the `time` crate refuses to answer at all once a program is threaded. `main`
-/// asks before it builds the runtime, which is the one moment there is nobody to race.
-///
-/// note: `None` twice over, and they mean different things that the pane renders the same way.
-/// Not yet set is a headless build or a test that never went through `main`; set to `None` is a
-/// platform that would not say. Either way the clock falls back to UTC and says so, because a
-/// column of times that is silently two hours out is worse than one that admits which zone it is
-/// in.
-static LOCAL_OFFSET: OnceLock<Option<i32>> = OnceLock::new();
-
-/// Records the local offset. Call once, from a program that has not started any threads yet.
-pub fn note_local_offset(seconds: Option<i32>) {
-    let _ = LOCAL_OFFSET.set(seconds);
-}
-
-/// When something happened, on the clock a person reads: the date, the time of day, and whether
-/// the two are local or UTC.
-///
-/// note: `time` does the calendar rather than three divisions here, which is a reversal of what
-/// this said when it only had to produce a time of day. Turning seconds into `HH:MM:SS` really is
-/// arithmetic; turning them into a *date* is leap years, and the crate is already compiled for
-/// this build. The date matters because a session can outlast a day, and a pane that showed
-/// `00:15` against two different Tuesdays would be worse than one showing no clock at all.
-///
-/// note: the offset arrives as a plain `i32` so that nothing below the screen has to know about
-/// time zones to record when something happened - `app` keeps a `SystemTime` and no more.
-fn read_off(wall: SystemTime) -> Option<When> {
-    let local = LOCAL_OFFSET.get().copied().flatten();
-    let offset = local
-        .and_then(|seconds| UtcOffset::from_whole_seconds(seconds).ok())
-        .unwrap_or(UtcOffset::UTC);
-    let at = OffsetDateTime::from(wall).to_offset(offset);
-
-    Some(When {
-        date: format!(
-            "{:04}-{:02}-{:02}",
-            at.year(),
-            u8::from(at.month()),
-            at.day()
-        ),
-        time: format!("{:02}:{:02}:{:02}", at.hour(), at.minute(), at.second()),
-        local: local.is_some(),
-    })
-}
-
-/// A rendered wall clock.
-pub(super) struct When {
-    /// `YYYY-MM-DD`.
-    pub date: String,
-    /// `HH:MM:SS`.
-    pub time: String,
-    /// Whether that is the local zone, or UTC because the local one could not be had.
-    pub local: bool,
-}
-
 fn waited_since(gap: Duration) -> Option<String> {
     let millis = gap.as_millis();
     match millis {

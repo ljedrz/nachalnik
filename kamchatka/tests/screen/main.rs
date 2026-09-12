@@ -24,6 +24,7 @@ mod context;
 mod frame;
 mod harness;
 mod permissions;
+mod search;
 mod session;
 mod status;
 mod trace;

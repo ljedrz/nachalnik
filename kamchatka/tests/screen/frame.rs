@@ -134,10 +134,18 @@ async fn the_help_lists_the_keys_that_exist() {
 
     // ... and every command is listed once. `/seams` was in there twice, and a test that could
     // only see one screenful at a time had no way to notice
+    //
+    // note: from the COMMANDS section rather than from every line beginning with a slash, because
+    // `/` is also a *key* - it opens the search box on two panes, and is listed under each of
+    // them. Those are not commands and are supposed to appear twice; scanning the whole file for
+    // a leading slash could not tell the two kinds apart and read a correctly documented key as a
+    // command listed twice.
+    //
     // the whole left column, not the first word: `/tools` and `/tools drop ID` are two entries
     // for one command and belong in here twice
     let commands: Vec<&str> = ui::HELP
         .lines()
+        .skip_while(|line| !line.contains("COMMANDS"))
         .map(str::trim_start)
         .filter(|line| line.starts_with('/'))
         .map(|line| line.split("  ").next().unwrap_or(line).trim_end())

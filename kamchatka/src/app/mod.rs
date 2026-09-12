@@ -31,9 +31,13 @@ use crate::{
 };
 
 mod command;
+mod search;
+
+pub use search::Search;
 #[cfg(feature = "tui")]
 mod keys;
 pub(crate) mod text;
+pub mod when;
 
 use text::{head, moved, one_line, thousands, trace_line, unpadded};
 // only the key that prints a request without a command: `/request` imports its own
@@ -513,6 +517,12 @@ pub struct App {
     pub rendered: usize,
     /// How many lines fit, as of the last frame.
     pub viewport: usize,
+    /// The `/` filter over this tab's rows, while its box is on the screen.
+    ///
+    /// note: one box rather than one per tab, and it is cleared when the tab changes. A query
+    /// written for the trace means nothing against the context, and carrying it over would filter
+    /// a pane by a phrase nobody typed there.
+    pub search: Option<Search>,
     /// Which context item the prompt is editing, if it is editing one rather than composing a
     /// message.
     pub editing: Option<ContextId>,
@@ -633,6 +643,7 @@ impl App {
             spend: None,
             rendered: 0,
             viewport: 0,
+            search: None,
             editing: None,
             stepping: false,
             count: String::new(),
@@ -1579,6 +1590,14 @@ impl App {
             return;
         }
 
+        // the search box has the keys while it is open, and takes them before the arm below that
+        // reads `esc` as "stop the turn". Not a loss of that gesture: `ctrl+c` is what interrupts
+        // a run and it is handled above this, where nothing can shadow it. What would be a loss is
+        // a box on the screen that `esc` does not close, which is the one thing everybody tries
+        if self.search.is_some() && self.search_key(key) {
+            return;
+        }
+
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         // taken rather than read, so that a count lives for exactly one key wherever that key is
         // handled: only the digit arm below puts it back. Cleared at the end of `context_key`
@@ -1652,6 +1671,10 @@ impl App {
         // Otherwise the prompt is still holding the item's text with `editing` still set, and the
         // next message somebody types and sends is committed into the context instead of asked
         self.cancel_edit();
+        // and so does a filter. A query written against the trace means nothing against the
+        // context, and one left running on a pane somebody comes back to is a pane showing four
+        // rows of eight hundred with its explanation on another tab
+        self.search = None;
 
         self.tab = tab;
         self.focus = match (tab, self.asked().is_some()) {
@@ -1971,7 +1994,7 @@ impl App {
     /// which is the one row somebody with the toggle on would most want to see the truth about.
     pub fn listed(&self) -> Vec<Arc<ContextItem>> {
         let items = self.kernel.items();
-        match self.sending_only {
+        let items = match self.sending_only {
             false => items,
             true => {
                 let going = self.going();
@@ -1980,6 +2003,70 @@ impl App {
                     .filter(|item| going.sends_content(item))
                     .collect()
             }
+        };
+
+        // note: the search goes here, beside `f`, and for the reason `f` is here: this is what the
+        // keys count rows in. A pane filtered on the way to the screen while `context_key` still
+        // indexed the whole context would select the row above the one under the cursor.
+        let Some(search) = self.search.as_ref().filter(|_| self.tab == Tab::Context) else {
+            return items;
+        };
+
+        items
+            .into_iter()
+            .filter(|item| search.matches(&Self::item_text(item)))
+            .collect()
+    }
+
+    /// What a search over the context matches an item on.
+    ///
+    /// note: the whole of what the item holds, not the one line the row has room for. Somebody
+    /// looking for the turn that mentioned a filename is looking for a word that is almost never
+    /// on the first line, and a search that only saw the preview would answer that it is not
+    /// there. The row still shows its preview; the match is allowed to be about more than the row
+    /// can show.
+    fn item_text(item: &ContextItem) -> String {
+        format!("{} {}", item.label, item.content.to_text())
+    }
+
+    /// The trace as the pane should show it: everything, or what the search left.
+    ///
+    /// note: a continuation - an event with no name, which is more of what the line above had to
+    /// say - is kept or dropped with the event it belongs to rather than matched on its own. The
+    /// alternative is a pane showing the second half of a message whose first half was filtered
+    /// out from over it.
+    pub fn traced(&self) -> Vec<&Traced> {
+        let Some(search) = self.search.as_ref().filter(|_| self.tab == Tab::Trace) else {
+            return self.trace.iter().collect();
+        };
+
+        let mut kept = Vec::new();
+        let mut keeping = false;
+        for event in &self.trace {
+            if !event.name.is_empty() {
+                keeping = search.matches(&Self::event_text(event));
+            }
+            if keeping {
+                kept.push(event);
+            }
+        }
+
+        kept
+    }
+
+    /// What a search over the trace matches an event on.
+    ///
+    /// note: the clock is in it, which is the whole reason the stamp is built down here rather
+    /// than in the pane. "the hour it broke" is the question somebody brings to a long run, and
+    /// `14:` or a date answers it only if the date and the time are among the things being
+    /// matched.
+    fn event_text(event: &Traced) -> String {
+        match when::read_off(event.wall) {
+            Some(read) => format!(
+                "{} {} {} {}",
+                read.date, read.time, event.name, event.detail
+            ),
+            None => format!("{} {}", event.name, event.detail),
         }
     }
 

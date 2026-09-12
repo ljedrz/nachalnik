@@ -57,11 +57,18 @@ pub const HELP: &str = "  THE TABS
                         says, and what it said before it was rewritten
     left / right        move between those, while one is open
     u / U               undo / redo the last change to the context
+    /                   filter the rows: fuzzy, over the label and the whole of
+                        what an item holds, not only the line the row shows
+    esc                 clear the filter and close the box
 
   THE TRACE TAB, which has the keys whenever it is open
     up / down, j / k    read back through it
     pgup / pgdn         a screenful at a time
     g / G               the oldest it still holds / the newest
+    /                   filter the rows: fuzzy, over the name, the detail and
+                        the clock, so an hour or a date finds what happened in
+                        it. Reading keys still work while the box is open
+    esc                 clear the filter and close the box
 
   THE PERMISSIONS TAB, which has the keys whenever it is open
     up / down, j / k    pick a capability, or one of the path rules under them
