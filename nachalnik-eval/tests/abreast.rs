@@ -10,7 +10,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use nachalnik_eval::{Permits, together};
+use nachalnik_eval::{Acquiring, Permit, Permits, together};
 
 /// Counts what is in flight and remembers the most there ever was.
 #[derive(Default)]
@@ -137,4 +137,24 @@ async fn nothing_to_run_is_not_an_error() {
     let answers = together(Vec::<std::future::Ready<u8>>::new()).await;
 
     assert!(answers.is_empty());
+}
+
+/// The types `Permits` hands out can be written down from outside the crate.
+///
+/// note: a compile-time test and nothing else - it names them, which is the whole assertion.
+/// `Acquiring` was `pub` in a private module and left out of the re-export, so `acquire` could be
+/// awaited where it was called and nowhere else: holding one, keeping it in a struct or selecting
+/// over it needed a type nobody outside was allowed to write. Nothing reports that. An unnameable
+/// return type is legal, the crate builds, and the only trace is a page missing from the
+/// documentation - so the guard has to be a caller naming it, which is what this is.
+#[tokio::test]
+async fn what_acquire_hands_back_can_be_named_by_a_caller() {
+    let permits = Permits::new(1);
+
+    let waiting: Acquiring<'_> = permits.acquire();
+    let held: Permit<'_> = waiting.await;
+    assert_eq!(permits.free(), 0, "the permit is out");
+
+    drop(held);
+    assert_eq!(permits.free(), 1, "and back");
 }

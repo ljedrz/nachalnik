@@ -71,6 +71,14 @@ minor bump may break you.
   `the_instrument_is_pinned_so_that_it_cannot_change_quietly` still passes, so a run taken today
   still pools with the v5 collection: concurrency changes the schedule, not the material.
 
+  `Acquiring` - the future `Permits::acquire` hands back - is exported with the rest of them. It
+  was `pub` inside a private module and missing from the re-export, which means nothing outside the
+  crate could name it: `acquire` could be awaited where it was called and nowhere else, so a caller
+  wanting to hold one, keep it in a struct or select over it had a type it was not allowed to write
+  down. Nothing reports that. An unnameable return type is legal Rust, and the only trace of it is
+  a page absent from the documentation - which is where this was found, comparing the public API
+  against the last release.
+
 - **A minimum gap between admissions, alongside the window rather than instead of it.** A sliding
   window of twenty a minute is obeyed perfectly by firing twenty requests in the window's first
   instant and sitting out the other fifty-nine seconds. That is not a reading of the limit anyone

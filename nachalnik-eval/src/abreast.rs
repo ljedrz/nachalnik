@@ -108,6 +108,13 @@ impl Permits {
 }
 
 /// The future [`Permits::acquire`] hands back.
+///
+/// note: exported rather than left `pub` inside a private module, which is what it was. Nothing
+/// could name it from outside the crate, so `acquire` could only ever be awaited where it was
+/// called - a caller wanting to hold one, put it in a struct or select over it had a type it was
+/// not allowed to write down. Every other `pub` item in here is re-exported and this one was
+/// missed, which is a thing a compiler has no reason to mention: an unnameable return type is
+/// legal and only shows up as a page that is not in the documentation.
 #[derive(Debug)]
 pub struct Acquiring<'a> {
     permits: &'a Permits,

@@ -121,7 +121,7 @@ pub mod suite;
 pub use async_trait::async_trait;
 
 pub use crate::{
-    abreast::{Governor, Pace, Paced, Permit, Permits, together},
+    abreast::{Acquiring, Governor, Pace, Paced, Permit, Permits, together},
     error::{Error, Result},
     experiment::{Experiment, Instrument, Outcome, Report, evaluate, evaluate_with, per_model},
     fork::{Ablation, Change, Observation, Origin, PREAMBLE},
