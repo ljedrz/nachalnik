@@ -23,6 +23,12 @@ async-trait.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# `time` only, and only for the clock a rate limit is enforced with - see `abreast::Rate`. Not a
+# new crate in anybody's tree: `nachalnik` already depends on tokio for `JoinSet` and
+# `broadcast`, so a suite built on it was never going to run on another executor anyway. What
+# this adds is the timer driver, which is the one thing a count of requests in flight cannot
+# substitute for when an endpoint publishes a rate instead.
+tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 # the scripted provider and the off-the-shelf policies, for the tests that must not touch a
@@ -35,4 +41,6 @@ nachalnik = { workspace = true, features = ["test"] }
 # matters
 nachalnik-providers = { path = "../nachalnik-providers" }
 nachalnik-utils = { path = "../nachalnik-utils" }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# `test-util` for the paused clock the rate-limit tests run on: a window is then waited out
+# exactly and instantly, rather than by sleeping and hoping the machine was fast enough
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }

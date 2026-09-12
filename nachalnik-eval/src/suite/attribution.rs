@@ -3,6 +3,7 @@
 use nachalnik::ContextId;
 
 use crate::{
+    abreast::together,
     async_trait,
     error::Result,
     experiment::{Experiment, Instrument},
@@ -219,11 +220,27 @@ impl Attribution {
         note_drift(trial, &answer, &control);
         trial.measured(control.clone(), None);
 
+        // note: the one loop in this battery that is not a conversation. Every copy here is made
+        // from `origin`, which was frozen before any claim was made, so no ablation can see
+        // another's - which is what makes them safe to run at the same time where the two loops
+        // above are not. How many of them are actually on the wire at once is not decided here:
+        // `evaluate` puts the provider under a ceiling of one, so this is the `for` loop it
+        // replaced, request for request, and only `evaluate_with` opens it up.
+        let observed = together(notes.iter().map(|note| {
+            let (ablation, origin) = (&ablation, &origin);
+            async move {
+                ablation
+                    .observe(origin, Intervention::without([note.id]))
+                    .await
+            }
+        }))
+        .await;
+
+        // recorded in the order the notes are in rather than the order the copies came back, so
+        // that the record is the same either way round
         let mut measured: Vec<(String, ContextId, Change)> = Vec::new();
-        for note in &notes {
-            let observation = ablation
-                .observe(&origin, Intervention::without([note.id]))
-                .await?;
+        for (note, observation) in notes.iter().zip(observed) {
+            let observation = observation?;
             let change = observation.against(&control);
             trial.measured(observation, Some(change.clone()));
             measured.push((note.label.clone(), note.id, change));

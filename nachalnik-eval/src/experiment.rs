@@ -12,6 +12,7 @@ use nachalnik::{ModelInfo, Params};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    abreast::{Governor, Pace, together},
     error::Result,
     score::{Deference, Depths, Family, Gain, Paired, Reached, Scores, Stage, Surface},
     subject::{Spend, Subject},
@@ -471,39 +472,29 @@ pub fn per_model<T>(reports: impl IntoIterator<Item = (Report, T)>) -> Vec<(Stri
 ///
 /// note: Nothing here is run concurrently. Every request in an evaluation goes to the same
 /// endpoint, and a harness that fanned four experiments out at once would be measuring a rate
-/// limiter as much as a model.
+/// limiter as much as a model. [`evaluate_with`] will do it anyway, under a ceiling and for a
+/// caller who has decided that is a trade worth making; this one stays the safe default, and the
+/// two are not interchangeable - see that function for what actually differs.
 pub async fn evaluate(
     experiments: impl IntoIterator<Item = Arc<dyn Experiment>>,
     make: impl Fn(&str) -> Result<Subject>,
 ) -> Report {
+    let governor = Governor::new(Pace::default());
     let mut outcomes = Vec::new();
 
     for experiment in experiments {
         let subject = match make(experiment.name()) {
             Ok(subject) => subject,
             Err(e) => {
-                outcomes.push(Outcome {
-                    experiment: experiment.name().to_owned(),
-                    instrument: experiment.instrument(),
-                    checks: Vec::new(),
-                    model: None,
-                    params: Params::new(),
-                    steps: Vec::new(),
-                    spend: Spend::default(),
-                    scores: Scores::default(),
-                    families: Vec::new(),
-                    depths: Depths::default(),
-                    stages: Vec::new(),
-                    paired: Vec::new(),
-                    deference: None,
-                    reached: None,
-                    surface: None,
-                    gain: None,
-                    failed: Some(e.to_string()),
-                });
+                outcomes.push(unrun(&experiment, e.to_string()));
                 continue;
             }
         };
+
+        // one at a time, which is what this function promises. An experiment that fans its
+        // independent work out gets a ceiling of one here and so makes exactly the requests, in
+        // exactly the order, that it made when that work was a `for` loop
+        under(&subject, &governor);
 
         let trial = Trial::new(experiment.name(), &subject).asking(experiment.instrument());
         let failed = experiment
@@ -520,6 +511,115 @@ pub async fn evaluate(
             .map(|since| since.as_millis() as u64)
             .unwrap_or_default(),
         outcomes,
+    }
+}
+
+/// The same, with the experiments run at the same time under a shared ceiling on requests.
+///
+/// note: `at_once` counts *requests in flight*, not experiments. One number rather than two
+/// because the endpoint does not care which experiment a request came from, and because a ceiling
+/// is only a ceiling if it is collective: nine experiments each politely limiting themselves to
+/// eight is seventy-two requests arriving at one endpoint.
+///
+/// note: the scores are the scores either way. Every copy is still made from a frozen
+/// [`Origin`](crate::Origin) and still answers one question, so nothing a figure is computed from
+/// depends on what else happened to be in flight beside it. What concurrency can do is make a run
+/// *fail* where a sequential one would have trickled through - a burst collects `429`s, the
+/// retries behind them eat the budget, and probes come back
+/// [`Unreadable`](crate::Answer::Unreadable), which is scored honestly as untested and quietly
+/// turns a report into a page of nothing. That, rather than any threat to a score, is what
+/// [`evaluate`]'s note is about, and `at_once` is the knob that answers it: set it under what the
+/// endpoint allows and the failure does not arise.
+///
+/// note: a count is not a rate, and this enforces only the count - see [`Permits`] for why a rate
+/// cannot be enforced from here without picking a runtime for the caller. The two coincide only
+/// through latency: eight in flight against a one-second endpoint is about eight a second. Where
+/// an endpoint publishes a rate rather than a concurrency limit, `at_once` has to be chosen with
+/// that in mind, and what catches the rest is the `Retry-After` handling in whichever
+/// [`Provider`](nachalnik::Provider) the caller supplied.
+pub async fn evaluate_with(
+    experiments: impl IntoIterator<Item = Arc<dyn Experiment>>,
+    make: impl Fn(&str) -> Result<Subject>,
+    pace: Pace,
+) -> Report {
+    let governor = Governor::new(pace);
+
+    // built before anything runs, because `make` is the caller's and there is no reason to hold a
+    // lock on it or to call it from several futures at once
+    let prepared: Vec<_> = experiments
+        .into_iter()
+        .map(|experiment| {
+            let subject = make(experiment.name());
+            (experiment, subject)
+        })
+        .collect();
+
+    let outcomes = together(prepared.into_iter().map(|(experiment, subject)| {
+        let governor = governor.clone();
+        async move {
+            let subject = match subject {
+                Ok(subject) => subject,
+                Err(e) => return unrun(&experiment, e.to_string()),
+            };
+
+            under(&subject, &governor);
+
+            let trial = Trial::new(experiment.name(), &subject).asking(experiment.instrument());
+            let failed = experiment
+                .run(&subject, &trial)
+                .await
+                .err()
+                .map(|e| e.to_string());
+
+            Outcome::of(&trial, failed)
+        }
+    }))
+    .await;
+
+    Report {
+        at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|since| since.as_millis() as u64)
+            .unwrap_or_default(),
+        outcomes,
+    }
+}
+
+/// Puts a subject's provider under a ceiling, so that everything it goes on to do is under it.
+///
+/// note: done to the subject rather than to each request, because a subject hands its provider on:
+/// to the siblings an experiment raises for its other dossiers, and to every copy an
+/// [`Ablation`](crate::Ablation) resumes from a snapshot of it. Wrapping once here is what makes
+/// one ceiling cover all three.
+fn under(subject: &Subject, governor: &Governor) {
+    let Some(provider) = subject.kernel().provider() else {
+        return;
+    };
+    subject
+        .kernel()
+        .set_provider(Arc::new(governor.over(provider)));
+}
+
+/// An outcome for an experiment that never got as far as being run.
+fn unrun(experiment: &Arc<dyn Experiment>, failed: String) -> Outcome {
+    Outcome {
+        experiment: experiment.name().to_owned(),
+        instrument: experiment.instrument(),
+        checks: Vec::new(),
+        model: None,
+        params: Params::new(),
+        steps: Vec::new(),
+        spend: Spend::default(),
+        scores: Scores::default(),
+        families: Vec::new(),
+        depths: Depths::default(),
+        stages: Vec::new(),
+        paired: Vec::new(),
+        deference: None,
+        reached: None,
+        surface: None,
+        gain: None,
+        failed: Some(failed),
     }
 }
 
