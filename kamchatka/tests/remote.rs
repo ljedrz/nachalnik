@@ -1174,6 +1174,20 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
         read.contains("what the other end reads"),
         "the client never read the answer: {read}"
     );
+    // note: a served session greets nobody, and this is where that is checked because the greeting
+    // is `main.rs`'s. It is the terminal's - `ctrl+p` shows the next request, `F1` lists the keys -
+    // and a served session has no keys of this program's to press: `--serve` is neither a screen
+    // nor a pipe, and the condition that decided this had only ever been asked which of those two
+    // it was. It went to every client that ever attached, because the greeting goes into the
+    // conversation and the conversation is in every projection
+    //
+    // note: only a build with a screen in it has a greeting to get wrong, so under
+    // `--no-default-features` this passes by having nothing to find. `--all-features` is where it
+    // means something, and that is the configuration `cargo test --workspace` uses
+    assert!(
+        !read.contains("F1 lists the keys"),
+        "a served session told a client about the terminal's keys: {read}"
+    );
     // and its stdout is the record stream, the same as a headless run's
     for line in String::from_utf8_lossy(&client.stdout).lines() {
         serde_json::from_str::<nachalnik::Record>(line).expect("every line is a record");

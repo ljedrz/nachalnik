@@ -66,6 +66,31 @@ minor bump may break you.
   somebody else needs to speak this gets checked rather than asserted. Its header carries the wire
   transcript, because a client in another language needs the JSON and no Rust at all.
 
+- **`examples/gateway.rs` and `examples/browser.html`: a session in a browser, from a phone.** A
+  browser cannot open a TCP connection - not inconveniently, at all - so something has to terminate
+  HTTP in front of a session. The gateway is that, in three routes, with no framework, no router
+  and no dependency this crate did not already have; the page is one file with no build step. The
+  semantic protocol is not touched, which is what a gateway is for.
+
+  **`text/event-stream` already had the protocol's shape in it**, and that is why it is SSE rather
+  than a WebSocket. An event may carry an `id:`, and a browser that loses the stream reconnects by
+  itself and sends `Last-Event-ID:` - which is exactly `attach { since }`. So the browser implements
+  resume with no client code at all, which is the fiddliest part of a client and eighty lines of
+  `remote::Client`. The negative space matches too: an event with no `id:` does not move
+  `Last-Event-ID`, so records and the projection get one and fragments of a model still typing do
+  not - a browser never tries to resume from something that was never recoverable. Measured against
+  a live session: reconnecting with `Last-Event-ID: 12` was answered with records 13 onwards and no
+  second copy of the projection.
+
+  A WebSocket would be one connection instead of two and would cost a handshake, client-frame
+  unmasking and fragmentation - or a dependency - and every line of that reconnection. Commands go
+  the other way by `POST`, and there are four or five of them in a session.
+
+  **There is no authentication in the gateway and no encryption.** `kamchatka --serve` still refuses
+  to listen anywhere but loopback; the gateway takes its listen address outright and says what a
+  non-loopback one means, because an example somebody runs on their own network for an afternoon is
+  a different thing from a program's default. Whatever reaches it reaches the `shell` tool.
+
 - **`App::decide`, `App::notes` and `App::queued`.** The first is the whole of what answering a
   permission question is, in one place: `App::answer`, which is the half that was already shared,
   plus honouring `always` over what the policy really consulted rather than over what the tool
