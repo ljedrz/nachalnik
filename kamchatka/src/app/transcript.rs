@@ -23,10 +23,15 @@ use super::{
     App, HOPS, LIVE_OUTPUT, TRACE_DEPTH, Traced,
     text::{head, one_line, plural, thousands, unpadded},
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Who produced a line of the transcript.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// note: serializable because a line of the chat is what attaching to a session answers with, and
+/// whoever reads it is not always in this process - see [`crate::remote`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Speaker {
     /// The person at the terminal.
     User,

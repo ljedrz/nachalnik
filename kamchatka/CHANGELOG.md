@@ -5,6 +5,80 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- **`--serve` and `--connect`: a session with a socket in front of it.** The third loop over the
+  same `App`, beside the one that draws and the one that reads lines. `kamchatka --serve
+  unix:/run/k.sock` runs a session nobody is looking at; `kamchatka --connect unix:/run/k.sock`
+  attaches to it, drives it from lines on stdin, and writes what `--headless` writes - the records
+  to stdout, what a person reads to stderr - so it is a drop-in for `--headless` in a script.
+  Nothing in `nachalnik` knows any of this exists, which was the test this was held to rather than
+  a remark about it.
+
+  **The session belongs to the program running it, not to whoever is attached**, and every other
+  decision falls out of that one. A turn carries on with nobody watching, a question waits for
+  somebody to come back and answer it, and a client picking the session up an hour later picks up
+  the same session. `--connect` detaches when its input closes and never ends anybody's session on
+  the way out.
+
+  **Two streams, and only one of them can be lost.** A `Record` is numbered from 1, is in the
+  session log, and the log is unbounded by decision - so the numbered half of what a client reads
+  is not something the server hands out, queues, or is able to drop: each connection holds a
+  `Kernel` of its own and reads `history_since(wherever it had got to)`. A client that fell behind,
+  lagged, slept, or was not connected when a record was written gets it by asking for it by
+  sequence. The other half is `model.delta` and `tool.output`, which are not in the log unless
+  `Config::record_progress` says so - unnumbered, best-effort, and gone once they have gone past,
+  with a count of what was missed. What that buys is that **there is no outbound queue per client
+  anywhere in the server**: a connection that stops reading stops being written to, and loses
+  exactly the thing that could not have been recovered anyway.
+
+  **An event stream on its own cannot render a conversation, and pretending otherwise is the
+  mistake this avoids.** The log names things rather than copying them - `context.added` carries an
+  identifier, a kind, a label and a token count, and not one word of content - which is what keeps
+  it affordable enough to keep for ever, and what leaves a client fed nothing but records able to
+  follow a turn as it streams and unable to render anything that happened before it connected. So
+  attaching answers with a *projection*: the conversation as it reads now, every item as a row, the
+  budget, the questions outstanding, what the policy will say. Deliberately not a `Snapshot`, which
+  carries every item's whole content and would push megabytes at a phone that has asked for
+  nothing; the whole of any one item is an `inspect` away.
+
+  **There is no authentication in the protocol and none is planned**, so where it listens is the
+  whole of the boundary: a unix socket's file permissions, or a loopback port. Binding anywhere
+  else is refused rather than documented as something not to do, because this protocol carries a
+  `shell` tool - reaching the session is reaching the machine. Across a network, tunnel something
+  that does authenticate.
+
+  Newline-delimited JSON rather than a length prefix: `serde_json` escapes every control character
+  it writes, so a compact value never contains a literal newline and there is nothing for a
+  delimiter to be confused by - and the stream stays readable with `nc` and `jq`, which a frame
+  header would have cost for nothing. `tokio`'s `net` feature is the whole of what remote control
+  added to this crate's dependencies, which is why `remote` is not behind a feature of its own the
+  way `tui` and `mcp` are.
+
+- **`App::decide`, `App::notes` and `App::queued`.** The first is the whole of what answering a
+  permission question is, in one place: `App::answer`, which is the half that was already shared,
+  plus honouring `always` over what the policy really consulted rather than over what the tool
+  declared, sweeping the questions already queued behind this one, and driving the turn on once
+  none are left. Those three lived beside the keys, so the keys did them and the headless driver
+  did not - and a third loop reaching the same fork is what made it a function rather than a
+  fourth copy. `App::notes` is the program's own lines since a watermark, with the rule about
+  counting the *filtered* sequence stated once instead of in each loop that prints them.
+  `App::queued` is the message waiting for a running turn to end, exposed because there is room
+  for exactly one and a second client needs to be told when its line replaced somebody else's.
+
+### fixed
+
+- **A question answered before the turn that raised it had finished unwinding stopped the session
+  for good.** `permission.requested` is broadcast while that turn is still in flight, so an answer
+  inside the window was recorded, found `start_turn` refusing because the old turn was still marked
+  as running, and was followed by an outcome saying `Deciding` with nothing left to decide. Every
+  question answered, no turn running, and nothing that would ever start one. `headless.rs` stays
+  out of the window by only answering while the kernel rests; the keys and a socket cannot, because
+  a person answers when they answer - so it is closed in `App::on_outcome`, where all three come
+  through.
+
 ## [0.13.0] - 2026-09-19
 
 ### added

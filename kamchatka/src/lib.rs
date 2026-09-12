@@ -62,12 +62,20 @@
 //! fewer dependencies - which is what a session driven by something other than a person at a
 //! terminal needs.
 //!
+//! `--serve` puts a socket in front of the session and `--connect` attaches to one. The session
+//! belongs to the program running it rather than to whoever is looking at it: a turn carries on
+//! with nobody attached, a question waits for somebody to come back and answer it, and a client
+//! picking it up an hour later picks up the same session. See [`remote`] for why the records are
+//! the half that cannot be lost and the fragments are the half that can, and for why there is no
+//! authentication in the protocol and none is planned.
+//!
 //! The way in is [`wiring::Setup`], which assembles a kernel, a policy, the tools, the sandbox
 //! and an [`app::App`] around them in the order they have to go in, and hands back the two
-//! receivers a loop needs. [`headless::Headless`] is one such loop and the program's own is the
-//! other; a host with an event loop of its own wants neither, and [`app::App::submit`] is where
-//! it hands in a line. [`config::Settings`] is the JSON the program's `--config-file` takes, for
-//! a host that would rather read its defaults out of a file than hard-code them.
+//! receivers a loop needs. [`headless::Headless`] is one such loop, [`remote::Server`] is the
+//! second and the program's own is the third; a host with an event loop of its own wants none of
+//! them, and [`app::App::submit`] is where it hands in a line. [`config::Settings`] is the JSON
+//! the program's `--config-file` takes, for a host that would rather read its defaults out of a
+//! file than hard-code them.
 //!
 //! What a session may spend is [`wiring::Setup::spend`], and it is enforced on the `App` rather
 //! than in either loop - the accounting is in `on_event` and the refusal in `start_turn`, which
@@ -85,6 +93,7 @@ pub mod headless;
 pub mod introspect;
 #[cfg(feature = "mcp")]
 pub mod mcp;
+pub mod remote;
 pub mod sandbox;
 pub mod tools;
 #[cfg(feature = "tui")]

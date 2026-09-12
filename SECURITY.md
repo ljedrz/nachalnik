@@ -80,6 +80,20 @@ Referenced from [AGENTS.md](AGENTS.md).
   `~/.gitconfig` and dies with `fatal: unknown error occurred while reading the configuration
   files`. Anything the confinement puts out of reach may need to be told it is not there rather
   than left to find out.
+- **A protocol that carries the `shell` tool is the machine, so where it listens is the boundary.**
+  `--serve` refuses a non-loopback bind rather than documenting it as a thing not to do, and the
+  socket file is `0600` from the moment it exists. There is deliberately no authentication *in* the
+  protocol: a token in every message is a scheme to keep in step, and it would be guarding a channel
+  whose real boundary is somewhere else. Across a network, tunnel something that does authenticate.
+  Anything added to `remote/` is held to this: it does not grow a credential, and it does not start
+  deciding that some addresses are safe enough.
+- **An answer to a permission question is four things, and two of them are easy to leave out.**
+  `App::decide` is the one place all three loops answer through, and it exists because they did not:
+  a headless run granted a `curl` and then ran it with the network cut, because telling `Careful`
+  about a granted command is a separate act from telling the kernel. The other three are honouring
+  `always` over what the policy actually *consulted* rather than over what the tool declared,
+  sweeping the questions already queued behind this one, and driving the turn on afterwards.
+  Measured: breaking the first failed nothing in the whole crate before the test that now covers it.
 - **Do not add a check that implies more than it delivers.** `reaches_the_network` is allowed to
   exist because its documentation is exact about what it misses, and because refusing up front with
   a reason is kinder than letting a command run and fail. It is no longer what stands between the

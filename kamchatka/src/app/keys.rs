@@ -689,10 +689,6 @@ impl App {
         let grant = match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => Grant::Allow,
             KeyCode::Char('a') | KeyCode::Char('A') => {
-                // everything the policy actually consulted, not just what the tool declared: a
-                // `yes, always` to a `curl` that left `network` on `ask`, or to a `.env` that left
-                // its rule on `ask`, would ask again on the very next call
-                self.policy.always(&self.policy.judges(&request));
                 remembered = true;
                 Grant::Allow
             }
@@ -723,42 +719,20 @@ impl App {
             _ => return,
         };
 
-        // whatever the question cost in wall time was spent reading it, and `permission.decided`
-        // is the line it lands on. It is set here rather than in `App::answer` because it is the
-        // one part of answering that is about a person being present; see the note there
-        self.acted = true;
-        if let Err(e) = self.answer(&request, grant) {
+        // note: everything an answer *is* - telling the sandbox about a granted `curl`, honouring
+        // `always` over what the policy really consulted rather than over what the tool declared,
+        // sweeping the questions already queued behind this one, and driving the turn on once none
+        // are left - is [`App::decide`]. It is there rather than here because the keys are one of
+        // three ways to answer, and the two that are not keys were each missing a different one of
+        // those four
+        if let Err(e) = self.decide(request.id, grant, remembered) {
             self.say(Speaker::Error, e);
         }
-        // note: `always` is a promise about what happens next, and what happens next is often
-        // already in the queue. A model that asks for three commands in one answer produces three
-        // questions, all of them decided before the first was shown - so answering `a` to the
-        // first asked about the second one keystroke later, having just been told it would not.
-        // Everything still waiting that the policy would now let through is let through
-        if remembered {
-            for waiting in self.kernel.pending_permissions() {
-                if self.policy.verdict(&waiting) == Verdict::Allow
-                    && let Err(e) = self.kernel.decide(waiting.id, Grant::Allow)
-                {
-                    self.say(Speaker::Error, e.to_string());
-                }
-            }
-        }
-        // the model may have asked for several things at once, and each is its own question. The
-        // keys stay on the panel while there are more, so three answers are three keystrokes
-        // rather than three rounds of `tab`
+        // what is left is the screen's own half of it: the keys stay on the panel while there are
+        // more questions, so three answers are three keystrokes rather than three rounds of `tab`
         if self.kernel.pending_permissions().is_empty() {
             self.focus = Focus::Input;
             self.question_scroll = 0;
-            // somebody driving this a transition at a time did not ask for the rest of the turn,
-            // and running it here would be the harness taking the wheel back
-            match self.stepping {
-                true => self.say(
-                    Speaker::Note,
-                    "decided; /step runs the calls, /continue runs the rest of the turn",
-                ),
-                false => self.start_turn(),
-            }
         }
     }
 
