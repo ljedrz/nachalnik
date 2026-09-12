@@ -5,6 +5,86 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **`Kernel::interrupt` says what it can still stop, and that depends on how the calls are run.**
+  It said the kernel does not start the calls that had not begun "in the serial case". That clause
+  is load-bearing and nothing said so: run together, `invoke_together` spawns every call in the
+  batch before the first one answers, so there is no queue left for an interrupt to empty, and the
+  only thing it can reach is a `Tool` that checks `OutputSink::is_interrupted` for itself.
+
+  A caller who read the sentence and turned `parallel_tool_calls` on would keep the guarantee in
+  mind and no longer have it - in exactly the case somebody reaches for an interrupt over, which is
+  a batch of calls that each do something. Both places say it now: the flag that makes the trade,
+  and the method whose promise it narrows.
+
+  So does the part that was never true in either mode. A tool that blocks without ever looking at
+  the sink cannot be stopped at all, because the kernel does not own the thread it is on and there
+  is no safe way to take it back. What the kernel does do in every mode is record: every call gets
+  an output, even when the output is that it never ran.
+
+  Two tests rather than two sentences, because this is the guarantee somebody will assume they
+  still have. They run the same three slow calls, interrupted forty milliseconds in, and assert
+  opposite things - in turn, the first finishes and the other two are recorded as interrupted
+  before they were made; together, all three had already started and all three ran. The tool they
+  use never looks at the sink, which is the point: what is pinned is what the kernel can do about a
+  tool that does not cooperate, because that is the case a caller has to reason about when the tool
+  is somebody else's.
+
+- **`ToolSpec::schema` says that the kernel does not validate arguments against it.** It said what
+  it was and not what it means, and the two readings lead somewhere different: a tool author who
+  assumed the kernel validates writes `invoke` as though the arguments have already been checked,
+  and one who assumed it does not writes the check twice. Nothing in the crate settled it.
+
+  It does not validate. The schema is sent to the model and counted for what it costs to send -
+  `request.rs` is the only thing that looks at it, and it looks at it with a token counter - and a
+  tool is handed whatever the model produced.
+
+  Written down rather than changed, because the boundary is the right one. Enforcing would mean
+  this crate choosing a JSON Schema dialect and a validator on behalf of everybody who ever writes
+  a tool, for models that do not agree about which dialect they emit against; and the check is a
+  line in the tool that has to parse the arguments to use them anyway. Doing it there also makes a
+  mismatch an ordinary `ToolOutput::error` - which the model reads and can correct - where a
+  refusal from underneath would be a failure it never sees the shape of. A caller who wants it
+  everywhere wraps `Tool` once and installs the wrapper, which is the seam this leaves open rather
+  than closes.
+
+### added
+
+- **A section on surviving a crash, in the crate documentation, and the tests that hold it up.**
+  The primitives were all here and nothing put them together: a `ToolCallId` survives a snapshot,
+  `Snapshot::used_calls` refuses it afterwards, an unanswered call is still in the context, and
+  `history_since` and `drain_history` are two different operations for a reason. What was missing
+  was anything saying how they compose, so the questions they answer had to be worked out from
+  first principles by whoever asked them.
+
+  **Whether the thing happened is not the kernel's to know.** It did not perform the side effect
+  and cannot ask the system that did. What it provides is a durable *name* for the attempt - the
+  call's own id, which outlives the process - so an external operation keyed on it is one an
+  application can go back and ask about. A tool that mints an identifier inside `invoke` has minted
+  one that dies with the process that minted it; passing the call's own through is the whole trick,
+  and it is why no new execution id from the runtime is needed. Returning `ToolOutput::error` is
+  not the crash case: that is an answer, recorded as a failure the model reads, with nothing left
+  outstanding. The test blocks the call and drops the future instead, which is the state a
+  `SIGKILL` leaves, and pairs it with a ledger that is idempotent on the key - the half an
+  application has to bring.
+
+  **Checkpointing is two writes, and the order decides what a crash costs.** Copy, write, drop,
+  then snapshot. `history_since` hands back clones and leaves the kernel holding them;
+  `drain_history` hands back the only copy there is, so draining before writing opens a window in
+  which the records exist nowhere - not in the kernel, which has let them go, and not on the disk,
+  which has not got them - and a crash inside it loses them silently. Writing first cannot lose
+  anything: the worst a crash there does is leave the kernel holding records the disk already has.
+  The snapshot goes last for the same reason turned round - a snapshot ahead of the log is a state
+  nothing accounts for, a snapshot behind it is a state the log can explain. Of the two orders only
+  one leaves every crash recoverable, and there is a test for each direction.
+
+  No new primitive came out of it, which was the thing worth finding out. The exercise was set up
+  so that a seam that did not exist would show up as a test that could not be written, and every
+  one of them could be.
+
 ## [0.5.0] - 2026-09-11
 
 ### changed
