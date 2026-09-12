@@ -5,6 +5,105 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- **`/` filters the context and the trace.** Eight hundred events is a log nobody reads; it is a
+  log somebody scrolls past looking for one line. The panes had no way to ask for that line, so the
+  way to find it was `g` and then a lot of `pgdn`.
+
+  `/` opens a box in the prompt's place - which on these panes is empty, because they are read and
+  operated rather than typed into - and what is typed filters the rows. One row high: what goes in
+  it is a phrase, not a message, and a box that grew would be taking rows from the very thing it is
+  filtering. It counts what it found beside the query, because a filter that found nothing and a
+  filter that found everything look identical from a pane scrolled halfway down.
+
+  Fuzzy, and `nucleo-matcher`, which is Helix's - that is where the expectation of what fuzzy
+  *feels* like comes from, and people type `mreq` for `model.requested`. The matcher alone rather
+  than `nucleo`: the full crate is a worker pool and an injector for streaming millions of
+  candidates into a picker, and this is a few hundred rows already in memory. One crate in the
+  lockfile; its unicode dependencies were already there.
+
+  The box has the keys while it is open, and takes `esc` before the arm that reads it as "stop the
+  turn" - `ctrl+c` is what interrupts a run and is handled above anything that could shadow it,
+  whereas a box that `esc` does not close is the one thing everybody tries. The arrows and the
+  paging are deliberately left to the pane: the point of filtering eight hundred events down to
+  nine is to read the nine, and a box that swallowed the scroll keys would mean closing the search,
+  and so losing the filter, to look at what it found. Closing clears it - a filter that outlived
+  its box would leave a window quietly showing four rows of eight hundred with nothing on screen
+  saying why - and changing tabs clears it for the same reason, since a query written for the trace
+  means nothing against the context.
+
+  Two smaller decisions worth writing down. A context row matches on the whole of what the item
+  holds rather than the one line the row has space for, because the filename somebody is looking
+  for is almost never on the first line; the row still shows its preview, and the match is allowed
+  to be about more than the row can show. And a trace continuation - an event with no name, which
+  is more of what the line above had to say - is kept or dropped with the event it belongs to,
+  rather than matched alone and left as the second half of a message whose first half was filtered
+  out from over it.
+
+- **The trace says when each event happened, not only how long it took.** The pane showed the gap
+  to the line above and nothing else. The argument for that is a good one, and is why the gap is
+  still here, still blank under a tenth of a second, and still the one painted yellow: the question
+  somebody brings to a log is which step was slow, and a column of timestamps makes them do the
+  subtraction.
+
+  What it missed is that a gap answers no question beginning "when". Matching the pane against a
+  server log, a provider's dashboard, a ticket, or a memory of what happened before lunch all need
+  an absolute time, and none of them can be reached by adding up a column of deltas. They are also
+  what a search over the trace is given to match on - "the hour it broke" is a query; "seven
+  hundred milliseconds after the line above" is not.
+
+  So an event carries two clocks, because neither can answer the other's question. `at` stays an
+  `Instant`: monotonic, and immune to the system clock being set mid-session in a way a duration
+  computed from wall time is not. `wall` is a `SystemTime` and is what gets rendered. This could
+  not have been done by formatting what was already there - an `Instant` is deliberately opaque and
+  has no rendering as a time of day.
+
+  The date is a rule across the pane rather than a column, drawn only where it changes. A session
+  can outlast a day - that is the shape of run this is for - and `00:15` against two different
+  Tuesdays says nothing at all; repeating the date on all eight hundred lines to disambiguate two
+  of them would spend eleven columns on the same answer almost every time. The zone is said out
+  loud there rather than implied by a colour. The clock itself is drawn only where there is room
+  for it: a narrow window spends its columns on the event names instead.
+
+  `time` does the calendar, and is no longer optional. Not a new crate in the tree -
+  `ratatui-widgets` already builds it, so a screen build is the same compilation with
+  `local-offset` turned on - but a headless build pays for it now, which is the price of the two
+  halves agreeing: what a search matches on has to be what the pane shows, so the stamp is built in
+  `app` where the filtering is rather than in `ui`. The local offset is read in `main` before the runtime is built, beside the
+  sandbox block that is there for a structurally identical reason - working out a local time means
+  asking libc, which reads the process environment, and `time` refuses to answer once a program is
+  threaded. Where a platform will not say, or in a test, which never goes through `main`, it falls
+  back to UTC and marks it: a column of times silently two hours out is worse than one that admits
+  which zone it is in.
+
+### fixed
+
+- **A `~` in a settings file reached nothing on Windows.** `expanded` read `HOME`, which Windows
+  does not set, so `"sandbox-read": ["~"]` there got a root that is a directory called `~`, which
+  canonicalizes to nothing and therefore opens up nothing, silently. That is not the Linux-only
+  half of the sandbox - Landlock is, but `Reach` is not, and the in-process `read` and `write`
+  tools are held to their boundary by this program's own code everywhere. It is exactly the failure
+  this expansion exists to prevent, the path in a file silently reaching nothing while the same
+  path typed at a shell works, on the platform where nothing in front of the program would have
+  expanded it either.
+
+  The test that was supposed to catch it could not: it read the same variable to find out what the
+  answer ought to be, so it panicked before its first assertion on the one platform where the
+  function was in fact wrong.
+
+  The lookup is its own function now - `HOME`, then `USERPROFILE` where there is no `HOME`. `HOME`
+  is still asked first, because a shell that sets one on Windows, as an MSYS shell does, is a shell
+  somebody is typing paths into, and that home is the one they mean. The environment and nothing
+  else, for the reason `~user` is left alone: the password database's answer and the one the person
+  running this is working from are allowed to differ. The separator goes with it, through
+  `std::path::is_separator` rather than a literal `~/`, so `~\.cargo` is expanded where that is how
+  it is spelled and a file named `~\x` here is still a file named `~\x`. The home is an argument
+  rather than something `expanded` reads for itself, which is what lets the test run everywhere,
+  pass with `HOME` unset, and put the native separator through as well.
+
 ## [0.8.0] - 2026-09-11
 
 ### added

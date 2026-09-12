@@ -131,6 +131,7 @@ again.
 | <kbd>p</kbd> | pin it, so that the compactor is refused if it tries |
 | <kbd>e</kbd> | change what it says |
 | <kbd>f</kbd> | list only what the next request carries, or everything again |
+| <kbd>/</kbd> | filter the rows: fuzzy, over the whole of what an item holds — see below |
 | <kbd>enter</kbd> | read the whole of it — see below |
 | <kbd>←</kbd> / <kbd>→</kbd> | move between its pages, while it is open |
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
@@ -190,20 +191,21 @@ made of:
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
-│        model.requested       6 messages, 4 tools, ~1579 tokens                                                │
-│  +6.4s context.added         [7] assistant, 72 tokens                                                        │
-│        model.finished        EndTurn, 1522 in / 19 out (reported)                                            │
-│        tool.requested        shell                                                                           │
-│        permission.requested  shell (3)                                                                       │
-│        state.changed         requesting → deciding                                                           │
-│        context.recounted     1425 → 1377 tokens                                                              │
-│ +11.0s permission.decided    shell: allow, answered when it was asked about                                  │
-│        state.changed         deciding → ready                                                                │
-│        state.changed         ready → executing                                                               │
-│        tool.started          shell                                                                           │
-│  +1.3s tool.output           shell, 12 bytes                                                                 │
-│        context.added         [8] shell, 23 tokens                                                            │
-│        tool.finished         shell, 23 tokens                                                                │
+│── 2026-09-12                                                                                                 │
+│14:22:07         model.requested       6 messages, 4 tools, ~1579 tokens                                      │
+│14:22:13   +6.4s context.added         [7] assistant, 72 tokens                                               │
+│14:22:13         model.finished        EndTurn, 1522 in / 19 out (reported)                                   │
+│14:22:13         tool.requested        shell                                                                  │
+│14:22:13         permission.requested  shell (3)                                                              │
+│14:22:13         state.changed         requesting → deciding                                                  │
+│14:22:13         context.recounted     1425 → 1377 tokens                                                     │
+│14:22:24  +11.0s permission.decided    shell: allow, answered when it was asked about                         │
+│14:22:24         state.changed         deciding → ready                                                       │
+│14:22:24         state.changed         ready → executing                                                      │
+│14:22:24         tool.started          shell                                                                  │
+│14:22:25   +1.3s tool.output           shell, 12 bytes                                                        │
+│14:22:25         context.added         [8] shell, 23 tokens                                                   │
+│14:22:25         tool.finished         shell, 23 tokens                                                       │
 └──────────────────────────────────────────────────────────────────── 41 events · /save keeps them all ────────┘
 ```
 
@@ -218,11 +220,21 @@ first line of what an item used to say, which is the one thing nothing else can 
 `tools.changed` lists the tools rather than counting them. There is a test that the tab draws every event the session recorded, and another
 that none of them is a name with an empty line beside it.
 
-The column down the left is the gap since the line above, blank under a tenth of a second. Nearly
-everything in a session happens between one frame and the next, so what is left with a number
-beside it is the interesting part: the model thinking, a command running, and the eleven seconds
-somebody spent deciding whether to allow a shell. That is the question people bring to a log, and
-here it is answered without subtracting a column of timestamps.
+**Two clocks, because neither answers the other's question.** The second column is the gap since
+the line above, blank under a tenth of a second. Nearly everything in a session happens between one
+frame and the next, so what is left with a number beside it is the interesting part: the model
+thinking, a command running, and the eleven seconds somebody spent deciding whether to allow a
+shell. That is the question people bring to a log — *which step was slow* — and here it is answered
+without subtracting a column of timestamps.
+
+The first column is when it happened, which no amount of adding up deltas will give you. Matching
+the pane against a server log, a provider's dashboard, a ticket, or a memory of what happened
+before lunch all need an absolute time, and so does a search: *the hour it broke* is a query,
+*seven hundred milliseconds after the line above* is not. The date is a rule across the pane rather
+than a column, drawn only where it changes — a session can outlast a day, and `00:15` against two
+different Tuesdays says nothing — and it carries the zone, or says `UTC` where the local one could
+not be determined. Both columns give way before the event names do: a narrow window spends its
+space on what happened rather than on when.
 
 It is the same stream `/save` writes to a `.jsonl`, and reading it is how you find out that a
 permission question became a decision became a state change became a call. <kbd>up</kbd> reads
@@ -238,6 +250,23 @@ So tool output is one line that counts up (`tool.output  shell, 12,004 bytes so 
 model's text is on the chat tab as it arrives. The pane keeps the last few hundred lines. `/save`
 keeps every event there was, including the one line no subscriber can ever catch: the kernel's own
 `session.started`, emitted while it is still being constructed.
+
+**<kbd>/</kbd> filters either of those two panes.** Eight hundred events is not a log anybody
+reads; it is a log somebody scrolls past looking for one line, and the way to find it used to be
+<kbd>g</kbd> and a lot of <kbd>pgdn</kbd>. <kbd>/</kbd> opens a one-row box where the prompt would
+be — these panes are read and operated rather than typed into, so it is not taking anything — and
+what you type filters the rows, fuzzily, counting what it found beside the query. It is
+[`nucleo-matcher`](https://crates.io/crates/nucleo-matcher), which is Helix's, because that is
+where the expectation of what fuzzy *feels* like comes from: `mreq` finds `model.requested`.
+
+A context row matches on the whole of what the item holds rather than the one line the row has
+space for — the filename you are looking for is almost never on the first line — and a trace row
+matches on the name, the detail and the clock, so an hour or a date finds what happened in it. The
+arrows and the paging stay with the pane, deliberately: the point of filtering eight hundred events
+down to nine is to read the nine, and a box that swallowed the scroll keys would mean closing the
+search, and so losing the filter, to look at what it found. <kbd>esc</kbd> closes it, and closing
+clears it — a filter that outlived its box would leave a window quietly showing four rows of eight
+hundred with nothing on screen saying why. Changing tabs clears it for the same reason.
 
 And from anywhere, <kbd>ctrl+p</kbd> prints the request those items add up to — the kernel's own
 rendering of it, not a description, with a header naming everything the projector left out and
@@ -285,8 +314,8 @@ and running that through a renderer would be inventing structure it never had.
 | <kbd>ctrl+e</kbd> | follow the newest again |
 | <kbd>tab</kbd> | move between the prompt and the open tab |
 | <kbd>ctrl+t</kbd> | the next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for one in particular |
-| <kbd>esc</kbd> | stop what is running, and keep what arrived |
-| <kbd>ctrl+c</kbd> | the same, and again to leave |
+| <kbd>esc</kbd> | close an open search box; otherwise stop what is running, and keep what arrived |
+| <kbd>ctrl+c</kbd> | stop what is running either way, and again to leave |
 | <kbd>F1</kbd> | all of them, including the slash commands |
 
 Where you leave the conversation is where it stays. A turn that writes four hundred lines used to
