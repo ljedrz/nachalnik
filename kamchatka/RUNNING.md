@@ -161,6 +161,19 @@ and the module documentation is where the argument is: why the records are the h
 lost and the fragments are the half that can, and why attaching answers with a projection rather
 than with a snapshot.
 
+`examples/attached.rs` is a client of a served session in about a hundred lines — attach, ask,
+follow the turn, refuse a permission question, read back the item the answer was recorded as:
+
+```console
+$ kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2 &
+$ cargo run --example attached -- tcp:127.0.0.1:7878 "what is 2+2"
+```
+
+It reaches for `remote::protocol` and three plain data types, and for no part of this program that
+runs a session — which is the check on the claim that `protocol` is what moves if something else
+needs to speak this. Its header carries the wire transcript, because a client in another language
+needs the JSON and none of the Rust.
+
 ## 🧩 two dialects, and why one of them keeps the order
 
 `--gemini` talks to Google's own API instead of an OpenAI-compatible one. That is not a

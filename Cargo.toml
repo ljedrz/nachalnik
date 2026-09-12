@@ -59,6 +59,11 @@ parking_lot = "0.12"
 # output; it changes no wire format, and adds no dependency
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
+# the two socket options `tokio::net` does not offer: `TCP_NODELAY`, and keepalive. It is not a new
+# crate in any sense that costs anything - `tokio` itself builds it for the `net` feature, and
+# `reqwest` for its own reasons - so what this line buys is the right to call two methods on a
+# socket this workspace already owns
+socket2 = "0.6"
 tokio = { version = "1" }
 # what the property suites are run by, and it gives them two things: a great many
 # generated cases and, the half that matters, a shrinker: a property that fails comes back as the

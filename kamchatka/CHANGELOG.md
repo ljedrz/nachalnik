@@ -57,6 +57,15 @@ minor bump may break you.
   added to this crate's dependencies, which is why `remote` is not behind a feature of its own the
   way `tui` and `mcp` are.
 
+- **`examples/attached.rs`: a client of somebody else's session over a port, in about a hundred
+  lines.** It attaches, prints the projection, asks a question, follows the turn, refuses any
+  permission question it is asked, reads the item the answer was recorded as, and detaches. What it
+  reaches for is `remote::protocol`, `tokio`, and three plain data types the protocol borrows from
+  `app` - `Speaker`, `Did` and `Page`, an enum of seven, an enum of three and two strings. No `App`,
+  no wiring, and not `remote::Client`, which is how the claim that `protocol` is what moves if
+  somebody else needs to speak this gets checked rather than asserted. Its header carries the wire
+  transcript, because a client in another language needs the JSON and no Rust at all.
+
 - **`App::decide`, `App::notes` and `App::queued`.** The first is the whole of what answering a
   permission question is, in one place: `App::answer`, which is the half that was already shared,
   plus honouring `always` over what the policy really consulted rather than over what the tool
@@ -67,6 +76,22 @@ minor bump may break you.
   counting the *filtered* sequence stated once instead of in each loop that prints them.
   `App::queued` is the message waiting for a running turn to end, exposed because there is room
   for exactly one and a second client needs to be told when its line replaced somebody else's.
+
+- **Two socket options and a reconnection policy, for a port rather than a socket file.**
+  `TCP_NODELAY`, because Nagle holds a small write until the last one is acknowledged and every
+  frame here is small; and keepalive, because a peer whose machine slept sends no `FIN` and a read
+  waits for ever - on the session that is a connection task holding a `Kernel` and never reporting
+  the client as gone. Neither matters on loopback, which is why neither was there. `socket2` is a
+  direct dependency for them and is not a new crate in any sense that costs anything: `tokio` builds
+  it for `net` and `reqwest` for its own reasons.
+
+  The reconnection was five attempts a quarter of a second apart, which is right for a socket file -
+  the only way to lose one is the host going away, and it either comes back at once or it is not
+  coming back - and useless over a port, where the ordinary reason to lose a connection is a laptop
+  changing access points and the ordinary time to get one back is several seconds. Giving up after
+  one and a quarter was a client reporting a session lost while it was still there. It backs off
+  from a quarter of a second towards five, for up to a minute, and says how long it waited when it
+  gives up.
 
 ### fixed
 

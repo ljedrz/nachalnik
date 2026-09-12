@@ -22,17 +22,32 @@ use crate::{
     remote::protocol::{self, Address, Attached, Command, Message},
 };
 
-/// How many times a dropped connection is picked back up before giving up on it.
+/// How long a dropped connection is picked back up for before this gives up on it.
 ///
-/// note: a few rather than for ever, because the two reasons a socket dies look identical from
+/// note: a while rather than for ever, because the two reasons a socket dies look identical from
 /// here - the host was restarted, or the host is gone - and a client that retried indefinitely
 /// would be a process somebody has to notice and kill. Resuming is the point of the retry: each
 /// attempt attaches with the last record this client actually saw, so picking the session back up
 /// costs the records it missed and nothing else.
-const TRIES: usize = 5;
+///
+/// note: a minute, and the figure is about *networks* rather than about patience. This was five
+/// attempts a quarter of a second apart, which is right for a socket file - where the only way to
+/// lose one is the host going away, and it either comes back at once or it is not coming back -
+/// and useless over a port, where the ordinary reason to lose a connection is a laptop changing
+/// access points and the ordinary time to get one back is several seconds. Giving up after one
+/// and a quarter was a client that reported a session lost while it was still there.
+const GIVE_UP: Duration = Duration::from_secs(60);
 
-/// How long between those attempts.
-const PATIENCE: Duration = Duration::from_millis(250);
+/// How long to wait before picking it back up the first time.
+const FIRST_WAIT: Duration = Duration::from_millis(250);
+
+/// The longest that wait grows to, doubling.
+///
+/// note: backing off rather than a fixed pause, for the two cases at once. A host restarting is
+/// back in well under a second and should be picked up in the first attempt or two; a network that
+/// has gone is not coming back inside a minute however often anybody asks, and sixty seconds of
+/// quarter-second attempts is two hundred and forty connections nobody wanted made.
+const LONGEST_WAIT: Duration = Duration::from_secs(5);
 
 /// A client of somebody else's session.
 pub struct Client<'a> {
@@ -63,9 +78,9 @@ pub struct Client<'a> {
     /// Whether the session has said it is finished.
     ///
     /// note: what tells a closing socket apart from a dropped one, and without it a `/quit` typed
-    /// at this client is answered by reconnecting five times to a session that did exactly what it
-    /// was asked. `session.finished` is a record like any other, so this is the session saying so
-    /// rather than this client inferring it from a silence.
+    /// at this client is answered by a minute of attempts to reattach to a session that did exactly
+    /// what it was asked. `session.finished` is a record like any other, so this is the session
+    /// saying so rather than this client inferring it from a silence.
     over: bool,
 }
 
@@ -112,28 +127,32 @@ impl<'a> Client<'a> {
         // cancellation-safe and holds whatever it has read so far. Rebuilding it per attempt would
         // lose half a line every time a socket died mid-read
         let mut typed = input.lines();
-        let mut tries = 0;
+        let (mut first, mut waited, mut wait) = (true, Duration::ZERO, FIRST_WAIT);
 
         loop {
-            let first = tries == 0;
-            match self.attend(address, &mut typed, first).await {
+            let left = self.attend(address, &mut typed, first).await;
+            first = false;
+            match left {
                 Left::Done => return Ok(()),
                 Left::Failed(e) => return Err(e),
+                Left::Dropped if waited >= GIVE_UP => {
+                    return Err(format!(
+                        "the session has not answered for {}s; it had {} record(s) when this \
+                         client last saw it, and `--connect` picks up from there if it comes back",
+                        waited.as_secs(),
+                        self.last
+                    ));
+                }
                 Left::Dropped => {
-                    tries += 1;
-                    if tries > TRIES {
-                        return Err(format!(
-                            "the session is not answering; it had {} record(s) when this client \
-                             last saw it, and `--connect` picks up from there if it comes back",
-                            self.last
-                        ));
-                    }
                     self.fresh_line()?;
                     self.tell(&format!(
-                        "the connection went; attaching again from record {} ({tries} of {TRIES})",
-                        self.last
+                        "the connection went; attaching again from record {} in {:.1}s",
+                        self.last,
+                        wait.as_secs_f64()
                     ))?;
-                    tokio::time::sleep(PATIENCE).await;
+                    tokio::time::sleep(wait).await;
+                    waited += wait;
+                    wait = (wait * 2).min(LONGEST_WAIT);
                 }
             }
         }
@@ -563,7 +582,12 @@ async fn connect(address: &str) -> Result<Connection, String> {
         )),
         Address::Tcp(host) => tokio::net::TcpStream::connect(host)
             .await
-            .map(Connection::Tcp)
+            .map(|stream| {
+                // the two options a socket file never needed; see `remote::tuned`
+                super::tuned(&stream);
+
+                Connection::Tcp(stream)
+            })
             .map_err(|e| format!("could not reach {host}: {e}")),
     }
 }
