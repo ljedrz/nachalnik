@@ -58,6 +58,26 @@ minor bump may break you.
   tab cannot reintroduce this by forgetting. `Focus::Body` is the guard rather than the tab alone,
   so the `?` of a sentence typed into an item being edited is still a `?`.
 
+- **An empty pane said which empty it was on one tab and guessed on the other two.** Both of these
+  arrived with the search and neither was visible without one.
+
+  The trace said `nothing here matches; esc clears the search` whenever it had no rows to draw -
+  including when nothing had happened yet, which is what a session opens on. So the first thing
+  somebody saw on that tab was an instruction to clear a search they had not started, and pressing
+  `esc` on the strength of it did nothing, which is how a key comes to look broken.
+
+  The context had the opposite half of the same bug. It knows two empties apart already - nothing
+  here, and nothing being sent because `f` is on - but a search that matches nothing empties it
+  too, and `held_back` is every item `listed` dropped rather than the ones `f` dropped. So a query
+  that found nothing was reported as `n item(s) are hidden, and `f` lists them again`: the wrong
+  key, over a count that was the two filters added together.
+
+  Each pane says which of its empties it is in now. The search is named first where both apply,
+  because it is the thing somebody just did and the thing `esc` undoes, and `f` is named beside it
+  rather than instead of it - a pane naming one of two reasons is a pane somebody clears and finds
+  still empty. No count is given while a search is on, because the only figure available is the
+  mixture, and a number blaming `f` for rows the query hid is worse than no number.
+
 ### added
 
 - **`/` filters the context and the trace.** Eight hundred events is a log nobody reads; it is a

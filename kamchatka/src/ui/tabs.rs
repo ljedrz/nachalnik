@@ -237,10 +237,25 @@ pub(super) fn draw_context(
     let items = app.listed();
     let held_back = app.kernel.items().len() - items.len();
     if items.is_empty() {
-        // the two empties are not the same, and the second one has a way out of it
-        let empty = match held_back {
-            0 => "nothing here yet".to_owned(),
-            n => format!("nothing is being sent; {n} item(s) are hidden, and `f` lists them again"),
+        // the empties are not the same, and each has its own way out of it.
+        //
+        // note: a search is named first, because it is the thing somebody just did and the thing
+        // `esc` undoes - and `f` is named beside it when that is holding rows back too, since a
+        // pane naming one of two reasons is a pane somebody clears and finds still empty.
+        //
+        // note: and no count while a search is on. `held_back` is every item `listed` dropped,
+        // and with a search running that is the two filters added together - so the figure would
+        // be blaming `f` for rows the query is what hid, which is a number worse than none
+        let empty = match (app.search.is_some(), app.sending_only, held_back) {
+            (true, false, _) => "nothing here matches; esc clears the search".to_owned(),
+            (true, true, _) => {
+                "nothing here matches; esc clears the search, and `f` is hiding rows as well"
+                    .to_owned()
+            }
+            (false, _, 0) => "nothing here yet".to_owned(),
+            (false, _, n) => {
+                format!("nothing is being sent; {n} item(s) are hidden, and `f` lists them again")
+            }
         };
         frame.render_widget(Paragraph::new(empty).style(quiet()), area);
         return Scrolled::default();
@@ -699,10 +714,15 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
     }
 
     if found == 0 {
-        lines.push(Line::styled(
-            "nothing here matches; esc clears the search".to_owned(),
-            quiet(),
-        ));
+        // the two empties are not the same, and only one of them has a way out. A session that
+        // has not done anything yet opens on an empty trace, and telling whoever is looking at it
+        // to press `esc` to clear a search they never started is an instruction to undo something
+        // that is not there - which is how somebody comes to believe the key is broken
+        let empty = match app.search.is_some() {
+            true => "nothing here matches; esc clears the search",
+            false => "nothing here yet",
+        };
+        lines.push(Line::styled(empty.to_owned(), quiet()));
     }
 
     // it is a log, so it is read from the bottom; `trace_scroll` counts upwards from there

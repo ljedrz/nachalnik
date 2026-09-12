@@ -162,3 +162,40 @@ async fn backspace_widens_the_search_again() {
         "an empty query hides nothing"
     );
 }
+
+/// An empty pane and a filtered-empty pane are not the same empty, and only one of them has a
+/// key that undoes it. Both panes used to give the search's answer unconditionally or never: the
+/// trace told a session that had not done anything yet to press `esc` and clear a search nobody
+/// had started, and the context blamed `f` for rows the query was what hid.
+#[tokio::test]
+async fn an_empty_pane_says_which_empty_it_is() {
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+
+    // nothing has happened yet, so there is nothing to clear and it does not say there is
+    harness.tab(Tab::Trace);
+    let fresh = harness.sized(120, 30);
+    assert!(fresh.contains("nothing here yet"), "{fresh}");
+    assert!(!fresh.contains("esc clears"), "there is no search: {fresh}");
+
+    // and once there is one that matches nothing, it says so, and says how to get out
+    harness.tab(Tab::Chat);
+    harness.send("go").await;
+    harness.settle().await;
+    harness.tab(Tab::Trace);
+    press(&mut harness, KeyCode::Char('/')).await;
+    type_in(&mut harness, "zzzznotathing").await;
+    let filtered = harness.sized(120, 30);
+    assert!(filtered.contains("esc clears the search"), "{filtered}");
+
+    // the context pane has three empties rather than two, and `f` is only one of them
+    harness.tab(Tab::Context);
+    assert!(harness.app.search.is_none(), "changing tabs clears it");
+    press(&mut harness, KeyCode::Char('/')).await;
+    type_in(&mut harness, "zzzznotathing").await;
+    let context = harness.sized(120, 30);
+    assert!(context.contains("esc clears the search"), "{context}");
+    assert!(
+        !context.contains("`f` lists them again"),
+        "`f` is not what hid these: {context}"
+    );
+}
