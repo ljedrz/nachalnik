@@ -33,6 +33,19 @@ pub struct ToolSpec {
     ///
     /// note: Shared, because [`Tool::spec`] is called afresh for every request and a schema
     /// copied each time is a cost that scales with how useful your tools are.
+    ///
+    /// note: **descriptive, not enforced.** The kernel sends this to the model and counts what it
+    /// costs to send; it never checks a call's arguments against it, and a tool is handed whatever
+    /// the model produced. Validating is [`Tool::invoke`]'s job, and a mismatch is an ordinary
+    /// [`ToolOutput::error`](crate::ToolOutput::error) - which the model reads and can act on,
+    /// where a refusal from underneath would be a failure it never sees the shape of.
+    ///
+    /// note: that is a deliberate boundary rather than a missing feature. Enforcing it would mean
+    /// this crate choosing a JSON Schema dialect and a validator for everybody who ever writes a
+    /// tool, on behalf of models that disagree about which dialect they emit for - and the check
+    /// is one line in the tool that already has to parse the arguments to use them. A caller who
+    /// wants it everywhere can wrap `Tool` once and install the wrapper, which is the seam this
+    /// leaves open.
     pub schema: Arc<Value>,
     /// The capabilities an invocation of this tool requires.
     pub capabilities: Vec<Capability>,
