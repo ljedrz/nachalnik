@@ -100,6 +100,15 @@ pub struct Config {
     /// note: This is the one place the kernel spawns tasks, and only for the length of the step
     /// that spawned them. Dropping the future driving [`Kernel::step`] aborts them, so a
     /// cancelled turn is cancelled here too.
+    ///
+    /// note: what also changes is what an interrupt can still stop. Run one at a time, a batch
+    /// has a queue, and [`Kernel::interrupt`] empties it: every call that had not begun is
+    /// recorded as having been interrupted before it was made. Run together there is no queue -
+    /// they are all started before the first one has finished - so the only thing left for an
+    /// interrupt to reach is a [`Tool`](crate::Tool) that checks
+    /// [`OutputSink::is_interrupted`](crate::OutputSink::is_interrupted) itself. Turning this on
+    /// trades the guarantee that an interrupt stops the calls that had not started for the
+    /// parallelism, and that is worth knowing before a batch of them is `rm`.
     pub parallel_tool_calls: bool,
 }
 

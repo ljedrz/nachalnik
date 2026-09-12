@@ -313,3 +313,75 @@ async fn one_at_a_time_means_one_finishes_before_the_next_starts() {
         ]
     );
 }
+
+// ------------------------------------------------------- what an interrupt can still stop, and not
+
+/// Every tool result the kernel recorded, in order.
+fn tool_results_text(kernel: &Kernel) -> Vec<String> {
+    kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect()
+}
+
+/// note: `Slow` never looks at [`OutputSink::is_interrupted`], and that is the point of using it
+/// here. What is being pinned is what the *kernel* can do about a tool that does not cooperate,
+/// which is the guarantee a caller has to reason about when the tool is somebody else's.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn run_in_turn_an_interrupt_stops_the_calls_that_had_not_started() {
+    let kernel = three_slow_calls(false);
+
+    let interrupting = {
+        let kernel = kernel.clone();
+        tokio::spawn(async move {
+            // long enough to be inside the first 150ms call, short enough to be nowhere near the
+            // second
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            kernel.interrupt();
+        })
+    };
+    kernel.turn().await.unwrap();
+    interrupting.await.unwrap();
+
+    let results = tool_results_text(&kernel);
+    assert_eq!(
+        results.len(),
+        3,
+        "every call is recorded either way: {results:?}"
+    );
+    assert!(
+        results[0].contains("c1 ran"),
+        "the one already running finishes: {results:?}"
+    );
+    assert!(
+        results[1].contains("interrupted") && results[2].contains("interrupted"),
+        "the queue is emptied: {results:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn run_together_there_is_no_queue_left_for_an_interrupt_to_empty() {
+    let kernel = three_slow_calls(true);
+
+    let interrupting = {
+        let kernel = kernel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            kernel.interrupt();
+        })
+    };
+    kernel.turn().await.unwrap();
+    interrupting.await.unwrap();
+
+    // all three were spawned before the first one answered, so the interrupt arrives with nothing
+    // left to not-start. This is the guarantee `parallel_tool_calls` trades away, and it is worth
+    // a test rather than a sentence because it is the one somebody will assume they still have
+    let results = tool_results_text(&kernel);
+    assert_eq!(results.len(), 3, "{results:?}");
+    assert!(
+        results.iter().all(|said| said.contains("ran")),
+        "every call had already started: {results:?}"
+    );
+}

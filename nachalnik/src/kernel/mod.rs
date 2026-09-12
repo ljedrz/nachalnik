@@ -548,6 +548,14 @@ impl Kernel {
     /// tool call, a [`Tool`] that checks [`crate::OutputSink::is_interrupted`] can do the same -
     /// and in the serial case the kernel does not start the calls that had not begun.
     ///
+    /// note: "in the serial case" is load-bearing. With
+    /// [`Config::parallel_tool_calls`](crate::Config::parallel_tool_calls) on there is nothing
+    /// left to not-start: every call in the batch is spawned before the first one answers, so an
+    /// interrupt reaches only the tools that check the sink for themselves. Neither mode can stop
+    /// a tool that blocks without ever looking - the kernel does not own the thread it is on, and
+    /// there is no safe way to take it back. What it always does is record: every call gets an
+    /// output, even when that output is that it never ran.
+    ///
     /// note: The flag is cleared by the transition attempt that acts on it - [`Kernel::step`],
     /// including the one [`Kernel::turn`] is in the middle of making - so it can never outlive the
     /// thing it was meant to stop, and there is only ever one reader of it. What it never does is
