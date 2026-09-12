@@ -177,11 +177,26 @@ impl<'a> Headless<'a> {
                         // `App::loose` for the ones that arrive with no line to answer either;
                         // the page is this call's alone and has no other way out
                         let opened = app.submit(line.trim_end()).await.page;
-                        if let Some(Overlay::Text { title, pages, page, .. }) = opened {
-                            let body = pages.get(page).map(|it| it.body.as_str()).unwrap_or("");
+                        if let Some(Overlay::Text { title, pages, .. }) = opened {
                             self.fresh_line()?;
-                            writeln!(self.prose, "--- {title} ---\n{body}")
-                                .map_err(|e| e.to_string())?;
+                            writeln!(self.prose, "--- {title} ---").map_err(|e| e.to_string())?;
+                            // note: every page rather than the one it was opened at. A screen
+                            // turns them with `←` and `→` and there is no key to press down a
+                            // pipe, so a caller handed one page of seven would be reading a
+                            // reference whose other six it has no way to ask for. `/help` became
+                            // seven the day the panel started opening at the tab somebody was on.
+                            //
+                            // note: named only where there is more than one. A page opened by
+                            // `App::preview` is deliberately nameless - there is one of it - and a
+                            // rule saying nothing over `/budget` would be chrome for its own sake
+                            for page in &pages {
+                                if pages.len() > 1 {
+                                    writeln!(self.prose, "-- {} --", page.name)
+                                        .map_err(|e| e.to_string())?;
+                                }
+                                writeln!(self.prose, "{}", page.body)
+                                    .map_err(|e| e.to_string())?;
+                            }
                         }
                     }
                     // stdin has closed. Whatever is running still finishes, and the loop leaves

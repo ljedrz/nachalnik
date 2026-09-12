@@ -78,4 +78,4 @@ pub mod tools;
 pub mod ui;
 pub mod wiring;
 
-mod help;
+pub mod help;

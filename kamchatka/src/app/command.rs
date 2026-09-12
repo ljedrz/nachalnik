@@ -92,7 +92,7 @@ impl App {
 
         match command {
             "quit" | "exit" | "q" => self.quit = true,
-            "help" | "?" => self.preview("the keys", crate::help::HELP),
+            "help" | "?" => self.help(),
             "continue" => self.start_turn(),
             // with a message, because otherwise the only way to reach the first transition is to
             // send one - which runs the whole turn, and there is nothing left to step through

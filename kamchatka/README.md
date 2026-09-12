@@ -316,7 +316,15 @@ and running that through a renderer would be inventing structure it never had.
 | <kbd>ctrl+t</kbd> | the next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for one in particular |
 | <kbd>esc</kbd> | close an open search box; otherwise stop what is running, and keep what arrived |
 | <kbd>ctrl+c</kbd> | stop what is running either way, and again to leave |
-| <kbd>F1</kbd> | all of them, including the slash commands |
+| <kbd>F1</kbd> | the keys, opened at the tab you are on; also <kbd>?</kbd> on any tab but the chat one |
+
+**<kbd>F1</kbd> answers for where you are standing.** The panel is one page per tab, plus one for
+the slash commands and one for the keys that mean the same thing everywhere, and it opens at the
+page for the tab it was pressed from — so asking what the keys are on the trace answers with the
+trace's six, not with a hundred lines of which four fifths are about somewhere else.
+<kbd>←</kbd> and <kbd>→</kbd> turn the pages, and the strip along the top names all of them: the
+rest is one key away rather than hidden. A seventh appears while a tool is waiting to run, and is
+the one it opens at, because that is what you are being stopped by.
 
 Where you leave the conversation is where it stays. A turn that writes four hundred lines used to
 pull the window down to the newest of them on every fragment, so anything it had said thirty

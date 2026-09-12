@@ -1527,3 +1527,32 @@ async fn the_deadline_ends_the_program_itself() {
     );
     assert!(said.lock().contains("out of time"), "{}", said.lock());
 }
+
+/// A run with no keys to press is handed every page of the key reference rather than the one the
+/// panel would have opened at. On a screen `/help` is six pages and `←` turns them; down a pipe
+/// there is no key to press, so a caller given one of six would be reading a reference whose
+/// other five it has no way to ask for.
+#[tokio::test]
+async fn help_down_a_pipe_is_the_whole_of_it() {
+    let run = run("/help\n", vec![], |_| {}).await;
+
+    for section in kamchatka::help::SECTIONS {
+        // the one that is not offered is the one whose keys do not exist: nothing is waiting on a
+        // permission here, so there is nothing for `y` or `a` to answer
+        let offered = section.applies(false);
+        assert_eq!(
+            run.prose.contains(section.body),
+            offered,
+            "`{}` should{} be in it: {}",
+            section.name,
+            match offered {
+                true => "",
+                false => " not",
+            },
+            run.prose
+        );
+    }
+
+    // and each page is named, because six of them run together with nothing between is a wall
+    assert!(run.prose.contains("-- commands --"), "{}", run.prose);
+}

@@ -96,41 +96,134 @@ async fn the_next_tab_is_one_keystroke_and_each_of_them_is_two() {
     assert_eq!(harness.app.tab, Tab::Trace);
 }
 
+/// The panel used to be the same eight sections wherever it was pressed from, six of which were
+/// about one tab each - so somebody on the trace looking for `g` read past four screens of keys
+/// that do nothing there. It opens at the tab they are on now.
+#[tokio::test]
+async fn the_help_opens_at_the_tab_it_was_asked_from() {
+    let mut harness = Harness::new([]);
+
+    // one key each, and the key is not the same one: `?` is the panes', because they have no
+    // prompt for a letter to be typed into, and F1 is everybody's
+    for (tab, key, says, and_not) in [
+        (
+            Tab::Context,
+            KeyCode::Char('?'),
+            "THE CONTEXT TAB",
+            "THE TRACE TAB",
+        ),
+        (
+            Tab::Trace,
+            KeyCode::Char('?'),
+            "THE TRACE TAB",
+            "THE CONTEXT TAB",
+        ),
+        (
+            Tab::Permissions,
+            KeyCode::Char('?'),
+            "THE PERMISSIONS TAB",
+            "THE CONTEXT TAB",
+        ),
+        (Tab::Chat, KeyCode::F(1), "THE PROMPT", "THE TRACE TAB"),
+    ] {
+        harness.tab(tab);
+        harness.press(key).await;
+        let screen = harness.sized(110, 40);
+        assert!(
+            screen.contains(says),
+            "{tab:?} should open at `{says}`: {screen}"
+        );
+        assert!(
+            !screen.contains(and_not),
+            "{tab:?} should not be showing `{and_not}`: {screen}"
+        );
+
+        // and the panel is short enough to be read at once, which is the whole point: every
+        // section fits a forty-row window, where the eight of them together never did.
+        //
+        // note: off the panel's own footer rather than off the screen, because the tab underneath
+        // has a `... of ...` of its own - `0 items, all of them going` - and it is drawn first
+        let counted = screen
+            .lines()
+            .find(|line| line.contains("any key closes"))
+            .and_then(|footer| footer.split(" of ").nth(1))
+            .and_then(|rest| rest.split_whitespace().next())
+            .and_then(|n| n.parse::<usize>().ok())
+            .unwrap_or_else(|| panic!("the panel counts its own lines: {screen}"));
+        assert!(
+            counted < 36,
+            "`{says}` is {counted} lines, which is a scroll"
+        );
+
+        harness.press(KeyCode::Esc).await;
+    }
+}
+
 #[tokio::test]
 async fn the_help_lists_the_keys_that_exist() {
     let mut harness = Harness::new([]);
 
     harness.press(KeyCode::F(1)).await;
     let top = harness.sized(110, 40);
-    assert!(top.contains("alt+1 / 2 / 3"), "{top}");
+    // pressed from the chat tab, so what it opened at is the prompt's own keys - and not the
+    // tab-switching ones, which are a page away
     assert!(top.contains("alt+enter"), "{top}");
 
-    // every heading starts at the same column: the first one used to sit flush against the
+    // every section starts at the same column, checked over the text rather than the screen
+    // because only one of them is on it at a time. The first one used to sit flush against the
     // border, because a `\` continuation after the opening quote had eaten its indent
-    let column = |heading: &str| {
-        top.lines()
-            .find(|line| line.contains(heading))
-            .unwrap_or_else(|| panic!("`{heading}` is in the help: {top}"))
-            .find(heading)
-            .expect("just found it")
-    };
-    assert_eq!(column("THE TABS"), column("ANYWHERE"), "{top}");
+    for section in ui::SECTIONS {
+        let first = section
+            .body
+            .lines()
+            .next()
+            .unwrap_or_else(|| panic!("`{}` says what it is", section.name));
+        assert_eq!(
+            first.len() - first.trim_start().len(),
+            2,
+            "`{}` starts at the wrong column: {first:?}",
+            section.name
+        );
+    }
 
-    // it is longer than a screenful, and says so, and scrolls
+    // the strip names every page there is, so what is not on the screen is still visibly there
+    for name in [
+        "chat",
+        "context",
+        "trace",
+        "permissions",
+        "commands",
+        "everywhere",
+    ] {
+        assert!(top.contains(name), "the strip should name `{name}`: {top}");
+    }
     assert!(
         top.contains(" of "),
         "the panel should count its own lines: {top}"
     );
-    // ... and the commands are reachable from the top by scrolling, however long the help grows
+
+    // ... and the commands are reachable by turning pages rather than by scrolling, which is what
+    // they were reachable by while all of this was one page
     let mut rest = String::new();
-    for _ in 0..8 {
-        harness.press(KeyCode::PageDown).await;
+    for _ in 0..ui::SECTIONS.len() {
+        harness.press(KeyCode::Right).await;
         rest = harness.sized(110, 40);
         if rest.contains("/prune") {
             break;
         }
     }
     assert!(rest.contains("/prune"), "{rest}");
+
+    // and the whole of it is still in `everything`, which is what a run with no keys to press
+    // reads. A page nobody can turn to is a page that is missing from that reading
+    let all = ui::everything();
+    for section in ui::SECTIONS {
+        assert!(
+            all.contains(section.body),
+            "`{}` is not in the whole of it",
+            section.name
+        );
+    }
 
     // ... and every command is listed once. `/seams` was in there twice, and a test that could
     // only see one screenful at a time had no way to notice
@@ -143,7 +236,8 @@ async fn the_help_lists_the_keys_that_exist() {
     //
     // the whole left column, not the first word: `/tools` and `/tools drop ID` are two entries
     // for one command and belong in here twice
-    let commands: Vec<&str> = ui::HELP
+    let help = ui::everything();
+    let commands: Vec<&str> = help
         .lines()
         .skip_while(|line| !line.contains("COMMANDS"))
         .map(str::trim_start)
@@ -443,6 +537,7 @@ fn every_command_that_exists_is_in_the_help() {
         .expect("and that place ends")
         .0;
 
+    let help = ui::everything();
     let mut listed = 0;
     for line in handler.lines() {
         // a match arm whose pattern is one or more quoted names: `"prune" | "keep" | "restore" =>`
@@ -457,7 +552,7 @@ fn every_command_that_exists_is_in_the_help() {
                 continue;
             };
             assert!(
-                ui::HELP.contains(&format!("/{name}")),
+                help.contains(&format!("/{name}")),
                 "`/{name}` works and F1 does not mention it"
             );
             listed += 1;
@@ -494,9 +589,10 @@ async fn the_first_line_of_a_session_names_keys_that_do_what_it_says() {
     assert_eq!(harness.app.tab, Tab::Chat);
 
     // and every key it names is one F1 lists, which is itself checked against the code
+    let help = ui::everything();
     for key in ["ctrl+t", "alt+1", "ctrl+p", "F1"] {
         assert!(
-            ui::HELP.contains(key) || ui::HELP.contains(&key.to_lowercase()),
+            help.contains(key) || help.contains(&key.to_lowercase()),
             "the greeting offers `{key}` and the help does not mention it"
         );
     }

@@ -5,12 +5,14 @@
 //! line - and `draw`, which is the one entry point. What goes inside is next door: `tabs` draws
 //! the four bodies, `overlay` the panel that floats over one of them, `markdown` and `table` turn
 //! what a model wrote into styled lines, and `text` measures and fits all of it. Everything but
-//! [`GREETING`], [`HELP`], [`wrapped_rows`] and `draw` itself is private to this module, because a
-//! screen is not an API.
+//! [`GREETING`], [`SECTIONS`], [`everything`], [`wrapped_rows`] and `draw` itself is private to
+//! this module, because a screen is not an API.
 //!
-//! note: this whole module is behind the `tui` feature, and [`HELP`] is re-exported from `help`
-//! rather than declared here for that reason: `/help` is answered by a build with no screen, and
-//! the path `ui::HELP` is one somebody may already be using.
+//! note: this whole module is behind the `tui` feature, and the key reference lives in `help`
+//! rather than here for that reason: `/help` is answered by a build with no screen, so the text a
+//! command owns cannot sit behind the feature that draws. What is here is a re-export, because
+//! `ui` is the path somebody may already be reaching it through - [`crate::help`] is the one that
+//! works in every configuration.
 
 use std::time::Duration;
 
@@ -31,7 +33,7 @@ mod table;
 mod tabs;
 mod text;
 
-pub use crate::help::HELP;
+pub use crate::help::{SECTIONS, Section, everything};
 use crate::ui::{
     overlay::{BESIDES, MIN_CHAT, MIN_QUESTION, draw_overlay, draw_question, question_rows},
     tabs::{draw_chat, draw_context, draw_permissions, draw_trace},
@@ -40,7 +42,7 @@ use crate::ui::{
 
 /// The first line of a session that is not being resumed.
 ///
-/// note: `pub` for the same reason [`HELP`] is: so that a test can check that what somebody is
+/// note: `pub` for the same reason [`SECTIONS`] is: so that a test can check that what somebody is
 /// told on their first screen is what the keys actually do. It used to open with `tab moves to
 /// the context`, which tab has never done - on the chat tab it moves the keys onto a waiting
 /// question, and there is nothing else there to move them to - and it went on to offer `ctrl+t`

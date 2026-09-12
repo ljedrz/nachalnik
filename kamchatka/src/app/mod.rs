@@ -1551,6 +1551,49 @@ impl App {
         );
     }
 
+    /// The key reference, opened at whichever page is about where somebody is standing.
+    ///
+    /// note: this is the one place that knows a tab has a page, and it is here rather than in
+    /// `help` because the mapping is a fact about the program: `help` holds the words and has no
+    /// business knowing which tab `G` belongs to. Every section is still offered - `←` and `→`
+    /// reach the rest - so what this decides is the *first* page, not which of them exist.
+    ///
+    /// note: a waiting question wins over the chat tab it is pinned to, because somebody pressing
+    /// F1 with a tool waiting is asking about the thing that is blocking them. From another tab it
+    /// does not, since what they are looking at is that tab; the page is still one key away, and
+    /// the tab strip is already red to say the question is there.
+    pub(super) fn help(&mut self) {
+        let asked = self.asked().is_some();
+        let here = match (self.tab, asked) {
+            (Tab::Chat, true) => "question",
+            (Tab::Chat, false) => "chat",
+            (Tab::Context, _) => "context",
+            (Tab::Trace, _) => "trace",
+            (Tab::Permissions, _) => "permissions",
+        };
+
+        let offered: Vec<&crate::help::Section> = crate::help::SECTIONS
+            .iter()
+            .filter(|section| section.applies(asked))
+            .collect();
+        // note: found rather than computed, because a section that is not offered shifts every
+        // index after it - `question` is left out whenever nothing is waiting, which is nearly
+        // always, and an index counted against `SECTIONS` would open `context` on the trace tab
+        let at = offered
+            .iter()
+            .position(|section| section.name == here)
+            .unwrap_or_default();
+        let pages = offered
+            .into_iter()
+            .map(|section| Page {
+                name: section.name.to_owned(),
+                body: section.body.to_owned(),
+            })
+            .collect();
+
+        self.preview_pages("the keys", pages, at);
+    }
+
     /// The same, for something with more than one face; `at` is the one to open on.
     fn preview_pages(&mut self, title: impl Into<String>, pages: Vec<Page>, at: usize) {
         self.previews += 1;
@@ -1628,7 +1671,16 @@ impl App {
                 self.follow = false;
             }
             (KeyCode::End, true) => self.follow = true,
-            (KeyCode::F(1), _) => self.preview("the keys", crate::help::HELP),
+            (KeyCode::F(1), _) => self.help(),
+            // `?` is what F1 is on the three tabs with no prompt for a letter to be typed into,
+            // and it is answered here rather than in each of their handlers because two of the
+            // three were swallowing it: `context_key` and `permissions_key` return early when
+            // their list is empty, which is exactly the moment somebody is most likely to ask what
+            // the keys are. `Focus::Body` is the guard rather than the tab alone, so that the `?`
+            // of a sentence typed into an item being edited is still a `?`
+            (KeyCode::Char('?'), false) if self.tab != Tab::Chat && self.focus == Focus::Body => {
+                self.help()
+            }
             // `tab` moves the keys to the other thing on the screen that wants them, and on a tab
             // with no prompt there is no other thing - so it means the one gesture that is always
             // worth having: back to where typing happens

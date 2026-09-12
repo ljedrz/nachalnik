@@ -7,6 +7,57 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **F1 answers for where somebody is standing.** The panel was the same eight sections wherever it
+  was pressed from, and six of those are about one tab each - so asking what the keys are on the
+  trace answered with about a hundred lines of which four fifths were about somewhere else, and the
+  six that applied were somewhere in the middle of it. It had grown to a page and a half of a
+  forty-row window and was still growing, because every key added to any tab went into the same
+  list.
+
+  It is one page per tab now, plus one for the slash commands and one for the keys that mean the
+  same thing everywhere, and it opens at the page for the tab it was pressed from. A seventh
+  appears while a tool is waiting to run, and is the one it opens at from the chat tab, because
+  that is the thing stopping the session - from another tab it is not, since what somebody is
+  looking at is that tab, and the strip is already red to say the question is there.
+
+  **Pages rather than a filter, so that nothing is lost.** The sections that do not apply are one
+  `←` away and the strip along the top names every one of them, which is the difference between a
+  shorter reference and a smaller one - a reader who wanted `/save` from the trace tab would
+  otherwise have to know to go somewhere else and press it again. `question` is the one section
+  ever left out, and only because the keys it lists do not exist until a tool asks for something.
+
+  This is `preview_pages`, which the context item viewer has used since it had more than one honest
+  answer to "what is this?"; nothing new was needed to draw it, and the box already sizes itself to
+  the page rather than to the whole. `THE TABS` and `ANYWHERE` are one page called `everywhere`:
+  they were separated by which of them was about the tab strip, which is a distinction the reader
+  does not have, and two headings answering "what works no matter where I am" made the panel look
+  longer than it was.
+
+  `help::SECTIONS` is what the text is now, and `help` is a public module - which `ui`'s own note
+  has claimed since the text moved out of it, on the grounds that `/help` is answered by a build
+  with no screen. It was not true: `help` was private and the only way in was `ui::HELP`, behind
+  the feature that draws. `ui` still re-exports it for whoever is on that path.
+
+  **`ui::HELP` is gone**, and `help::everything()` is the whole of it - the one a reader with no
+  way to turn a page is handed. A headless run is exactly that reader, so `/help` down a pipe now
+  prints every page with its name over it rather than the one the panel would have opened at; one
+  page of six with no key to ask for the other five is a reference with most of itself missing.
+
+### fixed
+
+- **`?` did nothing on an empty context or permissions tab.** Both handlers return early when their
+  list has no rows in it - there is nothing to pick, and the keys that pick are most of what they
+  do - and `?` was inside the part that was skipped. So the one moment somebody is most likely to
+  ask what the keys are, on a tab that has not got anything in it yet, was the one moment it did
+  not answer. The trace tab has no such guard and was fine, which is why this survived: two of the
+  three worked.
+
+  Answered beside F1 now, above the per-tab handlers, so that no tab can swallow it and a fourth
+  tab cannot reintroduce this by forgetting. `Focus::Body` is the guard rather than the tab alone,
+  so the `?` of a sentence typed into an item being edited is still a `?`.
+
 ### added
 
 - **`/` filters the context and the trace.** Eight hundred events is a log nobody reads; it is a

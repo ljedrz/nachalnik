@@ -145,7 +145,7 @@ fn every_tab_draws_scrolled_past_its_own_end() {
             title: "the keys".to_owned(),
             pages: vec![Page {
                 name: String::new(),
-                body: ui::HELP.to_owned(),
+                body: ui::everything(),
             }],
             page: 0,
             scroll,
@@ -171,7 +171,7 @@ fn an_overlay_draws_at_every_size() {
             .enumerate()
             .map(|(n, _)| Page {
                 name: format!("page {n}"),
-                body: ui::HELP.to_owned(),
+                body: ui::everything(),
             })
             .collect();
         for page in 0..pages.len() {

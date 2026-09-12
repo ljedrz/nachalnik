@@ -1,34 +1,99 @@
-//! The two pieces of reference text a person is shown, kept where both the screen and the
-//! commands can reach them.
+//! The reference text a person is shown, kept where both the screen and the commands can reach
+//! it.
 //!
-//! note: not in `ui`, where they were, because neither of them is drawing: `/help` and `/prune`
-//! print them, and the `amend` tool hands the selector list to a *model*. A build with no screen
-//! still answers both, so text that a command owns cannot live behind the feature that draws.
+//! note: not in `ui`, where it was, because none of it is drawing: `/help` and `/prune` print it,
+//! and the `amend` tool hands the selector list to a *model*. A build with no screen still answers
+//! both, so text that a command owns cannot live behind the feature that draws.
+//!
+//! note: the keys are [`SECTIONS`] rather than one string, and which of them somebody is shown
+//! first is decided in `app`, beside the tab that decides it. This module is the words; what
+//! applies where is a fact about the program, and `help` has no business knowing that `G` is a
+//! trace key any more than the trace has business holding its own sentence about `G`.
 
-/// What the keys do, shown by F1.
+/// One page of the key reference: what it is called on the strip, and what it lists.
 ///
-/// note: `pub` so that a test can read it rather than trying to count things on a screen it does
-/// not all fit on. That is not a hypothetical convenience: `/seams` was listed in here twice, and
-/// the test that draws this panel had no way to notice.
+/// note: a page rather than a heading in one long panel, because most of what the old panel held
+/// did not apply to wherever it was pressed from. Six of its eight sections are about one tab
+/// each, and a person on the trace looking for `g` was reading past four screens of keys that do
+/// nothing there. What the strip buys over simply hiding them is that nothing is lost: the
+/// sections that do not apply are still one `←` away, which is the difference between a shorter
+/// reference and a smaller one.
+#[derive(Clone, Copy)]
+pub struct Section {
+    /// What to call it on the strip along the top, in the tab strip's own words where it has one.
+    pub name: &'static str,
+    /// The keys themselves.
+    pub body: &'static str,
+}
+
+/// Every section, in the order they are offered, which is the order the strip draws them in.
+///
+/// note: the four tabs first and in the tab strip's own order, so that the two strips on the
+/// screen agree about where things are; then the two that belong to no tab. `question` is in here
+/// rather than folded into `chat` because it is only true while a tool is waiting - see
+/// [`Section::applies`] for the one that is left out when nothing is.
+pub const SECTIONS: &[Section] = &[
+    Section {
+        name: "chat",
+        body: CHAT,
+    },
+    Section {
+        name: "question",
+        body: QUESTION,
+    },
+    Section {
+        name: "context",
+        body: CONTEXT,
+    },
+    Section {
+        name: "trace",
+        body: TRACE,
+    },
+    Section {
+        name: "permissions",
+        body: PERMISSIONS,
+    },
+    Section {
+        name: "commands",
+        body: COMMANDS,
+    },
+    Section {
+        name: "everywhere",
+        body: EVERYWHERE,
+    },
+];
+
+impl Section {
+    /// Whether this one is worth offering at all right now.
+    ///
+    /// note: only `question` is ever left out, and only because the keys it lists do not exist
+    /// until a tool asks for something. Every other section is offered from everywhere - a page
+    /// somebody has to go to is not the same as a page that is missing, and a reference that
+    /// rearranged itself under them would be one nobody could learn the shape of.
+    pub fn applies(&self, asked: bool) -> bool {
+        self.name != "question" || asked
+    }
+}
+
+/// The whole of it, every section in order, for a reader with no way to turn a page.
+///
+/// note: what a headless run prints for `/help`, and what the tests scan. Both want all of it at
+/// once and for the same reason: neither is a person who can press `←`.
+pub fn everything() -> String {
+    SECTIONS
+        .iter()
+        .map(|section| section.body)
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// What the keys do wherever the prompt is, shown by F1 on the chat tab.
 ///
 /// note: no `\` continuation after the opening quote: it would eat the newline *and* the two
-/// spaces indenting the first heading, leaving `THE TABS` flush against the border while every
-/// other heading sat under it.
-pub const HELP: &str = "  THE TABS
-    ctrl+t              the next one
-    alt+1 / 2 / 3 / 4   chat / context / trace / permissions
-    tab                 move the keys between the prompt and whatever else on
-                        the screen wants them; from a tab that has no prompt,
-                        back to the conversation
-
-  ANYWHERE
-    ctrl+p              the exact request that would be sent next
-    f1                  this; also ? on any tab but the chat one
-    esc                 close this, or stop what is running
-    ctrl+c              stop what is running; again to leave
-    ctrl+d              leave
-
-  THE PROMPT, which is on the chat tab, and wherever an item is being edited
+/// spaces indenting the heading, leaving it flush against the border while every entry under it
+/// sat indented.
+pub const CHAT: &str =
+    "  THE PROMPT, which is on the chat tab, and wherever an item is being edited
     enter               send
     alt+enter           a new line
     pgup / pgdn         scroll the conversation; where you leave it is where
@@ -39,9 +104,10 @@ pub const HELP: &str = "  THE TABS
     home / end          the prompt's own, as in any other line editor
     (a message sent while a turn is running waits for the end of it, and
      then gets a turn of its own; a turn that stops to ask about a tool has
-     to be answered first, because the question is in the prompt's place)
+     to be answered first, because the question is in the prompt's place)";
 
-  THE CONTEXT TAB, which has the keys whenever it is open
+/// The context tab's own keys.
+pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is open
     up / down, j / k    pick an item
     pgup / pgdn         a screenful at a time
     g / G               the first item / the last
@@ -59,18 +125,20 @@ pub const HELP: &str = "  THE TABS
     u / U               undo / redo the last change to the context
     /                   filter the rows: fuzzy, over the label and the whole of
                         what an item holds, not only the line the row shows
-    esc                 clear the filter and close the box
+    esc                 clear the filter and close the box";
 
-  THE TRACE TAB, which has the keys whenever it is open
+/// The trace tab's own keys.
+pub const TRACE: &str = "  THE TRACE TAB, which has the keys whenever it is open
     up / down, j / k    read back through it
     pgup / pgdn         a screenful at a time
     g / G               the oldest it still holds / the newest
     /                   filter the rows: fuzzy, over the name, the detail and
                         the clock, so an hour or a date finds what happened in
                         it. Reading keys still work while the box is open
-    esc                 clear the filter and close the box
+    esc                 clear the filter and close the box";
 
-  THE PERMISSIONS TAB, which has the keys whenever it is open
+/// The permissions tab's own keys.
+pub const PERMISSIONS: &str = "  THE PERMISSIONS TAB, which has the keys whenever it is open
     up / down, j / k    pick a capability, or one of the path rules under them
     g / G               the first / the last
     space               cycle it: ask, then allow, then deny
@@ -79,9 +147,11 @@ pub const HELP: &str = "  THE TABS
     (the line along the top says which policy is in force and what it answers
      about anything not listed; the one along the bottom says what a shell
      command can reach, and how many subjects are not listed here because
-     nobody has answered about them)
+     nobody has answered about them)";
 
-  A TOOL IS WAITING TO RUN - in the prompt's place, on the chat tab, which
+/// The keys that answer a waiting tool, offered only while one is waiting.
+pub const QUESTION: &str =
+    "  A TOOL IS WAITING TO RUN - in the prompt's place, on the chat tab, which
   goes red on the tab strip while one is there
     tab                 put the keys on it. None of the answers below does
                         anything until you have, and nor does enter
@@ -100,9 +170,28 @@ pub const HELP: &str = "  THE TABS
      about before answering it. Whatever was in the prompt is still there
      when the question has gone, with the keys back on it and no second tab
      to press. Coming back to the chat tab from another one also puts them on
-     the question, because that is what you came for)
+     the question, because that is what you came for)";
 
-  COMMANDS
+/// Moving between the tabs, and the keys that mean the same thing on all of them.
+///
+/// note: one section rather than the two it used to be. They were separated by which of them was
+/// about the tab strip, which is a distinction the reader does not have: both answer "what works
+/// no matter where I am", and two headings answering that made the panel look longer than it is.
+pub const EVERYWHERE: &str = "  WHEREVER YOU ARE
+    ctrl+t              the next tab
+    alt+1 / 2 / 3 / 4   chat / context / trace / permissions
+    tab                 move the keys between the prompt and whatever else on
+                        the screen wants them; from a tab that has no prompt,
+                        back to the conversation
+    ctrl+p              the exact request that would be sent next
+    f1                  this, opened at whichever tab you are on; also ? on any
+                        tab but the chat one, and ← → for the rest of it
+    esc                 close this, or stop what is running
+    ctrl+c              stop what is running; again to leave
+    ctrl+d              leave";
+
+/// Everything that can be typed at the prompt with a `/` in front of it.
+pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /help               this; also /?
     /step [MESSAGE]     one transition of the state machine, and stop
     /continue           run the rest of the turn

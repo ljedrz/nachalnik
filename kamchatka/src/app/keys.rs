@@ -211,7 +211,6 @@ impl App {
             KeyCode::Char(digit) if digit.is_ascii_digit() => {
                 self.count = format!("{count}{digit}");
             }
-            KeyCode::Char('?') => self.preview("the keys", crate::help::HELP),
             KeyCode::Esc => self.cancel_edit(),
             // changing what an item says, which is the verb the other keys were missing: `space`
             // and `p` decide whether the model reads it, and this decides what it reads
@@ -384,10 +383,6 @@ impl App {
                 self.chosen = rows.len() - 1;
                 return;
             }
-            KeyCode::Char('?') => {
-                self.preview("the keys", crate::help::HELP);
-                return;
-            }
             KeyCode::Char(' ') => self.policy.cycle(&subject),
             KeyCode::Char('a') => {
                 self.policy.set(&subject, Verdict::Allow);
@@ -461,7 +456,6 @@ impl App {
             KeyCode::End | KeyCode::Char('G') => self.trace_scroll = 0,
             KeyCode::Home | KeyCode::Char('g') => self.trace_scroll = usize::MAX,
             KeyCode::Char('/') => self.search = Some(Search::new()),
-            KeyCode::Char('?') => self.preview("the keys", crate::help::HELP),
             _ => {}
         }
     }
