@@ -138,6 +138,18 @@ minor bump may break you.
   six cannot press `←` for the other five. That was the right answer to the wrong question, and the
   browser is what made the question visible.
 
+- **A page showed one answer twice, and another in two pieces around a typed message.** One
+  cause: `examples/browser.html` took fragments that arrived *after* the record ending the answer
+  they belonged to, and started a fresh bubble for them underneath whatever had been drawn since. A
+  fragment is unnumbered and best-effort while the records are read out of the log and never
+  dropped, so a connection that falls behind is caught up on records first and handed the fragments
+  it was holding afterwards - which `server.rs` documents, and which the terminal has always
+  handled by dropping them once the item exists (`Entry::transient`). The page does now.
+
+  A phone is what made it happen: slow enough to stall the gateway's writes back through the
+  session's connection task until it lagged its own subscription. That is the backpressure design
+  working exactly as written, with the consequence it says it has.
+
 - **A page drew a message it had sent twice.** `examples/browser.html` renders a line the moment it
   is sent - it has to, because a message handed into a running turn is queued and would otherwise
   be invisible until that turn ended - and then drew it again when `context.added` arrived, because

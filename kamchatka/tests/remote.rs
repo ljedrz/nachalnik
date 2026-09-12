@@ -834,6 +834,63 @@ async fn a_command_answers_the_client_that_ran_it() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A fragment can arrive after the record that ended the thing it was part of, and says so.
+///
+/// note: the contract every client has to honour, and the one that bit the browser first. A
+/// fragment is unnumbered and best-effort; the records are read out of the log and never dropped.
+/// So a connection that has fallen behind is caught up on *records* first - see the note in
+/// `server.rs` on why that order and not the other - and the fragments it was holding arrive after
+/// the `model.finished` they belong to, carrying it as `after`.
+///
+/// note: what a client must do about it is drop them, because the item named by that record is now
+/// the authority on what was said. `kamchatka`'s terminal does it under the name
+/// `Entry::transient`; `examples/browser.html` did not, and showed one answer twice and another in
+/// two pieces with a message typed in between. A phone is what made it happen, by being slow enough
+/// to stall the writes all the way back to the session - which is the backpressure design working,
+/// with the consequence it is documented to have.
+#[tokio::test]
+async fn a_fragment_can_arrive_after_the_record_that_ended_it() {
+    let session = served(
+        vec![ModelResponse::text("the whole answer at once")],
+        |_| {},
+    )
+    .await;
+
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    let heard = peer.until_words("the whole answer at once").await;
+
+    let ended = heard
+        .iter()
+        .find_map(|message| match message {
+            Message::Record(record) if record.event.name() == "model.finished" => Some(record.seq),
+            _ => None,
+        })
+        .expect("the turn never finished");
+    let after = heard
+        .iter()
+        .rev()
+        .find_map(|message| match message {
+            Message::Progress { after, .. } => Some(*after),
+            _ => None,
+        })
+        .expect("nothing streamed");
+
+    assert!(
+        after >= ended,
+        "a fragment arrived naming record {after}, before the {ended} that ended its answer -          which would be the one order a client could not be asked to sort out"
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// `/help` from a client is the commands, and nothing about keys.
 ///
 /// note: the second of these two found from a phone. A served session has no keys of this
