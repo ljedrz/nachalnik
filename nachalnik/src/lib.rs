@@ -182,6 +182,37 @@
 //!   and [`Kernel::resume`] carry a session across processes, because a log of events that name
 //!   their items cannot rebuild the items.
 //!
+//! # Surviving a crash
+//!
+//! What a snapshot restores is state, not the world. The kernel can tell you, afterwards, which
+//! call the model asked for and never got an answer to; it cannot tell you whether the thing that
+//! call was going to do got done, because it did not do it. That half is the application's, and
+//! this is the seam:
+//!
+//! - A [`ToolCallId`] is durable. It survives a [`Snapshot`], and [`Snapshot::used_calls`] means a
+//!   resumed session refuses to issue it again. So the call already *has* a name that outlives the
+//!   process, and an external operation keyed on it is one an application can go back and ask
+//!   about. A tool that mints an identifier inside `invoke` has minted one that dies with the
+//!   process that minted it; passing the call's own through is the whole trick, and no new
+//!   execution id from the runtime is needed for it.
+//! - A call with no result is *findable*: the assistant item holds the call, no
+//!   [`ContextKind::ToolResult`] answers it, and reading that off a resumed [`Context`] is a few
+//!   lines. Which of the two possible worlds it is - the effect committed, or it never happened -
+//!   only the external system can say, and only if it was asked in a way it can answer.
+//! - Returning [`ToolOutput::error`] is **not** the crash case. That is an answer: the failure is
+//!   recorded and the model reads it. The unanswered case is a process that died with the call in
+//!   flight, where nothing was recorded at all.
+//!
+//! Checkpointing is two writes, and the order of them decides what a crash can cost. **Copy, write,
+//! drop, then snapshot**: [`Kernel::history_since`] hands back clones and leaves the kernel holding
+//! them, [`Kernel::drain_history`] hands back the only copy there is. Draining before writing opens
+//! a window in which the records are nowhere at all, and a crash inside it loses them with nothing
+//! to say so. The snapshot goes last for the same reason turned round: a snapshot ahead of the log
+//! is a state nothing accounts for, while a snapshot behind it is a state the log can explain.
+//!
+//! `tests/crash.rs` is this written out and checked - a tool that moves money and loses the
+//! process, resumed and reconciled against a ledger that is idempotent on the call id.
+//!
 //! # Features
 //!
 //! Both are off by default, because neither is part of the runtime:
