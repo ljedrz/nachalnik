@@ -15,12 +15,13 @@ use std::{
 #[cfg(feature = "tui")]
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    Content, ContextId, ContextItem, Delta, Event, Grant, GrantSource, Kernel, PermissionRequest,
-    State, Tool, Usage,
+    Content, ContextId, ContextItem, Delta, Event, Grant, GrantSource, Kernel, PermissionId,
+    PermissionRequest, State, Tool, Usage, Verdict,
 };
 use nachalnik_providers::Dialect;
 #[cfg(feature = "tui")]
 use ratatui_textarea::{TextArea, WrapMode};
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
@@ -177,7 +178,12 @@ pub enum Overlay {
 /// note: a context item has more than one honest answer to "what is this?" - what the request
 /// will contain, what the item says, and what it said before somebody rewrote it - and picking
 /// one of them to show was how the viewer came to be quietly wrong about the other two.
-#[derive(Clone)]
+///
+/// note: serializable because a page is what a command answers with, and a caller answering a
+/// line is not always in this process - see [`crate::remote`]. The two fields are what a page
+/// *is*; which of them is on screen and how far down it is scrolled are the overlay's, and are
+/// not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Page {
     /// What to call it on the strip along the top.
     pub name: String,
@@ -423,7 +429,8 @@ pub enum Outcome {
 /// somebody than "it was asked". A line sent into a running turn waits for the end of that turn -
 /// see the note on [`App::submit`] for why it cannot go in any earlier - and a caller that read
 /// that as "asked" would be waiting for an answer to a question the model has not been given yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Did {
     /// It went into the context as a message, and a turn was started for it.
     Asked(ContextId),
@@ -965,6 +972,23 @@ impl App {
             // has to be put on the screen and none at which it has to be taken off - which is
             // also the end of a class of bug this had: an overlay left standing over a question
             // that had been answered somewhere else, until the next key closed it
+            //
+            // note: unless every question was answered while this outcome was on its way, in which
+            // case the turn is carried on here. `permission.requested` is broadcast while the turn
+            // that raised it is still unwinding, so an answer inside that window is recorded and
+            // then goes nowhere: `App::decide` calls `start_turn`, `start_turn` refuses because the
+            // old turn is still marked as running, and the session stops for good with every
+            // question answered and nothing to answer. The window is narrow and it is not
+            // theoretical - it is whatever the gap is between a client's socket and this loop - and
+            // what it costs when it opens is a session that never moves again. `headless.rs` stays
+            // out of it by only answering while the kernel rests; the keys and a socket cannot,
+            // because a person answers when they answer, so it is closed here instead, once, for
+            // all three
+            Outcome::Stopped(State::Deciding { .. })
+                if !self.stepping && self.kernel.pending_permissions().is_empty() =>
+            {
+                self.start_turn();
+            }
             Outcome::Stopped(State::Deciding { .. }) => {}
             // a turn that stops in `Idle` either ran out of requests or was asked to stop, and
             // the difference matters to whoever is reading the screen
@@ -1383,6 +1407,105 @@ impl App {
     pub fn interrupt(&mut self) {
         self.interrupting = true;
         self.kernel.interrupt();
+    }
+
+    /// Answers one of the questions the kernel is waiting on, and carries the turn on if that was
+    /// the last of them.
+    ///
+    /// note: here rather than in `keys.rs`, where the rest of it was, because three loops answer
+    /// questions and while it lived with the keys each of them did it in its own words. An answer
+    /// is four things: telling the sandbox about a granted command that reaches the network, which
+    /// is [`App::answer`] and was already shared for it; honouring `always` over what the policy
+    /// consulted; sweeping the questions queued behind this one; and driving the turn on, because
+    /// a decision leaves the kernel resting with nobody driving it. The last three were the keys'
+    /// alone, so a headless run answered and then sat there. A third caller reached the same fork
+    /// and that is what made it a function - see [`crate::remote`].
+    ///
+    /// note: `remember` is what the `a` key means - *always* - and what it remembers is everything
+    /// the policy actually consulted rather than what the tool declared, so a `yes, always` to a
+    /// `curl` that left `network` on `ask` does not ask again on the next call. It then sweeps what
+    /// is already in the queue, because a model asking for three things at once produces three
+    /// questions before the first is shown, and a promise about what happens next has to cover
+    /// what is already waiting.
+    ///
+    /// note: what it returns is about the question the caller asked about, and nothing else. The
+    /// sweep's own failures go to [`App::say`], because they are the program reporting something
+    /// nobody asked it to do - which is what that list is - and a caller handed them as *its*
+    /// error would be told its own answer failed when it did not.
+    pub fn decide(&mut self, id: PermissionId, grant: Grant, remember: bool) -> Result<(), String> {
+        let Some(request) = self
+            .kernel
+            .pending_permissions()
+            .into_iter()
+            .find(|pending| pending.id == id)
+        else {
+            return Err(format!("there is no question {id} waiting to be answered"));
+        };
+
+        if remember {
+            // everything the policy actually consulted, not just what the tool declared
+            self.policy.always(&self.policy.judges(&request));
+        }
+        // the other thing a session waits on somebody for. Whatever the question cost in wall time
+        // was spent reading it, and `permission.decided` is the line it lands on
+        self.acted = true;
+        self.answer(&request, grant)?;
+        if remember {
+            for waiting in self.kernel.pending_permissions() {
+                if self.policy.verdict(&waiting) == Verdict::Allow
+                    && let Err(e) = self.kernel.decide(waiting.id, Grant::Allow)
+                {
+                    self.say(Speaker::Error, e.to_string());
+                }
+            }
+        }
+        // the model may have asked for several things at once, and each is its own question
+        if self.kernel.pending_permissions().is_empty() {
+            match self.stepping {
+                // somebody driving this a transition at a time did not ask for the rest of the
+                // turn, and running it here would be the harness taking the wheel back
+                true => self.say(
+                    Speaker::Note,
+                    "decided; /step runs the calls, /continue runs the rest of the turn",
+                ),
+                false => self.start_turn(),
+            }
+        }
+
+        Ok(())
+    }
+
+    /// What the *program* has said since the last look, for a loop that has to print it.
+    ///
+    /// note: only [`Speaker::Note`] and [`Speaker::Error`]. The model's own words arrive as
+    /// fragments and land in the same list, so a caller echoing those as well prints every answer
+    /// twice.
+    ///
+    /// note: `said` is how many of *these* have been taken rather than how far down
+    /// [`App::loose`] the caller had got, and the difference is a bug only a live run can find.
+    /// The list is not append-only - a turn being recorded takes every line that streamed out of
+    /// it, because the context says those now - so a mark against the whole list slides backwards
+    /// under its own watermark, and everything said between one shrink and the next is skipped. A
+    /// scripted model answers between two looks, so nothing shrinks in between and no test sees
+    /// it; a live run lost `spent 1,106 tokens of 500; stopping`, which was decided, recorded,
+    /// and acted on, and whose only missing reader was the person. What the filtered sequence
+    /// *is* is append-only: a note is not something that streams.
+    pub fn notes(&self, said: usize) -> impl Iterator<Item = &Entry> {
+        self.loose
+            .iter()
+            .filter(|entry| matches!(entry.speaker, Speaker::Note | Speaker::Error))
+            .skip(said)
+    }
+
+    /// The message waiting for the running turn to end, if there is one.
+    ///
+    /// note: there is room for exactly one, which is a decision a prompt can live with and a
+    /// second client cannot. Two people attached to one session who both type during a turn
+    /// produce one message and two [`Did::Queued`]s, and the one whose line was replaced is never
+    /// told. Whoever hands a line in on somebody else's behalf reads this first and says so; see
+    /// [`crate::remote`], which is the caller that made it worth exposing.
+    pub fn queued(&self) -> Option<&str> {
+        self.typed_ahead.as_deref()
     }
 
     /// Puts the prompt back to composing a message, whatever it was doing.

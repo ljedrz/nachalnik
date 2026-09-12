@@ -1031,79 +1031,6 @@ async fn quit_ends_it() {
 
 // ------------------------------------------------------------------- the program, and a socket
 
-/// An endpoint the program can be pointed at, which answers the model listing and then hands out
-/// these bodies, one per request, as a stream.
-///
-/// note: a socket rather than a scripted provider, because what is under test here is the
-/// *program*: it builds its own provider out of two environment variables, in a process of its
-/// own, and nothing this test holds can be swapped into that. A listener is the only seam a child
-/// process has.
-///
-/// note: the bodies are SSE because the provider asks for a stream unless told not to, and the
-/// point of these tests is the path the program actually takes. `[DONE]` is appended here so that
-/// a case reads as what the model said rather than as protocol.
-#[cfg(unix)]
-async fn endpoint(answers: Vec<String>) -> String {
-    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
-
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("a port");
-    let at = listener.local_addr().expect("its address");
-    let answers = Arc::new(answers);
-    let nth = Arc::new(AtomicUsize::new(0));
-    tokio::spawn(async move {
-        while let Ok((mut socket, _)) = listener.accept().await {
-            let (answers, nth) = (answers.clone(), nth.clone());
-            tokio::spawn(async move {
-                use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-
-                let mut buf = vec![0u8; 65536];
-                let read = socket.read(&mut buf).await.unwrap_or(0);
-                let head = String::from_utf8_lossy(&buf[..read]).into_owned();
-
-                let (kind, body) = match head.contains("/models") {
-                    true => (
-                        "application/json",
-                        r#"{"data":[{"id":"nothing","context_length":128000}]}"#.to_owned(),
-                    ),
-                    false => match answers.get(nth.fetch_add(1, SeqCst)) {
-                        Some(sse) => ("text/event-stream", format!("{sse}\n\ndata: [DONE]\n\n")),
-                        // a request nobody wrote an answer for is held open rather than refused,
-                        // which is a model that has gone quiet - and the one thing a test must not
-                        // do here is end the turn by accident
-                        None => return std::future::pending().await,
-                    },
-                };
-                let _ = socket
-                    .write_all(
-                        format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n\r\n{body}",
-                            body.len()
-                        )
-                        .as_bytes(),
-                    )
-                    .await;
-                let _ = socket.shutdown().await;
-            });
-        }
-    });
-
-    format!("http://{at}/v1")
-}
-
-/// The binary under test.
-#[cfg(unix)]
-fn program() -> std::path::PathBuf {
-    let mut path = std::env::current_exe().expect("a test binary has a path");
-    path.pop();
-    if path.ends_with("deps") {
-        path.pop();
-    }
-
-    path.join("kamchatka")
-}
-
 /// `ctrl+c` stops a command that is running, and what arrived is kept.
 ///
 /// note: the case this was written to test was a *second* press leaving a turn the first could not
@@ -1119,7 +1046,7 @@ fn program() -> std::path::PathBuf {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
-    let base = endpoint(vec![format!(
+    let base = common::endpoint(vec![format!(
         "data: {}",
         json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [
             {"index": 0, "id": "c1", "type": "function",
@@ -1128,7 +1055,7 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
     )])
     .await;
 
-    let mut child = std::process::Command::new(program())
+    let mut child = std::process::Command::new(common::program())
         .args([
             "--headless",
             "--no-record",
@@ -1265,7 +1192,7 @@ async fn a_second_press_leaves_a_tool_that_will_not_stop() {
         eprintln!("skipped: python3 is not on the path");
         return;
     }
-    let base = endpoint(vec![format!(
+    let base = common::endpoint(vec![format!(
         "data: {}",
         json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [
             {"index": 0, "id": "c1", "type": "function",
@@ -1278,7 +1205,7 @@ async fn a_second_press_leaves_a_tool_that_will_not_stop() {
         "py=python3 {}",
         concat!(env!("CARGO_MANIFEST_DIR"), "/tests/mcp_server.py")
     );
-    let mut child = std::process::Command::new(program())
+    let mut child = std::process::Command::new(common::program())
         .args(["--headless", "--no-record", "-m", "nothing"])
         .args(["--mcp", &server, "--allow-server", "py", "go"])
         .env("KAMCHATKA_BASE_URL", &base)
@@ -1338,9 +1265,9 @@ async fn a_second_press_leaves_a_tool_that_will_not_stop() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_spend_ceiling_stops_the_program_itself() {
-    let base = endpoint(vec![answer("as much as it likes")]).await;
+    let base = common::endpoint(vec![answer("as much as it likes")]).await;
 
-    let out = std::process::Command::new(program())
+    let out = std::process::Command::new(common::program())
         .args([
             "--headless",
             "--no-record",
@@ -1373,10 +1300,10 @@ async fn the_spend_ceiling_stops_the_program_itself() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_recorded_run_writes_the_session_where_it_says_it_did() {
-    let base = endpoint(vec![answer("something to keep")]).await;
+    let base = common::endpoint(vec![answer("something to keep")]).await;
     let dir = common::scratch("recorded");
 
-    let out = std::process::Command::new(program())
+    let out = std::process::Command::new(common::program())
         .args(["--headless", "-m", "nothing", "go"])
         .env("KAMCHATKA_BASE_URL", &base)
         .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -1460,7 +1387,7 @@ fn a_screenless_build_at_a_terminal_is_a_headless_run() {
             "-c",
             &format!(
                 "{} --no-record -m nothing-serves-this hello",
-                program().display()
+                common::program().display()
             ),
             "/dev/null",
         ])
@@ -1494,7 +1421,7 @@ fn a_screenless_build_at_a_terminal_is_a_headless_run() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_deadline_ends_the_program_itself() {
     // stdin is a pipe this test holds and never writes to, so nothing but the deadline can end it
-    let mut child = std::process::Command::new(program())
+    let mut child = std::process::Command::new(common::program())
         .args([
             "--headless",
             "--no-record",
@@ -1825,4 +1752,59 @@ async fn a_wired_session_draws_the_rating_the_kernel_asked_for() {
         .rating(&request)
         .expect("the wiring gave the panel the advisor the kernel decided with");
     assert_eq!(rated.shown(), Rating::Grave);
+}
+
+/// A question answered before the turn that raised it has finished unwinding still carries on.
+///
+/// note: the window, driven rather than raced. `permission.requested` is broadcast while the turn
+/// that asked is still in flight, so `App::busy` is true from the moment the question exists until
+/// the loop takes the outcome - and an answer inside that window is recorded, finds `start_turn`
+/// refusing because the old turn is still marked as running, and is followed by an outcome that
+/// says `Deciding` with nothing left to decide. The session then has every question answered, no
+/// turn running, and nothing that will ever start one.
+///
+/// note: this drives `App` by hand rather than through a loop precisely so that there is no race
+/// in it. The three loops differ only in *when* they answer; `headless.rs` stays out of the window
+/// by construction, and neither the keys nor a socket can, because a person answers when they
+/// answer. So the fix is in `on_outcome`, where all three come through, and so is this.
+#[tokio::test]
+async fn a_question_answered_inside_the_window_still_carries_the_turn_on() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("carried on"),
+    ];
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(script);
+    app.kernel.add_tool(Arc::new(
+        ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+    ));
+
+    app.ask("go");
+    app.start_turn();
+    let outcome = finished.recv().await.expect("the turn never ended");
+    // the turn has ended and this loop has not been told, which is exactly the window: `busy` is
+    // still true, and a client's answer arriving now is the case under test
+    assert!(app.busy, "the window is not where this test thinks it is");
+    let question = app.asked().expect("the turn stopped without asking");
+    app.decide(question.id, Grant::Allow, false)
+        .expect("the answer was refused");
+    app.on_outcome(outcome);
+
+    // and the turn goes on, which is the whole claim
+    assert!(app.busy, "the session stopped with nothing left to answer");
+    let outcome = finished.recv().await.expect("the turn never carried on");
+    while let Ok(event) = events.try_recv() {
+        app.on_event(event);
+    }
+    app.on_outcome(outcome);
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("carried on")),
+        "the model was never asked again"
+    );
 }

@@ -83,6 +83,13 @@ tokio = { workspace = true, features = [
     "io-std",
     "io-util",
     "macros",
+    # `--serve` and `--connect`: a unix socket where there are any and a loopback port where there
+    # are not. It is the whole of what remote control costs - no crate, no feature of this one -
+    # which is why `remote` is not behind one of its own the way `tui` and `mcp` are: those exist
+    # to keep six dependencies and a bridge out of a build that wants neither, and this brings
+    # nothing to keep out. The other half of the decision is that a build with no screen is
+    # exactly the build a served session runs in
+    "net",
     "process",
     "rt-multi-thread",
     # `ctrl+c` in a headless run means "stop, and keep what arrived" rather than the default,

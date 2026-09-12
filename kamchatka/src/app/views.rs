@@ -173,10 +173,11 @@ impl App {
     /// prevent. A driver should not be able to answer a question halfway by forgetting a step it
     /// never knew about.
     ///
-    /// note: `acted` is not set here, and that is the one thing the key handler still does for
-    /// itself. It marks the gap before a line as somebody's thinking rather than the program's
-    /// working, and in a headless run nobody thought: the answer was decided on the command line
-    /// before the session started.
+    /// note: the half of an answer that is about the *call*. What is about the session - the
+    /// `always` sweep, the questions queued behind this one, the turn nobody is driving, and the
+    /// `acted` flag the trace reads - is [`App::decide`], one level up, which every loop now
+    /// answers through. This stays separate because a caller with a `PermissionRequest` already in
+    /// hand should not have to find its identifier again to use it.
     pub fn answer(&mut self, request: &PermissionRequest, grant: Grant) -> Result<(), String> {
         // saying yes to a command that reaches for the network is permission for *that* command,
         // and the sandbox has to hear about it. Read through the wrapper, because `shell` takes

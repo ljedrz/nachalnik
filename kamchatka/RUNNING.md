@@ -100,6 +100,67 @@ cannot overtake the turns they belong to. `--no-default-features --features mcp`
 nothing else — no screen compiled in, 88 crates lighter, and the same `--headless` behaviour
 whether or not the flag is given.
 
+## 🔌 a session you can walk away from
+
+`--serve` puts a socket in front of a session instead of a screen, and `--connect` attaches to one.
+
+```console
+$ kamchatka --serve unix:/run/user/1000/kamchatka.sock -m mercury-2
+· serving on unix:/run/user/1000/kamchatka.sock
+```
+
+```console
+$ printf 'what is 2+2? answer with just the number\n' \
+    | kamchatka --connect unix:/run/user/1000/kamchatka.sock > session.jsonl
+--- 2026-09-12T15-26-18Z · 9 record(s), 0 item(s), ~526 tokens, mercury-2 ---
+· serving on unix:/run/user/1000/kamchatka.sock: the session is this program's rather than any
+  client's, so it carries on when they leave, and waits when a tool needs an answer nobody is
+  here to give
+· client 1 attached
+--- a line is a message, a line starting with `/` is a command, `?N` says what item N holds, and
+    `ctrl+c` stops the turn ---
+> what is 2+2? answer with just the number
+4
+```
+
+**The session belongs to the program running it, not to whoever is attached.** A turn carries on
+with nobody watching, a question waits for somebody to come back and answer it, and a client
+picking the session up an hour later picks up the same session. A client's input closing detaches
+it; it never ends anybody's session on the way out, and `/quit` is how you say you meant to.
+
+`--connect` writes what `--headless` writes — the records to stdout, what a person reads to
+stderr — so it is a drop-in for it in a script. It answers a permission question with the same
+three letters the panel takes, `y`, `n` and `a`; `ctrl+c` stops the turn and a second one detaches;
+and `?4` prints what item 4 actually holds, which is the one thing a stream of records can never
+say, because [the log names things rather than copying them](#-embedding-it).
+
+**Where it listens is the whole of its authentication, so it refuses to listen anywhere else.**
+There is no bearer token in this protocol and there is not going to be one: it carries a `shell`
+tool, so reaching the session is reaching the machine, and a scheme that had to be kept in step
+would be protecting a channel whose real boundary is the socket. A unix socket's file permissions
+are that boundary — the file is made `0600` the moment it exists — and `tcp:127.0.0.1:PORT` is the
+machine. Anything else is refused with the reason and a way out:
+
+```console
+$ kamchatka --serve tcp:0.0.0.0:7878
+Error: 0.0.0.0:7878 is not a loopback address, and this protocol carries no authentication:
+whatever reaches the port runs the `shell` tool as you. Listen on `tcp:127.0.0.1:PORT` or on
+`unix:PATH`, and reach it from elsewhere through something that does authenticate — `ssh -L`
+is the usual one
+```
+
+Several clients can watch one session, and they see the same thing: the program has one voice, so
+what a command answers and what the runtime says about a turn reach all of them. What it is *not*
+yet is arbitration — every attached client may submit, interrupt and answer questions, there is
+room for exactly one message queued into a running turn, and when a second client's line replaces
+a first one's the session says so rather than letting a line disappear.
+
+The protocol itself is newline-delimited JSON, which is to say `nc` and `jq` read it. It lives in
+[`remote`](https://docs.rs/kamchatka/latest/kamchatka/remote/) rather than in a crate of its own,
+and the module documentation is where the argument is: why the records are the half that cannot be
+lost and the fragments are the half that can, and why attaching answers with a projection rather
+than with a snapshot.
+
 ## 🧩 two dialects, and why one of them keeps the order
 
 `--gemini` talks to Google's own API instead of an OpenAI-compatible one. That is not a
@@ -498,6 +559,13 @@ kamchatka [OPTIONS] [MESSAGE]...
       --headless            drive the session from lines on stdin: the session log to
                             stdout, one JSON record a line, and what the model says to
                             stderr. Implied when stdout is not a terminal
+      --serve <ADDRESS>     put a socket in front of the session instead of a screen,
+                            as unix:PATH or tcp:127.0.0.1:PORT. The session is this
+                            program's: it carries on when a client detaches
+      --connect <ADDRESS>   attach to a session somebody else is serving and drive it
+                            from lines on stdin, in the two streams --headless writes.
+                            Nothing else here applies: the model, the key, the tools
+                            and the sandbox are all the host's
       --allow <SUBJECT>     answer `allow` in advance for a domain, one operation in one
                             or a path, as fs, fs:read, exec:run, .env* ;
                             comma-separated, may be repeated
@@ -707,7 +775,8 @@ at.
 
 The other half is the program, and it is tested without a screen at all: the policy's own
 questions, real commands under a real Landlock ruleset, the introspection tools through the
-real loop, a whole session driven by lines, somebody else's MCP server spawned as a child process,
+real loop, a whole session driven by lines, the same session driven through a socket by two
+clients at once, somebody else's MCP server spawned as a child process,
 and the settings file. `cargo test -p kamchatka --no-default-features --features mcp` runs those
 and nothing else — which is also the check that the screen really is optional, since a suite that
 only ever compiled with it could not tell you.

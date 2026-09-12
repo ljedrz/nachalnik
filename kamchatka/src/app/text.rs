@@ -10,10 +10,11 @@
 //! screen - so a build with no screen needs them both, and the feature that draws cannot own
 //! them.
 
-use nachalnik::{Event, GrantSource, Kernel, Usage};
-// the item viewer's own: what one item says as stored, as sent, and as it said it before
+use nachalnik::{Block, Content, ContextItem, ContextKind, Event, GrantSource, Kernel, Usage};
+// what one item says *as sent*, which is the one of the three item views that needs a projection
+// to answer - and the one nothing but the screen asks for
 #[cfg(feature = "tui")]
-use nachalnik::{Block, Content, ContextId, ContextItem, ContextKind, Projection};
+use nachalnik::{ContextId, Projection};
 use serde_json::{Map, Value};
 
 /// An event's name, and one line of whatever else it has to say.
@@ -450,8 +451,11 @@ fn as_sent(message: &nachalnik::Message) -> String {
 /// kind rather than in the content, so reading the content alone showed an empty box for a turn
 /// that was nothing but tool calls - which is most of them. One recorded as ordered blocks has
 /// all three in the content already, and `whole` lays those out in the order they were produced.
-#[cfg(feature = "tui")]
-pub(super) fn stored(item: &ContextItem) -> String {
+/// note: not behind `tui`, though for a long time only the screen asked. The rule this crate
+/// follows is that anything a *command* can reach cannot live behind the feature that draws, and
+/// asking a session on the other end of a socket what an item says is the same act as pressing
+/// enter on the context tab - one mechanism, so one answer to it. See [`crate::remote`].
+pub(crate) fn stored(item: &ContextItem) -> String {
     let mut out = whole(&item.content);
     // note: why the item is here at all, which outlives every state it passes through and is
     // therefore the only place a fact about what it holds can be kept. `context`'s own item
@@ -484,8 +488,7 @@ pub(super) fn stored(item: &ContextItem) -> String {
 /// wrong on this screen, where the whole point is to be shown what the item really holds. The
 /// thinking and the calls are read out where they happened, because between two calls is where
 /// the thinking that led to the second one belongs.
-#[cfg(feature = "tui")]
-pub(super) fn whole(content: &Content) -> String {
+pub(crate) fn whole(content: &Content) -> String {
     let Some(blocks) = content.as_blocks() else {
         return unpadded(&content.to_text()).to_owned();
     };
@@ -568,7 +571,7 @@ pub(super) fn beyond_a_prompt(item: &ContextItem) -> Option<&'static str> {
 }
 
 /// The first line of something, shortened.
-pub(super) fn one_line(text: &str) -> String {
+pub(crate) fn one_line(text: &str) -> String {
     let first = text.lines().next().unwrap_or_default();
     match first.chars().count() > 96 {
         true => format!("{}…", first.chars().take(95).collect::<String>()),

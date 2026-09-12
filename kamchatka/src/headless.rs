@@ -356,21 +356,13 @@ impl<'a> Headless<'a> {
     /// the overlay it also sets is left where it is: nothing in a headless run draws one, and
     /// taking it would be this loop keeping a screen's state tidy on a screen's behalf.
     ///
-    /// note: how many of *these* have been printed, rather than how far down the list it had got.
-    /// The list is not append-only - a turn being recorded takes every line that streamed out of
-    /// it, because the context says those now - so a count of the whole thing is a mark that
-    /// slides backwards under its own watermark, and everything said between one shrink and the
-    /// next is skipped. Which is not hypothetical and is not visible in a test: a scripted model
-    /// answers between two looks at the list, so nothing shrinks in between, and it took a live
-    /// run to lose a line. `spent 1,106 tokens of 500; stopping` was decided, recorded and
-    /// interrupted the turn, and the only place it never reached was the person reading. What the
-    /// filtered sequence *is* is append-only: a note is not something that streams.
+    /// note: which lines those are, and why `said` counts the filtered sequence rather than the
+    /// list, are both [`App::notes`]. They moved there when a second loop with no screen - the one
+    /// in [`crate::remote`] - needed the same answer, and a watermark rule stated twice is a
+    /// watermark rule that will eventually be two.
     fn echo(&mut self, app: &App, said: &mut usize) -> Result<(), String> {
         let fresh = app
-            .loose
-            .iter()
-            .filter(|entry| matches!(entry.speaker, Speaker::Note | Speaker::Error))
-            .skip(*said)
+            .notes(*said)
             .map(|entry| entry.text.clone())
             .collect::<Vec<_>>();
         *said += fresh.len();
@@ -387,17 +379,19 @@ impl<'a> Headless<'a> {
     /// Answers every question waiting on somebody who is not there, and carries on.
     ///
     /// note: it answers all of them rather than one, because a model that asks for three things at
-    /// once produces three questions and the flag is the same answer to each. The turn is started
-    /// again afterwards for the same reason the keys do it: a decision leaves the kernel resting,
-    /// and nothing else is going to drive it - unless somebody asked to drive with `/step`, in
-    /// which case answering must not quietly run the rest of the turn here either.
+    /// once produces three questions and the flag is the same answer to each.
+    ///
+    /// note: through [`App::decide`] rather than through the kernel, and that is a fix rather than
+    /// tidying. Answering is four things and this had two of them: it never told the sandbox about
+    /// a granted command that reaches the network, so `--on-ask allow` allowed a `curl` and then
+    /// ran it with the network cut and no account of why. Driving the turn on afterwards is the
+    /// other two - a decision leaves the kernel resting with nothing to drive it, unless somebody
+    /// asked to drive it a transition at a time with `/step`, in which case answering must not
+    /// quietly run the rest of the turn - and both now happen once, where every caller gets them.
     fn answer(&mut self, app: &mut App) -> Result<(), String> {
         for pending in app.kernel.pending_permissions() {
             let tool = pending.tool.clone();
-            // note: `App::answer` rather than `Kernel::decide`, because answering is more than
-            // deciding: a `curl` allowed here has to have the network granted with it, or it runs
-            // with TCP cut one line after this said it would run
-            app.answer(&pending, self.on_ask)
+            app.decide(pending.id, self.on_ask, false)
                 .map_err(|e| format!("could not answer for `{tool}`: {e}"))?;
             self.fresh_line()?;
             writeln!(
@@ -406,9 +400,6 @@ impl<'a> Headless<'a> {
                 self.on_ask
             )
             .map_err(|e| e.to_string())?;
-        }
-        if !app.stepping {
-            app.start_turn();
         }
 
         Ok(())

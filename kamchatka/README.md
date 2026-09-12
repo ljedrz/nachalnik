@@ -172,7 +172,8 @@ the model writes.
 - **[Using it][guide]** — the four tabs and what each is for, everything the keys do, the
   permission prompt and what answering *always* commits you to, putting a file in, and the
   off-by-default tools an agent reads and manages its own context with.
-- **[Running it][running]** — headless, the two dialects and which endpoints work, what the
+- **[Running it][running]** — headless, a session with a socket in front of it that you can walk
+  away from, the two dialects and which endpoints work, what the
   number in the status line is a guess *at*, a settings file, every option, embedding it in
   something else, and what a toolchain in your home directory needs.
 - **[The changelog][changelog]**, and [`nachalnik`][nachalnik] for the runtime under all of

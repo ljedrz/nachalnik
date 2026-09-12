@@ -29,7 +29,7 @@ use nachalnik_providers::Dialect;
 use kamchatka::{
     app::App,
     config::Settings,
-    endpoint, headless, sandbox,
+    endpoint, headless, remote, sandbox,
     tools::Subject,
     wiring::{Setup, Wired},
 };
@@ -182,6 +182,18 @@ struct Args {
     /// stdout is not a terminal.
     #[arg(long)]
     headless: bool,
+
+    /// Put a socket in front of the session instead of a screen, so it can be driven from
+    /// elsewhere: `unix:PATH`, or `tcp:127.0.0.1:PORT`. The session is this program's - it carries
+    /// on when a client detaches, and waits when a tool needs an answer.
+    #[arg(long, value_name = "ADDRESS", conflicts_with_all = ["headless", "connect"])]
+    serve: Option<String>,
+
+    /// Attach to a session somebody else is serving and drive it from lines on stdin, in the same
+    /// two streams `--headless` writes. Nothing else on this command line applies: the model, the
+    /// key, the tools and the sandbox are all the host's.
+    #[arg(long, value_name = "ADDRESS")]
+    connect: Option<String>,
 
     /// Allow a whole domain, one operation in one, or a path, as `fs`, `fs:read`, `exec:run`,
     /// `.env*`. May be repeated, and takes a comma-separated list. Answering at the prompt writes
@@ -431,13 +443,43 @@ async fn session() -> Result<()> {
         let settings = Settings::read(&path).map_err(|e| anyhow::anyhow!("{e}"))?;
         args = args.under(settings, &matches)?;
     }
+
+    // note: before any of the wiring below, and that is the whole reason it is here rather than
+    // beside the three loops at the bottom. A client assembles nothing: the model, the key that
+    // pays for it, the tools, the sandbox and the context all belong to whoever is serving, and a
+    // client that attached to somebody else's session and then failed because *it* could not reach
+    // a provider would be failing about a job that was never its own
+    if let Some(address) = args.connect.clone() {
+        let (mut records, mut prose) = (stdout(), std::io::stderr());
+        return remote::Client::new(&mut records, &mut prose)
+            .run(&address, tokio::io::BufReader::new(tokio::io::stdin()))
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"));
+    }
+
+    // note: bound before the provider is reached, so that an address nobody can listen on is a
+    // refusal in the first second rather than after a round trip to somebody's API. The socket
+    // file it may have made is taken away again by `Server`'s own `Drop`, so failing after this
+    // point leaves nothing behind
+    let mut server = match &args.serve {
+        Some(address) => Some(
+            remote::Server::bind(address)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+        ),
+        None => None,
+    };
     // the screen is drawn to stdout, so a stdout that is nobody's terminal cannot have one. It is
     // announced rather than silently chosen: a program that draws or does not draw depending on
     // what is on the other end of a pipe should say which it decided, and `--headless` is how
     // somebody says it themselves
+    //
+    // note: a served session is neither. It has no screen and it is not driven by lines either -
+    // the decision below is about which of the *local* two is running, and asking it of a run that
+    // is neither produced a notice about a pipe nobody had mentioned
     let piped = !std::io::stdout().is_terminal();
-    let headless = headless(args.headless, piped);
-    if headless && !args.headless {
+    let headless = server.is_none() && headless(args.headless, piped);
+    if server.is_none() && headless && !args.headless {
         match piped {
             true => eprintln!("· stdout is not a terminal, so this is a headless run"),
             false => eprintln!("· built without the `tui` feature, so this is a headless run"),
@@ -597,6 +639,16 @@ async fn session() -> Result<()> {
     if headless {
         headless::opening(&mut app, on_ask);
     }
+    if let Some(server) = &server {
+        remote::opening(&mut app, &server.address());
+        // note: said here *as well*, and the two are addressed to different people. The one above
+        // goes into the conversation through `App::say`, which is how a client attaching an hour
+        // later finds out what it has joined; this one is for whoever typed the flag, and without
+        // it a served run is a terminal that prints nothing at all between starting and being
+        // stopped - including on the interesting case, `tcp:127.0.0.1:0`, where the port is the
+        // one thing the person does not already know
+        println!("· serving on {}", server.address());
+    }
     // a resumed session has a conversation in it already, and it would be strange to have to read
     // it out of the context pane one item at a time
     //
@@ -615,6 +667,19 @@ async fn session() -> Result<()> {
     if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
         app.ask(&message);
         app.start_turn();
+    }
+
+    // note: the third loop, and it is picked before the other two rather than beside them, because
+    // `--serve` is not a variety of screen or of pipe: it is a session with neither, driven by
+    // whoever attaches. `conflicts_with_all` on the flag is what keeps this from being an order of
+    // precedence somebody has to know
+    if let Some(server) = &mut server {
+        let outcome = server
+            .run(&mut app, &mut events, &mut finished)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"));
+
+        return finish(&app, &args, Ending::Served, outcome);
     }
 
     let outcome = match headless {
@@ -643,41 +708,66 @@ async fn session() -> Result<()> {
         false => unreachable!("there is no screen in this build"),
     };
 
-    // note: the headless driver has ended the session itself, so that the record saying so goes
-    // down the stream with the rest rather than being the one nobody was sent. `Kernel::finish`
-    // emits an event every time it is called, so this is an either-or rather than a belt and
-    // braces
-    if !headless {
+    let ending = match headless {
+        true => Ending::Logged,
+        false => Ending::Spoken,
+    };
+
+    finish(&app, &args, ending, outcome)
+}
+
+/// How a run that is over says so.
+///
+/// note: an enum over two `bool`s, because both of the questions it answers are decisions rather
+/// than formalities and neither of them is "was there a screen". Which stream the closing lines go
+/// to is whether *stdout* is carrying the record stream, and whether the session still wants ending
+/// is whether the loop that just returned ended it - which two of the three do, deliberately.
+enum Ending {
+    /// Driven by lines: stdout is the log, so a person reads stderr, and the driver has already
+    /// ended the session.
+    Logged,
+    /// Driven by keys: stdout is free, and nothing has ended the session yet.
+    Spoken,
+    /// Driven from a socket: stdout is free, and the server has already ended the session.
+    Served,
+}
+
+/// Ends the session if nothing else has, says where it got to, and writes it down.
+///
+/// note: three loops and one of these, because everything in here is about the run rather than
+/// about how it was driven - and while it was inline at the bottom of `session` a third loop meant
+/// a third copy of the two decisions [`Ending`] names.
+fn finish(app: &App, args: &Args, ending: Ending, outcome: Result<()>) -> Result<()> {
+    // note: the headless driver and the server have each ended the session themselves, so that the
+    // record saying so goes down their own stream with the rest rather than being the one nobody
+    // was sent. `Kernel::finish` emits an event every time it is called, so this is an either-or
+    // rather than a belt and braces
+    if matches!(ending, Ending::Spoken) {
         app.kernel.finish();
     }
-    // note: on stderr in a headless run, because stdout is the log. A line of prose in the middle
-    // of a stream of JSON is the one thing that would make it unparseable, and this is the last
-    // line written - so it would be the one nobody noticed until a reader fell over the end
-    let ending = format!(
+    // note: on stderr in a headless run, because stdout is the log there. A line of prose in the
+    // middle of a stream of JSON is the one thing that would make it unparseable, and this is the
+    // last line written - so it would be the one nobody noticed until a reader fell over the end
+    let logged = matches!(ending, Ending::Logged);
+    let say = |line: &str| match logged {
+        true => eprintln!("{line}"),
+        false => println!("{line}"),
+    };
+    say(&format!(
         "{} · {} events recorded",
         app.kernel.session_name(),
         app.kernel.history().len()
-    );
-    match headless {
-        true => eprintln!("{ending}"),
-        false => println!("{ending}"),
-    }
+    ));
     // the record was only ever written if somebody thought to type `/save`, which is exactly the
     // wrong condition: a session that ended badly is the one worth reading afterwards, and it was
     // the one that left nothing. Nine runs against a provider that timed out left no trace of how
     // far any of them had got
     if !args.no_record {
-        match record(&app) {
-            Ok((records, log, state)) => {
-                let where_it_went = format!(
-                    "{records} records in {log}, and a session in {state}\n\
-                     `kamchatka -r {state}` carries on from it"
-                );
-                match headless {
-                    true => eprintln!("{where_it_went}"),
-                    false => println!("{where_it_went}"),
-                }
-            }
+        match record(app) {
+            Ok((records, log, state)) => say(&format!(
+                "{records} records in {log}, and a session in {state}\n\
+                 `kamchatka -r {state}` carries on from it"
+            )),
             Err(e) => eprintln!("the session was not written: {e}"),
         }
     }

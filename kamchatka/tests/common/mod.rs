@@ -1,6 +1,15 @@
-//! What the test suites share: a place to put files that is not `/tmp`.
+//! What the test suites share: a place to put files that is not `/tmp`, and the two things it
+//! takes to drive the *program* rather than the library - the binary, and something for it to talk
+//! to.
+//!
+//! note: `dead_code` is allowed, and it has to be. A `mod common;` is compiled afresh into every
+//! suite that declares it, so anything here that one suite does not call is unused *in that
+//! binary* - which is seven warnings for a helper two suites share, under a `RUSTFLAGS` that makes
+//! a warning a failure.
 
-use std::path::PathBuf;
+#![allow(dead_code)]
+
+use std::{path::PathBuf, sync::Arc};
 
 /// A directory of this test's own, emptied first, under the one cargo hands the test binaries.
 ///
@@ -22,4 +31,77 @@ pub fn scratch(name: &str) -> PathBuf {
     std::fs::create_dir_all(&dir).expect("a directory to work in");
 
     dir
+}
+
+/// An endpoint the program can be pointed at, which answers the model listing and then hands out
+/// these bodies, one per request, as a stream.
+///
+/// note: a socket rather than a scripted provider, because what is under test here is the
+/// *program*: it builds its own provider out of two environment variables, in a process of its
+/// own, and nothing this test holds can be swapped into that. A listener is the only seam a child
+/// process has.
+///
+/// note: the bodies are SSE because the provider asks for a stream unless told not to, and the
+/// point of these tests is the path the program actually takes. `[DONE]` is appended here so that
+/// a case reads as what the model said rather than as protocol.
+#[cfg(unix)]
+pub async fn endpoint(answers: Vec<String>) -> String {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = listener.local_addr().expect("its address");
+    let answers = Arc::new(answers);
+    let nth = Arc::new(AtomicUsize::new(0));
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let (answers, nth) = (answers.clone(), nth.clone());
+            tokio::spawn(async move {
+                use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+                let mut buf = vec![0u8; 65536];
+                let read = socket.read(&mut buf).await.unwrap_or(0);
+                let head = String::from_utf8_lossy(&buf[..read]).into_owned();
+
+                let (kind, body) = match head.contains("/models") {
+                    true => (
+                        "application/json",
+                        r#"{"data":[{"id":"nothing","context_length":128000}]}"#.to_owned(),
+                    ),
+                    false => match answers.get(nth.fetch_add(1, SeqCst)) {
+                        Some(sse) => ("text/event-stream", format!("{sse}\n\ndata: [DONE]\n\n")),
+                        // a request nobody wrote an answer for is held open rather than refused,
+                        // which is a model that has gone quiet - and the one thing a test must not
+                        // do here is end the turn by accident
+                        None => return std::future::pending().await,
+                    },
+                };
+                let _ = socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+
+    format!("http://{at}/v1")
+}
+
+/// The binary under test.
+#[cfg(unix)]
+pub fn program() -> std::path::PathBuf {
+    let mut path = std::env::current_exe().expect("a test binary has a path");
+    path.pop();
+    if path.ends_with("deps") {
+        path.pop();
+    }
+
+    path.join("kamchatka")
 }

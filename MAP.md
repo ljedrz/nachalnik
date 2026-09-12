@@ -38,7 +38,9 @@ that searched one string and drew another would find nothing where it says there
 a session is assembled in, two of which are not guessable - the subscription has to come before
 the wiring, and `introspect::install` hands back a handle the caller has to keep),
 `headless.rs` (the other loop: a line of stdin where the
-terminal has a key, the session log on stdout and what a person reads on stderr), `help.rs` (the
+terminal has a key, the session log on stdout and what a person reads on stderr), `remote/` (the
+*third* loop, and a client for it: `protocol.rs` is the wire, `server.rs` is a session with a
+socket in front of it and `client.rs` is `--connect`), `help.rs` (the
 key listing and the selector listing, which `/help` and the `context` tool print), `config.rs`
 (`Settings`: the JSON `--config-file` takes, one field per argument it stands in for - the merge
 itself is `Args::under` in `main.rs`, because only clap can say which arguments were typed, and
@@ -89,6 +91,29 @@ so a caller cannot get round it by not asking. The deadline is the exception tha
 - wall-clock time is a property of a *run*, and a screen session waiting for somebody to type is
 not overrunning anything.
 
+**`remote/` is the third instance of the `nachalnik-mcp` test, and it is the one that had the most
+excuses not to be.** Remote control is the sort of thing that usually wants a crate, a runtime
+that knows about connections, and a second event vocabulary; it was written with **no change to
+`nachalnik` at all**, and that is the acceptance criterion to hold anything in there to. Four
+things the runtime already had did the work: `Record`'s sequence numbers and `history_since`, so
+the numbered stream is read out of the log per connection rather than fanned out by the server;
+`Config::record_progress`, which is the runtime's own name for the line between what is recoverable
+and what is not; `Kernel` being a cheap `Arc` handle, so a connection holds one of its own; and
+`App::submit`, so the protocol has five commands rather than one per verb.
+
+Two rules in there are worth knowing before changing it. **An event stream cannot render a
+conversation** - the log names things rather than copying them, so a client fed nothing but records
+can follow a turn as it streams and cannot render a word of what happened before it connected;
+attaching therefore answers with a *projection* (and deliberately not a `Snapshot`, which carries
+every item's content), and `inspect` fetches the whole of one item on demand. And **there is no
+authentication in the protocol and none is planned**: where it listens is the whole of the
+boundary, a non-loopback bind is refused rather than documented against, and a token in every
+message would be a scheme to keep in step protecting a channel whose real boundary is the socket.
+
+**No feature gate, alone among the optional-looking things here**, because it brings no crate: one
+`tokio` feature, `net`. `tui` and `mcp` are features to keep six dependencies and a child process
+out of builds that want neither, and that argument does not transfer.
+
 **`tui` is a default feature, and the line it draws is load-bearing.** `ui/`, `app/keys.rs`, the
 prompt (`App::input`) and the two `ListState`s are behind it; `App` and everything else - the
 session, the tools, the policy, the trace, `submit`, `interrupt`, `on_event`, `write_session` - is
@@ -99,9 +124,10 @@ in `app/text.rs` are doing where they are: `/exclude` prints the selector listin
 formats token counts for a model to read, so neither can live in the module that draws.
 
 `cargo test -p kamchatka --no-default-features` is the check, and every suite it runs is about the
-program rather than the screen: `policy`, `sandbox` and `introspect` never draw, and `headless`
+program rather than the screen: `policy`, `sandbox` and `introspect` never draw, `headless`
 drives a whole session - a message, a command, a tool call, a question nobody can answer - through
-an `App` that has no screen at all. CI runs it. Adding `--features mcp` adds the `mcp` suite, which
+an `App` that has no screen at all, and `remote` drives one through a socket, from two clients at
+once, with the binary itself at both ends for the last two cases. CI runs it. Adding `--features mcp` adds the `mcp` suite, which
 spawns a real server and grants it with `--allow-server py`: somebody else's tools with no terminal
 anywhere, which is the configuration an embedder is most likely to be in. The binary builds in all
 of that too and is headless in it, so `--no-default-features` is a program rather than a library.
