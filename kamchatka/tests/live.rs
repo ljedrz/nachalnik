@@ -1980,3 +1980,223 @@ async fn a_foreign_server_s_tools_reach_a_real_model() {
         "a foreign server's answer should have reached the model: {said}"
     );
 }
+
+// ------------------------------------------------ the trace's two clocks, and `/` over real rows
+
+// note: what this section adds over `tests/screen/` is time actually passing. A scripted provider
+// answers inside a millisecond, so every event in a scripted trace shares one second and every gap
+// falls under the tenth of a second the pane deliberately leaves blank - which means the two
+// columns the pane exists for are, in that suite, a column of one value and a column of nothing.
+// A real endpoint is the only thing that fills them, and it is also the only thing that produces a
+// tool result long enough for "the row shows one line and the item holds four hundred" to be a
+// distinction rather than a sentence.
+
+/// Presses a key wherever the keys already are.
+///
+/// note: unlike `press`, which puts them on the context tab first. These cases are about the trace
+/// and about a box that has the keys while it is open, and moving the focus closes it.
+async fn key(app: &mut App, code: KeyCode) {
+    app.on_key(KeyEvent::new(code, KeyModifiers::NONE)).await;
+}
+
+/// Types a run of characters at whatever has the keys.
+async fn type_in(app: &mut App, text: &str) {
+    for c in text.chars() {
+        key(app, KeyCode::Char(c)).await;
+    }
+}
+
+/// Every `HH:MM:SS` on a screen, in the order they are drawn.
+fn stamps(screen: &str) -> Vec<String> {
+    let glyphs: Vec<char> = screen.chars().collect();
+    glyphs
+        .windows(8)
+        .filter(|at| {
+            at[2] == ':'
+                && at[5] == ':'
+                && [0, 1, 3, 4, 6, 7].iter().all(|n| at[*n].is_ascii_digit())
+        })
+        .map(|at| at.iter().collect())
+        .collect()
+}
+
+/// Sends a line and drains the kernel's events *as they arrive*, the way the program does.
+///
+/// note: this matters for these two cases and for nothing else in the file. `App::trace` stamps a
+/// row when the app processes the event, which in the program is as it happens - `main` selects on
+/// the stream alongside the keys - and in `send` is all at once, after the turn is already over.
+/// Every other case in here reads the trace for what it *says*; these read it for *when*, and a
+/// burst drain puts every row in the same microsecond, which makes every gap nought and every
+/// clock the same second. It looked exactly like an endpoint too fast to measure, and it was the
+/// harness: the first version of this test asserted the gap column had something in it and failed
+/// against a provider that had taken a whole second to answer.
+async fn send_watching(
+    app: &mut App,
+    finished: &mut tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
+    line: &str,
+) {
+    let mut events = app.kernel.subscribe();
+    type_line(app, line).await;
+
+    let until = tokio::time::Instant::now() + deadline();
+    loop {
+        while let Ok(event) = events.try_recv() {
+            app.on_event(event);
+        }
+        if let Ok(outcome) = finished.try_recv() {
+            while let Ok(event) = events.try_recv() {
+                app.on_event(event);
+            }
+            app.on_outcome(outcome);
+            return;
+        }
+        assert!(
+            tokio::time::Instant::now() < until,
+            "the turn should have finished"
+        );
+        // short enough that it cannot invent a gap: anything under a tenth of a second is drawn
+        // blank, so the poll has to be an order inside that to be invisible in what is measured
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+}
+
+/// Every gap the pane drew, which is `+123ms`, `+1.2s` or `+1m05s`.
+fn gaps(screen: &str) -> Vec<String> {
+    screen
+        .split_whitespace()
+        .filter(|word| word.starts_with('+') && word[1..].starts_with(|c: char| c.is_ascii_digit()))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// A real turn takes real time, so both columns have something in them.
+#[tokio::test]
+async fn a_real_turn_fills_both_of_the_traces_clocks() {
+    let _serial = SERIAL.lock().await;
+    let (mut app, mut finished) = live!();
+
+    send_watching(
+        &mut app,
+        &mut finished,
+        "say the word APRICOT and nothing else",
+    )
+    .await;
+    app.show(Tab::Trace);
+    let screen = draw(&mut app);
+
+    let seen = stamps(&screen);
+    assert!(
+        !seen.is_empty(),
+        "every line of the trace carries a wall clock: {screen}"
+    );
+
+    // the date is a rule across the pane drawn only where it changes, so a run inside one day
+    // draws exactly one of them however many events it leaves
+    let rules = screen.lines().filter(|line| line.contains("── 20")).count();
+    assert_eq!(rules, 1, "one day, one date rule: {screen}");
+    println!("  stamps: {} · date rules: {rules}", seen.len());
+
+    // and the gap column, which is the half no scripted provider can produce: it answers between
+    // one frame and the next, and everything under a tenth of a second is left blank on purpose
+    let waited = gaps(&screen);
+    println!("  gaps: {waited:?}");
+    assert!(
+        !waited.is_empty(),
+        "a real endpoint takes longer than a tenth of a second somewhere: {screen}"
+    );
+}
+
+/// The clock is part of what a row is matched on, and an empty result says which empty it is.
+#[tokio::test]
+async fn a_real_trace_is_searchable_and_says_so_when_nothing_matches() {
+    let _serial = SERIAL.lock().await;
+    let (mut app, mut finished) = live!();
+
+    send_watching(
+        &mut app,
+        &mut finished,
+        "say the word APRICOT and nothing else",
+    )
+    .await;
+    app.show(Tab::Trace);
+
+    let all = app.traced().len();
+    assert!(
+        all >= 4,
+        "a real turn leaves more than a handful of events: {all}"
+    );
+    let stamp = stamps(&draw(&mut app))
+        .pop()
+        .expect("the newest line is stamped");
+
+    // a query nobody would type against a name or a detail, so what keeps a row is the clock
+    key(&mut app, KeyCode::Char('/')).await;
+    type_in(&mut app, &stamp).await;
+    let kept = app.traced().len();
+    println!("  `{stamp}` kept {kept} of {all}");
+    assert!(
+        kept > 0,
+        "searching for `{stamp}` should keep the line it came off"
+    );
+
+    // and what matches nothing names the search rather than blaming `f` or saying nothing
+    for _ in 0..stamp.len() {
+        key(&mut app, KeyCode::Backspace).await;
+    }
+    type_in(&mut app, "zzqqxx").await;
+    assert_eq!(app.traced().len(), 0, "nothing should match that");
+    let empty = draw(&mut app);
+    assert!(empty.contains("esc clears the search"), "{empty}");
+
+    key(&mut app, KeyCode::Esc).await;
+    assert_eq!(app.traced().len(), all, "and esc puts every row back");
+}
+
+/// A context row has space for one line and the item holds four hundred; the filter reads the
+/// item. Only a real tool result makes that a distinction rather than a claim.
+#[tokio::test]
+async fn a_real_tool_result_is_found_by_a_word_its_row_never_shows() {
+    let _serial = SERIAL.lock().await;
+    let (mut app, mut finished) = live!();
+
+    send(
+        &mut app,
+        &mut finished,
+        "Call the secret tool, then tell me the code word and nothing else.",
+    )
+    .await;
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| matches!(item.kind, ContextKind::ToolResult { .. })),
+        "the model never called the tool; it said: {}",
+        answer(&app).chars().take(200).collect::<String>()
+    );
+
+    app.show(Tab::Context);
+    let all = app.listed().len();
+
+    // `secret` answers with the code word on its first line and four hundred lines of `routine
+    // diagnostic output` under it. The row has room for the first line only
+    let rows = draw(&mut app);
+    assert!(
+        !rows.contains("diagnostic"),
+        "the row should not be showing the word being searched for: {rows}"
+    );
+
+    key(&mut app, KeyCode::Char('/')).await;
+    type_in(&mut app, "diagnostic").await;
+    let kept = app.listed();
+    println!("  `diagnostic` kept {} of {all}", kept.len());
+    assert!(
+        kept.iter()
+            .any(|item| matches!(item.kind, ContextKind::ToolResult { .. })),
+        "the tool result holds it, so the filter should keep it"
+    );
+    assert!(
+        kept.len() < all,
+        "and not every item does: {} of {all}",
+        kept.len()
+    );
+}
