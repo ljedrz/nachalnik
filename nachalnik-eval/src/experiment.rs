@@ -516,10 +516,10 @@ pub async fn evaluate(
 
 /// The same, with the experiments run at the same time under a shared ceiling on requests.
 ///
-/// note: `at_once` counts *requests in flight*, not experiments. One number rather than two
-/// because the endpoint does not care which experiment a request came from, and because a ceiling
-/// is only a ceiling if it is collective: nine experiments each politely limiting themselves to
-/// eight is seventy-two requests arriving at one endpoint.
+/// note: [`Pace::at_once`] counts *requests in flight*, not experiments. One number rather than
+/// two because the endpoint does not care which experiment a request came from, and because a
+/// ceiling is only a ceiling if it is collective: nine experiments each politely limiting
+/// themselves to eight is seventy-two requests arriving at one endpoint.
 ///
 /// note: the scores are the scores either way. Every copy is still made from a frozen
 /// [`Origin`](crate::Origin) and still answers one question, so nothing a figure is computed from
@@ -528,15 +528,18 @@ pub async fn evaluate(
 /// retries behind them eat the budget, and probes come back
 /// [`Unreadable`](crate::Answer::Unreadable), which is scored honestly as untested and quietly
 /// turns a report into a page of nothing. That, rather than any threat to a score, is what
-/// [`evaluate`]'s note is about, and `at_once` is the knob that answers it: set it under what the
+/// [`evaluate`]'s note is about, and [`Pace`] is the knob that answers it: set it under what the
 /// endpoint allows and the failure does not arise.
 ///
-/// note: a count is not a rate, and this enforces only the count - see [`Permits`] for why a rate
-/// cannot be enforced from here without picking a runtime for the caller. The two coincide only
-/// through latency: eight in flight against a one-second endpoint is about eight a second. Where
-/// an endpoint publishes a rate rather than a concurrency limit, `at_once` has to be chosen with
-/// that in mind, and what catches the rest is the `Retry-After` handling in whichever
+/// note: a count is not a rate, and [`Pace`] carries both because endpoints publish both.
+/// [`Pace::at_once`] bounds what is in flight; [`Pace::per_minute`] bounds what is *started*, and
+/// spaces them out rather than letting the whole minute's allowance go in its first instant.
+/// Neither substitutes for the other - eight in flight against a one-second endpoint is about
+/// eight a second, and against a fast one it is eighty - which is why a run that stayed inside
+/// eighteen a minute on the average could still take an endpoint down by arriving all at once.
+/// What catches whatever gets past both is the `Retry-After` handling in whichever
 /// [`Provider`](nachalnik::Provider) the caller supplied.
+///
 /// note: `landed` is handed each outcome the moment that experiment finishes, in the order they
 /// finish rather than the order they were given. It is what lets a caller run the whole suite at
 /// once and still show progress - and, more to the point, still write the record of an experiment
