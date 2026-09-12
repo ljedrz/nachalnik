@@ -216,6 +216,11 @@ impl Pace {
 /// permits a burst of its whole capacity after any quiet spell, which is the thing an endpoint
 /// counting requests in a window will reject.
 ///
+/// note: and a minimum gap between admissions on top of the window, because the window alone
+/// permits the whole allowance at once - see [`Rate::spacing`]. The two are both enforced and
+/// neither subsumes the other: the window is the limit as the endpoint words it, the spacing is
+/// what stops a run from spending the whole allowance in a second and then idling.
+///
 /// note: what is recorded is when a request was *admitted*, not when it finished. A limit on how
 /// many may be started in a minute is not a limit on how many may be outstanding, and the two
 /// come apart badly on an endpoint that sometimes takes ten minutes to answer - which is the case
@@ -236,7 +241,20 @@ impl Rate {
         }
     }
 
-    /// Waits until letting one more through would not break the limit, then records it.
+    /// The least time that may pass between two admissions.
+    ///
+    /// note: what makes the limit a pace rather than a quota. A window alone is obeyed perfectly
+    /// by firing every request it allows in the window's first instant and then sitting out the
+    /// rest, which is exactly the burst an endpoint's own limiter sees and rejects - measured, a
+    /// run at eight in flight took a small free endpoint down inside a minute while staying well
+    /// inside eighteen a minute. Spacing them is the difference between not exceeding a limit on
+    /// average and not exceeding it at any moment.
+    fn spacing(&self) -> Duration {
+        self.window / self.allowed as u32
+    }
+
+    /// Waits until letting one more through would break neither the window nor the spacing, then
+    /// records it.
     async fn admit(&self) {
         loop {
             let wait = {
@@ -249,18 +267,29 @@ impl Rate {
                     admitted.pop_front();
                 }
 
-                match admitted.len() < self.allowed {
-                    true => {
-                        admitted.push_back(now);
-                        return;
-                    }
-                    // the oldest one in the window is the one whose leaving makes room, so this is
-                    // exactly how long there is to wait rather than a guess at it
+                // the oldest one in the window is the one whose leaving makes room, so this is
+                // exactly how long there is to wait rather than a guess at it
+                let room = match admitted.len() < self.allowed {
+                    true => Duration::ZERO,
                     false => admitted
                         .front()
                         .map(|at| self.window.saturating_sub(now.duration_since(*at)))
                         .unwrap_or_default(),
+                };
+                // and this is how long since the last one went, which is the half that keeps the
+                // pace steady rather than merely legal
+                let gap = admitted
+                    .back()
+                    .map(|at| self.spacing().saturating_sub(now.duration_since(*at)))
+                    .unwrap_or_default();
+
+                let wait = room.max(gap);
+                if wait.is_zero() {
+                    admitted.push_back(now);
+                    return;
                 }
+
+                wait
             };
 
             // note: re-checked after sleeping rather than admitted on waking, because every waiter

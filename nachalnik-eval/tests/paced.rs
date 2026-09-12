@@ -227,3 +227,78 @@ async fn the_window_is_shared_rather_than_one_each() {
         "{calls} requests went out faster than one shared window of 4/30s allows"
     );
 }
+
+/// Records when each request was admitted, so the *shape* of the traffic can be asserted on and
+/// not just its total.
+struct Spaced {
+    at: std::sync::Mutex<Vec<tokio::time::Instant>>,
+}
+
+#[async_trait]
+impl Provider for Spaced {
+    fn info(&self) -> ModelInfo {
+        ModelInfo {
+            context_limit: Some(64_000),
+            ..ModelInfo::new("spaced", "spaced")
+        }
+    }
+
+    async fn respond(
+        &self,
+        _request: ModelRequest,
+        _deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        self.at.lock().unwrap().push(tokio::time::Instant::now());
+        tokio::time::sleep(Duration::from_millis(1)).await;
+
+        Ok(ModelResponse {
+            content: Some(Content::text("ANSWER: omsk\nCONFIDENCE: 50")),
+            reasoning: None,
+            tool_calls: Vec::new(),
+            stop: StopReason::EndTurn,
+            usage: Some(Usage::default()),
+            raw: None,
+        })
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_rate_is_a_pace_rather_than_a_quota_spent_at_once() {
+    let provider = Arc::new(Spaced {
+        at: std::sync::Mutex::new(Vec::new()),
+    });
+    // ten in ten seconds is one a second, and the ceiling of 8 is deliberately high: before the
+    // spacing went in, this admitted eight instantly and then waited
+    let window = Duration::from_secs(10);
+    let allowed = 10;
+
+    let _report = evaluate_with(
+        suite::all(),
+        |name| {
+            let kernel = Kernel::new(Config {
+                session_name: Some(name.to_owned()),
+                ..Config::default()
+            });
+            kernel.set_provider(provider.clone());
+            Ok(Subject::new(kernel))
+        },
+        Pace::at_once(8).per(allowed, window),
+        |_| {},
+    )
+    .await;
+
+    let at = provider.at.lock().unwrap().clone();
+    assert!(at.len() > 20, "too few requests to say anything");
+
+    let spacing = window / allowed as u32;
+    let mut tightest = Duration::MAX;
+    for pair in at.windows(2) {
+        tightest = tightest.min(pair[1].duration_since(pair[0]));
+    }
+
+    assert!(
+        tightest >= spacing,
+        "two requests went {tightest:?} apart, under the {spacing:?} a rate of {allowed} per \
+         {window:?} spaces them by"
+    );
+}
