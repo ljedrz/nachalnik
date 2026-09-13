@@ -60,21 +60,20 @@ impl Tool for Context {
              item in your context - what it is, what it costs, whether it is going into the next \
              request and why not if it is not - and with `ids` reads any of them back, block by \
              block, including what you were thinking when you produced them. A long one comes \
-             back as its start and its end, because reading an item copies it into your context; \
-             `whole` if you need all of it anyway. `budget` is what \
-             the next request costs against what there is, what the last one really cost, and \
+             back as its start and its end; `whole` if you need all of it anyway. `budget` is \
+             what the next request costs against what there is, what the last one really cost, and \
              which items are the expensive ones - read it before deciding what to give up. \
-             `request` shows the request you are about to send, message by message, with what the \
-             projector left out and what it repaired. `draft` answers the conversation on a \
+             `request` shows the request you are about to send, message by message, what it \
+             repaired, and what was left out and by which rule: a state you set, which you can \
+             undo, or the projector, which you cannot. `draft` answers the conversation on a \
              throwaway copy and shows you what you would say *before* you say it, so you can \
              check your answer against your context and fix either. `fork` puts a question to a \
              copy of yourself on a copy of your context, optionally with some items left out - \
              for weighing an approach, or asking whether a piece of context is what is leading \
              you astray. A fork has no tools: it can think, not act. `search` finds text \
-             anywhere in your context - archived items included, which nothing else here can \
-             read without dragging them back in - and answers with how many lines match and what \
-             they would cost before it shows you one. `amend` is the tool that changes any of \
-             this.",
+             anywhere in your context - archived items included, which `look` can only read by \
+             copying them in - and says how many lines match and what they would cost before it \
+             shows you one. `amend` is the tool that changes any of this.",
         )
         .with_schema(json!({
             "type": "object",
@@ -666,14 +665,41 @@ fn request(kernel: &Kernel) -> String {
         ));
     }
 
-    if !projection.skipped.is_empty() {
-        out.push_str("\nleft out:\n");
-        for left_out in &projection.skipped {
+    // note: split by *what* dropped it, because the two halves are answered differently and one
+    // list could not say which was which. An item left out by its own state is one `amend` with
+    // `restore` puts straight back. An item the projector dropped is a consequence of something
+    // else in the context, and restoring it does nothing whatever - the thing to move is the
+    // cause. A model reading one undifferentiated list has to guess which it is looking at, and
+    // the cheap guess is `restore`, which is the one that changes nothing and costs a call.
+    let (by_state, by_projector): (Vec<_>, Vec<_>) =
+        projection
+            .skipped
+            .iter()
+            .partition(|left_out| match kernel.item(left_out.id) {
+                Some(item) => !item.is_projected(),
+                // an id the context no longer has is nothing a state change can reach either
+                None => false,
+            });
+
+    if !by_state.is_empty() {
+        out.push_str("\nleft out by its own state, which `amend` with `restore` puts back:\n");
+        for left_out in &by_state {
+            out.push_str(&format!("  [{}] {}\n", left_out.id, left_out.reason));
+        }
+    }
+    if !by_projector.is_empty() {
+        out.push_str(&format!(
+            "\nleft out by the projector (`{}`), the rule that turns your context into messages. \
+             Restoring these changes nothing - each is a consequence of something else, and the \
+             cause is what there is to move:\n",
+            kernel.projector().name(),
+        ));
+        for left_out in &by_projector {
             out.push_str(&format!("  [{}] {}\n", left_out.id, left_out.reason));
         }
     }
     if !projection.repairs.is_empty() {
-        out.push_str("\nrepaired, to keep the request valid:\n");
+        out.push_str("\nand what that same projector rewrote, to keep the request valid:\n");
         for repair in &projection.repairs {
             out.push_str(&format!("  {repair}\n"));
         }

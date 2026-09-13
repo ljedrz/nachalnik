@@ -390,12 +390,69 @@ async fn request_reports_what_is_going_and_what_was_left_out() {
     kernel.turn().await.expect("the turn failed");
 
     let said = answered(&kernel);
-    assert!(said.contains("left out:"), "{said}");
+    assert!(said.contains("left out by its own state"), "{said}");
     assert!(said.contains("not yours"), "{said}");
     assert!(said.contains("system"), "{said}");
+    // and the way back is named beside it, because this is the half of the list a state change
+    // reaches
+    assert!(said.contains("`restore`"), "{said}");
     // the request is summarized, never quoted: printing it would double every token being asked
     // about, and the excluded item's contents would come back in the answer
     assert!(!said.contains("hunter2"), "{said}");
+}
+
+/// The two ways an item goes missing are answered differently, so they are reported apart.
+///
+/// note: an orphaned tool result is the case. Its state says `active` and it is costing nothing,
+/// because the projector repairs it out of a request whose assistant turn no longer asks for it -
+/// so `restore` on it does exactly nothing, and one undifferentiated list of what was left out is
+/// a list in which the cheap guess is the useless move. What there is to fix is the cause.
+#[tokio::test]
+async fn request_says_which_rule_left_each_item_out() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "request" }),
+    )]));
+
+    kernel.push(ContextItem::user("go on"));
+    let turn = kernel.push(ContextItem::assistant(
+        "looking",
+        vec![call("gone", "shell", json!({}))],
+    ));
+    kernel.push(ContextItem::tool_result(
+        ToolCallId("gone".into()),
+        "shell",
+        "the output nothing asked for any more",
+        false,
+    ));
+    let excluded = kernel.push(ContextItem::file("notes.md", "something"));
+    kernel.set_state([excluded], ContextState::Excluded, Some("too big".into()));
+    // the turn that asked goes, and its answer is orphaned - active, and going nowhere
+    kernel.set_state(
+        [turn],
+        ContextState::Excluded,
+        Some("said nothing useful".into()),
+    );
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("left out by its own state"), "{said}");
+    assert!(said.contains("too big"), "{said}");
+    assert!(
+        said.contains("left out by the projector"),
+        "the other half is named, and named after the thing that decided: {said}"
+    );
+    assert!(
+        said.contains("LinearProjector"),
+        "by the name it can be looked up under: {said}"
+    );
+    assert!(
+        said.contains("Restoring these changes nothing"),
+        "and says why `restore` is the wrong move on that half: {said}"
+    );
+    assert!(said.contains("orphaned tool result"), "{said}");
 }
 
 #[tokio::test]

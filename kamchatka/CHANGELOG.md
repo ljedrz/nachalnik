@@ -9,6 +9,24 @@ minor bump may break you.
 
 ### added
 
+- **`context: request` says which rule left each item out.** It listed what the projector had
+  skipped and what it had repaired, in one undifferentiated list, and the two halves are answered
+  completely differently. An item left out by its own state is one `amend` with `restore` puts
+  straight back. An item the projector dropped - an orphaned tool result, a second result for one
+  call, an assistant turn with nothing left in it - reads as `active`, is costing nothing, and
+  `restore` on it does exactly nothing: it is a consequence of something else, and the cause is
+  what there is to move.
+
+  So they are reported apart, each named after what decided it, with the projector named by the
+  name it can be looked up under. `setup policy` is the other half of the same answer: this says
+  what the rule did to the next request, that says what the rule is.
+
+  The description grew past the 1,500-character ceiling
+  `every_tool_says_what_it_is_and_what_each_argument_is_for` holds every tool to, which is the
+  guard doing its job, so three clauses came back out - the reason an item arrives sampled now
+  lives only on `whole`'s own schema line, which is where it is read at the moment the choice is
+  made. 1,445 characters, and `context`'s spec is unchanged at 563 tokens.
+
 - **`setup`, a fourth introspection tool: what the session is running *with*.** State rather than
   events, which is the split that makes it a tool of its own rather than an action on `log`. `log`
   says a tool was taken away at record 118; this says which tools there are now. `log` says a

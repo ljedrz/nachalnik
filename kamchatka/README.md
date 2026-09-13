@@ -716,6 +716,13 @@ for it anyway. `request` shows the
 request about to go out, message by message, with what the projector left out and what it had to
 repair.
 
+`request` says which rule left each item out, which is two different answers in one list until it
+is split: an item left out by **its own state** is one `restore` puts straight back, while one the
+**projector** dropped — an orphaned tool result, a second result for one call — reads as `active`,
+costs nothing, and does not move for a state change at all. It is a consequence of something else,
+and the cause is the thing to fix. `setup policy` is the other half: this says what the rule did,
+that says what the rule is.
+
 `budget` is the one a decision gets made from:
 
 ```text
