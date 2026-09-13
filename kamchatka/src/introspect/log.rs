@@ -146,6 +146,7 @@ impl Tool for Log {
             Read {
                 total: session.len(),
                 last_seq: session.last_seq(),
+                first_seq: session.records().next().map(|r| r.seq).unwrap_or_default(),
                 kinds,
                 every,
                 matched,
@@ -172,6 +173,13 @@ struct Read {
     matched: String,
     /// How many those were.
     hits: usize,
+    /// The sequence number of the oldest record still here; `0` when there are none.
+    ///
+    /// note: what says a log was *drained* rather than never written. `Session::drain_through`
+    /// takes records out and leaves the counter alone, so a log whose first record is not 1 is one
+    /// somebody has carried away - and an answer that reported that as "nothing happened" would be
+    /// making the one mistake this tool exists not to make.
+    first_seq: u64,
     /// The items this log holds a `context.added` for.
     ///
     /// note: kept so that the *absence* of one can be reported, which is the fact an `ids` filter
@@ -366,9 +374,24 @@ impl Query {
         let all = counter.count(&Content::text(read.every.clone()));
 
         if read.total == 0 {
-            return "nothing has been recorded yet; this session's log is empty, which is not the \
-                    same as a log you have not been shown.\n"
-                .to_owned();
+            // note: an empty log has two causes and they are opposite answers to the question
+            // being asked. Nothing has happened yet, or everything that happened has been taken
+            // out and written somewhere else - `Kernel::drain_history` is a supported thing to do
+            // with a long session and it leaves the sequence counter alone, which is how this can
+            // tell. Reporting the second as the first is the one mistake this tool must not make,
+            // and the sentence that used to be here made it in so many words.
+            return match read.last_seq {
+                0 => "nothing has been recorded yet: this session's log is empty because nothing \
+                      has happened, not because you are being kept from it.\n"
+                    .to_owned(),
+                seq => format!(
+                    "this log is empty and {seq} record(s) have been through it. They were drained \
+                     - taken out and kept somewhere this session cannot read - which is how a long \
+                     session is stopped from growing forever. Nothing that happens from here on is \
+                     affected, and the next record will be number {}.\n",
+                    seq + 1,
+                ),
+            };
         }
 
         // the true total, on every answer, whatever was asked for. It is what makes a short reply
@@ -476,9 +499,17 @@ impl Query {
 
         format!(
             "\n{} {has} no `context.added` here: {they} already in the context before this log \
-             begins, so nothing in it says where {them} came from or who wrote {them}. A session \
-             resumed from a snapshot starts that way.{}\n",
+             begins, so nothing in it says where {them} came from or who wrote {them}. {}{}\n",
             numbered(&unborn),
+            match read.first_seq > 1 {
+                // the records that would have said are gone rather than never written, and which
+                // of the two it is changes the answer completely
+                true => format!(
+                    "This log starts at record {}, so earlier ones were drained and may have said.",
+                    read.first_seq
+                ),
+                false => "A session resumed from a snapshot starts that way.".to_owned(),
+            },
             if_offered(kernel, "setup", || {
                 " `setup` with `model` says whether this one did.".to_owned()
             }),

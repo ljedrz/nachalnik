@@ -164,6 +164,20 @@ minor bump may break you.
   already counts items, not a warning, and the model is still free to ignore it. Twice more, it
   did.
 
+- **A drained log said nothing had happened.** `Kernel::drain_history` is the supported way to
+  stop a long session growing forever: it takes the records out and hands them to the caller to
+  keep elsewhere. Afterwards the tool answered "this session's log is empty, which is not the same
+  as a log you have not been shown" - in a session whose log had just been taken away, which is
+  exactly a log you are not being shown. It is the one mistake this tool exists not to make, made
+  in so many words, in the sentence written to avoid it.
+
+  A drain leaves the sequence counter alone, so the two cases were already distinguishable by
+  arithmetic that was there all along. An emptied log now says how many records went through it and
+  where the next one will start. On a kernel this is the *only* way to be empty - a fresh one has
+  already recorded `session.started` - so the old sentence was wrong in every case it could
+  actually be printed in, rather than merely wrong sometimes. An item with no beginning in a
+  shortened log now blames the drain rather than offering a snapshot that never happened.
+
 - **A compaction record says what moved it, not only what moved.** The line read `1 out, 4 elided,
   8863 → 725 tokens` and stopped. `CompactionReport::reason` is the compactor's own sentence -
   which threshold it crossed and by how much - and both readers of that line were dropping it, so a

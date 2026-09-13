@@ -2453,3 +2453,157 @@ async fn a_compaction_record_says_what_moved_it() {
         "and what moved it, which the record has carried all along: {said}"
     );
 }
+
+/// A drained log says it was drained, rather than that nothing happened.
+///
+/// note: the sentence this replaces said "this session's log is empty, which is not the same as a
+/// log you have not been shown" - in a session whose log had been taken away and written
+/// elsewhere, which is exactly a log you are not being shown. `Kernel::drain_history` is the
+/// supported way to stop a long session growing forever and it leaves the sequence counter alone,
+/// so the two cases are told apart by arithmetic that was already there. Reporting the second as
+/// the first is the one mistake this tool exists not to make, and the empty case was making it in
+/// so many words.
+///
+/// note: the one test in this file that calls the tool rather than driving the loop. An empty log
+/// cannot survive a turn - the turn records itself into it - so there is no script that reaches
+/// this state through a request, and what is being checked is a sentence rather than anything the
+/// loop does.
+#[tokio::test]
+async fn a_drained_log_says_so_instead_of_saying_nothing_happened() {
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+    kernel.push(ContextItem::user("carry on"));
+    let through = kernel.last_seq();
+    let taken = kernel.drain_history(through);
+    assert!(!taken.is_empty(), "there was something to drain");
+
+    let said = kernel
+        .tool("log")
+        .expect("installed")
+        .invoke(
+            &nachalnik::ToolCall::new("c1", "log", json!({})),
+            nachalnik::OutputSink::disconnected(),
+        )
+        .await
+        .expect("it answered")
+        .content
+        .to_text()
+        .into_owned();
+    assert!(said.contains("drained"), "{said}");
+    assert!(
+        said.contains(&format!("{through} record(s) have been through it")),
+        "it says how many went, which is the part a count of zero cannot: {said}"
+    );
+    assert!(
+        !said.contains("nothing has happened"),
+        "an emptied log is not an empty one: {said}"
+    );
+
+    // note: and on a kernel there is no other way to be empty. A fresh one has already recorded
+    // `session.started`, so an empty log with a counter above zero is always a drained one - which
+    // is what makes the old sentence's confident "nothing has been recorded yet" wrong in every
+    // case it could actually be printed in, rather than merely wrong sometimes.
+    let quiet = Kernel::new(Config::default());
+    assert_eq!(quiet.last_seq(), 1, "a kernel records its own beginning");
+    assert_eq!(quiet.history().len(), 1);
+}
+
+/// An item with no beginning here names the right reason for it having none.
+#[tokio::test]
+async fn a_drained_log_blames_the_drain_rather_than_a_snapshot() {
+    let (kernel, _provider, _anchor) =
+        agent(one_turn(vec![call("c1", "log", json!({ "ids": [1] }))]));
+    let item = kernel.push(ContextItem::user("carry on"));
+    assert_eq!(item, nachalnik::ContextId(1));
+    // everything up to and including this item's own `context.added` goes
+    kernel.drain_history(kernel.last_seq());
+    kernel.push(ContextItem::user("and on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]).remove(0);
+    assert!(said.contains("[1] has no `context.added` here"), "{said}");
+    assert!(
+        said.contains("were drained"),
+        "a log that starts late says the records went, not that the context was inherited: {said}"
+    );
+    assert!(
+        !said.contains("resumed from a snapshot"),
+        "and does not offer the wrong cause: {said}"
+    );
+}
+
+/// The edges nobody types on purpose: multi-byte text, a picture, and absurd arguments.
+///
+/// note: `search` trims a long matching line to a window around the match, which is index
+/// arithmetic over text somebody else wrote - so it is held to CJK, to emoji, and to a match at
+/// the very end of a line, where an off-by-one is a panic rather than a wrong answer. A panic in a
+/// tool takes the turn with it.
+#[tokio::test]
+async fn the_edges_of_a_search_and_a_filter_do_not_panic() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "search", "text": "needle", "take": 9 }),
+        ),
+        call("c2", "log", json!({ "take": 99_999_999u64 })),
+        call("c3", "log", json!({ "take": -3 })),
+        call("c4", "log", json!({ "since": 99_999_999u64 })),
+        call("c5", "context", json!({ "action": "search", "text": "" })),
+    ]));
+
+    // a match at the very end of a line long enough to be windowed, in three-byte characters
+    kernel.push(ContextItem::file(
+        "cjk.txt",
+        format!("{}NEEDLE", "日本語テスト ".repeat(40)),
+    ));
+    kernel.push(ContextItem::file("emoji.txt", "🦀🦀🦀 NEEDLE 🦀🦀🦀"));
+    kernel.push(ContextItem::file(
+        "odd.txt",
+        "a [bracket] and a (paren) and a \\ backslash NEEDLE",
+    ));
+    kernel.push(ContextItem::file("empty.txt", ""));
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["context", "log"]);
+    let found = &said[0];
+    assert!(found.contains("3 line(s) say `needle`"), "{found}");
+    // the window kept the match and said it had trimmed the front
+    assert!(found.contains("…"), "{found}");
+    assert!(found.contains("NEEDLE 🦀🦀🦀"), "{found}");
+    assert!(found.contains("backslash NEEDLE"), "{found}");
+
+    // a `take` past the end is the end; a negative one is not a count at all
+    assert!(said[1].contains("Showing"), "{}", said[1]);
+    assert!(said[2].contains("whole number"), "{}", said[2]);
+    // a `since` past the end is a real zero beside a total that is not one
+    assert!(said[3].contains("0 match since:"), "{}", said[3]);
+    assert!(said[4].contains("needs the `text`"), "{}", said[4]);
+}
+
+/// Searching finds a picture by the sentence that stands in for it, and does not read its bytes.
+#[tokio::test]
+async fn a_search_finds_a_blob_by_what_names_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "search", "text": "image/png", "take": 3 }),
+    )]));
+    kernel.push(ContextItem::new(
+        ContextKind::Reference,
+        "user",
+        "pic.png",
+        nachalnik::Content::Blob(Arc::new(nachalnik::Blob::new("image/png", "AAAABBBB"))),
+    ));
+    kernel.push(ContextItem::user("what have I given you?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("1 line(s)"), "{said}");
+    assert!(said.contains("pic.png"), "{said}");
+    // the standing-in sentence, not the payload: nothing here reads a picture
+    assert!(!said.contains("AAAABBBB"), "{said}");
+}
