@@ -160,11 +160,15 @@ impl Tool for Context {
                          everything",
                     ));
                 };
+                let take = match taken(&call.args["take"]) {
+                    Ok(take) => take,
+                    Err(why) => return Ok(ToolOutput::error(why)),
+                };
                 Ok(ToolOutput::new(search(
                     &kernel,
                     text,
                     &ids(&call.args, "ids"),
-                    call.args["take"].as_u64().map(|take| take as usize),
+                    take,
                 )))
             }
             other => Ok(ToolOutput::error(unknown(
@@ -173,6 +177,39 @@ impl Tool for Context {
             ))),
         }
     }
+}
+
+/// How many matching lines a `search` was asked for, or what is wrong with the way it asked.
+///
+/// note: `log` has held its own `take` to this since it was written and `search` read it with a
+/// bare `as_u64`, so the same word meant two things a tool apart. `take: 0` fell through to
+/// `0.min(len)` and printed `the first 0; 1 more match and are not here:` - a heading with a
+/// colon and nothing under it, which is a malformed answer rather than a wrong one. `take: -3`
+/// and `take: "3"` were `None`, which is the summary, which is what leaving `take` out does: the
+/// model asked for lines, was given a count, and nothing said its argument had not been read.
+/// That is the failure `log` names in so many words one file over.
+fn taken(value: &serde_json::Value) -> Result<Option<usize>, String> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    if let Some(take) = value
+        .as_u64()
+        .or_else(|| value.as_str().and_then(|s| s.trim().parse().ok()))
+    {
+        return match take {
+            // not an error, because it is a coherent thing to have asked for and the tool has an
+            // answer to it already: the count and the price, which is what a call with no `take`
+            // gets. Refusing it would spend a turn on a call that meant something
+            0 => Ok(None),
+            take => Ok(Some(take as usize)),
+        };
+    }
+
+    Err(format!(
+        "`take` is a whole number of lines and this one is `{value}`. Nothing was read, rather \
+         than nothing being found: leave it out for the count and the price, which is what \
+         `take: 0` asks for too."
+    ))
 }
 
 /// The context, item by item, or the whole of the named ones.

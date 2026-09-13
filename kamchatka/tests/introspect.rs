@@ -1731,6 +1731,74 @@ async fn search_can_be_held_to_the_items_it_was_given() {
     assert!(said.contains("looking only in 2"), "{said}");
 }
 
+/// `search`'s `take` is read the way `log`'s is, rather than by a bare `as_u64` that swallows it.
+///
+/// note: the same word, two tools apart, meaning two things. `log` has held `take` to a number
+/// since it was written - a word is refused by name, because the wrong answer to give is an empty
+/// result that reads as an empty log - and `search` read it with `as_u64().map(..)`, so everything
+/// that is not a positive integer became `None`, which is the summary, which is what leaving
+/// `take` out does. A model that asked for three lines got a count and nothing saying its argument
+/// had not been read. `take: 0` was worse than swallowed: it reached `0.min(len)` and printed
+/// `the first 0; 1 more match and are not here:` - a heading, a colon, and nothing under it.
+#[tokio::test]
+async fn a_take_a_search_cannot_read_is_refused_rather_than_ignored() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        // a coherent request for no lines, which is the count and the price - what a call with no
+        // `take` gets, and not a heading over an empty list
+        call(
+            "c1",
+            "context",
+            json!({ "action": "search", "text": "landlock", "take": 0 }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "search", "text": "landlock", "take": -3 }),
+        ),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "search", "text": "landlock", "take": "soon" }),
+        ),
+        // a numeric string is the number, which costs nothing and saves a turn - `log`'s rule
+        call(
+            "c4",
+            "context",
+            json!({ "action": "search", "text": "landlock", "take": "1" }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::file("a.md", "Landlock is here"));
+    kernel.push(ContextItem::file("b.md", "and Landlock is here too"));
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["context"]);
+    assert!(said[0].starts_with("2 line(s)"), "{}", said[0]);
+    assert!(
+        said[0].contains("`take` shows that many"),
+        "no lines asked for is the summary: {}",
+        said[0]
+    );
+    assert!(
+        !said[0].contains("the first 0"),
+        "and never a heading with nothing under it: {}",
+        said[0]
+    );
+    for said in &said[1..3] {
+        assert!(
+            said.contains("`take` is a whole number"),
+            "an argument that cannot be read is named, not dropped: {said}"
+        );
+        assert!(
+            said.contains("Nothing was read"),
+            "and says it did nothing, so it cannot be read as a result: {said}"
+        );
+    }
+    assert!(said[3].contains("the first 1"), "{}", said[3]);
+}
+
 /// An `ids` that names nothing is said to name nothing, rather than counted as something looked at.
 ///
 /// note: found by printing what the tool answers. `ids: [99]` reported "0 line(s) ... and 1

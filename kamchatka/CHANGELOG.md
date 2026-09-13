@@ -127,6 +127,16 @@ minor bump may break you.
 
 ### fixed
 
+- **`context: search` read its `take` with a bare `as_u64`, so most of what a model could pass was
+  swallowed.** `log` has held the same argument to a number since it was written, and refuses a
+  word by name because the wrong answer to give is an empty result that reads as an empty log. Its
+  sibling took anything that was not a positive integer as `None` - which is the summary, which is
+  what leaving `take` out does, so a model that asked for three lines got a count with nothing
+  saying its argument had not been read. `take: 0` was worse than swallowed: it reached
+  `0.min(len)` and printed `the first 0; 2 more match and are not here:` - a heading, a colon, and
+  nothing under it. A whole number of lines is now what it takes, `"3"` is `3` the way `log` reads
+  it, `0` is the count and the price, and anything else is named and refused.
+
 - **`context: search` counted an item that is not there as one it had looked at.** Narrowed with
   `ids: [99]` in a session with no item 99, it answered "no line of your context says `landlock` ...
   and 1 item(s) were looked at" - the figure was the length of `ids` rather than the number of items
