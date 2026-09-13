@@ -1585,7 +1585,13 @@ async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
         return;
     }
     let dir = workdir("trim");
-    std::fs::write(dir.join("big.txt"), "OSPREY is a bird.\n".repeat(600)).expect("a file");
+    // note: sized to breach the threshold on the file alone, which it was not. At `repeat(600)`
+    // two reads came to about 5,800 tokens against a 12,288-token limit - 47% of it, under a
+    // threshold of 50% - so whether the compactor fired was decided by how many tokens the
+    // *model's own replies* added on top, and the same model at the same limit passed one run and
+    // failed the next at 47%. What this test is about is what compaction leaves behind, not how
+    // terse a model is; the fixture now carries the context over the line by itself.
+    std::fs::write(dir.join("big.txt"), "OSPREY is a bird.\n".repeat(1200)).expect("a file");
 
     let (mut app, _limits, mut finished) = agent!(&dir);
     app.kernel
@@ -1623,7 +1629,18 @@ async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
     for item in &elided {
         println!("    elided [{}] {} · {:?}", item.id, item.label, item.note);
     }
-    assert!(!elided.is_empty(), "the compactor fired");
+    // the figures, because the way this fails is by not reaching the threshold at all - and
+    // "the compactor fired" on its own sends the reader to the compactor rather than to the
+    // limit the run was given
+    assert!(
+        !elided.is_empty(),
+        "the compactor did not fire: the context reached {} of {:?} ({:.0}%) against a threshold \
+         of 50%, so there was nothing for it to do. That is this run's sizing rather than a fault \
+         in compaction - KAMCHATKA_CONTEXT_LIMIT has to be small enough for the fixture to breach",
+        budget.used(),
+        budget.limit,
+        budget.fraction_used().unwrap_or_default() * 100.0,
+    );
     assert!(
         elided
             .iter()
