@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 use crate::{app::text::thousands, tools::Limits};
 
-use super::{Pinned, Reach, action, ids, protected, unknown};
+use super::{Pinned, Reach, action, ids, if_offered, protected, unknown};
 
 /// Manages the context: prunes it, rewrites an item, writes something down, walks its own
 /// changes back.
@@ -374,11 +374,24 @@ impl Amend {
             // seventeen tool results, said nothing in its own turns, elided all seventeen at once,
             // and then answered all ten questions from nothing - confidently, and wrong on every
             // one. The tool told it what it had saved and nothing about what it had just spent
+            // note: what this used to say was "what those items said survives only in what you
+            // have already said", which was true when it was written and stopped being true the
+            // day `context: search` arrived - an elided item keeps every byte and only projects
+            // as a marker. A live model read the old sentence and told its user the content was
+            // gone and no longer retrievable. The warning is still worth making; the claim under
+            // it was not, and a warning that overstates its case is how a tool teaches a model
+            // something false about its own context.
             if !wrote_anything_down(kernel) {
                 out.push_str(
-                    "you have no notes: what those items said survives only in what you have \
-                     already said. `note` writes a finding down where pruning cannot reach it.\n",
+                    "you have no notes: nothing you are carrying says what those items said.\n",
                 );
+                out.push_str(&if_offered(kernel, "context", || {
+                    "The text is still in them - `search` reads a line of one without putting it \
+                     back, and `restore` returns the whole - but a finding you have to go and look \
+                     for again is not one you have.\n"
+                        .to_owned()
+                }));
+                out.push_str("`note` writes a finding down where pruning cannot reach it.\n");
             }
         }
         if !changed.unchanged.is_empty() {

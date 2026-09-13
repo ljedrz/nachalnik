@@ -164,6 +164,16 @@ minor bump may break you.
   already counts items, not a warning, and the model is still free to ignore it. Twice more, it
   did.
 
+- **Adding `search` made an older warning false, and a model repeated it.** When a session hides
+  items having written nothing down, `amend` warns it - and the warning said "what those items said
+  survives only in what you have already said". That was true the day it was written and stopped
+  being true the day `context: search` arrived: an elided item keeps every byte and only *projects*
+  as a marker. A live session read the sentence and told its user the content was "gone" and "no
+  longer retrievable", which is the opposite of this program's central promise. The warning is
+  still worth making - a finding you have to go and look for again is not one you are carrying -
+  but it now says that rather than claiming destruction. Asked the same question afterwards, the
+  model answered "is it still recoverable? Yes", and named `restore`, `search` and `note`.
+
 - **A fork says whether it actually kept anything from the copy.** It reported "on 9 of your
   items", which cannot be read as "on all of them" - so a session that asked a copy what it would
   conclude *"without knowing my earlier statement"*, passed no `without` at all, and got the same

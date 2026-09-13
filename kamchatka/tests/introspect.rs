@@ -1259,6 +1259,25 @@ async fn hiding_everything_while_holding_no_notes_says_what_that_costs() {
         "and should name the thing that would have helped: {}",
         said[0]
     );
+    // note: and it does not overstate the case. It used to say the content "survives only in what
+    // you have already said", which was true until `context: search` arrived - an elided item
+    // keeps every byte and projects as a marker. A live model read that and told its user the text
+    // was gone and no longer retrievable.
+    assert!(
+        !said[0].contains("survives only in what you have already said"),
+        "{}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("The text is still in them"),
+        "the warning is about what is not being carried, not about destruction: {}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("`restore` returns the whole"),
+        "{}",
+        said[0]
+    );
     // once it has kept something of its own, the same move is no longer the same move
     assert!(
         !said[2].contains("no notes"),
