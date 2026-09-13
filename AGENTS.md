@@ -299,6 +299,25 @@ deliberately, because borrowing it once sent an OpenRouter key to
 So a whole-suite run against an OpenAI-compatible endpoint leaves the ordered-blocks path
 unexercised, which is worth knowing before reading the count as a clean sweep.
 
+**`kamchatka`'s live suite sends requests to Google's shim unless told otherwise**, and that is a
+default rather than a detection: `base_url()` in `tests/live.rs` falls back to
+`generativelanguage.googleapis.com/v1beta/openai`. So a run with only `KAMCHATKA_API_KEY` set posts
+whatever key that is to Google, which answers `400 ... Please pass a valid API key`, and eighteen
+tests fail about tool calls, budgets and truncation - none of them about the endpoint. Set
+`KAMCHATKA_BASE_URL` explicitly for anything that is not Google. The status line in the failure
+output is what gives it away: it names the host.
+
+Free OpenRouter models are enough for both live suites and cost nothing - measured 2026-09-13,
+`kamchatka`'s 23 passed against `nex-agi/nex-n2.5-mini:free` with
+`KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1` and `KAMCHATKA_CONTEXT_LIMIT=12288`. Two things
+to know before reading a result. The `:free` pool is rate-limited upstream and a model that
+answered an hour ago can return `429` or an idle timeout now, which the runtime reports honestly as
+a provider failure rather than as a test failure. And `nachalnik`'s suite asks a model to *do*
+things - use a tool, keep a secret, be interrupted mid-stream - so a small model fails some of them
+for being small: five failed on one free model and four of those five passed on another, with one
+case failing and then passing on the same model. Attribute a live failure to a model before
+attributing it to the code, and `git diff` the crate to be sure.
+
 **Pointing both halves at Google**, which is one key and covers everything except the `file` part:
 
 ```console
