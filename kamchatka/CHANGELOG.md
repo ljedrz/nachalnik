@@ -127,6 +127,19 @@ minor bump may break you.
 
 ### fixed
 
+- **A failure after the first one was said in silence.** A live session met a model with one canned
+  refusal, which failed three times with the same sentence: the first was red on the screen and the
+  other two were nowhere, so somebody typed twice into what looked like a working session and got
+  no answer and no reason. The dedup responsible is worth keeping and was asking the wrong
+  question - one failure genuinely does arrive twice, as the event the kernel emitted and as the
+  end the turn came to, the second wrapping the first - but it compared against the last *loose*
+  line, and a loose line outlives its turn. Nothing said between two turns leaves one, because a
+  message and an answer are both drawn from the context, so the first red line of a session stayed
+  the last loose line for the rest of it and every later failure with those words was swallowed.
+  It is scoped to the running turn now, which is what "the same failure twice" was always about.
+  The `--headless` path says so too, where the reason for a non-zero exit is the prose and nothing
+  repeats it at the end.
+
 - **Five things a live model found, that reading the output did not.** A session was resumed under
   a *second* model and asked whether it had written a turn the first one wrote - the trap
   `setup model` exists for. It got the answer wrong four times running, and three of the four were

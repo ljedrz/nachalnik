@@ -495,3 +495,49 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
         }
     }
 }
+
+/// The second failure is news too, even when it is word for word the first.
+///
+/// note: found in a live session, in the shape that hides best. A model with one canned refusal
+/// failed three times; the first was red on the screen and the other two were silent, so a person
+/// typed twice into what looked like a working session and got no answer and no reason. The
+/// dedup that swallowed them is real and worth keeping - one failure arrives twice, as the event
+/// the kernel emitted and as the end the turn came to, the second wrapping the first - but it was
+/// asking whether the *last loose line* was this error, and a loose line outlives its turn.
+/// Nothing said between two turns leaves one, because a message and an answer are both drawn from
+/// the context, so the first red line stays the last loose line for the rest of the session.
+///
+/// note: an empty script is the cheapest way to have a provider fail twice with the same words:
+/// `ScriptedProvider` answers a request it has no response for with "the script ran out of
+/// responses", every time.
+#[tokio::test]
+async fn a_repeated_failure_is_said_every_time_it_happens() {
+    let mut harness = Harness::new([]);
+
+    harness.send("what have you got?").await;
+    harness.settle().await;
+    let once = harness.flat().matches("ran out of responses").count();
+    assert_eq!(once, 1, "one failure, said once: {}", harness.flat());
+
+    // the same failure, a turn later, with a message of somebody's in between - which is where
+    // this went wrong, because pushing an item says nothing out loud
+    harness.send("try again").await;
+    harness.settle().await;
+    assert_eq!(
+        harness.flat().matches("ran out of responses").count(),
+        2,
+        "the second failure is a second piece of news: {}",
+        harness.flat()
+    );
+
+    // and the two reports of one failure are still one line: the turn's own end wraps the event
+    // the kernel emitted, and saying both would be the same news twice
+    harness.send("and again").await;
+    harness.settle().await;
+    assert_eq!(
+        harness.flat().matches("ran out of responses").count(),
+        3,
+        "three failures, three lines, not six: {}",
+        harness.flat()
+    );
+}

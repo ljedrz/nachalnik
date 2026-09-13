@@ -512,6 +512,16 @@ pub struct App {
     pub trace_scroll: usize,
     /// Whether a turn is running.
     pub busy: bool,
+    /// The failure already reported for the turn now running, so the same one is not said twice.
+    ///
+    /// note: scoped to a turn, because one failure being reported twice is a fact about a turn -
+    /// the kernel emits the event and then the turn comes to the same end, the second wrapping
+    /// the first. What this replaced compared against the last line in [`App::loose`], which
+    /// outlives every turn: nothing said between two turns goes in there, because a message and
+    /// an answer are both drawn from the context, so the first red line stayed the last loose
+    /// line for the rest of the session and every later failure with the same words was
+    /// swallowed. A model with one canned refusal fails silently from its second refusal on.
+    failed: Option<String>,
     /// Whether a person has just done something the trace has not drawn a line for yet.
     ///
     /// note: private, and set at the two doors a person comes through - `submit`, where a line is
@@ -651,6 +661,7 @@ impl App {
             confinement: Confinement::Unsupported,
             anchor: None,
             pending: Anchor::default(),
+            failed: None,
             loose: Vec::new(),
             trace: VecDeque::new(),
             #[cfg(feature = "tui")]
@@ -734,19 +745,32 @@ impl App {
         self.kernel.push(ContextItem::user(text))
     }
 
-    /// Says an error, unless the last thing said was the same error in a smaller envelope.
+    /// Says an error, unless this turn has already said the same one in a smaller envelope.
     ///
     /// note: one provider failure is reported twice - once as the event the kernel emitted and
     /// once as the outcome the turn came to, the second wrapping the first - and two red lines
     /// saying the same thing is one more than the news warrants; the trace pane has both either
     /// way.
+    ///
+    /// note: within *this turn*, and the distinction is the whole of [`App::failed`]. Asking
+    /// whether the last loose line was this error answers a different question, because a loose
+    /// line outlives the turn that said it: a message and an answer are both drawn from the
+    /// context and neither leaves one, so the first red line of a session stays the last loose
+    /// line until something else is said out loud. A live run against a model with one canned
+    /// refusal failed three times and showed it once - twice in silence, with the person typing
+    /// into what looked like a working session. A failure is news every time it happens.
     fn say_error(&mut self, error: String) {
-        let repeat = self.loose.last().is_some_and(|last| {
-            last.speaker == Speaker::Error && unpadded(&error).contains(&last.text)
-        });
-        if !repeat {
-            self.say(Speaker::Error, error);
+        let said = unpadded(&error).to_owned();
+        if self
+            .failed
+            .as_deref()
+            .is_some_and(|last| said.contains(last))
+        {
+            return;
         }
+
+        self.failed = Some(said);
+        self.say(Speaker::Error, error);
     }
 
     /// Whether something is part-way through arriving.
@@ -1091,6 +1115,7 @@ impl App {
         self.since = Instant::now();
         self.stepping = false;
         self.interrupting = false;
+        self.failed = None;
         let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
         tokio::spawn(async move {
             let outcome = match kernel.turn().await {
@@ -1116,6 +1141,7 @@ impl App {
         self.since = Instant::now();
         self.stepping = true;
         self.interrupting = false;
+        self.failed = None;
         let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
         tokio::spawn(async move {
             let outcome = match kernel.step().await {
