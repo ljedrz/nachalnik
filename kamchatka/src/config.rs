@@ -52,7 +52,7 @@ pub struct Settings {
     pub compact: Option<f64>,
     /// Whether tool calls may run at the same time rather than in the order they were asked for.
     pub parallel: Option<bool>,
-    /// Whether to offer the two tools an agent reads and manages its own context with.
+    /// Whether to offer the tools an agent reads and manages its own context with.
     pub introspect: Option<bool>,
     /// Whether to run the `shell` tool unconfined.
     pub no_sandbox: Option<bool>,

@@ -164,22 +164,23 @@ async fn what_the_screen_shows_of_the_next_request_is_the_next_request() {
 }
 
 #[tokio::test]
-async fn introspect_offers_the_two_tools_and_takes_them_away_again() {
+async fn introspect_offers_the_tools_and_takes_them_away_again() {
     let mut harness = Harness::new([]);
     assert!(harness.app.kernel.tool_ids().is_empty());
     let before = harness.app.undecided();
 
     harness.send("/introspect").await;
-    assert_eq!(harness.app.kernel.tool_ids(), ["amend", "context"]);
+    assert_eq!(harness.app.kernel.tool_ids(), ["amend", "context", "log"]);
     assert!(harness.app.introspect.is_some());
-    // the policy has two more subjects to ask about without being told anything, because the tab
-    // reads what the registered tools declare. Two, not one: looking at your own context and
-    // rewriting it are different questions, which is the whole reason there are two tools
+    // the policy has three more subjects to ask about without being told anything, because the
+    // tab reads what the registered tools declare. Three, not one: reading your own context,
+    // reading the record kept beside it and rewriting either are different questions, which is
+    // the whole reason there is a tool per noun rather than one with a mode argument
     harness.tab(Tab::Permissions);
-    assert_eq!(harness.app.undecided(), before + 2);
+    assert_eq!(harness.app.undecided(), before + 3);
     let screen = harness.screen();
     assert!(
-        screen.contains(&format!("{} more it will ask about", before + 2)),
+        screen.contains(&format!("{} more it will ask about", before + 3)),
         "{screen}"
     );
 

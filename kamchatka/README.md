@@ -698,7 +698,7 @@ the provider's own number has the document inside it. If you want the estimate t
 
 ## 🔎 letting the agent read and manage its own context
 
-`--introspect`, or `/introspect` at any point, offers two more tools. They are off by default,
+`--introspect`, or `/introspect` at any point, offers more tools. They are off by default,
 because a model that can rewrite its own context is a decision rather than a default. There are
 [write-ups](https://ljedrz.github.io/nachalnik/) of three sessions driven from these two tools:
 one where an agent found a false note in its own context and corrected it, one where it took back
@@ -756,6 +756,41 @@ it does reaches this session's context or its log. Forking needed no change to t
 — `Kernel::snapshot` and `Kernel::resume` already *are* that, and leaving an item out is one field
 on a copy of the snapshot.
 
+**`log`** reads the other thing a session has, which is its own record. The context is what the
+agent is carrying; the log sits beside it, costs nothing until something asks, and holds what a
+context cannot — what an item *used* to say, which permissions were answered and how, which tools
+appeared and went away. Called bare it hands back no records at all, only what there is:
+
+```text
+412 records, ~8,900 tokens if you take them all. Nothing here is in your context until you ask for it.
+  context.added         180
+  tool.repaired          96
+  permission.decided     41
+  context.compacted      12
+  context.replaced        3
+
+`take`, `ids`, `since` or `kinds` asks for the records themselves; the last sequence number is 412.
+```
+
+`take`, `ids`, `since` and `kinds` then ask for some of them — and **every answer opens with the
+true total**, not the filtered one:
+
+```text
+412 records, ~8,900 tokens total. 3 match kinds:["context.replaced"], ~90 tokens. Showing 3.
+```
+
+That one rule is what makes the tool safe to hand a model. A short answer is self-describing, so
+truncation cannot read as absence — which matters more here than anywhere else, because the one
+wrong answer a log can give is *nothing happened*. It is why a malformed `since` comes back as
+something to correct rather than as an empty list, and why a filter that genuinely matched nothing
+says so in words and lists the kinds that do exist.
+
+What it will not do is interpret. The records arrive in order, named the way the kernel names them
+and detailed the way the trace pane details them — the same function writes both, so the account a
+model reads and the account you read cannot drift apart. The histogram counts every kind rather
+than flagging an interesting one. `context.replaced 3` sitting in a list of five is a fact, and
+noticing that it is an interesting fact is the model's job, not the tool's.
+
 **`amend`** changes things. `elide`, `exclude`, `archive`, `pin` and `restore` move items between
 the same states the <kbd>space</kbd> key does, and each action is named for the state it leaves —
 which is the word you will read back on the item afterwards:
@@ -783,11 +818,16 @@ Three things are refused outright, with the refusal handed back to the model: a 
 (a pin is a promise, and it was not made to the model), a **system instruction**, and the
 assistant turn it is currently speaking in. It may unpin what it pinned itself, and nothing else.
 
-They are two tools rather than one with a mode argument, because a tool declares its capabilities
-once for every call it will ever receive. One tool would mean that answering **always** to "may it
-read its own context?" also answered "may it rewrite a tool result?" — a grant that delivers more
-than it implies, which is the shape of thing this program exists not to do. So the permissions tab
-has a row for `context` and a row for `amend`, and you can answer them differently.
+They are a tool per noun rather than one with a mode argument, because a tool declares its
+capabilities once for every call it will ever receive. One tool would mean that answering
+**always** to "may it read its own context?" also answered "may it rewrite a tool result?" — a
+grant that delivers more than it implies, which is the shape of thing this program exists not to
+do. So the permissions tab has a row for `context`, a row for `log` and a row for `amend`, and you
+can answer them differently.
+
+Which also means each of them can be taken *away* separately, mid-session, and that is deliberate
+rather than incidental. An agent whose ability to check the record is revoked half way through a
+run is a thing this program can set up, and a thing worth watching a model in.
 
 ## 🧩 two dialects, and why one of them keeps the order
 
@@ -1160,8 +1200,9 @@ kamchatka [OPTIONS] [MESSAGE]...
       --parallel            run the model's tool calls at the same time
       --gemini              talk to Google's own API rather than an OpenAI-compatible
                             one, so a turn keeps the order it was produced in
-      --introspect          offer the model the two tools that read and manage its own
-                            context; /introspect turns them on and off while it runs
+      --introspect          offer the model the tools that read and manage its own context
+                            and read its own record; /introspect turns them on and off
+                            while it runs
       --headless            drive the session from lines on stdin: the session log to
                             stdout, one JSON record a line, and what the model says to
                             stderr. Implied when stdout is not a terminal
@@ -1234,7 +1275,7 @@ A terminal program whose tests only checked its own state would be testing the h
 at.
 
 The other half is the program, and it is tested without a screen at all: the policy's own
-questions, real commands under a real Landlock ruleset, the two introspection tools through the
+questions, real commands under a real Landlock ruleset, the introspection tools through the
 real loop, a whole session driven by lines, somebody else's MCP server spawned as a child process,
 and the settings file. `cargo test -p kamchatka --no-default-features --features mcp` runs those
 and nothing else — which is also the check that the screen really is optional, since a suite that

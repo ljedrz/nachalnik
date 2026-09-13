@@ -175,9 +175,10 @@ runtime has no opinion about - which of those a *model* may do. A pinned item, a
 instruction and the assistant turn carrying the call in flight are refused, `amend` may unpin only
 what it pinned itself, and `undo` walks that tool's own journal rather than `Kernel::undo`, whose
 stack belongs to the person and whose top during a turn is always the model's own question. There
-are two tools rather than one with a mode argument because a `ToolSpec` declares its capabilities
-once: looking and rewriting have to be separately grantable or the grant delivers more than it
-implies.
+is a tool per noun rather than one with a mode argument because a `ToolSpec` declares its
+capabilities once: reading a context, reading the record beside it and rewriting either have to be
+separately grantable or the grant delivers more than it implies. It is also what makes each of
+them separately *revocable*, which is a session worth recording in its own right.
 
 `nachalnik-eval/src` is the third instance of the same test, and the one that is furthest from
 the runtime's own concerns: `subject.rs` (a `Kernel` plus "ask, and wait for the turn to end"),

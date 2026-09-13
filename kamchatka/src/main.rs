@@ -111,7 +111,8 @@ struct Args {
     #[arg(long)]
     no_sandbox: bool,
 
-    /// Offer the model the two tools that read and change its own context: `introspect` and `amend`.
+    /// Offer the model the tools that read and change its own context: `context`, `log` and
+    /// `amend`.
     #[arg(long)]
     introspect: bool,
     /// Do not write the session out when it ends. It is written to a temporary directory

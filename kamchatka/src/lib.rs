@@ -19,14 +19,15 @@
 //! `/budget` all say a piece of the figure is missing rather than putting a `0` where a number
 //! should be. It sends pictures and draws none: a terminal cell is not a pixel.
 //!
-//! `--introspect`, or `/introspect` at any point, adds two more tools for reading and managing a
-//! context from the inside. [`introspect::Context`] lists what is being carried and what each item
-//! costs,
-//! reports the budget against what the last request really cost, shows the request about to go
-//! out, and answers on a throwaway fork so an answer can be read before it is given; `amend`
-//! elides, excludes, pins and rewrites what is being carried, writes something down that
-//! compaction cannot take, and walks its own changes back. Neither is allowed to touch what a
-//! person pinned. Nothing in the runtime knows about any of this - it is what a tool can already
+//! `--introspect`, or `/introspect` at any point, adds more tools for reading and managing a
+//! session from the inside. [`introspect::Context`] lists what is being carried and what each item
+//! costs, reports the budget against what the last request really cost, shows the request about to
+//! go out, and answers on a throwaway fork so an answer can be read before it is given;
+//! [`introspect::Log`] reads the record kept beside the context - what was added, replaced, elided
+//! or compacted, what was asked permission for and answered - leading with what there is and what
+//! taking it would cost, so a short answer is never mistaken for a quiet session; `amend` elides,
+//! excludes, pins and rewrites what is being carried, writes something down that compaction cannot
+//! take, and walks its own changes back. None of them is allowed to touch what a person pinned. Nothing in the runtime knows about any of this - it is what a tool can already
 //! do with a context that is a list of public values and a request that can be built without
 //! being sent.
 //!

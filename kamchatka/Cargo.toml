@@ -122,7 +122,7 @@ landlock = "0.4"
 
 # some of the suites are the terminal's: they draw a frame and read the characters back, or press a
 # key to get at a verb. The rest - the policy's own questions, real commands under a real ruleset,
-# the two introspection tools through the real loop, and a whole session driven by lines rather
+# the introspection tools through the real loop, and a whole session driven by lines rather
 # than keys - are about the program rather than the screen, so `cargo test --no-default-features`
 # runs them instead of failing to compile them
 [[test]]

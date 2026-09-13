@@ -416,7 +416,7 @@ impl App {
         }
     }
 
-    /// Offers the model the two tools that read and change its own context, or stops offering
+    /// Offers the model the tools that read and change its own context, or stops offering
     /// them.
     ///
     /// note: `add_tool` and `remove_tool`, like `/tools drop` - the registry is live and this is
@@ -429,11 +429,12 @@ impl App {
         match self.introspect.take() {
             Some(_) => {
                 self.kernel.remove_tool("context");
+                self.kernel.remove_tool("log");
                 self.kernel.remove_tool("amend");
                 self.say(
                     Speaker::Note,
-                    "`context` and `amend` are no longer offered; the next request will not mention \
-                     them",
+                    "`context`, `log` and `amend` are no longer offered; the next request will not \
+                     mention them",
                 );
             }
             None => {
@@ -443,9 +444,10 @@ impl App {
                 ));
                 self.say(
                     Speaker::Note,
-                    "`context` and `amend` go into the next request: the model can now read its own \
-                     context, preview what it would say, ask a fork of itself, prune what it is \
-                     carrying and walk its own changes back. It cannot touch anything you pinned",
+                    "`context`, `log` and `amend` go into the next request: the model can now read \
+                     its own context and the record of what happened to it, preview what it would \
+                     say, ask a fork of itself, prune what it is carrying and walk its own changes \
+                     back. It cannot touch anything you pinned",
                 );
             }
         }
@@ -963,7 +965,7 @@ impl App {
     /// Brings a saved session's context back, setting aside whatever is in this one.
     ///
     /// note: not a swap of the kernel. `Kernel::resume` is a constructor, and everything plugged
-    /// into a running one - the provider, the policy, the tools, the two introspection tools'
+    /// into a running one - the provider, the policy, the tools, the introspection tools'
     /// handle, the subscription this screen is drawing from - is wired to *this* kernel; a second
     /// one built here would arrive with none of it. `kamchatka -r` is the swap, and it is a
     /// restart because that is what a swap is.

@@ -458,7 +458,7 @@ pub struct App {
     /// it: on the trace as a line of JSON, and in an undo window that closes.
     versions: BTreeMap<ContextId, Vec<Content>>,
 
-    /// The handle the two introspection tools reach the kernel through, while they are offered.
+    /// The handle the introspection tools reach the kernel through, while they are offered.
     ///
     /// note: it is here rather than in `main` because `/introspect` turns them on and off, and this is
     /// the thing that has to move when it does: they hold a weak handle to it, so dropping it is
@@ -2010,12 +2010,12 @@ impl App {
     /// asked whether item 22 may be elided has to already know what item 22 is. Naming them turns
     /// the question into one that can be answered on what is on the screen.
     ///
-    /// note: only for the two tools this program installs itself, and only because it knows what
+    /// note: only for the tools this program installs itself, and only because it knows what
     /// their arguments mean. `ids` on somebody else's tool is somebody else's vocabulary, and
     /// guessing at it would put a confident description of the wrong thing in front of a decision.
     /// Nothing here reaches the policy: it is the same arguments, read out.
     pub fn about(&self, request: &PermissionRequest) -> Vec<String> {
-        if !matches!(request.tool.as_str(), "context" | "amend") {
+        if !matches!(request.tool.as_str(), "context" | "log" | "amend") {
             return Vec::new();
         }
 

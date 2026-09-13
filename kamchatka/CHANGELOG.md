@@ -7,6 +7,52 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`log`, a third introspection tool: the session's own record, read from the inside.** The
+  context is what the agent is carrying and goes out with every request; the log sits beside it,
+  costs nothing until something asks for it, and holds what a context cannot - what an item *used*
+  to say, which permissions were asked for and how they were answered, which tools appeared and
+  went away. Nothing anywhere let an agent read that, so a model asked what had happened to it had
+  no way to do anything but reconstruct an answer from what it was still carrying.
+
+  **Every answer opens with the true total**, and that one rule is the whole of what makes it safe
+  to hand a model rather than a way to spend a context window by accident. It is `budget` applied
+  to the log: price it before you carry it. A bare call hands back no records at all - how many
+  there are, of what kinds, and what taking them would cost - and `take`, `ids`, `since` and
+  `kinds` ask for some of them, against a header that states what exists rather than what matched.
+  So a short answer is self-describing, and truncation cannot read as absence. That matters more
+  here than anywhere else in this program, because the one wrong answer a log can give is *nothing
+  happened*.
+
+  Two consequences follow from the same rule and both are in the tests. A malformed `since` or
+  `take` comes back as something to correct rather than as an empty list - the schema is
+  descriptive, the kernel validates nothing against it, and an empty answer to a bad filter reads
+  exactly like an empty session. And a filter that genuinely matched nothing says so in words, and
+  lists the kinds this session does hold, because a filter matching nothing is usually one spelled
+  for a different session.
+
+  **Raw rather than digested.** Records come back in order, named the way the kernel names them and
+  detailed by the same function that writes the trace pane - so the account a model reads and the
+  account a person reads cannot drift apart. There is no sentence about what any of it means and no
+  banner on the interesting one: the histogram counts every kind, and `context.replaced 3` in a
+  list of five is a fact rather than a flag. Noticing that it is an interesting fact is the model's
+  job. The alternative - a tool that hides a cheap honest fact to keep a reading interesting - is
+  the wrong trade for something people use for real.
+
+  `whole` is the one concession, and it is the word `context: look` already uses for the same
+  trade: a replacement is shown as its first line, with the size of the rest and how to ask for it,
+  because a first line that does not admit to being one is the shape of thing these tools exist not
+  to produce.
+
+  It declares `Capability::Custom("log")`, so it is separately grantable - and separately
+  revocable, which is not a side effect to design away: a session whose agent loses the ability to
+  check the record half way through is a thing worth being able to set up. Its output limit is
+  32,000 bytes, matching `context`, and it is a backstop rather than the mechanism.
+
+  **No change to the runtime.** `Kernel::with_history` was already there, the mirror of
+  `with_context`, and the tool reads the log through it without copying a record.
+
 ### changed
 
 - **`introspect` is called `context`.** The tool id, the capability it declares and the struct

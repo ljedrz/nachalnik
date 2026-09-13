@@ -1,5 +1,5 @@
-//! Two tools that let an agent inspect and manage its own context: one that reads it, one that
-//! changes it.
+//! The tools an agent inspects and manages its own session with: one that reads its context, one
+//! that reads the record kept beside it, and one that changes either.
 //!
 //! note: Everything here is ordinary user code, like the rest of `tools.rs`, and none of it
 //! needed a line added to the runtime. What the runtime has is a context that is a list of public
@@ -9,12 +9,17 @@
 //! surface. What these two add is the part the kernel has no opinion about: which of it a *model*
 //! may do.
 //!
-//! note: Two tools rather than one with an `action` argument, because a [`nachalnik::ToolSpec`]
-//! declares its capabilities once for every call it will ever receive. One tool would mean that
-//! answering *always* to "may it look at its own context?" also answered "may it rewrite a tool
-//! result?" - a grant that delivers considerably more than it implies, which is the shape of thing
-//! this program exists not to do. So [`Context`] looks and [`Amend`] changes, they declare
-//! different capabilities, and the permissions tab has a row for each.
+//! note: a tool per noun rather than one with an `action` argument, because a
+//! [`nachalnik::ToolSpec`] declares its capabilities once for every call it will ever receive. One
+//! tool would mean that answering *always* to "may it look at its own context?" also answered "may
+//! it rewrite a tool result?" - a grant that delivers considerably more than it implies, which is
+//! the shape of thing this program exists not to do. So [`Context`] reads the context, [`Log`]
+//! reads the record beside it and [`Amend`] changes either; they declare different capabilities,
+//! and the permissions tab has a row for each.
+//!
+//! note: which also makes each of them separately *revocable*, and that is not a side effect worth
+//! designing away. A session in which the agent's ability to check the record is taken back
+//! half way through is a thing this program can do, and a thing worth watching a model in.
 //!
 //! note: What [`Amend`] will not do is undo a person's decisions. A pinned item, a system
 //! instruction, and the assistant turn carrying the call being executed are all refused, with the
@@ -33,10 +38,11 @@ use crate::tools::Limits;
 
 mod amend;
 mod context;
+mod log;
 
-pub use crate::introspect::{amend::Amend, context::Context};
+pub use crate::introspect::{amend::Amend, context::Context, log::Log};
 
-/// Registers both tools, and returns the handle that keeps their reach into the kernel alive.
+/// Registers the tools, and returns the handle that keeps their reach into the kernel alive.
 ///
 /// note: the return value is load-bearing rather than informational, and dropping it is how the
 /// tools are switched off: they hold a [`Weak`] to it, and a tool that cannot upgrade its weak
@@ -47,7 +53,7 @@ pub use crate::introspect::{amend::Amend, context::Context};
 pub fn install(kernel: &Kernel, limits: Limits) -> Arc<Kernel> {
     let anchor = Arc::new(kernel.clone());
     let reach = Reach(Arc::downgrade(&anchor));
-    // shared, because the two tools are one agent's hands: what `amend` pinned is what
+    // shared, because these tools are one agent's hands: what `amend` pinned is what
     // `context` should report as the agent's own to unpin, and a second set would have them
     // disagreeing about a promise
     let pinned = Arc::new(Mutex::new(BTreeSet::new()));
@@ -57,6 +63,7 @@ pub fn install(kernel: &Kernel, limits: Limits) -> Arc<Kernel> {
         pinned.clone(),
         limits.clone(),
     )));
+    kernel.add_tool(Arc::new(Log::new(reach.clone(), limits.clone())));
     kernel.add_tool(Arc::new(Amend::new(reach, pinned, limits)));
 
     anchor

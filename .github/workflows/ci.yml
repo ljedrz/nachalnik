@@ -61,7 +61,7 @@ jobs:
       - name: nachalnik-mcp, no features
         run: cargo check -p nachalnik-mcp --no-default-features --locked
       # `test` rather than `check` for this one, because without `tui` there is a program left to
-      # run: the policy's own questions, real commands under a real ruleset, the two introspection
+      # run: the policy's own questions, real commands under a real ruleset, the introspection
       # tools through the real loop, a whole session driven through an `App` that has no screen,
       # and the settings file. It is the only configuration in which any of that is exercised
       # without one

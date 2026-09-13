@@ -83,7 +83,7 @@ pub struct Setup {
     pub allow: Vec<Subject>,
     /// The same, refused. The strictest of everything consulted wins, so this beats `allow`.
     pub deny: Vec<Subject>,
-    /// Whether to offer the two tools an agent reads and manages its own context with.
+    /// Whether to offer the tools an agent reads and manages its own context with.
     pub introspect: bool,
     /// A system instruction, pinned. The runtime ships none of its own.
     pub system: Option<String>,
@@ -208,7 +208,7 @@ impl Setup {
             }
         }
 
-        // the handle the two tools reach the kernel through, which `App` then holds so that
+        // the handle the tools reach the kernel through, which `App` then holds so that
         // `/introspect` can turn them off again; see `introspect::install` for why it is a weak
         // handle to something out here rather than a kernel the tools hold
         let introspect = self

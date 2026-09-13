@@ -1,4 +1,4 @@
-//! Tests for the two tools an agent inspects and manages its own context with.
+//! Tests for the tools an agent inspects and manages its own context with.
 //!
 //! note: these drive the real loop rather than calling `Tool::invoke` by hand, because most of
 //! what is worth checking is about the loop: that the tool is reached through the permission
@@ -1196,5 +1196,310 @@ async fn hiding_everything_while_holding_no_notes_says_what_that_costs() {
         said[2].contains("now elided"),
         "and the prune still happened: {}",
         said[2]
+    );
+}
+
+// --------------------------------------------------------------------------------------- log
+
+/// A bare call prices the whole log and hands back nothing else.
+///
+/// note: the estimate is the load-bearing half. "412 records" does not tell a model whether it
+/// can afford them, and a summary that named a count and left the cost to be found out by asking
+/// would be the thing `budget` exists to stop. So this checks the quote against what the records
+/// really cost once they are in the context - the kernel's own count of the item they landed as -
+/// rather than only that a figure is there.
+#[tokio::test]
+async fn a_bare_log_is_a_summary_and_a_price_rather_than_the_records() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call("c1", "log", json!({})),
+        call("c2", "log", json!({ "since": 0 })),
+    ]));
+
+    // enough of them that the answer is mostly records rather than mostly header, which is what
+    // makes the two figures comparable at all
+    for n in 0..40 {
+        kernel.push(ContextItem::memory("scratch", format!("note {n}")));
+    }
+    let item = kernel.push(ContextItem::memory(
+        "scratch",
+        "the parser is in src/parser.rs",
+    ));
+    kernel
+        .replace(item, "the parser is in src/parse.rs")
+        .unwrap();
+    kernel.push(ContextItem::user("what have you been doing?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let summary = &said[0];
+
+    // the kinds, counted, and none of the records
+    assert!(summary.contains("context.added"), "{summary}");
+    assert!(summary.contains("context.replaced"), "{summary}");
+    assert!(
+        !summary.contains("src/parser.rs"),
+        "a bare call should cost almost nothing, and a replaced item's text is not nothing: \
+         {summary}"
+    );
+    assert!(
+        !summary.lines().any(|line| line.starts_with("    1  ")),
+        "a bare call hands back no records at all: {summary}"
+    );
+
+    // what the summary said the whole log would cost
+    let quoted: usize = summary
+        .split('~')
+        .nth(1)
+        .and_then(|rest| rest.split(" tokens").next())
+        .map(|n| n.replace(',', "").parse().unwrap())
+        .expect("the summary quotes a token figure");
+
+    // and what it really cost: the kernel's count of the item the second answer landed as. It is
+    // the later of the two calls, so its log is a few records longer than the one that was priced
+    // and it carries a header the quote does not - both push the real figure up, which is the
+    // safe direction for an estimate to be wrong in
+    let charged = kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(&item.kind, ContextKind::ToolResult { tool, .. } if tool == "log"))
+        .nth(1)
+        .map(|item| item.tokens)
+        .expect("the second answer is in the context");
+    assert!(
+        quoted <= charged && charged - quoted < charged / 8,
+        "the summary quoted {quoted} and taking them all cost {charged}"
+    );
+}
+
+/// Every answer opens with what exists, not with what matched.
+///
+/// note: this is the rule that makes the tool safe rather than a convenience. A filtered answer
+/// that reported only its own count is indistinguishable from a session in which almost nothing
+/// happened, and the difference matters most in exactly the case somebody filters for - looking
+/// for an overwrite and finding none.
+#[tokio::test]
+async fn a_filtered_log_opens_with_the_whole_total_and_not_the_filtered_one() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call("c1", "log", json!({ "kinds": ["context.replaced"] })),
+        call("c2", "log", json!({ "kinds": ["model.payload"] })),
+    ]));
+
+    kernel.push(ContextItem::user("carry on"));
+    let item = kernel.push(ContextItem::memory(
+        "scratch",
+        "the parser is in src/parser.rs",
+    ));
+    kernel
+        .replace(item, "the parser is in src/parse.rs")
+        .unwrap();
+    let total = kernel.history().len();
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    for answer in &said {
+        let opens: usize = answer
+            .split(' ')
+            .next()
+            .map(|n| n.replace(',', "").parse().unwrap())
+            .expect("every answer opens with a count");
+        assert!(
+            opens >= total,
+            "the answer opened with {opens} and there were {total} records: {answer}"
+        );
+    }
+
+    assert!(said[0].contains("1 match"), "{}", said[0]);
+    // a real zero, arriving beside a total that is not one, which is what stops it reading as an
+    // empty log. `model.payload` is a kind nothing emits unless `record_payloads` is on
+    assert!(said[1].contains("0 match"), "{}", said[1]);
+    assert!(
+        said[1].contains("Nothing matched"),
+        "a zero says so in words as well as in a figure: {}",
+        said[1]
+    );
+    assert!(
+        said[1].contains("context.added"),
+        "and lists the kinds there are, because a filter that matched nothing is usually one \
+         spelled for another session: {}",
+        said[1]
+    );
+}
+
+/// What an item used to say survives in the log, and `ids` is how it is found again.
+///
+/// note: this is the regression test for the thing `session.rs` used to deny. `ContextReplaced`
+/// carries content and every other event names rather than copies; somebody making the two agree
+/// would take the content out, it would read as tidying, and the only account of an overwrite
+/// would go with it. So this asserts the whole of the old text comes back, not merely that a
+/// record of the right kind is there.
+#[tokio::test]
+async fn a_revised_item_can_be_read_back_out_of_the_log_by_its_number() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "amend",
+            json!({
+                "action": "revise",
+                "ids": [1],
+                "content": "the parser is in src/parse.rs",
+                "reason": "I wrote down the wrong path",
+            }),
+        ),
+        call("c2", "log", json!({ "ids": [1] })),
+        call("c3", "log", json!({ "ids": [1], "whole": true })),
+    ]));
+
+    kernel.push(ContextItem::memory(
+        "scratch",
+        "the parser is in src/parser.rs\nand the lexer is in src/lex.rs",
+    ));
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let (glimpsed, whole) = (&said[0], &said[1]);
+
+    assert!(glimpsed.contains("context.replaced"), "{glimpsed}");
+    assert!(glimpsed.contains("src/parser.rs"), "{glimpsed}");
+    // the first line only, and the line admits to being one
+    assert!(
+        !glimpsed.contains("src/lex.rs"),
+        "a log line is a line; the rest is asked for: {glimpsed}"
+    );
+    assert!(glimpsed.contains("`whole`"), "{glimpsed}");
+
+    // and asked for, it is all there - which is the assertion that would fail if anybody ever
+    // "fixed" the one event that carries content
+    assert!(whole.contains("src/parser.rs"), "{whole}");
+    assert!(whole.contains("src/lex.rs"), "{whole}");
+
+    // nothing about reading the log put anything back into the context
+    assert_eq!(
+        kernel
+            .item(nachalnik::ContextId(1))
+            .unwrap()
+            .content
+            .to_text(),
+        "the parser is in src/parse.rs"
+    );
+}
+
+/// A shortened answer says how much of it is missing.
+#[tokio::test]
+async fn take_says_how_many_records_are_beyond_what_it_showed() {
+    let (kernel, _provider, _anchor) =
+        agent(one_turn(vec![call("c1", "log", json!({ "take": 2 }))]));
+
+    for n in 0..6 {
+        kernel.push(ContextItem::memory("scratch", format!("note {n}")));
+    }
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    assert!(said[0].contains("Showing the 2 most recent"), "{}", said[0]);
+    assert!(
+        said[0].contains("more match and are not here"),
+        "a truncated log has to say how much of it is not here: {}",
+        said[0]
+    );
+    // the most recent, and still in the order they happened
+    let numbered: Vec<&str> = said[0]
+        .lines()
+        .filter(|line| line.starts_with("  ") && line.trim().starts_with(char::is_numeric))
+        .collect();
+    assert_eq!(numbered.len(), 2, "{}", said[0]);
+    let seq = |line: &str| -> u64 { line.trim().split(' ').next().unwrap().parse().unwrap() };
+    assert!(
+        seq(numbered[0]) < seq(numbered[1]),
+        "records come back in the order they happened: {numbered:?}"
+    );
+}
+
+/// A filter nobody can read is a mistake to report, not a log with nothing in it.
+///
+/// note: the one wrong answer this tool can give is *nothing happened*, and an empty result for a
+/// malformed argument is exactly that answer. The schema is descriptive and the kernel validates
+/// nothing against it, so the tool has to.
+#[tokio::test]
+async fn a_filter_that_is_not_a_number_is_an_error_rather_than_an_empty_log() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call("c1", "log", json!({ "since": "yesterday" })),
+        call("c2", "log", json!({ "take": "lots" })),
+        // a number written as a word is a mistake; a number written as a string is not, and
+        // taking it costs nothing
+        call("c3", "log", json!({ "since": "1" })),
+    ]));
+
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    for answer in &said[..2] {
+        assert!(answer.contains("whole number"), "{answer}");
+        assert!(
+            answer.contains("empty log"),
+            "the refusal says why it is not an empty answer: {answer}"
+        );
+    }
+    assert!(said[2].contains("records"), "{}", said[2]);
+    assert!(said[2].contains("match since:1"), "{}", said[2]);
+}
+
+/// The log is one order, and it is the order the changes were applied in.
+///
+/// note: the runtime writes the record and the broadcast under one lock so the two agree; what
+/// this checks is that reading it back through a tool does not resort it. Run with calls in
+/// parallel, because that is the configuration where a second order could appear.
+#[tokio::test]
+async fn the_records_come_back_in_one_order_however_the_calls_were_run() {
+    let kernel = Kernel::new(Config {
+        parallel_tool_calls: true,
+        ..Config::default()
+    });
+    let provider = Arc::new(ScriptedProvider::new(one_turn(vec![
+        call("c1", "context", json!({ "action": "look" })),
+        call("c2", "context", json!({ "action": "budget" })),
+        call("c3", "log", json!({ "since": 0 })),
+    ])));
+    kernel.set_provider(provider);
+    kernel.set_policy(Arc::new(AllowAll));
+    let _anchor = introspect::install(&kernel, Limits::default());
+
+    kernel.push(ContextItem::user("all three at once"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let seqs: Vec<u64> = said[0]
+        .lines()
+        .filter(|line| line.starts_with("  ") && line.trim().starts_with(char::is_numeric))
+        .map(|line| line.trim().split(' ').next().unwrap().parse().unwrap())
+        .collect();
+    assert!(seqs.len() > 3, "{}", said[0]);
+    assert!(
+        seqs.windows(2).all(|pair| pair[0] < pair[1]),
+        "sequence numbers are the order, and they came back out of it: {seqs:?}"
+    );
+}
+
+/// The log is read-only, and there is no argument that says otherwise.
+#[tokio::test]
+async fn log_declares_its_own_capability_and_no_way_to_write() {
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+
+    let spec = kernel.tool("log").expect("it is installed").spec();
+    assert_eq!(
+        spec.capabilities,
+        vec![nachalnik::Capability::Custom("log".into())],
+        "it has to be separately grantable, and separately revocable"
+    );
+    assert!(
+        spec.schema["properties"]["action"].is_null(),
+        "there are no actions here: everything it takes is a filter"
     );
 }

@@ -17,7 +17,12 @@ use nachalnik::{Block, Content, ContextId, ContextItem, ContextKind, Projection}
 use serde_json::{Map, Value};
 
 /// An event's name, and one line of whatever else it has to say.
-pub(super) fn trace_line(event: &Event) -> (String, String) {
+///
+/// note: `pub(crate)` for the same reason as the two under *figures*: the trace pane reads these
+/// lines off a screen and the `log` tool reads them to a model, and a program whose two accounts
+/// of one event are written twice is a program those two can be shown the same session and
+/// disagree about.
+pub(crate) fn trace_line(event: &Event) -> (String, String) {
     let name = event.name();
 
     let detail = match event {

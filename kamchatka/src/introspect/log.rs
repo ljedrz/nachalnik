@@ -1,0 +1,452 @@
+//! The tool that reads the session's own record: what happened, in the order it happened, in the
+//! kernel's words.
+//!
+//! note: the log is not the context and this is the difference the tool exists to make usable. A
+//! context is what the model is carrying and is sent with every request; the log sits beside it,
+//! costs nothing until something asks for it, and holds the things a context cannot - what an item
+//! *used* to say, which permissions were answered and how, which tools appeared and went away.
+//! `context` reads the first, this reads the second, and neither can answer the other's question.
+//!
+//! note: every answer opens with the true total, and that one rule is what makes the tool safe to
+//! give a model. It is [`budget`](super::context) applied to the log: price it before you carry
+//! it. A filtered answer states what exists as well as what matched, so a short reply is
+//! self-describing and truncation cannot read as absence - which matters here more than anywhere
+//! else, because the one wrong answer a log can give is *nothing happened*.
+//!
+//! note: raw rather than digested, deliberately. The records come back in order, named the way
+//! the kernel names them and detailed the way the trace pane details them, with no sentence about
+//! what any of it *means*. The histogram counts every kind rather than flagging an interesting
+//! one: a count is not a flag, and a tool that hid a cheap honest fact to keep a reading
+//! interesting would be the wrong trade for something people use for real.
+
+use std::collections::BTreeMap;
+
+use nachalnik::{
+    BoxError, Capability, Content, ContextId, Event, OutputSink, Record, Tool, ToolCall,
+    ToolOutput, ToolSpec, async_trait,
+};
+use serde_json::json;
+
+use crate::{
+    app::text::{thousands, trace_line},
+    tools::Limits,
+};
+
+use super::Reach;
+
+/// How wide the event-name column is, which is the longest name plus a space.
+const NAMES: usize = 20;
+
+/// Reads the session log: what happened, of what kinds, and what taking it would cost.
+pub struct Log {
+    reach: Reach,
+    limits: Limits,
+}
+
+impl Log {
+    /// Builds one; see [`super::install`], which is the only caller.
+    pub(super) fn new(reach: Reach, limits: Limits) -> Self {
+        Self { reach, limits }
+    }
+}
+
+#[async_trait]
+impl Tool for Log {
+    fn spec(&self) -> ToolSpec {
+        let spec = ToolSpec::new(
+            "log",
+            "reads the session's own record: an append-only log of what happened, kept beside \
+             your context and not part of it. Every item added, replaced, elided, undone or \
+             compacted; every permission asked for and answered; every tool that appeared or went \
+             away. Called bare it says only how many records there are, of what kinds, and what \
+             they would cost you - ask again with `take`, `ids`, `since` or `kinds` to get them. \
+             Every answer opens with the true total, so what you are not being shown is never a \
+             surprise. You cannot write to it. A replacement is the one entry that keeps what the \
+             item said before, because once it falls out of the undo window that text exists \
+             nowhere else.",
+        )
+        .with_schema(json!({
+            "type": "object",
+            "properties": {
+                "take": {
+                    "type": "integer",
+                    "description": "the most recent N of whatever matched; the header still says \
+                                    how many there are",
+                },
+                "ids": {
+                    "type": "array",
+                    "items": { "type": "integer" },
+                    "description": "only the records naming these context items",
+                },
+                "since": {
+                    "type": "integer",
+                    "description": "only the records after this sequence number, which is the \
+                                    first column",
+                },
+                "kinds": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "only these kinds, spelled as the summary spells them",
+                },
+                // note: the same word `context: look` uses for the same trade, because it is the
+                // same trade. Without it a replacement is shown as its first line; with it the
+                // whole of what the item said arrives in your context and costs what it costs
+                "whole": {
+                    "type": "boolean",
+                    "description": "print a replaced item's old text entire rather than its first \
+                                    line. It costs what that text costs",
+                },
+            },
+        }))
+        .with_capabilities([Capability::Custom("log".into())]);
+
+        self.limits.apply(spec)
+    }
+
+    async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+        let kernel = self.reach.kernel()?;
+
+        let query = match Query::read(&call.args) {
+            Ok(query) => query,
+            Err(e) => return Ok(ToolOutput::error(e)),
+        };
+        // taken before the session lock rather than inside it: the closure below must not call
+        // back into the kernel, and `counter()` is a call into the kernel
+        let counter = kernel.counter();
+
+        // note: the filtering and the rendering both happen in here, which reads like too much to
+        // do under a lock and is the cheaper of the two shapes. `Kernel::history` would clone
+        // every record to get them out - its own documentation says so and points here for a
+        // search - and formatting is not a call back into the kernel, which is what the warning
+        // on `with_history` is actually about
+        let read = kernel.with_history(|session| {
+            let mut kinds: BTreeMap<&'static str, usize> = BTreeMap::new();
+            let mut every = String::new();
+            let mut matched = String::new();
+            let mut hits = 0;
+
+            for record in session.records() {
+                *kinds.entry(record.event.name()).or_default() += 1;
+                every.push_str(&line(record, false));
+                if query.wants(record) {
+                    hits += 1;
+                    matched.push_str(&line(record, query.whole));
+                }
+            }
+
+            Read {
+                total: session.len(),
+                last_seq: session.last_seq(),
+                kinds,
+                every,
+                matched,
+                hits,
+            }
+        });
+
+        Ok(ToolOutput::new(query.report(&read, &*counter)))
+    }
+}
+
+/// Everything one pass over the log produced, so the pass happens once.
+struct Read {
+    /// How many records there are, whatever matched.
+    total: usize,
+    /// The highest sequence number, which is what `since` is measured against.
+    last_seq: u64,
+    /// How many records of each kind, in the kernel's own names.
+    kinds: BTreeMap<&'static str, usize>,
+    /// Every record, rendered, which is what "if you take them all" is priced from.
+    every: String,
+    /// The ones that matched, rendered.
+    matched: String,
+    /// How many those were.
+    hits: usize,
+}
+
+/// What a call asked for, and how to say it back.
+///
+/// note: the filters are read and validated before the log is touched, so a malformed one comes
+/// back as something to correct rather than as an empty result. That distinction is the whole of
+/// the care this tool needs: an empty result reads as *nothing happened*, and for a session log
+/// that is the one answer that can be wrong in a way nobody catches.
+#[derive(Default)]
+struct Query {
+    take: Option<usize>,
+    ids: Vec<ContextId>,
+    since: Option<u64>,
+    kinds: Vec<String>,
+    whole: bool,
+}
+
+impl Query {
+    /// Reads one, or says what is wrong with the arguments.
+    fn read(args: &serde_json::Value) -> Result<Self, String> {
+        let mut query = Self {
+            whole: args["whole"].as_bool().unwrap_or(false),
+            ..Self::default()
+        };
+
+        if !args["take"].is_null() {
+            let take = counted(&args["take"], "take")?;
+            if take == 0 {
+                return Err(
+                    "`take: 0` asks for no records; leave it out to get the summary, \
+                            which is what a bare call is"
+                        .to_owned(),
+                );
+            }
+            query.take = Some(take as usize);
+        }
+        if !args["since"].is_null() {
+            query.since = Some(counted(&args["since"], "since")?);
+        }
+        if !args["ids"].is_null() {
+            let Some(ids) = args["ids"].as_array() else {
+                return Err(
+                    "`ids` is a list of context item numbers, as `ids: [12, 13]`".to_owned(),
+                );
+            };
+            query.ids = ids
+                .iter()
+                .filter_map(|id| id.as_u64())
+                .map(ContextId)
+                .collect();
+            if query.ids.is_empty() {
+                return Err(
+                    "`ids` named no item numbers; `context` with `look` lists what there \
+                            is"
+                    .to_owned(),
+                );
+            }
+        }
+        if !args["kinds"].is_null() {
+            let Some(kinds) = args["kinds"].as_array() else {
+                return Err(
+                    "`kinds` is a list of names, as `kinds: [\"context.replaced\"]`; a \
+                            bare call lists the ones this session holds"
+                        .to_owned(),
+                );
+            };
+            query.kinds = kinds
+                .iter()
+                .filter_map(|kind| kind.as_str())
+                .map(str::to_owned)
+                .collect();
+            if query.kinds.is_empty() {
+                return Err(
+                    "`kinds` named nothing; a bare call lists the ones this session holds"
+                        .to_owned(),
+                );
+            }
+        }
+
+        Ok(query)
+    }
+
+    /// Whether anything was asked for beyond the summary.
+    fn filtered(&self) -> bool {
+        self.take.is_some()
+            || !self.ids.is_empty()
+            || self.since.is_some()
+            || !self.kinds.is_empty()
+    }
+
+    /// Whether this record is one of the ones asked for.
+    fn wants(&self, record: &Record) -> bool {
+        if let Some(since) = self.since
+            && record.seq <= since
+        {
+            return false;
+        }
+        if !self.kinds.is_empty() && !self.kinds.iter().any(|kind| kind == record.event.name()) {
+            return false;
+        }
+        if !self.ids.is_empty() && !self.ids.iter().any(|id| names(&record.event, *id)) {
+            return false;
+        }
+
+        true
+    }
+
+    /// The filters, spelled the way they were asked for, so the header says what it answered.
+    fn said(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(since) = self.since {
+            parts.push(format!("since:{since}"));
+        }
+        if !self.kinds.is_empty() {
+            parts.push(format!("kinds:{:?}", self.kinds));
+        }
+        if !self.ids.is_empty() {
+            let numbers: Vec<String> = self.ids.iter().map(|id| id.0.to_string()).collect();
+            parts.push(format!("ids:[{}]", numbers.join(", ")));
+        }
+
+        parts.join(" ")
+    }
+
+    /// The answer: the true total first, then whatever was asked for.
+    fn report(&self, read: &Read, counter: &dyn nachalnik::TokenCounter) -> String {
+        let all = counter.count(&Content::text(read.every.clone()));
+
+        if read.total == 0 {
+            return "nothing has been recorded yet; this session's log is empty, which is not the \
+                    same as a log you have not been shown.\n"
+                .to_owned();
+        }
+
+        // the true total, on every answer, whatever was asked for. It is what makes a short reply
+        // self-describing rather than indistinguishable from an empty session
+        let mut out = format!(
+            "{} records, ~{} tokens if you take them all",
+            thousands(read.total),
+            thousands(all),
+        );
+
+        if !self.filtered() {
+            out.push_str(". Nothing here is in your context until you ask for it.\n");
+            out.push_str(&histogram(read));
+            out.push_str(
+                "\n`take`, `ids`, `since` or `kinds` asks for the records themselves; the last \
+                 sequence number is ",
+            );
+            out.push_str(&format!("{}.\n", read.last_seq));
+
+            return out;
+        }
+
+        let matched = counter.count(&Content::text(read.matched.clone()));
+        out.push_str(&format!(
+            " total. {} match {}, ~{} tokens.",
+            thousands(read.hits),
+            self.said(),
+            thousands(matched),
+        ));
+
+        if read.hits == 0 {
+            // a real zero, arriving beside a total that is not zero, which is the shape that
+            // stops it reading as "nothing happened". The kinds go with it because a filter that
+            // matched nothing is usually a filter spelled for a session other than this one
+            out.push_str(" Nothing matched; these are the kinds this session holds:\n");
+            out.push_str(&histogram(read));
+
+            return out;
+        }
+
+        // `take` counts from the end, because a log is read from the end - but the lines stay in
+        // the order they happened, which is the order everything else here reports them in
+        let lines: Vec<&str> = read.matched.lines().collect();
+        let shown = match self.take {
+            Some(take) => take.min(lines.len()),
+            None => lines.len(),
+        };
+        let beyond = lines.len() - shown;
+        match beyond {
+            0 => out.push_str(&format!(" Showing {}.\n\n", thousands(shown))),
+            // said as a figure rather than implied by the count, because the thing a truncated
+            // log has to say is how much of it is not here
+            more => out.push_str(&format!(
+                " Showing the {} most recent; {} more match and are not here.\n\n",
+                thousands(shown),
+                thousands(more),
+            )),
+        }
+        out.push_str(&lines[beyond..].join("\n"));
+        out.push('\n');
+
+        out
+    }
+}
+
+/// A count, or what was passed where one belonged.
+///
+/// note: a numeric string is taken as the number, which costs nothing and saves a turn. A word is
+/// not, because a word here is a mistake worth reporting rather than one worth guessing at - and
+/// the wrong answer to give is an empty result, which reads as an empty log.
+fn counted(value: &serde_json::Value, name: &str) -> Result<u64, String> {
+    if let Some(n) = value.as_u64() {
+        return Ok(n);
+    }
+    if let Some(n) = value.as_str().and_then(|s| s.trim().parse::<u64>().ok()) {
+        return Ok(n);
+    }
+
+    Err(format!(
+        "`{name}` is a whole number and this one is `{value}`. Nothing was read, rather than \
+         nothing being found: an empty answer here would have read as an empty log."
+    ))
+}
+
+/// How many of each kind, most first.
+fn histogram(read: &Read) -> String {
+    let mut counted: Vec<(&&str, &usize)> = read.kinds.iter().collect();
+    // by count, and by name within a count, so two runs of the same session read the same way
+    counted.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+
+    counted
+        .iter()
+        .map(|(kind, count)| format!("  {kind:<NAMES$} {:>6}\n", thousands(**count)))
+        .collect()
+}
+
+/// One record, as a line: its sequence number, its kind, and what the kind has to say.
+///
+/// note: [`trace_line`] rather than a second renderer, so the words a model reads off the log are
+/// the words a person reads off the trace pane. A program whose two accounts of one event differ
+/// is a program in which the two of them can be shown the same session and disagree about it.
+fn line(record: &Record, whole: bool) -> String {
+    let (name, detail) = trace_line(&record.event);
+    let mut out = format!("{:>5}  {name:<NAMES$}  {detail}", record.seq);
+
+    // the one event carrying content, and the only place this needs a word of its own. Without
+    // `whole` the line says how much is not on it, because a first line that does not admit to
+    // being one is the shape of thing this tool exists not to produce
+    if let Event::ContextReplaced { was, .. } = &record.event {
+        let text = was.to_text();
+        let first = detail.len();
+        match whole {
+            true => out.push_str(&format!("\n       --- what it said, entire ---\n{text}")),
+            false if text.len() > first => out.push_str(&format!(
+                " [{} bytes in all; `whole` for them]",
+                thousands(text.len())
+            )),
+            false => {}
+        }
+    }
+    out.push('\n');
+
+    out
+}
+
+/// Whether an event is about a given context item.
+///
+/// note: the events that name an item are the ones a question about an item is asked of, and they
+/// are the reason `ids` is worth having at all: "what happened to 12?" is a question the context
+/// cannot answer, because the context only holds what 12 says now.
+fn names(event: &Event, id: ContextId) -> bool {
+    match event {
+        Event::ContextAdded { id: at, .. }
+        | Event::ContextChanged { id: at, .. }
+        | Event::ContextReplaced { id: at, .. }
+        | Event::ContextAnnotated { id: at, .. } => *at == id,
+        Event::ContextUndone {
+            removed, changed, ..
+        } => removed.contains(&id) || changed.contains(&id),
+        Event::ContextRedone {
+            restored, changed, ..
+        } => restored.contains(&id) || changed.contains(&id),
+        Event::ToolFinished { item, whole, .. } => *item == id || *whole == Some(id),
+        Event::ModelRequested { items, skipped, .. } => {
+            items.contains(&id) || skipped.iter().any(|left_out| left_out.id == id)
+        }
+        Event::Compacted { report } => {
+            let named = |moved: &[nachalnik::Removed]| moved.iter().any(|one| one.id == id);
+            named(&report.removed)
+                || named(&report.elided)
+                || named(&report.refused)
+                || report.summary.as_ref().is_some_and(|one| one.id == id)
+        }
+        _ => false,
+    }
+}
