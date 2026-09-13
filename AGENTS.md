@@ -315,8 +315,13 @@ answered an hour ago can return `429` or an idle timeout now, which the runtime 
 a provider failure rather than as a test failure. And `nachalnik`'s suite asks a model to *do*
 things - use a tool, keep a secret, be interrupted mid-stream - so a small model fails some of them
 for being small: five failed on one free model and four of those five passed on another, with one
-case failing and then passing on the same model. Attribute a live failure to a model before
-attributing it to the code, and `git diff` the crate to be sure.
+case failing and then passing on the same model. `kamchatka`'s is not exempt either:
+`a_resumed_session_carries_on_and_the_endpoint_accepts_it` plants `LARKSPUR` in a resumed context
+and asks which word the model was told to remember, and the shared system prompt two hundred lines
+away plants `APRICOT` - so a model that picks the wrong one of two plausible words fails a test
+about *projection*. It passed and failed three times running on the same model and the same commit.
+Attribute a live failure to the model before attributing it to the code: re-run it, run it on a
+second model, and `git worktree add` the last tag and run it there before believing anything.
 
 **Pointing both halves at Google**, which is one key and covers everything except the `file` part:
 
