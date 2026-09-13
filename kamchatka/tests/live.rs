@@ -1116,7 +1116,7 @@ async fn agent(
     Some((app, limits, finished))
 }
 
-/// The same, with `introspect` and `amend` offered as well.
+/// The same, with the introspection tools offered as well.
 async fn introspecting(
     dir: &std::path::Path,
     ask_about_amend: bool,

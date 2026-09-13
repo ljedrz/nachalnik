@@ -111,7 +111,7 @@ impl Tool for Log {
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         let kernel = self.reach.kernel()?;
 
-        let query = match Query::read(&call.args) {
+        let query = match Query::read(&kernel, &call.args) {
             Ok(query) => query,
             Err(e) => return Ok(ToolOutput::error(e)),
         };
@@ -208,7 +208,7 @@ const TAKES: [&str; 5] = ["take", "ids", "since", "kinds", "whole"];
 
 impl Query {
     /// Reads one, or says what is wrong with the arguments.
-    fn read(args: &serde_json::Value) -> Result<Self, String> {
+    fn read(kernel: &Kernel, args: &serde_json::Value) -> Result<Self, String> {
         // note: an argument nobody reads is the same failure as a filter nobody can parse, one
         // step earlier: the call comes back looking like a bare call, which is a real answer, so
         // nothing says it did not do what was asked. A live session called `log {action: "look"}`,
@@ -237,10 +237,29 @@ impl Query {
                         .join(", "),
                 );
                 if unknown.contains(&"action") {
-                    why.push_str(
-                        " There are no actions here: `context`, `setup` and `amend` have them and \
-                         this does not. A bare call is the summary.",
-                    );
+                    // the siblings by name only where the session still has them, for the reason
+                    // `if_offered` exists: a sentence that says `setup` has actions, in a run
+                    // where `/tools drop setup` has already happened, is naming something to try
+                    // that is not there
+                    let siblings: Vec<&str> = ["context", "setup", "amend"]
+                        .into_iter()
+                        .filter(|tool| kernel.tool(tool).is_some())
+                        .collect();
+                    why.push_str(&match siblings.as_slice() {
+                        [] => " There are no actions here; a bare call is the summary.".to_owned(),
+                        [one] => format!(
+                            " There are no actions here: `{one}` has them and this does not. A \
+                             bare call is the summary."
+                        ),
+                        [rest @ .., last] => format!(
+                            " There are no actions here: {} and `{last}` have them and this does \
+                             not. A bare call is the summary.",
+                            rest.iter()
+                                .map(|tool| format!("`{tool}`"))
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        ),
+                    });
                 }
 
                 return Err(why);

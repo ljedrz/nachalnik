@@ -73,7 +73,7 @@ fn answered(kernel: &Kernel) -> String {
         .expect("the turn recorded no tool result")
 }
 
-/// Every tool result, oldest first.
+/// Every `context` or `amend` result, oldest first; `answers_from` takes the other two.
 fn all_answers(kernel: &Kernel) -> Vec<String> {
     answers_from(kernel, &["context", "amend"])
 }
@@ -2118,6 +2118,34 @@ async fn an_argument_log_does_not_take_is_refused_rather_than_ignored() {
     // a real filter beside an unreadable one is still refused, rather than half-honoured
     assert!(said[1].contains("does not take `limit`"), "{}", said[1]);
     assert!(!said[1].contains("match"), "{}", said[1]);
+    // and the siblings it points at are named, because that is what unmakes the mistake
+    for tool in ["`context`", "`setup`", "`amend`"] {
+        assert!(said[0].contains(tool), "{tool} is not named: {}", said[0]);
+    }
+
+    // the same sentence in a session that no longer has one of them. `if_offered`'s rule: name
+    // only what this session can reach, because everything named in an answer reads as something
+    // to try - and a fixed list of siblings is the one shape that cannot follow it
+    kernel.remove_tool("setup");
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c3",
+        "log",
+        json!({ "action": "look" }),
+    )]))));
+    kernel.push(ContextItem::user("again"));
+    kernel.turn().await.expect("the second turn failed");
+
+    let after = answers_from(&kernel, &["log"]);
+    assert!(
+        !after[2].contains("`setup`"),
+        "an answer that names a tool the session does not have is advice nobody can take: {}",
+        after[2]
+    );
+    // and the rest of the sentence survives losing one of its subjects
+    assert!(after[2].contains("no actions here"), "{}", after[2]);
+    for tool in ["`context`", "`amend`"] {
+        assert!(after[2].contains(tool), "{tool} is not named: {}", after[2]);
+    }
 }
 
 /// An item with no beginning in this log is said to have none, which is what `ids` really asks.

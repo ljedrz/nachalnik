@@ -170,11 +170,19 @@ async fn introspect_offers_the_tools_and_takes_them_away_again() {
     let before = harness.app.undecided();
 
     harness.send("/introspect").await;
-    assert_eq!(
-        harness.app.kernel.tool_ids(),
-        ["amend", "context", "log", "setup"]
-    );
+    let offered = harness.app.kernel.tool_ids();
+    assert_eq!(offered, ["amend", "context", "log", "setup"]);
     assert!(harness.app.introspect.is_some());
+    // and the announcement names every one of them. `setup` arrived and this sentence did not
+    // change, so a session was told it had three tools while holding four - the same shape of
+    // wrong as an answer naming a tool that is gone, and nothing failed
+    let screen = harness.screen();
+    for tool in &offered {
+        assert!(
+            screen.contains(&format!("`{tool}`")),
+            "the announcement does not name `{tool}`: {screen}"
+        );
+    }
     // the policy has four more subjects to ask about without being told anything, because the tab
     // reads what the registered tools declare. Four, not one: reading your own context, reading
     // the record kept beside it, reading what the session is running with and rewriting any of it
@@ -193,6 +201,13 @@ async fn introspect_offers_the_tools_and_takes_them_away_again() {
     assert!(harness.app.kernel.tool_ids().is_empty());
     // and the handle they reached the kernel through has gone with them
     assert!(harness.app.introspect.is_none());
+    let screen = harness.screen();
+    for tool in &offered {
+        assert!(
+            screen.contains(&format!("`{tool}`")),
+            "the withdrawal does not name `{tool}`: {screen}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -439,9 +454,9 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             "{} says nothing",
             spec.id
         );
-        // long enough to be useful, short enough to be read: the two that manage a context are
-        // five actions each and earn their length; a file tool that needed this much would be
-        // describing something it should not be doing
+        // long enough to be useful, short enough to be read: the ones that read and manage a
+        // context are six and nine actions and earn their length; a file tool that needed this
+        // much would be describing something it should not be doing
         assert!(
             spec.description.len() < 1_500,
             "{} is {} chars",

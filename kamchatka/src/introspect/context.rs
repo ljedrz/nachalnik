@@ -6,7 +6,7 @@
 //! is introspection too, and would have had to be called something that did not say so. The id is
 //! the noun now, which leaves the family its word and gives each tool the thing it is about.
 //!
-//! note: five actions, none of which changes anything, which is why they are one tool and why the
+//! note: six actions, none of which changes anything, which is why they are one tool and why the
 //! capability they declare is its own. `draft` and `fork` do ask the model, so this is not free -
 //! only harmless. The tool that changes things is next door in `amend`, and the two are separately
 //! grantable on purpose.
@@ -31,7 +31,7 @@ const GLIMPSE: usize = 48;
 
 /// Reads the context, the budget, the request about to be sent, and the answer that would follow.
 ///
-/// note: none of the five actions changes anything, which is why they are together and why the
+/// note: none of the six actions changes anything, which is why they are together and why the
 /// capability they declare is its own. `draft` and `fork` do spend tokens - they ask the model -
 /// so this is not free, only harmless.
 pub struct Context {

@@ -1,12 +1,13 @@
 //! The tools an agent inspects and manages its own session with: one that reads its context, one
-//! that reads the record kept beside it, and one that changes either.
+//! that reads the record kept beside it, one that reads what the session is running with, and one
+//! that changes the first of them.
 //!
 //! note: Everything here is ordinary user code, like the rest of `tools.rs`, and none of it
 //! needed a line added to the runtime. What the runtime has is a context that is a list of public
 //! values, a request that can be built without being sent, and a session that can be snapshotted
 //! and resumed - and a tool is allowed to call all of it. That is the whole trick: introspection
 //! is not a feature of the kernel, it is what a tool can already do with the kernel's ordinary
-//! surface. What these two add is the part the kernel has no opinion about: which of it a *model*
+//! surface. What they add is the part the kernel has no opinion about: which of it a *model*
 //! may do.
 //!
 //! note: a tool per noun rather than one with an `action` argument, because a
@@ -14,8 +15,9 @@
 //! tool would mean that answering *always* to "may it look at its own context?" also answered "may
 //! it rewrite a tool result?" - a grant that delivers considerably more than it implies, which is
 //! the shape of thing this program exists not to do. So [`Context`] reads the context, [`Log`]
-//! reads the record beside it and [`Amend`] changes either; they declare different capabilities,
-//! and the permissions tab has a row for each.
+//! reads the record beside it, [`Setup`] reads what the session is running with and [`Amend`]
+//! changes the context; they declare different capabilities, and the permissions tab has a row
+//! for each.
 //!
 //! note: which also makes each of them separately *revocable*, and that is not a side effect worth
 //! designing away. A session in which the agent's ability to check the record is taken back

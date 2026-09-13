@@ -57,7 +57,8 @@ minor bump may break you.
   argument for all of this; the alternative is a call that appears to have hung.
 
   It declares `Capability::Custom("setup")`, has an output limit of 32,000 bytes, and costs 255
-  tokens of spec. The four together come to 1,830, which is 4.6% of a 40,000-token session.
+  tokens of spec. The four together come to 1,846 - `amend` 682, `context` 574, `log` 335, `setup`
+  255 - which is 4.6% of a 40,000-token session.
 
 - **`context: search` reaches the archive, which was write-only from the agent's side.** An
   archived item is kept in full and never sent, and the only way to see inside one was to read it
@@ -187,7 +188,9 @@ minor bump may break you.
   fell back on **excluding the item from its own live session** to simulate the copy, then reported
   that as a fork. `context`'s description now says its actions are actions of that tool rather than
   tools; `amend`'s already did. With both changes the same prompt produced `context look` followed
-  by `fork` with `without: [1]` on the first attempt.
+  by `fork` with `without: [1]` on the first attempt. The sentence costs 11 tokens - `context` goes
+  from 563 to 574 - and its first draft came to 1,519 characters against the 1,500 the screen test
+  holds every description to, which is that guard earning its place for the second time this week.
 
 - **A drained log said nothing had happened.** `Kernel::drain_history` is the supported way to
   stop a long session growing forever: it takes the records out and hands them to the caller to
@@ -237,6 +240,31 @@ minor bump may break you.
   note says why: a row for a `.aws` rule nobody has thought about is not information. They are
   counted and named on one line, because standing silently for eleven rules would be a different
   kind of dishonest.
+
+- **`/introspect` said there were three tools while it was handing over four.** `setup` was
+  installed, removed, permissioned and limited along with the rest, and the only thing that never
+  learned about it was the sentence announcing them: "`context`, `log` and `amend` go into the next
+  request". The `--introspect` flag's own help said the same, so the two places a person is told
+  what they have just turned on were the two places that had it wrong. Both name all four now, and
+  the screen test that watches the registry now reads the announcement beside it - it asserts that
+  every tool `install` registers is named in what the screen says, which is the check that would
+  have caught this when `setup` landed.
+
+- **`log`'s "there are no actions here" named its siblings from a fixed list.** The sentence that
+  unmakes a `log {action: "look"}` points at the tools that do take an `action`, and it named
+  `context`, `setup` and `amend` whether or not the session still had them - which is precisely the
+  case `if_offered` was added for one commit earlier. It reads the registry now, and says the two
+  that are left when one is dropped.
+
+- **Prose that four changes in a row had made false.** `context` grew a sixth action and three
+  notes went on saying it had five; the module note for the family described three tools and a
+  handle; the crate's own doc had `amend` unlinked and mid-paragraph where `setup` had been spliced
+  in, and did not mention `search` at all. The README quoted a `fork` reply and a filtered `log`
+  header that both predate the commits that changed them, and `examples/recorded.rs` told the model
+  "two tools let you do something about that" while granting it four and teaching it `prune`, which
+  is the spelling this program stopped saying. None of it is code, all of it is read - by a person
+  in the README and by a model in the brief - and nothing in a test suite fails when a sentence
+  goes stale.
 
 ### changed
 

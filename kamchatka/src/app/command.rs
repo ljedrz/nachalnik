@@ -416,8 +416,8 @@ impl App {
         }
     }
 
-    /// Offers the model the tools that read and change its own context, or stops offering
-    /// them.
+    /// Offers the model the tools that read its own context, the record kept beside it and what
+    /// the session is running with, and manage the first of them - or stops offering them.
     ///
     /// note: `add_tool` and `remove_tool`, like `/tools drop` - the registry is live and this is
     /// the plainest thing to demonstrate that with. What it also has to move is the handle the
@@ -434,8 +434,8 @@ impl App {
                 self.kernel.remove_tool("amend");
                 self.say(
                     Speaker::Note,
-                    "`context`, `log` and `amend` are no longer offered; the next request will not \
-                     mention them",
+                    "`context`, `log`, `setup` and `amend` are no longer offered; the next request \
+                     will not mention them",
                 );
             }
             None => {
@@ -446,10 +446,11 @@ impl App {
                 ));
                 self.say(
                     Speaker::Note,
-                    "`context`, `log` and `amend` go into the next request: the model can now read \
-                     its own context and the record of what happened to it, preview what it would \
-                     say, ask a fork of itself, prune what it is carrying and walk its own changes \
-                     back. It cannot touch anything you pinned",
+                    "`context`, `log`, `setup` and `amend` go into the next request: the model can \
+                     now read its own context, the record of what happened to it and what the \
+                     session is running with, preview what it would say, ask a fork of itself, \
+                     prune what it is carrying and walk its own changes back. It cannot touch \
+                     anything you pinned",
                 );
             }
         }

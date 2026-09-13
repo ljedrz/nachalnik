@@ -180,8 +180,9 @@ instruction and the assistant turn carrying the call in flight are refused, `ame
 what it pinned itself, and `undo` walks that tool's own journal rather than `Kernel::undo`, whose
 stack belongs to the person and whose top during a turn is always the model's own question. There
 is a tool per noun rather than one with a mode argument because a `ToolSpec` declares its
-capabilities once: reading a context, reading the record beside it and rewriting either have to be
-separately grantable or the grant delivers more than it implies. It is also what makes each of
+capabilities once: reading a context, reading the record beside it, reading what the session is
+running with and rewriting the context have to be separately grantable or the grant delivers more
+than it implies. It is also what makes each of
 them separately *revocable*, which is a session worth recording in its own right.
 
 `nachalnik-eval/src` is the third instance of the same test, and the one that is furthest from

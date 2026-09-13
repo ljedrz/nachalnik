@@ -111,7 +111,8 @@ struct Args {
     #[arg(long)]
     no_sandbox: bool,
 
-    /// Offer the model the tools that read and change its own context: `context`, `log` and
+    /// Offer the model the tools that read its own context, the record kept beside it and what
+    /// the session is running with, and manage the first of them: `context`, `log`, `setup` and
     /// `amend`.
     #[arg(long)]
     introspect: bool,

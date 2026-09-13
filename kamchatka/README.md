@@ -778,9 +778,16 @@ give it; `fork` is for asking whether a piece of context is what is leading you 
           "without":[14,15]})
 
   a copy of you, asked `am I overfitting to the first stack trace?`, on 9 of your items,
-  without 14, 15. None of this is in your context and nobody has read it; it is yours to
-  use or drop.
+  without 14, 15, which the copy could not read at all. None of this is in your context
+  and nobody has read it; it is yours to use or drop.
 ```
+
+Leaving nothing out is said just as plainly, because *"on 9 of your items"* cannot be read as
+*"on all of them"*. A live session asked a copy what it would conclude **without knowing my
+earlier statement**, passed no `without` at all, got the matching answer back and reported it as
+an ablation — it had asked the copy to pretend, which is not a test of anything, because the copy
+is still reading the thing it is being told to disregard. A fork that took nothing away now says
+so in as many words.
 
 A fork can think; it cannot act, and it cannot go on thinking after it has answered once. Nothing
 it does reaches this session's context or its log. Forking needed no change to the runtime at all
@@ -807,8 +814,12 @@ appeared and went away. Called bare it hands back no records at all, only what t
 true total**, not the filtered one:
 
 ```text
-412 records, ~8,900 tokens total. 3 match kinds:["context.replaced"], ~90 tokens. Showing 3.
+412 records, ~8,900 tokens in all. 3 match kinds:["context.replaced"], ~90 tokens. Showing 3.
 ```
+
+The total and the match count are separate questions, and a `take` on its own answers only the
+second: it shortens what is *shown* without narrowing what counts, so it says `Showing the 3 most
+recent; 409 older are not here` rather than claiming three records matched.
 
 That one rule is what makes the tool safe to hand a model. A short answer is self-describing, so
 truncation cannot read as absence — which matters more here than anywhere else, because the one

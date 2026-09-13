@@ -67,7 +67,7 @@ impl Limits {
     /// because everything it says is a confirmation of something the caller just asked for, and a
     /// confirmation that long has gone wrong somewhere else.
     ///
-    /// note: `context` is the one that chafes, because one number covers five actions of very
+    /// note: `context` is the one that chafes, because one number covers six actions of very
     /// different shapes - a context listing and a whole copy of this model's answer. `fork_result`
     /// leads with the answer for that reason, so what a limit takes there is the thinking.
     pub fn new() -> Self {
