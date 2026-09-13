@@ -1063,6 +1063,93 @@ async fn a_class_of_items_can_be_pruned_without_naming_each_one() {
     assert!(answers[1].contains("state:excluded"), "{answers:?}");
 }
 
+/// An item asked into the state it is already in did not move, and is not journalled as having.
+///
+/// note: `StateChange::unchanged` is "already in that state *with that note*", so `pin [2]` on
+/// something already pinned, for a new reason, comes back as `changed` - which is true of the note
+/// and false of the item. The report read it as a move: `1 item(s) are now pinned: 2`, over figures
+/// that had not moved by a token, and it put a step in this tool's journal that `undo` then
+/// described as `2 back to pinned` about an item that was still pinned. Two calls that restated a
+/// pin were two things to walk back and neither walked anything. What actually happened is that
+/// the reason was rewritten, so that is what it says now, and the journal holds the moves.
+#[tokio::test]
+async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "amend",
+            json!({ "action": "pin", "ids": [2], "reason": "keeping this" }),
+        ),
+        // the same state, a new reason: the kernel calls this changed, because the note changed
+        call(
+            "c2",
+            "amend",
+            json!({ "action": "pin", "ids": [2], "reason": "still keeping it" }),
+        ),
+        // and a call that does both at once, which is the shape that has to stay readable
+        call(
+            "c3",
+            "amend",
+            json!({ "action": "pin", "ids": [1, 2], "reason": "both now" }),
+        ),
+        call("c4", "amend", json!({ "action": "undo", "reason": "back" })),
+        call("c5", "amend", json!({ "action": "undo", "reason": "back" })),
+        call("c6", "amend", json!({ "action": "undo", "reason": "back" })),
+    ]));
+
+    kernel.push(ContextItem::user("where is the parser?"));
+    kernel.push(ContextItem::memory(
+        "notes",
+        "the parser is in src/parse.rs",
+    ));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["amend"]);
+    assert!(
+        said[0].starts_with("1 item(s) are now pinned: 2"),
+        "{}",
+        said[0]
+    );
+
+    assert!(
+        said[1].starts_with("0 item(s) are now pinned"),
+        "nothing moved, and the headline is the place that has to say so: {}",
+        said[1]
+    );
+    assert!(
+        said[1].contains("were already pinned and did not move: 2"),
+        "{}",
+        said[1]
+    );
+    assert!(
+        said[1].contains("the reason, which now reads `still keeping it`"),
+        "and what did happen is worth having: {}",
+        said[1]
+    );
+
+    // one of each in one call: the mover is named as moved and the other as standing still
+    assert!(
+        said[2].starts_with("1 item(s) are now pinned: 1"),
+        "{}",
+        said[2]
+    );
+    assert!(
+        said[2].contains("were already pinned and did not move: 2"),
+        "{}",
+        said[2]
+    );
+
+    // and there are two things to walk back, not four: `pin 2` and `pin 1`
+    assert!(said[3].contains("1 back to active"), "{}", said[3]);
+    assert!(said[4].contains("2 back to active"), "{}", said[4]);
+    assert!(
+        said[5].contains("there was nothing of yours to walk back"),
+        "a restatement is not a step in the journal: {}",
+        said[5]
+    );
+}
+
 /// Pinning a note costs the person nothing. The undo stack behind the `u` key is theirs, and a
 /// note written and *then* pinned was a push and a state change - two checkpoints for one thing
 /// the model did, which is the arithmetic `revise` keeps its own account out of the note to avoid.

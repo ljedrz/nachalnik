@@ -353,22 +353,63 @@ impl Amend {
         for id in &changed.changed {
             self.note_pin(*id, state);
         }
-        if !changed.changed.is_empty() {
-            let moved = was
-                .into_iter()
-                .filter(|(id, ..)| changed.changed.contains(id));
-            self.record(Undoing::States(moved.collect()));
+        // note: `StateChange::unchanged` is "already in that state *with that note*", so an item
+        // that was pinned and is being pinned again for a different reason comes back as changed -
+        // which is true of the note and false of the item. The report was reading it as a move:
+        // `pin [2]` on something already pinned said "1 item(s) are now pinned: 2" over figures
+        // that had not moved, and put a step in the journal that `undo` then described as "2 back
+        // to pinned" about an item that is still pinned. What actually happened is that the reason
+        // was rewritten, so that is what it says. `was` is read before the change and already
+        // holds the state each item had, so telling the two apart costs nothing.
+        let (moved, restated): (Vec<_>, Vec<_>) = was
+            .into_iter()
+            .filter(|(id, ..)| changed.changed.contains(id))
+            .partition(|(_, had, _)| *had != state);
+        if !moved.is_empty() {
+            self.record(Undoing::States(moved.clone()));
         }
 
-        let mut out = format!("{} item(s) are now {state}", changed.changed.len());
-        if !changed.changed.is_empty() {
-            out.push_str(&format!(": {}", numbers(&changed.changed)));
+        let numbers_of = |of: &[(ContextId, ContextState, Option<String>)]| {
+            numbers(&of.iter().map(|(id, ..)| *id).collect::<Vec<_>>())
+        };
+        let mut out = format!("{} item(s) are now {state}", moved.len());
+        if !moved.is_empty() {
+            out.push_str(&format!(": {}", numbers_of(&moved)));
         }
         out.push('\n');
+        // everything that did not move, said once and in one place. The kernel splits it in two -
+        // `unchanged` is same state *and* same note, `restated` is same state with a new reason -
+        // and that is a distinction about the record rather than about the item, so it goes in the
+        // clause rather than in a second line of its own
+        let still = [numbers_of(&restated), numbers(&changed.unchanged)];
+        let still: Vec<&str> = still
+            .iter()
+            .map(String::as_str)
+            .filter(|n| !n.is_empty())
+            .collect();
+        if !still.is_empty() {
+            out.push_str(&format!(
+                "{} item(s) were already {state} and did not move: {}",
+                restated.len() + changed.unchanged.len(),
+                still.join(", "),
+            ));
+            out.push_str(&match (restated.is_empty(), changed.unchanged.is_empty()) {
+                (true, _) => "\n".to_owned(),
+                // named only where there is something to tell them from; the reason was rewritten
+                // on the ones the kernel reported as changed, and those are all of them here
+                (false, true) => {
+                    format!(" - what changed is the reason, which now reads `{reason}`\n")
+                }
+                (false, false) => format!(
+                    " - what changed is the reason on {}, which now reads `{reason}`\n",
+                    numbers_of(&restated)
+                ),
+            });
+        }
         // the way back, at the moment it becomes worth knowing. A session that elided twenty-two
         // items spent its next two calls guessing at an `action` called `restore` and then gave
         // up; the reversal is a `state`, and six words here are cheaper than that
-        if !changed.changed.is_empty() && !state.sends_content() {
+        if !moved.is_empty() && !state.sends_content() {
             out.push_str("back: the same ids with `state: \"restore\"`, or `undo` for all of it\n");
             // the failure this closes: a run gathered nineteen thousand tokens of evidence across
             // seventeen tool results, said nothing in its own turns, elided all seventeen at once,
@@ -393,13 +434,6 @@ impl Amend {
                 }));
                 out.push_str("`note` writes a finding down where pruning cannot reach it.\n");
             }
-        }
-        if !changed.unchanged.is_empty() {
-            out.push_str(&format!(
-                "{} were already: {}\n",
-                changed.unchanged.len(),
-                numbers(&changed.unchanged)
-            ));
         }
         for refusal in &refused {
             out.push_str(&format!("refused: {refusal}\n"));

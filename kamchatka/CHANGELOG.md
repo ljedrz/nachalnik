@@ -127,6 +127,16 @@ minor bump may break you.
 
 ### fixed
 
+- **`amend` reported an item asked into the state it was already in as having moved.**
+  `StateChange::unchanged` means "already in that state *with that note*", so pinning something
+  already pinned, for a new reason, comes back as `changed` - which is true of the note and false
+  of the item. The report read that as a move: `1 item(s) are now pinned: 2`, over figures that had
+  not shifted by a token, and it put a step in this tool's journal that `undo` then described as
+  `2 back to pinned` about an item that was still pinned. A model that restated two pins had two
+  things to walk back and neither walked anything. What happened is that the reason was rewritten,
+  which is worth knowing and is now what it says; the journal holds the moves, and the two lines
+  for "did not move" - same note, and new reason - are one line with a clause.
+
 - **`context: search` read its `take` with a bare `as_u64`, so most of what a model could pass was
   swallowed.** `log` has held the same argument to a number since it was written, and refuses a
   word by name because the wrong answer to give is an empty result that reads as an empty log. Its
