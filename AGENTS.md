@@ -293,8 +293,11 @@ where the binary's own flag is `KAMCHATKA_MODEL`, and getting that wrong is quie
 back to its default model, the endpoint refuses a name it does not serve, and eleven tests fail
 about tool calls that never happened rather than about the model being wrong. Two of its tests
 want more than a key: `KAMCHATKA_CONTEXT_LIMIT` small enough for the fixture to breach, since the
-compactor fires on a fraction and a generous limit means it never runs and the test says so
-obscurely (`12288` works; `32768` leaves the context at a third of it), and
+compactor fires on a fraction and a generous limit means it never runs (`12288` works; `32768`
+leaves the context at a third of it). The compaction fixture used to land at 47-49% of `12288`
+against a threshold of 50%, so the model's own verbosity decided it and the same model passed and
+failed on consecutive runs; it is twice the size now and breaches on the file alone, firing at
+74-81%. The test says which it was, so a sizing failure reads as one. Also
 `KAMCHATKA_DOCUMENT_MODEL` for the one that attaches a PDF. The rest want
 `KAMCHATKA_GEMINI_API_KEY`: they drive Google's *native* dialect, where a turn is an order of
 blocks, and they will not borrow `KAMCHATKA_API_KEY` unless the base URL is plausibly Google's -
@@ -311,15 +314,20 @@ tests fail about tool calls, budgets and truncation - none of them about the end
 `KAMCHATKA_BASE_URL` explicitly for anything that is not Google. The status line in the failure
 output is what gives it away: it names the host.
 
-Free OpenRouter models are enough for both live suites and cost nothing - measured 2026-09-13,
-`kamchatka`'s 23 passed against `nex-agi/nex-n2.5-mini:free` with
-`KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1` and `KAMCHATKA_CONTEXT_LIMIT=12288`. Two things
-to know before reading a result. The `:free` pool is rate-limited upstream and a model that
+Free OpenRouter models are enough for both live suites and cost nothing - measured 2026-09-13 with
+`KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1` and `KAMCHATKA_CONTEXT_LIMIT=12288`.
+`kamchatka`'s 23 passed against both `nex-agi/nex-n2.5-mini:free` and
+`nvidia/nemotron-3-super-120b-a12b:free`; `nachalnik`'s 27 passed against the second. Against the
+first, `nachalnik` fails four or five of them and *not the same four or five twice* - which is the
+next paragraph in one sentence. Two things to know before reading a result. The `:free` pool is rate-limited upstream and a model that
 answered an hour ago can return `429` or an idle timeout now, which the runtime reports honestly as
 a provider failure rather than as a test failure. And `nachalnik`'s suite asks a model to *do*
 things - use a tool, keep a secret, be interrupted mid-stream - so a small model fails some of them
 for being small: five failed on one free model and four of those five passed on another, with one
-case failing and then passing on the same model. `kamchatka`'s is not exempt either:
+case failing and then passing on the same model. The list moves between runs of the same model,
+so a failure that reproduces on a *second* model is the one worth reading -
+`an_interrupt_stops_a_stream_that_is_watching` failed on two and turned out to be the test
+pressing its button on the first delta of any kind, which on a reasoning model is the thinking. `kamchatka`'s is not exempt either:
 `a_resumed_session_carries_on_and_the_endpoint_accepts_it` plants `LARKSPUR` in a resumed context
 and asks which word the model was told to remember, and the shared system prompt two hundred lines
 away plants `APRICOT` - so a model that picks the wrong one of two plausible words fails a test
