@@ -171,7 +171,10 @@ turn on the way out one request after recording the order on the way in.
 
 `introspect/` is the second `nachalnik-mcp`: **written with no change to the runtime at all**, and
 worth reading for that reason. Forking a context is `Kernel::snapshot` and `Kernel::resume`;
-previewing a request is `preview_request`; pruning is `set_state`. What it adds is the part the
+previewing a request is `preview_request`; pruning is `set_state`; reading the session's own record
+is `with_history`, which is the mirror of `with_context` and is named for what it holds rather than
+for its argument - so a grep for "session" on the kernel misses it and a design was written calling
+for an accessor that had been there all along. What it adds is the part the
 runtime has no opinion about - which of those a *model* may do. A pinned item, a system
 instruction and the assistant turn carrying the call in flight are refused, `amend` may unpin only
 what it pinned itself, and `undo` walks that tool's own journal rather than `Kernel::undo`, whose
