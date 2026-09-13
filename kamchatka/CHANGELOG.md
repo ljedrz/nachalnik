@@ -9,6 +9,27 @@ minor bump may break you.
 
 ### added
 
+- **`context: search` reaches the archive, which was write-only from the agent's side.** An
+  archived item is kept in full and never sent, and the only way to see inside one was to read it
+  back with `look` - which copies it into the context, so a session that had archived eleven
+  megabytes could not look at any of it without undoing the saving it had just made. `amend` could
+  put things away and bring them back and there was no way to *read* one where it lay.
+
+  It answers with how many lines match, what taking them would cost, and which items they are in;
+  `take` then shows that many of the lines. That is `log`'s rule for `log`'s reason - a search that
+  answered with what it found would be a second way to pay for an item without meaning to, which is
+  the thing the action exists to undo. It never returns the item.
+
+  Case is ignored. A model that searched for `landlock` in a context full of `Landlock` and was
+  told there are no matches has been told something false about itself and has no way to find out,
+  which is the one shape of wrong answer a search must not have; a nil result says what it looked
+  at rather than only that it found nothing, for the same reason.
+
+  An action rather than a tool, because it reads the context and `context` is the tool that reads
+  the context. It costs 107 tokens of spec - `context` goes from 456 to 563 - against a design
+  estimate of about 60, the difference being that an action with two arguments of its own is not
+  an enum entry.
+
 - **`log`, a third introspection tool: the session's own record, read from the inside.** The
   context is what the agent is carrying and goes out with every request; the log sits beside it,
   costs nothing until something asks for it, and holds what a context cannot - what an item *used*

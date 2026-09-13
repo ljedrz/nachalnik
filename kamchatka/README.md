@@ -738,6 +738,29 @@ nothing however active it looks, and offering it as something to give up would b
 buys nothing. Items that are not the agent's to move say so, rather than costing it a refused
 call.
 
+`search` is the one that reaches the archive. An archived item is kept in full and never sent,
+and until now the only way to see inside one was to read it back — which copies it into the
+context, so a session that had put eleven megabytes away could not look at any of it without
+undoing the saving it had just made. That made the archive write-only from the agent's side, which
+is not what *nothing is destroyed* is supposed to mean. Same rule as `log`: the count and the price
+first, the lines on request, never the item.
+
+```text
+⟩ context({"action":"search","text":"landlock"})
+
+  14 line(s) say `landlock`, ~300 tokens if you take them all, in 2 item(s):
+    13  archived    tool_result            9 line(s)  shell: cargo test --workspace…
+    27  active      reference              5 line(s)  src/sandbox.rs
+
+  `take` shows that many of the lines. None of this puts an item into your request: an
+  archived one is still archived, and searching it changed nothing.
+```
+
+Case is ignored, because a model that searched for `landlock` in a context full of `Landlock` and
+was told there were no matches has been told something false about itself, silently — the one
+shape of wrong answer a search must not have. A nil result says what it looked at for the same
+reason.
+
 `draft` and `fork` take a snapshot of the context, resume it as a second kernel with **no tools**,
 ask it once, and hand back only what it said. `draft` is for reading your own answer before you
 give it; `fork` is for asking whether a piece of context is what is leading you astray:

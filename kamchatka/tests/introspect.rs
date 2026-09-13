@@ -1504,3 +1504,129 @@ async fn log_declares_its_own_capability_and_no_way_to_write() {
         "there are no actions here: everything it takes is a filter"
     );
 }
+
+// ------------------------------------------------------------------------------------ search
+
+/// The count and the price come before any line, and the archive is searchable at last.
+///
+/// note: what `look` cannot do. An archived item is kept in full and never sent, and reading one
+/// back copies it into the context - so a session that had put eleven megabytes away could not
+/// look inside any of it without undoing the saving it had just made. This is the read that does
+/// not cost what carrying it costs, and the header is what keeps it that way.
+#[tokio::test]
+async fn search_prices_the_matches_before_it_shows_one_and_reaches_the_archive() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "search", "text": "landlock" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "search", "text": "landlock", "take": 1 }),
+        ),
+    ]));
+
+    let put_away = kernel.push(ContextItem::file(
+        "notes.md",
+        "the sandbox refuses a connect under Landlock\nand has no UDP right at all\nunrelated line",
+    ));
+    kernel.push(ContextItem::user("what did we say about the sandbox?"));
+    kernel.set_state(
+        [put_away],
+        ContextState::Archived,
+        Some("done with it".into()),
+    );
+
+    let before = kernel.budget().used();
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["context"]);
+    let (counted, shown) = (&said[0], &said[1]);
+
+    // the count, the price and where - and not one of the lines
+    assert!(counted.starts_with("1 line(s) say `landlock`"), "{counted}");
+    assert!(counted.contains("tokens if you take them all"), "{counted}");
+    assert!(
+        !counted.contains("refuses a connect"),
+        "a bare search hands back the count, not the lines: {counted}"
+    );
+    // case ignored, and an archived item is searched rather than skipped
+    assert!(counted.contains("archived"), "{counted}");
+
+    // asked for, the line arrives
+    assert!(
+        shown.contains("refuses a connect under Landlock"),
+        "{shown}"
+    );
+
+    // and the item is exactly where it was: searching is not a way to pay for something
+    let item = kernel.item(put_away).expect("still there");
+    assert_eq!(item.state, ContextState::Archived);
+    assert!(
+        kernel.budget().used() > before,
+        "the answers themselves are items and cost what they say"
+    );
+    assert!(
+        !kernel.project().included.contains(&put_away),
+        "what was archived is still out of the request: searching it restored nothing"
+    );
+}
+
+/// A search that finds nothing says what it looked at, rather than only that it found nothing.
+#[tokio::test]
+async fn a_search_with_no_matches_says_what_it_searched() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "search", "text": "seccomp" }),
+        ),
+        call("c2", "context", json!({ "action": "search" })),
+    ]));
+
+    kernel.push(ContextItem::file("notes.md", "Landlock, and nothing else"));
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["context"]);
+    assert!(
+        said[0].contains("no line of your context says `seccomp`"),
+        "{}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("Case was ignored"),
+        "a nil result says how it looked, so it is not read as a fact about the context: {}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("archived and excluded items were searched"),
+        "{}",
+        said[0]
+    );
+    // and a search with nothing to search for is a mistake to correct
+    assert!(said[1].contains("needs the `text`"), "{}", said[1]);
+}
+
+/// Narrowed to some items, it looks only in those and says so.
+#[tokio::test]
+async fn search_can_be_held_to_the_items_it_was_given() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "search", "text": "landlock", "ids": [2] }),
+    )]));
+
+    kernel.push(ContextItem::file("a.md", "Landlock is here"));
+    kernel.push(ContextItem::file("b.md", "and Landlock is here too"));
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.starts_with("1 line(s)"), "{said}");
+    assert!(said.contains("looking only in 2"), "{said}");
+}

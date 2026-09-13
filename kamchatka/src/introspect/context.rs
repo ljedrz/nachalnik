@@ -70,20 +70,34 @@ impl Tool for Context {
              check your answer against your context and fix either. `fork` puts a question to a \
              copy of yourself on a copy of your context, optionally with some items left out - \
              for weighing an approach, or asking whether a piece of context is what is leading \
-             you astray. A fork has no tools: it can think, not act. `amend` is the tool that \
-             changes any of this.",
+             you astray. A fork has no tools: it can think, not act. `search` finds text \
+             anywhere in your context - archived items included, which nothing else here can \
+             read without dragging them back in - and answers with how many lines match and what \
+             they would cost before it shows you one. `amend` is the tool that changes any of \
+             this.",
         )
         .with_schema(json!({
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["look", "budget", "request", "draft", "fork"],
+                    "enum": ["look", "budget", "request", "draft", "fork", "search"],
                 },
                 "ids": {
                     "type": "array",
                     "items": { "type": "integer" },
-                    "description": "look: read these items in full instead of listing all of them",
+                    "description": "look: read these items in full instead of listing all of \
+                                    them; search: look only in these",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "search: what to look for, case ignored",
+                },
+                // note: what leaving it out does is in the tool's own description - the count
+                // and the price first - and saying it twice cost twelve tokens on every request
+                "take": {
+                    "type": "integer",
+                    "description": "search: show this many of the matching lines",
                 },
                 // note: declared, because the tool reads it, the description tells the model to
                 // use it, and `look`'s own last line and the marker in a sampled item both end by
@@ -139,9 +153,23 @@ impl Tool for Context {
                 )
                 .await
             }
+            "search" => {
+                let Some(text) = call.args["text"].as_str().filter(|t| !t.is_empty()) else {
+                    return Ok(ToolOutput::error(
+                        "`search` needs the `text` to look for; `look` is the one that lists \
+                         everything",
+                    ));
+                };
+                Ok(ToolOutput::new(search(
+                    &kernel,
+                    text,
+                    &ids(&call.args, "ids"),
+                    call.args["take"].as_u64().map(|take| take as usize),
+                )))
+            }
             other => Ok(ToolOutput::error(unknown(
                 other,
-                &["look", "budget", "request", "draft", "fork"],
+                &["look", "budget", "request", "draft", "fork", "search"],
             ))),
         }
     }
@@ -334,6 +362,153 @@ fn full(items: &[Arc<ContextItem>], id: ContextId, whole: bool) -> String {
     ));
 
     out
+}
+
+/// Where a piece of text is in the context, and what reading it would cost - the count first.
+///
+/// note: the thing `look` cannot do. An archived item is kept in full and never sent, and the only
+/// way to see inside one was to read it back, which copies it into the context - so a session
+/// carrying eleven megabytes it had put away could not look at any of it without undoing the
+/// saving. That made the archive write-only from the model's side, which is not what "nothing is
+/// destroyed" is supposed to mean.
+///
+/// note: so the rule is `log`'s rule, for the same reason: the count and its price first, the
+/// lines on request, and never the item. A search that answered with what it found would be a
+/// second way to pay for an item without meaning to, which is the thing this action exists to
+/// undo.
+///
+/// note: case is ignored. A model that searched for `landlock` and was told there are no matches
+/// in a context full of `Landlock` has been told something false about itself, and the failure is
+/// silent - which is the one shape of wrong answer a search must not have.
+fn search(kernel: &Kernel, text: &str, only: &[ContextId], take: Option<usize>) -> String {
+    let needle = text.to_lowercase();
+    let items = kernel.items();
+
+    // (item, matching lines), in context order
+    let mut found: Vec<(&Arc<ContextItem>, Vec<String>)> = Vec::new();
+    for item in &items {
+        if !only.is_empty() && !only.contains(&item.id) {
+            continue;
+        }
+        let hay = item.content.to_text();
+        let lines: Vec<String> = hay
+            .lines()
+            .filter(|line| line.to_lowercase().contains(&needle))
+            .map(around(&needle))
+            .collect();
+        if !lines.is_empty() {
+            found.push((item, lines));
+        }
+    }
+
+    let matches: usize = found.iter().map(|(_, lines)| lines.len()).sum();
+    let where_ = match only.is_empty() {
+        true => String::new(),
+        false => format!(
+            " (looking only in {})",
+            only.iter()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    if matches == 0 {
+        return format!(
+            "no line of your context says `{text}`{where_}. Case was ignored, archived and \
+             excluded items were searched, and {} item(s) were looked at.\n",
+            match only.is_empty() {
+                true => items.len(),
+                false => only.len(),
+            },
+        );
+    }
+
+    // rendered before it is priced, because the price is of this and not of an estimate of it
+    let rendered: Vec<String> = found
+        .iter()
+        .flat_map(|(item, lines)| {
+            lines
+                .iter()
+                .map(move |line| format!("  [{}] {}: {line}\n", item.id, item.label))
+        })
+        .collect();
+    let counter = kernel.counter();
+    let cost = counter.count(&nachalnik::Content::text(rendered.concat()));
+
+    let mut out = format!(
+        "{} line(s) say `{text}`{where_}, ~{} tokens if you take them all, in {} item(s):\n",
+        thousands(matches),
+        thousands(cost),
+        found.len(),
+    );
+    for (item, lines) in &found {
+        out.push_str(&format!(
+            "{:>4}  {:<10}  {:<18}  {:>4} line(s)  {}\n",
+            item.id.0,
+            item.state.to_string(),
+            item.kind.name(),
+            lines.len(),
+            glimpse(&item.label),
+        ));
+    }
+
+    let Some(take) = take else {
+        out.push_str(
+            "\n`take` shows that many of the lines. None of this puts an item into your request: \
+             an archived one is still archived, and searching it changed nothing.\n",
+        );
+
+        return out;
+    };
+
+    let shown = take.min(rendered.len());
+    match rendered.len() - shown {
+        0 => out.push_str(&format!("\nall {} of them:\n", thousands(shown))),
+        more => out.push_str(&format!(
+            "\nthe first {}; {} more match and are not here:\n",
+            thousands(shown),
+            thousands(more)
+        )),
+    }
+    out.push_str(&rendered[..shown].concat());
+
+    out
+}
+
+/// A matching line, trimmed to the part with the match in it.
+///
+/// note: around the match rather than from the start of the line, because the line a search finds
+/// something in is as likely as not a minified one or a log line, and the first eighty characters
+/// of those is the part nobody asked about.
+fn around(needle: &str) -> impl Fn(&str) -> String + '_ {
+    /// How much of a matching line comes back.
+    const WINDOW: usize = 100;
+    /// How much of it sits before the match, when there is room.
+    const LEAD: usize = 30;
+
+    move |line: &str| {
+        let line = line.trim();
+        if line.chars().count() <= WINDOW {
+            return line.to_owned();
+        }
+        let at = line
+            .to_lowercase()
+            .find(needle)
+            .map(|byte| line[..byte].chars().count())
+            .unwrap_or_default();
+        let from = at.saturating_sub(LEAD);
+        let said: String = line.chars().skip(from).take(WINDOW).collect();
+
+        format!(
+            "{}{said}{}",
+            if from > 0 { "…" } else { "" },
+            if from + WINDOW < line.chars().count() {
+                "…"
+            } else {
+                ""
+            },
+        )
+    }
 }
 
 /// What the next request costs, what there is, and what giving something up would buy.
