@@ -430,6 +430,7 @@ impl App {
             Some(_) => {
                 self.kernel.remove_tool("context");
                 self.kernel.remove_tool("log");
+                self.kernel.remove_tool("setup");
                 self.kernel.remove_tool("amend");
                 self.say(
                     Speaker::Note,
@@ -440,6 +441,7 @@ impl App {
             None => {
                 self.introspect = Some(crate::introspect::install(
                     &self.kernel,
+                    self.policy.clone(),
                     self.limits.clone(),
                 ));
                 self.say(

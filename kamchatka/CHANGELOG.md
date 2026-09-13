@@ -9,6 +9,38 @@ minor bump may break you.
 
 ### added
 
+- **`setup`, a fourth introspection tool: what the session is running *with*.** State rather than
+  events, which is the split that makes it a tool of its own rather than an action on `log`. `log`
+  says a tool was taken away at record 118; this says which tools there are now. `log` says a
+  permission was answered; this says what the policy will say next time. Neither is recoverable
+  from the other.
+
+  Four actions, each answering something the program previously could not tell a model about
+  itself. `model` is which model it is, what parameters it is being sent, how much context it has,
+  and whether this conversation was **resumed from a snapshot** - the one that could not be worked
+  out from inside, because a restored context carries first-person turns this model never produced
+  and nothing in a turn records which hand wrote it. `tools` enumerates the toolset, which nothing
+  anywhere did, so a tool removed mid-session was something a model could only keep asking for or
+  confabulate a reason for not using. `permissions` is what the policy allows, refuses or will ask
+  about, so a thing that will be refused can be told from a thing nobody has decided. `policy`
+  names the compactor and the projector and says what each will do unasked - `look` has always
+  reported whether an item is going into the next request and never the rule that decided.
+
+  **It reads the policy's table rather than asking the policy.** `PermissionPolicy::evaluate` is
+  the only way to get a verdict through the trait, and `Careful` answers it by recording the reason
+  it refused into a bounded queue of sixty-four that a genuine refusal is going to read - so a read
+  tool asking four speculative questions would evict the explanations somebody needs. `install` now
+  takes the `Arc<Careful>`, which every caller already has, and the report names the policy the
+  kernel is actually consulting beside the table it read, so a session running somebody else's
+  policy shows the disagreement rather than a confident answer about the wrong thing.
+
+  Pending permission requests are listed on purpose. An agent that can see it is blocked on
+  somebody's answer is an agent that can decide to do something else with the turn, which is the
+  argument for all of this; the alternative is a call that appears to have hung.
+
+  It declares `Capability::Custom("setup")`, has an output limit of 32,000 bytes, and costs 255
+  tokens of spec. The four together come to 1,830, which is 4.6% of a 40,000-token session.
+
 - **`context: search` reaches the archive, which was write-only from the agent's side.** An
   archived item is kept in full and never sent, and the only way to see inside one was to read it
   back with `look` - which copies it into the context, so a session that had archived eleven

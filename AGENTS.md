@@ -107,9 +107,10 @@ and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that flo
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
 fitting), `tools/` (the four tools - `files.rs` for the three that run in process and `shell.rs` for
 the one that does not - with `policy.rs` for `Careful` and `trim.rs` for the compactor),
-`introspect/` (the off-by-default tools an agent inspects and manages its own context with - one
-per file, named for the noun each is about, with `mod.rs` holding `install` and the handful of
-things they all use),
+`introspect/` (the off-by-default tools an agent inspects and manages its own session with - one
+per file, named for the noun each is about: `context` reads the context, `log` the record beside
+it, `setup` what the session is running with, `amend` changes any of it - with `mod.rs` holding
+`install` and the handful of things they all use),
 `provider.rs` (**not a provider**: the four environment variables this program reads, and the two
 `connect` functions that turn them into one), `main.rs` (arguments, and the loop that draws). It is
 a library plus a binary so the screen can be drawn against a `TestBackend` in tests, and because

@@ -170,17 +170,21 @@ async fn introspect_offers_the_tools_and_takes_them_away_again() {
     let before = harness.app.undecided();
 
     harness.send("/introspect").await;
-    assert_eq!(harness.app.kernel.tool_ids(), ["amend", "context", "log"]);
+    assert_eq!(
+        harness.app.kernel.tool_ids(),
+        ["amend", "context", "log", "setup"]
+    );
     assert!(harness.app.introspect.is_some());
-    // the policy has three more subjects to ask about without being told anything, because the
-    // tab reads what the registered tools declare. Three, not one: reading your own context,
-    // reading the record kept beside it and rewriting either are different questions, which is
-    // the whole reason there is a tool per noun rather than one with a mode argument
+    // the policy has four more subjects to ask about without being told anything, because the tab
+    // reads what the registered tools declare. Four, not one: reading your own context, reading
+    // the record kept beside it, reading what the session is running with and rewriting any of it
+    // are different questions, which is the whole reason there is a tool per noun rather than one
+    // with a mode argument
     harness.tab(Tab::Permissions);
-    assert_eq!(harness.app.undecided(), before + 3);
+    assert_eq!(harness.app.undecided(), before + 4);
     let screen = harness.screen();
     assert!(
-        screen.contains(&format!("{} more it will ask about", before + 3)),
+        screen.contains(&format!("{} more it will ask about", before + 4)),
         "{screen}"
     );
 
@@ -423,7 +427,11 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
     ) {
         harness.app.kernel.add_tool(tool);
     }
-    let _offered = kamchatka::introspect::install(&harness.app.kernel, Limits::default());
+    let _offered = kamchatka::introspect::install(
+        &harness.app.kernel,
+        harness.app.policy.clone(),
+        Limits::default(),
+    );
 
     for spec in harness.app.kernel.tool_specs() {
         assert!(

@@ -701,11 +701,11 @@ fn gemini() -> Option<(
 
     let policy = Arc::new(Careful::new());
     policy.set(&Subject::Capability(Capability::Read), Verdict::Allow);
-    // both of them: `install` offers `context` and `amend`, and a model that takes the second
-    // offer used to stop the turn to ask. The turn then sat in `Deciding` with the prompt open,
+    // all of them: `install` offers four, and a model that takes an offer nobody has decided
+    // about used to stop the turn to ask. The turn then sat in `Deciding` with the prompt open,
     // the next message was swallowed the way the app swallows anything typed at one, and the
     // wire format this file exists to check never got its second request
-    for capability in ["context", "amend"] {
+    for capability in ["context", "log", "setup", "amend"] {
         policy.set(
             &Subject::Capability(Capability::Custom(capability.into())),
             Verdict::Allow,
@@ -713,7 +713,7 @@ fn gemini() -> Option<(
     }
     kernel.set_policy(policy.clone());
     kernel.add_tool(Arc::new(Secret));
-    let introspect = kamchatka::introspect::install(&kernel, Limits::default());
+    let introspect = kamchatka::introspect::install(&kernel, policy.clone(), Limits::default());
 
     let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
 
@@ -869,7 +869,7 @@ async fn a_real_turn_carries_its_thinking_in_the_order_it_was_produced() {
         // nothing declared, which is the condition a summary arrived in four times out of five.
         // The registry is live, which is the whole reason this can be a second question rather
         // than a second harness
-        for tool in ["secret", "context", "amend"] {
+        for tool in ["secret", "context", "log", "setup", "amend"] {
             app.kernel.remove_tool(tool);
         }
         for _ in 1..=3 {
@@ -1126,7 +1126,7 @@ async fn introspecting(
     tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
 )> {
     let (mut app, limits, finished) = agent(dir).await?;
-    for capability in ["context", "amend"] {
+    for capability in ["context", "log", "setup", "amend"] {
         let verdict = match ask_about_amend && capability == "amend" {
             true => Verdict::Ask,
             false => Verdict::Allow,
@@ -1136,7 +1136,11 @@ async fn introspecting(
             verdict,
         );
     }
-    app.introspect = Some(kamchatka::introspect::install(&app.kernel, limits.clone()));
+    app.introspect = Some(kamchatka::introspect::install(
+        &app.kernel,
+        app.policy.clone(),
+        limits.clone(),
+    ));
 
     Some((app, limits, finished))
 }

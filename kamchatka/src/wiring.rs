@@ -213,7 +213,7 @@ impl Setup {
         // handle to something out here rather than a kernel the tools hold
         let introspect = self
             .introspect
-            .then(|| introspect::install(&kernel, limits.clone()));
+            .then(|| introspect::install(&kernel, policy.clone(), limits.clone()));
 
         if let Some(system) = self.system {
             kernel.push(ContextItem::system(system).pinned());

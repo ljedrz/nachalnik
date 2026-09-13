@@ -12,23 +12,39 @@
 
 use std::sync::Arc;
 
-use kamchatka::{introspect, tools::Limits};
+use kamchatka::{
+    introspect,
+    tools::{Careful, Limits, Subject},
+};
 use nachalnik::{
-    Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, Role, ToolCallId,
-    test::{AllowAll, ScriptedProvider, call},
+    Capability, Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, Role,
+    ToolCallId, Verdict,
+    test::{ScriptedProvider, call},
 };
 use serde_json::json;
 
-/// A kernel with both tools installed, the provider that will answer it, and the handle the tools
+/// A kernel with the tools installed, the provider that will answer it, and the handle the tools
 /// reach it through - which the caller has to hold on to, or they stop working.
+///
+/// note: the policy this program ships, with the four capabilities answered, rather than
+/// `AllowAll`. It is one line longer and it is the configuration the program is actually in - and
+/// `setup permissions` reports the policy's own table, so a suite that handed it a policy the
+/// kernel was not consulting would be checking a sentence about the wrong thing.
 fn agent(
     script: impl IntoIterator<Item = ModelResponse>,
 ) -> (Kernel, Arc<ScriptedProvider>, Arc<Kernel>) {
     let kernel = Kernel::new(Config::default());
     let provider = Arc::new(ScriptedProvider::new(script));
     kernel.set_provider(provider.clone());
-    kernel.set_policy(Arc::new(AllowAll));
-    let anchor = introspect::install(&kernel, Limits::default());
+    let policy = Arc::new(Careful::new());
+    for capability in ["context", "log", "setup", "amend"] {
+        policy.set(
+            &Subject::Capability(Capability::Custom(capability.into())),
+            Verdict::Allow,
+        );
+    }
+    kernel.set_policy(policy.clone());
+    let anchor = introspect::install(&kernel, policy, Limits::default());
 
     (kernel, provider, anchor)
 }
@@ -1469,8 +1485,15 @@ async fn the_records_come_back_in_one_order_however_the_calls_were_run() {
         call("c3", "log", json!({ "since": 0 })),
     ])));
     kernel.set_provider(provider);
-    kernel.set_policy(Arc::new(AllowAll));
-    let _anchor = introspect::install(&kernel, Limits::default());
+    let policy = Arc::new(Careful::new());
+    for capability in ["context", "log", "setup", "amend"] {
+        policy.set(
+            &Subject::Capability(Capability::Custom(capability.into())),
+            Verdict::Allow,
+        );
+    }
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
 
     kernel.push(ContextItem::user("all three at once"));
     kernel.turn().await.expect("the turn failed");
@@ -1629,4 +1652,159 @@ async fn search_can_be_held_to_the_items_it_was_given() {
     let said = answered(&kernel);
     assert!(said.starts_with("1 line(s)"), "{said}");
     assert!(said.contains("looking only in 2"), "{said}");
+}
+
+// ------------------------------------------------------------------------------------- setup
+
+/// A tool taken away mid-session is not on the list, which is the point of there being a list.
+///
+/// note: the shape this exists for. Nothing anywhere let an agent enumerate its own tools, so a
+/// model whose `shell` was removed between two turns had no way to find that out and every reason
+/// to keep asking for it - or, worse, to explain confidently why it had not used it. With `log`
+/// beside it the pair answers both halves: this says what there is, `tools.changed` says when it
+/// went.
+#[tokio::test]
+async fn setup_tools_reflects_a_tool_taken_away_mid_session() {
+    let (kernel, _provider, _anchor) = agent(vec![
+        ModelResponse::tool_calls(vec![call("c1", "setup", json!({ "action": "tools" }))]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![call("c2", "setup", json!({ "action": "tools" }))]),
+        ModelResponse::text("done"),
+    ]);
+
+    kernel.push(ContextItem::user("what have you got?"));
+    kernel.add_tool(Arc::new(nachalnik::test::ConstTool::new(
+        "secret", "hunter2",
+    )));
+    kernel.turn().await.expect("the turn failed");
+
+    // the registry is live and `Tool::spec` is read afresh for every request, which is what makes
+    // this a second question rather than a second session
+    kernel.remove_tool("secret");
+    kernel.push(ContextItem::user("and now?"));
+    kernel.turn().await.expect("the second turn failed");
+
+    let said = answers_from(&kernel, &["setup"]);
+    assert!(said[0].contains("secret"), "{}", said[0]);
+    assert!(
+        !said[1].contains("secret"),
+        "a tool that has gone is not on the list: {}",
+        said[1]
+    );
+    // and what each one declares, which is the thing a model cannot see and the thing that
+    // decides whether a call is worth making at all
+    assert!(said[0].contains("nothing declared"), "{}", said[0]);
+    assert!(said[0].contains("tools.changed"), "{}", said[0]);
+}
+
+/// It says which model it is, and whether the conversation is one it started.
+///
+/// note: the resumed line is the one that could not be worked out from inside. A context restored
+/// from a snapshot carries first-person turns this model never produced, and nothing in a turn
+/// records which hand wrote it - so a model asked about its own earlier reasoning in a resumed
+/// session owns all of it, because it has no way not to.
+#[tokio::test]
+async fn setup_model_says_whether_this_conversation_was_inherited() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "model" }),
+    )]));
+    kernel.push(ContextItem::user("who are you?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let fresh = answered(&kernel);
+    assert!(
+        fresh.contains("started here"),
+        "a session nobody resumed says so: {fresh}"
+    );
+
+    // the same question on a session resumed from this one's snapshot
+    let second = Kernel::resume(Config::default(), kernel.snapshot());
+    second.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c2",
+        "setup",
+        json!({ "action": "model" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(
+        &Subject::Capability(Capability::Custom("setup".into())),
+        Verdict::Allow,
+    );
+    second.set_policy(policy.clone());
+    let _anchor = introspect::install(&second, policy, Limits::default());
+    second.push(ContextItem::user("who are you?"));
+    second.turn().await.expect("the turn failed");
+
+    // note: the *last* one, and the reason is the whole point of the action. The resumed context
+    // carries the first session's answer as an item, so the earliest thing `setup model` says in
+    // here is the old session's "started here" - written by a model that was right when it wrote
+    // it and is being read by one for whom it is false. This is what a model has no way to notice
+    // from the inside, which is what the new line is for.
+    let carried = answers_from(&second, &["setup"]);
+    assert!(
+        carried[0].contains("started here"),
+        "the inherited answer came along, unchanged and now wrong: {}",
+        carried[0]
+    );
+    let now = carried.last().expect("it answered");
+    assert!(now.contains("resumed from a snapshot"), "{now}");
+    assert!(
+        now.contains("may not be you"),
+        "and says the turns in it are not necessarily its own: {now}"
+    );
+}
+
+/// The verdicts come from the policy's own table, and say which policy that is.
+#[tokio::test]
+async fn setup_permissions_says_what_will_be_refused_before_it_is_asked() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "permissions" }),
+    )]));
+    kernel.push(ContextItem::user("what may you do?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    // the policy actually consulted, named, beside the table being reported
+    assert!(said.contains("Careful"), "{said}");
+    // the four this session answered for, and the word for a thing nobody has decided
+    assert!(said.contains("context") && said.contains("allow"), "{said}");
+    assert!(
+        said.contains("`ask` is nobody having decided yet, not a refusal"),
+        "the difference a model has to be able to act on: {said}"
+    );
+    // a path rule is in the same answer, because it binds the same calls
+    assert!(said.contains(".env"), "{said}");
+    // and asking is not deciding: reporting the policy must not have changed it
+    assert!(kernel.pending_permissions().is_empty(), "{said}");
+}
+
+/// What will happen to the context without anybody asking for it, named so it can be looked up.
+#[tokio::test]
+async fn setup_policy_names_the_seams_that_rewrite_a_context_on_their_own() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "policy" }),
+    )]));
+    kernel.set_compactor(Some(Arc::new(kamchatka::tools::Trim {
+        threshold: 0.8,
+        target: 0.6,
+    })));
+    kernel.push(ContextItem::user("what will be done to me?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("the projector is"), "{said}");
+    assert!(said.contains("Trim"), "the compactor by name: {said}");
+    assert!(
+        said.contains("cannot take anything pinned"),
+        "and the promise the kernel keeps against it: {said}"
+    );
+    assert!(
+        said.contains("one at a time, in the order you asked"),
+        "{said}"
+    );
 }

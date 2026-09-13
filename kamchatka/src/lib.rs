@@ -25,7 +25,11 @@
 //! go out, and answers on a throwaway fork so an answer can be read before it is given;
 //! [`introspect::Log`] reads the record kept beside the context - what was added, replaced, elided
 //! or compacted, what was asked permission for and answered - leading with what there is and what
-//! taking it would cost, so a short answer is never mistaken for a quiet session; `amend` elides,
+//! taking it would cost, so a short answer is never mistaken for a quiet session;
+//! [`introspect::Setup`] reads what the session is running *with*: which model, which tools and
+//! what each declares, what the policy will refuse before it is asked, what the compactor and the
+//! projector will do unasked, and whether this conversation was resumed from somebody else's;
+//! `amend` elides,
 //! excludes, pins and rewrites what is being carried, writes something down that compaction cannot
 //! take, and walks its own changes back. None of them is allowed to touch what a person pinned. Nothing in the runtime knows about any of this - it is what a tool can already
 //! do with a context that is a list of public values and a request that can be built without

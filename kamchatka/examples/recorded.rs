@@ -105,6 +105,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Capability::Read,
             Capability::Shell,
             Capability::Custom("context".into()),
+            Capability::Custom("log".into()),
+            Capability::Custom("setup".into()),
             Capability::Custom("amend".into()),
         ]
         .into_iter()

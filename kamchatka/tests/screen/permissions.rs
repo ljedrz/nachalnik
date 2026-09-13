@@ -1287,7 +1287,11 @@ async fn the_question_about_an_amend_says_which_items_it_would_change() {
         )])],
         Config::default(),
     );
-    let _offered = kamchatka::introspect::install(&harness.app.kernel, Limits::default());
+    let _offered = kamchatka::introspect::install(
+        &harness.app.kernel,
+        harness.app.policy.clone(),
+        Limits::default(),
+    );
     harness
         .app
         .kernel
@@ -1332,7 +1336,11 @@ async fn the_question_expands_a_selector_into_the_items_it_matches() {
         )])],
         Config::default(),
     );
-    let _offered = kamchatka::introspect::install(&harness.app.kernel, Limits::default());
+    let _offered = kamchatka::introspect::install(
+        &harness.app.kernel,
+        harness.app.policy.clone(),
+        Limits::default(),
+    );
     harness.app.kernel.push(ContextItem::user("read them"));
     harness
         .app

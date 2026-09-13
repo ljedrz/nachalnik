@@ -76,6 +76,7 @@ impl Limits {
             ("shell".to_owned(), 32_000),
             ("context".to_owned(), 32_000),
             ("log".to_owned(), 32_000),
+            ("setup".to_owned(), 32_000),
             ("amend".to_owned(), 8_000),
         ]))))
     }

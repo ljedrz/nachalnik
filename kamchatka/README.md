@@ -814,6 +814,33 @@ model reads and the account you read cannot drift apart. The histogram counts ev
 than flagging an interesting one. `context.replaced 3` sitting in a list of five is a fact, and
 noticing that it is an interesting fact is the model's job, not the tool's.
 
+**`setup`** reads what the session is running *with*, which is state rather than events and is the
+other half of what `log` does. Four things nothing else in this program could tell a model about
+itself:
+
+- **`model`** — which model it is, what parameters are being sent, how much context it has, and
+  whether this conversation was **resumed from a snapshot**. That last one is the one that could
+  not be worked out from inside: a restored context carries first-person turns this model never
+  produced, possibly a different model's, and nothing in an assistant turn records which hand wrote
+  it. Ask a model about its own earlier reasoning in a resumed session and it will own all of it,
+  because it has no way not to. The test for this has the resumed session reading its predecessor's
+  answer — *"this conversation started here"* — sitting in its own context, true when it was
+  written and false now.
+- **`tools`** — every tool on offer, what each declares it needs, and how much of its output
+  reaches the model. Nothing anywhere let an agent enumerate its own toolset, so a `shell` removed
+  between two turns was something it could only keep asking for, or confabulate a reason for not
+  using. With `log`'s `tools.changed` beside it, the pair answers both halves: what there is, and
+  when the other thing went.
+- **`permissions`** — what the policy allows, refuses, or will stop and ask about, so a thing that
+  will be refused can be told from a thing nobody has decided yet. Read off the policy's own table
+  rather than by running a call through it: `evaluate` records the reason it refused something, and
+  a read tool that asked it four questions would write four refusals into a queue of sixty-four and
+  quietly evict the explanations a real refusal is going to need.
+- **`policy`** — what the compactor and the projector will do to the context without being asked,
+  by name, so they can be looked up. `look` has always said whether an item is going into the next
+  request; it has never said what decided that, and a model that can read the verdict but not the
+  rule cannot argue with either.
+
 **`amend`** changes things. `elide`, `exclude`, `archive`, `pin` and `restore` move items between
 the same states the <kbd>space</kbd> key does, and each action is named for the state it leaves —
 which is the word you will read back on the item afterwards:
@@ -845,8 +872,8 @@ They are a tool per noun rather than one with a mode argument, because a tool de
 capabilities once for every call it will ever receive. One tool would mean that answering
 **always** to "may it read its own context?" also answered "may it rewrite a tool result?" — a
 grant that delivers more than it implies, which is the shape of thing this program exists not to
-do. So the permissions tab has a row for `context`, a row for `log` and a row for `amend`, and you
-can answer them differently.
+do. So the permissions tab has a row for `context`, one for `log`, one for `setup` and one for
+`amend`, and you can answer them differently.
 
 Which also means each of them can be taken *away* separately, mid-session, and that is deliberate
 rather than incidental. An agent whose ability to check the record is revoked half way through a
@@ -1223,9 +1250,9 @@ kamchatka [OPTIONS] [MESSAGE]...
       --parallel            run the model's tool calls at the same time
       --gemini              talk to Google's own API rather than an OpenAI-compatible
                             one, so a turn keeps the order it was produced in
-      --introspect          offer the model the tools that read and manage its own context
-                            and read its own record; /introspect turns them on and off
-                            while it runs
+      --introspect          offer the model the tools that read its own context, its own
+                            record and what it is running with, and manage the first of
+                            them; /introspect turns them on and off while it runs
       --headless            drive the session from lines on stdin: the session log to
                             stdout, one JSON record a line, and what the model says to
                             stderr. Implied when stdout is not a terminal

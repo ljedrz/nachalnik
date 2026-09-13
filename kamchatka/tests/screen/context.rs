@@ -909,7 +909,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     );
 
     // the number the listing prints is a handle the command takes, or it is decoration: `read` is
-    // the fourth of the five rows, sorted, and this is the same instruction as naming it
+    // the fourth of the six rows, sorted, and this is the same instruction as naming it
     harness.send("/limit 4 48000").await;
     assert_eq!(declared(&harness, "read"), Some(48_000));
     assert_eq!(declared(&harness, "shell"), Some(32_000), "one row moved");
@@ -928,7 +928,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     harness.send("/limit 9 1000").await;
     let screen = harness.flat();
     assert!(screen.contains("nothing here limits `9`"), "{screen}");
-    assert!(screen.contains("[5] shell"), "{screen}");
+    assert!(screen.contains("[6] shell"), "{screen}");
 
     // and nought is not a limit, it is a tool that answers with a marker
     harness.send("/limit read 0").await;

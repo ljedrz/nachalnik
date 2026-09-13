@@ -217,8 +217,9 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /limit              how much of each tool's output the model is shown,
                         numbered, and the number is one the next line takes
     /limit ID BYTES     change one, from its next call onwards
-    /introspect         offer the model the tools that read and manage its own context
-                        and read its own record, or stop offering them
+    /introspect         offer the model the tools that read its own context, its own
+                        record and what it is running with, and manage the first of
+                        them; or stop offering them
     /policy             open the permissions tab; also /permissions
     /model [ID]         show or switch the model, and say where it is
     /models [FILTER]    what this endpoint serves, which is what /model takes
