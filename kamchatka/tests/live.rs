@@ -182,7 +182,9 @@ macro_rules! live {
         match live().await {
             Some(pair) => pair,
             None => {
-                eprintln!("no key in the environment; skipping");
+                eprintln!(
+                    "skipping: no KAMCHATKA_API_KEY (or NACHALNIK_API_KEY) in the environment"
+                );
                 return;
             }
         }
@@ -729,7 +731,9 @@ macro_rules! gemini {
         match gemini() {
             Some(fixtures) => fixtures,
             None => {
-                eprintln!("no key in the environment; skipping");
+                eprintln!("skipping: the native dialect needs KAMCHATKA_GEMINI_API_KEY. KAMCHATKA_API_KEY is \
+                     borrowed for it only when KAMCHATKA_BASE_URL is Google's, because sending \
+                     somebody else's key there is a 400 about turn order");
                 return;
             }
         }
@@ -1150,7 +1154,9 @@ macro_rules! agent {
         match agent($dir).await {
             Some(it) => it,
             None => {
-                eprintln!("no key in the environment; skipping");
+                eprintln!(
+                    "skipping: no KAMCHATKA_API_KEY (or NACHALNIK_API_KEY) in the environment"
+                );
                 return;
             }
         }
@@ -1162,7 +1168,9 @@ macro_rules! introspecting {
         match introspecting($dir, $ask).await {
             Some(it) => it,
             None => {
-                eprintln!("no key in the environment; skipping");
+                eprintln!(
+                    "skipping: no KAMCHATKA_API_KEY (or NACHALNIK_API_KEY) in the environment"
+                );
                 return;
             }
         }
@@ -1762,7 +1770,7 @@ async fn a_pdf_attached_at_the_prompt_is_read_by_the_model() {
         return;
     };
     let Some((mut app, mut finished)) = talking_to(model).await.and_then(with) else {
-        eprintln!("no key in the environment; skipping");
+        eprintln!("skipping: no KAMCHATKA_API_KEY (or NACHALNIK_API_KEY) in the environment");
         return;
     };
 
@@ -1944,7 +1952,7 @@ async fn a_foreign_server_s_tools_reach_a_real_model() {
         return;
     }
     let Some(provider) = endpoint().await else {
-        eprintln!("no key in the environment; skipping");
+        eprintln!("skipping: no KAMCHATKA_API_KEY (or NACHALNIK_API_KEY) in the environment");
         return;
     };
 
