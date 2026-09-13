@@ -1731,6 +1731,56 @@ async fn search_can_be_held_to_the_items_it_was_given() {
     assert!(said.contains("looking only in 2"), "{said}");
 }
 
+/// An `ids` that names nothing is said to name nothing, rather than counted as something looked at.
+///
+/// note: found by printing what the tool answers. `ids: [99]` reported "0 line(s) ... and 1
+/// item(s) were looked at" - the count was the length of `ids` rather than the number of items
+/// the loop actually read, so a search narrowed to an item that does not exist claimed to have
+/// searched it and found nothing. That is a sentence about the context that is false in the one
+/// direction a search must never be wrong in: the model is left believing the item is there. Its
+/// sibling has always answered `[99] there is no such item`, and there is no reading on which
+/// `look` should be the honest one of the two.
+#[tokio::test]
+async fn a_search_says_which_of_the_ids_it_was_given_name_nothing() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "search", "text": "landlock", "ids": [99] }),
+        ),
+        // and beside a real one, where the answer is not empty and the missing id could pass
+        // unnoticed behind what was found
+        call(
+            "c2",
+            "context",
+            json!({ "action": "search", "text": "landlock", "ids": [1, 99] }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::file("a.md", "Landlock is here"));
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["context"]);
+    assert!(
+        said[0].contains("0 item(s) were looked at"),
+        "nothing was looked at, because the only id named nothing: {}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("There is no item 99"),
+        "and the reason the search was empty is the fact worth having: {}",
+        said[0]
+    );
+    assert!(said[1].starts_with("1 line(s)"), "{}", said[1]);
+    assert!(
+        said[1].contains("There is no item 99"),
+        "a find does not excuse a missing id: {}",
+        said[1]
+    );
+}
+
 // ------------------------------------------------------------------------------------- setup
 
 /// A tool taken away mid-session is not on the list, which is the point of there being a list.

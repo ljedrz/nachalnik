@@ -127,6 +127,16 @@ minor bump may break you.
 
 ### fixed
 
+- **`context: search` counted an item that is not there as one it had looked at.** Narrowed with
+  `ids: [99]` in a session with no item 99, it answered "no line of your context says `landlock` ...
+  and 1 item(s) were looked at" - the figure was the length of `ids` rather than the number of items
+  the loop actually read. So a search of an item that does not exist reported having searched it and
+  found nothing, which is false in the one direction a search must never be wrong in: it leaves the
+  model certain the item is there. `look` has always answered `[99] there is no such item`, and
+  there is no reading on which it should be the honest one of the two. The count is now of what was
+  read, the ids that name nothing are named, and they are named on an answer that *found*
+  something too - where a missing id otherwise slips past behind the matches.
+
 - **A failure after the first one was said in silence.** A live session met a model with one canned
   refusal, which failed three times with the same sentence: the first was red on the screen and the
   other two were nowhere, so somebody typed twice into what looked like a working session and got

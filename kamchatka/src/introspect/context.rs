@@ -443,10 +443,16 @@ fn search(kernel: &Kernel, text: &str, only: &[ContextId], take: Option<usize>) 
 
     // (item, matching lines), in context order
     let mut found: Vec<(&Arc<ContextItem>, Vec<String>)> = Vec::new();
+    // counted rather than assumed from `only`, because the two differ exactly where it matters:
+    // an id naming nothing is looked at zero times, and reporting it as one looked at is this
+    // tool saying an item exists and does not contain the text. `look` answers `[99] there is no
+    // such item`; a search that quietly counted it would be the less honest of two siblings
+    let mut read = 0;
     for item in &items {
         if !only.is_empty() && !only.contains(&item.id) {
             continue;
         }
+        read += 1;
         let hay = item.content.to_text();
         let lines: Vec<String> = hay
             .lines()
@@ -469,14 +475,26 @@ fn search(kernel: &Kernel, text: &str, only: &[ContextId], take: Option<usize>) 
                 .join(", ")
         ),
     };
+    // the ids that name nothing, said out loud rather than passed over. A search narrowed to an
+    // item that is not there has not searched anything, and "nothing matched" is the one reading
+    // of that which leaves the model believing the item exists
+    let missing: Vec<String> = only
+        .iter()
+        .filter(|id| !items.iter().any(|item| item.id == **id))
+        .map(|id| id.to_string())
+        .collect();
+    let unknown = match missing.as_slice() {
+        [] => String::new(),
+        [one] => format!(" There is no item {one}, so it was not among them."),
+        _ => format!(
+            " There are no items {}, so they were not among them.",
+            missing.join(", ")
+        ),
+    };
     if matches == 0 {
         return format!(
             "no line of your context says `{text}`{where_}. Case was ignored, archived and \
-             excluded items were searched, and {} item(s) were looked at.\n",
-            match only.is_empty() {
-                true => items.len(),
-                false => only.len(),
-            },
+             excluded items were searched, and {read} item(s) were looked at.{unknown}\n",
         );
     }
 
@@ -492,11 +510,17 @@ fn search(kernel: &Kernel, text: &str, only: &[ContextId], take: Option<usize>) 
     let counter = kernel.counter();
     let cost = counter.count(&nachalnik::Content::text(rendered.concat()));
 
+    // and on an answer that did find something, for the same reason: an id that named nothing is
+    // a fact about the call, and a result that only reports what it found lets it pass unnoticed
     let mut out = format!(
-        "{} line(s) say `{text}`{where_}, ~{} tokens if you take them all, in {} item(s):\n",
+        "{} line(s) say `{text}`{where_}, ~{} tokens if you take them all, in {} item(s):{}\n",
         thousands(matches),
         thousands(cost),
         found.len(),
+        match unknown.is_empty() {
+            true => String::new(),
+            false => format!("{unknown}\n"),
+        },
     );
     for (item, lines) in &found {
         out.push_str(&format!(
