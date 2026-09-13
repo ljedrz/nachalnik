@@ -246,10 +246,17 @@ impl Query {
 
     /// Whether anything was asked for beyond the summary.
     fn filtered(&self) -> bool {
-        self.take.is_some()
-            || !self.ids.is_empty()
-            || self.since.is_some()
-            || !self.kinds.is_empty()
+        self.take.is_some() || self.narrowed()
+    }
+
+    /// Whether anything changes which records *count*, as against how many are shown.
+    ///
+    /// note: the two are not the same question and the header used to answer them as though they
+    /// were, so a call carrying only `take` reported "15 match , ~205 tokens" - a match count that
+    /// is really the total, and a filter description that was empty because there was no filter.
+    /// `take` shortens an answer; these three decide what the answer is of.
+    fn narrowed(&self) -> bool {
+        !self.ids.is_empty() || self.since.is_some() || !self.kinds.is_empty()
     }
 
     /// Whether this record is one of the ones asked for.
@@ -299,39 +306,47 @@ impl Query {
         // the true total, on every answer, whatever was asked for. It is what makes a short reply
         // self-describing rather than indistinguishable from an empty session
         let mut out = format!(
-            "{} records, ~{} tokens if you take them all",
+            "{} records, ~{} tokens",
             thousands(read.total),
-            thousands(all),
+            thousands(all)
         );
 
         if !self.filtered() {
-            out.push_str(". Nothing here is in your context until you ask for it.\n");
-            out.push_str(&histogram(read));
             out.push_str(
-                "\n`take`, `ids`, `since` or `kinds` asks for the records themselves; the last \
-                 sequence number is ",
+                " if you take them all. Nothing here is in your context until you ask for it.\n",
             );
-            out.push_str(&format!("{}.\n", read.last_seq));
+            out.push_str(&histogram(read));
+            out.push_str(&format!(
+                "\n`take`, `ids`, `since` or `kinds` asks for the records themselves; the last \
+                 sequence number is {}.\n",
+                read.last_seq,
+            ));
 
             return out;
         }
+        out.push_str(" in all.");
 
-        let matched = counter.count(&Content::text(read.matched.clone()));
-        out.push_str(&format!(
-            " total. {} match {}, ~{} tokens.",
-            thousands(read.hits),
-            self.said(),
-            thousands(matched),
-        ));
+        // only where something decided which records *count*. A call carrying `take` alone has
+        // matched everything, and "15 match" against a total of 15 is a sentence that says
+        // nothing twice
+        if self.narrowed() {
+            let matched = counter.count(&Content::text(read.matched.clone()));
+            out.push_str(&format!(
+                " {} match {}, ~{} tokens.",
+                thousands(read.hits),
+                self.said(),
+                thousands(matched),
+            ));
 
-        if read.hits == 0 {
-            // a real zero, arriving beside a total that is not zero, which is the shape that
-            // stops it reading as "nothing happened". The kinds go with it because a filter that
-            // matched nothing is usually a filter spelled for a session other than this one
-            out.push_str(" Nothing matched; these are the kinds this session holds:\n");
-            out.push_str(&histogram(read));
+            if read.hits == 0 {
+                // a real zero, arriving beside a total that is not zero, which is the shape that
+                // stops it reading as "nothing happened". The kinds go with it because a filter
+                // that matched nothing is usually one spelled for a session other than this one
+                out.push_str(" Nothing matched; these are the kinds this session holds:\n");
+                out.push_str(&histogram(read));
 
-            return out;
+                return out;
+            }
         }
 
         // `take` counts from the end, because a log is read from the end - but the lines stay in
@@ -344,12 +359,17 @@ impl Query {
         let beyond = lines.len() - shown;
         match beyond {
             0 => out.push_str(&format!(" Showing {}.\n\n", thousands(shown))),
-            // said as a figure rather than implied by the count, because the thing a truncated
-            // log has to say is how much of it is not here
+            // said as a figure rather than implied by the count, because the thing a shortened
+            // log has to say is how much of it is not here - and in the word that is true of
+            // them, which is "older" when nothing narrowed what counts
             more => out.push_str(&format!(
-                " Showing the {} most recent; {} more match and are not here.\n\n",
+                " Showing the {} most recent; {} {} not here.\n\n",
                 thousands(shown),
                 thousands(more),
+                match self.narrowed() {
+                    true => "more match and are",
+                    false => "older are",
+                },
             )),
         }
         out.push_str(&lines[beyond..].join("\n"));

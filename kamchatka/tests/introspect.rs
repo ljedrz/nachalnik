@@ -1477,8 +1477,9 @@ async fn take_says_how_many_records_are_beyond_what_it_showed() {
     let said = answers_from(&kernel, &["log"]);
     assert!(said[0].contains("Showing the 2 most recent"), "{}", said[0]);
     assert!(
-        said[0].contains("more match and are not here"),
-        "a truncated log has to say how much of it is not here: {}",
+        said[0].contains("21 older are not here"),
+        "a shortened log has to say how much of it is not here, and in a word that is true of \
+         them - nothing narrowed what counts here, so they are older rather than unmatched: {}",
         said[0]
     );
     // the most recent, and still in the order they happened
@@ -1969,4 +1970,96 @@ async fn the_only_hand_that_records_itself_as_amend_is_amend() {
         replaced[1].contains("whoever is at the terminal"),
         "{replaced:?}"
     );
+}
+
+/// `take` shortens an answer; it does not narrow what the answer is of, and the header says so.
+///
+/// note: found by reading what the tool actually prints rather than by a test, which is why it is
+/// worth one now. A call carrying only `take` reported "15 records ... total. 15 match , ~205
+/// tokens" - a match count that was really the total, a filter description that was empty because
+/// there was no filter, and a dangling comma where it should have been. A header whose whole job
+/// is to be believed cannot be the part that reads like a bug.
+#[tokio::test]
+async fn take_on_its_own_does_not_claim_to_have_matched_anything() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call("c1", "log", json!({ "take": 2 })),
+        call(
+            "c2",
+            "log",
+            json!({ "take": 2, "kinds": ["context.added"] }),
+        ),
+    ]));
+
+    for n in 0..5 {
+        kernel.push(ContextItem::memory("scratch", format!("note {n}")));
+    }
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let (bare_take, narrowed) = (&said[0], &said[1]);
+
+    assert!(bare_take.contains("tokens in all."), "{bare_take}");
+    assert!(
+        !bare_take.contains("match"),
+        "nothing narrowed what counts, so nothing matched anything: {bare_take}"
+    );
+    assert!(
+        bare_take.contains("older are not here"),
+        "what is missing is older, not unmatched: {bare_take}"
+    );
+    // and where something *did* narrow it, the match count and the filter are both there
+    assert!(narrowed.contains("match kinds:"), "{narrowed}");
+    assert!(
+        narrowed.contains("more match and are not here"),
+        "{narrowed}"
+    );
+}
+
+/// A seam that is generic is named as the type it is, not as the type inside it.
+///
+/// note: `short` took the last `::` segment of the whole string, so the counter this program
+/// ships - `Calibrating<BytesPerToken>` - came out as `BytesPerToken>`: the wrong type, the outer
+/// one silently dropped, and a stray bracket as the only sign anything had gone wrong. It was on
+/// the trace pane before it was here. A seam names itself so that somebody can look it up, and a
+/// name that is not the type's cannot be looked up.
+#[tokio::test]
+async fn a_generic_seam_is_named_as_itself() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "policy" }),
+    )]));
+    kernel.push(ContextItem::user("what is plugged in?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("Calibrating<BytesPerToken>"), "{said}");
+    assert!(
+        !said.contains("BytesPerToken>,"),
+        "the outer type is not dropped: {said}"
+    );
+    // and the module paths are off, because this is read by something paying for every token
+    assert!(!said.contains("nachalnik::"), "{said}");
+}
+
+/// The undecided path rules are counted rather than listed, the way the permissions tab does it.
+#[tokio::test]
+async fn setup_permissions_counts_the_rules_nobody_has_thought_about() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "permissions" }),
+    )]));
+    kernel.push(ContextItem::user("what may you touch?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("path rule(s) are undecided"),
+        "a count, not eleven rows of the same verdict: {said}"
+    );
+    // still named, because an answer standing silently for eleven rules would be its own kind of
+    // dishonest - it is the row per rule that is not worth the tokens, not the fact of them
+    assert!(said.contains(".env*"), "{said}");
 }

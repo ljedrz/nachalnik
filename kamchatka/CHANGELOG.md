@@ -124,6 +124,30 @@ minor bump may break you.
   **No change to the runtime.** `Kernel::with_history` was already there, the mirror of
   `with_context`, and the tool reads the log through it without copying a record.
 
+### fixed
+
+- **Four things reading the real output found, that the tests did not.** Written down because the
+  lesson is the finding: every one was in a sentence a model reads, all four suites were green, and
+  printing the answers and reading them took a minute.
+
+  A filtered `log` header read `~205 tokens if you take them all total. 15 match , ~205 tokens` -
+  two halves of a sentence built from one prefix that only fitted one of them, and a match count
+  that was really the total, because `take` was being treated as something that narrows what counts
+  rather than something that shortens what is shown. A call carrying only `take` now says what is
+  true of it: `15 records, ~205 tokens in all. Showing the 3 most recent; 12 older are not here.`
+
+  `short` took the last `::` segment of a whole type path, so the counter this program ships -
+  `Calibrating<BytesPerToken>` - was named `BytesPerToken>`: the wrong type, the outer one dropped,
+  and a stray bracket as the only sign of it. That was on the trace pane before `setup` existed. It
+  strips the modules from every path in the string now.
+
+  `setup` printed `nachalnik::projection::LinearProjector` where the rest of the program prints
+  `LinearProjector`, and listed all eleven shipped path rules at `ask` - ninety tokens spent saying
+  "nobody has decided" eleven times. The permissions tab already had the answer to that and its own
+  note says why: a row for a `.aws` rule nobody has thought about is not information. They are
+  counted and named on one line, because standing silently for eleven rules would be a different
+  kind of dishonest.
+
 ### changed
 
 - **`introspect` is called `context`.** The tool id, the capability it declares and the struct

@@ -155,10 +155,12 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
         | Event::CounterChanged { from, to } => format!("{} → {}", short(from), short(to)),
         Event::CompactorChanged { from, to } => format!(
             "{} → {}",
-            from.as_deref().map(short).unwrap_or("none"),
+            from.as_deref()
+                .map(short)
+                .unwrap_or_else(|| "none".to_owned()),
             to.as_deref()
                 .map(short)
-                .unwrap_or("none, so nothing is dropped"),
+                .unwrap_or_else(|| "none, so nothing is dropped".to_owned()),
         ),
         _ => String::new(),
     };
@@ -243,12 +245,36 @@ pub(super) fn moved(report: &nachalnik::CompactionReport) -> String {
     }
 }
 
-/// The last part of a type's path, which is the part somebody reads.
+/// A type's path with the modules taken off, which is the part somebody reads.
 ///
 /// note: a seam names itself with `std::any::type_name`, so what arrives here is
 /// `kamchatka::tools::Trim` and the column it goes in is thirty characters wide.
-fn short(name: &str) -> &str {
-    name.rsplit("::").next().unwrap_or(name)
+///
+/// note: every path in the string rather than the last segment of the whole of it, because a seam
+/// can be generic and the counter this program ships is. `rsplit("::").next()` on
+/// `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` answers `BytesPerToken>` -
+/// the wrong type, the outer one dropped, and a stray bracket to say something went wrong. It is
+/// `Calibrating<BytesPerToken>` now.
+pub(crate) fn short(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut segment = String::new();
+    let flush = |segment: &mut String, out: &mut String| {
+        out.push_str(segment.rsplit("::").next().unwrap_or(segment));
+        segment.clear();
+    };
+
+    for ch in name.chars() {
+        match ch.is_alphanumeric() || ch == '_' || ch == ':' {
+            true => segment.push(ch),
+            false => {
+                flush(&mut segment, &mut out);
+                out.push(ch);
+            }
+        }
+    }
+    flush(&mut segment, &mut out);
+
+    out
 }
 
 /// JSON, indented.

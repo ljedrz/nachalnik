@@ -27,7 +27,7 @@ use serde_json::json;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
-    app::text::thousands,
+    app::text::{short, thousands},
     tools::{Careful, Limits, Subject},
 };
 
@@ -221,7 +221,7 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
 /// consulted and the two are printed together - a disagreement between them is then visible
 /// rather than implied.
 fn permissions(kernel: &Kernel, policy: &Careful) -> String {
-    let in_force = kernel.policy().name();
+    let in_force = short(kernel.policy().name());
     let mut out = format!("the policy deciding your calls is `{in_force}`.\n");
 
     // which tools each capability binds, so a verdict is read as being about something
@@ -254,12 +254,33 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         }
     }
 
-    let paths = policy.paths();
-    if !paths.is_empty() {
+    // note: the decided ones listed and the rest counted, which is what the permissions tab does
+    // and for the reason its own note gives: a row for a `.aws` rule nobody has thought about is
+    // not information. Eleven of them ship as `ask`, so a session where nobody has said anything
+    // about a path was spending ninety tokens saying "undecided" eleven times. The count still
+    // goes out, because an answer that listed two rules and stood silently for thirteen would be
+    // a different kind of dishonest.
+    let (decided, undecided): (Vec<_>, Vec<_>) = policy
+        .paths()
+        .into_iter()
+        .partition(|(_, verdict)| *verdict != Verdict::Ask);
+    if !decided.is_empty() {
         out.push_str("\nand rules about paths, which bind the tools handed one:\n");
-        for (pattern, verdict) in &paths {
+        for (pattern, verdict) in &decided {
             out.push_str(&format!("{:<28}  {}\n", pattern, said(*verdict)));
         }
+    }
+    if !undecided.is_empty() {
+        out.push_str(&format!(
+            "\n{} path rule(s) are undecided and will stop and ask - the ones that look like \
+             credentials: {}.\n",
+            undecided.len(),
+            undecided
+                .iter()
+                .map(|(pattern, _)| pattern.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+        ));
     }
 
     let waiting = kernel.pending_permissions();
@@ -301,7 +322,7 @@ fn rules(kernel: &Kernel) -> String {
         "the projector is `{}`. It is what turns your context into the messages of a request - \
          which items become which messages, in what order, and which are left out or repaired to \
          keep the request valid. `context` with `request` says what it did to the next one.\n",
-        kernel.projector().name(),
+        short(kernel.projector().name()),
     );
 
     out.push_str(&match kernel.compactor() {
@@ -310,7 +331,7 @@ fn rules(kernel: &Kernel) -> String {
              of the request without being asked - it cannot take anything pinned, it says exactly \
              what it moved, and `amend` with `restore` puts any of it back. `log` with `kinds: \
              [\"context.compacted\"]` is every pass it has made.\n",
-            compactor.name(),
+            short(compactor.name()),
         ),
         None => "\nthere is no compactor: nothing will be moved out of your context on its own, \
                  and a context that outgrows the limit is a request the provider refuses.\n"
@@ -319,7 +340,7 @@ fn rules(kernel: &Kernel) -> String {
 
     out.push_str(&format!(
         "\nthe counter is `{}`, and it is an estimate rather than the model's own tokenizer.\n",
-        kernel.counter().name(),
+        short(kernel.counter().name()),
     ));
     if let Some(limit) = budget.limit {
         out.push_str(&format!(
