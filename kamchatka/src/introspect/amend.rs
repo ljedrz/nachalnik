@@ -433,6 +433,13 @@ impl Amend {
             true => item.meta.clone(),
             false => json!({}),
         };
+        // note: `by` is here because a reader of this item should be able to tell whose hand it
+        // was, and in this program the answer is always this tool - `Kernel::replace` is reached
+        // from here and from this tool's own `undo`, and from nowhere else. So a person editing an
+        // item leaves this key absent rather than leaving it saying `amend`, and a model reading
+        // its own metadata is never shown its own tool as the editor of something it did not
+        // touch. The `unwrap_or` on the pane that draws this guards somebody else's metadata, not
+        // a path in here
         meta["revised"] = json!({ "by": "amend", "reason": reason, "call": call.id.to_string() });
         let _ = kernel.annotate(id, meta);
         self.record(Undoing::Said(id, item.content.clone(), item.meta.clone()));

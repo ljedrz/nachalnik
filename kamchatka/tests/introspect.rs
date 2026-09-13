@@ -1865,3 +1865,108 @@ async fn setup_policy_names_the_seams_that_rewrite_a_context_on_their_own() {
         "{said}"
     );
 }
+
+// ------------------------------------------------------- questions the design left open
+
+/// A fork's own events are not in this session's log, and the log says so by counting.
+///
+/// note: one of the questions the design that brought `log` here left to be resolved while
+/// implementing, and the answer falls out of what a fork already is: a whole second kernel with a
+/// session of its own that goes when it does. So the parent's log holds what the parent did - it
+/// asked for a tool, the tool ran, the tool answered - and the fork's own request is not in it,
+/// even though the fork made one against the same provider. What the copy *said* is in the tool
+/// result, like any other tool's output, and that is the whole of what crosses.
+#[tokio::test]
+async fn a_forks_own_events_are_not_in_this_sessions_log() {
+    let (kernel, provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call("c1", "context", json!({ "action": "draft" }))]),
+        ModelResponse::text("the copy's answer"),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "log",
+            json!({ "kinds": ["model.requested"] }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+
+    kernel.push(ContextItem::user("what would you say?"));
+    kernel.turn().await.expect("the turn failed");
+
+    // four requests reached the provider: the one that asked for `draft`, the fork's own, the one
+    // that asked for `log`, and the one that finished the turn
+    assert_eq!(provider.requests().len(), 4);
+
+    // and the log this session can read holds two at the moment `log` runs - its own first and
+    // third. The fork's is in neither figure, because it belonged to a session that no longer
+    // exists, and the fourth had not happened yet
+    let said = answers_from(&kernel, &["log"]).remove(0);
+    assert!(
+        said.contains("2 match kinds:[\"model.requested\"]"),
+        "a fork's request is not this session's: {said}"
+    );
+    // what the copy said did cross, as the tool's output, the way any tool's output does
+    assert!(
+        all_answers(&kernel)
+            .iter()
+            .any(|answer| answer.contains("the copy's answer")),
+        "the answer is the one thing a fork hands back"
+    );
+}
+
+/// `by: "amend"` on an item's metadata means the tool, and nothing else in this program writes it.
+///
+/// note: the other question the design left open - whether a person editing an item would also
+/// record `"amend"`, which would have a model reading its own metadata and finding its own tool
+/// named as the hand that did it. It would not, and there is no such edit: `Kernel::replace` is
+/// reached from `amend`'s `revise` and from `amend`'s `undo`, and from nowhere else in this crate.
+/// The `unwrap_or("something")` that suggested otherwise is guarding against metadata written by
+/// somebody else's code, which is what a free-form field the kernel never reads is for.
+#[tokio::test]
+async fn the_only_hand_that_records_itself_as_amend_is_amend() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "amend",
+        json!({
+            "action": "revise",
+            "ids": [1],
+            "content": "the parser is in src/parse.rs",
+            "reason": "I wrote it down wrong",
+        }),
+    )]));
+
+    let item = kernel.push(ContextItem::memory(
+        "scratch",
+        "the parser is in src/parser.rs",
+    ));
+    kernel.push(ContextItem::user("carry on"));
+
+    // a person rewriting an item goes through the same kernel call and records nothing of its own
+    kernel
+        .replace(item, "edited by whoever is at the terminal")
+        .expect("the item is there");
+    assert!(
+        kernel.item(item).expect("still there").meta.is_null(),
+        "nothing outside `amend` attributes an edit to `amend`"
+    );
+
+    kernel.turn().await.expect("the turn failed");
+
+    let after = kernel.item(item).expect("still there");
+    assert_eq!(after.meta["revised"]["by"], "amend");
+    // and both rewrites are on the record with what each replaced, so the two hands are told
+    // apart by the log even though the item carries only the second
+    let replaced: Vec<String> = kernel
+        .history()
+        .iter()
+        .filter_map(|record| match &record.event {
+            nachalnik::Event::ContextReplaced { was, .. } => Some(was.to_text().into_owned()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(replaced.len(), 2, "{replaced:?}");
+    assert!(replaced[0].contains("src/parser.rs"), "{replaced:?}");
+    assert!(
+        replaced[1].contains("whoever is at the terminal"),
+        "{replaced:?}"
+    );
+}
