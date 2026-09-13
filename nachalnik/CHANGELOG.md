@@ -5,6 +5,37 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **`session.rs` said the log carries no content, and it does.** The module note read "nothing in
+  the log carries content, so a log cannot rebuild a context", and `Event::ContextReplaced::was`
+  two files away reads "This is the one event that carries content". Both cannot be right, and the
+  event is: a replacement is the only operation that overwrites something, so once the change falls
+  out of the undo window the old text exists in no snapshot and in no other record.
+
+  Not cosmetic, which is why it is an entry rather than a typo fix. The sentence is in the place
+  somebody goes to learn the rule, and it stated an invariant strictly stronger than the one this
+  crate keeps - so the way it goes wrong is that a reader takes it at its word and *enforces* it,
+  drops the content from `ContextReplaced` to make the two agree, and destroys the only account
+  there is of an overwrite. The note now names the exception, says what taking it out would cost,
+  and names the other two ways content reaches a log: `Config::record_payloads` and
+  `Config::record_progress`, both off by default and both asked for. `Snapshot`'s own note gains
+  the consequence, which is that a snapshot plus the replacements since it was taken can wind an
+  item back through its overwrites - something neither half can do alone.
+
+  Nothing about the behaviour changed and no test was added:
+  `a_replacement_is_the_one_thing_that_would_otherwise_be_lost` in `tests/context/undo.rs` already
+  asserts the content is in the event *and* in the serialized log, which is exactly the thing the
+  wrong sentence invited somebody to remove.
+
+- **`Session` says how a caller reaches one.** `Kernel::with_history` is the mirror of
+  `with_context` and copies nothing, and it is named for what it holds rather than for its
+  argument's type - so a reader grepping the kernel for "session" finds `session_name` and
+  concludes there is no read access to the log at all. That has now happened to somebody writing
+  against this crate, and the answer was a sentence rather than an accessor.
+
 ## [0.5.1] - 2026-09-12
 
 ### changed

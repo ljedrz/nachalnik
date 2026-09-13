@@ -2,8 +2,18 @@
 //!
 //! note: the two are here together so that the difference between them is read in one place. A
 //! [`Record`] says what happened and survives every change to the client, the model and this
-//! crate's internals; a [`Snapshot`] says what there *is* now, which is what resuming needs -
-//! nothing in the log carries content, so a log cannot rebuild a context.
+//! crate's internals; a [`Snapshot`] says what there *is* now, which is what resuming needs - the
+//! log names items rather than copying them, so a log cannot rebuild a context.
+//!
+//! note: "names rather than copies" is the rule and it has one standing exception, which is worth
+//! stating here because this is where somebody reads the rule and might go and enforce it.
+//! [`Event::ContextReplaced`] carries the text an item used to hold, deliberately: a replacement
+//! is the only operation that overwrites something, so once the change falls out of the undo
+//! window that text exists in no snapshot and in no other record. Taking it out would tidy this
+//! sentence and destroy the only account of an overwrite. Two [`Config`] settings put more content
+//! in by asking - [`Config::record_payloads`] keeps the rendered request and
+//! [`Config::record_progress`] keeps streaming fragments - and both are off by default, so what a
+//! log holds without being asked is the names, plus what an overwrite took.
 
 use std::{
     collections::VecDeque,
@@ -45,6 +55,12 @@ pub struct Record {
 /// Streaming fragments are the only events kept out of it by default (see
 /// [`Config::record_progress`]); if a session outgrows memory, subscribe with
 /// [`Kernel::subscribe`], persist elsewhere, and start a new kernel.
+///
+/// note: A caller gets at one through [`Kernel::with_history`], which is the mirror of
+/// [`Kernel::with_context`] and copies nothing - named for what it holds rather than for the type,
+/// which is why a grep for "session" on the kernel finds only [`Kernel::session_name`] and this
+/// looks absent. [`Kernel::history`] and [`Kernel::history_since`] hand back copies for the times
+/// a closure is the wrong shape.
 #[derive(Debug, Clone)]
 pub struct Session {
     name: String,
@@ -128,6 +144,10 @@ impl Session {
 /// because an event names an item rather than carrying its contents - which is exactly what
 /// keeps the log small enough to keep forever. Persist both: the snapshot to resume from, the
 /// log to answer "how did it get like this?".
+///
+/// note: with one item of content in the log rather than none, the pair is more than the sum: a
+/// snapshot plus every [`Event::ContextReplaced`] since it was taken is enough to wind an item
+/// back through its overwrites, which neither half can do alone. See the module note.
 ///
 /// note: What is *not* here is anything transient. A resumed kernel starts
 /// [`State::Idle`](crate::State) with nothing pending, because a permission that nobody is
