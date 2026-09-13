@@ -22,7 +22,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use nachalnik::{
-    BoxError, Capability, Content, ContextId, Event, OutputSink, Record, Tool, ToolCall,
+    BoxError, Capability, Content, ContextId, Event, Kernel, OutputSink, Record, Tool, ToolCall,
     ToolOutput, ToolSpec, async_trait,
 };
 use serde_json::json;
@@ -32,7 +32,7 @@ use crate::{
     tools::Limits,
 };
 
-use super::Reach;
+use super::{Reach, if_offered};
 
 /// How wide the event-name column is, which is the longest name plus a space.
 const NAMES: usize = 20;
@@ -154,7 +154,7 @@ impl Tool for Log {
             }
         });
 
-        Ok(ToolOutput::new(query.report(&read, &*counter)))
+        Ok(ToolOutput::new(query.report(&kernel, &read, &*counter)))
     }
 }
 
@@ -357,7 +357,12 @@ impl Query {
     }
 
     /// The answer: the true total first, then whatever was asked for.
-    fn report(&self, read: &Read, counter: &dyn nachalnik::TokenCounter) -> String {
+    fn report(
+        &self,
+        kernel: &Kernel,
+        read: &Read,
+        counter: &dyn nachalnik::TokenCounter,
+    ) -> String {
         let all = counter.count(&Content::text(read.every.clone()));
 
         if read.total == 0 {
@@ -410,7 +415,7 @@ impl Query {
                 // and here most of all, because an `ids` filter that matched nothing is the exact
                 // shape an inherited item makes, and "nothing matched" is the least useful way to
                 // say so
-                out.push_str(&self.inherited(read));
+                out.push_str(&self.inherited(kernel, read));
 
                 return out;
             }
@@ -439,7 +444,7 @@ impl Query {
                 },
             )),
         }
-        out.push_str(&self.inherited(read));
+        out.push_str(&self.inherited(kernel, read));
         out.push('\n');
         out.push_str(&lines[beyond..].join("\n"));
         out.push('\n');
@@ -454,7 +459,7 @@ impl Query {
     /// It got five `model.requested` rows naming that item - every one of them true, because the
     /// item had been in every request since - and read them as proof it had written the item
     /// itself. What decided the question was the record that was not there.
-    fn inherited(&self, read: &Read) -> String {
+    fn inherited(&self, kernel: &Kernel, read: &Read) -> String {
         let unborn: Vec<&ContextId> = self
             .ids
             .iter()
@@ -472,9 +477,11 @@ impl Query {
         format!(
             "\n{} {has} no `context.added` here: {they} already in the context before this log \
              begins, so nothing in it says where {them} came from or who wrote {them}. A session \
-             resumed from a snapshot starts that way, and `setup` with `model` says whether this \
-             one did.\n",
+             resumed from a snapshot starts that way.{}\n",
             numbered(&unborn),
+            if_offered(kernel, "setup", || {
+                " `setup` with `model` says whether this one did.".to_owned()
+            }),
         )
     }
 }

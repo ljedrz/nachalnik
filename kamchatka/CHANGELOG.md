@@ -164,6 +164,13 @@ minor bump may break you.
   already counts items, not a warning, and the model is still free to ignore it. Twice more, it
   did.
 
+- **An answer no longer points at a tool the session has had taken away.** `/tools drop log`
+  mid-run, and `setup tools` went on ending with "`log` with `kinds: [\"tools.changed\"]` says when
+  it went" - naming a tool in the same breath as reporting that the model does not have it. Three
+  other sentences did the same. It is the rule a refusal already follows: everything named in an
+  answer is read as something to try, so name only what can be reached. The sentence goes when its
+  subject does; the report around it is unchanged.
+
 - **Four things reading the real output found, that the tests did not.** Written down because the
   lesson is the finding: every one was in a sentence a model reads, all four suites were green, and
   printing the answers and reading them took a minute.

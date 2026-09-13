@@ -31,7 +31,7 @@ use crate::{
     tools::{Careful, Limits, Subject},
 };
 
-use super::{Reach, action, unknown};
+use super::{Reach, action, if_offered, unknown};
 
 /// Reads what the session is running with: the model, the tools, the policy, the rules.
 pub struct Setup {
@@ -201,8 +201,11 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
     out.push_str(
         "\n`shown` is how much of a result reaches you; the whole of anything cut is archived \
          beside it and can be restored. A tool that was taken away mid-session is not on this \
-         list, and `log` with `kinds: [\"tools.changed\"]` says when it went.\n",
+         list.\n",
     );
+    out.push_str(&if_offered(kernel, "log", || {
+        "`log` with `kinds: [\"tools.changed\"]` says when one went.\n".to_owned()
+    }));
 
     out
 }
@@ -301,9 +304,12 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
 
     out.push_str(
         "\n`ask` is nobody having decided yet, not a refusal: the call stops and somebody is \
-         asked. A refusal is a standing answer and the same call will be refused again. How each \
-         of these was arrived at is in `log` with `kinds: [\"permission.decided\"]`.\n",
+         asked. A refusal is a standing answer and the same call will be refused again.\n",
     );
+    out.push_str(&if_offered(kernel, "log", || {
+        "How each of these was arrived at is in `log` with `kinds: [\"permission.decided\"]`.\n"
+            .to_owned()
+    }));
 
     out
 }
@@ -329,9 +335,11 @@ fn rules(kernel: &Kernel) -> String {
         Some(compactor) => format!(
             "\nthe compactor is `{}`. It runs when the context gets too full and moves items out \
              of the request without being asked - it cannot take anything pinned, it says exactly \
-             what it moved, and `amend` with `restore` puts any of it back. `log` with `kinds: \
-             [\"context.compacted\"]` is every pass it has made.\n",
+             what it moved, and `amend` with `restore` puts any of it back.{}\n",
             short(compactor.name()),
+            if_offered(kernel, "log", || {
+                " `log` with `kinds: [\"context.compacted\"]` is every pass it has made.".to_owned()
+            }),
         ),
         None => "\nthere is no compactor: nothing will be moved out of your context on its own, \
                  and a context that outgrows the limit is a request the provider refuses.\n"
@@ -354,11 +362,16 @@ fn rules(kernel: &Kernel) -> String {
         "\na tool result longer than its limit is cut, and {}\n",
         match config.keep_truncated_output {
             true =>
-                "the whole of it is archived beside the copy you were shown - so it is \
-                     still here, and `context` with `search` reaches it.",
+                "the whole of it is archived beside the copy you were shown, so it is still \
+                     here.",
             false => "the rest is not kept: this session was told to forget it.",
         },
     ));
+    if config.keep_truncated_output {
+        out.push_str(&if_offered(kernel, "context", || {
+            "`context` with `search` reaches what was cut without putting it back.\n".to_owned()
+        }));
+    }
     out.push_str(&format!(
         "one turn makes at most {} request(s) before it stops, whatever you are in the middle \
          of.\n",

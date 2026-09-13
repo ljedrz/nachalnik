@@ -101,6 +101,21 @@ type Pinned = Arc<Mutex<BTreeSet<ContextId>>>;
 
 // ------------------------------------------------------------------------------------ helpers
 
+/// A sentence pointing at a sibling tool, or nothing if that tool is not on offer.
+///
+/// note: bought by a live run. `/tools drop log` took the log away mid-session, and `setup tools`
+/// went on ending with "`log` with `kinds: [\"tools.changed\"]` says when it went" - advice naming
+/// a tool the model had just been told it does not have. It is the same rule a refusal follows:
+/// name only what the session can actually reach, because everything named in an answer is read as
+/// something to try. These are registered tools rather than a fixed set, so the check is the
+/// registry and the sentence simply goes when its subject does.
+pub(crate) fn if_offered(kernel: &Kernel, tool: &str, said: impl FnOnce() -> String) -> String {
+    match kernel.tool(tool).is_some() {
+        true => said(),
+        false => String::new(),
+    }
+}
+
 /// The action the call names, or the fact that it names none.
 fn action(args: &Value) -> Result<&str, BoxError> {
     args["action"]

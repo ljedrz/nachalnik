@@ -2294,3 +2294,58 @@ async fn look_says_which_items_this_session_did_not_produce() {
         answered(&fresh)
     );
 }
+
+/// An answer names only the tools this session actually has.
+///
+/// note: bought by a live run. `/tools drop log` took the log away mid-session, and `setup tools`
+/// went on ending with "`log` with `kinds: [\"tools.changed\"]` says when it went" - advice naming
+/// a tool in the same breath as reporting that the model does not have it. It is the rule a
+/// refusal already follows: everything named in an answer is read as something to try, so name
+/// only what can be reached.
+#[tokio::test]
+async fn an_answer_does_not_point_at_a_tool_that_has_been_taken_away() {
+    let (kernel, _provider, _anchor) = agent(vec![
+        ModelResponse::tool_calls(vec![
+            call("c1", "setup", json!({ "action": "tools" })),
+            call("c2", "setup", json!({ "action": "permissions" })),
+        ]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![
+            call("c3", "setup", json!({ "action": "tools" })),
+            call("c4", "setup", json!({ "action": "permissions" })),
+        ]),
+        ModelResponse::text("done"),
+    ]);
+
+    kernel.push(ContextItem::user("what have you got?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let with_it = answers_from(&kernel, &["setup"]);
+    assert!(with_it[0].contains("tools.changed"), "{}", with_it[0]);
+    assert!(with_it[1].contains("permission.decided"), "{}", with_it[1]);
+
+    // the reader of the record goes; the record does not
+    kernel.remove_tool("log");
+    kernel.push(ContextItem::user("and now?"));
+    kernel.turn().await.expect("the second turn failed");
+
+    let without = answers_from(&kernel, &["setup"]);
+    for said in &without[2..] {
+        assert!(
+            !said.contains("`log`"),
+            "an answer that names a tool the session does not have is advice nobody can take: \
+             {said}"
+        );
+    }
+    // and the rest of the answer is untouched: what is gone is the sentence, not the report
+    assert!(
+        without[2].contains("tool(s), which is every one"),
+        "{}",
+        without[2]
+    );
+    assert!(
+        without[3].contains("`ask` is nobody having decided yet"),
+        "{}",
+        without[3]
+    );
+}
