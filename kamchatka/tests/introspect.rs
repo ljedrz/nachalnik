@@ -2063,3 +2063,234 @@ async fn setup_permissions_counts_the_rules_nobody_has_thought_about() {
     // dishonest - it is the row per rule that is not worth the tokens, not the fact of them
     assert!(said.contains(".env*"), "{said}");
 }
+
+/// An argument this tool does not take is a mistake to report, not one to ignore.
+///
+/// note: found live. A session called `log {action: "look"}` - the sibling tools all take an
+/// `action`, so it is the obvious mistake - got the summary back, and read it as the answer to a
+/// question it had not asked. It then cited it. An ignored argument is the same failure as a
+/// filter nobody can parse, one step earlier: the reply is a real answer, so nothing in it says
+/// that what was asked for did not happen.
+#[tokio::test]
+async fn an_argument_log_does_not_take_is_refused_rather_than_ignored() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call("c1", "log", json!({ "action": "look" })),
+        call(
+            "c2",
+            "log",
+            json!({ "kinds": ["context.added"], "limit": 3 }),
+        ),
+    ]));
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    assert!(said[0].contains("does not take `action`"), "{}", said[0]);
+    assert!(
+        said[0].contains("no actions here"),
+        "the obvious mistake gets the sentence that unmakes it: {}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("nothing was read"),
+        "and says it did nothing, so it cannot be read as an answer: {}",
+        said[0]
+    );
+    // a real filter beside an unreadable one is still refused, rather than half-honoured
+    assert!(said[1].contains("does not take `limit`"), "{}", said[1]);
+    assert!(!said[1].contains("match"), "{}", said[1]);
+}
+
+/// An item with no beginning in this log is said to have none, which is what `ids` really asks.
+///
+/// note: the sharpest thing the live runs turned up. A session resumed under a second model was
+/// asked whether it had written an inherited turn. It asked the log about that item and got five
+/// `model.requested` rows naming it - every one true, because the item had been in every request
+/// since - and read them as proof it had written the item itself. The record that settled the
+/// question was the one that was not there, and an absence is the one answer a list of matching
+/// records cannot give. So the tool says it.
+#[tokio::test]
+async fn an_inherited_item_is_reported_as_having_no_beginning_here() {
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("which index?"));
+    first.push(ContextItem::assistant("I chose a B-tree.", vec![]));
+
+    let kernel = Kernel::resume(Config::default(), first.snapshot());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![
+        call("c1", "log", json!({ "ids": [2] })),
+        call("c2", "log", json!({ "ids": [2, 3] })),
+        call("c3", "log", json!({ "ids": [3] })),
+    ]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(
+        &Subject::Capability(Capability::Custom("log".into())),
+        Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    kernel.push(ContextItem::user("and now?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let (inherited, mixed, native) = (&said[0], &said[1], &said[2]);
+
+    // the misleading evidence is here, exactly as it was live: `model.requested` names item 2,
+    // because item 2 has been in every request since. It is true and it is not provenance
+    assert!(inherited.contains("model.requested"), "{inherited}");
+    // and the record that settles it is the one that is absent, so the absence is stated
+    assert!(
+        inherited.contains("[2] has no `context.added` here"),
+        "{inherited}"
+    );
+    assert!(inherited.contains("before this log begins"), "{inherited}");
+    // and it names the tool that settles it rather than leaving the model to infer a snapshot
+    assert!(inherited.contains("`setup` with `model`"), "{inherited}");
+
+    // the same where some of the named items do have a beginning and some do not
+    assert!(mixed.contains("[2] has no"), "{mixed}");
+    assert!(mixed.contains("context.added"), "{mixed}");
+    // and silence where every named item was created here, because then there is nothing to say
+    assert!(
+        !native.contains("has no `context.added` here"),
+        "an item this log saw created needs no note about snapshots: {native}"
+    );
+}
+
+/// `since` is exclusive, and the schema says which number means everything.
+///
+/// note: also found live, and it cost the answer. A session reaching for "all of it" wrote
+/// `since: 1`, which is *after* record 1 - and in a resumed session record 1 is `session.resumed`,
+/// the one record that would have told it the context was not its own. It read everything except
+/// the thing it was looking for.
+#[tokio::test]
+async fn since_one_is_not_since_the_beginning_and_the_schema_says_so() {
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("earlier"));
+    let kernel = Kernel::resume(Config::default(), first.snapshot());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![
+        call("c1", "log", json!({ "since": 1 })),
+        call("c2", "log", json!({ "since": 0 })),
+    ]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(
+        &Subject::Capability(Capability::Custom("log".into())),
+        Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    kernel.push(ContextItem::user("and now?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    assert!(
+        !said[0].contains("session.resumed"),
+        "`since: 1` is after record 1, and record 1 is the one that matters: {}",
+        said[0]
+    );
+    assert!(
+        said[1].contains("session.resumed"),
+        "`since: 0` is the one that means all of them: {}",
+        said[1]
+    );
+
+    let spec = kernel.tool("log").expect("installed").spec();
+    let since = spec.schema["properties"]["since"]["description"]
+        .as_str()
+        .expect("it says what it is for");
+    assert!(
+        since.contains("`0` is all of them"),
+        "the off-by-one is not guessable, so it is written down: {since}"
+    );
+}
+
+/// An empty filter is no filter; a filter full of the wrong thing is a mistake.
+///
+/// note: found live. A model spelling "every argument the schema lists, none of them constraining
+/// anything" wrote `{ids: [], kinds: [], since: 0, take: 20}` and was refused, which cost it a
+/// turn and taught it nothing - an empty list constrains nothing, and reading it as "no filter" is
+/// the only thing it can mean. A list with entries that are not item numbers is a different thing
+/// and still worth reporting.
+#[tokio::test]
+async fn an_empty_filter_list_is_no_filter_rather_than_a_refusal() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "log",
+            json!({ "ids": [], "kinds": [], "since": 0, "take": 2, "whole": false }),
+        ),
+        call("c2", "log", json!({ "ids": ["two"] })),
+    ]));
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    assert!(said[0].contains("match since:0"), "{}", said[0]);
+    assert!(
+        !said[0].contains("ids:["),
+        "an empty list is not reported as a filter that was applied: {}",
+        said[0]
+    );
+    assert!(said[0].contains("Showing the 2 most recent"), "{}", said[0]);
+    // and a list of the wrong thing still says so, naming what it was given
+    assert!(said[1].contains("none of [\"two\"] is one"), "{}", said[1]);
+}
+
+/// `look` says which of the items it lists this session did not produce.
+///
+/// note: three live runs bought this. A session resumed under a second model, asked whether it had
+/// written an inherited turn, reached for `look` every time - and `look` had nothing to say,
+/// because a restored item is an ordinary item with no field that marks it. `setup model` had the
+/// fact and was never called. A fact only reachable through a tool nobody reaches for is one the
+/// program does not really have, so it is said where the question is actually asked.
+#[tokio::test]
+async fn look_says_which_items_this_session_did_not_produce() {
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("which index?"));
+    first.push(ContextItem::assistant("I chose a B-tree.", vec![]));
+
+    let kernel = Kernel::resume(Config::default(), first.snapshot());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(
+        &Subject::Capability(Capability::Custom("context".into())),
+        Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    kernel.push(ContextItem::user("and now?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    // first, before the listing, because it is what the listing is about to be misread as
+    assert!(
+        said.starts_with("this session was resumed from a snapshot"),
+        "{said}"
+    );
+    assert!(said.contains("1, 2"), "and names which ones: {said}");
+    assert!(said.contains("not produced here"), "{said}");
+    assert!(
+        said.contains("`setup` with `model`"),
+        "and sends the reader to the tool that says what this model is: {said}"
+    );
+
+    // a session nobody resumed says none of it, because there is nothing to say
+    let (fresh, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look" }),
+    )]));
+    fresh.push(ContextItem::user("hello"));
+    fresh.turn().await.expect("the turn failed");
+    assert!(
+        !answered(&fresh).contains("resumed from a snapshot"),
+        "{}",
+        answered(&fresh)
+    );
+}

@@ -193,7 +193,8 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
     let (withheld, theirs) =
         kernel.with_context(|context| (context.tokens_withheld(), context.undo_len()));
 
-    let mut out = format!(
+    let mut out = inherited(kernel, &items);
+    out.push_str(&format!(
         "{} items · {} of them go into the next request\n\
          ~{} tokens going{}, ~{} withheld\n\
          {} change(s) in the person's own undo stack, which is theirs; `amend undo` walks back \
@@ -216,7 +217,7 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
         "state",
         "kind",
         "tokens",
-    );
+    ));
 
     for item in &items {
         out.push_str(&format!(
@@ -236,6 +237,62 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
     );
 
     out
+}
+
+/// Which of these items this session did not produce, said before the listing rather than after.
+///
+/// note: three live runs bought this line. A session resumed under a *second* model was asked
+/// whether it had written an inherited turn. Every time, it reached for `look` - and `look` had
+/// nothing to say, because an item restored from a snapshot is a perfectly ordinary item with no
+/// field that marks it. Every time, the model read the turn, recognised its own voice in it, and
+/// confabulated a first-person account of writing a sentence another model wrote.
+///
+/// note: `setup` with `model` has said this since it existed and none of those runs called it. A
+/// fact that is only reachable by a tool nobody reaches for is a fact the program does not really
+/// have, so it goes where the question is actually asked. It is a count of items in a listing that
+/// already counts items - not a warning, and it says nothing about what the turns are worth.
+///
+/// note: conditioned on `session.resumed` being in the log rather than on the absence of a
+/// `context.added` alone, because `Kernel::drain_history` also takes those away. Absent that
+/// record, an item with no beginning here means the log was shortened, which is a different fact
+/// and would be a false one to report as this.
+fn inherited(kernel: &Kernel, items: &[Arc<ContextItem>]) -> String {
+    let (resumed, added) = kernel.with_history(|session| {
+        let mut resumed = false;
+        let mut added = BTreeSet::new();
+        for record in session.records() {
+            match &record.event {
+                Event::SessionResumed { .. } => resumed = true,
+                Event::ContextAdded { id, .. } => {
+                    added.insert(*id);
+                }
+                _ => {}
+            }
+        }
+
+        (resumed, added)
+    });
+    if !resumed {
+        return String::new();
+    }
+
+    let carried: Vec<String> = items
+        .iter()
+        .filter(|item| !added.contains(&item.id))
+        .map(|item| item.id.0.to_string())
+        .collect();
+    if carried.is_empty() {
+        return String::new();
+    }
+
+    format!(
+        "this session was resumed from a snapshot, and {} of the items below were already in it: \
+         {}. They were not produced here. A turn among them reads in the first person and was \
+         written by whatever model that session ran, which nothing in the turn records - `setup` \
+         with `model` says what this one is.\n\n",
+        carried.len(),
+        carried.join(", "),
+    )
 }
 
 /// One item's row: its label, then whatever else is worth knowing on one line.

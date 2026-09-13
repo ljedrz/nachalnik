@@ -19,7 +19,7 @@
 //! one: a count is not a flag, and a tool that hid a cheap honest fact to keep a reading
 //! interesting would be the wrong trade for something people use for real.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use nachalnik::{
     BoxError, Capability, Content, ContextId, Event, OutputSink, Record, Tool, ToolCall,
@@ -78,10 +78,15 @@ impl Tool for Log {
                     "items": { "type": "integer" },
                     "description": "only the records naming these context items",
                 },
+                // note: `0` said out loud, because it is not guessable and the guess is costly.
+                // This is exclusive - `since: 1` means *after* record 1 - and a live session
+                // reaching for "everything" wrote `since: 1`, which in a resumed session drops
+                // exactly one record: `session.resumed`, which is always the first. It then
+                // answered the question that record was the answer to, wrongly.
                 "since": {
                     "type": "integer",
                     "description": "only the records after this sequence number, which is the \
-                                    first column",
+                                    first column; `0` is all of them",
                 },
                 "kinds": {
                     "type": "array",
@@ -123,10 +128,14 @@ impl Tool for Log {
             let mut kinds: BTreeMap<&'static str, usize> = BTreeMap::new();
             let mut every = String::new();
             let mut matched = String::new();
+            let mut added = BTreeSet::new();
             let mut hits = 0;
 
             for record in session.records() {
                 *kinds.entry(record.event.name()).or_default() += 1;
+                if let Event::ContextAdded { id, .. } = &record.event {
+                    added.insert(*id);
+                }
                 every.push_str(&line(record, false));
                 if query.wants(record) {
                     hits += 1;
@@ -141,6 +150,7 @@ impl Tool for Log {
                 every,
                 matched,
                 hits,
+                added,
             }
         });
 
@@ -162,6 +172,12 @@ struct Read {
     matched: String,
     /// How many those were.
     hits: usize,
+    /// The items this log holds a `context.added` for.
+    ///
+    /// note: kept so that the *absence* of one can be reported, which is the fact an `ids` filter
+    /// is usually really after. An item with no creation record here was in the context before
+    /// this log began, and nothing else in an answer says so.
+    added: BTreeSet<ContextId>,
 }
 
 /// What a call asked for, and how to say it back.
@@ -179,9 +195,50 @@ struct Query {
     whole: bool,
 }
 
+/// The arguments this tool takes; anything else is a mistake worth reporting.
+const TAKES: [&str; 5] = ["take", "ids", "since", "kinds", "whole"];
+
 impl Query {
     /// Reads one, or says what is wrong with the arguments.
     fn read(args: &serde_json::Value) -> Result<Self, String> {
+        // note: an argument nobody reads is the same failure as a filter nobody can parse, one
+        // step earlier: the call comes back looking like a bare call, which is a real answer, so
+        // nothing says it did not do what was asked. A live session called `log {action: "look"}`,
+        // got the summary, and read it as the answer to a question it had not asked - then cited
+        // it. The sibling tools all take an `action`, so reaching for one here is the obvious
+        // mistake to make and gets a sentence of its own.
+        if let Some(given) = args.as_object() {
+            let unknown: Vec<&str> = given
+                .keys()
+                .map(String::as_str)
+                .filter(|key| !TAKES.contains(key))
+                .collect();
+            if !unknown.is_empty() {
+                let mut why = format!(
+                    "`log` does not take {}. It takes {}, and nothing was read - a call that \
+                     ignored an argument would have come back looking like a bare call.",
+                    unknown
+                        .iter()
+                        .map(|key| format!("`{key}`"))
+                        .collect::<Vec<_>>()
+                        .join(" or "),
+                    TAKES
+                        .iter()
+                        .map(|key| format!("`{key}`"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
+                if unknown.contains(&"action") {
+                    why.push_str(
+                        " There are no actions here: `context`, `setup` and `amend` have them and \
+                         this does not. A bare call is the summary.",
+                    );
+                }
+
+                return Err(why);
+            }
+        }
+
         let mut query = Self {
             whole: args["whole"].as_bool().unwrap_or(false),
             ..Self::default()
@@ -207,17 +264,21 @@ impl Query {
                     "`ids` is a list of context item numbers, as `ids: [12, 13]`".to_owned(),
                 );
             };
+            // note: an *empty* array constrains nothing and is how a model spells "no id filter"
+            // while passing every argument the schema lists - which a live one did, and was
+            // refused, and spent a turn on it. An array with entries in it that are not numbers
+            // is a different thing and is still a mistake worth reporting.
             query.ids = ids
                 .iter()
                 .filter_map(|id| id.as_u64())
                 .map(ContextId)
                 .collect();
-            if query.ids.is_empty() {
-                return Err(
-                    "`ids` named no item numbers; `context` with `look` lists what there \
-                            is"
-                    .to_owned(),
-                );
+            if query.ids.is_empty() && !ids.is_empty() {
+                return Err(format!(
+                    "`ids` is a list of item numbers and none of {} is one; `context` with `look` \
+                     lists what there is",
+                    serde_json::Value::Array(ids.clone()),
+                ));
             }
         }
         if !args["kinds"].is_null() {
@@ -228,14 +289,16 @@ impl Query {
                         .to_owned(),
                 );
             };
+            // the same: `kinds: []` is no constraint, and saying so costs nothing
             query.kinds = kinds
                 .iter()
                 .filter_map(|kind| kind.as_str())
                 .map(str::to_owned)
                 .collect();
-            if query.kinds.is_empty() {
+            if query.kinds.is_empty() && !kinds.is_empty() {
                 return Err(
-                    "`kinds` named nothing; a bare call lists the ones this session holds"
+                    "`kinds` is a list of names and none of these is one; a bare call lists the \
+                     ones this session holds"
                         .to_owned(),
                 );
             }
@@ -344,6 +407,10 @@ impl Query {
                 // that matched nothing is usually one spelled for a session other than this one
                 out.push_str(" Nothing matched; these are the kinds this session holds:\n");
                 out.push_str(&histogram(read));
+                // and here most of all, because an `ids` filter that matched nothing is the exact
+                // shape an inherited item makes, and "nothing matched" is the least useful way to
+                // say so
+                out.push_str(&self.inherited(read));
 
                 return out;
             }
@@ -358,12 +425,12 @@ impl Query {
         };
         let beyond = lines.len() - shown;
         match beyond {
-            0 => out.push_str(&format!(" Showing {}.\n\n", thousands(shown))),
+            0 => out.push_str(&format!(" Showing {}.\n", thousands(shown))),
             // said as a figure rather than implied by the count, because the thing a shortened
             // log has to say is how much of it is not here - and in the word that is true of
             // them, which is "older" when nothing narrowed what counts
             more => out.push_str(&format!(
-                " Showing the {} most recent; {} {} not here.\n\n",
+                " Showing the {} most recent; {} {} not here.\n",
                 thousands(shown),
                 thousands(more),
                 match self.narrowed() {
@@ -372,10 +439,43 @@ impl Query {
                 },
             )),
         }
+        out.push_str(&self.inherited(read));
+        out.push('\n');
         out.push_str(&lines[beyond..].join("\n"));
         out.push('\n');
 
         out
+    }
+
+    /// What an `ids` filter found no beginning for, which is usually what it was really asking.
+    ///
+    /// note: an *absence*, and the one answer a list of matching records cannot give. A live
+    /// session, resumed under a second model, asked the log where an inherited item had come from.
+    /// It got five `model.requested` rows naming that item - every one of them true, because the
+    /// item had been in every request since - and read them as proof it had written the item
+    /// itself. What decided the question was the record that was not there.
+    fn inherited(&self, read: &Read) -> String {
+        let unborn: Vec<&ContextId> = self
+            .ids
+            .iter()
+            .filter(|id| !read.added.contains(id))
+            .collect();
+        if unborn.is_empty() {
+            return String::new();
+        }
+
+        let (has, they, them) = match unborn.len() {
+            1 => ("has", "it was", "it"),
+            _ => ("have", "they were", "them"),
+        };
+
+        format!(
+            "\n{} {has} no `context.added` here: {they} already in the context before this log \
+             begins, so nothing in it says where {them} came from or who wrote {them}. A session \
+             resumed from a snapshot starts that way, and `setup` with `model` says whether this \
+             one did.\n",
+            numbered(&unborn),
+        )
     }
 }
 
@@ -396,6 +496,15 @@ fn counted(value: &serde_json::Value, name: &str) -> Result<u64, String> {
         "`{name}` is a whole number and this one is `{value}`. Nothing was read, rather than \
          nothing being found: an empty answer here would have read as an empty log."
     ))
+}
+
+/// Item numbers, as somebody would read them out.
+fn numbered(ids: &[&ContextId]) -> String {
+    let numbers: Vec<String> = ids.iter().map(|id| format!("[{}]", id.0)).collect();
+    match numbers.len() {
+        1 => numbers[0].clone(),
+        _ => numbers.join(", "),
+    }
 }
 
 /// How many of each kind, most first.

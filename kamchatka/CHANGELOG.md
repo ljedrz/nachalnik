@@ -126,6 +126,44 @@ minor bump may break you.
 
 ### fixed
 
+- **Five things a live model found, that reading the output did not.** A session was resumed under
+  a *second* model and asked whether it had written a turn the first one wrote - the trap
+  `setup model` exists for. It got the answer wrong four times running, and three of the four were
+  the tools' fault.
+
+  **`log` ignored arguments it does not take.** The call was `log {action: "look"}` - every sibling
+  tool has an `action`, so it is the obvious mistake - and the summary came back as though nothing
+  were wrong. The model read it as the answer to a question it had not asked, and then cited it.
+  That is the same failure as a filter nobody can parse, one step earlier: the reply is a real
+  answer, so nothing in it says the request was not honoured. Unknown arguments are refused by
+  name now, with a sentence for `action` in particular.
+
+  **`log ids:[n]` answered a provenance question with five true and irrelevant records.** Asked
+  where an inherited item came from, it returned five `model.requested` rows naming it - each one
+  true, because the item had been in every request since - and the model read them as proof it had
+  written the item itself. What settled the question was the record that was *not* there: an item
+  restored from a snapshot has no `context.added` in the log that follows it. An absence is the one
+  thing a list of matches cannot report, so it is reported explicitly, in the zero-match case too.
+
+  **`since` is exclusive and nothing said which number means everything.** Reaching for "all of
+  it", a model wrote `since: 1` - which is *after* record 1, and record 1 in a resumed session is
+  always `session.resumed`, the record that would have answered its question. It read everything
+  except the thing it was looking for. The description says `0` now.
+
+  **An empty filter list was refused.** `{ids: [], kinds: [], since: 0, take: 20}` is how a model
+  spells "every argument, none of them constraining anything", and it cost a turn. An empty list
+  constrains nothing; a list of things that are not item numbers is still a mistake and still says
+  so.
+
+  **`look` said nothing about items this session did not produce.** Every one of those runs reached
+  for `look` and none called `setup model`, which has had the fact since it existed. A restored
+  item is an ordinary item with no field marking it, so the listing read as though the model had
+  written all of it - and it duly confabulated a first-person account of writing another model's
+  sentence. `look` now opens with which items were already there and sends the reader to
+  `setup model`; a session nobody resumed says none of it. It is a count of items in a listing that
+  already counts items, not a warning, and the model is still free to ignore it. Twice more, it
+  did.
+
 - **Four things reading the real output found, that the tests did not.** Written down because the
   lesson is the finding: every one was in a sentence a model reads, all four suites were green, and
   printing the answers and reading them took a minute.
