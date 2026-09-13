@@ -2607,3 +2607,55 @@ async fn a_search_finds_a_blob_by_what_names_it() {
     // the standing-in sentence, not the payload: nothing here reads a picture
     assert!(!said.contains("AAAABBBB"), "{said}");
 }
+
+/// A fork says whether it actually left anything out, because asking it to pretend is not the same.
+///
+/// note: found live. A session asked a copy what it would conclude "without knowing my earlier
+/// statement about quicksort", passed no `without` at all, got the same answer back, and reported
+/// that as an ablation - the item it named was in front of the copy the whole time. The reply said
+/// "on 9 of your items", which cannot be read as "on all of them", so nothing in it contradicted
+/// the story. The difference between taking an item away and asking a model to disregard it is the
+/// whole of what `fork` is for.
+#[tokio::test]
+async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({ "action": "fork", "question": "ignoring item 1, what now?" }),
+        )]),
+        ModelResponse::text("the copy's answer"),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "context",
+            json!({ "action": "fork", "question": "what now?", "without": [1] }),
+        )]),
+        ModelResponse::text("the second copy's answer"),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("quicksort is fastest"));
+    kernel.push(ContextItem::user("go on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["context"]);
+    let (pretended, ablated) = (&said[0], &said[1]);
+
+    assert!(
+        pretended.contains("The copy saw all of them"),
+        "{pretended}"
+    );
+    assert!(
+        pretended.contains("is still reading it"),
+        "and says why a question asking it to disregard something is not an ablation: {pretended}"
+    );
+    assert!(
+        !pretended.contains("without 1"),
+        "nothing was left out, so nothing is reported as left out: {pretended}"
+    );
+
+    // and the real thing says what the copy could not read
+    assert!(ablated.contains("without 1"), "{ablated}");
+    assert!(ablated.contains("could not read at all"), "{ablated}");
+    assert!(!ablated.contains("saw all of them"), "{ablated}");
+}

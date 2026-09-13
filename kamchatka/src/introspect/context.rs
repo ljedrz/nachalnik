@@ -73,7 +73,8 @@ impl Tool for Context {
              you astray. A fork has no tools: it can think, not act. `search` finds text \
              anywhere in your context - archived items included, which `look` can only read by \
              copying them in - and says how many lines match and what they would cost before it \
-             shows you one. `amend` is the tool that changes any of this.",
+             shows you one. Those are `action`s of this tool, not tools; `amend` is the tool that \
+             changes any of this.",
         )
         .with_schema(json!({
             "type": "object",
@@ -874,12 +875,29 @@ async fn branch(
         Some(question) => format!("a copy of you, asked `{question}`, on {items} of your items"),
         None => format!("what you would say if you answered now, drafted on {items} of your items"),
     };
-    if !left_out.is_empty() {
-        let numbers: Vec<String> = left_out.iter().map(|id| id.to_string()).collect();
-        out.push_str(&format!(", without {}", numbers.join(", ")));
+    // note: said either way, because "on 9 of your items" cannot be read as "on all of them" and a
+    // fork's whole worth is which items the copy did not get. A live session asked a copy what it
+    // would conclude "without knowing my earlier statement", passed no `without` at all, and
+    // reported the matching answer as an ablation - it had asked the copy to pretend rather than
+    // taken the item away, and nothing in the reply distinguished the two. The copy really did see
+    // everything, so the reply says so.
+    match left_out.is_empty() {
+        true => out.push_str(
+            ". The copy saw all of them: nothing was left out, so this is the same context \
+             answering again rather than a test of what any of it was doing. `without` takes items \
+             away from the copy, and a question that asks it to disregard something is not the \
+             same thing - it is still reading it.",
+        ),
+        false => {
+            let numbers: Vec<String> = left_out.iter().map(|id| id.to_string()).collect();
+            out.push_str(&format!(
+                ", without {}, which the copy could not read at all.",
+                numbers.join(", ")
+            ));
+        }
     }
     out.push_str(
-        ". None of this is in your context and nobody has read it; it is yours to use or drop.\n",
+        " None of this is in your context and nobody has read it; it is yours to use or drop.\n",
     );
     if let Some(usage) = response.usage {
         out.push_str(&format!(

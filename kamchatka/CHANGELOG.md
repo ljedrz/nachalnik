@@ -164,6 +164,21 @@ minor bump may break you.
   already counts items, not a warning, and the model is still free to ignore it. Twice more, it
   did.
 
+- **A fork says whether it actually kept anything from the copy.** It reported "on 9 of your
+  items", which cannot be read as "on all of them" - so a session that asked a copy what it would
+  conclude *"without knowing my earlier statement"*, passed no `without` at all, and got the same
+  answer back could report that as an ablation with nothing in the reply to contradict it. The item
+  it named had been in front of the copy the whole time. A fork that left nothing out now says so,
+  and says why a question asking a model to disregard something is not the same as taking it away:
+  it is still reading it.
+
+  Two runs later the same prompt produced the other failure. The model called `fork(...)` as a bare
+  tool - it is an `action` of `context` - got the runtime's "there is no tool named `fork`", and
+  fell back on **excluding the item from its own live session** to simulate the copy, then reported
+  that as a fork. `context`'s description now says its actions are actions of that tool rather than
+  tools; `amend`'s already did. With both changes the same prompt produced `context look` followed
+  by `fork` with `without: [1]` on the first attempt.
+
 - **A drained log said nothing had happened.** `Kernel::drain_history` is the supported way to
   stop a long session growing forever: it takes the records out and hands them to the caller to
   keep elsewhere. Afterwards the tool answered "this session's log is empty, which is not the same
