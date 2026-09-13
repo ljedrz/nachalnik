@@ -700,7 +700,8 @@ the provider's own number has the document inside it. If you want the estimate t
 
 `--introspect`, or `/introspect` at any point, offers more tools. They are off by default,
 because a model that can rewrite its own context is a decision rather than a default. There are
-[write-ups](https://ljedrz.github.io/nachalnik/) of three sessions driven from these two tools:
+[write-ups](https://ljedrz.github.io/nachalnik/) of three sessions driven from the two that
+existed when they were recorded, `context` (called `introspect` then) and `amend`:
 one where an agent found a false note in its own context and corrected it, one where it took back
 a hallucination of its own by rewriting the two turns it had made things up in, and one where it
 answered *why do you think that* by forking itself and running the ablation rather than by
