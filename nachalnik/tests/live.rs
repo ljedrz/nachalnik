@@ -1230,14 +1230,26 @@ async fn an_interrupt_stops_a_stream_that_is_watching() {
         "Count from one to two hundred, one number per line, and write nothing else.",
     ));
 
-    // press the button the moment the first fragment arrives, from a task that is not the one
-    // driving the loop - which is the only interesting case, and the reason `interrupt` exists
+    // press the button the moment the first fragment of the *answer* arrives, from a task that is
+    // not the one driving the loop - which is the only interesting case, and the reason
+    // `interrupt` exists.
+    //
+    // note: `Delta::Text` rather than any delta, which is what this used to watch for. A
+    // reasoning model's first fragment is its thinking, so the button was being pressed before a
+    // word of the answer existed - and the assertion below, that what arrived was kept, was then
+    // asking after text that had never been produced. It failed that way on two different models
+    // on the same afternoon, each having got as far as `We need to output numbers `. What the
+    // kernel does there is right: the turn stops, and the partial item it keeps holds the
+    // thinking. It is this test's claim - that an interrupted answer keeps the answer so far -
+    // that needs some of the answer to have arrived first.
     let watcher = {
         let kernel = kernel.clone();
         tokio::spawn(async move {
             while let Ok(event) = events.recv().await {
                 match event {
-                    Event::ModelDelta { .. } => {
+                    Event::ModelDelta {
+                        delta: Delta::Text(_),
+                    } => {
                         kernel.interrupt();
                         return true;
                     }
@@ -1267,7 +1279,12 @@ async fn an_interrupt_stops_a_stream_that_is_watching() {
 
     // what had arrived is an ordinary item: partial, but real, and there to keep or to prune
     let answer = answer(&kernel);
-    assert!(!answer.is_empty(), "it kept what it had");
+    assert!(
+        !answer.is_empty(),
+        "it kept what it had, and what it had was {:?} of answer beside {:?} of thinking",
+        kernel.last_response().and_then(|r| r.content.clone()),
+        kernel.last_response().and_then(|r| r.reasoning.clone()),
+    );
     assert!(
         !answer.contains("200"),
         "and it really did stop early: {answer:?}"
