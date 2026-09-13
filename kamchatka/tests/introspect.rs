@@ -2349,3 +2349,107 @@ async fn an_answer_does_not_point_at_a_tool_that_has_been_taken_away() {
         without[3]
     );
 }
+
+/// What compaction elided out of the request is still findable, and still costs nothing.
+///
+/// note: the loose end the design set out to close, and the only path nothing else here covers.
+/// Eliding is done by the *projector* - the item keeps every byte and the request gets a marker -
+/// so the content a compactor moved out is exactly the content nothing could look at. Reading it
+/// back with `look` would put the whole item in the request again, which is the saving undone;
+/// this finds the line and leaves the marker where it is.
+#[tokio::test]
+async fn search_reaches_what_compaction_elided_out_of_the_request() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "search", "text": "purple-heron", "take": 5 }),
+    )]));
+
+    let big = kernel.push(ContextItem::file(
+        "big.txt",
+        "noise noise\nthe magic phrase is PURPLE-HERON-42\nmore noise",
+    ));
+    kernel.push(ContextItem::user("find it"));
+    // exactly what a compactor's plan does to an item: a state change, and nothing else
+    kernel.set_state(
+        [big],
+        ContextState::Elided,
+        Some("compacted to make room".into()),
+    );
+
+    let before = kernel.budget().used();
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("1 line(s) say `purple-heron`"), "{said}");
+    // the state is on the row, so the answer says what it reached into
+    assert!(said.contains("elided"), "{said}");
+    assert!(
+        said.contains("the magic phrase is PURPLE-HERON-42"),
+        "the line comes back whole: {said}"
+    );
+
+    // and the request still carries the marker rather than the file
+    let sent = kernel
+        .preview_request()
+        .expect("there is a request")
+        .messages
+        .iter()
+        .filter_map(|m| m.content.as_ref().map(|c| c.to_text().into_owned()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(sent.contains("[..."), "the marker is what goes: {sent}");
+    // note: the assertion is about the *item*, not about the word. The search answer is itself an
+    // item now and it carries the line it matched, so the phrase is in the request - once,
+    // because it was asked for. What is not there is the rest of the file, which is the saving
+    // the elision made and the thing a read-it-back would have undone.
+    assert!(
+        !sent.contains("noise noise") && !sent.contains("more noise"),
+        "the elided item is still going as a marker, not as its content: {sent}"
+    );
+    assert_eq!(
+        sent.matches("PURPLE-HERON").count(),
+        1,
+        "the line came back once, in the answer that was asked for: {sent}"
+    );
+    assert_eq!(
+        kernel.item(big).expect("still there").state,
+        ContextState::Elided
+    );
+    // the answer costs what it says and the item costs what it cost
+    assert!(kernel.budget().used() > before);
+}
+
+/// A compaction pass says why it ran, because the record it came from says why.
+///
+/// note: found live, watching a session read four passes back. The line said `1 out, 4 elided,
+/// 8863 → 725 tokens` and stopped - what moved, and nothing about what moved it. The report
+/// carries the compactor's own sentence, naming the threshold it crossed and by how much, and
+/// that is the half which says whether a pass was the system working or the limit being wrong.
+#[tokio::test]
+async fn a_compaction_record_says_what_moved_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "kinds": ["context.compacted"] }),
+    )]));
+
+    let big = kernel.push(ContextItem::file("big.txt", "a".repeat(4_000)));
+    kernel.push(ContextItem::user("carry on"));
+    kernel.apply_compaction(nachalnik::CompactionPlan {
+        elide: vec![big],
+        remove: Vec::new(),
+        summary: None,
+        reason: "compacted to make room; the context had reached 122% of the limit".into(),
+    });
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("context.compacted"), "{said}");
+    assert!(said.contains("1 elided"), "what moved: {said}");
+    assert!(
+        said.contains("reached 122%"),
+        "and what moved it, which the record has carried all along: {said}"
+    );
+}

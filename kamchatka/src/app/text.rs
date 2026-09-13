@@ -66,11 +66,20 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
                 _ => "by something else",
             }
         ),
+        // note: the reason as well as the figures, because the report carries one and both readers
+        // of this line were dropping it. A pass announced as `1 out, 4 elided, 8863 → 725 tokens`
+        // says what moved and not what moved it, and the compactor's own sentence - which
+        // threshold it crossed, and by how much - is the part that says whether the pass was the
+        // system working or the limit being wrong. It is a field of the event, not a gloss on one
         Event::Compacted { report } => format!(
-            "{}, {} → {} tokens",
+            "{}, {} → {} tokens{}",
             moved(report),
             report.tokens_before,
-            report.tokens_after
+            report.tokens_after,
+            match report.reason.is_empty() {
+                true => String::new(),
+                false => format!(": {}", one_line(&report.reason)),
+            },
         ),
         Event::ModelFailed { error } | Event::StepFailed { error } => one_line(error),
         // note: everything below here used to fall through to the catch-all and print its own

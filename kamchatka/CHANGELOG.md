@@ -164,6 +164,12 @@ minor bump may break you.
   already counts items, not a warning, and the model is still free to ignore it. Twice more, it
   did.
 
+- **A compaction record says what moved it, not only what moved.** The line read `1 out, 4 elided,
+  8863 → 725 tokens` and stopped. `CompactionReport::reason` is the compactor's own sentence -
+  which threshold it crossed and by how much - and both readers of that line were dropping it, so a
+  pass could not be told from a pass that should not have happened. It is a field of the event
+  rather than a gloss on one, and the trace pane gains it too.
+
 - **An answer no longer points at a tool the session has had taken away.** `/tools drop log`
   mid-run, and `setup tools` went on ending with "`log` with `kinds: [\"tools.changed\"]` says when
   it went" - naming a tool in the same breath as reporting that the model does not have it. Three
