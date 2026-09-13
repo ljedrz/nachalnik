@@ -127,6 +127,14 @@ minor bump may break you.
 
 ### fixed
 
+- **`/save` into a directory wrote two dotfiles.** `/save sessions/` took the whole argument as the
+  stem, so it wrote `sessions/.json` and `sessions/.jsonl` - files `ls` does not show - and then
+  printed a confirmation naming both paths, which reads as though it had worked. A directory is a
+  place to put a session rather than a name to give it, and the name it goes under is the one it
+  already has, which is what this program uses when it writes a session out on its own at the end
+  of a run. With or without the trailing separator: an existing directory is a directory either
+  way.
+
 - **`/limit` listed six tools under "how much of each tool's output the model is shown", in a
   session offering four.** The table is the `Limits` map, which holds a row for every tool this
   program ships - `context`, `log`, `setup` and `amend` among them, none of them installed until

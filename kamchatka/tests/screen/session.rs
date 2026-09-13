@@ -108,6 +108,53 @@ async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A directory is a place to put a session, not a name to give it.
+///
+/// note: found by driving a headless run. `/save sessions/` took the whole argument as the stem
+/// and wrote `sessions/.json` and `sessions/.jsonl` - two dotfiles, which `ls` does not show -
+/// under a confirmation that prints the paths and so reads as though it had worked. The name a
+/// session goes under in a directory is the one it already has, which is what this program uses
+/// when it writes a session out on its own at the end of a run.
+#[tokio::test]
+async fn saving_into_a_directory_names_the_session_rather_than_writing_a_dotfile() {
+    let dir = common::scratch("save-dir");
+
+    let mut harness = Harness::new([ModelResponse::text("noted")]);
+    harness.send("remember 4817").await;
+    harness.settle().await;
+
+    let stamp = harness.app.kernel.session_name();
+
+    // with the separator, which is how somebody spells "in here"
+    harness.send(&format!("/save {}/", dir.display())).await;
+    assert!(
+        dir.join(format!("{stamp}.json")).exists(),
+        "the session goes in under its own name: {:?}",
+        std::fs::read_dir(&dir).unwrap().flatten().count()
+    );
+    assert!(dir.join(format!("{stamp}.jsonl")).exists());
+    assert!(
+        !dir.join(".json").exists() && !dir.join(".jsonl").exists(),
+        "and never as a dotfile, which is a file nobody is going to find"
+    );
+
+    // and without it, where the argument is an existing directory all the same
+    let _ = std::fs::remove_file(dir.join(format!("{stamp}.json")));
+    let _ = std::fs::remove_file(dir.join(format!("{stamp}.jsonl")));
+    harness.send(&format!("/save {}", dir.display())).await;
+    assert!(
+        dir.join(format!("{stamp}.json")).exists(),
+        "an existing directory is a directory whether or not it was spelled with a slash"
+    );
+    // and the sibling case still holds: a path that is not a directory is the name asked for
+    assert!(
+        !dir.with_extension("json").exists(),
+        "the directory itself should not have gained an extension"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_there() {
     let dir = common::scratch("load");

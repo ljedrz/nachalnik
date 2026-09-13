@@ -1116,6 +1116,22 @@ impl App {
                 .or_else(|| given.strip_suffix(".json"))
                 .unwrap_or(given),
         };
+        // note: a directory is a place to put it rather than a name for it. `/save sessions/`
+        // took the whole argument as the stem and wrote `sessions/.json` and `sessions/.jsonl` -
+        // two dotfiles, invisible to `ls`, under a confirmation that prints the path and so reads
+        // as though it had worked. The session's own name is what goes in a directory, which is
+        // what this program already does when it writes a session out on its own.
+        let stem = match stem.ends_with(std::path::MAIN_SEPARATOR)
+            || std::path::Path::new(stem).is_dir()
+        {
+            true => format!(
+                "{}{}{}",
+                stem.trim_end_matches(std::path::MAIN_SEPARATOR),
+                std::path::MAIN_SEPARATOR,
+                self.kernel.session_name()
+            ),
+            false => stem.to_owned(),
+        };
         let (log, state) = (format!("{stem}.jsonl"), format!("{stem}.json"));
 
         // said rather than asked about: writing the same session again is the ordinary case and
