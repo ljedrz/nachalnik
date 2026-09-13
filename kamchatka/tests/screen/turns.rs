@@ -170,7 +170,7 @@ async fn introspect_offers_the_two_tools_and_takes_them_away_again() {
     let before = harness.app.undecided();
 
     harness.send("/introspect").await;
-    assert_eq!(harness.app.kernel.tool_ids(), ["amend", "introspect"]);
+    assert_eq!(harness.app.kernel.tool_ids(), ["amend", "context"]);
     assert!(harness.app.introspect.is_some());
     // the policy has two more subjects to ask about without being told anything, because the tab
     // reads what the registered tools declare. Two, not one: looking at your own context and

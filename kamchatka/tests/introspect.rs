@@ -59,7 +59,7 @@ fn answered(kernel: &Kernel) -> String {
 
 /// Every tool result, oldest first.
 fn all_answers(kernel: &Kernel) -> Vec<String> {
-    answers_from(kernel, &["introspect", "amend"])
+    answers_from(kernel, &["context", "amend"])
 }
 
 /// Every result one of these tools produced, oldest first.
@@ -78,7 +78,7 @@ fn answers_from(kernel: &Kernel, tools: &[&str]) -> Vec<String> {
 async fn look_lists_every_item_with_its_state_and_why() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "introspect",
+        "context",
         json!({ "action": "look" }),
     )]));
 
@@ -278,10 +278,10 @@ async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for(
     // session did that twice and finished an honest clean-up heavier than the waste it removed
     let long = format!("HEAD-MARKER\n{}\nTAIL-MARKER", "noise line\n".repeat(2_000));
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
-        call("c1", "introspect", json!({ "action": "look", "ids": [1] })),
+        call("c1", "context", json!({ "action": "look", "ids": [1] })),
         call(
             "c2",
-            "introspect",
+            "context",
             json!({ "action": "look", "ids": [1], "whole": true }),
         ),
     ]));
@@ -289,7 +289,7 @@ async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for(
     // an argument the tool reads and its own output tells the model to use is one the schema has
     // to declare: a model following the schema cannot pass it otherwise, and an endpoint
     // validating against the schema refuses the call outright
-    let spec = kernel.tool("introspect").expect("it is installed").spec();
+    let spec = kernel.tool("context").expect("it is installed").spec();
     assert_eq!(
         spec.schema["properties"]["whole"]["type"], "boolean",
         "`whole` is read, and advertised in three places: {}",
@@ -303,7 +303,7 @@ async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for(
     let results: Vec<String> = kernel
         .items()
         .iter()
-        .filter(|item| item.label == "introspect")
+        .filter(|item| item.label == "context")
         .map(|item| item.content.to_text().into_owned())
         .collect();
     assert_eq!(results.len(), 2, "both calls answered");
@@ -339,7 +339,7 @@ async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for(
 async fn look_with_ids_reads_the_whole_item_and_its_reasoning() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "introspect",
+        "context",
         json!({ "action": "look", "ids": [1, 99] }),
     )]));
 
@@ -362,7 +362,7 @@ async fn look_with_ids_reads_the_whole_item_and_its_reasoning() {
 async fn request_reports_what_is_going_and_what_was_left_out() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "introspect",
+        "context",
         json!({ "action": "request" }),
     )]));
 
@@ -385,7 +385,7 @@ async fn request_reports_what_is_going_and_what_was_left_out() {
 #[tokio::test]
 async fn draft_answers_on_a_fork_and_leaves_the_context_alone() {
     let (kernel, provider, _anchor) = agent([
-        ModelResponse::tool_calls(vec![call("c1", "introspect", json!({ "action": "draft" }))]),
+        ModelResponse::tool_calls(vec![call("c1", "context", json!({ "action": "draft" }))]),
         // the fork's answer, taken off the same script
         ModelResponse::text("I would say the parser is fine"),
         ModelResponse::text("done"),
@@ -427,7 +427,7 @@ async fn a_fork_leads_with_the_answer_so_a_limit_cuts_the_thinking_instead() {
     let (kernel, _provider, _anchor) = agent([
         ModelResponse::tool_calls(vec![call(
             "c1",
-            "introspect",
+            "context",
             json!({ "action": "fork", "question": "why did you stop?" }),
         )]),
         ModelResponse {
@@ -462,7 +462,7 @@ async fn a_fork_is_asked_a_question_without_the_items_it_was_told_to_leave_out()
     let (kernel, provider, _anchor) = agent([
         ModelResponse::tool_calls(vec![call(
             "c1",
-            "introspect",
+            "context",
             json!({
                 "action": "fork",
                 "question": "does the note change your answer?",
@@ -731,7 +731,7 @@ async fn a_reason_is_required_before_anything_changes() {
 async fn the_tools_stop_working_when_the_handle_goes() {
     let (kernel, _provider, anchor) = agent(one_turn(vec![call(
         "c1",
-        "introspect",
+        "context",
         json!({ "action": "look" }),
     )]));
 
@@ -892,7 +892,7 @@ async fn what_the_context_says_is_what_the_next_request_carries() {
 async fn budget_reports_what_is_really_going_and_what_it_would_buy_to_drop_it() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "introspect",
+        "context",
         json!({ "action": "budget" }),
     )]));
 
@@ -1088,7 +1088,7 @@ async fn a_fork_that_asks_for_a_tool_says_so_rather_than_answering_blank() {
     // words - and a blank draft gives the caller no way to tell that from a copy that had
     // nothing to say
     let (kernel, _provider, _anchor) = agent([
-        ModelResponse::tool_calls(vec![call("c1", "introspect", json!({ "action": "draft" }))]),
+        ModelResponse::tool_calls(vec![call("c1", "context", json!({ "action": "draft" }))]),
         ModelResponse::tool_calls(vec![call("f1", "shell", json!({ "cmd": "ls" }))]),
         ModelResponse::text("done"),
     ]);
@@ -1108,7 +1108,7 @@ async fn a_fork_that_asks_for_a_tool_says_so_rather_than_answering_blank() {
 #[tokio::test]
 async fn a_fork_is_told_it_cannot_act() {
     let (kernel, provider, _anchor) = agent([
-        ModelResponse::tool_calls(vec![call("c1", "introspect", json!({ "action": "draft" }))]),
+        ModelResponse::tool_calls(vec![call("c1", "context", json!({ "action": "draft" }))]),
         ModelResponse::text("I would say this"),
         ModelResponse::text("done"),
     ]);

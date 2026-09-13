@@ -707,7 +707,7 @@ answered *why do you think that* by forking itself and running the ablation rath
 introspecting. Two more transcripts are up there in which I do the editing instead, through the
 keys rather than through these.
 
-**`introspect`** reads. `look` lists every item it is carrying — what each one is, what it costs,
+**`context`** reads. `look` lists every item it is carrying — what each one is, what it costs,
 whether it is going into the next request and why not if it is not — and reads any of them back,
 block by block, including what it was thinking when it produced them. A long one comes back as its
 start and its end: reading an item copies it into the context, so seeing all of a 9,000-token tool
@@ -743,8 +743,8 @@ ask it once, and hand back only what it said. `draft` is for reading your own an
 give it; `fork` is for asking whether a piece of context is what is leading you astray:
 
 ```text
-⟩ introspect({"action":"fork","question":"am I overfitting to the first stack trace?",
-              "without":[14,15]})
+⟩ context({"action":"fork","question":"am I overfitting to the first stack trace?",
+          "without":[14,15]})
 
   a copy of you, asked `am I overfitting to the first stack trace?`, on 9 of your items,
   without 14, 15. None of this is in your context and nobody has read it; it is yours to
@@ -787,7 +787,7 @@ They are two tools rather than one with a mode argument, because a tool declares
 once for every call it will ever receive. One tool would mean that answering **always** to "may it
 read its own context?" also answered "may it rewrite a tool result?" — a grant that delivers more
 than it implies, which is the shape of thing this program exists not to do. So the permissions tab
-has a row for `introspect` and a row for `amend`, and you can answer them differently.
+has a row for `context` and a row for `amend`, and you can answer them differently.
 
 ## 🧩 two dialects, and why one of them keeps the order
 
@@ -808,7 +808,7 @@ nowhere to put an order. Everything downstream then reads a turn that has been t
     [2] call (signed): secret({})
 ```
 
-That is the context pane, and `introspect` reads the same thing back to the agent. It is only worth
+That is the context pane, and `context` reads the same thing back to the agent. It is only worth
 having because the order is really in there: the runtime records it as `Content::Blocks`, counts
 it, prunes it and elides it like any other content, and `LinearProjector::send_blocks` sends it
 back the same way.

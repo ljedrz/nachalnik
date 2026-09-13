@@ -37,7 +37,7 @@ const BRIEF: &str = "You are working in a Rust workspace on this machine, throug
 You have a hard context budget of 10,000 tokens for this whole task, and tool output here is \
 large: one careless command will spend most of it. Two tools let you do something about that.
 
-`introspect` reads your own state: `budget` says where you stand and which items are costing you \
+`context` reads your own state: `budget` says where you stand and which items are costing you \
 the most, `look` lists what you are carrying, `draft` shows you your own answer before you give \
 it, and `fork` asks a copy of you a question without spending your context on the reply.
 
@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         allow: [
             Capability::Read,
             Capability::Shell,
-            Capability::Custom("introspect".into()),
+            Capability::Custom("context".into()),
             Capability::Custom("amend".into()),
         ]
         .into_iter()

@@ -13,7 +13,7 @@
 //! declares its capabilities once for every call it will ever receive. One tool would mean that
 //! answering *always* to "may it look at its own context?" also answered "may it rewrite a tool
 //! result?" - a grant that delivers considerably more than it implies, which is the shape of thing
-//! this program exists not to do. So [`Introspect`] looks and [`Amend`] changes, they declare
+//! this program exists not to do. So [`Context`] looks and [`Amend`] changes, they declare
 //! different capabilities, and the permissions tab has a row for each.
 //!
 //! note: What [`Amend`] will not do is undo a person's decisions. A pinned item, a system
@@ -32,9 +32,9 @@ use serde_json::Value;
 use crate::tools::Limits;
 
 mod amend;
-mod look;
+mod context;
 
-pub use crate::introspect::{amend::Amend, look::Introspect};
+pub use crate::introspect::{amend::Amend, context::Context};
 
 /// Registers both tools, and returns the handle that keeps their reach into the kernel alive.
 ///
@@ -48,11 +48,11 @@ pub fn install(kernel: &Kernel, limits: Limits) -> Arc<Kernel> {
     let anchor = Arc::new(kernel.clone());
     let reach = Reach(Arc::downgrade(&anchor));
     // shared, because the two tools are one agent's hands: what `amend` pinned is what
-    // `introspect` should report as the agent's own to unpin, and a second set would have them
+    // `context` should report as the agent's own to unpin, and a second set would have them
     // disagreeing about a promise
     let pinned = Arc::new(Mutex::new(BTreeSet::new()));
 
-    kernel.add_tool(Arc::new(Introspect::new(
+    kernel.add_tool(Arc::new(Context::new(
         reach.clone(),
         pinned.clone(),
         limits.clone(),

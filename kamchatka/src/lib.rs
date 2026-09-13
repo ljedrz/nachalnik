@@ -20,7 +20,8 @@
 //! should be. It sends pictures and draws none: a terminal cell is not a pixel.
 //!
 //! `--introspect`, or `/introspect` at any point, adds two more tools for reading and managing a
-//! context from the inside. [`introspect`] lists what is being carried and what each item costs,
+//! context from the inside. [`introspect::Context`] lists what is being carried and what each item
+//! costs,
 //! reports the budget against what the last request really cost, shows the request about to go
 //! out, and answers on a throwaway fork so an answer can be read before it is given; `amend`
 //! elides, excludes, pins and rewrites what is being carried, writes something down that

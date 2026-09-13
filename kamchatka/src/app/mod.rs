@@ -2015,7 +2015,7 @@ impl App {
     /// guessing at it would put a confident description of the wrong thing in front of a decision.
     /// Nothing here reaches the policy: it is the same arguments, read out.
     pub fn about(&self, request: &PermissionRequest) -> Vec<String> {
-        if !matches!(request.tool.as_str(), "introspect" | "amend") {
+        if !matches!(request.tool.as_str(), "context" | "amend") {
             return Vec::new();
         }
 

@@ -137,8 +137,8 @@ impl Tool for Amend {
              pinned. `undo` and `redo` walk back through the changes *you* made here. Nothing \
              destroys anything: every item keeps its number and can be restored. A pinned item, a \
              system instruction and the turn you are speaking in are refused - they are not \
-             yours. A reason is required, and the person you work with reads it. Use `introspect` \
-             to look first, `budget` especially.",
+             yours. A reason is required, and the person you work with reads it. Use `context` to \
+             look first, `budget` especially.",
         )
         .with_schema(json!({
             "type": "object",
@@ -286,7 +286,7 @@ impl Amend {
             return ToolOutput::error(match selected {
                 Some(input) => format!(
                     "`{input}` is a selector, and nothing in your context matches it; \
-                     `introspect` with `look` lists what there is"
+                     `context` with `look` lists what there is"
                 ),
                 // the mistake a live run actually made: `label` is in this schema, for naming a
                 // `note`, and a model reaching for a way to say *which item* took it. The label

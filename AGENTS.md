@@ -107,8 +107,9 @@ and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that flo
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
 fitting), `tools/` (the four tools - `files.rs` for the three that run in process and `shell.rs` for
 the one that does not - with `policy.rs` for `Careful` and `trim.rs` for the compactor),
-`introspect/` (the two off-by-default tools an agent inspects and manages its own context with - one
-per file, with `mod.rs` holding `install` and the handful of things both of them use),
+`introspect/` (the off-by-default tools an agent inspects and manages its own context with - one
+per file, named for the noun each is about, with `mod.rs` holding `install` and the handful of
+things they all use),
 `provider.rs` (**not a provider**: the four environment variables this program reads, and the two
 `connect` functions that turn them into one), `main.rs` (arguments, and the loop that draws). It is
 a library plus a binary so the screen can be drawn against a `TestBackend` in tests, and because
@@ -135,7 +136,7 @@ session, the tools, the policy, the trace, `submit`, `interrupt`, `on_event`, `w
 not, and neither is `headless.rs`, which is the second caller that proves the first one is not
 privileged. The rule for anything new: if it takes a `KeyEvent` or a `ratatui` type it goes behind the
 feature, and if a *command* can reach it, it cannot. That is what `help.rs` and the two formatters
-in `app/text.rs` are doing where they are: `/prune` prints the selector listing and `introspect`
+in `app/text.rs` are doing where they are: `/prune` prints the selector listing and `context`
 formats token counts for a model to read, so neither can live in the module that draws.
 
 `cargo test -p kamchatka --no-default-features` is the check, and every suite it runs is about the

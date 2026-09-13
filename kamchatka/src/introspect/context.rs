@@ -1,5 +1,10 @@
-//! The tool that reads: what is being carried, what it costs, what the next request holds, and
-//! what the answer to it would be.
+//! The tool that reads the context: what is being carried, what it costs, what the next request
+//! holds, and what the answer to it would be.
+//!
+//! note: named for what it reads rather than for what it does. `introspect` was a name for the
+//! whole family and this tool is one of them - anything else that reads a session from the inside
+//! is introspection too, and would have had to be called something that did not say so. The id is
+//! the noun now, which leaves the family its word and gives each tool the thing it is about.
 //!
 //! note: five actions, none of which changes anything, which is why they are one tool and why the
 //! capability they declare is its own. `draft` and `fork` do ask the model, so this is not free -
@@ -29,13 +34,13 @@ const GLIMPSE: usize = 48;
 /// note: none of the five actions changes anything, which is why they are together and why the
 /// capability they declare is its own. `draft` and `fork` do spend tokens - they ask the model -
 /// so this is not free, only harmless.
-pub struct Introspect {
+pub struct Context {
     reach: Reach,
     pinned: Pinned,
     limits: Limits,
 }
 
-impl Introspect {
+impl Context {
     /// Builds one; see [`super::install`], which is the only caller.
     pub(super) fn new(reach: Reach, pinned: Pinned, limits: Limits) -> Self {
         Self {
@@ -47,10 +52,10 @@ impl Introspect {
 }
 
 #[async_trait]
-impl Tool for Introspect {
+impl Tool for Context {
     fn spec(&self) -> ToolSpec {
         let spec = ToolSpec::new(
-            "introspect",
+            "context",
             "reads your own state, so you can check it before you act on it. `look` lists every \
              item in your context - what it is, what it costs, whether it is going into the next \
              request and why not if it is not - and with `ids` reads any of them back, block by \
@@ -102,7 +107,7 @@ impl Tool for Introspect {
             },
             "required": ["action"],
         }))
-        .with_capabilities([Capability::Custom("introspect".into())]);
+        .with_capabilities([Capability::Custom("context".into())]);
 
         self.limits.apply(spec)
     }
@@ -295,7 +300,7 @@ fn full(items: &[Arc<ContextItem>], id: ContextId, whole: bool) -> String {
         out.push_str(&format!("  attached: {}\n", item.meta));
     }
     // a turn that was recorded as an order is read back as one, block by block. This is the
-    // thing `introspect` exists for and the one view of it that is not available anywhere else: the
+    // thing `context` exists for and the one view of it that is not available anywhere else: the
     // request the model will be sent has the same parts in the same order, but by then the
     // thinking looks like a field rather than something that happened between two calls
     if let Some(blocks) = item.content.as_blocks() {

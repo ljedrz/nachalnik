@@ -89,11 +89,11 @@ untrusted server, so the bridge believes none of them by default. Its tests incl
 offering a tool called `delete_everything` that claims to be read-only.
 
 **[`kamchatka --introspect`](kamchatka)** hands the model the same context controls the keys give
-you - `look`, `budget`, `request`, `draft`, `fork`, `prune`, `revise`, `note`, `undo` - and every
-one of them is a public function a user interface was already calling. Given a 10,000-token limit
-and a mundane question, one model's first move was `introspect({"action":"budget"})`; eight
-requests later it elided eight tool results in one call and got two thousand tokens back, with
-nothing destroyed.
+you - `look`, `budget`, `request`, `draft`, `fork`, `elide`, `exclude`, `revise`, `note`, `undo` -
+and every one of them is a public function a user interface was already calling. Given a
+10,000-token limit and a mundane question, one model's first move was `budget`; eight requests
+later it elided eight tool results in one call and got two thousand tokens back, with nothing
+destroyed.
 
 **[`nachalnik-eval`](nachalnik-eval)** is the furthest from anything the runtime was designed for:
 it turns those handles around and uses them to *test* a model rather than to serve one. Forking a

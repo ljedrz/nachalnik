@@ -428,11 +428,11 @@ impl App {
     fn introspect(&mut self) {
         match self.introspect.take() {
             Some(_) => {
-                self.kernel.remove_tool("introspect");
+                self.kernel.remove_tool("context");
                 self.kernel.remove_tool("amend");
                 self.say(
                     Speaker::Note,
-                    "`introspect` and `amend` are no longer offered; the next request will not mention \
+                    "`context` and `amend` are no longer offered; the next request will not mention \
                      them",
                 );
             }
@@ -443,7 +443,7 @@ impl App {
                 ));
                 self.say(
                     Speaker::Note,
-                    "`introspect` and `amend` go into the next request: the model can now read its own \
+                    "`context` and `amend` go into the next request: the model can now read its own \
                      context, preview what it would say, ask a fork of itself, prune what it is \
                      carrying and walk its own changes back. It cannot touch anything you pinned",
                 );

@@ -701,11 +701,11 @@ fn gemini() -> Option<(
 
     let policy = Arc::new(Careful::new());
     policy.set(&Subject::Capability(Capability::Read), Verdict::Allow);
-    // both of them: `install` offers `introspect` and `amend`, and a model that takes the second
+    // both of them: `install` offers `context` and `amend`, and a model that takes the second
     // offer used to stop the turn to ask. The turn then sat in `Deciding` with the prompt open,
     // the next message was swallowed the way the app swallows anything typed at one, and the
     // wire format this file exists to check never got its second request
-    for capability in ["introspect", "amend"] {
+    for capability in ["context", "amend"] {
         policy.set(
             &Subject::Capability(Capability::Custom(capability.into())),
             Verdict::Allow,
@@ -869,7 +869,7 @@ async fn a_real_turn_carries_its_thinking_in_the_order_it_was_produced() {
         // nothing declared, which is the condition a summary arrived in four times out of five.
         // The registry is live, which is the whole reason this can be a second question rather
         // than a second harness
-        for tool in ["secret", "introspect", "amend"] {
+        for tool in ["secret", "context", "amend"] {
             app.kernel.remove_tool(tool);
         }
         for _ in 1..=3 {
@@ -938,15 +938,15 @@ async fn the_introspection_tools_read_an_ordered_turn() {
     .await;
     let turn = turn(&app);
 
-    // `introspect` is the reason the two of these were built together: an agent that can read its
+    // `context` is the reason the two of these were built together: an agent that can read its
     // own context is only worth having if what it reads is what really happened, and until there
     // was a provider that reported an order there was no order in there to read
-    let tool = app.kernel.tool("introspect").expect("installed");
+    let tool = app.kernel.tool("context").expect("installed");
     let read = tool
         .invoke(
             &ToolCall::new(
                 "c1",
-                "introspect",
+                "context",
                 json!({ "action": "look", "ids": [turn.id.0] }),
             ),
             OutputSink::disconnected(),
@@ -966,7 +966,7 @@ async fn the_introspection_tools_read_an_ordered_turn() {
     // as having thought nothing and asked for nothing
     let listed = tool
         .invoke(
-            &ToolCall::new("c2", "introspect", json!({ "action": "look" })),
+            &ToolCall::new("c2", "context", json!({ "action": "look" })),
             OutputSink::disconnected(),
         )
         .await
@@ -980,7 +980,7 @@ async fn the_introspection_tools_read_an_ordered_turn() {
     // and the figures it would budget against are the provider's own, not a guess nobody checked
     let budget = tool
         .invoke(
-            &ToolCall::new("c3", "introspect", json!({ "action": "budget" })),
+            &ToolCall::new("c3", "context", json!({ "action": "budget" })),
             OutputSink::disconnected(),
         )
         .await
@@ -1126,7 +1126,7 @@ async fn introspecting(
     tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
 )> {
     let (mut app, limits, finished) = agent(dir).await?;
-    for capability in ["introspect", "amend"] {
+    for capability in ["context", "amend"] {
         let verdict = match ask_about_amend && capability == "amend" {
             true => Verdict::Ask,
             false => Verdict::Allow,
@@ -1477,7 +1477,7 @@ async fn the_question_about_a_real_amend_names_the_item() {
     // the turn stops at the question rather than finishing, so this cannot wait on an outcome
     type_line(
         &mut app,
-        "First use the introspect tool with action `look` to see your context. Then use the \
+        "First use the context tool with action `look` to see your context. Then use the \
          amend tool once to elide the item called secrets.txt, naming it by its number in \
          `ids`, with any reason you like. Do nothing else.",
     )

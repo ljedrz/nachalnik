@@ -968,19 +968,19 @@ async fn an_item_the_projector_drops_says_what_it_is_holding() {
     let mut harness = Harness::new([]);
     let kernel = harness.app.kernel.clone();
 
-    let asked = call("c1", "introspect", json!({}));
+    let asked = call("c1", "context", json!({}));
     kernel.push(ContextItem::user("read the whole of it"));
     kernel.push(ContextItem::assistant("reading", vec![asked.clone()]));
     // the pair an output limit leaves behind
     let whole = kernel.push(ContextItem::tool_result(
         asked.id.clone(),
-        "introspect",
+        "context",
         "the fork's whole answer ".repeat(60),
         false,
     ));
     kernel.push(ContextItem::tool_result(
         asked.id.clone(),
-        "introspect",
+        "context",
         "the fork's whole answer [... 900 bytes truncated by an output limit ...]",
         false,
     ));

@@ -5,6 +5,35 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **`introspect` is called `context`.** The tool id, the capability it declares and the struct
+  behind it; the module, the `--introspect` flag and the `/introspect` command are unchanged,
+  and so is what any of it does.
+
+  The name was accurate while there were two tools and stops being accurate the moment anything
+  else reads a session from the inside - a session's own log and the settings it is running under
+  are introspection too, and would each have had to be called something that did not say so.
+  `introspect` is the word for the family; the tool is one member of it, and what it is about is
+  the context. `context: fork` also reads as what it is in a way `introspect: fork` never did.
+
+  So the flag stays put on purpose. It switches the *family* on, the family is still the
+  introspection tools, and renaming a switch that installs more than one of them after one of them
+  would be the same over-claim in the other direction.
+
+  **A permission rule naming `introspect` stops matching.** `--allow introspect`, `--deny
+  introspect` and an `allow`/`deny` entry in a settings file parse into `Capability::Custom`, and
+  nothing declares that one any more - so the rule matches nothing rather than failing, which is
+  the quiet way for this to go wrong. Spell it `context`. No alias is accepted: a capability is a
+  tool's declaration of what it needs, and one that answered to two names would be a grant whose
+  scope depended on how it was typed. The tools are off by default, so a session that never passed
+  `--introspect` is unaffected.
+
+  Three of the write-ups under `docs/` quote the old name inside verbatim transcripts. They are
+  recordings and are not edited; each carries a line saying what the tool is called now.
+
 ## [0.9.0] - 2026-09-12
 
 ### changed

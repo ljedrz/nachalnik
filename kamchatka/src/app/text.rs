@@ -6,7 +6,7 @@
 //!
 //! note: and none of them draw, which is why the two under *figures* are here rather than in
 //! `ui` where they were. `thousands` is in every line this program puts a token count on, and
-//! half of those lines are read by a model through `introspect` rather than by a person off a
+//! half of those lines are read by a model through `context` rather than by a person off a
 //! screen - so a build with no screen needs them both, and the feature that draws cannot own
 //! them.
 
@@ -394,7 +394,7 @@ fn as_sent(message: &nachalnik::Message) -> String {
 pub(super) fn stored(item: &ContextItem) -> String {
     let mut out = whole(&item.content);
     // note: why the item is here at all, which outlives every state it passes through and is
-    // therefore the only place a fact about what it holds can be kept. `introspect`'s own item
+    // therefore the only place a fact about what it holds can be kept. `context`'s own item
     // view has printed this all along and it was always empty, because nothing set it; the pair
     // an output limit leaves behind is the first thing that does, and this is where the person
     // reads what the model reads there
@@ -500,7 +500,7 @@ pub(super) fn head(text: &str, lines: usize) -> String {
 /// What a provider said one response cost, as `30 out` or `1,412 out, 1,139 of it reasoning`.
 ///
 /// note: one renderer for the three places that report it - the trace, `/budget`, and the
-/// `introspect budget` a model reads about itself - because they were three sentences about the
+/// `context budget` a model reads about itself - because they were three sentences about the
 /// same two numbers and only one of them has to be got right. What it must never do is add the
 /// two: [`Usage::reasoning_tokens`] is a part of [`Usage::output_tokens`], so they are shown as a
 /// whole and a share of it.

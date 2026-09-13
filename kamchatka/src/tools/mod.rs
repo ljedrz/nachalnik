@@ -63,18 +63,18 @@ impl Limits {
     /// The limits the tools here start with.
     ///
     /// note: 32,000 bytes is about a screenful of a large file or the tail of a long build, and
-    /// it is what `read`, `shell` and `introspect` are worth being cut at. `amend` is 8,000
+    /// it is what `read`, `shell` and `context` are worth being cut at. `amend` is 8,000
     /// because everything it says is a confirmation of something the caller just asked for, and a
     /// confirmation that long has gone wrong somewhere else.
     ///
-    /// note: `introspect` is the one that chafes, because one number covers five actions of very
+    /// note: `context` is the one that chafes, because one number covers five actions of very
     /// different shapes - a context listing and a whole copy of this model's answer. `fork_result`
     /// leads with the answer for that reason, so what a limit takes there is the thinking.
     pub fn new() -> Self {
         Self(Arc::new(Mutex::new(BTreeMap::from([
             ("read".to_owned(), 32_000),
             ("shell".to_owned(), 32_000),
-            ("introspect".to_owned(), 32_000),
+            ("context".to_owned(), 32_000),
             ("amend".to_owned(), 8_000),
         ]))))
     }
