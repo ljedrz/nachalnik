@@ -951,6 +951,82 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     assert!(screen.contains("[4] read"), "{screen}");
 }
 
+/// A limit for a tool this session does not offer says so, in the listing and on the change.
+///
+/// note: found by reading a headless run. `/tools` said "4 offered: edit, read, shell, write" and
+/// `/limit`, two lines later, listed six under "how much of each tool's output the model is
+/// shown" - `amend`, `context`, `log` and `setup` among them, none of them installed, because the
+/// table is the `Limits` map and the map holds a row for everything this program ships. Setting
+/// one took, silently, and answered "from its next call onwards" about a tool that has no calls.
+/// The rows are right to be there - a limit set before `/introspect` is in force the moment it
+/// runs, which this checks - and it is the sentence over them that was claiming too much.
+#[tokio::test]
+async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
+    let mut harness = Harness::new([]);
+
+    // the row, not the listing: the sentence under the table contains the words `not offered` too,
+    // so a check of the whole screen passes whether or not anything is actually marked
+    let row = |harness: &mut Harness, tool: &str| {
+        harness
+            .screen()
+            .lines()
+            .find(|line| line.contains(tool) && line.contains("bytes"))
+            .unwrap_or_else(|| panic!("no row for `{tool}`"))
+            .to_owned()
+    };
+
+    harness.send("/limit").await;
+    let marked = row(&mut harness, "context");
+    assert!(
+        marked.contains("not offered"),
+        "a row for a tool nothing installed is marked as one: {marked}"
+    );
+    assert!(
+        harness
+            .flat()
+            .contains("a limit held for a tool this session does not have"),
+        "and the marking says what it is: {}",
+        harness.flat()
+    );
+    // the listing is a preview, and the next keystroke closes it - so it is closed deliberately
+    // rather than with the first character of the next command
+    harness.press(KeyCode::Esc).await;
+
+    // setting one still takes, because that is the point of the row being there at all
+    harness.send("/limit context 8000").await;
+    let screen = harness.flat();
+    assert!(screen.contains("is now cut at 8,000"), "{screen}");
+    assert!(
+        screen.contains("has no next call until something adds it"),
+        "\"from its next call onwards\" is a promise about a tool that is not here: {screen}"
+    );
+
+    // and it is in force the moment the tool arrives, which is what the row is for
+    harness.send("/introspect").await;
+    assert_eq!(
+        harness
+            .app
+            .kernel
+            .tool_specs()
+            .into_iter()
+            .find(|spec| spec.id == "context")
+            .and_then(|spec| spec.output_limit),
+        Some(8_000),
+        "the limit set before the tool existed is the one it declares"
+    );
+
+    // and its row is no longer marked. This harness installs no builtin tools, so `read` and
+    // `shell` are legitimately still unoffered here - which is why the check is of the row rather
+    // than of the whole listing, and why the sentence under the table does not claim that
+    // `/introspect` accounts for every mark
+    harness.send("/limit").await;
+    let marked = row(&mut harness, "context");
+    assert!(
+        !marked.contains("not offered"),
+        "the tool is installed now: {marked}"
+    );
+}
+
 /// An item the projector repaired away is holding what it holds, and the pane has to say so.
 ///
 /// note: the bug this closes, from a real session. Somebody put the whole of a truncated tool

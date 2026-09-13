@@ -699,7 +699,17 @@ impl App {
         self.say(Speaker::Note, said);
     }
 
+    /// Shows the output limits, or changes one.
+    ///
+    /// note: the table is the `Limits` map rather than the registry, and it holds a row for every
+    /// tool this program ships - `context`, `log`, `setup` and `amend` included, which are off
+    /// until `/introspect`. That is right, because a limit set before a tool arrives is in force
+    /// when it does; what was wrong was saying it under "how much of each tool's output the model
+    /// is shown", over a session offering four tools and listing six. A row nobody has is marked,
+    /// for the reason `introspect::if_offered` exists on the other side of the screen: a name in
+    /// an answer reads as a thing that is there.
     fn limit(&mut self, rest: &str) {
+        let offered = self.kernel.tool_ids();
         let table = |limits: &Limits| {
             let rows = limits.all();
             // as wide as the widest number, so four tools read `[1]` and a dozen do not jog the
@@ -709,9 +719,13 @@ impl App {
                 .enumerate()
                 .map(|(nth, (tool, bytes))| {
                     format!(
-                        "{:<wide$} {tool:<14}{:>9} bytes",
+                        "{:<wide$} {tool:<14}{:>9} bytes{}",
                         format!("[{}]", nth + 1),
-                        thousands(bytes)
+                        thousands(bytes),
+                        match offered.contains(&tool) {
+                            true => "",
+                            false => "   · not offered",
+                        }
                     )
                 })
                 .collect::<Vec<_>>()
@@ -731,8 +745,23 @@ impl App {
                 "{}\n\nhow much of each tool's output the model is shown. `/limit <tool> <bytes>` \
                  changes one, by name or by the number beside it, from the next call onwards; the \
                  whole of anything already shortened is archived beside it on the context tab, one \
-                 `space` from being sent instead.",
-                table(&self.limits)
+                 `space` from being sent instead.{}",
+                table(&self.limits),
+                match self
+                    .limits
+                    .all()
+                    .iter()
+                    .any(|(tool, _)| !offered.contains(tool))
+                {
+                    // said once, under the table, rather than argued on every marked row - and
+                    // true whichever rows are marked, since which tools a session is missing is
+                    // not something this sentence gets to assume
+                    true =>
+                        " A row marked `not offered` is a limit held for a tool this session does \
+                         not have; it is what that tool declares the moment something adds it, \
+                         and `/introspect` is what adds `context`, `log`, `setup` and `amend`.",
+                    false => "",
+                }
             );
             self.preview("the output limits", body);
             return;
@@ -772,9 +801,19 @@ impl App {
                 Speaker::Note,
                 format!(
                     "`{tool}` was cut at {} bytes and is now cut at {}, from its next call \
-                     onwards",
+                     onwards{}",
                     thousands(was),
-                    thousands(bytes)
+                    thousands(bytes),
+                    // a limit that took, on a tool nobody is offering - which is a real thing to
+                    // set up ahead of `/introspect` and a confusing thing to be told nothing
+                    // about, since "from its next call onwards" implies there will be one
+                    match offered.iter().any(|id| id == tool) {
+                        true => String::new(),
+                        false => format!(
+                            ". `{tool}` is not offered in this session, so it has no next call \
+                             until something adds it"
+                        ),
+                    }
                 ),
             ),
             None => self.say(

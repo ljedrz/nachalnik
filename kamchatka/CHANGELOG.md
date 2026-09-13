@@ -127,6 +127,15 @@ minor bump may break you.
 
 ### fixed
 
+- **`/limit` listed six tools under "how much of each tool's output the model is shown", in a
+  session offering four.** The table is the `Limits` map, which holds a row for every tool this
+  program ships - `context`, `log`, `setup` and `amend` among them, none of them installed until
+  `/introspect`. Two lines after `/tools` said "4 offered: edit, read, shell, write", `/limit`
+  numbered six and invited `/limit 2 8000` on any of them; setting one took, silently, and answered
+  "from its next call onwards" about a tool that has no calls. The rows belong there, because a
+  limit set before a tool arrives is what it declares the moment it does - so they are marked
+  rather than hidden, and a change to one that nobody is offering says as much.
+
 - **`amend` reported an item asked into the state it was already in as having moved.**
   `StateChange::unchanged` means "already in that state *with that note*", so pinning something
   already pinned, for a new reason, comes back as `changed` - which is true of the note and false
