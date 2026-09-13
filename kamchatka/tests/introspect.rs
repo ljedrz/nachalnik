@@ -1329,11 +1329,12 @@ async fn a_filtered_log_opens_with_the_whole_total_and_not_the_filtered_one() {
 
 /// What an item used to say survives in the log, and `ids` is how it is found again.
 ///
-/// note: this is the regression test for the thing `session.rs` used to deny. `ContextReplaced`
-/// carries content and every other event names rather than copies; somebody making the two agree
-/// would take the content out, it would read as tidying, and the only account of an overwrite
-/// would go with it. So this asserts the whole of the old text comes back, not merely that a
-/// record of the right kind is there.
+/// note: measured rather than assumed, and the measurement moved what this test is for. Taking
+/// the content out of `ContextReplaced` - the "fix" the stale sentence in `session.rs` used to
+/// invite - is already caught by five tests across two crates, `undo::a_replacement_is_the_one_/// thing_that_would_otherwise_be_lost` among them, so this is not the guard on that and saying it
+/// was would have been a false sense of a well-watched seam. What nothing else catches is the
+/// pair of things this tool adds: finding the record by the *item* number rather than by kind,
+/// and `whole` - drop either and only this fails.
 #[tokio::test]
 async fn a_revised_item_can_be_read_back_out_of_the_log_by_its_number() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
