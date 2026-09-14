@@ -70,6 +70,11 @@ mcp:files" is one server and not the next one. The `name=` is worth giving: it p
 server's tools and it is what the grant is *for*, and without it the name comes from the program,
 which for most of the servers people actually run is `npx`.
 
+`--introspect` adds four more, off by default: `context` reads the context, `log` the record kept
+beside it, `setup` what the session is running with, and `amend` changes the first of them. Every
+action in them is a public function the screen was already calling, which is the argument for the
+whole workspace rather than a feature of this program — [what each does][guide-introspect].
+
 The registry is live rather than fixed at startup: `/tools drop shell` stops offering it from the
 next request onward, which is one call on the kernel and no restart. When a model has gone down
 the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* call it is waiting on
@@ -163,3 +168,4 @@ MIT.
 [running]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/RUNNING.md
 [guide-permissions]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md#-the-permissions-tab
 [changelog]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/CHANGELOG.md
+[guide-introspect]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md#-letting-the-agent-read-and-manage-its-own-context
