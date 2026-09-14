@@ -391,6 +391,19 @@ minor bump may break you.
 
 ### changed
 
+- **A tool call on the trace is the colour a tool call is everywhere else.** The pane drew a
+  permission in yellow and a failure in red and left everything else white, so the tool events -
+  which are most of what a turn produces, and the rows somebody is usually scanning for - were the
+  same colour as `state.changed`. They are cyan now, which is not a new colour: it is what a call
+  is already drawn in on the chat tab, so a row on the trace and the line it accounts for agree
+  without anybody having to learn which pane they are reading. `.failed` still matches first,
+  because a call that went wrong is a failure before it is a call.
+
+  Cyan rather than the logo's own `#59b8b2`, which is what it stands in for. Every colour here is
+  a named one, so the terminal's palette and its background decide how it lands; a hardcoded
+  triple would be the only thing on the screen ignoring both, and on a light background it would
+  be the wrong side of legible.
+
 - **Landlock grew UDP rights and this still cannot use them, so the wording names the crate rather
   than the LSM.** ABI 10, which is Linux 7.2, added `LANDLOCK_ACCESS_NET_BIND_UDP` and
   `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` - the thing every sentence here has been describing as the
