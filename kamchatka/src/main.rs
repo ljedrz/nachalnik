@@ -12,6 +12,7 @@
 
 use std::{
     io::{IsTerminal as _, stdout},
+    path::Path,
     sync::Arc,
 };
 
@@ -440,7 +441,13 @@ async fn session() -> Result<()> {
     }
     // a resumed session has a conversation in it already, and it would be strange to have to read
     // it out of the context pane one item at a time
-    if args.resume.is_some() {
+    //
+    // note: the record first, because what the items used to say is not in the snapshot - it is
+    // in the log `/save` wrote beside it, which `App::recall` goes looking for and `App::replay`
+    // then says the size of. The path is the one the person typed, so the log it finds is the
+    // one belonging to the session they asked for
+    if let Some(path) = &args.resume {
+        app.recall(Path::new(path));
         app.replay();
     }
     #[cfg(feature = "tui")]

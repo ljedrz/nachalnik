@@ -118,9 +118,11 @@ an item the model does not read in full opens on the first page instead of the s
 **`v1`**, **`v2`** and so on are what it said before somebody rewrote it, newest first. Both hands
 that rewrite an item — <kbd>e</kbd> here and `amend`'s `revise` — **replace it in place**, which
 keeps the number the item is referred to by and leaves the old text nowhere except the
-`context.replaced` event. This reads it back off there, up to eight versions deep. The `as stored`
-page says whose hand it was: `` rewritten by `hand` `` for an edit at the terminal, and
-`` rewritten by `amend` `` with the model's own reason for the tool.
+`context.replaced` event. This reads it back off there, up to eight versions deep — including
+after a `-r`, since `/save` writes that event stream to the `.jsonl` beside the snapshot and a
+resumed session goes looking for it. The `as stored` page says whose hand it was:
+`` rewritten by `hand` `` for an edit at the terminal, and `` rewritten by `amend` `` with the
+model's own reason for the tool.
 
 <kbd>e</kbd> is the verb the others were missing. `space` and `p` decide whether the model reads an
 item; `e` decides **what** it reads. The prompt turns into an editor holding the item's text, and

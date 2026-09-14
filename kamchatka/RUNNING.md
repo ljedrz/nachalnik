@@ -429,7 +429,14 @@ context. The snapshot has two ways back in.
 
 `kamchatka -r PATH` starts a fresh session from it, which is the faithful one: the item numbers,
 the model parameters and what the token counter had learned all come back exactly as they were,
-because `Kernel::resume` is a constructor and builds the session around them.
+because `Kernel::resume` is a constructor and builds the session around them. It also reads the
+`.jsonl` of the same name, if it is still beside the snapshot, for the one thing a snapshot
+cannot carry: what an item said before somebody rewrote it is an *event*, so a resumed session
+that read only the `.json` had an empty `v1` page while the words sat in the file next to the one
+it was reading. A record that is missing or was cut off mid-line costs those pages and nothing
+else. What it cannot do is carry the lineage on: the resumed session's log starts where the
+resume did, so a `/save` of it writes a record without the earlier rewrites in it — the way two
+hops back is the `.jsonl` you kept.
 
 `/load PATH` brings it into the session you are already in, which is the useful one. It is a
 context operation and it plays by the same rule as the rest of them — nothing is destroyed. What

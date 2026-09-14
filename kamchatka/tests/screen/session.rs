@@ -5,8 +5,9 @@
 //! conversation that reads as it did. These write real files under a scratch directory and load
 //! them again.
 
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
+use crossterm::event::KeyCode;
 use kamchatka::{
     app::{App, Tab},
     tools::Subject,
@@ -479,6 +480,113 @@ async fn a_session_can_be_written_without_anybody_having_asked() {
             .any(|item| item.content.to_text().contains("something to keep")),
         "what was in the session is in the session that comes back"
     );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A resumed session reads back what its items used to say, off the record beside the snapshot.
+///
+/// note: a snapshot carries items and not events, and the text a rewrite replaced is an event -
+/// `context.replaced`, the one that carries content. So resuming put every `v1` page back to
+/// empty while the words were sitting in a file next to the one being read. `/save` writes the
+/// two together under one name, which is what makes the log findable from the path `-r` was
+/// handed.
+#[tokio::test]
+async fn a_resumed_session_reads_back_what_its_items_used_to_say() {
+    let first = Harness::new([]);
+    let id = first.app.kernel.push(ContextItem::user("the first draft"));
+    first
+        .app
+        .kernel
+        .replace(id, "the second draft")
+        .expect("the item is there");
+
+    let dir = common::scratch("recall");
+    let log = dir.join("s.jsonl").display().to_string();
+    let state = dir.join("s.json").display().to_string();
+    first.app.write_session(&log, &state).expect("written");
+
+    // a second session, resumed from the snapshot alone - which is all `-r` reads
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(&state).expect("the snapshot is there"))
+            .expect("the snapshot parses");
+    let mut second = Harness::new([]);
+    second.app.kernel = Kernel::resume(Config::default(), snapshot);
+
+    assert_eq!(
+        second.app.recall(Path::new(&state)),
+        1,
+        "the rewrite is in the log beside the snapshot"
+    );
+    second.app.replay();
+    let screen = second.screen();
+    assert!(
+        screen.contains("earlier version(s)"),
+        "a resume says what it picked up, including this: {screen}"
+    );
+
+    // and it is where it would have been if the session had never ended: a page under `enter`
+    second.tab(Tab::Context);
+    second.press(KeyCode::Home).await;
+    second.press(KeyCode::Enter).await;
+    let screen = second.screen();
+    assert!(screen.contains("│ v1"), "{screen}");
+    second.press(KeyCode::Right).await;
+    let screen = second.screen();
+    assert!(screen.contains("the first draft"), "{screen}");
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A record that is not there, or that ends mid-line, costs a page rather than a session.
+///
+/// note: the session has already resumed by the time the log is read, so nothing found there can
+/// be worth failing over. The half-written line is the case that will actually happen: a run that
+/// was killed wrote as far as it got, and the records before that point are fine.
+#[tokio::test]
+async fn a_session_resumed_without_its_record_is_still_a_session() {
+    let first = Harness::new([]);
+    let id = first.app.kernel.push(ContextItem::user("the first draft"));
+    first
+        .app
+        .kernel
+        .replace(id, "the second draft")
+        .expect("the item is there");
+
+    let dir = common::scratch("recall-torn");
+    let log = dir.join("s.jsonl").display().to_string();
+    let state = dir.join("s.json").display().to_string();
+    first.app.write_session(&log, &state).expect("written");
+
+    let resumed = |state: &str| {
+        let snapshot: nachalnik::Snapshot =
+            serde_json::from_str(&std::fs::read_to_string(state).expect("the snapshot is there"))
+                .expect("the snapshot parses");
+        let mut app = Harness::new([]);
+        app.app.kernel = Kernel::resume(Config::default(), snapshot);
+
+        app
+    };
+
+    // the log as it would be if the run had been killed part-way through writing its last record
+    let whole = std::fs::read_to_string(&log).expect("the log is there");
+    std::fs::write(&log, format!("{whole}{{\"seq\":99,\"at\":")).expect("a torn log");
+    assert_eq!(
+        resumed(&state).app.recall(Path::new(&state)),
+        1,
+        "the records before the torn one are still records"
+    );
+
+    // and with no log at all beside it, the session is the session and the pages are empty
+    std::fs::remove_file(&log).expect("the log goes");
+    let mut second = resumed(&state);
+    assert_eq!(second.app.recall(Path::new(&state)), 0);
+    second.tab(Tab::Context);
+    second.press(KeyCode::Home).await;
+    second.press(KeyCode::Enter).await;
+    let screen = second.screen();
+    assert!(screen.contains("the second draft"), "{screen}");
+    assert!(!screen.contains("│ v1"), "{screen}");
 
     std::fs::remove_dir_all(&dir).ok();
 }

@@ -7,6 +7,34 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **A resumed session reads back what its items used to say.** A `Snapshot` carries items and not
+  events, and the text a rewrite replaced is an event - `context.replaced`, the one event in the
+  runtime that carries content, which is the whole reason it does. So `-r` came back with every
+  `v1` page empty, while the words were sitting in a file next to the one it was reading: `/save`
+  writes the `.jsonl` of every event and the `.json` snapshot together, under one name.
+
+  `App::recall` now opens the `.jsonl` of the same name beside whatever path `-r` was handed, and
+  walks its `context.replaced` records through the same `App::remember` the live path uses - so a
+  resumed `v1` is the `v1` the session had, eight deep, in the order it happened, and an item
+  whose rewrite was undone is deduped by the line that dedupes it live. Only for items that came
+  back: a rewrite of something an `undo` removed before the snapshot was written is history for
+  an item this session does not have, and a resumed kernel has no undo stack to bring it back on.
+  The resume line says what it picked up, beside the item and token counts it already said.
+
+  Best effort, deliberately. The session has resumed by the time the log is read, so nothing
+  found there is worth failing over: a record that is absent, unreadable or cut off mid-line
+  costs a page under `enter` rather than a session, and a line that will not parse is skipped
+  rather than ending the walk - the last line of a log from a run that was killed is the one most
+  likely to be half a record, and the ones before it are fine.
+
+  What it does not do is carry the lineage forward. A resumed session's own log starts at
+  `session.resumed`, so a `/save` of it writes a record with none of these rewrites in it, and a
+  resume of *that* file reads nothing back. Two hops is the earlier `.jsonl`, which is what an
+  append-only log is for.
+
+
 ### changed
 
 - **An edit at the terminal rewrites the item instead of superseding it.** <kbd>e</kbd> committed

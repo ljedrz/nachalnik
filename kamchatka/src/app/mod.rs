@@ -9,6 +9,9 @@
 use std::{
     borrow::Cow,
     collections::{BTreeMap, VecDeque},
+    fs::File,
+    io::{BufRead as _, BufReader},
+    path::Path,
     sync::Arc,
     time::{Instant, SystemTime},
 };
@@ -17,7 +20,7 @@ use std::{
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
     Budget, Capability, Content, ContextId, ContextItem, ContextKind, Delta, Event, Grant,
-    GrantSource, Kernel, PermissionRequest, State, Usage, Verdict, selectors::Selector,
+    GrantSource, Kernel, PermissionRequest, Record, State, Usage, Verdict, selectors::Selector,
 };
 use nachalnik_providers::Endpoint;
 #[cfg(feature = "tui")]
@@ -865,6 +868,53 @@ impl App {
         }
     }
 
+    /// Fills in what the resumed items used to say, out of the record saved beside the snapshot.
+    ///
+    /// note: a [`nachalnik::Snapshot`] carries items and not events, so the text a rewrite
+    /// replaced is in the session's log and nowhere else - [`Event::ContextReplaced`] is the one
+    /// event that carries content, which is the whole reason it does. `/save` writes that log
+    /// beside the snapshot under the same name, so this looks for it there: `<name>.json` is
+    /// what `-r` was handed, `<name>.jsonl` is what this reads. What it finds goes through the
+    /// same [`App::remember`] the live path uses, in the order it was recorded, so a resumed
+    /// `v1` is the `v1` the session had - eight deep, and an undone rewrite deduped by the same
+    /// line that dedupes it live.
+    ///
+    /// note: best effort, and deliberately not an error. The session has resumed by the time
+    /// this runs, and a record that is absent, unreadable or half-written costs a page under
+    /// `enter` rather than a session. A line that will not parse is skipped rather than ending
+    /// the walk: the last line of a log from a run that was killed is the one most likely to be
+    /// half a record, and the ones before it are fine.
+    ///
+    /// note: only for items that came back. A rewrite of something an `undo` took away before
+    /// the snapshot was written is history for an item this session does not have, and a resumed
+    /// kernel has no undo stack for it to come back on.
+    ///
+    /// note: what this does *not* do is carry forward. The resumed session's own log starts at
+    /// `session.resumed`, so a `/save` of it writes a record with none of these rewrites in it
+    /// and a resume of *that* file reads nothing. Two hops back is the earlier `.jsonl`, which is
+    /// why an append-only log is worth keeping rather than overwriting.
+    pub fn recall(&mut self, state: &Path) -> usize {
+        let Ok(log) = File::open(state.with_extension("jsonl")) else {
+            return 0;
+        };
+
+        let mut recalled = 0;
+        for line in BufReader::new(log).lines().map_while(Result::ok) {
+            let Ok(record) = serde_json::from_str::<Record>(&line) else {
+                continue;
+            };
+            let Event::ContextReplaced { id, was, .. } = record.event else {
+                continue;
+            };
+            if self.kernel.item(id).is_some() {
+                self.remember(id, was);
+                recalled += 1;
+            }
+        }
+
+        recalled
+    }
+
     /// Says what a resumed session picked up.
     ///
     /// note: it says it and nothing else, which is the whole of what a resume needs now. It used
@@ -879,16 +929,26 @@ impl App {
         let items = self.kernel.items();
         let withheld = items.iter().filter(|item| !item.is_projected()).count();
 
+        // read off `versions` rather than handed in, so the line says what is actually there to
+        // read: `App::recall` runs before this and an unread record leaves it at nothing
+        let recalled: usize = self.versions.values().map(Vec::len).sum();
+
         self.say(
             Speaker::Note,
             format!(
-                "resumed session {}: {} items, ~{} tokens{}",
+                "resumed session {}: {} items, ~{} tokens{}{}",
                 self.kernel.session_name(),
                 items.len(),
                 self.kernel.budget().context_tokens,
                 match withheld {
                     0 => String::new(),
                     n => format!(", {n} of which the pane says are not being sent"),
+                },
+                match recalled {
+                    0 => String::new(),
+                    n => format!(
+                        "; {n} earlier version(s) of what items said, off the record beside it"
+                    ),
                 }
             ),
         );
