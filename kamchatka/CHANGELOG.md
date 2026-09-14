@@ -55,8 +55,8 @@ minor bump may break you.
 
   So: one row, the number the item always had, the state it was already in, and `v1` under
   <kbd>enter</kbd> - eight versions deep, as for any other rewrite. The item also says whose hand
-  it was, as `revised: {by: hand}` on its `meta` - the same key `amend: revise` writes with
-  `by: amend` - so the `as stored` page reads `` rewritten by `hand`: edited at the terminal ``,
+  it was, as `revised: {by: user}` on its `meta` - the same key `amend: revise` writes with
+  `by: amend` - so the `as stored` page reads `` rewritten by `user`: edited at the terminal ``,
   and a model reading its own metadata is never shown its own tool as the editor of a sentence a
   person rewrote.
 

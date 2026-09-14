@@ -141,7 +141,7 @@ impl App {
             true => old.meta.clone(),
             false => json!({}),
         };
-        meta["revised"] = json!({ "by": "hand", "reason": "edited at the terminal" });
+        meta["revised"] = json!({ "by": "user", "reason": "edited at the terminal" });
         let _ = self.kernel.annotate(id, meta);
     }
 

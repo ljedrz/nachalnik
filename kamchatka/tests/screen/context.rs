@@ -227,7 +227,7 @@ async fn editing_an_item_changes_what_the_model_reads_and_keeps_what_it_said() {
     assert_eq!(items[0].state, ContextState::Active);
     // whose hand it was, on the item itself - `amend` writes the same key saying `amend`, and a
     // model reading this should never find its own tool credited with a sentence a person wrote
-    assert_eq!(items[0].meta["revised"]["by"], "hand");
+    assert_eq!(items[0].meta["revised"]["by"], "user");
 
     // and what it said before is a page under `enter` rather than a row of its own, on an item
     // whose `as stored` page opens saying who rewrote it
@@ -235,7 +235,7 @@ async fn editing_an_item_changes_what_the_model_reads_and_keeps_what_it_said() {
     harness.press(KeyCode::Enter).await;
     let screen = harness.screen();
     assert!(screen.contains("│ v1"), "{screen}");
-    assert!(screen.contains("rewritten by `hand`"), "{screen}");
+    assert!(screen.contains("rewritten by `user`"), "{screen}");
 }
 
 #[tokio::test]

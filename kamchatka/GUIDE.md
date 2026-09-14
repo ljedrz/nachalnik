@@ -121,7 +121,7 @@ keeps the number the item is referred to by and leaves the old text nowhere exce
 `context.replaced` event. This reads it back off there, up to eight versions deep — including
 after a `-r`, since `/save` writes that event stream to the `.jsonl` beside the snapshot and a
 resumed session goes looking for it. The `as stored` page says whose hand it was:
-`` rewritten by `hand` `` for an edit at the terminal, and `` rewritten by `amend` `` with the
+`` rewritten by `user` `` for an edit at the terminal, and `` rewritten by `amend` `` with the
 model's own reason for the tool.
 
 <kbd>e</kbd> is the verb the others were missing. `space` and `p` decide whether the model reads an

@@ -533,7 +533,7 @@ impl Amend {
         };
         // note: `by` is here because a reader of this item should be able to tell whose hand it
         // was, and there are two. This tool is one; the other is a person pressing `e` on the
-        // context tab, which replaces in place as well and writes `by: hand` for the same reason.
+        // context tab, which replaces in place as well and writes `by: user` for the same reason.
         // So the two paths must not look alike: a model reading its own metadata is never shown
         // its own tool as the editor of a sentence a person rewrote, and the person is never told
         // they did something `amend` did. The `unwrap_or` on the pane that draws this guards
