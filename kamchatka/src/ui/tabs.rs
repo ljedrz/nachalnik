@@ -677,8 +677,19 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
             )],
         };
         let stamp = [when_span, gap_span].concat();
+        // note: the same two colours the chat tab reads by - a tool call is cyan there and a
+        // permission is what the question is drawn in - so a row on the trace and the line it
+        // accounts for agree without anybody having to learn a second scheme. `.failed` is
+        // matched first on purpose: a call that went wrong is a failure before it is a call.
+        //
+        // note: named colours rather than the logo's own `#59b8b2`, which is what cyan is
+        // standing in for. Every colour in this program is a named one, so a terminal's palette
+        // and its background decide how it lands; one hardcoded triple would be the only thing
+        // on the screen that ignored both, and it would be the wrong side of legible on a light
+        // background.
         let colour = match () {
             _ if event.name.ends_with(".failed") => Color::Red,
+            _ if event.name.starts_with("tool") => Color::Cyan,
             _ if event.name.starts_with("permission") => Color::Yellow,
             _ if event.name.is_empty() => Color::Gray,
             _ => Color::White,

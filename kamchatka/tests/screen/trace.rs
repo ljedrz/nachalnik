@@ -11,6 +11,7 @@ use nachalnik::{
     Event, ModelResponse,
     test::{ConstTool, call},
 };
+use ratatui::style::Color;
 use serde_json::json;
 
 use crate::harness::Harness;
@@ -41,6 +42,38 @@ async fn a_chatty_tool_does_not_wipe_out_the_trace() {
     let screen = harness.screen();
     assert!(screen.contains("tool.started"), "{screen}");
     assert!(screen.contains("11,700 bytes so far"), "{screen}");
+}
+
+/// A row on the trace is written in the colour the thing it accounts for is written in elsewhere:
+/// a tool call is cyan on the chat tab and cyan here, a permission is the yellow the question is
+/// drawn in. Two schemes for one session would mean learning which pane you were looking at before
+/// you could read a colour.
+#[tokio::test]
+async fn a_tool_call_on_the_trace_is_the_colour_a_tool_call_is_everywhere_else() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "look", json!({}))]),
+        ModelResponse::text("and there it was"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("look", "a thing")));
+
+    harness.send("look").await;
+    harness.settle().await;
+    harness.drain();
+    harness.tab(Tab::Trace);
+
+    let (called, _) = harness.style_of("tool.requested");
+    assert_eq!(
+        called,
+        Color::Cyan,
+        "a tool call is cyan, as it is on the chat tab"
+    );
+
+    // ... and every other kind of event is left where it was
+    let (state, _) = harness.style_of("state.changed");
+    assert_ne!(state, Color::Cyan, "only the tool events changed colour");
 }
 
 #[tokio::test]
