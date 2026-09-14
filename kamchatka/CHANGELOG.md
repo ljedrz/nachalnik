@@ -328,6 +328,33 @@ minor bump may break you.
 
 ### changed
 
+- **Landlock grew UDP rights and this still cannot use them, so the wording names the crate rather
+  than the LSM.** ABI 10, which is Linux 7.2, added `LANDLOCK_ACCESS_NET_BIND_UDP` and
+  `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` - the thing every sentence here has been describing as the
+  hole a confined command can put a DNS query through. The kernel is no longer what is in the way.
+
+  The `landlock` crate is. It stops at ABI 9, `AccessNet` has `ConnectTcp` and `BindTcp` and
+  nothing else, and it is `#[non_exhaustive]` over a sealed `Access` trait - so the two bits cannot
+  be handed to a ruleset from out here, whatever the kernel under it supports. What is left is the
+  raw syscall, and `#![deny(unsafe_code)]` is the reason this program re-execs itself rather than
+  using `Command::pre_exec`; it is not going to be spent on this. So nothing about the confinement
+  changed, and could not have.
+
+  What changed is that "Landlock has no UDP right" was true when it was written and is now false
+  about Landlock while staying true about this program. The module note, the README and `AGENTS.md`
+  now say the crate rather than the LSM, and name the ABI and the two rights, so that whoever reads
+  it next knows what closing the hole is waiting on rather than believing it cannot be closed.
+
+  A test asserts the hole: a confined command sends a datagram to a loopback socket the test holds
+  open, and it arrives. It is there to fail - on the day the crate grows those rights, that is the
+  thing which says the wording may change, and the wording is the part a person actually relies on.
+  Measured on Linux 7.2.4, which reports ABI 10: TCP refused with `EACCES`, the datagram through.
+
+  `AccessNet::ConnectTcp | AccessNet::BindTcp` stays spelled out rather than `AccessNet::from_all`,
+  which is the same two rights today. `from_all` would quietly start handling UDP on a `cargo
+  update`, and a sandbox that begins refusing more than it promises is a surprise in the direction
+  people notice last.
+
 - **`introspect` is called `context`.** The tool id, the capability it declares and the struct
   behind it; the module, the `--introspect` flag and the `/introspect` command are unchanged,
   and so is what any of it does.

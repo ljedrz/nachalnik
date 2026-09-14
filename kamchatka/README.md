@@ -41,8 +41,9 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 
 > **The permissions are enforced, and it is still a demonstration rather than a hardened agent.**
 > The `shell` tool runs under [Landlock](https://landlock.io): `network: deny` is a TCP `connect()`
-> refused by the kernel — TCP being the whole of what Landlock can refuse, so a UDP datagram still
-> goes out — and `write: deny` makes the working directory read-only. Nothing outside
+> refused by the kernel — TCP being the whole of what the `landlock` crate can refuse, so a UDP
+> datagram still goes out; the kernel itself grew UDP rights in ABI 10 (Linux 7.2) and the crate
+> has not caught up — and `write: deny` makes the working directory read-only. Nothing outside
 > that directory is **writable**, and nothing outside it is readable either — with one deliberate
 > exception, which is that the system directories (`/usr`, `/etc`, `/bin`, `/lib`, `/proc` and the
 > rest) are readable, because a command that cannot read `/usr/bin` cannot be a command. So

@@ -549,12 +549,14 @@ README and the crate docs in longer form:
   restriction that does not exist - which is why `kamchatka`'s permissions tab says so.
 - **Confinement lives where the process is spawned.** `kamchatka` puts its `shell` tool under
   Landlock by re-executing itself in a mode that restricts itself and then `exec`s the command, so
-  `network: deny` is a refused TCP `connect` - Landlock has no UDP right, and the readmes say so -
-  and the working directory is the edge of the world. The
-  `exec` is load-bearing rather than tidy: a helper standing in front of the command is what a
-  stopped call would kill instead of the command. The three file tools run
-  in-process and are held to the same boundary by their own code, which is weaker in kind and said
-  to be. `#![deny(unsafe_code)]` is why it is a re-exec rather than `Command::pre_exec`.
+  `network: deny` is a refused TCP `connect` - the `landlock` crate has no UDP right to hand a
+  ruleset, ABI 10 and the kernel's own `BIND_UDP`/`CONNECT_SEND_UDP` notwithstanding, and the
+  readmes say so rather than rounding it up - and the working directory is the edge of the world.
+  The `exec` is load-bearing rather than tidy: a helper standing in front of the command is what a
+  stopped call would kill instead of the command. The three file tools run in-process and are held
+  to the same boundary by their own code, which is weaker in kind and said to be.
+  `#![deny(unsafe_code)]` is why it is a re-exec rather than `Command::pre_exec` - and why the UDP
+  rights stay out of reach until the crate exposes them.
 - **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it
   can fail and the permissions tab draws it. Never let it degrade silently.
 - **A boundary the refused party cannot see is a boundary it will walk into repeatedly.** Landlock

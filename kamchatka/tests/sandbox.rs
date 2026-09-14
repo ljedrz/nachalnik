@@ -11,6 +11,7 @@
 #![cfg(target_os = "linux")]
 
 use std::{
+    net::UdpSocket,
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
@@ -289,6 +290,49 @@ fn a_refused_network_is_refused_by_the_kernel_rather_than_by_reading_the_command
     assert!(
         said.contains("Permission denied") || said.contains("Errno 13"),
         "{said}"
+    );
+}
+
+/// The other half of that, and the reason every sentence about this promises TCP rather than "the
+/// network": a UDP datagram leaves the same confinement untouched.
+///
+/// note: a test that asserts a *hole* is an odd thing until you ask what closes it. The kernel
+/// grew `LANDLOCK_ACCESS_NET_BIND_UDP` and `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` in ABI 10,
+/// which is Linux 7.2; the `landlock` crate exposes neither, and `AccessNet` is
+/// `#[non_exhaustive]` over a sealed trait, so there is nothing to hand a ruleset from out here.
+/// The day the crate grows them this fails - and what it is really holding down is the wording.
+/// The readmes, the screen and the tool's own description to the model all promise no more than
+/// TCP, and they may stop saying it on the day this stops passing and not before.
+///
+/// note: loopback rather than a DNS query, so what it checks is the confinement rather than
+/// whether this machine has a network at all.
+#[test]
+fn a_udp_datagram_still_goes_out_and_every_sentence_about_it_says_so() {
+    if !enforced() {
+        return;
+    }
+    let socket = UdpSocket::bind("127.0.0.1:0").expect("a port");
+    socket
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("a timeout, so a closed hole is a failure rather than a hang");
+    let port = socket.local_addr().expect("it is bound").port();
+
+    let (ok, said) = run(
+        &sandbox(workdir("udp"), true, false),
+        &format!(
+            "python3 -c \"import socket; socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\
+             .sendto(b'out', ('127.0.0.1', {port}))\" 2>&1"
+        ),
+    );
+    assert!(ok, "{said}");
+
+    let mut buf = [0u8; 8];
+    let read = socket.recv_from(&mut buf).map(|(read, _)| read);
+    assert_eq!(
+        read.ok().map(|read| &buf[..read]),
+        Some(&b"out"[..]),
+        "no datagram arrived. If the crate has grown ABI 10's rights and this is now refused, \
+         that is good news and every sentence promising only TCP wants rewriting"
     );
 }
 

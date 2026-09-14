@@ -13,12 +13,17 @@
 //! live model, refused a `curl`, reached the same page with `python3 -c "import urllib.request"`
 //! on its very next call; under this, that call gets `Permission denied` from the kernel.
 //!
-//! note: and it is TCP that it buys, because TCP is what Landlock has: `ConnectTcp` and `BindTcp`
-//! are its only two network access rights. A confined command can still send a UDP datagram, which
-//! is enough to put bytes in a DNS query, and AF_UNIX is only reachable at all from a kernel that
-//! has ABI 9. So `no network` here means no TCP, and it is written that way everywhere it is shown
-//! rather than rounded up to something this cannot do. What still holds against the rest is the
-//! filesystem: a command that cannot read a file has nothing to send.
+//! note: and it is TCP that it buys, because TCP is what the `landlock` crate has: `ConnectTcp`
+//! and `BindTcp` are the only two network access rights it exposes. The kernel is no longer the
+//! thing standing in the way - ABI 10, which is Linux 7.2, added `LANDLOCK_ACCESS_NET_BIND_UDP`
+//! and `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` - but the crate stops at ABI 9, `AccessNet` is
+//! `#[non_exhaustive]` over a sealed trait, and so those two bits cannot be handed to a ruleset
+//! from out here at all. What is left is the raw syscall, which is `unsafe`, and this workspace
+//! does not have any. So until the crate grows them, a confined command can still send a UDP
+//! datagram, which is enough to put bytes in a DNS query, and AF_UNIX is only reachable at all
+//! from a kernel that has ABI 9. `no network` here means no TCP, and it is written that way
+//! everywhere it is shown rather than rounded up to something this cannot do. What still holds
+//! against the rest is the filesystem: a command that cannot read a file has nothing to send.
 //!
 //! note: it is applied by re-executing *this program* in a mode that confines itself and then runs
 //! the command. The alternative is `Command::pre_exec`, which is `unsafe`, and this workspace does
@@ -44,8 +49,9 @@ pub const EXEC_FLAG: &str = "--confine-and-run";
 /// the system directories are always readable and the interesting question is what is *writable*
 /// and whether the network is reachable - which are the two stances a person actually changes.
 ///
-/// note: "the network" is TCP. Landlock has two network access rights and both are TCP; a UDP
-/// datagram still goes out. See the note at the top of this module.
+/// note: "the network" is TCP. The `landlock` crate exposes two network access rights and both
+/// are TCP - the kernel has had UDP rights since ABI 10, the crate has not - so a UDP datagram
+/// still goes out. See the note at the top of this module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sandbox {
     /// The directory a command may work in; everything outside it is out of reach.
@@ -366,7 +372,7 @@ impl fmt::Display for Sandbox {
             ", the system directories read-only, {}",
             match self.network {
                 true => "the network reachable",
-                // TCP is the whole of what Landlock can refuse; see the note at the top
+                // TCP is the whole of what this can refuse; see the note at the top
                 false => "no TCP",
             }
         )
@@ -637,7 +643,13 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
         return Confinement::Unavailable;
     };
     if !sandbox.network {
-        // ABI v4 and up; on an older kernel this is the part that comes back `Partial`
+        // ABI v4 and up; on an older kernel this is the part that comes back `Partial`.
+        //
+        // note: named rather than `AccessNet::from_all`, which is the same two rights today and
+        // would silently become more than TCP the day the crate grows ABI 10's UDP pair - a
+        // sandbox that started refusing more than it says it refuses, on a `cargo update`. The
+        // two bits exist in the kernel already, and cannot be reached from here: see the note at
+        // the top of this module for why, and change the wording along with the rights.
         match ruleset.handle_access(AccessNet::ConnectTcp | AccessNet::BindTcp) {
             Ok(with_net) => ruleset = with_net,
             Err(_) => return Confinement::Unavailable,
