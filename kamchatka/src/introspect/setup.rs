@@ -28,7 +28,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     app::text::{short, thousands},
-    tools::{Careful, Limits, Subject},
+    tools::{Careful, Limits, Subject, acts_on},
 };
 
 use super::{Reach, action, if_offered, unknown};
@@ -234,8 +234,23 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
             binds.entry(capability).or_default().push(spec.id.clone());
         }
     }
-    for (capability, _) in policy.stances() {
-        binds.entry(capability).or_default();
+    // note: an action rule is a stance too, and it is deliberately not a row in this table. It
+    // is not declared by anything - `amend` declares `amend`, not `amend:exclude` - so it would
+    // read `nothing you have declares it` beside a verdict that is about a tool sitting two rows
+    // above it. It gets a section of its own below, the way a path rule does.
+    let registered: Vec<String> = kernel
+        .tool_specs()
+        .iter()
+        .map(|spec| spec.id.clone())
+        .collect();
+    let mut actions: Vec<(String, String, Verdict)> = Vec::new();
+    for (capability, verdict) in policy.stances() {
+        match acts_on(&capability, &registered) {
+            Some(tool) => actions.push((capability.to_string(), tool, verdict)),
+            None => {
+                binds.entry(capability).or_default();
+            }
+        }
     }
 
     if !binds.is_empty() {
@@ -281,6 +296,31 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
             undecided
                 .iter()
                 .map(|(pattern, _)| pattern.as_str())
+                .collect::<Vec<_>>()
+                .join(", "),
+        ));
+    }
+
+    // the same split the path rules get, and for the same reason its note gives: four `ask` rows
+    // nobody has thought about are not information, and a report that listed none of them and
+    // said nothing would be standing silently for four answers
+    let (decided, undecided): (Vec<_>, Vec<_>) = actions
+        .into_iter()
+        .partition(|(_, _, verdict)| *verdict != Verdict::Ask);
+    if !decided.is_empty() {
+        out.push_str("\nand rules about single actions, which bind the tool they name:\n");
+        for (rule, tool, verdict) in &decided {
+            out.push_str(&format!("{rule:<28}  {:<8}  {tool}\n", said(*verdict)));
+        }
+    }
+    if !undecided.is_empty() {
+        out.push_str(&format!(
+            "\n{} action rule(s) are undecided and will stop and ask, whatever the tool's own \
+             verdict is - the ones that change or remove what is already in your context: {}.\n",
+            undecided.len(),
+            undecided
+                .iter()
+                .map(|(rule, _, _)| rule.as_str())
                 .collect::<Vec<_>>()
                 .join(", "),
         ));

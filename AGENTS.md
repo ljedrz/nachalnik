@@ -547,6 +547,13 @@ README and the crate docs in longer form:
 - **A `Capability` is a declaration, not a verified property**, and `Shell` subsumes every other
   one. A client that shows `shell: allow` beside `network: deny` without saying so is reporting a
   restriction that does not exist - which is why `kamchatka`'s permissions tab says so.
+- **A capability is not always fine enough to answer with.** `Careful::judges` is the one place a
+  call's *arguments* become subjects, and there are two kinds that come from there: a path rule
+  (`read: allow` is reasonable, `read .env: allow` is not) and an action rule (`amend: allow` is
+  reasonable for a `note` and not for an `exclude`). Both only ever tighten - the strictest of
+  everything consulted wins - so neither can reopen what a capability refused, and that is the
+  property that makes adding one safe. An action rule is consulted only where one exists, so a
+  tool nobody has written a rule about is judged exactly as before.
 - **Confinement lives where the process is spawned.** `kamchatka` puts its `shell` tool under
   Landlock by re-executing itself in a mode that restricts itself and then `exec`s the command, so
   `network: deny` is a refused TCP `connect` - the `landlock` crate has no UDP right to hand a

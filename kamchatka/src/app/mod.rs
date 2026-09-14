@@ -27,7 +27,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     sandbox::Confinement,
-    tools::{Careful, Limits, Subject},
+    tools::{Careful, Limits, Subject, acts_on},
 };
 
 mod command;
@@ -128,6 +128,13 @@ pub struct Stance {
     /// it` beside a verdict of `deny`, which is a restriction that was not there. What is there is
     /// [`crate::tools::Careful`] reading the command, and that is what this says.
     pub sometimes: Vec<String>,
+    /// What makes it *that* time, in a clause the pane puts after [`Stance::sometimes`].
+    ///
+    /// note: a field rather than the one sentence it used to be, because there are two of these
+    /// now and they are sometimes about different things. `shell` is judged against `network`
+    /// when the command reaches for it; `amend` is judged against `amend:exclude` when the call
+    /// names that action. One clause covering both would have to say neither.
+    pub when: &'static str,
 }
 
 impl Stance {
@@ -2210,7 +2217,19 @@ impl App {
     fn all_stances(&self) -> Vec<Stance> {
         let mut rows: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
         let mut sometimes: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
+        // an action rule names the tool it binds in its own first half, and that tool is the
+        // honest answer to "what is judged against this" - it is judged against it on the calls
+        // that name the action and on no others, which is what `sometimes` is for
+        let registered: Vec<String> = self
+            .kernel
+            .tool_specs()
+            .iter()
+            .map(|spec| spec.id.clone())
+            .collect();
         for (capability, _) in self.policy.stances() {
+            if let Some(tool) = acts_on(&capability, &registered) {
+                sometimes.entry(capability.clone()).or_default().push(tool);
+            }
             rows.entry(capability).or_default();
         }
         for spec in self.kernel.tool_specs() {
@@ -2252,6 +2271,10 @@ impl App {
             .map(|(capability, tools)| Stance {
                 verdict: self.policy.stance(&Subject::Capability(capability.clone())),
                 sometimes: sometimes.remove(&capability).unwrap_or_default(),
+                when: match acts_on(&capability, &registered) {
+                    Some(_) => "when the call names that action",
+                    None => "when the command reaches for it",
+                },
                 subject: Subject::Capability(capability),
                 tools,
             })
@@ -2264,6 +2287,7 @@ impl App {
                         verdict,
                         tools: bound.clone(),
                         sometimes: Vec::new(),
+                        when: "when the command reaches for it",
                     }),
             );
 

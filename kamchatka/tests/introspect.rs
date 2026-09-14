@@ -37,7 +37,20 @@ fn agent(
     let provider = Arc::new(ScriptedProvider::new(script));
     kernel.set_provider(provider.clone());
     let policy = Arc::new(Careful::new());
-    for capability in ["context", "log", "setup", "amend"] {
+    // note: the four `amend` actions that are permission subjects of their own go in too. These
+    // tests are about what the tools do, and `amend: allow` deliberately no longer covers an
+    // `exclude` - a question nobody is here to answer would stop the call before it did anything.
+    // The gating itself is `tests/policy.rs`'s to check, and it does.
+    for capability in [
+        "context",
+        "log",
+        "setup",
+        "amend",
+        "amend:elide",
+        "amend:exclude",
+        "amend:archive",
+        "amend:revise",
+    ] {
         policy.set(
             &Subject::Capability(Capability::Custom(capability.into())),
             Verdict::Allow,
@@ -2286,6 +2299,69 @@ async fn setup_permissions_counts_the_rules_nobody_has_thought_about() {
     // still named, because an answer standing silently for eleven rules would be its own kind of
     // dishonest - it is the row per rule that is not worth the tokens, not the fact of them
     assert!(said.contains(".env*"), "{said}");
+}
+
+/// An action rule is a row of its own rather than a capability nothing declares, because that is
+/// what it is: `amend` declares `amend`, and `amend:exclude` is a rule about the calls that name
+/// that action. A table that listed it beside the capabilities would have it reading `nothing you
+/// have declares it` next to a verdict about a tool two rows above.
+#[tokio::test]
+async fn setup_permissions_puts_the_action_rules_in_a_section_of_their_own() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "permissions" }),
+    )]));
+    kernel.push(ContextItem::user("what may you touch?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("rules about single actions"), "{said}");
+    // the tool it binds, which is the thing a capability row could not say about it
+    assert!(
+        said.contains("amend:exclude") && said.contains("amend:revise"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("nothing you have declares it"),
+        "an action rule is not a capability nothing declares: {said}"
+    );
+}
+
+/// And where nobody has answered about them they are counted and named in one line, the way the
+/// undecided path rules are - four rows of `ask` is not information, and standing silently for
+/// four answers is worse.
+#[tokio::test]
+async fn setup_permissions_counts_the_action_rules_nobody_has_answered_about() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "permissions" }),
+    )])));
+    kernel.set_provider(provider);
+    // `setup` alone: the `amend` action rules are left exactly as they ship
+    let policy = Arc::new(Careful::new());
+    policy.set(
+        &Subject::Capability(Capability::Custom("setup".into())),
+        Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+
+    kernel.push(ContextItem::user("what may you touch?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("4 action rule(s) are undecided"),
+        "a count, not four rows of the same verdict: {said}"
+    );
+    assert!(said.contains("amend:elide"), "still named: {said}");
+    assert!(
+        said.contains("whatever the tool's own verdict is"),
+        "the thing worth knowing about them: {said}"
+    );
 }
 
 /// An argument this tool does not take is a mistake to report, not one to ignore.

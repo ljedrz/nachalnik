@@ -88,6 +88,46 @@ const SUSPECT: &[&str] = &[
     ".gnupg/",
 ];
 
+/// The tool actions a fresh policy has something to say about, as `<tool>:<action>`.
+///
+/// note: the same idea as [`SUSPECT`] one tool along. A capability is the whole of a tool, and
+/// `amend` is not one thing: `note` adds an item and `exclude` takes one out, `revise` rewrites
+/// what one says - a user message included - and answering `always` to the first is not a thing
+/// anybody meant to say about the last. So the four that change or remove what is already there
+/// are subjects of their own, and every one of them is `ask`, like everything else here.
+///
+/// note: seeded rather than derived, and a closed list on purpose. `judges` consults an action
+/// rule only where there is one, so a tool whose actions nobody has thought about is judged by
+/// its capability exactly as before - which is what keeps `--allow amend` from silently coming
+/// to mean less than it did. Naming one on the command line makes it live: `--deny amend:undo`
+/// is a rule about an action this list does not carry.
+const ALTERS: &[&str] = &[
+    "amend:elide",
+    "amend:exclude",
+    "amend:archive",
+    "amend:revise",
+];
+
+/// The tool an action rule binds, if this capability is one and that tool is registered.
+///
+/// note: an action rule is spelled `<tool>:<action>`, which is also how a custom capability is
+/// spelled - an MCP server's tools all carry `mcp:<server>`. Nothing in the string says which of
+/// the two it is, so the question is answered against the registry rather than off the shape:
+/// `amend:exclude` is an action rule because `amend` is a tool here, and `mcp:files` is a plain
+/// capability because nothing is called `mcp`. The alternative was a third [`Subject`], which
+/// would have needed [`Subject::parse`] to tell them apart from the text alone - and it cannot.
+pub fn acts_on(capability: &Capability, registered: &[String]) -> Option<String> {
+    let Capability::Custom(name) = capability else {
+        return None;
+    };
+    let (tool, _) = name.split_once(':')?;
+
+    registered
+        .iter()
+        .any(|id| id == tool)
+        .then(|| tool.to_owned())
+}
+
 /// Whether a path is one this pattern is about.
 ///
 /// note: a pattern ending in `/` is a directory: it matches a path with that component anywhere in
@@ -239,12 +279,21 @@ impl Careful {
     /// paths that look like credentials.
     pub fn new() -> Self {
         Self {
-            // note: empty, and `stance` answers `ask` for anything it does not find. Nothing is
-            // decided on somebody's behalf - not `read`, which was `allow` here and is the one
-            // people would have picked, and not `network`, which was `deny`. Both were decisions
-            // taken for the user about things they may perfectly well want, and the sandbox is
-            // what makes either answer mean something once they have given it
-            stances: Mutex::new(BTreeMap::new()),
+            // note: nothing is decided on somebody's behalf - not `read`, which was `allow`
+            // here and is the one people would have picked, and not `network`, which was `deny`.
+            // Both were decisions taken for the user about things they may perfectly well want,
+            // and the sandbox is what makes either answer mean something once they have given it.
+            //
+            // note: what is in here is `ALTERS`, at `ask`, which is what `stance` already answers
+            // for anything it does not find. So the entries decide nothing either; what they do
+            // is make the rule *exist*, and `judges` consults an action rule only where one does.
+            // It is the same reason `SUSPECT` is a list of `ask` rules rather than an empty one.
+            stances: Mutex::new(
+                ALTERS
+                    .iter()
+                    .map(|action| (Capability::Custom((*action).to_owned()), Verdict::Ask))
+                    .collect(),
+            ),
             paths: Mutex::new(
                 SUSPECT
                     .iter()
@@ -287,6 +336,23 @@ impl Careful {
                     .filter(|(pattern, _)| path_matches(pattern, path))
                     .map(|(pattern, _)| Subject::Path(pattern.clone())),
             );
+        }
+
+        // note: the action the call names, which is the third thing only the arguments can say.
+        // Consulted only where there is a rule about it, so that a tool whose actions nobody has
+        // an opinion about is judged exactly as it was - see `ALTERS`. The strictest wins, so an
+        // action rule can only tighten what the capability allows: `--allow amend,amend:note`
+        // lets notes through and leaves an `exclude` a question, and there is deliberately no
+        // way to spell the other direction.
+        if let Some(action) = request
+            .args
+            .get("action")
+            .and_then(|action| action.as_str())
+        {
+            let finer = Capability::Custom(format!("{}:{action}", request.tool));
+            if self.stances.lock().contains_key(&finer) {
+                judged.push(Subject::Capability(finer));
+            }
         }
 
         judged

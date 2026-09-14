@@ -142,8 +142,9 @@ struct Args {
     #[arg(long)]
     headless: bool,
 
-    /// Allow a capability or a path outright, as `read`, `shell`, `mcp:files`, `.env*`. May be
-    /// repeated, and takes a comma-separated list. Answering at the prompt writes the same table.
+    /// Allow a capability, a path or one tool action outright, as `read`, `shell`, `mcp:files`,
+    /// `.env*`, `amend:note`. May be repeated, and takes a comma-separated list. Answering at the
+    /// prompt writes the same table.
     #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
     allow: Vec<String>,
 

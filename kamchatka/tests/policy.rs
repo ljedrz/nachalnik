@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use kamchatka::{
     sandbox::{Access, Reach},
-    tools::{Careful, Subject, path_matches},
+    tools::{Careful, Subject, acts_on, path_matches},
 };
 use nachalnik::{
     Capability, PermissionId, PermissionPolicy, PermissionRequest, ToolCall, ToolCallId, Verdict,
@@ -254,4 +254,165 @@ async fn a_refusal_is_still_accounted_for_after_a_great_many_of_them() {
         .expect("the refusal just made is the one the model is about to read");
     assert!(latest.contains("network"), "{latest}");
     assert_eq!(policy.why(&ToolCallId::from("call_0")), None);
+}
+
+/// What the policy would answer about an `amend` call naming this action.
+fn asking_about_action(policy: &Careful, action: &str) -> Verdict {
+    let call = ToolCall::new("c1", "amend", json!({ "action": action, "reason": "why" }));
+    let request = PermissionRequest {
+        id: PermissionId(1),
+        call: call.id.clone(),
+        tool: "amend".to_owned(),
+        capabilities: vec![Capability::Custom("amend".to_owned())],
+        args: call.args.clone(),
+    };
+
+    policy.verdict(&request)
+}
+
+/// The point of the whole thing: a tool is not one decision. `amend: allow` is a reasonable thing
+/// to want for a note and not for an `exclude`, so the four actions that change or remove what is
+/// already there are subjects of their own, and stay questions until somebody says otherwise.
+#[test]
+fn allowing_a_tool_does_not_allow_the_actions_that_take_something_away() {
+    let policy = Careful::new();
+    policy.set(
+        &Subject::Capability(Capability::Custom("amend".to_owned())),
+        Verdict::Allow,
+    );
+
+    // the additive ones go through on the tool's own verdict, because nothing finer is consulted
+    for action in ["note", "pin", "restore", "undo"] {
+        assert_eq!(
+            asking_about_action(&policy, action),
+            Verdict::Allow,
+            "`{action}` has no rule of its own and should ride on `amend`"
+        );
+    }
+
+    // ... and the four that do not
+    for action in ["elide", "exclude", "archive", "revise"] {
+        assert_eq!(
+            asking_about_action(&policy, action),
+            Verdict::Ask,
+            "`{action}` is a rule of its own and nobody has answered about it"
+        );
+    }
+}
+
+/// And it is answerable, which is the other half: the rule is a subject like any other, so saying
+/// yes to it is the same act as saying yes to a capability.
+#[test]
+fn answering_about_one_action_answers_about_that_action_and_no_other() {
+    let policy = Careful::new();
+    for subject in ["amend", "amend:elide"] {
+        policy.set(&Subject::parse(subject), Verdict::Allow);
+    }
+
+    assert_eq!(asking_about_action(&policy, "elide"), Verdict::Allow);
+    assert_eq!(asking_about_action(&policy, "exclude"), Verdict::Ask);
+
+    // a refusal is a standing answer, and the strictest wins, so it beats the tool being open
+    policy.set(&Subject::parse("amend:exclude"), Verdict::Deny);
+    assert_eq!(asking_about_action(&policy, "exclude"), Verdict::Deny);
+}
+
+/// The rules can only tighten, which is what makes a finer subject safe to add: there is no way to
+/// spell "the tool is refused, but this one action is fine".
+#[test]
+fn an_action_rule_cannot_loosen_the_tool_it_belongs_to() {
+    let policy = Careful::new();
+    policy.set(
+        &Subject::Capability(Capability::Custom("amend".to_owned())),
+        Verdict::Deny,
+    );
+    policy.set(&Subject::parse("amend:elide"), Verdict::Allow);
+
+    assert_eq!(asking_about_action(&policy, "elide"), Verdict::Deny);
+}
+
+/// A rule is spelled the way it is read out, so `--deny "$(a row off the permissions tab)"` means
+/// what it says - which is the property `Subject::parse` exists to keep.
+#[test]
+fn an_action_rule_survives_the_trip_through_text() {
+    let subject = Subject::parse("amend:exclude");
+    assert_eq!(
+        subject,
+        Subject::Capability(Capability::Custom("amend:exclude".to_owned()))
+    );
+    assert_eq!(subject.to_string(), "amend:exclude");
+    assert_eq!(Subject::parse(&subject.to_string()), subject);
+}
+
+/// An action rule is only consulted where there is one, so a tool whose actions nobody has an
+/// opinion about is judged exactly as it was. This is what keeps `--allow context` from quietly
+/// coming to mean less than it did the day a rule about some other tool was added.
+#[test]
+fn a_tool_with_no_rules_about_its_actions_is_judged_by_its_capability_alone() {
+    let policy = Careful::new();
+    policy.set(
+        &Subject::Capability(Capability::Custom("context".to_owned())),
+        Verdict::Allow,
+    );
+
+    let call = ToolCall::new("c1", "context", json!({ "action": "look" }));
+    let request = PermissionRequest {
+        id: PermissionId(1),
+        call: call.id.clone(),
+        tool: "context".to_owned(),
+        capabilities: vec![Capability::Custom("context".to_owned())],
+        args: call.args.clone(),
+    };
+
+    assert_eq!(policy.judges(&request).len(), 1);
+    assert_eq!(policy.verdict(&request), Verdict::Allow);
+}
+
+/// `always` answers for everything the policy consulted, which is why it is safe for this to be
+/// the finer subject: the sweep sets the action rule as well as the tool, so the same call does
+/// not ask twice - and the *other* actions are untouched, because each has a rule of its own.
+#[test]
+fn always_answers_for_the_action_it_was_asked_about_and_leaves_the_rest() {
+    let policy = Careful::new();
+    let call = ToolCall::new(
+        "c1",
+        "amend",
+        json!({ "action": "exclude", "reason": "why" }),
+    );
+    let request = PermissionRequest {
+        id: PermissionId(1),
+        call: call.id.clone(),
+        tool: "amend".to_owned(),
+        capabilities: vec![Capability::Custom("amend".to_owned())],
+        args: call.args.clone(),
+    };
+
+    policy.always(&policy.judges(&request));
+
+    assert_eq!(policy.verdict(&request), Verdict::Allow);
+    assert_eq!(asking_about_action(&policy, "archive"), Verdict::Ask);
+    assert_eq!(asking_about_action(&policy, "revise"), Verdict::Ask);
+}
+
+/// Which tool a rule binds is answered against the registry rather than off the shape of the
+/// name, because both are spelled the same: an MCP server's capability is `mcp:<server>` and an
+/// action rule is `<tool>:<action>`, and nothing in either string says which it is.
+#[test]
+fn an_action_rule_is_told_from_a_custom_capability_by_what_is_registered() {
+    let registered = vec!["amend".to_owned(), "context".to_owned()];
+
+    assert_eq!(
+        acts_on(&Capability::Custom("amend:exclude".to_owned()), &registered),
+        Some("amend".to_owned())
+    );
+    assert_eq!(
+        acts_on(&Capability::Custom("mcp:files".to_owned()), &registered),
+        None,
+        "nothing is called `mcp`, so this is a capability and not a rule about an action"
+    );
+    assert_eq!(
+        acts_on(&Capability::Custom("amend".to_owned()), &registered),
+        None
+    );
+    assert_eq!(acts_on(&Capability::Read, &registered), None);
 }

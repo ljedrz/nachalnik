@@ -525,15 +525,13 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
             // tool declares it and the shell is judged against it anyway, on what the command says
             let tools = match (row.tools.is_empty(), row.sometimes.is_empty()) {
                 (true, true) => "nothing registered needs it".to_owned(),
-                (true, false) => format!(
-                    "{}, when the command reaches for it",
-                    row.sometimes.join(", ")
-                ),
+                (true, false) => format!("{}, {}", row.sometimes.join(", "), row.when),
                 (false, true) => row.tools.join(", "),
                 (false, false) => format!(
-                    "{}; {}, when the command reaches for it",
+                    "{}; {}, {}",
                     row.tools.join(", "),
-                    row.sometimes.join(", ")
+                    row.sometimes.join(", "),
+                    row.when
                 ),
             };
 

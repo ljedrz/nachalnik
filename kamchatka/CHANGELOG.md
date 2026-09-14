@@ -9,6 +9,43 @@ minor bump may break you.
 
 ### added
 
+- **A permission rule can be about one tool action, not just a whole tool.** `amend` was one
+  decision and it is not one act: `note` adds an item to the context and `exclude` takes one out,
+  `revise` rewrites what one says - a user's own message included - and answering `always` to the
+  first was answering for the last. So `<tool>:<action>` is a subject like any other, and the four
+  that change or remove what is already there ship as rules: `amend:elide`, `amend:exclude`,
+  `amend:archive`, `amend:revise`. Each is `ask` until somebody answers about it, whatever `amend`
+  itself says.
+
+  `--allow amend,amend:note` is what this buys: notes go through without a question and an
+  `exclude` still stops and asks. The strictest of everything consulted wins, so an action rule can
+  only *tighten* - there is deliberately no way to spell "the tool is refused but this one action
+  is fine", for the same reason a path rule cannot reopen a denied `read`.
+
+  It is one addition to `Careful::judges`, which is already the one place a call's *arguments*
+  become subjects - that is what a path rule is. Nothing new to parse: `amend:exclude` is a custom
+  capability, spelled the way `mcp:files` is, so `--allow`, `--deny`, the settings file and
+  `--deny "$(a row off the permissions tab)"` all take one already. Which of the two a name is gets
+  answered against the registry rather than off its shape, since nothing in the text says: `amend`
+  is a registered tool and nothing is called `mcp`.
+
+  A rule is consulted only where one exists, which is the part that keeps this from quietly
+  narrowing everything. A tool whose actions nobody has an opinion about is judged by its
+  capability exactly as before, so `--allow context` still means every `context` action. The list
+  is a closed set of four, seeded like the credential paths in `SUSPECT` and for the same reason -
+  and naming one on the command line makes it live, so `--deny amend:undo` is a rule about an
+  action the list does not carry.
+
+  **`--allow amend` no longer covers those four.** A session that allowed the tool up front and
+  expected silence now gets a question on the first `exclude`. That is the point of it, and it is
+  the one thing here that will surprise an existing settings file.
+
+  The permissions tab says which tool a rule binds and when - `amend, when the call names that
+  action` - through the same field that explains `network` beside `shell`. `setup: permissions`
+  gives them a section of their own rather than a capability row reading `nothing you have declares
+  it`, and counts the undecided ones in a line instead of spending four rows on the same verdict,
+  which is what it already does for the eleven path rules.
+
 - **`context: request` says which rule left each item out.** It listed what the projector had
   skipped and what it had repaired, in one undifferentiated list, and the two halves are answered
   completely differently. An item left out by its own state is one `amend` with `restore` puts

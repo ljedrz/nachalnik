@@ -409,13 +409,19 @@ negotiable. A registered `shell` that is not refused can read, write and reach t
 the other rows say — so `shell: confined` (or `shell: a command can do any of these`) is what makes
 the rest of the table mean anything.
 
-Two kinds of row. A **capability** is what a tool declares, which is what makes "always" work for
+Three kinds of row. A **capability** is what a tool declares, which is what makes "always" work for
 tools this program has never heard of — including an MCP server's, which all carry `mcp:<name>`. A
 **path rule** is finer than any capability: `read: allow` is a reasonable thing to want and
 `read .env: allow` is not, and the difference is a property of the file rather than of the tool
-that opened it. The strictest of everything consulted wins, so a rule can only tighten what a
-capability allows. `network` is the odd one: no tool declares it, because a model that wants the
-network writes `curl` — so the row says which shell it reaches, and when.
+that opened it. An **action rule** is the same idea one tool along, spelled `<tool>:<action>`: a
+capability is the whole of a tool and `amend` is not one decision, since `note` adds an item to
+your context and `exclude` takes one out. So the four that change or remove what is already there
+— `amend:elide`, `amend:exclude`, `amend:archive`, `amend:revise` — are subjects of their own and
+stay questions whatever `amend` itself says, until somebody answers about them. The strictest of
+everything consulted wins, so a rule can only tighten what a capability allows: `--allow
+amend,amend:note` lets notes through and leaves an `exclude` a question, and there is deliberately
+no way to spell the other way round. `network` is the odd one: no tool declares it, because a model
+that wants the network writes `curl` — so the row says which shell it reaches, and when.
 
 <kbd>space</kbd> cycles a row through **ask → allow → deny**, or <kbd>a</kbd>/<kbd>n</kbd>/<kbd>r</kbd>
 directly, and it takes effect on the next call. Answering "always" at a permission prompt writes to
@@ -565,7 +571,7 @@ Nothing can be asked at a prompt that is not there, so the answers are given in 
 
 | flag | what it does |
 | --- | --- |
-| `--allow read,shell` | answer `allow` for a capability, or a path rule: `--allow 'src/**'` |
+| `--allow read,shell` | answer `allow` for a capability, a path rule (`--allow 'src/**'`) or one action (`--allow amend:note`) |
 | `--deny write,.env*` | the same, refused; the strictest of everything consulted still wins |
 | `--on-ask deny` | what happens to a question nobody answered in advance. The default |
 
@@ -1276,9 +1282,9 @@ kamchatka [OPTIONS] [MESSAGE]...
       --headless            drive the session from lines on stdin: the session log to
                             stdout, one JSON record a line, and what the model says to
                             stderr. Implied when stdout is not a terminal
-      --allow <SUBJECT>     answer `allow` in advance for a capability or a path rule,
-                            as read, shell, mcp:files, .env* ; comma-separated, may be
-                            repeated
+      --allow <SUBJECT>     answer `allow` in advance for a capability, a path or one
+                            tool action, as read, shell, mcp:files, .env*, amend:note ;
+                            comma-separated, may be repeated
       --deny <SUBJECT>      the same, refused
       --on-ask <ANSWER>     what a question nobody is there to answer gets, in a
                             headless run: deny or allow               [default: deny]
