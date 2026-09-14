@@ -68,6 +68,12 @@ a:focus-visible, button:focus-visible, summary:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px;
 }
 
+/* The `chat` inside `kamchatka`, in the accent the logo is drawn in - the same variable, so it
+   follows the theme rather than pinning the logo's dark-mode teal into a light page. Nothing but
+   the name is marked up this way; a path or a cargo invocation that happens to contain the word
+   is left alone, and so is anything inside a quoted transcript. */
+code .chat { color: var(--accent); }
+
 /* ---------------------------------------------------------------- layout */
 .wrap { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
 .col  { max-width: var(--measure); }

@@ -214,7 +214,7 @@ after    messages <span class="a">3</span>   items [1, 4, 5]
     <p>In that version, <em>did you though? I don't recall</em> has an answer the model can stand behind. The call is right there with its result marked as taken away, so <em>yes, I ran <code>ls -la</code>; its output has been removed from my context, so I cannot show it to you</em> is available on the first request instead of never.</p>
     <p>Exclusion is the sharper tool, and it is meant to be. <code>nachalnik-eval</code>, the benchmark in this workspace, reaches for it in every experiment it has, and says why: it leaves no trace in the request, so a copy of a session cannot tell that it is being measured. An elided item leaves a marker instead, and a model that notices the marker knows something is up, which is a difference between the arms of an experiment besides the one under test.</p>
     <p>All of which is true, and this page is the same argument read from the other end. What makes exclusion a clean instrument is that the model cannot detect it. What makes it a poor way to tidy up a live conversation is that the model cannot detect it. An experimenter wants a subject that does not know. Somebody at a terminal wants an assistant that can hold its ground when it is right, and holding your ground requires something to hold.</p>
-    <p>None of this was hidden from the person, either. <code>kamchatka</code> says it in the chat, once: <em>the request is repaired, and will be while this stands: dropped the call <code>call_b85a65d4…</code> (shell) from item 2: its result is not in the projection</em>. <code>ctrl+p</code> logs both skipped items with their reasons, and the context tab carries the state and the note. What no line said was that the model can no longer see that it ran a command, which is the fact that decided the next four turns.</p>
+    <p>None of this was hidden from the person, either. <code>kam<span class="chat">chat</span>ka</code> says it in the chat, once: <em>the request is repaired, and will be while this stands: dropped the call <code>call_b85a65d4…</code> (shell) from item 2: its result is not in the projection</em>. <code>ctrl+p</code> logs both skipped items with their reasons, and the context tab carries the state and the note. What no line said was that the model can no longer see that it ran a command, which is the fact that decided the next four turns.</p>
   </div>
 </section>
 
@@ -237,7 +237,7 @@ after    messages <span class="a">3</span>   items [1, 4, 5]
 <footer>
   <div class="wrap">
     <p>Runtime: <a href="https://github.com/ljedrz/nachalnik">nachalnik</a>, an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back. Hiding an item is a state change; what it does to the request is <code>LinearProjector</code>, and the request says what it repaired.<br>
-    Terminal: <code>kamchatka</code>, in the same workspace. Model: <code>inclusionai/ling-3.0-flash</code>. One <code>shell</code> command was run, with a permission prompt in front of it, and its output is item [3].<br>
+    Terminal: <code>kam<span class="chat">chat</span>ka</code>, in the same workspace. Model: <code>inclusionai/ling-3.0-flash</code>. One <code>shell</code> command was run, with a permission prompt in front of it, and its output is item [3].<br>
     Written by Claude Opus 5 from the recorded state and event log of that session. Every transcript and quotation on this page is copied out of them.</p>
   </div>
 </footer>

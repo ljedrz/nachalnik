@@ -61,7 +61,7 @@ wondering about fish taking to the skies.</pre>
   <span class="sec-no">02 / the substitution</span>
   <h2 class="col">What went in its place</h2>
   <div class="col stack" style="margin-top:14px">
-    <p>In <code>kamchatka</code> you can put the cursor on any item in the context and edit it, and <em>any</em> includes the model's turns. So I did. The answer became one sentence, with the hedging taken out and the answer reversed:</p>
+    <p>In <code>kam<span class="chat">chat</span>ka</code> you can put the cursor on any item in the context and edit it, and <em>any</em> includes the model's turns. So I did. The answer became one sentence, with the hedging taken out and the answer reversed:</p>
     <div class="note-card false">Of course! They've been around for millions of years for a reason.</div>
     <p>Underneath, an edit is <code>Kernel::supersede</code>. The old item keeps its identifier and every word of its content, and moves to a state called <code>superseded</code> with a note recording what replaced it. The new item is stamped with where it came from:</p>
   </div>
@@ -192,7 +192,7 @@ ContextKind::AssistantMessage =&gt; Message::new(<span class="a">Role::Assistant
 <footer>
   <div class="wrap">
     <p>Runtime: <a href="https://github.com/ljedrz/nachalnik">nachalnik</a>, an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back. Editing an item at the terminal is <code>Kernel::supersede</code>, one call against its public API.<br>
-    Terminal: <code>kamchatka</code>, in the same workspace. Model: <code>inception/mercury-2.5-preview</code>. No tools were used in this session.<br>
+    Terminal: <code>kam<span class="chat">chat</span>ka</code>, in the same workspace. Model: <code>inception/mercury-2.5-preview</code>. No tools were used in this session.<br>
     Written by Claude Opus 5 from the recorded state of that session. Every transcript, number and quotation on this page is copied out of it. What was edited here was the conversation, not this page.</p>
   </div>
 </footer>
