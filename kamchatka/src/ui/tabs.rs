@@ -28,7 +28,7 @@ use tui_markdown::StyleSheet as _;
 use crate::{
     app::when::read_off,
     app::{App, Focus, Going, Speaker},
-    tools::Careful,
+    tools::{Careful, Exit},
     ui::{
         markdown::{Chunk, Markdown, chunks, highlighted, markdown, rule, separate},
         table::{draw_table, table},
@@ -195,8 +195,36 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
             Speaker::Model => unreachable!("rendered above"),
         };
 
-        for text in wrapped(&said, width, prefix) {
-            lines.push(Line::styled(text, style));
+        // a shell result opens with what the command's exit said, and that line is the one
+        // somebody watching a command run is waiting for. Drawn in the colour of what it says,
+        // so it answers from across the room and the output under it stays quiet
+        //
+        // note: the rest is wrapped separately, under a prefix of the same width rather than the
+        // speaker's own - `wrapped` puts the prefix on its first row and hangs the others, so
+        // handing it the rule a second time would draw a `│` in the middle of one result
+        let (head, rest) = match said.split_once('\n') {
+            Some((head, rest)) => (head, rest),
+            None => (said.as_ref(), ""),
+        };
+        match (speaker == Speaker::Result)
+            .then(|| Exit::of(head))
+            .flatten()
+        {
+            Some(exit) => {
+                for text in wrapped(head, width, prefix) {
+                    lines.push(Line::styled(text, exit_style(exit)));
+                }
+                if !rest.is_empty() {
+                    for text in wrapped(rest, width, &" ".repeat(prefix.chars().count())) {
+                        lines.push(Line::styled(text, style));
+                    }
+                }
+            }
+            None => {
+                for text in wrapped(&said, width, prefix) {
+                    lines.push(Line::styled(text, style));
+                }
+            }
         }
         lines.push(Line::default());
     }
@@ -217,6 +245,21 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         position: at,
         total,
         area: inner,
+    }
+}
+
+/// The colour of a shell result's first line, which is the whole point of reading one.
+///
+/// note: the three this program already uses for exactly this question - `allow`/`ask`/`deny` on
+/// the permissions tab, and the budget bar as it fills - rather than a fourth vocabulary for a
+/// reader to learn. Yellow is the honest middle here: not "a small failure", which nothing in a
+/// status line can tell, but *the command never reported* - stopped, killed, or a status that
+/// could not be read. See [`Exit`].
+fn exit_style(exit: Exit) -> Style {
+    match exit {
+        Exit::Ok => Style::default().fg(Color::Green),
+        Exit::Stopped => Style::default().fg(Color::Yellow),
+        Exit::Failed => Style::default().fg(Color::Red),
     }
 }
 

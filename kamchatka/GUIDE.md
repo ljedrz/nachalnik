@@ -25,9 +25,15 @@ there to tell the two apart. It is absent while the runtime is resting, includin
 waiting on **you**: nothing should suggest work is happening while a question sits unanswered.
 
 **chat** is the conversation, and every terminal agent has one — this one also says which of it
-the model is still being sent, and reads a turn as it now stands rather than as it arrived. Both of those are
-read off the context every frame rather than written down when they happen, so a <kbd>u</kbd> that
-takes an edit back takes it off here too. **context** is why this exists:
+the model is still being sent, and reads a turn as it now stands rather than as it arrived. Both
+of those are read off the context every frame rather than written down when they happen, so a
+<kbd>u</kbd> that takes an edit back takes it off here too. A shell result opens with what the
+command's exit said, and that line is drawn in the colour of what it says: **green** where the
+command reported success, **red** where it reported a failure, and **yellow** where it never got
+to report — stopped at your request, killed, or a status that could not be read at all. What a
+`1` from `grep` means is not guessed at: telling *no match* from a fault means knowing what the
+command was. The output under the line stays quiet, which is what makes the line worth looking
+at. **context** is why this exists:
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐

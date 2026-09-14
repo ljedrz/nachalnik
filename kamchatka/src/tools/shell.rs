@@ -21,6 +21,50 @@ use crate::tools::{Careful, Limits, arg};
 /// been asked to stop.
 const HEARTBEAT: Duration = Duration::from_millis(120);
 
+/// What the first line of a shell result says happened, for a reader who has not got time to
+/// read it.
+///
+/// note: here rather than where it is drawn, because the line is written here - see the `status`
+/// match in [`Shell::call`], which is the only thing that produces one. A colour worked out at
+/// the other end from a string it does not own is a second opinion about what a result means,
+/// and the two drift the first time the wording changes. This is one opinion with two readers.
+///
+/// note: three, and not one per shape, because the question a colour answers is coarse: did the
+/// command say it worked, did it say it failed, or did it never get to say. The fourth thing
+/// somebody might want - a `1` from `grep` meaning *no match* rather than a fault - is not in
+/// here, because telling those apart means knowing what the command was and this program would
+/// be guessing. A guess that colours a working pipeline red, or a real failure yellow, is worse
+/// than the number itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Exit {
+    /// The command finished and reported success.
+    Ok,
+    /// The command finished and reported a failure.
+    Failed,
+    /// The command never got to report: stopped at the person's request, killed by a signal, or
+    /// a status that could not be read at all.
+    Stopped,
+}
+
+impl Exit {
+    /// Reads one back off a line, if that line is a shell result's first one.
+    ///
+    /// note: the number decides it, rather than the words after it. `exit: ` is followed by a
+    /// code or by a reason no command reported - `stopped`, `signal: 9 (SIGKILL)`, `unknown` -
+    /// so a token that parses is an exit code and one that does not is a command that never got
+    /// to report. The prose can be rewritten without this having to be.
+    pub fn of(line: &str) -> Option<Self> {
+        let said = line.strip_prefix("exit: ")?;
+        let code = said.split_whitespace().next()?;
+
+        Some(match code.parse::<i32>() {
+            Ok(0) => Self::Ok,
+            Ok(_) => Self::Failed,
+            Err(_) => Self::Stopped,
+        })
+    }
+}
+
 /// Runs a command, reporting its output as it arrives and stopping when asked to.
 ///
 /// note: This is the tool that shows what an [`OutputSink`] is for. Every line goes to the sink
@@ -231,17 +275,36 @@ impl Tool for Shell {
         // the truncation marker took its place, and the model was told the wrong thing about
         // what it was reading. The first line survives anything
         let waited = child.wait().await;
-        let status = match (interrupted, waited) {
-            (true, _) => "exit: stopped before it finished, at the request of the person you are \
-                          working with; what is below is what it had said by then"
-                .to_owned(),
+        let (meant, status) = match (interrupted, waited) {
+            (true, _) => (
+                Exit::Stopped,
+                "exit: stopped before it finished, at the request of the person you are working \
+                 with; what is below is what it had said by then"
+                    .to_owned(),
+            ),
             (false, Ok(status)) => match status.code() {
-                Some(0) => "exit: 0".to_owned(),
-                Some(code) => format!("exit: {code} (the command reported a failure)"),
-                None => format!("exit: {status} (the command was killed)"),
+                Some(0) => (Exit::Ok, "exit: 0".to_owned()),
+                Some(code) => (
+                    Exit::Failed,
+                    format!("exit: {code} (the command reported a failure)"),
+                ),
+                None => (
+                    Exit::Stopped,
+                    format!("exit: {status} (the command was killed)"),
+                ),
             },
-            (false, Err(e)) => format!("exit: unknown ({e})"),
+            (false, Err(e)) => (Exit::Stopped, format!("exit: unknown ({e})")),
         };
+        // note: the one place the writing and the reading of this line can be held together, and
+        // it costs nothing in a release build. Every test that runs a real command is then also a
+        // test that the line it wrote says what the run meant - which a table of strings
+        // somewhere else could never be, since it would go on agreeing with itself after the
+        // wording here changed
+        debug_assert_eq!(
+            Exit::of(&status),
+            Some(meant),
+            "the status line and what it means have come apart"
+        );
         if let Some(scratch) = scratch {
             let _ = tokio::fs::remove_dir_all(scratch).await;
         }
@@ -296,4 +359,60 @@ async fn stop(child: &mut tokio::process::Child) {
 #[cfg(not(unix))]
 async fn stop(child: &mut tokio::process::Child) {
     let _ = child.start_kill();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What a command reported is what its first line says, for every shape the tool writes.
+    ///
+    /// note: real commands rather than a table of the strings this file writes. A table would go
+    /// on agreeing with itself after somebody reworded the status line, which is the one failure
+    /// worth catching here - and the `debug_assert` in `invoke` is the same check from the other
+    /// side, run by every test in this crate that runs a command.
+    ///
+    /// note: `kill -9 $$` for the third, because a signal is the only way to leave a status with
+    /// no code in it, and SIGKILL is the one a shell cannot decline.
+    #[tokio::test]
+    async fn what_a_command_reported_is_what_its_first_line_says() {
+        let shell = Shell {
+            policy: Arc::new(Careful::new()),
+            workdir: std::env::temp_dir(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            confiner: None,
+            limits: Limits::default(),
+        };
+
+        for (command, meant) in [
+            ("exit 0", Exit::Ok),
+            ("exit 3", Exit::Failed),
+            ("kill -9 $$", Exit::Stopped),
+        ] {
+            let call = ToolCall::new("c1", "shell", json!({ "cmd": command }));
+            let output = shell
+                .invoke(&call, OutputSink::disconnected())
+                .await
+                .expect("the tool answers the call either way");
+
+            let said = output.content.to_text();
+            let first = said.lines().next().unwrap_or_default();
+            assert_eq!(Exit::of(first), Some(meant), "`{command}` said {first:?}");
+        }
+    }
+
+    /// A result that is not a shell result is not given a colour it did not ask for.
+    #[test]
+    fn a_line_that_is_not_an_exit_line_reads_as_nothing() {
+        for line in [
+            "",
+            "exit:",
+            "exiting: 0",
+            "the file says exit: 0",
+            "--- stdout ---",
+        ] {
+            assert_eq!(Exit::of(line), None, "{line:?}");
+        }
+    }
 }

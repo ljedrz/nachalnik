@@ -1365,3 +1365,51 @@ async fn a_tool_exchange_leaves_the_chat_the_way_it_leaves_the_request() {
         "a call that is not in the request must not read as one that is: {screen}"
     );
 }
+
+/// What a command exited with is visible without reading the line that says it.
+///
+/// note: the one line of a shell result somebody is actually waiting for, in a wall of output
+/// that is drawn quiet on purpose. Three colours and not five: green says the command reported
+/// success, red says it reported a failure, and yellow says it never got to report - stopped,
+/// killed, or a status that could not be read. A `1` from `grep` meaning *no match* is not a
+/// fourth, because telling that from a fault means knowing what the command was, and a guess
+/// that paints a working pipeline red is worse than the number on its own.
+///
+/// note: the shapes are the ones `Shell` writes, which `tools::shell`'s own test ties to real
+/// commands. This is the other half: that the line reads back as a colour on the screen, and
+/// that the output under it is left alone.
+#[tokio::test]
+async fn what_a_command_exited_with_is_visible_without_reading_it() {
+    for (said, expected) in [
+        ("exit: 0", Color::Green),
+        ("exit: 3 (the command reported a failure)", Color::Red),
+        (
+            "exit: stopped before it finished, at the request of the person you are working with",
+            Color::Yellow,
+        ),
+    ] {
+        let mut harness = Harness::new([
+            ModelResponse::tool_calls(vec![call("c1", "shell", json!({ "cmd": "go" }))]),
+            ModelResponse::text("that is what happened"),
+        ]);
+        harness.app.kernel.add_tool(Arc::new(ConstTool::new(
+            "shell",
+            format!("{said}\n--- stdout ---\nwhat it printed\n--- stderr ---\n"),
+        )));
+
+        harness.send("run it").await;
+        harness.settle().await;
+        harness.drain();
+        harness.tab(Tab::Chat);
+
+        // the first seven characters are `exit: ` and whatever decides it: a number, or a word
+        // that is not one
+        let (colour, _) = harness.style_of(&said[..7]);
+        assert_eq!(colour, expected, "{said:?} should say so in its colour");
+
+        // and the output under it is left as quiet as it was: a line that stands out only works
+        // while the ones around it do not
+        let (under, _) = harness.style_of("what it printed");
+        assert_ne!(under, expected, "only the exit line is coloured: {said:?}");
+    }
+}

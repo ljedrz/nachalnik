@@ -9,6 +9,28 @@ minor bump may break you.
 
 ### added
 
+- **A shell result says how it went in colour.** Every line of a tool result is drawn quiet, which
+  is right for the wall of output and wrong for the one line somebody is waiting for: the first
+  line of a `shell` result is what the command exited with, and it read the same as the output
+  under it. It is now green where the command reported success, red where it reported a failure,
+  and yellow where it never got to report - stopped at the person's request, killed by a signal,
+  or a status that could not be read at all. The output under it is untouched, since a line that
+  stands out only works while the ones around it do not.
+
+  Three and not five. The fourth thing somebody would want - a `1` from `grep` meaning *no match*
+  rather than a fault - is deliberately absent, because telling those apart means knowing what the
+  command was, and a guess that paints a working pipeline red or a real failure yellow is worse
+  than the number on its own. Yellow is therefore not "a small failure", which nothing in a status
+  line can tell: it is *the command never reported*.
+
+  The colours are the three this program already uses for this question - `allow`/`ask`/`deny` on
+  the permissions tab, and the budget bar as it fills - rather than a fourth vocabulary to learn.
+  And the reading of the line lives in `tools::shell` beside the writing of it, as `Exit`, because
+  a colour worked out at the drawing end from a string it does not own is a second opinion about
+  what a result means; the two drift the first time the wording changes. A `debug_assert` in the
+  tool checks that what it wrote reads back as what it meant, so every test in the crate that runs
+  a command is also a test of that.
+
 - **A resumed session reads back what its items used to say.** A `Snapshot` carries items and not
   events, and the text a rewrite replaced is an event - `context.replaced`, the one event in the
   runtime that carries content, which is the whole reason it does. So `-r` came back with every

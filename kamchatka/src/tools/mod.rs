@@ -25,7 +25,7 @@ mod trim;
 
 pub use crate::tools::{
     policy::{Careful, Subject, acts_on, path_matches, reaches_the_network},
-    shell::Shell,
+    shell::{Exit, Shell},
     trim::Trim,
 };
 
