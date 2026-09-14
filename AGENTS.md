@@ -4,7 +4,8 @@ Orientation for whoever - person or model - is about to change this workspace. T
 files say what the crates are *for*; this says how they are built, what must not be broken, and
 which way the arguments have already gone.
 
-Four files carry the long form, so that this one stays readable end to end:
+Five files carry the long form, so that this one stays readable end to end:
+[INVARIANTS.md](INVARIANTS.md) for what must not be broken and why each one is there,
 [MAP.md](MAP.md) for where everything lives, [CONTRIBUTING.md](CONTRIBUTING.md) for the commands,
 the house conventions and the things that have cost somebody an afternoon,
 [SECURITY.md](SECURITY.md) for what is and is not enforced, and [POSTPONED.md](POSTPONED.md) for
@@ -114,76 +115,28 @@ known to differ, and how to measure whether a test is worth keeping: [CONTRIBUTI
 
 ## invariants
 
-Break one of these and something in `tests/` should go red. If it does not, the missing test is
-part of the change - and **measure** that rather than assuming it: see *a test's worth is
-measured* under conventions, because it is cheap to get wrong in both directions.
+Break one of these and something in `tests/` should go red. The whole of each, with the reasoning
+that put it there, is in [INVARIANTS.md](INVARIANTS.md) - read that before changing anything under
+`nachalnik/src`.
 
-- **Nothing is destroyed.** Removal is a state change. An excluded, archived or superseded item
-  keeps its identifier, is still listed and inspectable, and comes back with a `set_state`, an
-  `undo` or a `redo`. This holds for the output limit too: the whole of a truncated tool result is
-  archived beside the truncated copy the model is shown (`Config::keep_truncated_output`).
-- **The previewed request is the request.** There is no step between `preview_request()` and the
-  wire where the kernel adds anything of its own. The one thing that may still intervene is a
-  `Compactor`, and it reports exactly what it did.
-- **Identifiers are never reused**, including by items that `undo` took away, and including tool
-  call identifiers across a resumed session (`Snapshot::used_calls`, `repair_call_ids`).
-- **Every state change is an `Event`**, and the log and the broadcast are written under one lock
-  so their order agrees - with each other, and with the order the changes were actually applied in.
-  No logging a user cannot see.
-- **The log names things, it does not copy them.** `model.requested` records context ids, not
-  messages. `context.replaced` is the one event carrying content, because overwritten text is the
-  one thing nothing else can recover.
-- **A pin is a promise**: the kernel refuses a `Compactor`'s attempt to remove a pinned item and
-  says so in `CompactionReport::refused`.
-- **One operation is one undo.** `push_all`, `set_state` over eight ids, `supersede`, a recorded
-  turn - one checkpoint each. An operation that changes nothing takes no checkpoint, and one that
-  is about to fail takes none either.
+- **Nothing is destroyed.** Removal is a state change, and it comes back.
+- **The previewed request is the request.** Nothing is added between `preview_request()` and the
+  wire but a `Compactor`, which reports exactly what it did.
+- **Identifiers are never reused**, including across a resumed session.
+- **Every state change is an `Event`**, and the log and the broadcast are written under one lock so
+  their order agrees. No logging a user cannot see.
+- **The log names things, it does not copy them.** `context.replaced` is the one exception.
+- **A pin is a promise**: the kernel refuses a `Compactor` that reaches for a pinned item.
+- **One operation is one undo**, and an operation that changes nothing takes no checkpoint.
 - **A failing `Tool` is not a kernel error.** It becomes an error tool result the model is shown.
-  `Error` is only for conditions that stop the loop.
-- **Nothing in a model's output reaches the policy** except the tool name and the arguments, both
-  as data. A model insisting it already has permission has no effect.
-- **`Content` is shared, not copied.** Every variant is behind an `Arc`; pruning a four-megabyte
-  tool result moves a pointer. Do not introduce a path that clones the bytes.
-- **The counter is honest about being an estimate.** No tokenizer goes into this crate - that
-  would be a model-specific assumption. `Calibrating` corrects from what providers charge, from
-  then on, and never silently rewrites figures already recorded (`Kernel::recount` does, loudly).
-- **A count that cannot reach something says so rather than returning `0`.**
-  `TokenCounter::uncounted` is how, and it rides up to `Budget::uncounted` and
-  `ContextItem::uncounted`, so
-  "measured, and free" and "there is a picture here and nothing priced it" are never the same
-  figure. Two rules follow and both are load-bearing. A request carrying anything unpriced does
-  not reach `TokenCounter::observe`: `Calibrating` corrects with a single multiplier, so a gap it
-  cannot see gets spread over the bytes it can, and prose beside one screenshot ends up reading
-  50% high while the screenshot still reads nothing. And whatever a counter *would* need in order
-  to price a payload goes in `Blob::meta`, which the kernel never reads - on the blob rather than
-  the item, because the budget is counted over projected messages and a `Message` carries a
-  `Content` and nothing else a counter can see.
-
-  This crate carries no vendor formula and is not going to. A dialect is a shape that changes
-  over years and a price list is a per-model fact that changes whenever a vendor ships a model,
-  so putting the formulas in `nachalnik-providers` would turn "we speak two dialects" into a
-  subscription - and be wrong silently, which is what the abstention exists to end. The three
-  formula *shapes* stay as prose on `BytesPerToken::count`. Two near misses, so nobody
-  re-proposes them: a typed `dimensions` on `Blob` covers pictures and leaves a PDF's pages and a
-  recording's seconds nowhere to go, and a `tokens: Option<usize>` on `Blob` is a per-model
-  figure on a model-agnostic type, wrong the moment the model changes.
-
-- **A media type is a claim, and nothing in here guesses one.** Three places act on it and all
-  three would be wrong if it were inferred. `kamchatka`'s `attach::TYPES` maps ten extensions and
-  refuses anything else that is not valid text, rather than sniffing the bytes - an uncompressed
-  PDF is valid UTF-8 for pages at a time, so "is this text?" answers yes and the model is sent
-  PDF source. The OpenAI dialect then reads the media type to pick between `image_url` and
-  `file`, because in that dialect `image_url` means an image and a PDF sent through it is a 400;
-  Google's `inline_data` needs no such split. And `Blob::meta["name"]` is what fills that `file`
-  part's required filename - a convention between a caller and a provider, *not* a key the kernel
-  knows, which is the whole point of `meta` being free-form. A derived `file.pdf` is the fallback
-  because the part is refused without one.
-
-  `nachalnik-providers` deliberately does not implement this dialect's third payload shape,
-  `input_audio`. Nothing in the workspace produces a recording, so it would be a shape written
-  from a specification and pinned by no test - which is exactly what the `file` part was until
-  `a_document_goes_out_as_a_document` in `nachalnik/tests/live.rs` sent one at a real endpoint.
-  That test is the reason to trust the shape; there is no offline equivalent.
+- **Nothing in a model's output reaches the policy** except the tool name and the arguments, as
+  data.
+- **`Content` is shared, not copied.** Do not introduce a path that clones the bytes.
+- **The counter is honest about being an estimate**, and no tokenizer or vendor price list goes
+  into this crate.
+- **A count that cannot reach something says so rather than returning `0`**, and a request carrying
+  anything unpriced never reaches `TokenCounter::observe`.
+- **A media type is a claim, and nothing in here guesses one.**
 
 ---
 
@@ -246,4 +199,5 @@ request path, run one of the networked examples or the live suite against a real
 cannot tell you that an API accepts what was built.
 
 If the change adds a test, two more: look for the test first, and break what it is about to see
-what fails. Both are a sentence under conventions and both have caught something real.
+what fails. Both are a sentence under conventions, spelled out in
+[CONTRIBUTING.md](CONTRIBUTING.md), and both have caught something real.

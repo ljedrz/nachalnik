@@ -4,8 +4,9 @@ What to run, what CI runs, the house conventions, and the things that have cost 
 afternoon. [AGENTS.md](AGENTS.md) carries the short form of all of it; this is the long form,
 with the evidence each rule came from.
 
-See also [MAP.md](MAP.md) for where things live, [SECURITY.md](SECURITY.md) for the security
-position, and [POSTPONED.md](POSTPONED.md) for what is deliberately not built.
+See also [INVARIANTS.md](INVARIANTS.md) for what must not be broken, [MAP.md](MAP.md) for where
+things live, [SECURITY.md](SECURITY.md) for the security position, and
+[POSTPONED.md](POSTPONED.md) for what is deliberately not built.
 
 ---
 

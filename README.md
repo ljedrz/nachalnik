@@ -32,6 +32,7 @@ to show that it can be.
 | file | what it holds |
 | --- | --- |
 | [AGENTS.md](AGENTS.md) | orientation for whoever - person or model - is about to change this workspace: what is being built, what must not be broken, and which way the arguments have gone. |
+| [INVARIANTS.md](INVARIANTS.md) | what must not be broken, each with the reasoning that put it there - break one and something in `tests/` should go red. |
 | [MAP.md](MAP.md) | the file-by-file map, and the reasoning behind the shapes that are not obvious from the names. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | the commands, what CI does, the house conventions in full with the mistake each came from, and the two gotchas that cost an afternoon each. |
 | [SECURITY.md](SECURITY.md) | what is enforced, what is only reported, and why the core will never grow a sandbox. |
