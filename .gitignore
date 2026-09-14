@@ -21,6 +21,12 @@ recorded/
 **/*.rs.bk
 *.profraw
 
+# documents that belong to another repository and only ever pass through this working directory.
+# A pattern rather than a name, because the point is that no such file is ever committed here by
+# accident - and because the local `.git/info/exclude` that has been holding the line is not
+# shared, so a fresh clone somewhere else has nothing stopping a `git add -A`
+*.pdf
+
 # editors and desktops
 .DS_Store
 *.swp
