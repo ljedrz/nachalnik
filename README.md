@@ -27,6 +27,21 @@ to show that it can be.
 | **[`nachalnik-providers`](nachalnik-providers)** | the two dialects - OpenAI chat-completions and Google's own - streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
 | `nachalnik-utils` | never published, permanently `0.0.0`. Ninety lines saying which endpoint the workspace's examples and live tests talk to, which key pays for it and which models to ask - so that scaffolding is written once rather than four times. A *dev*-dependency with no version, which is the whole trick: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
 
+### 📖 the docs
+
+| file | what it holds |
+| --- | --- |
+| [AGENTS.md](AGENTS.md) | orientation for whoever - person or model - is about to change this workspace: what is being built, what must not be broken, and which way the arguments have gone. |
+| [MAP.md](MAP.md) | the file-by-file map, and the reasoning behind the shapes that are not obvious from the names. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | the commands, what CI does, the house conventions in full with the mistake each came from, and the two gotchas that cost an afternoon each. |
+| [SECURITY.md](SECURITY.md) | what is enforced, what is only reported, and why the core will never grow a sandbox. |
+| [POSTPONED.md](POSTPONED.md) | known, decided against *for now*, each entry saying what would unblock it. |
+
+Each crate's own readme says what it is and how to start; the longer material sits beside it -
+[`kamchatka`'s guide](kamchatka/GUIDE.md) and [running it](kamchatka/RUNNING.md),
+[`nachalnik`'s concepts](nachalnik/CONCEPTS.md), and
+[`nachalnik-eval`'s running notes](nachalnik-eval/RUNNING.md).
+
 ---
 
 ### 🖥️ the agent you can run
@@ -143,7 +158,8 @@ $ cargo test --workspace
 ```
 
 Every crate has a suite, and each crate's readme says what its own covers. The live ones skip
-themselves when there is no API key.
+themselves when there is no API key. [CONTRIBUTING.md](CONTRIBUTING.md) has the full command set,
+what CI runs, and how to measure whether a test is worth keeping.
 
 Among them is the provider conformance suite. What a provider makes of a stream is not tested one
 provider at a time, because the questions would be the same each time. They share the *questions*
