@@ -181,8 +181,15 @@ async fn a_command_that_names_items_by_selector_reports_what_it_matched() {
     );
 }
 
+/// An edit changes what the model reads, in place, and what it said is still readable.
+///
+/// note: it used to supersede - a second item, with the old one left marked `~` - and what
+/// this asserted was that second row. The row said what the `v1` page under `enter` already
+/// said, and buying it cost an identifier the model may be holding, a state to carry over by
+/// hand and a `replaces` hint for the conversation to read. So: one item, one identifier, and
+/// the words it used to say a page rather than a row.
 #[tokio::test]
-async fn editing_an_item_changes_what_the_model_reads_and_keeps_the_old_one() {
+async fn editing_an_item_changes_what_the_model_reads_and_keeps_what_it_said() {
     let mut harness = Harness::new([]);
     harness
         .app
@@ -202,30 +209,33 @@ async fn editing_an_item_changes_what_the_model_reads_and_keeps_the_old_one() {
 
     harness.send("s").await;
 
-    // the request carries the edit, and only the edit: the item it replaced is superseded, so
-    // the projector leaves it out
+    // the request carries the edit, and only the edit
     let request = harness.app.kernel.preview_request().unwrap();
     let sent = format!("{:?}", request.messages);
     assert!(sent.contains("the wrong notes"), "{sent}");
     assert_eq!(
         sent.matches("the wrong note").count(),
         1,
-        "both copies went into the request: {sent}"
+        "both versions went into the request: {sent}"
     );
 
-    // and the one it replaced is still there, in a state that says why
+    // one item, with the number it had: nothing was appended, and nothing the model is holding
+    // a reference to has moved
     let items = harness.app.kernel.items();
-    assert_eq!(items[0].state, ContextState::Superseded);
-    assert!(
-        items[0].note.as_deref().unwrap_or_default().contains("2"),
-        "the old item should name the one that replaced it: {:?}",
-        items[0].note
-    );
+    assert_eq!(items.len(), 1, "an edit is not a second item: {items:#?}");
+    assert_eq!(items[0].id.0, 1);
+    assert_eq!(items[0].state, ContextState::Active);
+    // whose hand it was, on the item itself - `amend` writes the same key saying `amend`, and a
+    // model reading this should never find its own tool credited with a sentence a person wrote
+    assert_eq!(items[0].meta["revised"]["by"], "hand");
+
+    // and what it said before is a page under `enter` rather than a row of its own, on an item
+    // whose `as stored` page opens saying who rewrote it
+    harness.drain();
+    harness.press(KeyCode::Enter).await;
     let screen = harness.screen();
-    assert!(
-        screen.contains('~'),
-        "superseded should be marked: {screen}"
-    );
+    assert!(screen.contains("│ v1"), "{screen}");
+    assert!(screen.contains("rewritten by `hand`"), "{screen}");
 }
 
 #[tokio::test]
@@ -288,11 +298,12 @@ async fn editing_an_item_leaves_it_doing_whatever_it_was_doing() {
     harness.press(KeyCode::Char('e')).await;
     harness.send("a shorter wall").await;
 
-    // editing decides what an item says, not whether it is sent: a pruned item that came back
-    // Active would quietly put itself in the next request, and an archived one would promote the
-    // whole of an oversized tool output into it
+    // editing decides what an item says, not whether it is sent. A supersession had to carry
+    // this over by hand and twice did not - a pruned item came back Active and quietly put
+    // itself in the next request, an archived one promoted the whole of an oversized output
+    // into it - and a replacement never touches the state at all
     let items = harness.app.kernel.items();
-    let edited = items.last().expect("the replacement");
+    let edited = items.first().expect("the item that was edited");
     assert_eq!(edited.state, ContextState::Excluded);
     let sent = format!(
         "{:?}",
@@ -379,7 +390,7 @@ async fn editing_an_elided_item_does_not_quietly_send_the_edit() {
     harness.send("a shorter wall").await;
 
     let items = harness.app.kernel.items();
-    let edited = items.last().expect("the replacement");
+    let edited = items.first().expect("the item that was edited");
     assert_eq!(edited.state, ContextState::Elided);
     let sent = format!(
         "{:?}",
@@ -388,12 +399,12 @@ async fn editing_an_elided_item_does_not_quietly_send_the_edit() {
     assert!(!sent.contains("shorter wall"), "{sent}");
 
     // and `space` round the rest of the cycle - past excluded - is how you say you meant the
-    // model to read it
-    harness.press(KeyCode::End).await;
+    // model to read it. On the same row: the edit did not move anywhere
+    harness.press(KeyCode::Home).await;
     harness.press(KeyCode::Char(' ')).await;
     harness.press(KeyCode::Char(' ')).await;
     let items = harness.app.kernel.items();
-    assert_eq!(items.last().unwrap().state, ContextState::Active);
+    assert_eq!(items.first().unwrap().state, ContextState::Active);
     let sent = format!(
         "{:?}",
         harness.app.kernel.preview_request().unwrap().messages
@@ -504,7 +515,7 @@ async fn an_item_the_model_does_not_read_in_full_is_shown_as_the_model_gets_it()
 }
 
 #[tokio::test]
-async fn an_edit_carries_what_the_item_used_to_say_to_the_item_that_replaced_it() {
+async fn an_edit_keeps_what_the_item_used_to_say_on_the_item() {
     let mut harness = Harness::new([]);
     harness
         .app
@@ -512,20 +523,22 @@ async fn an_edit_carries_what_the_item_used_to_say_to_the_item_that_replaced_it(
         .push(ContextItem::user("the first draft"));
     harness.drain();
 
-    // `e` supersedes rather than replaces, so the old item keeps its own row - but the new one is
-    // where somebody will be looking
+    // `e` replaces in place, so there is one row, one identifier, and one place to look for
+    // what it used to say
     harness.tab(Tab::Context);
     harness.press(KeyCode::Char('e')).await;
     harness.press(KeyCode::Char('!')).await;
     harness.press(KeyCode::Enter).await;
     harness.drain();
 
-    let new = harness.app.kernel.items().last().expect("the edit").id;
+    let items = harness.app.kernel.items();
+    assert_eq!(items.len(), 1, "an edit is not a second item: {items:#?}");
+    let edited = items[0].id;
     harness.tab(Tab::Context);
-    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Home).await;
     harness.press(KeyCode::Enter).await;
     let screen = harness.screen();
-    assert!(screen.contains(&format!("[{new}]")), "{screen}");
+    assert!(screen.contains(&format!("[{edited}]")), "{screen}");
     assert!(screen.contains("│ v1"), "{screen}");
     harness.press(KeyCode::Right).await;
     let screen = harness.screen();

@@ -463,6 +463,10 @@ pub struct App {
     /// client which wants the history can have it, and one that does not pays nothing. Before
     /// this, an `amend` that rewrote a tool result left the old text nowhere a person could read
     /// it: on the trace as a line of JSON, and in an undo window that closes.
+    ///
+    /// note: both hands land here now. A terminal edit replaces in place as `amend: revise`
+    /// does, so this is where the words it changed are, and the reason it needs no second
+    /// mechanism of its own.
     versions: BTreeMap<ContextId, Vec<Content>>,
 
     /// The handle the introspection tools reach the kernel through, while they are offered.
@@ -961,16 +965,24 @@ impl App {
 
     /// The items in the order the conversation had them, each with the place it occupies.
     ///
-    /// note: not the order the context holds them in, and the difference is an edit. An edit
-    /// *supersedes*: the new words are a new item, appended, so its identifier is the highest
-    /// in the context and reading the context in order puts a correction to a turn from twenty
-    /// exchanges ago after everything that followed it. That is an order no request ever had -
-    /// the request has the new words where the old ones were - so an item that replaces another
-    /// takes its place, and its identifier is only the tie-break between two that claim the
+    /// note: not the order the context holds them in, and the difference is a *supersession*:
+    /// the new words are a new item, appended, so its identifier is the highest in the context
+    /// and reading the context in order puts a replacement for a turn from twenty exchanges ago
+    /// after everything that followed it. That is an order no request ever had - the request has
+    /// the new words where the old ones were - so an item that says which one it replaces takes
+    /// that one's place, and its identifier is only the tie-break between two that claim the
     /// same one.
     ///
-    /// note: the chain is followed rather than the one hop, because a turn can be edited twice
-    /// and the second edit replaces the first. Bounded, because nothing here wrote the number
+    /// note: `e` no longer makes one of those. A terminal edit replaces in place, keeps its
+    /// identifier and is therefore already where it belongs; see [`App::commit_edit`]. This
+    /// stays for a context that arrives with a supersession in it - a session saved before that
+    /// changed, or one written by another client, since [`Kernel::supersede`] is the runtime's
+    /// and is the right shape for a caller whose next round replaces the last. The hint it
+    /// reads lives on `meta`, which is where this program wrote it and where such a client
+    /// would: the field exists for exactly this, and the runtime never reads it.
+    ///
+    /// note: the chain is followed rather than the one hop, because an item can be superseded
+    /// twice and the second replaces the first. Bounded, because nothing here wrote the number
     /// it is following: `meta` is a free-form value and a hand-written snapshot could point one
     /// item at another in a circle.
     fn in_order(items: &[Arc<ContextItem>]) -> Vec<(ContextId, &Arc<ContextItem>)> {

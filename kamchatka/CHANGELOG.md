@@ -5,6 +5,40 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **An edit at the terminal rewrites the item instead of superseding it.** <kbd>e</kbd> committed
+  a *new* item and left the original behind as a row of its own, marked `~`, reading
+  `superseded: replaced by item 8`. That row said what the `v1` page under <kbd>enter</kbd>
+  already said - and it said it second, because a terminal edit was copying the item's version
+  history onto the replacement anyway. Two mechanisms for "what did this say before?", one of
+  which cost three things to keep upright.
+
+  A state to carry over by hand, because a new item starts `Active`: editing a pruned item
+  quietly put it back into the next request until that was found, and an archived one promoted
+  the whole of an oversized tool output into it. A kind to rebuild whole, because an assistant
+  turn carries its tool calls inside it and a turn rebuilt without them orphans their results.
+  And a `replaces` hint on the new item, because a superseding item is appended - its identifier
+  is therefore the highest in the context, and a conversation read in identifier order put a
+  correction to a turn from twenty exchanges ago after everything that followed it.
+  `Kernel::replace` has none of those: there is nothing to carry over, because nothing moved.
+
+  So: one row, the number the item always had, the state it was already in, and `v1` under
+  <kbd>enter</kbd> - eight versions deep, as for any other rewrite. The item also says whose hand
+  it was, as `revised: {by: hand}` on its `meta` - the same key `amend: revise` writes with
+  `by: amend` - so the `as stored` page reads `` rewritten by `hand`: edited at the terminal ``,
+  and a model reading its own metadata is never shown its own tool as the editor of a sentence a
+  person rewrote.
+
+  `Kernel::supersede` keeps its place in the runtime, and none of this is an argument against it.
+  It is one undoable operation, which the two public calls it is made of are not; it is the right
+  shape for a caller whose next round replaces the last while the earlier ones stay readable -
+  `nachalnik/examples/panel.rs` is exactly that; and `App::in_order` still places an item that
+  carries the `replaces` hint, so a context resumed from a session that superseded still draws in
+  the order the request has. It is not the shape of a person fixing a sentence.
+
 ## [0.10.0] - 2026-09-14
 
 ### added

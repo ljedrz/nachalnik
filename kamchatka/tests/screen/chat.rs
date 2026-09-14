@@ -842,11 +842,11 @@ async fn an_edited_turn_reads_where_it_was_and_says_what_it_used_to_be() {
     let screen = harness.screen();
     let row = |needle: &str| screen.lines().position(|line| line.contains(needle));
 
-    // the edit is in the conversation, and the turn it replaced is not sitting beside it
+    // the edit is in the conversation, and what the turn used to say is not sitting beside it
     assert!(screen.contains("of course they do"), "{screen}");
     assert!(
         !screen.contains("nay"),
-        "the superseded text should not still be on the chat: {screen}"
+        "the words it used to say should not still be on the chat: {screen}"
     );
     // in the place the old turn had, rather than after everything
     assert!(row("do crabs think") < row("of course they do"), "{screen}");
@@ -859,11 +859,12 @@ async fn an_edited_turn_reads_where_it_was_and_says_what_it_used_to_be() {
 /// An edit that has been undone comes off the conversation with the item it named.
 ///
 /// note: the chat's account of an edit is a reading of the context rather than a copy written into
-/// the transcript, and this is the difference between the two. `undo` takes the replacement item
-/// back out and tells the screen nothing about which line had been moved onto it, so a transcript
-/// holding the new words went on showing them - beside a row offering `enter on [3]` for an item
-/// that no longer existed, against a context that had the original answer back. Showing somebody
-/// a conversation the model is not in is the one thing this program exists not to do.
+/// the transcript, and this is the difference between the two. An `undo` of an edit puts the old
+/// words back on the item and tells the screen nothing about the line that had been moved onto
+/// it, so a transcript holding the new words went on showing them, against a context that had the
+/// original answer back - and while `e` still superseded, it went on offering `enter on [3]` for
+/// an item the undo had taken away. Showing somebody a conversation the model is not in is the
+/// one thing this program exists not to do.
 #[tokio::test]
 async fn undoing_an_edit_takes_it_off_the_conversation_too() {
     let mut harness = Harness::new([ModelResponse::text("nay")]);
@@ -956,11 +957,11 @@ async fn a_turn_that_arrives_padded_is_not_read_padded() {
 /// A turn rewritten in place reads as it is now, not as it arrived.
 ///
 /// note: the gap between the two ways content changes, and the one nothing covered. A terminal
-/// edit *supersedes*: a new item, a new identifier, and the transcript line is re-pointed at it.
-/// `amend revise` **replaces**, in place, so the identifier never moves - and the chat went on
-/// showing the words that had streamed in while the context tab, the `enter` overlay and the
+/// edit used to *supersede*: a new item, a new identifier, and the transcript line re-pointed at
+/// it. `amend revise` **replaces**, in place, so the identifier never moves - and the chat went
+/// on showing the words that had streamed in while the context tab, the `enter` overlay and the
 /// request itself all showed the new ones. Nothing on the screen said which of the two the model
-/// had actually read.
+/// had actually read. Both hands replace now, so this is the only path there is.
 ///
 /// note: so the entry's own text is what arrived and the item is what is being sent, and the
 /// chat reads the item. Which also means an `undo` reaches the screen without anything here
@@ -1031,11 +1032,13 @@ async fn a_message_from_the_command_line_is_tied_to_its_item() {
 
 /// An edit to an old turn reads where that turn was, not at the end of the conversation.
 ///
-/// note: the case a two-turn conversation cannot show, and the one somebody actually hits. An
-/// edit *supersedes* - the new words are a new item, appended - so its identifier is the
-/// highest in the context, and a conversation read off the context in identifier order puts a
-/// correction to the first question after everything that followed it. The request has the new
-/// words in the old place; this is the screen agreeing with it.
+/// note: the case a two-turn conversation cannot show, and the one somebody actually hits. It
+/// is the reason `e` no longer supersedes: the new words were a new item, appended, so their
+/// identifier was the highest in the context and a conversation read off the context in
+/// identifier order put a correction to the first question after everything that followed it.
+/// `App::in_order` was written to undo that, and a replacement never causes it. The property
+/// is the same either way - the request has the new words in the old place, and this is the
+/// screen agreeing with it - so the test stays, now over the path that actually runs.
 #[tokio::test]
 async fn an_edit_to_an_early_turn_stays_where_that_turn_was() {
     let mut harness = Harness::new([
@@ -1115,9 +1118,11 @@ fn the_chat_is_the_conversation_the_model_is_in() {
         Elide(usize),
         Pin(usize),
         Archive(usize),
-        /// New words under the same identifier, which is what `replace` does.
+        /// New words under the same identifier: what `e` does, and what `amend revise` does.
         Edit(usize),
-        /// New words beside it, with the old marked superseded - what `e` on the tab does.
+        /// New words beside it, with the old marked superseded. Nothing in this program does
+        /// this any more - `e` replaces - but [`Kernel::supersede`] is the runtime's and a
+        /// resumed context can arrive with one in it, so the chat has to draw it either way.
         Supersede(usize),
         Undo,
         Redo,

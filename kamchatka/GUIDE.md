@@ -25,7 +25,7 @@ there to tell the two apart. It is absent while the runtime is resting, includin
 waiting on **you**: nothing should suggest work is happening while a question sits unanswered.
 
 **chat** is the conversation, and every terminal agent has one — this one also says which of it
-the model is still being sent, and reads an edit where the turn it replaced was. Both of those are
+the model is still being sent, and reads a turn as it now stands rather than as it arrived. Both of those are
 read off the context every frame rather than written down when they happen, so a <kbd>u</kbd> that
 takes an edit back takes it off here too. **context** is why this exists:
 
@@ -115,24 +115,36 @@ text, since the projection rather than the state decides which of the two is the
 excluded one is not the same thing at all; that gap is the reason the pages exist, and it is why
 an item the model does not read in full opens on the first page instead of the second.
 
-**`v1`**, **`v2`** and so on are what it said before somebody rewrote it, newest first. A terminal
-edit supersedes, so the old text keeps a row of its own — but `amend` **replaces in place**, to
-keep the number the model refers to the item by, and the old text then exists nowhere except the
-`context.replaced` event. This reads it back off there, up to eight versions deep.
+**`v1`**, **`v2`** and so on are what it said before somebody rewrote it, newest first. Both hands
+that rewrite an item — <kbd>e</kbd> here and `amend`'s `revise` — **replace it in place**, which
+keeps the number the item is referred to by and leaves the old text nowhere except the
+`context.replaced` event. This reads it back off there, up to eight versions deep. The `as stored`
+page says whose hand it was: `` rewritten by `hand` `` for an edit at the terminal, and
+`` rewritten by `amend` `` with the model's own reason for the tool.
 
 <kbd>e</kbd> is the verb the others were missing. `space` and `p` decide whether the model reads an
 item; `e` decides **what** it reads. The prompt turns into an editor holding the item's text, and
-committing supersedes the old one rather than overwriting it:
+committing rewrites the item where it stands:
 
 ```text
-  1 ~ ledger.py    reference    469  superseded: replaced by item 8
-  8 ▪ ledger.py    reference    477  """A running-balance ledger.
+  1 ▪ ledger.py    reference    477  """A running-balance ledger.
 ```
 
-The original is still there, still readable, still one <kbd>u</kbd> from coming back — on both
-screens, since the conversation reads the edit out of the context rather than keeping its own copy
-— and the next request carries only the edit, because a superseded item is not projected. Trimming
-a 2,000-line file down to the function that matters is two keystrokes and a delete.
+One row, the same number, and the same state it was in: editing decides what an item says, not
+whether it is sent, so a pruned item stays pruned and an elided one stays elided. What it said
+before is under <kbd>enter</kbd> as `v1`, and the edit is one <kbd>u</kbd> from coming back — on
+both screens, since the conversation reads the item out of the context rather than keeping its own
+copy. Trimming a 2,000-line file down to the function that matters is two keystrokes and a delete.
+
+This used to **supersede** instead: the edit was a new item and the original stayed as a row
+of its own, marked `~`. The row said what the `v1` page already said, and it cost a state to carry
+over by hand, a kind to rebuild without orphaning the tool calls inside a turn, and a hint on the
+new item so the conversation could read it back into the old place. [`Kernel::supersede`] is still
+the runtime's, and it is the right shape for a client whose next round replaces the last while the
+earlier ones stay readable — a session saved by one of those still draws in order here. It is not
+the shape of a person fixing a sentence.
+
+[`Kernel::supersede`]: https://docs.rs/nachalnik/latest/nachalnik/struct.Kernel.html#method.supersede
 
 **trace** is every event the runtime emits, as it happens, in the same names the session log is
 made of:

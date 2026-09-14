@@ -117,7 +117,7 @@ pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is 
     p                   pin it, so that compaction cannot touch it
                         (on a ▫ archived row, either of those sends the whole
                          of an output the model was shown a truncated copy of)
-    e                   change what it says; the old one stays, marked ~
+    e                   change what it says; what it said before is kept
     f                   list only what the next request carries, or everything
     enter               read the whole of it: what the model gets, what it
                         says, and what it said before it was rewritten

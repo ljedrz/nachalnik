@@ -89,10 +89,24 @@ impl App {
 
     /// Puts an edited item into the context in place of the one it came from.
     ///
-    /// note: [`Kernel::supersede`] rather than a replacement in place, so the old one is still
-    /// there to be read and put back - marked `~`, with a note saying which item replaced it.
-    /// The kind is carried over whole, which matters for an assistant turn: its tool calls live
-    /// inside the kind, and rebuilding it without them would orphan their results.
+    /// note: [`Kernel::replace`](nachalnik::Kernel::replace) rather than
+    /// [`Kernel::supersede`](nachalnik::Kernel::supersede), so the item keeps its identifier, its
+    /// kind, its state and its place in the conversation, and what it said before becomes a
+    /// version page like every other rewrite. It used to supersede, which left a second row
+    /// marked `~` saying what the `v1` page already says - and cost three things to keep upright.
+    /// A state to carry over by hand, because a new item starts Active: an edit to a pruned one
+    /// quietly came back into the request, and an archived one promoted the whole of an oversized
+    /// output into it. A kind to rebuild whole, because an assistant turn carries its tool calls
+    /// inside it and rebuilding it without them orphans their results. And a `replaces` hint, so
+    /// the conversation could read the new words back into the old place. Replacing has none of
+    /// those: there is nothing to carry over, because nothing moved.
+    ///
+    /// note: [`Kernel::supersede`](nachalnik::Kernel::supersede) is not the loser here. It is the
+    /// right shape for a caller whose next round replaces the last while the earlier ones stay
+    /// readable - `examples/panel.rs` in the runtime is exactly that - which is why
+    /// [`super::App::in_order`] still places an item that carries the hint, and why a session
+    /// saved before this changed still draws in the order the request has. It is not the shape of
+    /// a person fixing a sentence.
     fn commit_edit(&mut self, text: &str) {
         let Some(id) = self.editing.take() else {
             return;
@@ -108,53 +122,27 @@ impl App {
             return;
         }
 
-        let mut edited = ContextItem::new(
-            old.kind.clone(),
-            old.source.clone(),
-            old.label.clone(),
-            text.to_owned(),
-        )
-        .because("edited at the terminal");
-        // where it belongs in the conversation, which is not where its identifier puts it. A
-        // superseding item is appended, so it is the newest thing in the context and the chat
-        // would draw it last - an edit to a turn from twenty exchanges ago landing after
-        // everything that followed it, which describes an order no request ever had. The
-        // request has the new words in the old place, so this says which place that is.
-        //
-        // note: on `meta`, which is the field for exactly this - a hint the runtime never reads
-        // - and it rides in the snapshot, so a resumed session draws the edit where it was too
-        edited.meta = json!({ "replaces": id.0 });
-        // editing something decides what it says, not whether it is sent - so whatever it was
-        // doing, it goes on doing. `ContextItem::new` starts out Active, and carrying over only
-        // the pin meant editing a pruned item quietly put it back into the next request, and
-        // editing an *archived* one promoted the whole of an oversized tool output into it. An
-        // elided one is the same trap in a quieter form: the row says a marker is being sent, so
-        // an edit that came back Active would be sending the new text against what the screen
-        // says. It stays elided, and `space` round to active is how you say you meant it read
-        edited.state = match old.state {
-            ContextState::Pinned
-            | ContextState::Excluded
-            | ContextState::Elided
-            | ContextState::Archived => old.state,
-            _ => ContextState::Active,
-        };
-
-        match self.kernel.supersede(id, edited) {
-            Ok(new) => {
-                // the old item keeps its own row, but the new one is where somebody will be
-                // looking, so what it used to say follows it there. Copied rather than moved:
-                // both rows are real, and both can answer "what did this say before?"
-                let history = self.versions.get(&id).cloned().unwrap_or_default();
-                self.versions.insert(new, history);
-                self.remember(new, old.content.clone());
-                // and nothing has to be told about the conversation. The superseded item stops
-                // being projected and the new one takes its place in the context, so the next
-                // frame draws the edit where the turn was - which is also why an `undo` of it
-                // reaches the screen with nothing here keeping a second account of what to
-                // put back
-            }
-            Err(e) => self.say(Speaker::Error, e.to_string()),
+        // note: nothing here keeps what it used to say. `Kernel::replace` emits the one event
+        // that carries content and `App::remember` is already listening for it, so the version
+        // pages fill themselves - which is also why an `undo` of this reaches the screen with
+        // nothing here keeping a second account of what to put back
+        if let Err(e) = self.kernel.replace(id, text.to_owned()) {
+            self.say(Speaker::Error, e.to_string());
+            return;
         }
+
+        // whose hand it was, on the item itself. The content is now the only content, so a
+        // reader of the row - the person here, and the model through `context` - would
+        // otherwise have nothing saying it was ever anything else. `amend` writes this same key
+        // with `by: amend`, and the one thing the two paths must not do is look alike: a model
+        // reading its own metadata should never find its own tool credited with a sentence a
+        // person rewrote
+        let mut meta = match old.meta.is_object() {
+            true => old.meta.clone(),
+            false => json!({}),
+        };
+        meta["revised"] = json!({ "by": "hand", "reason": "edited at the terminal" });
+        let _ = self.kernel.annotate(id, meta);
     }
 
     /// Keys that belong to the context pane.
