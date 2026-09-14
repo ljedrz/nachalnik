@@ -112,8 +112,8 @@ impl Tab {
     }
 }
 
-/// One row of the permissions tab: a capability or a path rule, what the policy will answer about
-/// it, and the tools that would be affected.
+/// One row of the permissions tab: a capability, a path rule or a rule about one tool action, what
+/// the policy will answer about it, and the tools that would be affected.
 pub struct Stance {
     /// What the row is about: a capability, or a pattern the paths are matched against.
     pub subject: Subject,

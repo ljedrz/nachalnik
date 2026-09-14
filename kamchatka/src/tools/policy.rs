@@ -23,6 +23,12 @@ use parking_lot::Mutex;
 /// reasonable thing to want and `read .env: allow` is not, and the difference is a property of the
 /// *file* rather than of the tool that opened it - which is why a path rule is one subject rather
 /// than three, and binds `read`, `write` and `edit` alike.
+///
+/// note: two *kinds*, and three kinds of rule. An action rule - `amend: allow` is reasonable for a
+/// `note` and not for an `exclude` - is spelled as a `Capability::Custom` of the form
+/// `<tool>:<action>` rather than as a variant of its own, because a custom capability is spelled
+/// the same way (`mcp:<server>`) and nothing in the text would say which a variant was meant to
+/// be. [`acts_on`] answers that against the registry instead. See [`Careful::judges`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Subject {
     /// A class of side effect a tool declares.
@@ -224,8 +230,11 @@ fn glob(pattern: &str, name: &str) -> bool {
 ///
 /// note: a capability is not fine enough on its own. `read: allow` is a reasonable thing to want
 /// and `read .env: allow` is not, so there is a second kind of [`Subject`]: a pattern the *path* a
-/// tool was handed is matched against. The strictest of everything consulted wins, so a rule can
-/// only tighten what a capability allows - `read` stays `allow` and `.env` becomes a question.
+/// tool was handed is matched against. The same argument one tool along gives a third kind of
+/// rule, the action rule seeded in `ALTERS`: `amend: allow` is reasonable for a `note` and not
+/// for an `exclude`. The strictest of everything consulted wins, so a rule can only tighten what a
+/// capability allows - `read` stays `allow` and `.env` becomes a question, and `amend` stays
+/// `allow` while an `exclude` becomes one.
 ///
 /// note: those rules bind `read`, `write` and `edit`, and deliberately not `shell`. A command
 /// names its files inside a string, and `cat .env`, `sed -n 1p .env`, `python -c "open('.env')"`
@@ -307,12 +316,13 @@ impl Careful {
 
     /// Everything this policy consults about one call, in the order it reads them out.
     ///
-    /// note: the declared capabilities, plus the two things only the arguments can say - that a
-    /// command reaches for the network, and that a path is one there is a rule about. It is one
-    /// list rather than three checks because everything downstream wants the same thing: the
+    /// note: the declared capabilities, plus the three things only the arguments can say - that a
+    /// command reaches for the network, that a path is one there is a rule about, and that the
+    /// action a call names is one there is a rule about. It is one
+    /// list rather than four checks because everything downstream wants the same thing: the
     /// question asks about these, `always` answers for these, and a refusal is blamed on whichever
     /// of these said no. A one-off `yes` to a `curl` that then ran with the network cut is the
-    /// shape of bug that comes of having three of them.
+    /// shape of bug that comes of having four of them.
     pub fn judges(&self, request: &PermissionRequest) -> Vec<Subject> {
         let mut judged: Vec<Subject> = request
             .capabilities
