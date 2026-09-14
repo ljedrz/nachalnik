@@ -234,18 +234,3 @@ reasoning, the signature attached to a tool call, and the identifiers already ha
 resumed session cannot reuse one. A provider, a policy and the tools are yours to supply again,
 because they were never the session's to remember. Naming the config resumes under a new name,
 which is how a session gets forked rather than continued.
-
----
-
-[workspace]: https://github.com/ljedrz/nachalnik
-[kamchatka]: https://github.com/ljedrz/nachalnik/tree/HEAD/kamchatka
-[writeup]: https://ljedrz.github.io/nachalnik/
-[nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
-[nachalnik-eval]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-eval
-[ex-compare]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compare_models.rs
-[ex-panel]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/panel.rs
-[ex-transparency]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/transparency.rs
-[ex-compaction]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compaction.rs
-[ex-pricing]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/pricing_a_picture.rs
-[ex-common]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/common/mod.rs
-[license]: https://github.com/ljedrz/nachalnik/blob/HEAD/LICENSE-MIT

@@ -521,11 +521,3 @@ It names all of it now, in the same words the `shell` tool's description uses:
 /tmp/work read-write, /home/you/.rustup read-only. Work where it does, or ask for this path to
 be opened up and say what you need it for.
 ```
-
-<!-- crates.io resolves a relative link against the directory this readme was published from,
-     which is not where the repository root is. Links into the tree are absolute. -->
-
-[nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
-[providers]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-providers
-[nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
-[protection]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/README.md#-what-it-does-and-does-not-protect-you-from

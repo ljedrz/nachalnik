@@ -715,11 +715,3 @@ do. So the permissions tab has a row for `context`, one for `log`, one for `setu
 Which also means each of them can be taken *away* separately, mid-session, and that is deliberate
 rather than incidental. An agent whose ability to check the record is revoked half way through a
 run is a thing this program can set up, and a thing worth watching a model in.
-
-<!-- crates.io resolves a relative link against the directory this readme was published from,
-     which is not where the repository root is. Links into the tree are absolute. -->
-
-[nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
-[providers]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-providers
-[nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
-[protection]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/README.md#-what-it-does-and-does-not-protect-you-from

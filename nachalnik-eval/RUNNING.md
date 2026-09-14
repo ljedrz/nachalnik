@@ -154,7 +154,3 @@ Exactly one of the seven planted notes is then load-bearing, and it is known whi
 run that reports any other ranking has a bug in it. `tests/machinery.rs` checks the arithmetic
 against numbers worked out by hand, and `tests/live.rs` checks the one thing neither can: that a
 real model answers in the shape the probes ask for, and that the record comes back complete.
-
----
-
-[nachalnik]: https://crates.io/crates/nachalnik
