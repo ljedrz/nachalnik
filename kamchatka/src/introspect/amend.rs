@@ -179,9 +179,16 @@ impl Tool for Amend {
                     "type": "string",
                     "description": "revise: what the item should say instead. note: what to write down",
                 },
+                // note: what it is *not* is half of this line, and it is the half a live run
+                // needed. `label` reads as a key, five notes went in under one name meaning to
+                // replace each other, and the tool appended every time - which the result now
+                // also says when it happens. This is the same sentence one step earlier, where
+                // the name is being chosen rather than regretted.
                 "label": {
                     "type": "string",
-                    "description": "note: a short name for it, so you can find it again",
+                    "description": "note: a short name for it, so you can find it again. Not a \
+                                    key: a second note under a name is a second item, and \
+                                    `revise` is what changes one you already wrote",
                 },
                 "pin": {
                     "type": "boolean",
@@ -245,6 +252,50 @@ impl Tool for Amend {
             ))),
         }
     }
+}
+
+/// What to say about the items already carrying the name a new note was just given, if any are.
+///
+/// note: bought by a live run, and the second time this tool's `label` has taught a model the
+/// wrong thing. A session wrote five notes under one name - `in_progress`, then `step 2`, `step
+/// 3`, `step 4`, `complete` - each plainly meant to replace the last, and pinned four of them, so
+/// the context ended up asserting four different steps at once and compaction could clear none of
+/// them. `note` appends: a label is how an item is found again, not a key that stands for one.
+/// What the result said was `[17] experiment_status is in your context now`, five times, with a
+/// different number each time and nothing to read the number against.
+///
+/// note: so the clash is said where the mistake is made, and `revise` is named, because the action
+/// for what that session was actually doing was already in this tool's own enum. The `[id]` was
+/// the only signal before this, and it is a constant-shaped one in a template that reads the same
+/// every time - which is the shape a model learns to skim.
+///
+/// note: what still goes into the request, rather than everything with the name. An archived note
+/// costs nothing and contradicts nothing, and a warning about one is a warning about nothing.
+fn already(clashes: &[ContextId], label: &str) -> String {
+    if clashes.is_empty() {
+        return String::new();
+    }
+
+    // note: a few of them named and the rest counted, because the point of the sentence is that
+    // there *are* others and what to do about it. Forty numbers would say the same thing in forty
+    // times the tokens, and the one that matters is reachable by the name either way.
+    let shown: Vec<String> = clashes.iter().take(4).map(|id| format!("[{id}]")).collect();
+
+    format!(
+        "{}{} {} that name too. A note is a new item every time - a label finds one again rather \
+         than standing for one - so `label:{label}` now names {} and every one of them goes into \
+         the request. `revise` rewrites the one you wrote before.\n",
+        shown.join(", "),
+        match clashes.len() - shown.len() {
+            0 => String::new(),
+            more => format!(" and {more} more"),
+        },
+        match clashes.len() {
+            1 => "carries",
+            _ => "carry",
+        },
+        clashes.len() + 1,
+    )
 }
 
 /// Whether anything the agent wrote down for itself is still going into the request.
@@ -542,8 +593,24 @@ impl Amend {
         else {
             return ToolOutput::error("`note` needs the `content` to write down");
         };
-        let label = call.args["label"].as_str().unwrap_or("note");
+        // note: the name as it was given, kept apart from the one written on the item, because
+        // only a name somebody *chose* can collide with one. Two notes nobody labelled are both
+        // called `note` and telling the second that the first "carries that name too" would be
+        // reporting a clash between two names the model never picked.
+        let named = call.args["label"].as_str();
+        let label = named.unwrap_or("note");
         let pin = call.args["pin"].as_bool().unwrap_or(false);
+
+        // read before the push, so the new item is not one of its own clashes
+        let clashes: Vec<ContextId> = match named {
+            Some(name) => kernel
+                .items()
+                .iter()
+                .filter(|item| item.label == name && item.state.sends_content())
+                .map(|item| item.id)
+                .collect(),
+            None => Vec::new(),
+        };
 
         let before = kernel.budget().used();
         // pinned as it is written rather than pinned afterwards: a push and a state change are two
@@ -569,12 +636,13 @@ impl Amend {
         )]));
 
         ToolOutput::new(format!(
-            "[{id}] {label} is in your context now, and goes into every request from here on. {}\n{}",
+            "[{id}] {label} is in your context now, and goes into every request from here on. {}\n{}{}",
             match pin {
                 true => "It is pinned, so compaction cannot take it.",
                 false =>
                     "It is not pinned, so compaction may take it; say `pin` if it has to last.",
             },
+            already(&clashes, label),
             cost(kernel, before, Grew::Asked),
         ))
     }

@@ -9,6 +9,32 @@ minor bump may break you.
 
 ### added
 
+- **`amend: note` says when the name it was given is already taken.** A live session wrote five
+  notes under one label - `in_progress`, then `step 2`, `step 3`, `step 4`, `complete: true` -
+  each plainly meant to replace the last, and pinned four of them. `note` appends: a label is how
+  an item is found again, not a key that stands for one. So the context ended up asserting four
+  different steps at once, permanently, and compaction could clear none of them.
+
+  Nothing said so. The result was `[17] experiment_status is in your context now`, five times,
+  with a different number each time - the `[id]` was the only signal, and it is a constant-shaped
+  one in a template that reads the same on every call, which is the shape a model learns to skim.
+  Now a second note under a taken name reads: ``[3] carries that name too. A note is a new item
+  every time - a label finds one again rather than standing for one - so `label:status` now names
+  2 and every one of them goes into the request. `revise` rewrites the one you wrote before.``
+  `revise` by name, because the action for what that session was actually doing was already in
+  this tool's own enum.
+
+  Three things it deliberately does not say. A name nobody chose cannot be taken, so two
+  unlabelled notes - both called `note` - report nothing; a clash between two names the model
+  never picked is not news. An archived or excluded note does not count: it costs nothing and
+  contradicts nothing, and a warning about one is a warning about nothing. And past four, the rest
+  are counted rather than listed - the point is that there are others and what to do about it.
+
+  The schema line for `label` says the same thing one step earlier, where the name is being chosen
+  rather than regretted: *not a key: a second note under a name is a second item, and `revise` is
+  what changes one you already wrote*. The tool description is unchanged and still under the
+  1,500-character ceiling `every_tool_says_what_it_is_and_what_each_argument_is_for` holds it to.
+
 - **A permission rule can be about one tool action, not just a whole tool.** `amend` was one
   decision and it is not one act: `note` adds an item to the context and `exclude` takes one out,
   `revise` rewrites what one says - a user's own message included - and answering `always` to the

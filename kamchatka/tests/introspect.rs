@@ -2301,6 +2301,149 @@ async fn setup_permissions_counts_the_rules_nobody_has_thought_about() {
     assert!(said.contains(".env*"), "{said}");
 }
 
+/// The mistake a live session actually made, five times over: `note` appends, and a second note
+/// under a name already taken is a second item rather than a new value for the first.
+#[tokio::test]
+async fn a_note_says_when_its_name_is_already_taken_and_what_changes_one() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "amend",
+            json!({
+                "action": "note",
+                "content": "experiment_status: in_progress",
+                "label": "status",
+                "reason": "track it",
+            }),
+        ),
+        call(
+            "c2",
+            "amend",
+            json!({
+                "action": "note",
+                "content": "experiment_status: complete",
+                "label": "status",
+                "reason": "update it",
+            }),
+        ),
+    ]));
+    kernel.push(ContextItem::user("run the experiment"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    // the first took a free name and has nothing to report about it
+    assert!(!said[0].contains("that name too"), "{}", said[0]);
+
+    // the second is the one that thought it was assigning to a variable
+    assert!(said[1].contains("carries that name too"), "{}", said[1]);
+    assert!(
+        said[1].contains("`label:status` now names 2"),
+        "{}",
+        said[1]
+    );
+    assert!(
+        said[1].contains("`revise` rewrites the one you wrote before"),
+        "the action for what it was actually trying to do: {}",
+        said[1]
+    );
+
+    // ... and both are really in the context, which is the thing the sentence is about
+    let notes = kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "status")
+        .count();
+    assert_eq!(notes, 2, "a note is a new item every time");
+}
+
+/// A name nobody chose is not a name that can be taken: two unlabelled notes are both called
+/// `note`, and a clash between two names the model never picked is not news.
+#[tokio::test]
+async fn two_notes_with_no_label_are_not_reported_as_a_clash() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "amend",
+            json!({ "action": "note", "content": "one", "reason": "why" }),
+        ),
+        call(
+            "c2",
+            "amend",
+            json!({ "action": "note", "content": "two", "reason": "why" }),
+        ),
+    ]));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    for said in all_answers(&kernel) {
+        assert!(!said.contains("that name too"), "{said}");
+    }
+}
+
+/// An archived note costs nothing and contradicts nothing, so a warning about one would be a
+/// warning about nothing. What the sentence counts is what still goes into the request.
+#[tokio::test]
+async fn a_name_freed_by_putting_the_item_away_is_free_again() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "amend",
+            json!({ "action": "note", "content": "first", "label": "plan", "reason": "why" }),
+        ),
+        call(
+            "c2",
+            "amend",
+            json!({ "action": "archive", "select": "label:plan", "reason": "done with it" }),
+        ),
+        call(
+            "c3",
+            "amend",
+            json!({ "action": "note", "content": "second", "label": "plan", "reason": "why" }),
+        ),
+    ]));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    assert!(
+        !said[2].contains("that name too"),
+        "the first one is archived and in nobody's way: {}",
+        said[2]
+    );
+}
+
+/// A few named and the rest counted: the point is that there are others and what to do about it,
+/// not a column of numbers.
+#[tokio::test]
+async fn a_name_taken_many_times_over_names_some_and_counts_the_rest() {
+    let notes: Vec<nachalnik::ToolCall> = (0..6)
+        .map(|n| {
+            call(
+                &format!("c{n}"),
+                "amend",
+                json!({
+                    "action": "note",
+                    "content": format!("step {n}"),
+                    "label": "status",
+                    "reason": "why",
+                }),
+            )
+        })
+        .collect();
+    let (kernel, _provider, _anchor) = agent(one_turn(notes));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    let last = said.last().expect("six of them");
+    assert!(last.contains("carry that name too"), "{last}");
+    assert!(
+        last.contains("and 1 more"),
+        "four named, the rest counted: {last}"
+    );
+    assert!(last.contains("`label:status` now names 6"), "{last}");
+}
+
 /// An action rule is a row of its own rather than a capability nothing declares, because that is
 /// what it is: `amend` declares `amend`, and `amend:exclude` is a rule about the calls that name
 /// that action. A table that listed it beside the capabilities would have it reading `nothing you
