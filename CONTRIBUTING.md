@@ -85,7 +85,22 @@ for being small: five failed on one free model and four of those five passed on 
 case failing and then passing on the same model. The list moves between runs of the same model,
 so a failure that reproduces on a *second* model is the one worth reading -
 `an_interrupt_stops_a_stream_that_is_watching` failed on two and turned out to be the test
-pressing its button on the first delta of any kind, which on a reasoning model is the thinking. `kamchatka`'s is not exempt either:
+pressing its button on the first delta of any kind, which on a reasoning model is the thinking.
+
+**That same test has a second way to fail, and it is not the model being small.** Measured
+2026-09-14 against Inception's `mercury-2.5`: it watches for the first *text* fragment now,
+interrupts on it, and skips if none arrived - which is a proxy for *is there still a stream to
+stop*, and one that holds only where an answer is produced token by token. A diffusion model emits
+the whole of it in a burst, so the first fragment and the last are the same event: the guard
+passes, the interrupt lands after the provider has already finished, and the stop reason comes
+back `Length`. The whole test runs in 1.4 seconds there. It fails deterministically rather than
+skipping, and nothing about the kernel is wrong in it - the case the test is about cannot arise on
+that endpoint. Left alone on purpose: the obvious repair is to widen the skip, and no version of
+it yet proposed can tell *the answer finished first* from *the interrupt was ignored*, which is
+the thing the test is for. The same run put `a_reasoning_models_own_turn_comes_back_as_it_went_out`
+in the failures too and it passed on re-run - that endpoint's filter sometimes answers the
+secret-code-word prompt with a 400 whose body is a refusal sentence, which is worth recognising
+before reading it as a malformed request. `kamchatka`'s is not exempt either:
 `a_resumed_session_carries_on_and_the_endpoint_accepts_it` plants `LARKSPUR` in a resumed context
 and asks which word the model was told to remember, and the shared system prompt two hundred lines
 away plants `APRICOT` - so a model that picks the wrong one of two plausible words fails a test
