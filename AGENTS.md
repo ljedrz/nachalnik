@@ -108,6 +108,10 @@ CI (`.github/workflows/ci.yml`) also builds with **default** features, checks `n
 checks the whole workspace on the MSRV, **1.88**. Edition is 2024, `RUSTFLAGS: -D warnings`
 throughout, so a warning is a failure.
 
+A second workflow, `release.yml`, runs on a `kamchatka-v*` tag only: it creates the GitHub release
+from that version's changelog section and attaches a static `x86_64-unknown-linux-musl` binary.
+`workflow_dispatch` runs the build and uploads nothing, which is how to check it without tagging.
+
 The live suites are the only thing that can check that a real API accepts what this workspace
 builds. Which keys and variables each reads, which endpoints are known to work, where they are
 known to differ, and how to measure whether a test is worth keeping: [CONTRIBUTING.md](CONTRIBUTING.md).

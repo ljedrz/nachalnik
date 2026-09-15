@@ -315,6 +315,24 @@ for, so there is nothing for it to agree with.
   version numbers moved when they had to. It is the commit that gets tagged - annotated,
   `<crate>-v<version>` per crate that moved, plus a workspace `v<version>` taking the runtime's
   number - and the bump commits before it are deliberately left untagged.
+- **One of those tags builds a binary.** `kamchatka-v*` starts `.github/workflows/release.yml`,
+  which creates the GitHub release with that version's section of `kamchatka/CHANGELOG.md` as its
+  body and attaches a static `x86_64-unknown-linux-musl` build with a `sha256` beside it. The
+  other crates are libraries and their artifact is the crates.io tarball, which the `package` job
+  already checks; the workspace `v*` tag builds nothing, since it would be the same binary under
+  a name that does not say so.
+
+  The changelog section has to exist under the number being tagged or the job fails, which is one
+  more reason the release commit is the one that dates the changelogs. Static musl rather than
+  glibc so that the download runs wherever the kernel is new enough rather than wherever the
+  distribution is - and the confinement survives it: the whole of `kamchatka`'s suite passes
+  against that target, the Landlock tests included, which is worth re-checking before trusting a
+  single file that claims to sandbox what it runs. The only thing in the tree needing a cross
+  toolchain is `ring`, which compiles C; rust ships its own musl libc for the rest.
+
+  **Run it on `workflow_dispatch` before tagging.** It builds and packages and uploads nothing,
+  which is how to find out that a musl toolchain, a C dependency and somebody else's action still
+  work on a day that is not the day of the release.
 - **Commit messages** are `crate: what changed, in one lowercase line`, followed by prose
   explaining what was wrong, what was decided, and what was checked - including what was
   deliberately *not* done and why. Read `git log` before writing one; the bar is high and

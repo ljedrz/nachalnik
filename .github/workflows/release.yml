@@ -1,0 +1,97 @@
+name: release
+
+# note: `kamchatka-v*` and nothing else. Every crate in here is tagged on release and only one of
+# them is a program - the rest are libraries, whose artifact is the crates.io tarball the
+# `package` job already checks. The workspace `v*` tag carries the runtime's number and would
+# build the same binary a second time under a name that does not say what it is.
+#
+# note: `workflow_dispatch` so that this can be run without tagging anything. A release workflow
+# is exercised once a cycle, on the one day it must not fail, and a musl toolchain, a C dependency
+# and somebody else's action are three things that can go stale between tags. Dispatched, it
+# builds and packages and uploads nothing - see `dry-run` below.
+on:
+  push:
+    tags:
+      - kamchatka-v[0-9]+.*
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # the release itself, with the changelog section for this version as its body. `prefix` is what
+  # lets the tag be `kamchatka-v0.11.0` rather than `v0.11.0`, and what makes `$version` in the
+  # title the number alone
+  create-release:
+    name: create the release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          prefix: kamchatka
+          title: $prefix $version
+          changelog: kamchatka/CHANGELOG.md
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # note: `!failure() && !cancelled()` rather than nothing, because `create-release` is skipped on
+  # a dispatch and a job that needs a skipped job is skipped too. This has to run in both cases:
+  # on a tag it is the artifact, and on a dispatch it is the whole point
+  binary:
+    name: the linux binary
+    needs: create-release
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # note: the one thing in the tree that needs a cross toolchain at all. Rust ships its own
+      # musl libc and links against that; what has no Rust in it is `ring`, which compiles C, and
+      # `musl-tools` is the compiler for it. `CC_` names the target explicitly rather than
+      # trusting `cc`'s own guess at which compiler a musl target wants
+      - name: the musl C toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y musl-tools
+
+      # note: static musl rather than glibc, so that what a release attaches runs wherever the
+      # kernel is new enough rather than wherever the distribution is. The confinement survives
+      # it: the whole of `kamchatka`'s suite passes against this target, Landlock tests included,
+      # which is the one thing worth having checked before shipping a single file that claims to
+      # sandbox what it runs.
+      #
+      # note: `build-tool: cargo` because the action would otherwise choose `cross` - the target
+      # is not the host, and that is its rule - which means installing `cross` from source and
+      # building in a container. There is nothing to cross here but one C dependency, the line
+      # above is the compiler for it, and a binary built by the toolchain the tests ran under is
+      # worth more than one built somewhere else.
+      - uses: taiki-e/upload-rust-binary-action@v1
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+        with:
+          bin: kamchatka
+          package: kamchatka
+          target: x86_64-unknown-linux-musl
+          build-tool: cargo
+          locked: true
+          checksum: sha256
+          # what somebody who downloaded one file rather than the repository would otherwise have
+          # to go and find: the licence, what the program is, how to drive it, and how to point it
+          # at an endpoint - which is the first thing a binary with no repository around it needs
+          #
+          # note: these land at the root of the archive under their basenames, so the `kamchatka/`
+          # in front of three of them is where they are read from and not where they end up
+          include: LICENSE-MIT,kamchatka/README.md,kamchatka/GUIDE.md,kamchatka/RUNNING.md,kamchatka/CHANGELOG.md
+          leading-dir: true
+          dry-run: ${{ github.event_name == 'workflow_dispatch' }}
+          token: ${{ secrets.GITHUB_TOKEN }}

@@ -62,6 +62,24 @@ minor bump may break you.
   resume of *that* file reads nothing back. Two hops is the earlier `.jsonl`, which is what an
   append-only log is for.
 
+- **A release attaches a Linux binary.** Until now the only way to have this program was
+  `cargo install kamchatka` and a toolchain; a `kamchatka-v*` tag now builds a static
+  `x86_64-unknown-linux-musl` binary and attaches it to the GitHub release, with a `sha256` and
+  the licence, readme, guide and running notes beside it.
+
+  Static musl rather than glibc, so what comes down runs wherever the kernel is new enough rather
+  than wherever the distribution is - there is no glibc floor to read off a download page. The
+  sandbox survives the change and that was the thing worth checking before shipping a single file
+  that claims to confine what it runs: the whole of this crate's suite passes against that target,
+  the Landlock tests included, `network: deny` still refused by the kernel rather than by reading
+  the command.
+
+  The release profile earns its keep here for the first time, since until there was a binary to
+  publish nothing in this workspace was built in release. Measured 2026-09-15 on that target:
+  23.3MB at the defaults, 14.3MB stripped, and 10.8MB with fat LTO and one codegen unit, against
+  22s and 72s to build. A build that happens once per tag can afford the slow half of that trade.
+  `panic = "abort"` would shave more and is deliberately not set: a panicking tool is reported and
+  the turn carries on, and aborting would take the session with it.
 
 ### changed
 
