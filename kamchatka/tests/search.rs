@@ -516,3 +516,37 @@ async fn a_quoted_argument_is_read_and_an_unreadable_one_is_refused() {
         );
     }
 }
+
+/// Asking for more context than the answer gives is said out loud, not clamped in silence.
+///
+/// note: watched live. A model asked for 20 lines either side, got ten, asked again for 25 and
+/// got the same answer - a request spent on a ceiling nothing had mentioned. The same lesson as
+/// the compaction marker one tool along: an answer that does not say what it did with your
+/// argument reads as an answer to the argument you gave.
+#[tokio::test]
+async fn a_context_wider_than_the_answer_gives_says_so() {
+    let dir = scratch("grep-context-clamped");
+    put(
+        &dir,
+        "a.rs",
+        &format!("{}Kernel\n{}", "one\n".repeat(30), "two\n".repeat(30)),
+    );
+
+    let said = ask(&dir, "grep", json!({ "pattern": "Kernel", "context": 25 })).await;
+    assert!(
+        said.contains(
+            "context: 10 lines either side is the most this answers with, and you asked for 25"
+        ),
+        "{}",
+        said.lines().take(3).collect::<Vec<_>>().join(" | ")
+    );
+    // ten either side, and the line itself
+    assert_eq!(said.lines().filter(|l| l.starts_with("a.rs")).count(), 21);
+
+    // and nothing is said when nothing was clamped
+    let inside = ask(&dir, "grep", json!({ "pattern": "Kernel", "context": 2 })).await;
+    assert!(
+        !inside.contains("is the most this answers with"),
+        "{inside}"
+    );
+}

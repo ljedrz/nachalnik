@@ -42,12 +42,31 @@ const MATCHES: usize = 100;
 /// How many paths one `glob` answers with.
 const PATHS: usize = 200;
 
+/// How many lines either side of a match `context` will go to.
+///
+/// note: said out loud when a call asks for more, rather than clamped quietly. Watched live: a
+/// model asked for 20, got ten either side, asked again for 25 and got the same answer back - a
+/// request spent on a number nothing had told it was a ceiling. The same lesson as the compaction
+/// marker, one tool along: an answer that does not say what it did with your argument reads as an
+/// answer to the argument you gave.
+const CONTEXT: u64 = 10;
+
 /// How much of one line is shown, in characters.
 ///
 /// note: enough for any line somebody wrote and not enough for a minified one, which is the whole
 /// job. `MATCHES * WIDTH` is deliberately under the byte limit these start with, so the two cuts
 /// do not both fire on an ordinary answer.
 const WIDTH: usize = 200;
+
+/// What both tools say about a glob.
+///
+/// note: one string for the same reason [`PATH_ARG`](crate::tools::files) is one: `grep`'s filter
+/// and `glob`'s pattern are the same language, and two descriptions of it are two places for a
+/// model to learn two different rules. The clause that earns its keep is the last one - a model
+/// that reads `*` as "not across a separator", which is what a shell taught it, writes `**/*.rs`
+/// where `*.rs` would have done and `src/*.rs` where it wanted everything under `src`.
+const GLOB_ARG: &str = "a glob over the whole path, not just the name: `**/*.rs`, `src/**/mod.rs`, \
+                        `Cargo.*`. `*` crosses `/`, so `*.rs` finds every Rust file at any depth";
 
 /// What both tools need: where they may look, what they may not open, and how much they may say.
 ///
@@ -298,12 +317,12 @@ impl Tool for Grep {
                 format!(
                     "searches the text of files for a regular expression and answers \
                      `path:line:the line`, like `grep -rn`. It walks a directory itself, with no \
-                     shell: what a `.gitignore` hides is skipped, and so are `.git`, binary \
-                     files, symbolic links and anything a path rule says to ask about - the \
-                     answer says how many of each. Hidden files *are* searched. At most \
-                     {MATCHES} matches come back, and a line wider than {WIDTH} characters is cut \
-                     with a `…`; when the search stops early the answer says so, and a narrower \
-                     pattern, a path or `files_only` is what gets the rest."
+                     shell: it obeys `.gitignore`, it does search hidden files, and whatever \
+                     else it passed over it counts on the line under the first. At most \
+                     {MATCHES} matches come back \
+                     ({PATHS} files with `files_only`), a line wider than {WIDTH} characters is \
+                     cut with a `…`, and an answer that stopped early says so and says what to \
+                     do about it."
                 ),
             )
             .with_schema(json!({
@@ -324,8 +343,7 @@ impl Tool for Grep {
                     },
                     "glob": {
                         "type": "string",
-                        "description": "only files whose path matches this, as a glob: `*.rs`, \
-                                        `**/tests/**`, `Cargo.*`",
+                        "description": GLOB_ARG,
                     },
                     "ignore_case": {
                         "type": "boolean",
@@ -339,12 +357,11 @@ impl Tool for Grep {
                     },
                     "files_only": {
                         "type": "boolean",
-                        "description": "answer with the files that match and how many matches \
-                                        each has - `path: 12`, most first - instead of the lines \
-                                        themselves, which is what `grep -l` is for. Reach for it \
-                                        when the pattern is a common word or you do not know \
-                                        where something lives: it costs a fraction of the tokens \
-                                        and names the file to search properly next",
+                        "description": "answer with the files that match and how many each has - \
+                                        `path: 12`, most first - instead of the lines, which is \
+                                        `grep -l`. For a common word, or when you do not know \
+                                        where something lives: a fraction of the tokens, and it \
+                                        names the file to search properly next",
                     },
                 },
                 "required": ["pattern"],
@@ -389,10 +406,11 @@ impl Tool for Grep {
         // quoted - `"context": "3"` - is a search that quietly does something else and says it
         // did what was asked, and for `files_only` that is the expensive answer arriving with
         // nothing to explain it. See `tools::whole`
-        let context = match whole(&call.args, "context", 0) {
-            Ok(lines) => lines.min(10) as usize,
+        let wanted = match whole(&call.args, "context", 0) {
+            Ok(lines) => lines,
             Err(why) => return Ok(ToolOutput::error(why)),
         };
+        let context = wanted.min(CONTEXT) as usize;
         let files_only = match truth(&call.args, "files_only") {
             Ok(only) => only,
             Err(why) => return Ok(ToolOutput::error(why)),
@@ -537,7 +555,7 @@ impl Tool for Grep {
         .await?;
 
         Ok(ToolOutput::new(report(
-            &found, &pattern, &asked, files_only,
+            &found, &pattern, &asked, files_only, wanted,
         )))
     }
 }
@@ -547,7 +565,7 @@ impl Tool for Grep {
 /// note: above them, because an output limit cuts from the end - the same thing `shell` learnt
 /// about its exit line. A summary under a hundred matches is the first thing a limit takes, and
 /// what it leaves is a list of lines with nothing saying how many more there were.
-fn report(found: &Found, pattern: &str, path: &str, files_only: bool) -> String {
+fn report(found: &Found, pattern: &str, path: &str, files_only: bool, wanted: u64) -> String {
     let files = format!("{} file(s) searched", found.searched);
     // what ran out, named as the thing the caller asked for: a search answering with lines fills
     // up with lines, and one answering with files fills up with files
@@ -576,7 +594,11 @@ fn report(found: &Found, pattern: &str, path: &str, files_only: bool) -> String 
         (false, n) => format!("{} · {files}", counted(n, found.files, files_only)),
     };
 
-    said(head, found.skipped.line(), &found.lines)
+    let clamped = (wanted > CONTEXT).then(|| {
+        format!("context: {CONTEXT} lines either side is the most this answers with, and you asked for {wanted}")
+    });
+
+    said(head, [found.skipped.line(), clamped], &found.lines)
 }
 
 /// What a search found, counted the way the caller asked for it.
@@ -587,21 +609,21 @@ fn counted(matches: usize, files: usize, files_only: bool) -> String {
     }
 }
 
-/// The three parts of either answer, with nothing left dangling where one of them is empty.
+/// A header, whatever the answer has to account for, and the lines - with nothing left dangling
+/// where one of those is empty.
 ///
 /// note: a function because both tools had the same bug in it: an empty list joined onto the
 /// header left a trailing newline, which is one byte and the difference between two answers a
 /// test can compare and two it cannot.
-fn said(head: String, skipped: Option<String>, lines: &[String]) -> String {
-    [
-        Some(head),
-        skipped,
-        (!lines.is_empty()).then(|| lines.join("\n")),
-    ]
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>()
-    .join("\n")
+fn said<const N: usize>(head: String, notes: [Option<String>; N], lines: &[String]) -> String {
+    std::iter::once(Some(head))
+        .chain(notes)
+        .chain(std::iter::once(
+            (!lines.is_empty()).then(|| lines.join("\n")),
+        ))
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Lists the files whose path matches a glob.
@@ -615,10 +637,9 @@ impl Tool for Glob {
                 "glob",
                 format!(
                     "lists the files whose path matches a glob, in alphabetical order. It walks a \
-                     directory itself, with no shell, and skips what `grep` skips: what a \
-                     `.gitignore` hides, `.git`, symbolic links, and anything a path rule says to \
-                     ask about. Hidden files are listed. At most {PATHS} paths come back, and the \
-                     answer says how many there were."
+                     directory itself, with no shell, and walks it the way `grep` does: it \
+                     obeys `.gitignore` and it does list hidden files. At most {PATHS} paths \
+                     come back, and the answer says how many there were."
                 ),
             )
             .with_schema(json!({
@@ -626,9 +647,7 @@ impl Tool for Glob {
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "a glob over the whole path, not just the name: `**/*.rs`, \
-                                        `src/**/mod.rs`, `Cargo.*`. `*` crosses `/`, so `*.rs` \
-                                        finds every Rust file at any depth",
+                        "description": GLOB_ARG,
                     },
                     "path": {
                         "type": "string",
@@ -721,7 +740,7 @@ impl Tool for Glob {
             }
             (false, n) => format!("{n} path(s)"),
         };
-        Ok(ToolOutput::new(said(head, skipped.line(), &paths)))
+        Ok(ToolOutput::new(said(head, [skipped.line()], &paths)))
     }
 }
 

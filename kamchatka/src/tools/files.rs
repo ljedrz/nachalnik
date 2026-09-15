@@ -32,9 +32,9 @@ use crate::tools::{Limits, arg};
 /// read as a path to try: two models answered a refusal about `~/notes.txt` by reading `./~`, a
 /// file neither of them wanted and neither of them had. A schema is read while choosing, which is
 /// when a rare spelling is worth knowing and nobody is about to act on it.
-pub(super) const PATH_ARG: &str = "absolute, or relative to the working directory. `~` is not expanded - \
-                        there is no shell here - so write the path out or use one relative to the \
-                        working directory. A file whose name really is `~` is `./~`";
+pub(super) const PATH_ARG: &str = "absolute, or relative to the working directory. `~` is not \
+                        expanded - there is no shell here - and a path starting with one is \
+                        refused; a file whose name really is `~` is `./~`";
 
 pub(super) struct Read(pub(super) Arc<Reach>, pub(super) Limits);
 
@@ -44,8 +44,9 @@ impl Tool for Read {
         self.1.apply(
             ToolSpec::new(
                 "read",
-                "reads a whole text file. Long files are cut off at the end; a shell command is \
-                 the way to read part of one.",
+                "reads a whole text file, cut off at the end if it is long. To see one part of \
+                 a big file rather than all of it, `grep` it with a `path` and `context` - which \
+                 answers with up to ten lines either side of each match, and no more.",
             )
             .with_schema(json!({
                 "type": "object",

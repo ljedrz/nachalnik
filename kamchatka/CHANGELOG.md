@@ -212,6 +212,31 @@ minor bump may break you.
 
 ### changed
 
+- **The tool descriptions, read the way a model reads them.** Rendered the ten definitions as they
+  go out - 3,356 tokens on every request, paid before anything is said - and went through them.
+
+  One was **false**: `grep` and `glob` both claimed to skip symbolic links, which stopped being
+  true when a link pointing inside the working directory became an ordinary file with a second
+  name. One was **advice the model could not take**: `read` said "a shell command is the way to
+  read part of one", which is the one answer unavailable in a session that refuses the shell - and
+  a worse answer than `grep` with a `path` even where it is available. It now names `grep`, and
+  says what that gets you: ten lines either side of a match, and no more, so it is not promising a
+  function body.
+
+  The rest was length. The shared `PATH_ARG` restated its own first sentence, in five schemas on
+  every request. `grep`'s description enumerated four kinds of skip that the answer already reports
+  at the moment one applies - so it now says the one rule that cannot be seen from the outside
+  (`.gitignore` obeyed, hidden files searched) and leaves the rest to the line under the header.
+  `grep`'s `glob` filter and `glob`'s own pattern say one thing from one string rather than two
+  descriptions of one language.
+
+- **A `context` wider than the answer gives says so instead of clamping in silence.** Watched live:
+  a model asked for twenty lines either side, got ten, asked again for twenty-five and got the same
+  answer back - a request spent on a ceiling nothing had mentioned. It is the compaction marker's
+  lesson one tool along, and the same fix: the answer now names the ceiling and what was asked for.
+  Told once, the same model's next call asked for ten and moved on; the question that had cost
+  8,760 tokens of whole-file `read` cost 1,070.
+
 - **`Going` is `#[non_exhaustive]`.** It gained a field this cycle - `holds`, so that what an item
   is holding and what it is sending are counted with one counter at one moment - and a struct of
   public fields that anybody may build with a literal cannot gain one without breaking them. It is
