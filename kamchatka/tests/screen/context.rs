@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crossterm::event::KeyCode;
 use kamchatka::app::{Focus, Tab};
 use nachalnik::{
-    ContextItem, ContextState, ModelResponse,
+    Calibration, ContextItem, ContextState, ModelResponse,
     test::{ConstTool, call},
 };
 use serde_json::json;
@@ -1046,6 +1046,54 @@ async fn the_same_turn_holds_nothing_where_the_thinking_is_sent() {
         0,
         "the whole of it is in the request, so nothing is being held"
     );
+}
+
+/// A counter that has just learnt something does not make every row look as though it is holding.
+///
+/// note: what a live run against Gemini found, whose projector carries thinking and ordered
+/// blocks back in full - so the context was holding nothing, and the pane reported 1,264 tokens
+/// held across eighteen rows. `ContextItem::tokens` is counted when the item arrives, a projected
+/// message is counted now, and a `Calibrating` counter moves the scale under them between one
+/// response and the next: two rulers, and the few percent between them read as tokens held back.
+///
+/// note: the window is not a corner case. `App` recounts when a *turn* ends, so every reading
+/// taken while one is running is inside it - and the `context` tool is only ever called from
+/// inside a turn, which is to say always.
+#[tokio::test]
+async fn a_counter_that_has_learnt_something_invents_nothing_held_back() {
+    let harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user("go"));
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("big.rs", "fn parse() {}\n".repeat(400)));
+    let items = harness.app.kernel.items();
+
+    let going = harness.app.going();
+    for item in &items {
+        assert_eq!(going.held_back(item), 0, "nothing is held yet: {}", item.id);
+    }
+
+    // the provider reports that a request really cost less than the counter guessed, and the
+    // counter takes the correction. Nothing recounts what is already here until the turn ends
+    let counter = harness.app.kernel.counter();
+    let learned = counter
+        .calibration()
+        .expect("the default counter is a calibrating one");
+    counter.recalibrate(Calibration {
+        scale: learned.scale * 0.9,
+        ..learned
+    });
+
+    let going = harness.app.going();
+    for item in &items {
+        assert_eq!(
+            going.held_back(item),
+            0,
+            "a scale that moved is not an item holding something back: {}",
+            item.id
+        );
+    }
 }
 
 #[tokio::test]

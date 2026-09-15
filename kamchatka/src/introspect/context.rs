@@ -443,6 +443,9 @@ fn full(items: &[Arc<ContextItem>], id: ContextId, going: &Going, whole: bool) -
     // the view that reads a turn's *thinking* back, and under most endpoints the thinking is the
     // part that is not carried. A line reporting one figure would be telling the agent that the
     // page it is reading costs what it weighs, in the one place it is most likely to be wrong.
+    //
+    // note: `Going::holds` rather than `ContextItem::tokens`, so that the two figures in this one
+    // sentence are counted on one scale - `Going::holds` has why that is not the same figure
     let mut out = format!(
         "[{}] {} · {} · from {} · {} · {} tokens{}\n",
         item.id,
@@ -450,7 +453,7 @@ fn full(items: &[Arc<ContextItem>], id: ContextId, going: &Going, whole: bool) -
         item.kind.name(),
         item.source,
         item.state,
-        thousands(item.tokens),
+        thousands(going.holds(item)),
         match going.held_back(item) {
             0 => String::new(),
             held => format!(

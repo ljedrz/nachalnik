@@ -355,6 +355,20 @@ pub struct Said<'a> {
 pub struct Going {
     /// What each item in the request costs it.
     pub costs: BTreeMap<ContextId, usize>,
+    /// What each item holds, counted at the same moment as [`Going::costs`] and with the same
+    /// counter.
+    ///
+    /// note: not [`ContextItem::tokens`], which is the figure taken when the item arrived - and
+    /// the difference is not pedantry. A `Calibrating` counter learns a new scale from every
+    /// response, and the items already in the context keep the figure they were counted with
+    /// until something recounts them, which `App` does when a *turn* ends. Every reading taken
+    /// inside a turn therefore had a stored figure on one scale and a freshly projected message
+    /// on another, and the few percent between them arrived in the `held` column as tokens held
+    /// back that nothing was holding: a live session against Gemini - whose projector carries
+    /// thinking and ordered blocks back in full, so it holds nothing at all - reported 1,264
+    /// tokens held across eighteen rows. The `context` tool is worse off again, because it is
+    /// only ever called from inside a turn.
+    pub holds: BTreeMap<ContextId, usize>,
     /// Why each item that is not in the request was left out, in the projector's own words.
     pub left_out: BTreeMap<ContextId, String>,
     /// What the model reads in place of an item whose content is not going but which is still
@@ -413,6 +427,13 @@ impl Going {
                     })
                     .collect(),
             },
+            // every item, counted now, so that a subtraction against `costs` is one ruler at one
+            // moment - see the note on the field
+            holds: kernel
+                .items()
+                .iter()
+                .map(|item| (item.id, counter.count_item(item)))
+                .collect(),
             costs: projection
                 .included
                 .iter()
@@ -467,9 +488,21 @@ impl Going {
     /// an artefact. Where the projection adds something of its own - a label in front of a tool
     /// result - the message is the larger of the two and this is nought, which is the right
     /// answer: nothing is being held back.
+    ///
+    /// note: and [`Going::holds`] rather than [`ContextItem::tokens`], because like for like is
+    /// also about *when*. The field's own note has what a live run made of the difference.
     pub fn held_back(&self, item: &ContextItem) -> usize {
-        item.tokens
+        self.holds(item)
             .saturating_sub(self.costs.get(&item.id).copied().unwrap_or(0))
+    }
+
+    /// What this item holds, on the same scale as everything else here.
+    pub fn holds(&self, item: &ContextItem) -> usize {
+        self.holds
+            .get(&item.id)
+            .copied()
+            // an item added since this was taken; its own figure is the best there is
+            .unwrap_or(item.tokens)
     }
 }
 

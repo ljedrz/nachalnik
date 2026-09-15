@@ -241,6 +241,25 @@ minor bump may break you.
   going: an assistant turn with no content and no answered calls`, which is the sentence the
   context tab has had on that row all along.
 
+- **Every row looked as though it was holding a little, and none of them was.** A live session
+  against Gemini found it, which is the endpoint where the figure should always be nought: its
+  projector carries thinking *and* ordered blocks back in full, so nothing is held - and eighteen
+  rows reported 1,264 tokens held between them.
+
+  Two rulers. `ContextItem::tokens` is counted when the item arrives; a projected message is
+  counted now; and a `Calibrating` counter moves the scale under them on every response. The
+  items already in the context keep the figure they were counted with until something recounts
+  them, which happens when a *turn* ends - so every reading taken while one is running compared a
+  figure on the old scale with one on the new, and the few percent between them read as tokens
+  held back. The `context` tool is only ever called from inside a turn, so for the model it was
+  every time.
+
+  `Going` now counts what each item holds at the same moment as what its message costs, with the
+  same counter, and the subtraction is between those two. The same live run under the same
+  endpoint reports nothing held on every row but the one carrying the call in flight, which says
+  why it is out. `look`'s per-item line reads from the same figure, so the two numbers in one
+  sentence there are on one scale as well.
+
 - **<kbd>e</kbd> on a turn that is nothing but a tool call opened an empty prompt.** Most
   assistant turns in a working session are exactly that, and the context row for one reads
   `dig({"where":"here"})` - so pressing the key that changes what an item says put a box titled
