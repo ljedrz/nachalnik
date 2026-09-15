@@ -14,7 +14,12 @@
 //! declare [`Capability::Read`], and the path rules that bind `read` bind them too: see
 //! [`Looking::barred`], which is the part that had to be built rather than linked.
 
-use std::{ffi::OsStr, io, path::Path, sync::Arc};
+use std::{
+    ffi::OsStr,
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use globset::GlobBuilder;
 use grep_regex::RegexMatcherBuilder;
@@ -194,16 +199,37 @@ fn followed(reach: &Reach, path: &Path) -> Link {
     }
 }
 
-/// What to call a path in an answer: relative to the working directory wherever it is under it.
+/// The working directory in the shape the walked paths are in, so that one is a prefix of the
+/// other.
+///
+/// note: resolved rather than taken off `Reach`, and this is a Windows fact with a Unix no-op in
+/// front of it. The walk root came through `Reach::allows`, which canonicalizes - and on Windows
+/// that is an extended-length path, `\\?\C:\…`, whose prefix component is not the one a plain
+/// `C:\…` has. So `strip_prefix` matched nothing, and every path in every answer carried the
+/// whole of `\\?\C:\Users\…` in front of it, on the one platform nobody here runs.
+fn under(workdir: &Path) -> PathBuf {
+    workdir
+        .canonicalize()
+        .unwrap_or_else(|_| workdir.to_path_buf())
+}
+
+/// What to call a path in an answer: relative to the working directory wherever it is under it,
+/// with `/` between the parts whatever the platform writes.
 ///
 /// note: the spelling `read` takes back, and the one the person is looking at in their editor.
-/// `Reach::allows` hands back a resolved absolute path, so without this every line of every
+/// `Reach::allows` hands back a resolved absolute path, so without the strip every line of every
 /// answer would carry the whole of somebody's home directory in front of it.
+///
+/// note: and one separator, because three things downstream of this compare against what it
+/// returns: `path_matches`, which normalises to `/` itself; the `glob` filter, so that `**/*.rs`
+/// means the same thing on every platform; and the model, which is handed `/` everywhere else in
+/// the answer and hands it back to `read`, where Windows takes it. `MAIN_SEPARATOR` rather than a
+/// bare backslash, so that a Unix file whose name really contains one keeps it.
 fn named(path: &Path, workdir: &Path) -> String {
     path.strip_prefix(workdir)
         .unwrap_or(path)
-        .display()
-        .to_string()
+        .to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/")
 }
 
 /// Shortens a line too wide for the answer, at the point where it cuts it.
@@ -417,7 +443,7 @@ impl Tool for Grep {
         };
         let barred = self.0.barred();
         let reach = self.0.reach.clone();
-        let workdir = reach.workdir.clone();
+        let workdir = under(&reach.workdir);
         let sink = output.clone();
 
         // note: the walk is blocking and `ignore` has no async form, so it goes on a thread that
@@ -677,7 +703,7 @@ impl Tool for Glob {
 
         let barred = self.0.barred();
         let reach = self.0.reach.clone();
-        let workdir = reach.workdir.clone();
+        let workdir = under(&reach.workdir);
         let sink = output.clone();
 
         let (paths, all, skipped, stopped) = tokio::task::spawn_blocking(move || {
@@ -758,6 +784,46 @@ mod tests {
         assert_eq!(cut("short", 10), "short");
         assert_eq!(cut("0123456789abc", 10), "0123456789…");
         assert_eq!(cut(&"ł".repeat(12), 10), format!("{}…", "ł".repeat(10)));
+    }
+
+    /// A path is named with one separator, whichever one the platform walks with.
+    ///
+    /// note: `join` writes the platform's, so this is `w\\src\\a.rs` on Windows and `w/src/a.rs`
+    /// here, and the answer is the same string either way. That matters to three readers: the
+    /// `glob` filter, so `**/*.rs` means one thing everywhere; `path_matches`, which normalises to
+    /// `/` itself; and the model, which reads `/` in the rest of the answer and hands it back to
+    /// `read`, where Windows takes it.
+    #[test]
+    fn a_named_path_is_written_with_one_separator() {
+        let root = PathBuf::from("w");
+        assert_eq!(named(&root.join("src").join("a.rs"), &root), "src/a.rs");
+    }
+
+    /// And the separator replaced is the platform's rather than a backslash, so a unix file whose
+    /// name really contains one is not quietly renamed.
+    #[cfg(unix)]
+    #[test]
+    fn a_unix_name_that_contains_a_backslash_keeps_it() {
+        let root = PathBuf::from("w");
+        assert_eq!(named(&root.join(r"a\b.rs"), &root), r"a\b.rs");
+    }
+
+    /// The resolved working directory is a prefix of the paths the walk hands back.
+    ///
+    /// note: windows-only because it is a Windows fact, and it is the one that sent seven tests
+    /// red there while every one of them passed here. `canonicalize` returns `\\?\C:\…`, whose
+    /// prefix component is not the one a plain `C:\…` has, so `strip_prefix` matched nothing and
+    /// every path in every answer carried the whole of somebody's home directory in front of it.
+    #[cfg(windows)]
+    #[test]
+    fn a_resolved_workdir_is_a_prefix_of_what_the_walk_hands_back() {
+        let dir = std::env::temp_dir().join("kamchatka-named");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).expect("a directory to work in");
+        std::fs::write(dir.join("src").join("a.rs"), "x").expect("a file");
+
+        let root = under(&dir);
+        assert_eq!(named(&root.join("src").join("a.rs"), &root), "src/a.rs");
     }
 
     /// Nothing skipped says nothing.
