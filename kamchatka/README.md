@@ -57,8 +57,8 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 
 ## 🔧 what it comes with
 
-Four tools — `read`, `write`, `edit`, `shell` — and a policy that asks about all of it. Nothing is
-allowed on your behalf before you have been asked, `read` included. Answering **always** answers for a *capability*, not a
+Six tools — `read`, `write`, `edit`, `grep`, `glob`, `shell` — and a policy that asks about all of
+it. Nothing is allowed on your behalf before you have been asked, `read` included. Answering **always** answers for a *capability*, not a
 tool name, which is what makes it work for tools this program has never heard of:
 
 ```console
@@ -69,6 +69,14 @@ Those arrive through [`nachalnik-mcp`][nachalnik-mcp] carrying `mcp:files`, so "
 mcp:files" is one server and not the next one. The `name=` is worth giving: it prefixes the
 server's tools and it is what the grant is *for*, and without it the name comes from the program,
 which for most of the servers people actually run is `npx`.
+
+`grep` and `glob` are ripgrep's engine linked in rather than shelled out to, and the reason they
+exist is the capability they ride. Finding a symbol used to mean `shell`, which subsumes every
+other capability — so a session that only wanted to be asked *about* a repository had to hand over
+the one permission that answers for everything. These declare `read`, walk a directory without a
+shell in front of them, honour a `.gitignore`, and cut at a number of matches rather than at bytes,
+saying so where they cut. The path rules bind them too: a walk cannot ask about `.env`, so it does
+not open it and says how many it left alone.
 
 `--introspect` adds four more, off by default: `context` reads the context, `log` the record kept
 beside it, `setup` what the session is running with, and `amend` changes the first of them. Every

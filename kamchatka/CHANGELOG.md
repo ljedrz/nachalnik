@@ -9,6 +9,55 @@ minor bump may break you.
 
 ### added
 
+- **`grep` and `glob`: finding things costs `read` rather than `shell`.** There were four tools and
+  none of them could look for anything, so every "where is this defined?" went through `shell` -
+  which subsumes every other capability. A session that only wanted to be *asked about* a
+  repository had to hand over the one permission that answers for everything, and a read-only run
+  was not possible at all. These two declare `read`, and the path rules that bind `read` bind them.
+
+  Underneath is ripgrep's own engine - `grep-searcher`, `grep-regex`, `ignore`, `globset` - linked
+  in rather than shelled out to. The `rg` binary is those libraries plus a printer, so this is not
+  a search written here; it also needs no `rg` on the machine, and adds no second process for the
+  sandbox to account for. The printer is the half worth writing:
+
+  ```text
+  3 match(es) in 2 file(s) · 205 file(s) searched
+  skipped: 1 file(s) a path rule says to ask about, 2 binary file(s)
+  src/ui/mod.rs:413:fn draw_search(frame: &mut Frame, app: &mut App, area: Rect) {
+  ```
+
+  **The cut is at matches, not at bytes.** A byte limit takes the tail of the last file searched
+  and leaves the model believing it has seen the rest - the thing that makes an agent run the same
+  search three times. A hundred matches, a line cut at two hundred characters, and a first line
+  that says it stopped and what to do about it. The byte limit is still there underneath, listed by
+  `/limit` like every other, as the backstop for one pathological line rather than as the thing
+  that shapes an answer. It leads rather than trails because an output limit cuts from the end,
+  which is what `shell`'s exit line already knew.
+
+  **And the answer accounts for what it did not read.** The count of files searched is what tells
+  "it is not there" from "nothing was opened", and the `skipped:` line names each reason. The one
+  that had to be built rather than linked is the path rules: `Careful` matches them against the
+  path *in the call*, and a search names a directory - so `.env*: ask` bound `read` and would have
+  waved a walk straight through. A rule that is not `allow` now stops the walk opening that file,
+  since "ask me first" is not a thing nine hundred files can honour, and the nearest honest thing
+  to it is not to read them and to say how many.
+
+  Three walking rules, each of them a thing a model would otherwise conclude something false from.
+  What a `.gitignore` hides is skipped and `.git` always, because it is a database rather than
+  anything anybody wrote. Hidden files *are* searched, because a model that cannot find
+  `.github/workflows` concludes the file does not exist, and an absence it cannot account for is
+  worse than a few extra files opened. And the order is sorted rather than the parallel walker's,
+  because the answer becomes a context item: two identical searches differing only in their order
+  are two items nobody can diff and a budget pays for twice.
+
+  A symbolic link is read where it points inside the working directory and counted where it points
+  out, which is `Reach::allows` answering - the same call, with the same answer, that `read` makes
+  about the same path. That is the second rule this had: the first was to skip every link, and a
+  live run in this repository argued it down, where five crates each carry a `LICENSE-MIT` link to
+  the file at the root and every answer to every search led with `skipped: 5 symbolic link(s)`.
+  Noise on a line whose whole job is to be rare, and a claim that something was withheld when
+  nothing was.
+
 - **A shell result says how it went in colour.** Every line of a tool result is drawn quiet, which
   is right for the wall of output and wrong for the one line somebody is waiting for: the first
   line of a `shell` result is what the command exited with, and it read the same as the output

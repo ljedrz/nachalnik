@@ -2468,9 +2468,11 @@ impl App {
         }
 
         // the capabilities first, then the rules that are finer than any of them. note: a path
-        // rule binds the three tools that are handed a path, and no others - a `shell` command
-        // names its files inside a string this program does not parse, and pretending otherwise
-        // would be exactly the sort of check that implies more than it delivers
+        // rule binds every tool that is handed a path - the three that open one, and the two that
+        // walk a directory of them - and no others: a `shell` command names its files inside a
+        // string this program does not parse, and pretending otherwise would be exactly the sort
+        // of check that implies more than it delivers. What `grep` and `glob` do about a rule is
+        // not to open what it names; see `tools::search`
         let bound: Vec<String> = self
             .kernel
             .tool_specs()

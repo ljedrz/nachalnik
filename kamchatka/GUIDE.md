@@ -390,11 +390,11 @@ place, where it can be changed:
 │Careful · anything it has not been told about: ask                                                            │
 │                                                                                                              │
 │  capability or path     answer      the tools it covers                                                      │
-│  read                   allow       read                                                                     │
+│  read                   allow       glob, grep, read                                                         │
 │  write                  deny        write                                                                    │
 │  shell                  allow       shell                                                                    │
 │  network                allow       shell, when the command reaches for it                                   │
-│  .env*                  deny        edit, read, write                                                        │
+│  .env*                  deny        edit, glob, grep, read, write                                            │
 │                                                                                                              │
 └──────────────── shell: confined · 12 more it will ask about · space cycles · a allow · n never · r ask again ┘
 ```
@@ -426,7 +426,10 @@ Three kinds of row. A **capability** is what a tool declares, which is what make
 tools this program has never heard of — including an MCP server's, which all carry `mcp:<name>`. A
 **path rule** is finer than any capability: `read: allow` is a reasonable thing to want and
 `read .env: allow` is not, and the difference is a property of the file rather than of the tool
-that opened it. An **action rule** is the same idea one tool along, spelled `<tool>:<action>`: a
+that opened it. It binds every tool that is handed a path — the three that open one, and the two
+that walk a directory of them. A walk cannot *ask*, so what `grep` and `glob` do about a rule that
+is not `allow` is not open the file, and say how many they left alone. An **action rule** is the
+same idea one tool along, spelled `<tool>:<action>`: a
 capability is the whole of a tool and `amend` is not one decision, since `note` adds an item to
 your context and `exclude` takes one out. So the four that change or remove what is already there
 — `amend:elide`, `amend:exclude`, `amend:archive`, `amend:revise` — are subjects of their own and
@@ -536,6 +539,46 @@ into a running turn does.
 Coming *back* to the chat tab while a question is waiting does put the keys on it — that is what
 the trip was for. So the whole gesture is: <kbd>ctrl+t</kbd>, look at the thing, <kbd>alt+1</kbd>,
 <kbd>y</kbd>.
+
+## 🔦 finding things without a shell
+
+`grep` and `glob` are the two tools the model reaches for to find its way around, and the reason
+they exist is the *capability* they ride. Finding a symbol used to mean `shell`, which subsumes
+every other capability — so a session that only wanted to be asked about a repository had to hand
+over the one permission that answers for everything. These declare `read`.
+
+Underneath is ripgrep's own engine, linked in rather than shelled out to: no `rg` on the machine,
+no second process for the sandbox to think about, and the walker that knows what a `.gitignore`
+means. What this program writes is the *printer*, and the answer is shaped by two decisions:
+
+```text
+3 match(es) in 2 file(s) · 205 file(s) searched
+skipped: 1 file(s) a path rule says to ask about, 2 binary file(s)
+src/app/keys.rs:74:            KeyCode::Up if self.input.lines().iter().all(…
+src/ui/mod.rs:413:fn draw_search(frame: &mut Frame, app: &mut App, area: Rect) {
+```
+
+**It cuts at matches, not at bytes,** and says that it stopped. A byte limit takes the tail of the
+last file searched and leaves the model believing it has seen the rest, which is what makes an
+agent run the same search three times. A hundred matches is the ceiling, a line is cut at two
+hundred characters with a `…`, and when either fires the first line says so and says what to do
+about it. **And it accounts for what it did not read.** The count of files searched is what tells
+"the symbol is not there" from "nothing was opened" — the same distinction the context pane draws
+between an empty pane and a filtered one — and the `skipped:` line names every category: a path
+rule, a link out of reach, a binary file, one that could not be read.
+
+The rules it walks by, all of which are said in the tool's own description so the model is not
+guessing: what a `.gitignore` hides is skipped, `.git` always; hidden files **are** searched, since
+a model that cannot find `.github/workflows` concludes the file is not there; a symbolic link is
+read where it points inside the working directory and counted where it points out; and a path rule
+that is not `allow` stops a walk opening that file, because "ask me first" is not a thing a walk of
+nine hundred files can honour. The path the call *names* is judged the way `read`'s is, so
+`grep` in `.env` is a question exactly as reading it is.
+
+`glob` is the same walk with a different question: `**/*.rs` in, matching paths out, in
+alphabetical order. Both are deterministic — two identical searches give the same answer in the
+same order, which matters because the answer becomes a context item, and two items differing only
+in their order are two items nobody can diff and a budget pays for twice.
 
 ## 📎 putting a file in, and asking about it
 

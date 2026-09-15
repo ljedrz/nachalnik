@@ -75,7 +75,7 @@ words. `space` cycles how much of an item the model gets, `p` pins it, `e` chang
 `u` undoes. `/step` performs exactly one transition of the state machine, which is the only way to
 stand in `Ready`: the model has said what it wants to do, and none of it has run yet.
 
-Ordinary user code on top of the crate, and nothing else: two providers, eight tools - four it
+Ordinary user code on top of the crate, and nothing else: two providers, ten tools - six it
 always offers and four more behind `--introspect` - a policy, a compactor and the drawing. Not one of them is a privileged feature of the runtime. See
 [its readme](kamchatka/README.md) for the sandbox, the keys, and the rest.
 

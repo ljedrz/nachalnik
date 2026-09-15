@@ -1,4 +1,5 @@
-//! The three tools that touch a file, and the argument description all of them share.
+//! The three tools that touch one file, and the argument description every tool with a path
+//! shares.
 //!
 //! note: they run in this process with no shell in front of them, so what keeps them inside the
 //! working directory is their own code asking [`Reach`] rather than a kernel refusing an `open`.
@@ -16,10 +17,11 @@ use serde_json::json;
 
 use crate::tools::{Limits, arg};
 
-/// What the three file tools say about the path they take.
+/// What every tool here says about the path it takes.
 ///
-/// note: one string because it is one rule, and three copies of a sentence is three places to
-/// remember when the rule changes. The `~` clause is the half a model cannot work out for itself:
+/// note: one string because it is one rule, and a copy per tool is a place to remember when the
+/// rule changes - which is why `grep` and `glob` read it too, though neither opens the path it is
+/// handed the way these three do. The `~` clause is the half a model cannot work out for itself:
 /// these tools run in process with no shell in front of them, so nothing expands it, and the
 /// alternative to saying so is a path that quietly becomes a directory called `~` under the
 /// working directory. `Reach::allows` says it again at the point of failure, which is the half
@@ -30,7 +32,7 @@ use crate::tools::{Limits, arg};
 /// read as a path to try: two models answered a refusal about `~/notes.txt` by reading `./~`, a
 /// file neither of them wanted and neither of them had. A schema is read while choosing, which is
 /// when a rare spelling is worth knowing and nobody is about to act on it.
-const PATH_ARG: &str = "absolute, or relative to the working directory. `~` is not expanded - \
+pub(super) const PATH_ARG: &str = "absolute, or relative to the working directory. `~` is not expanded - \
                         there is no shell here - so write the path out or use one relative to the \
                         working directory. A file whose name really is `~` is `./~`";
 

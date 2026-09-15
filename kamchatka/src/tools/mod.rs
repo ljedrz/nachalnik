@@ -1,4 +1,4 @@
-//! The four tools, the permission policy and the compactor - all of it ordinary user code.
+//! The six tools, the permission policy and the compactor - all of it ordinary user code.
 //!
 //! note: The runtime ships none of this. It has no idea what a file is, it spawns no processes,
 //! and it never decides that something may run. What it provides is the shape: a [`Tool`] that
@@ -6,8 +6,8 @@
 //! happens, and a [`nachalnik::Compactor`] whose plan is applied in the open and can be undone.
 //!
 //! note: a file each, because they answer to three different traits and are read at three
-//! different moments. `files` and `shell` are the tools themselves, `policy` is what decides
-//! whether one of them runs, and `trim` is what happens when there is no room left for the
+//! different moments. `files`, `search` and `shell` are the tools themselves, `policy` is what
+//! decides whether one of them runs, and `trim` is what happens when there is no room left for the
 //! results.
 
 use std::{collections::BTreeMap, sync::Arc};
@@ -20,6 +20,7 @@ use serde_json::Value;
 
 mod files;
 mod policy;
+mod search;
 mod shell;
 mod trim;
 
@@ -29,7 +30,10 @@ pub use crate::tools::{
     trim::Trim,
 };
 
-use crate::tools::files::{Edit, Read, Write};
+use crate::tools::{
+    files::{Edit, Read, Write},
+    search::{Glob, Grep, Looking},
+};
 
 /// Reads the named argument, or explains which one is missing.
 fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, BoxError> {
@@ -67,12 +71,20 @@ impl Limits {
     /// because everything it says is a confirmation of something the caller just asked for, and a
     /// confirmation that long has gone wrong somewhere else.
     ///
+    /// note: `grep` and `glob` are in here for `/limit` to list and to raise, and neither is
+    /// normally what shapes their answer: both cut themselves at a number of *matches* or *paths*
+    /// and say so, which a byte limit cannot do - it takes the tail of the last file searched and
+    /// leaves nothing saying there was more. These are the backstop for the one line that is a
+    /// megabyte wide.
+    ///
     /// note: `context` is the one that chafes, because one number covers six actions of very
     /// different shapes - a context listing and a whole copy of this model's answer. `fork_result`
     /// leads with the answer for that reason, so what a limit takes there is the thinking.
     pub fn new() -> Self {
         Self(Arc::new(Mutex::new(BTreeMap::from([
             ("read".to_owned(), 32_000),
+            ("grep".to_owned(), 32_000),
+            ("glob".to_owned(), 32_000),
             ("shell".to_owned(), 32_000),
             ("context".to_owned(), 32_000),
             ("log".to_owned(), 32_000),
@@ -117,13 +129,27 @@ impl Limits {
     }
 }
 
-/// Returns the four tools a terminal agent needs to be worth talking to, all held to `reach`.
+/// Returns the six tools a terminal agent needs to be worth talking to, all held to `reach`.
+///
+/// note: the policy the two searching tools consult comes off the `shell` rather than being a
+/// parameter of its own, because a second handle passed in is a second chance for them to
+/// disagree - and two tools in one session honouring two different sets of path rules is the kind
+/// of wrong that nothing on the screen would show. There is one `Careful` in a session; this is
+/// the handle to it that is already here.
 pub fn builtin(shell: Shell, reach: Reach, limits: Limits) -> Vec<Arc<dyn Tool>> {
     let reach = Arc::new(reach);
+    let looking = Looking {
+        reach: reach.clone(),
+        policy: shell.policy.clone(),
+        limits: limits.clone(),
+    };
+
     vec![
         Arc::new(Read(reach.clone(), limits)),
         Arc::new(Write(reach.clone())),
         Arc::new(Edit(reach)),
+        Arc::new(Grep(looking.clone())),
+        Arc::new(Glob(looking)),
         Arc::new(shell),
     ]
 }

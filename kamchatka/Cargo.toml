@@ -77,6 +77,17 @@ anyhow = "1"
 # bytes a paid endpoint is charged for is not a trade worth making for forty lines
 base64 = "0.22"
 clap = { version = "4", features = ["derive", "env"] }
+# ripgrep's own engine, which is what `grep` and `glob` are made of: `grep-searcher` is the search
+# loop (line buffering, binary detection, context lines), `grep-regex` the matcher, `ignore` the
+# walker that knows what a `.gitignore` means, and `globset` the patterns both tools filter with.
+# Four crates rather than a search written here, and rather than running `rg`: the binary is these
+# libraries plus a printer, so linking them needs no `rg` on the machine and no second
+# process-spawning path for the sandbox to cover. The printer is the half this program wants of
+# its own - one that cuts at matches and says how many it did not show
+globset = "0.4"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+ignore = "0.4"
 # `event-stream` so that the terminal's keys arrive as a `Stream` and can be selected on
 # alongside the kernel's events; the same crossterm `ratatui` is built against
 crossterm = { version = "0.29", features = ["event-stream"], optional = true }

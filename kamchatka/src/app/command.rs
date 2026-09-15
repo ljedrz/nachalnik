@@ -711,14 +711,14 @@ impl App {
     /// tool this program ships - `context`, `log`, `setup` and `amend` included, which are off
     /// until `/introspect`. That is right, because a limit set before a tool arrives is in force
     /// when it does; what was wrong was saying it under "how much of each tool's output the model
-    /// is shown", over a session offering four tools and listing six. A row nobody has is marked,
+    /// is shown", over a session offering six tools and listing eight. A row nobody has is marked,
     /// for the reason `introspect::if_offered` exists on the other side of the screen: a name in
     /// an answer reads as a thing that is there.
     fn limit(&mut self, rest: &str) {
         let offered = self.kernel.tool_ids();
         let table = |limits: &Limits| {
             let rows = limits.all();
-            // as wide as the widest number, so four tools read `[1]` and a dozen do not jog the
+            // as wide as the widest number, so eight tools read `[1]` and a dozen do not jog the
             // column the figures are in
             let wide = rows.len().to_string().len() + 2;
             rows.into_iter()

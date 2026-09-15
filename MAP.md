@@ -39,8 +39,9 @@ the crate's own `kamchatka.json` is a starting point the suite holds to naming e
 `mcp.rs` (feature `mcp`: somebody else's server spawned and its tools installed), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
 and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that floats over one,
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
-fitting), `tools/` (the four tools - `files.rs` for the three that run in process and `shell.rs` for
-the one that does not - with `policy.rs` for `Careful` and `trim.rs` for the compactor),
+fitting), `tools/` (the six tools - `files.rs` for the three that open one file, `search.rs` for the two that
+walk a directory of them with ripgrep's engine, and `shell.rs` for the one that is a process - with
+`policy.rs` for `Careful` and `trim.rs` for the compactor),
 `introspect/` (the off-by-default tools an agent inspects and manages its own session with - one
 per file, named for the noun each is about: `context` reads the context, `log` the record beside
 it, `setup` what the session is running with, `amend` changes any of it - with `mod.rs` holding

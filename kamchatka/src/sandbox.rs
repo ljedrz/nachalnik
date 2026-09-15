@@ -381,10 +381,11 @@ impl fmt::Display for Sandbox {
 
 /// Where the tools may work, for the ones the kernel cannot confine.
 ///
-/// note: Landlock confines a *process*, and three of these four tools are not one - `read`,
-/// `write` and `edit` run on the terminal's own threads, and a ruleset applied there would confine
-/// the terminal. So they are held to the same boundary by the only thing that can hold them to it,
-/// which is their own code. That is weaker in kind: it is this program refusing rather than the
+/// note: Landlock confines a *process*, and five of these six tools are not one - `read`, `write`,
+/// `edit`, `grep` and `glob` run on the terminal's own threads (the last two on a thread that may
+/// block, which is still this process), and a ruleset applied there would confine the terminal. So
+/// they are held to the same boundary by the only thing that can hold them to it, which is their
+/// own code. That is weaker in kind: it is this program refusing rather than the
 /// kernel refusing, and a bug here is a way out where a bug in the ruleset is not. It is still the
 /// difference between a `read` tool that will hand a model `~/.ssh/id_rsa` and one that will not.
 #[derive(Debug, Clone)]

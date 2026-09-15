@@ -275,7 +275,7 @@ that took twenty of them is how that was found.
 ## 🧩 embedding it
 
 The program is a library with a loop on top, and both halves are yours. `wiring::Setup` assembles
-a session — the kernel, the policy, the four tools, the sandbox and the `App` around them — in the
+a session — the kernel, the policy, the six tools, the sandbox and the `App` around them — in the
 order they have to go in, and hands back the two receivers a loop needs:
 
 ```rust
