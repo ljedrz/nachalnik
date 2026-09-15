@@ -5,9 +5,15 @@
 //! list would select the item above the one under the cursor, which is the bug this feature is
 //! most likely to have.
 
+use std::sync::Arc;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::app::Tab;
-use nachalnik::ModelResponse;
+use nachalnik::{
+    ModelResponse,
+    test::{ConstTool, call},
+};
+use serde_json::json;
 
 use crate::harness::Harness;
 
@@ -113,6 +119,55 @@ async fn the_keys_and_the_screen_agree_about_which_context_row_is_which() {
         "selection {} is off the end of {} filtered row(s)",
         harness.app.selected,
         kept.len()
+    );
+}
+
+/// A context row can be filtered by the kind in its kind column.
+///
+/// note: `tool_result` rather than `assistant`, which is what the test above types and which
+/// proves nothing about this: `assistant` is also an assistant turn's *label*, so it matched
+/// before the kind was in the haystack at all. A tool result's label is the tool's name and its
+/// content is the output, so `tool_result` appears nowhere but the column - and the pane answered
+/// that there were none, on a session with one in it.
+///
+/// note: what is checked is the row that is kept as well as the count, because a fuzzy query over
+/// a haystack this permissive can be right about how many and wrong about which.
+#[tokio::test]
+async fn a_context_row_can_be_filtered_by_its_kind() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({ "where": "here" }))]),
+        ModelResponse::text("a bone"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("dig", "a bone")));
+    harness.send("dig").await;
+    harness.settle().await;
+    harness.tab(Tab::Context);
+
+    let all = harness.app.listed().len();
+    assert!(all >= 4, "a call, its result and two turns: {all}");
+
+    press(&mut harness, KeyCode::Char('/')).await;
+    type_in(&mut harness, "tool_result").await;
+
+    let kept = harness.app.listed();
+    assert_eq!(kept.len(), 1, "{:?}", kept.iter().map(|i| &i.label));
+    assert_eq!(kept[0].kind.name(), "tool_result");
+    assert_eq!(
+        kept[0].label, "dig",
+        "the tool result, not a turn about one"
+    );
+
+    // and the column it was matched on is not what the row is matched *only* on: the label and
+    // the content still work, or this would have traded one half of the haystack for the other
+    press(&mut harness, KeyCode::Esc).await;
+    press(&mut harness, KeyCode::Char('/')).await;
+    type_in(&mut harness, "bone").await;
+    assert!(
+        harness.app.listed().iter().any(|i| i.label == "dig"),
+        "the content is still searched"
     );
 }
 

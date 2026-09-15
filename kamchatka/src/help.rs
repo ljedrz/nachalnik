@@ -125,8 +125,10 @@ pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is 
                         says, and what it said before it was rewritten
     left / right        move between those, while one is open
     u / U               undo / redo the last change to the context
-    /                   filter the rows: fuzzy, over the label and the whole of
-                        what an item holds, not only the line the row shows
+    /                   filter the rows: fuzzy, over the label, the kind and the
+                        whole of what an item holds - so `tool_result` or
+                        `assistant` narrows the pane to those - and not only
+                        over the line the row has room to show
     esc                 clear the filter and close the box";
 
 /// The trace tab's own keys.

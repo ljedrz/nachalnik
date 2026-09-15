@@ -85,7 +85,7 @@ again.
 | <kbd>p</kbd> | pin it, so that the compactor is refused if it tries |
 | <kbd>e</kbd> | change what it **says** — a tool call is not something a turn says, so a turn that is only a call declines this and tells you why |
 | <kbd>f</kbd> | list only what the next request carries, or everything again |
-| <kbd>/</kbd> | filter the rows: fuzzy, over the whole of what an item holds — see below |
+| <kbd>/</kbd> | filter the rows: fuzzy, over the label, the kind and the whole of what an item holds — see below |
 | <kbd>enter</kbd> | read the whole of it — see below |
 | <kbd>←</kbd> / <kbd>→</kbd> | move between its pages, while it is open |
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
@@ -234,8 +234,12 @@ what you type filters the rows, fuzzily, counting what it found beside the query
 where the expectation of what fuzzy *feels* like comes from: `mreq` finds `model.requested`.
 
 A context row matches on the whole of what the item holds rather than the one line the row has
-space for — the filename you are looking for is almost never on the first line — and a trace row
-matches on the name, the detail and the clock, so an hour or a date finds what happened in it. The
+space for — the filename you are looking for is almost never on the first line — plus its label and
+its **kind**, so `tool_result` narrows a long pane to the tool results and `assistant` to what the
+model said, which is the question a pane of eighty rows is usually being put. The kind is matched
+whether or not the column is on screen; it is dropped below 84 columns, and a filter that found
+less on a narrow terminal would be the worse surprise. A trace row matches on the name, the detail
+and the clock, so an hour or a date finds what happened in it. The
 arrows and the paging stay with the pane, deliberately: the point of filtering eight hundred events
 down to nine is to read the nine, and a box that swallowed the scroll keys would mean closing the
 search, and so losing the filter, to look at what it found. <kbd>esc</kbd> closes it, and closing

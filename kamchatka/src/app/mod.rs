@@ -2214,8 +2214,25 @@ impl App {
     /// on the first line, and a search that only saw the preview would answer that it is not
     /// there. The row still shows its preview; the match is allowed to be about more than the row
     /// can show.
+    ///
+    /// note: and the kind, which is a column on the screen and was not in here - so `/tool_result`
+    /// filtered on the word appearing in somebody's *content* and called that the answer. It is
+    /// the column most worth filtering on, because it is the one question a pane of eighty rows
+    /// is usually being asked: which of these are the tool results, which are what the model said.
+    /// `ContextKind::name` rather than a second vocabulary, so what is typed is what the column
+    /// shows - and it is matched whether or not that column is drawn, since it is dropped below 84
+    /// columns and a filter that found less on a narrow terminal would be the worse surprise.
+    ///
+    /// note: the state is deliberately not in here. It is on the row as a mark rather than a word,
+    /// so there is nothing somebody would be typing to match it, and `/prune state:excluded` is
+    /// the language for asking that question.
     fn item_text(item: &ContextItem) -> String {
-        format!("{} {}", item.label, item.content.to_text())
+        format!(
+            "{} {} {}",
+            item.label,
+            item.kind.name(),
+            item.content.to_text()
+        )
     }
 
     /// The trace as the pane should show it: everything, or what the search left.

@@ -113,6 +113,21 @@ minor bump may break you.
   carries the `replaces` hint, so a context resumed from a session that superseded still draws in
   the order the request has. It is not the shape of a person fixing a sentence.
 
+- **<kbd>/</kbd> on the context tab matches the kind column too.** It searched an item's label and
+  the whole of its content, which is two of the three things on a row somebody would type at it -
+  so `tool_result` filtered on those words turning up in somebody's *content*, and a pane with a
+  tool result in it answered that there were none.
+
+  The kind is the column most worth filtering on, because it is the question a pane of eighty rows
+  is usually being put: which of these are the tool results, which are what the model said, where
+  did the files go. `ContextKind::name` rather than a second vocabulary, so what you type is what
+  the column shows - and it is matched whether or not that column is drawn, since it is dropped
+  below 84 columns and a filter that found less on a narrow terminal would be the worse surprise.
+
+  The state is deliberately still out. It is on the row as a mark rather than a word, so there is
+  nothing anybody would be typing to match it, and `/prune state:excluded` is the language that
+  already asks that question.
+
 ### fixed
 
 - **<kbd>e</kbd> on a turn that is nothing but a tool call opened an empty prompt.** Most
