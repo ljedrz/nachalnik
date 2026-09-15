@@ -875,7 +875,7 @@ impl App {
     /// event that carries content, which is the whole reason it does. `/save` writes that log
     /// beside the snapshot under the same name, so this looks for it there: `<name>.json` is
     /// what `-r` was handed, `<name>.jsonl` is what this reads. What it finds goes through the
-    /// same [`App::remember`] the live path uses, in the order it was recorded, so a resumed
+    /// same `App::remember` the live path uses, in the order it was recorded, so a resumed
     /// `v1` is the `v1` the session had - eight deep, and an undone rewrite deduped by the same
     /// line that dedupes it live.
     ///

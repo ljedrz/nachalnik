@@ -25,7 +25,7 @@ const HEARTBEAT: Duration = Duration::from_millis(120);
 /// read it.
 ///
 /// note: here rather than where it is drawn, because the line is written here - see the `status`
-/// match in [`Shell::call`], which is the only thing that produces one. A colour worked out at
+/// match in [`Shell::invoke`], which is the only thing that produces one. A colour worked out at
 /// the other end from a string it does not own is a second opinion about what a result means,
 /// and the two drift the first time the wording changes. This is one opinion with two readers.
 ///
