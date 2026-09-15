@@ -105,6 +105,23 @@ minor bump may break you.
   `panic = "abort"` would shave more and is deliberately not set: a panicking tool is reported and
   the turn carries on, and aborting would take the session with it.
 
+- **A permission question draws an edit as a diff.** `edit` is the call where saying yes to the
+  wrong thing is hardest to notice: two blocks of near-identical text, one above the other, and
+  which of them is on its way out was told only by the three-letter word at the top of each. The
+  value of `old` is now red and the value of `new` green — the colours a fenced diff already gets
+  on the chat tab — so the pair reads as what it is before a word of it has been read.
+
+  The value and not the name, because what is green should be exactly the text that would end up
+  in the file; a green `new:` would be the panel labelling its own structure in the vocabulary it
+  has just borrowed for the contents. By argument name rather than by tool, so an MCP tool whose
+  arguments are called `old` and `new` reads the same way, and a tool that names them something
+  else is drawn as it always was.
+
+  The terminal's own red and green rather than a hex pair, for the reason the highlighter gives:
+  this program does not know what is behind them. That the panel can already be red is not a
+  clash — the border's red says nobody is at the keys, and this one arrives with a green beside it
+  and a pair of colours is what a diff is. Nothing else in the question is either colour.
+
 ### changed
 
 - **An edit at the terminal rewrites the item instead of superseding it.** <kbd>e</kbd> committed

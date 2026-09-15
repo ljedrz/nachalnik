@@ -13,6 +13,7 @@ use nachalnik::{
     Capability, Config, Content, ContextItem, ContextState, Event, ModelInfo, ModelResponse,
     test::{ConstTool, call},
 };
+use ratatui::style::Color;
 use serde_json::json;
 
 use crate::harness::Harness;
@@ -540,4 +541,36 @@ async fn a_repeated_failure_is_said_every_time_it_happens() {
         "three failures, three lines, not six: {}",
         harness.flat()
     );
+}
+
+/// An edit's two arguments are told apart by colour rather than by reading them.
+///
+/// note: both shapes `readable` draws are here, because an edit is where they meet: a value with
+/// newlines in it is indented under its name, and a short one shares the line with it. The names
+/// stay uncoloured in either shape, so that what is green is exactly what the file would end up
+/// holding.
+#[tokio::test]
+async fn what_an_edit_takes_out_and_what_it_puts_in_are_a_diff_s_two_colours() {
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "edit",
+        json!({
+            "path": "greet.py",
+            "old": "def main():\n    print(\"ancient\")\n",
+            "new": "print(\"modern\")",
+        }),
+    )])]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("edit", "done").with_capabilities([Capability::Edit]),
+    ));
+
+    harness.send("change it").await;
+    harness.settle().await;
+
+    // the JSON on the transcript above writes its quotes as `\"`, so these needles are the
+    // question's own lines and nothing else
+    assert_eq!(harness.style_of("print(\"ancient\")").0, Color::Red);
+    assert_eq!(harness.style_of("print(\"modern\")").0, Color::Green);
+    assert_eq!(harness.style_of("old:").0, Color::Reset);
+    assert_eq!(harness.style_of("path: greet.py").0, Color::Reset);
 }

@@ -16,7 +16,7 @@ use ratatui::{
 
 use crate::{
     app::{App, Focus, Overlay, Page, Tab},
-    ui::text::wrapped,
+    ui::text::{refit, wrapped},
 };
 
 use super::{Scrolled, faint, quiet, scrollbar};
@@ -47,7 +47,7 @@ fn question_parts(
     app: &App,
     columns: usize,
     cut: bool,
-) -> Option<(Vec<String>, Vec<String>, Vec<String>)> {
+) -> Option<(Vec<String>, Vec<Line<'static>>, Vec<String>)> {
     let request = app.asked()?;
     let waiting = app.kernel.pending_permissions().len();
 
@@ -105,10 +105,14 @@ fn question_parts(
     // eliding item 22 was unanswerable while the thing asking it covered the list saying what 22
     // is. It is a convenience now - the context tab is a keystroke away and stays that way - and
     // still worth having, because the answer is usually right here
-    let mut shown = readable(&request.args);
+    let mut shown = readable(&request.args, columns);
     let about = app.about(&request);
     if !about.is_empty() {
-        shown.push_str(&format!("{}\n", about.join("\n")));
+        shown.extend(
+            about
+                .iter()
+                .flat_map(|line| refit(&Line::raw(line.clone()), columns)),
+        );
     }
 
     Some((
@@ -116,14 +120,17 @@ fn question_parts(
         // `readable` puts a blank line after every field, so the last of them is a row of nothing
         // at the bottom of the panel - and a row of nothing that does not fit is a panel saying
         // there is more to read and then paging down to a blank
-        trimmed(wrapped(&shown, columns, "")),
+        trimmed(shown),
         wrapped(&answers, columns, ""),
     ))
 }
 
 /// The same lines, without the empty ones at the end.
-fn trimmed(mut lines: Vec<String>) -> Vec<String> {
-    while lines.last().is_some_and(|line| line.trim().is_empty()) {
+fn trimmed(mut lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
+    while lines
+        .last()
+        .is_some_and(|line| line.spans.iter().all(|span| span.content.trim().is_empty()))
+    {
         lines.pop();
     }
 
@@ -219,17 +226,15 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
         Constraint::Length(bottom),
     ])
     .areas(inner);
+    let total = args.len();
     let at = app
         .question_scroll
-        .min(args.len().saturating_sub(middle.height as usize));
+        .min(total.saturating_sub(middle.height as usize));
 
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
     frame.render_widget(Paragraph::new(head.join("\n")), above);
-    frame.render_widget(
-        Paragraph::new(args.join("\n")).scroll((at as u16, 0)),
-        middle,
-    );
+    frame.render_widget(Paragraph::new(args).scroll((at as u16, 0)), middle);
     frame.render_widget(Paragraph::new(foot.join("\n")), below);
 
     scrollbar(
@@ -238,7 +243,7 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
         style,
         Scrolled {
             position: at,
-            total: args.len(),
+            total,
             area: middle,
         },
     );
@@ -252,27 +257,53 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
 /// written out in the middle of it, which is exactly the argument somebody needs to read most
 /// carefully. Multi-line strings are put back into lines here, and `[i]` still shows the JSON
 /// verbatim - readable by default, exact on request, and neither one hiding the other.
-fn readable(args: &serde_json::Value) -> String {
+///
+/// note: `edit`'s two arguments are drawn in a diff's colours, because that is the call where two
+/// blocks of near-identical text sit one above the other and the whole question is which of them
+/// is on its way out. The value is coloured and the field name is not, so what is green is exactly
+/// the text that will be in the file. The colours are the ones a fenced diff already gets in
+/// `markdown`, and they are the terminal's own for the reason given there - this program does not
+/// know what is behind them. The red here is a pair with the green and reads as one; the border's
+/// red is about whether anybody is at the keys, and nothing else in the panel is either colour.
+fn readable(args: &serde_json::Value, columns: usize) -> Vec<Line<'static>> {
     let Some(fields) = args.as_object() else {
-        return serde_json::to_string_pretty(args).unwrap_or_default();
+        return serde_json::to_string_pretty(args)
+            .unwrap_or_default()
+            .lines()
+            .flat_map(|line| refit(&Line::raw(line.to_owned()), columns))
+            .collect();
     };
     if fields.is_empty() {
-        return "(no arguments)\n\n".to_owned();
+        return vec![Line::raw("(no arguments)")];
     }
 
-    let mut out = String::new();
+    let mut out = Vec::new();
     for (name, value) in fields {
+        let written = match name.as_str() {
+            "old" => Style::default().fg(Color::Red),
+            "new" => Style::default().fg(Color::Green),
+            _ => Style::default(),
+        };
         match value {
             serde_json::Value::String(text) if text.contains('\n') => {
-                out.push_str(&format!("{name}:\n"));
+                out.extend(refit(&Line::raw(format!("{name}:")), columns));
                 for line in text.lines() {
-                    out.push_str(&format!("  {line}\n"));
+                    out.extend(refit(
+                        &Line::from(Span::styled(format!("  {line}"), written)),
+                        columns,
+                    ));
                 }
             }
-            serde_json::Value::String(text) => out.push_str(&format!("{name}: {text}\n")),
-            other => out.push_str(&format!("{name}: {other}\n")),
+            serde_json::Value::String(text) => out.extend(refit(
+                &Line::from(vec![
+                    Span::raw(format!("{name}: ")),
+                    Span::styled(text.clone(), written),
+                ]),
+                columns,
+            )),
+            other => out.extend(refit(&Line::raw(format!("{name}: {other}")), columns)),
         }
-        out.push('\n');
+        out.push(Line::default());
     }
 
     out

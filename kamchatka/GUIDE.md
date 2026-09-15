@@ -479,6 +479,11 @@ with <kbd>pgup</kbd> and <kbd>pgdn</kbd> moving them; the answers stay where the
 carrying a rewritten tool result is as long as the result was, and a question whose answers had
 been pushed off the bottom of the screen is one nobody can answer.
 
+An `edit` is drawn as a diff, since it is the call where two blocks of near-identical text sit one
+above the other and the whole question is which of them is on its way out: the value of `old` is
+red and the value of `new` is green. The names stay in the panel's own colour, so what is green is
+exactly the text that would end up in the file.
+
 Typing does not answer it, and it never takes the keys off you. A question arrives on its own
 schedule, in the middle of whatever you happen to be typing, and its keys are ordinary letters —
 `a` grants a capability for the rest of the session and is also the third letter of "what", which
