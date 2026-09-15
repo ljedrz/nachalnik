@@ -247,7 +247,7 @@ async fn too_many_matches_stop_and_say_they_stopped() {
 
     let said = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
     assert!(
-        said.starts_with("100 match(es), in 1 file(s) · that is as many as this answers with"),
+        said.starts_with("100 match(es) in 1 file(s) · that is as many as this answers with"),
         "{said}"
     );
     assert!(said.contains("there may be more"), "{said}");
@@ -358,4 +358,111 @@ async fn finding_things_costs_read_and_not_shell() {
             spec.id
         );
     }
+}
+
+/// `files_only` answers where a pattern lives, for a fraction of what the lines cost.
+///
+/// note: the live run this came from. A model opened with `grep tools` over the whole tree, got a
+/// hundred lines and 3,216 tokens of changelog prose describing states the code has left, and
+/// spent the rest of its turn chasing a sentence it found there. The lines were the wrong answer
+/// to the question it was asking, which was *where is this registered*.
+#[tokio::test]
+async fn files_only_says_where_a_pattern_lives_rather_than_what_it_matched() {
+    let dir = tree("grep-files-only");
+    // one file matches twice and one once, so the order is a fact rather than a coincidence
+    put(
+        &dir,
+        "src/app/keys.rs",
+        "// the Kernel is next door\nfn go() {}\n",
+    );
+
+    let said = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "Kernel", "files_only": true }),
+    )
+    .await;
+
+    assert_eq!(
+        said,
+        "2 file(s) match, 3 match(es) in all · 3 file(s) searched\nsrc/kernel.rs: 2\nsrc/app/keys.rs: 1",
+        "most matches first, and not one line of what they said"
+    );
+
+    // and it is the same search: the lines are there when they are asked for
+    let lines = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
+    assert!(
+        lines.contains("src/kernel.rs:1:pub struct Kernel;"),
+        "{lines}"
+    );
+}
+
+/// The saving is the point, and it is what the live run measured: a broad pattern cost 3,216
+/// tokens of lines for a question the file names would have answered.
+#[tokio::test]
+async fn files_only_costs_a_fraction_of_what_the_lines_cost() {
+    let dir = tree("grep-files-only-size");
+    let many: String = (0..60).map(|n| format!("let x{n} = Kernel;\n")).collect();
+    put(&dir, "src/many.rs", &many);
+
+    let listed = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "Kernel", "files_only": true }),
+    )
+    .await;
+    let lines = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
+
+    assert_eq!(
+        listed.lines().count(),
+        4,
+        "a header and three files: {listed}"
+    );
+    assert!(
+        listed.len() * 4 < lines.len(),
+        "{} bytes against {}",
+        listed.len(),
+        lines.len()
+    );
+    // and the file it came to find is at the top, because that is where the question points
+    assert!(
+        listed
+            .lines()
+            .nth(1)
+            .is_some_and(|line| line == "src/many.rs: 60"),
+        "{listed}"
+    );
+}
+
+/// What `files_only` skips and counts is what an ordinary search does.
+#[tokio::test]
+async fn files_only_honours_the_path_rules_like_any_other_search() {
+    let dir = tree("grep-files-only-barred");
+    put(&dir, ".env", "TOKEN=Kernel-of-a-secret\n");
+
+    let said = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "Kernel", "files_only": true }),
+    )
+    .await;
+    assert!(!said.contains(".env"), "{said}");
+    assert!(
+        said.contains("skipped: 1 file(s) a path rule says to ask about"),
+        "{said}"
+    );
+}
+
+/// A file with nothing in it for the pattern is not a file that matched.
+#[tokio::test]
+async fn files_only_says_which_empty_it_is_too() {
+    let dir = tree("grep-files-only-nothing");
+    let said = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "Compactor", "files_only": true }),
+    )
+    .await;
+
+    assert_eq!(said, "no matches for `Compactor` in . · 3 file(s) searched");
 }

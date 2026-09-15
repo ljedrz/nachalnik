@@ -562,7 +562,23 @@ src/ui/mod.rs:413:fn draw_search(frame: &mut Frame, app: &mut App, area: Rect) {
 last file searched and leaves the model believing it has seen the rest, which is what makes an
 agent run the same search three times. A hundred matches is the ceiling, a line is cut at two
 hundred characters with a `…`, and when either fires the first line says so and says what to do
-about it. **And it accounts for what it did not read.** The count of files searched is what tells
+about it.
+
+**`files_only` is the first thing it suggests**, and it is what `grep -l` is for: the files that
+matched and how many each has, most first, instead of the lines. Measured against this repository,
+`tools` as a pattern costs 3,223 tokens of lines — and because the walk is alphabetical and the cap
+fires early, all hundred of them come from files beginning with `.github/`, never reaching the one
+the question was about. The same search with `files_only` costs 894 tokens, sees all 205 files, and
+puts `kernel/mod.rs` and `command.rs` near the top where they can be read properly:
+
+```text
+119 file(s) match, 689 match(es) in all · 205 file(s) searched
+kamchatka/CHANGELOG.md: 57
+nachalnik/src/kernel/mod.rs: 21
+kamchatka/src/app/command.rs: 20
+```
+
+**And it accounts for what it did not read.** The count of files searched is what tells
 "the symbol is not there" from "nothing was opened" — the same distinction the context pane draws
 between an empty pane and a filtered one — and the `skipped:` line names every category: a path
 rule, a link out of reach, a binary file, one that could not be read.

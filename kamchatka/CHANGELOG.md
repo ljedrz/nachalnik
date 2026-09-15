@@ -9,6 +9,25 @@ minor bump may break you.
 
 ### added
 
+- **`grep` answers with the files that matched, when that is the question.** `files_only` is what
+  `grep -l` is for: every file that matched and how many matches it has, most first, instead of the
+  lines. Found by watching a live model open with `grep tools` over the whole tree and spend its
+  entire turn on what came back.
+
+  Measured against this repository, that pattern costs **3,223 tokens** of lines - and because the
+  walk is alphabetical and the cap fires at a hundred matches, every one of them comes from files
+  beginning with `.github/`. It never reaches the file the question was about. The same search with
+  `files_only` costs **894**, sees all 205 files, and puts `kernel/mod.rs` and `command.rs` near the
+  top. So a capped answer now names `files_only` first among the four things to try, because it is
+  the one that answers the situation rather than working around it.
+
+  Ranked by how much each file matched rather than by path, which is the one thing here that does
+  not answer in walk order: the question is *where does this live*, and the file with twelve
+  matches is the answer to it far more often than the file with one. The path breaks a tie, so it
+  is still the same answer twice for the same tree. Everything else is the search it already was -
+  the same walk, the same skips, the same path rules, the same first line accounting for what was
+  not read.
+
 - **`/note`: something the model should know, without asking it to answer.** Everything a person
   could say to a model went in as a *message*, and a message starts a turn - so telling it a fact
   it will need in four turns' time cost a request, an answer, and an "understood" nobody wanted.
@@ -299,6 +318,24 @@ minor bump may break you.
   already asks that question.
 
 ### fixed
+
+- **A session wrote its record over another session's, twice over.** The record is named for the
+  session, and a session's name is not unique enough to be a filename. Two runs started inside one
+  second share a stamp, so the second to finish replaced the first - found by starting two and
+  reading one back, where a 112-record log had become a 12-record one. And the commoner case is
+  worse: **a resumed session keeps the name of the session it resumed**, which is right for what a
+  name is for and meant that `-r`, the line this program prints at the end of every run, wrote over
+  the very file it had just read. The snapshot survived that by luck, since a resumed context
+  renders to nearly the same bytes; the log did not, and the log is the half that says what
+  happened rather than where things ended up. Both were silent, and both printed a path claiming a
+  record had been written.
+
+  The name stays what it is and the *file* moves: `…Z-2.jsonl` beside `…Z.jsonl`, which sorts next
+  to its sibling and reads as the second sitting of one session. Renaming the session instead would
+  put a process identifier in every filename to fix something rare, and the name is what a fork
+  derives from and what the trace shows. The claim is `create_new` rather than a question about
+  whether the file is there, because between asking and writing is exactly where the first of those
+  two collisions lives.
 
 - **A turn's thinking was held back by the endpoint and counted by nobody.** A session against any
   OpenAI-compatible endpoint holds every assistant turn's reasoning and sends none of it - that

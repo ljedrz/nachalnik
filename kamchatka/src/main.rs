@@ -583,16 +583,60 @@ fn record(app: &App) -> Result<(usize, String, String)> {
         let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
     }
 
-    let stem = dir.join(app.kernel.session_name());
-    let (log, state) = (
-        format!("{}.jsonl", stem.display()),
-        format!("{}.json", stem.display()),
-    );
+    let (log, state) = unclaimed(&dir.join(app.kernel.session_name()))?;
     let records = app
         .write_session(&log, &state)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     Ok((records, log, state))
+}
+
+/// A `.jsonl` and `.json` pair under `stem` that no other session has written.
+///
+/// note: the name is a session's own, and a session's own name is not unique enough to be a
+/// filename. Two of them collide in two ways, and both were silent. Two runs started inside one
+/// second share a stamp, so the second to finish wrote over the first - the case this was written
+/// for, found by starting two and reading one back. And **a resumed session keeps the name of the
+/// session it resumed**, which is right for what a name is for and means `-r` wrote over the very
+/// file it had just read: a hundred and twelve records of what happened replaced by the twelve of
+/// a sitting that did nothing. The snapshot survived that one by luck, because a resumed context
+/// renders to nearly the same bytes; the log did not, and the log is the half that says what
+/// happened rather than where things ended up.
+///
+/// note: so the name stays what it is and the *file* moves - `…Z-2.jsonl` beside `…Z.jsonl`,
+/// which sorts next to its sibling and reads as the second sitting of one session. Renaming the
+/// session instead would put a process identifier in every filename to fix something rare, and
+/// the name is what `#fork` derives from and what the trace shows.
+///
+/// note: `create_new` rather than asking whether the file is there, because between asking and
+/// writing is exactly where the first of those two collisions lives. The `.json` is checked
+/// before the `.jsonl` is claimed, so a suffix this passes over leaves nothing of its own behind.
+fn unclaimed(stem: &std::path::Path) -> Result<(String, String)> {
+    // bounded, so that a directory nothing can be written in is an error rather than a loop
+    (1..1_000)
+        .find_map(|nth| {
+            let stem = match nth {
+                1 => stem.display().to_string(),
+                nth => format!("{}-{nth}", stem.display()),
+            };
+            let (log, state) = (format!("{stem}.jsonl"), format!("{stem}.json"));
+            if std::path::Path::new(&state).exists() {
+                return None;
+            }
+
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&log)
+                .ok()
+                .map(|_| (log, state))
+        })
+        .with_context(|| {
+            format!(
+                "could not find an unused name for the record beside {}",
+                stem.display()
+            )
+        })
 }
 
 /// Takes the terminal, draws until there is nothing left to draw, and gives it back.
@@ -683,6 +727,44 @@ async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A session writes beside a record rather than over it, however it came by the same name.
+    ///
+    /// note: the second half is the case that matters, and it is not the exotic one: `-r` is the
+    /// line this program prints at the end of every run, and a resumed session keeps the name of
+    /// the session it resumed. Every resume wrote over the log it had just read.
+    #[test]
+    fn a_record_never_writes_over_one_that_is_already_there() {
+        // note: not `tests/common`'s `scratch`, which builds under `CARGO_TARGET_TMPDIR` -
+        // cargo hands that to integration tests and not to a unit test inside a binary. One
+        // fixed name, emptied on the way in, so nothing accumulates either
+        let dir = std::env::temp_dir().join("kamchatka-unclaimed");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a directory to work in");
+        let stem = dir.join("2026-09-15T13-34-29Z");
+
+        let (log, state) = unclaimed(&stem).expect("nothing is there yet");
+        assert!(log.ends_with("2026-09-15T13-34-29Z.jsonl"), "{log}");
+        assert!(state.ends_with("2026-09-15T13-34-29Z.json"), "{state}");
+        // what a session that got this far would leave behind
+        std::fs::write(&log, "one").expect("written");
+        std::fs::write(&state, "{}").expect("written");
+
+        // the same name again - two runs in one second, or a resume - lands beside it
+        let (again, beside) = unclaimed(&stem).expect("a second name");
+        assert!(again.ends_with("2026-09-15T13-34-29Z-2.jsonl"), "{again}");
+        assert!(beside.ends_with("2026-09-15T13-34-29Z-2.json"), "{beside}");
+        assert_eq!(
+            std::fs::read_to_string(&log).expect("still there"),
+            "one",
+            "the first record is untouched"
+        );
+
+        // and the claim is the file itself, so a third does not get the second's name back
+        std::fs::write(&beside, "{}").expect("written");
+        let (third, _) = unclaimed(&stem).expect("a third name");
+        assert!(third.ends_with("2026-09-15T13-34-29Z-3.jsonl"), "{third}");
+    }
 
     /// The four ways a run can end up with or without a screen.
     ///

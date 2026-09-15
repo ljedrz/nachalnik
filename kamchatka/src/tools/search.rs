@@ -206,15 +206,25 @@ struct Lines {
     named: String,
     /// The lines, formatted as they will be read.
     kept: Vec<String>,
-    /// How many of them are matches rather than context.
+    /// How many matches this file had, which is not how many lines were kept.
     matched: usize,
-    /// How many more matches there is room for.
-    room: usize,
+    /// How many more matches there is room to keep a line for; `None` keeps none of them and
+    /// counts every one, which is what `files_only` wants.
+    room: Option<usize>,
     /// Set where the file turned out to be binary, which discards the rest.
     binary: bool,
 }
 
 impl Lines {
+    /// Whether the searcher should keep going through this file.
+    ///
+    /// note: counting to the end of a file is the point of `files_only`, so a sink keeping no
+    /// lines is never full. One keeping them stops when it has as many as the answer has room
+    /// for, which is what makes a hundred matches cost a hundred lines and not a file's worth.
+    fn wanted(&self) -> bool {
+        self.room.is_none_or(|room| room > 0)
+    }
+
     /// Formats one line the way `grep -n` does: `:` for a match, `-` for the context around it.
     fn keep(&mut self, number: Option<u64>, bytes: &[u8], sep: char) {
         let text = String::from_utf8_lossy(bytes);
@@ -231,16 +241,20 @@ impl Sink for Lines {
 
     fn matched(&mut self, _searcher: &Searcher, mat: &SinkMatch<'_>) -> Result<bool, io::Error> {
         self.matched += 1;
-        self.room = self.room.saturating_sub(1);
-        self.keep(mat.line_number(), mat.bytes(), ':');
+        if let Some(room) = self.room.as_mut() {
+            *room = room.saturating_sub(1);
+            self.keep(mat.line_number(), mat.bytes(), ':');
+        }
 
-        Ok(self.room > 0)
+        Ok(self.wanted())
     }
 
     fn context(&mut self, _searcher: &Searcher, ctx: &SinkContext<'_>) -> Result<bool, io::Error> {
-        self.keep(ctx.line_number(), ctx.bytes(), '-');
+        if self.room.is_some() {
+            self.keep(ctx.line_number(), ctx.bytes(), '-');
+        }
 
-        Ok(self.room > 0)
+        Ok(self.wanted())
     }
 
     /// note: what a binary file matched on is thrown away rather than reported as
@@ -289,7 +303,7 @@ impl Tool for Grep {
                      answer says how many of each. Hidden files *are* searched. At most \
                      {MATCHES} matches come back, and a line wider than {WIDTH} characters is cut \
                      with a `…`; when the search stops early the answer says so, and a narrower \
-                     pattern or a path is what gets the rest."
+                     pattern, a path or `files_only` is what gets the rest."
                 ),
             )
             .with_schema(json!({
@@ -322,6 +336,15 @@ impl Tool for Grep {
                         "description": "lines to show either side of each match, up to 10; none \
                                         by default. They are marked with a `-` where a match is \
                                         marked with a `:`",
+                    },
+                    "files_only": {
+                        "type": "boolean",
+                        "description": "answer with the files that match and how many matches \
+                                        each has - `path: 12`, most first - instead of the lines \
+                                        themselves, which is what `grep -l` is for. Reach for it \
+                                        when the pattern is a common word or you do not know \
+                                        where something lives: it costs a fraction of the tokens \
+                                        and names the file to search properly next",
                     },
                 },
                 "required": ["pattern"],
@@ -363,6 +386,7 @@ impl Tool for Grep {
         };
 
         let context = call.args["context"].as_u64().unwrap_or(0).min(10) as usize;
+        let files_only = call.args["files_only"].as_bool().unwrap_or(false);
         let barred = self.0.barred();
         let reach = self.0.reach.clone();
         let workdir = reach.workdir.clone();
@@ -389,6 +413,9 @@ impl Tool for Grep {
                 full: false,
                 stopped: false,
             };
+            // what `files_only` is collecting instead of lines, kept apart so that it can be put
+            // in the order that answers the question it is asked for
+            let mut matching: Vec<(String, usize)> = Vec::new();
 
             for entry in walk(&root) {
                 if sink.is_interrupted() {
@@ -434,7 +461,7 @@ impl Tool for Grep {
 
                 let mut lines = Lines {
                     named: path,
-                    room: MATCHES - found.matches,
+                    room: (!files_only).then(|| MATCHES - found.matches),
                     ..Lines::default()
                 };
                 found.searched += 1;
@@ -455,24 +482,53 @@ impl Tool for Grep {
 
                 // every line reaches the screen as it is found, the way a command's output does:
                 // a search of a large tree is then visible while it runs rather than at the end
-                for line in &lines.kept {
-                    sink.push(format!("{line}\n"));
+                match files_only {
+                    true => sink.push(format!("{}: {}\n", lines.named, lines.matched)),
+                    false => {
+                        for line in &lines.kept {
+                            sink.push(format!("{line}\n"));
+                        }
+                    }
                 }
                 found.matches += lines.matched;
                 found.files += 1;
-                found.lines.extend(lines.kept);
+                match files_only {
+                    true => matching.push((lines.named, lines.matched)),
+                    false => found.lines.extend(lines.kept),
+                }
 
-                if found.matches >= MATCHES {
+                // the cap is on whichever thing the answer is made of: lines of one file after
+                // another, or one line per file
+                let full = match files_only {
+                    true => found.files >= PATHS,
+                    false => found.matches >= MATCHES,
+                };
+                if full {
                     found.full = true;
                     break;
                 }
+            }
+
+            // note: by how much each file matched rather than by path, which is the one place
+            // here that does not answer in walk order. The question `files_only` is asked is
+            // *where does this live*, and the file with twelve matches is the answer to it far
+            // more often than the file with one. The path breaks a tie, so it is still the same
+            // answer twice for the same tree
+            if files_only {
+                matching.sort_by(|(a, count), (b, than)| than.cmp(count).then_with(|| a.cmp(b)));
+                found.lines = matching
+                    .into_iter()
+                    .map(|(path, count)| format!("{path}: {count}"))
+                    .collect();
             }
 
             found
         })
         .await?;
 
-        Ok(ToolOutput::new(report(&found, &pattern, &asked)))
+        Ok(ToolOutput::new(report(
+            &found, &pattern, &asked, files_only,
+        )))
     }
 }
 
@@ -481,8 +537,14 @@ impl Tool for Grep {
 /// note: above them, because an output limit cuts from the end - the same thing `shell` learnt
 /// about its exit line. A summary under a hundred matches is the first thing a limit takes, and
 /// what it leaves is a list of lines with nothing saying how many more there were.
-fn report(found: &Found, pattern: &str, path: &str) -> String {
+fn report(found: &Found, pattern: &str, path: &str, files_only: bool) -> String {
     let files = format!("{} file(s) searched", found.searched);
+    // what ran out, named as the thing the caller asked for: a search answering with lines fills
+    // up with lines, and one answering with files fills up with files
+    let full = match files_only {
+        true => "that is as many file(s) as this answers with",
+        false => "that is as many as this answers with",
+    };
     let head = match (found.stopped, found.matches) {
         (true, 0) => format!("stopped before it found anything · {files} so far"),
         (true, n) => format!("stopped before it finished · {n} match(es) so far, {files}"),
@@ -491,15 +553,28 @@ fn report(found: &Found, pattern: &str, path: &str) -> String {
         // a true sentence and one that is usually true: the room can run out on the last match in
         // the tree. What the model is told is the fact it can act on - that the search stopped
         // early - and nothing beyond it
+        // note: `files_only` is named first of the four, because it is the one that answers the
+        // situation rather than working around it. A capped line answer is filled from the start
+        // of the alphabet - measured here, a broad pattern came back entirely from `.github/`
+        // and never reached the file the question was about - and `files_only` sees the whole
+        // tree for a fraction of the tokens
         (false, n) if found.full => format!(
-            "{n} match(es), in {} file(s) · that is as many as this answers with, so there may be \
-             more: narrow the pattern, give a path, or pass a `glob`",
-            found.files
+            "{} · {full}, so there may be more: ask for `files_only` to see where they are, or \
+             narrow the pattern, give a path, or pass a `glob`",
+            counted(n, found.files, files_only)
         ),
-        (false, n) => format!("{n} match(es) in {} file(s) · {files}", found.files),
+        (false, n) => format!("{} · {files}", counted(n, found.files, files_only)),
     };
 
     said(head, found.skipped.line(), &found.lines)
+}
+
+/// What a search found, counted the way the caller asked for it.
+fn counted(matches: usize, files: usize, files_only: bool) -> String {
+    match files_only {
+        true => format!("{files} file(s) match, {matches} match(es) in all"),
+        false => format!("{matches} match(es) in {files} file(s)"),
+    }
 }
 
 /// The three parts of either answer, with nothing left dangling where one of them is empty.
