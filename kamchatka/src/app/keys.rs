@@ -67,6 +67,11 @@ impl App {
             KeyCode::Enter => {
                 self.input.insert_newline();
             }
+            // an empty prompt has nothing to move a cursor around in and nothing to lose, so
+            // `up` there is the one that puts the last line back. Anywhere else it is still the
+            // key that moves the cursor and scrolls at the top, which is what stops this from
+            // taking a gesture away: nothing that used to do something does something else now
+            KeyCode::Up if self.input.lines().iter().all(|line| line.is_empty()) => self.put_back(),
             // at the edges of the prompt, the arrows go on to the conversation
             KeyCode::Up if self.input.cursor().0 == 0 => self.scroll_by(-1),
             KeyCode::Down if self.input.cursor().0 + 1 == self.input.lines().len() => {
@@ -77,6 +82,42 @@ impl App {
             _ => {
                 self.input.input(key);
             }
+        }
+    }
+
+    /// Puts the last line back in the prompt: the message still waiting, if one is, and otherwise
+    /// a copy of the last line that was sent.
+    ///
+    /// note: two things reachable by one key, because to somebody pressing it they are one thing -
+    /// *the last message* - and which of the two it is is not something to have to know. The
+    /// difference is what happens to it: a message that is still waiting is **taken** out of the
+    /// queue, since leaving it there would mean editing a copy of something that is still going to
+    /// be sent as it was; one that has already gone is **copied**, since it is in the context and
+    /// this is a way to read it back or send it again.
+    ///
+    /// note: one deep, deliberately. A prompt that walked back through a session is a second
+    /// history beside the context tab, which already holds every message with more said about each
+    /// of them than a prompt could show - and the thing that is actually wanted often enough to
+    /// need a key is the last one.
+    ///
+    /// note: nothing is said out loud for the copy and a line is said for the take, because only
+    /// one of them changes what the session is about to do. A message that stops waiting stops
+    /// being drawn at the end of the conversation, and a row vanishing with no account of why is
+    /// the thing this program does not do.
+    pub(super) fn put_back(&mut self) {
+        let waiting = self.typed_ahead.take();
+        let Some(line) = waiting.clone().or_else(|| self.last_sent.clone()) else {
+            return;
+        };
+
+        self.clear_input();
+        self.input.insert_str(line);
+        self.input.move_cursor(CursorMove::End);
+        if waiting.is_some() {
+            self.say(
+                Speaker::Note,
+                "taken back out of the queue; nothing is waiting now, and `enter` sends it again",
+            );
         }
     }
 

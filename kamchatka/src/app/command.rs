@@ -34,6 +34,12 @@ impl App {
         // whatever this line turns into, the time before it was somebody deciding what to type.
         // The next line the trace draws is the one that gap belongs to
         self.acted = true;
+        // and it is the line `up` puts back, whatever it turns out to be. Kept here rather than
+        // read off the newest user item, because the two are not the same thing: a command never
+        // becomes an item, and an item can be rewritten afterwards - so the item would answer
+        // "what does the context say now", and what somebody pressing `up` is after is the line
+        // they typed
+        self.last_sent = Some(line.to_owned());
 
         if let Some(command) = line.strip_prefix('/') {
             self.command(command).await;

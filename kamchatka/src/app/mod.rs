@@ -752,7 +752,14 @@ pub struct App {
     /// there is no state saying a question is open and none to get out of step with the kernel.
     pub question_scroll: usize,
     /// A message somebody sent into a turn that was already running, waiting for it to end.
+    ///
+    /// note: one, and the newest wins - which used to mean a second message typed into the same
+    /// turn replaced the first with nothing said about it. [`App::put_back`] is the way back to it
+    /// now: `up` takes it out of here and into the prompt, where it can be changed, sent again or
+    /// simply dropped.
     typed_ahead: Option<String>,
+    /// The last line submitted at the prompt, message or command, for [`App::put_back`].
+    last_sent: Option<String>,
     /// How much the running tool has said so far, for the one trace line that counts it.
     streamed_bytes: usize,
     /// Where a finished turn reports itself.
@@ -851,6 +858,7 @@ impl App {
             since: Instant::now(),
             question_scroll: 0,
             typed_ahead: None,
+            last_sent: None,
             streamed_bytes: 0,
             outcomes,
             previews: 0,

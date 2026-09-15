@@ -295,6 +295,7 @@ and running that through a renderer would be inventing structure it never had.
 | key | what happens |
 | --- | --- |
 | <kbd>enter</kbd> / <kbd>alt+enter</kbd> | send / a new line |
+| <kbd>up</kbd> | in an empty prompt, the last message back: the one still waiting, or a copy of the last one sent |
 | <kbd>pgup</kbd> / <kbd>pgdn</kbd> | scroll the conversation |
 | <kbd>ctrl+home</kbd> / <kbd>ctrl+end</kbd> | the beginning of the conversation / the end of it |
 | <kbd>home</kbd> / <kbd>end</kbd> | the prompt's own, as in any other line editor |
@@ -342,6 +343,18 @@ It cannot go in any earlier. The answer the model is still writing would land af
 the next request ending with the model talking rather than with your question — and mid-loop it
 would land between a tool call and that call's result, where a request cannot have a user message. So a message typed to steer a turn is answered after that turn rather than during
 it.
+
+While it waits, <kbd>up</kbd> takes it back. In an empty prompt that key puts the last message
+back where you can change it: the one still waiting if there is one, and otherwise a copy of the
+last line you sent, which is often enough just a way to read what you asked. A waiting message is
+*taken* rather than copied — nothing is queued afterwards, so the changed version is what goes in,
+and a message you take back and never send again simply does not go in at all. There is only ever
+one waiting message, which is why one key reaches it; everything else you have sent is on the
+context tab, with more said about each of them than a prompt could show.
+
+<kbd>up</kbd> does this only from an empty prompt. With anything typed it still moves the cursor,
+and at the top line it still scrolls the conversation, so nothing that already did something does
+something else now.
 
 A pasted block arrives as the lines it was pasted as: bracketed paste keeps a pasted newline from
 being read as <kbd>enter</kbd> and sending half of it, and the carriage returns a terminal spells

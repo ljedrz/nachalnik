@@ -390,6 +390,146 @@ async fn a_message_that_has_to_wait_says_that_it_is_waiting() {
     );
 }
 
+/// And <kbd>up</kbd> takes it back, which is the whole of what the key is for.
+///
+/// note: a message typed into a running turn used to be unreachable: `typed_ahead` holds one, the
+/// newest wins, and the only way to change what was waiting was to send a second one and hope the
+/// replacement was what you meant. There is a key now, and what it hands back is the message
+/// itself rather than a copy - leaving it in the queue would mean editing one thing while another
+/// was still going to be sent.
+#[tokio::test]
+async fn a_message_that_is_waiting_can_be_taken_back_and_changed() {
+    let mut harness = Harness::new([ModelResponse::text("the first answer")]);
+
+    harness.send("the first question").await;
+    harness.app.busy = true;
+    harness.send("check the diff").await;
+
+    harness.press(KeyCode::Up).await;
+    assert_eq!(
+        harness.app.input.lines(),
+        ["check the diff"],
+        "the prompt holds what was waiting"
+    );
+    let screen = harness.screen();
+    assert!(
+        screen.contains("nothing is waiting now"),
+        "a message that stopped waiting says so: {screen}"
+    );
+    // and it is in the prompt rather than above it: the line saying it was queued stays where it
+    // is, because it was said and this program does not rewrite what it has said, but the message
+    // it was about is no longer drawn at the end of the conversation waiting to go in
+    let prompt_at = screen
+        .lines()
+        .position(|line| line.contains(" you "))
+        .expect("the prompt box is on the screen");
+    let message_at = screen
+        .lines()
+        .position(|line| line.contains("check the diff"))
+        .expect("the message is on the screen");
+    assert!(
+        message_at > prompt_at,
+        "it is still drawn as waiting above the prompt: {screen}"
+    );
+
+    // changed, and sent again: it is waiting again, as the message it is now
+    harness.send(" and the test counts").await;
+    harness.app.busy = false;
+    harness.settle().await;
+
+    let said: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "user")
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(
+        said,
+        ["the first question", "check the diff and the test counts"],
+        "one message went in, and it is the amended one"
+    );
+}
+
+/// Taking one back and leaving it there is how it is dropped.
+///
+/// note: the other half of the same key, and it follows from what taking it back means. Nothing
+/// is waiting afterwards, so nothing goes in when the turn ends - the text is in the prompt, which
+/// is where something nobody has sent belongs.
+#[tokio::test]
+async fn a_message_taken_back_does_not_go_in_by_itself() {
+    let mut harness = Harness::new([ModelResponse::text("the first answer")]);
+
+    harness.send("the first question").await;
+    harness.app.busy = true;
+    harness.send("on second thoughts, no").await;
+    harness.press(KeyCode::Up).await;
+
+    harness.app.busy = false;
+    harness.settle().await;
+
+    let said: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "user")
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(said, ["the first question"], "{said:?}");
+    assert_eq!(
+        harness.app.input.lines(),
+        ["on second thoughts, no"],
+        "and it is still in the prompt, to send or to clear"
+    );
+}
+
+/// With nothing waiting, the same key puts the last line back for reading or sending again.
+#[tokio::test]
+async fn up_puts_the_last_line_back_after_it_has_been_answered() {
+    let mut harness = Harness::new([ModelResponse::text("it is a state machine")]);
+
+    harness.send("what does the kernel do?").await;
+    harness.settle().await;
+
+    harness.press(KeyCode::Up).await;
+    assert_eq!(harness.app.input.lines(), ["what does the kernel do?"]);
+
+    // a copy: the message it came from is where it was, and nothing was taken out of anything
+    let said = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "user")
+        .count();
+    assert_eq!(said, 1, "the message it came from is still the only one");
+    assert!(
+        !harness.screen().contains("nothing is waiting now"),
+        "nothing was waiting, so nothing is said about it"
+    );
+}
+
+/// And it does not take a half-written message away to do it.
+///
+/// note: the guard is "the prompt is empty" rather than "the cursor is on the first line", which
+/// is what keeps this from being a gesture taken away: `up` on a line somebody is typing still
+/// moves the cursor, and at the top of the box it still scrolls the conversation.
+#[tokio::test]
+async fn up_with_something_typed_leaves_it_alone() {
+    let mut harness = Harness::new([ModelResponse::text("answered")]);
+
+    harness.send("the first question").await;
+    harness.settle().await;
+    for c in "half a thought".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+
+    harness.press(KeyCode::Up).await;
+    assert_eq!(harness.app.input.lines(), ["half a thought"]);
+}
+
 #[tokio::test]
 async fn a_conversation_stays_where_somebody_scrolled_it_while_the_model_keeps_writing() {
     let mut harness = Harness::new([]);

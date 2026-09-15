@@ -124,6 +124,30 @@ minor bump may break you.
 
 ### changed
 
+- **<kbd>up</kbd> in an empty prompt puts the last message back.** A message typed into a running
+  turn waits for the end of it, and until now that was the last anybody could do about it:
+  `typed_ahead` holds one, the newest silently replaces it, and the only way to change what was
+  waiting was to send a second message and hope the replacement was what you meant. `up` hands it
+  back to the prompt, where it can be read, changed, sent again - or left there, which is how it is
+  dropped, since nothing is queued afterwards and nothing goes in when the turn ends.
+
+  With nothing waiting, the same key puts back a copy of the last line that was sent - the
+  question you just asked, to read again or ask differently. The same key for both, because to
+  somebody pressing it they are one thing: *the last message*. Which of the two it is decides only
+  what happens to it - a waiting message is taken, since editing a copy of something still queued
+  as it was is not editing it at all, and a sent one is copied, since it is in the context.
+
+  One deep, deliberately. A prompt that walked back through a session would be a second history
+  beside the context tab, which holds every message already and says more about each of them than a
+  prompt can show. The thing wanted often enough to need a key is the last one.
+
+  And only from an empty prompt. `up` on a line being typed still moves the cursor, and at the top
+  of the box it still scrolls the conversation, so nothing that already did something does
+  something else now. The line saying a message was queued stays on the transcript when it is taken
+  back - it was said, and this program does not rewrite what it has said - with a line under it
+  saying nothing is waiting any more, which is what accounts for the message no longer being drawn
+  at the end of the conversation.
+
 - **An edit at the terminal rewrites the item instead of superseding it.** <kbd>e</kbd> committed
   a *new* item and left the original behind as a row of its own, marked `~`, reading
   `superseded: replaced by item 8`. That row said what the `v1` page under <kbd>enter</kbd>

@@ -96,6 +96,9 @@ pub const CHAT: &str =
     "  THE PROMPT, which is on the chat tab, and wherever an item is being edited
     enter               send
     alt+enter           a new line
+    up                  in an empty prompt, the last message back: the one
+                        still waiting, if one is, and otherwise a copy of the
+                        last one sent. With anything typed it moves the cursor
     pgup / pgdn         scroll the conversation; where you leave it is where
                         it stays, however much arrives underneath
     ctrl+home           the beginning of the conversation
@@ -103,8 +106,9 @@ pub const CHAT: &str =
     ctrl+e              follow the newest again, from wherever you are
     home / end          the prompt's own, as in any other line editor
     (a message sent while a turn is running waits for the end of it, and
-     then gets a turn of its own; a turn that stops to ask about a tool has
-     to be answered first, because the question is in the prompt's place)";
+     then gets a turn of its own; `up` is how it is changed or dropped while
+     it waits. A turn that stops to ask about a tool has to be answered
+     first, because the question is in the prompt's place)";
 
 /// The context tab's own keys.
 pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is open
