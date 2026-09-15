@@ -72,6 +72,12 @@ impl App {
             // key that moves the cursor and scrolls at the top, which is what stops this from
             // taking a gesture away: nothing that used to do something does something else now
             KeyCode::Up if self.input.lines().iter().all(|line| line.is_empty()) => self.put_back(),
+            // and `down` undoes it, while the prompt still holds exactly what `up` put there.
+            // Typed over, it is a message somebody is writing and not a recall any more, so the
+            // key goes back to being the one that moves the cursor
+            KeyCode::Down if self.recalled.as_deref() == Some(self.draft().as_str()) => {
+                self.clear_input()
+            }
             // at the edges of the prompt, the arrows go on to the conversation
             KeyCode::Up if self.input.cursor().0 == 0 => self.scroll_by(-1),
             KeyCode::Down if self.input.cursor().0 + 1 == self.input.lines().len() => {
@@ -111,8 +117,10 @@ impl App {
         };
 
         self.clear_input();
-        self.input.insert_str(line);
+        self.input.insert_str(line.clone());
         self.input.move_cursor(CursorMove::End);
+        // what `down` undoes, and only while the prompt still says exactly this
+        self.recalled = Some(line);
         if waiting.is_some() {
             self.say(
                 Speaker::Note,
@@ -126,6 +134,8 @@ impl App {
         self.input.select_all();
         self.input.cut();
         self.input.move_cursor(CursorMove::End);
+        // an empty prompt is not holding a recall, whatever it was holding a moment ago
+        self.recalled = None;
     }
 
     /// Puts an edited item into the context in place of the one it came from.

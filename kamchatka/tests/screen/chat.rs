@@ -511,6 +511,79 @@ async fn up_puts_the_last_line_back_after_it_has_been_answered() {
     );
 }
 
+/// <kbd>ctrl+l</kbd> takes this program's own lines off the chat and leaves the conversation.
+///
+/// note: the chat is two things drawn as one, and only one of them is anybody's turn. A session
+/// that excludes eleven items one at a time has eleven lines saying so interleaved with the run
+/// somebody is trying to read - each worth saying once, none worth keeping.
+#[tokio::test]
+async fn ctrl_l_clears_what_the_program_said_and_keeps_what_was_said_to_it() {
+    let mut harness = Harness::new([ModelResponse::text("it is a state machine")]);
+
+    harness.send("what does the kernel do?").await;
+    harness.settle().await;
+    harness.app.kernel.push(ContextItem::file("a.rs", "one"));
+    harness.send("/prune files").await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("1 item(s) are now excluded"), "{screen}");
+
+    harness.chord(KeyCode::Char('l')).await;
+
+    let cleared = harness.screen();
+    assert!(
+        !cleared.contains("now excluded"),
+        "the notice is gone: {cleared}"
+    );
+    // and the conversation is where it was, because the conversation is the context and nothing
+    // here changed the context
+    assert!(cleared.contains("what does the kernel do?"), "{cleared}");
+    assert!(cleared.contains("it is a state machine"), "{cleared}");
+    assert_eq!(
+        harness.app.kernel.items().len(),
+        3,
+        "no item went anywhere: {cleared}"
+    );
+
+    // and the record has what happened, which is the reason a screen may be cleared at all
+    harness.drain();
+    harness.tab(Tab::Trace);
+    assert!(
+        harness.flat().contains("context.changed"),
+        "the trace is not touched: {}",
+        harness.flat()
+    );
+}
+
+/// And <kbd>down</kbd> puts it away again, while the prompt still says exactly what was recalled.
+#[tokio::test]
+async fn down_clears_a_recalled_line_and_leaves_a_typed_one_alone() {
+    let mut harness = Harness::new([ModelResponse::text("answered")]);
+
+    harness.send("what does the kernel do?").await;
+    harness.settle().await;
+
+    harness.press(KeyCode::Up).await;
+    harness.press(KeyCode::Down).await;
+    assert_eq!(
+        harness.app.input.lines(),
+        [""],
+        "down puts back what up took out: an empty prompt"
+    );
+
+    // typed over, it is a message being written rather than a recall, and the key that empties
+    // the box is not one to hand somebody by accident
+    harness.press(KeyCode::Up).await;
+    for c in " exactly".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+    harness.press(KeyCode::Down).await;
+    assert_eq!(
+        harness.app.input.lines(),
+        ["what does the kernel do? exactly"]
+    );
+}
+
 /// And it does not take a half-written message away to do it.
 ///
 /// note: the guard is "the prompt is empty" rather than "the cursor is on the first line", which

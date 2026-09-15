@@ -148,6 +148,26 @@ minor bump may break you.
   saying nothing is waiting any more, which is what accounts for the message no longer being drawn
   at the end of the conversation.
 
+  `down` puts a recalled line away again, while the prompt still says exactly what came back. Not
+  "while something was recalled": a word typed onto the end makes it a message somebody is
+  writing, and a key that emptied the box then would be the worst kind of shortcut. What it
+  compares against is what is in the box.
+
+- **<kbd>ctrl+l</kbd> takes this program's own lines off the chat.** The `·` notes about what it
+  just did, and the answers it gave to a key: a session that excludes eleven items one at a time
+  has eleven lines saying so, interleaved with the run somebody is trying to read. Each was worth
+  saying once. None of them is worth keeping, and until now none of them could be got rid of
+  except by scrolling past.
+
+  What the key means in a shell, narrowed to the only thing on this screen that is safe to clear.
+  The conversation stays, because the conversation *is* the context: nothing here hides an item,
+  which is the context tab's to do and says so on the row afterwards. A line still arriving stays
+  too - only a streamed answer is ever open, and what must never happen is a line vanishing
+  mid-sentence.
+
+  Nothing is said to report that it happened, which would be the first line of the pile it just
+  cleared, and the trace is untouched: it is the record, and this is a screen.
+
 - **An edit at the terminal rewrites the item instead of superseding it.** <kbd>e</kbd> committed
   a *new* item and left the original behind as a row of its own, marked `~`, reading
   `superseded: replaced by item 8`. That row said what the `v1` page under <kbd>enter</kbd>

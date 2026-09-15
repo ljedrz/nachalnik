@@ -99,6 +99,8 @@ pub const CHAT: &str =
     up                  in an empty prompt, the last message back: the one
                         still waiting, if one is, and otherwise a copy of the
                         last one sent. With anything typed it moves the cursor
+    down                puts a recalled line away again, while the prompt still
+                        says exactly what `up` put there
     pgup / pgdn         scroll the conversation; where you leave it is where
                         it stays, however much arrives underneath
     ctrl+home           the beginning of the conversation
@@ -192,6 +194,10 @@ pub const EVERYWHERE: &str = "  WHEREVER YOU ARE
                         the screen wants them; from a tab that has no prompt,
                         back to the conversation
     ctrl+p              the exact request that would be sent next
+    ctrl+l              take this program's own lines off the chat - what it
+                        said about what it did, and what it answered a key
+                        with. The conversation stays, because it is the
+                        context; the trace keeps what happened either way
     f1                  this, opened at whichever tab you are on; also ? on any
                         tab but the chat one, and ← → for the rest of it
     esc                 close this, or stop what is running

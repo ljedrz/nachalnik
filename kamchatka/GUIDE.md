@@ -296,6 +296,8 @@ and running that through a renderer would be inventing structure it never had.
 | --- | --- |
 | <kbd>enter</kbd> / <kbd>alt+enter</kbd> | send / a new line |
 | <kbd>up</kbd> | in an empty prompt, the last message back: the one still waiting, or a copy of the last one sent |
+| <kbd>down</kbd> | put a recalled line away again, while nothing has been typed over it |
+| <kbd>ctrl+l</kbd> | take this program's own lines off the chat; the conversation stays |
 | <kbd>pgup</kbd> / <kbd>pgdn</kbd> | scroll the conversation |
 | <kbd>ctrl+home</kbd> / <kbd>ctrl+end</kbd> | the beginning of the conversation / the end of it |
 | <kbd>home</kbd> / <kbd>end</kbd> | the prompt's own, as in any other line editor |
@@ -354,7 +356,18 @@ context tab, with more said about each of them than a prompt could show.
 
 <kbd>up</kbd> does this only from an empty prompt. With anything typed it still moves the cursor,
 and at the top line it still scrolls the conversation, so nothing that already did something does
-something else now.
+something else now. <kbd>down</kbd> puts a recalled line away again — but only while the prompt
+still says exactly what came back, since a word typed onto the end makes it a message somebody is
+writing, and a key that emptied the box then would be the worst kind of shortcut.
+
+**<kbd>ctrl+l</kbd> takes this program's own lines off the chat.** The `·` notes about what it
+just did, and the answers it gave a key you pressed — a session that excludes eleven items one at
+a time has eleven of them interleaved with the run you are trying to read, each worth saying once
+and none worth keeping. It is what the key means in a shell, narrowed to the only thing here that
+is safe to clear: **the conversation stays**, because the conversation is the context, and nothing
+on this screen hides an item — that is the context tab's to do, on a row that says so afterwards.
+Nothing is said to report that it happened, which would be the first line of the pile it just
+cleared, and the trace keeps every event either way.
 
 A pasted block arrives as the lines it was pasted as: bracketed paste keeps a pasted newline from
 being read as <kbd>enter</kbd> and sending half of it, and the carriage returns a terminal spells

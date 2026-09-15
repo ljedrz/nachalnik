@@ -760,6 +760,13 @@ pub struct App {
     typed_ahead: Option<String>,
     /// The last line submitted at the prompt, message or command, for [`App::put_back`].
     last_sent: Option<String>,
+    /// What [`App::put_back`] last put in the prompt, for as long as the prompt still says
+    /// exactly that.
+    ///
+    /// note: compared against what is in the box rather than trusted on its own, so `down` undoes
+    /// a recall and nothing else. A word typed onto the end makes it a message somebody is
+    /// writing, and a key that emptied the box then would be the worst kind of shortcut.
+    recalled: Option<String>,
     /// How much the running tool has said so far, for the one trace line that counts it.
     streamed_bytes: usize,
     /// Where a finished turn reports itself.
@@ -859,6 +866,7 @@ impl App {
             question_scroll: 0,
             typed_ahead: None,
             last_sent: None,
+            recalled: None,
             streamed_bytes: 0,
             outcomes,
             previews: 0,
@@ -1950,6 +1958,12 @@ impl App {
             // gesture most people will find first; this is the one for a turn that wrote a
             // thousand lines while somebody was looking at the twelfth
             (KeyCode::Char('e'), true) => self.follow = true,
+            // `ctrl+l` is what it is in every shell, narrowed to the only thing on this screen
+            // that is safe to clear: the program's own lines. Everything else on the chat is the
+            // context, and a key that took *that* off the screen would be hiding the thing the
+            // screen is for - `space` on the context tab is how something stops being sent, and
+            // it says so on the row afterwards
+            (KeyCode::Char('l'), true) => self.clear_notices(),
             // the two ends of the conversation, one key each. With control held, because `home`
             // and `end` are the prompt's own - a prompt whose keys moved something else while
             // somebody was editing a line would be the trap
@@ -1996,6 +2010,32 @@ impl App {
                 _ => self.input_key(key).await,
             },
         }
+    }
+
+    /// Takes the program's own lines off the chat: what it said about what it did, and what it
+    /// answered a key with.
+    ///
+    /// note: the chat is two things drawn as one - the conversation, which is read off the
+    /// context every frame, and the lines this program said about it, which are not in the
+    /// context and not anybody's turn. Only the second kind goes. An item stays until something
+    /// changes *the context*, which is the context tab's to do and says so on the row.
+    ///
+    /// note: they pile up because each of them was worth saying once. Eleven items excluded one
+    /// at a time is eleven lines that have done their job, and the run they are interleaved with
+    /// is the thing somebody is trying to read.
+    ///
+    /// note: nothing is said to say it happened, which is the one place this program says
+    /// nothing on purpose: a line reporting that the lines are gone would be the first line of
+    /// the pile it just cleared. What went is on the trace, which is the record and is not
+    /// touched by this.
+    ///
+    /// note: an entry still arriving stays, because it is not finished being said. Only a
+    /// streamed answer is ever open, and it is a turn rather than a notice - but the guard is
+    /// here rather than left to the speaker, since what must never happen is a line vanishing
+    /// mid-sentence.
+    pub fn clear_notices(&mut self) {
+        self.loose
+            .retain(|entry| entry.open || !matches!(entry.speaker, Speaker::Note | Speaker::Error));
     }
 
     /// Opens a tab, and puts the keys wherever they are useful on it.
