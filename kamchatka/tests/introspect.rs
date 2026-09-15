@@ -1018,6 +1018,125 @@ async fn budget_reports_what_is_really_going_and_what_it_would_buy_to_drop_it() 
     assert!(listed.contains("not yours"), "{listed}");
 }
 
+/// A turn whose thinking the endpoint will not take back is ranked by what it sends.
+///
+/// note: the model-facing half of the figure the pane was missing. Under any OpenAI-compatible
+/// endpoint an assistant turn's reasoning is held and never sent, so a turn that thought at
+/// length holds tens of thousands of tokens and puts a few hundred into the request - and a list
+/// headed "the most expensive item(s) actually going into it", ranked by what each item *holds*,
+/// put it at the top. That is an offer of 25,903 tokens for an elision that frees a thousand,
+/// under a note whose whole point is that it does not offer what giving something up would not
+/// buy. It ranks on the column that decides now, and says what the row is holding beside it.
+#[tokio::test]
+async fn the_expensive_list_ranks_by_what_a_row_sends_not_by_what_it_holds() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "budget" }),
+    )]));
+    kernel.set_projector(Arc::new(nachalnik::LinearProjector {
+        send_reasoning: false,
+        ..Default::default()
+    }));
+
+    kernel.push(ContextItem::file("big.rs", "0".repeat(4_000)));
+    // holds far more than `big.rs` and sends a fraction of it
+    kernel.push(
+        ContextItem::assistant("done - the deck reads better now", Vec::new())
+            .with_reasoning(Some("weighing the two openings. ".repeat(600).into())),
+    );
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answered(&kernel);
+    let listed: Vec<&str> = said
+        .lines()
+        .skip_while(|line| !line.contains("most expensive"))
+        .collect();
+    let at = |needle: &str| {
+        listed
+            .iter()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("`{needle}` is not in the list: {}", listed.join("\n")))
+    };
+    assert!(
+        at("big.rs") < at("the deck reads better"),
+        "the turn holds more and sends less, so it ranks below: {}",
+        listed.join("\n")
+    );
+
+    // and what it is holding is said on its row rather than left out of the account entirely
+    let row = listed[at("the deck reads better")];
+    assert!(
+        row.contains("holding") && row.contains("the request does not carry"),
+        "{row}"
+    );
+    assert!(
+        said.contains("thinking this endpoint will not take back"),
+        "the figure above the list does not say what the fourth way of being held back is: {said}"
+    );
+}
+
+/// And `look` reports both figures, because one of them is always the wrong answer to something.
+#[tokio::test]
+async fn look_says_what_each_item_sends_and_what_it_is_holding_out() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call("c1", "context", json!({ "action": "look" })),
+        call("c2", "context", json!({ "action": "look", "ids": [2] })),
+    ]));
+    kernel.set_projector(Arc::new(nachalnik::LinearProjector {
+        send_reasoning: false,
+        ..Default::default()
+    }));
+
+    kernel.push(ContextItem::user("rewrite the page"));
+    kernel.push(
+        ContextItem::assistant("done - the deck reads better now", Vec::new())
+            .with_reasoning(Some("weighing the two openings. ".repeat(600).into())),
+    );
+
+    kernel.turn().await.expect("the turn ran");
+
+    let said: Vec<String> = kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "context")
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(said.len(), 2, "{said:?}");
+
+    // the listing: two columns, and the turn's row carries a figure in each
+    let (listing, read_back) = (&said[0], &said[1]);
+    assert!(
+        listing.contains("sending") && listing.contains("held"),
+        "{listing}"
+    );
+    let row = listing
+        .lines()
+        .find(|line| line.contains("the deck reads better"))
+        .expect("the turn is listed");
+    let figures: Vec<usize> = row
+        .split_whitespace()
+        .filter_map(|word| word.replace(',', "").parse().ok())
+        .collect();
+    // the identifier, what it sends, and what it holds out - the last of them the largest by far
+    assert!(
+        figures.len() >= 3 && figures[2] > figures[1] * 10,
+        "the row does not report both figures: {row}"
+    );
+
+    // and reading the item back says the same thing in words, where the thinking itself is
+    assert!(
+        read_back.contains("held back from the next request"),
+        "{read_back}"
+    );
+    assert!(
+        read_back.contains("weighing the two openings"),
+        "the thinking is still read back in full: {read_back}"
+    );
+}
+
 #[tokio::test]
 async fn a_class_of_items_can_be_pruned_without_naming_each_one() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![

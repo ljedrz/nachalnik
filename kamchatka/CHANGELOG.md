@@ -198,6 +198,33 @@ minor bump may break you.
   it moving - which is also why it is not a suggestion to prune anything. Pruning a turn that is
   mostly thinking frees what the request was already not carrying.
 
+- **The `context` tool was telling the model the same thing, and acting on it.** Worse than a
+  missing figure, because this one is read by something that makes decisions with it. `budget`
+  ranks "the most expensive item(s) actually going into it" - the list an agent gives things up
+  from - and it ranked by what each item *held*. A turn holding 25,903 tokens of thinking and
+  putting 1,035 into the request therefore stood at the top of that list, offering twenty-five
+  thousand tokens for an elision that would free a thousand. Under a note whose whole point is
+  that the list must not offer what giving something up would not buy: the same sentence was
+  already there about an orphaned tool result, and reasoning walked straight past it.
+
+  It ranks on what a row sends, which is the column the decision is made from, and the column is
+  headed `sending` rather than `tokens` so it cannot be read as the item's weight. Where a row is
+  holding something on top of that, the row says so - `· holding 24,868 the request does not
+  carry` - and the closing note says what that means: giving the row up frees what it sends and
+  not the rest.
+
+  `look` grows a second column for the same reason, and it is the pane's pair: `sending` and
+  `held`. One column could only have been one of those, and either one alone is wrong about the
+  rows worth reading. As a budget, the held figure invites giving up what the request is not
+  carrying; as an inventory, the sending figure hides tens of thousands of tokens the agent
+  really is holding. Reading an item back with `ids` says both in words, which is where the
+  thinking itself is printed. `budget`'s summary line names the fourth way of being held back and
+  says which of them are the agent's to change.
+
+  All of it is `Going`, which moved from the screen to the kernel - `Going::of(&kernel)` - so the
+  agent's account of its own budget and the person's are now one piece of arithmetic rather than
+  two that agreed until they did not.
+
 - **<kbd>e</kbd> on a turn that is nothing but a tool call opened an empty prompt.** Most
   assistant turns in a working session are exactly that, and the context row for one reads
   `dig({"where":"here"})` - so pressing the key that changes what an item says put a box titled

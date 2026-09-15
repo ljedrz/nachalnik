@@ -565,8 +565,8 @@ answered *why do you think that* by forking itself and running the ablation rath
 introspecting. Two more transcripts are up there in which I do the editing instead, through the
 keys rather than through these.
 
-**`context`** reads. `look` lists every item it is carrying — what each one is, what it costs,
-whether it is going into the next request and why not if it is not — and reads any of them back,
+**`context`** reads. `look` lists every item it is carrying — what each one is, what it puts into
+the next request and what it is holding out of one, and why it is out if it is out — and reads any of them back,
 block by block, including what it was thinking when it produced them. A long one comes back as its
 start and its end: reading an item copies it into the context, so seeing all of a 9,000-token tool
 result in order to decide whether to keep it costs about what keeping it costs. `whole: true` asks
@@ -586,15 +586,17 @@ that says what the rule is.
 ```text
 the next request is ~48,120 tokens of 128,000 (38% full, ~79,880 left)
   47,343 in the context, 777 in the tool definitions
-~9,004 tokens are being held back - excluded, archived, or elided to a marker
+~34,512 tokens are being held back - excluded, archived, elided to a marker, or thinking this
+endpoint will not take back. Only the first three are yours to change
 the last request really cost 52,905 in / 214 out, as the provider counted it
 the estimate is corrected by x1.09, learned from 6 request(s)
 
 the 4 most expensive item(s) actually going into it:
-  id  state       kind                  tokens  if all go  what it is
+  id  state       kind                 sending  if all go  what it is
   31  active      tool_result           18,204    18,204  shell: cargo test --workspace…
   14  active      reference              9,880    28,084  src/kernel.rs: use std::…
-   9  pinned      system                   240    28,324  system: You are working in… · not yours
+  27  active      assistant_message      1,035    29,119  assistant: Agreed — the bones are… · holding 24,868 the request does not carry
+   9  pinned      system                   240    29,359  system: You are working in… · not yours
 ```
 
 Estimates are named as estimates, the provider's own figure sits beside them, and the list is
@@ -602,6 +604,13 @@ what the request *actually* carries — an orphaned tool result the projector re
 nothing however active it looks, and offering it as something to give up would be advice that
 buys nothing. Items that are not the agent's to move say so, rather than costing it a refused
 call.
+
+Item 27 is the same thing one step subtler, and it is on nearly every row of a real session: the
+turn sends what it said and holds what it *thought*, because most endpoints have no field to send
+thinking back in. Ranked by what it holds it would head this list, offering an elision that frees
+a thousand tokens under a heading promising twenty-five. So the list ranks on what a row sends —
+the column the decision is actually made from — and says what it is holding beside it, because an
+agent that cannot see the difference cannot tell a context it could shrink from one it cannot.
 
 `search` is the one that reaches the archive. An archived item is kept in full and never sent,
 and until now the only way to see inside one was to read it back — which copies it into the

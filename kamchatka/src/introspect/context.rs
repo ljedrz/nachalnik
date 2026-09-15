@@ -19,7 +19,10 @@ use nachalnik::{
 };
 use serde_json::json;
 
-use crate::{app::text::thousands, tools::Limits};
+use crate::{
+    app::{Going, text::thousands},
+    tools::Limits,
+};
 
 use super::{Pinned, Reach, action, ids, protected, unknown};
 
@@ -213,12 +216,23 @@ fn taken(value: &serde_json::Value) -> Result<Option<usize>, String> {
 }
 
 /// The context, item by item, or the whole of the named ones.
+///
+/// note: two columns of figures rather than one headed `tokens`, and they are the two the person's
+/// own pane has shown all along: what an item puts into the next request, and what it is keeping
+/// out of one. One column could only be one of those, and whichever it was would be wrong about
+/// the rows that matter - an elided item, which sends a marker and holds its content, and any turn
+/// whose thinking the endpoint will not take back, which is every turn under an OpenAI-compatible
+/// one. Read as a budget, the held figure invites giving up what the request was not carrying;
+/// read as an inventory, the sending figure hides tens of thousands of tokens the agent really is
+/// carrying. Both, named, is the only honest answer, and it is what `held` in the next line and
+/// the expensive list under `budget` are counted from.
 fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
     let items = kernel.items();
+    let going = Going::of(kernel);
     if !ids.is_empty() {
         return ids
             .iter()
-            .map(|id| full(&items, *id, whole))
+            .map(|id| full(&items, *id, &going, whole))
             .collect::<Vec<_>>()
             .join("\n");
     }
@@ -228,16 +242,17 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
     // behind the `u` key in the terminal, it holds everything that has ever happened to this
     // context, and `amend undo` does not touch it - a figure that big, sitting unlabelled next to
     // a tool called `undo`, would be an invitation to try to walk back the person's work
-    let (withheld, theirs) =
-        kernel.with_context(|context| (context.tokens_withheld(), context.undo_len()));
+    let theirs = kernel.with_context(|context| context.undo_len());
+    let withheld: usize = items.iter().map(|item| going.held_back(item)).sum();
 
     let mut out = inherited(kernel, &items);
     out.push_str(&format!(
         "{} items · {} of them go into the next request\n\
-         ~{} tokens going{}, ~{} withheld\n\
+         ~{} tokens going{}, ~{} held back - what the request does not carry, whether because \
+         you set a state or because the endpoint will not take it\n\
          {} change(s) in the person's own undo stack, which is theirs; `amend undo` walks back \
          what you did\n\n\
-         {:>4}  {:<10}  {:<18}  {:>8}  what it is\n",
+         {:>4}  {:<10}  {:<18}  {:>8}  {:>8}  what it is\n",
         items.len(),
         items.iter().filter(|item| item.is_projected()).count(),
         thousands(budget.used()),
@@ -254,16 +269,21 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
         "id",
         "state",
         "kind",
-        "tokens",
+        "sending",
+        "held",
     ));
 
     for item in &items {
         out.push_str(&format!(
-            "{:>4}  {:<10}  {:<18}  {:>8}  {}\n",
+            "{:>4}  {:<10}  {:<18}  {:>8}  {:>8}  {}\n",
             item.id.0,
             item.state.to_string(),
             item.kind.name(),
-            thousands(item.tokens),
+            thousands(going.costs.get(&item.id).copied().unwrap_or(0)),
+            match going.held_back(item) {
+                0 => String::new(),
+                held => thousands(held),
+            },
             row(item),
         ));
     }
@@ -398,19 +418,30 @@ fn sampled(text: &str, whole: bool) -> String {
     )
 }
 
-fn full(items: &[Arc<ContextItem>], id: ContextId, whole: bool) -> String {
+fn full(items: &[Arc<ContextItem>], id: ContextId, going: &Going, whole: bool) -> String {
     let Some(item) = items.iter().find(|item| item.id == id) else {
         return format!("[{id}] there is no such item\n");
     };
 
+    // note: what it holds, and then how much of that the request does not carry - because this is
+    // the view that reads a turn's *thinking* back, and under most endpoints the thinking is the
+    // part that is not carried. A line reporting one figure would be telling the agent that the
+    // page it is reading costs what it weighs, in the one place it is most likely to be wrong.
     let mut out = format!(
-        "[{}] {} · {} · from {} · {} · {} tokens\n",
+        "[{}] {} · {} · from {} · {} · {} tokens{}\n",
         item.id,
         item.label,
         item.kind.name(),
         item.source,
         item.state,
         thousands(item.tokens),
+        match going.held_back(item) {
+            0 => String::new(),
+            held => format!(
+                ", {} of them held back from the next request",
+                thousands(held)
+            ),
+        },
     );
     if let Some(because) = &item.included_because {
         out.push_str(&format!("  it is here because: {because}\n"));
@@ -642,7 +673,12 @@ fn around(needle: &str) -> impl Fn(&str) -> String + '_ {
 /// checked is the thing this crate exists not to do quietly.
 fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
     let budget = kernel.budget();
-    let withheld = kernel.with_context(|context| context.tokens_withheld());
+    let going = Going::of(kernel);
+    let withheld: usize = kernel
+        .items()
+        .iter()
+        .map(|item| going.held_back(item))
+        .sum();
 
     let room = match budget.limit {
         Some(limit) => format!(
@@ -656,7 +692,8 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
 
     let mut out = format!(
         "the next request is ~{} tokens{room}\n  {} in the context, {} in the tool definitions\n\
-         ~{} tokens are being held back - excluded, archived, or elided to a marker\n",
+         ~{} tokens are being held back - excluded, archived, elided to a marker, or thinking \
+         this endpoint will not take back. Only the first three are yours to change\n",
         thousands(budget.used()),
         thousands(budget.context_tokens),
         thousands(budget.tool_tokens),
@@ -690,13 +727,18 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
     // a tool result whose call is not in the request is repaired out of it by the projector, and
     // is costing nothing however active it looks. Offering it as something to save tokens by
     // eliding would be advice that buys nothing
-    let going: BTreeSet<ContextId> = kernel.project().included.into_iter().collect();
+    //
+    // note: and sorted by what each one *costs the request*, not by what it holds. Those are the
+    // same figure for most rows and not for a turn that thought at length: one held 25,903 tokens
+    // and put 1,035 into the request, so ranked by what it held it stood at the top of a list
+    // headed "the most expensive items actually going into it" - offering the agent 25,903 tokens
+    // for an elision that would free a thousand. The column that decides is the column to rank on.
     let mut costly: Vec<_> = kernel
         .items()
         .into_iter()
-        .filter(|item| going.contains(&item.id) && item.state.sends_content())
+        .filter(|item| going.sends_content(item))
         .collect();
-    costly.sort_by_key(|item| std::cmp::Reverse(item.tokens));
+    costly.sort_by_key(|item| std::cmp::Reverse(going.costs.get(&item.id).copied().unwrap_or(0)));
     costly.truncate(10);
 
     if costly.is_empty() {
@@ -709,24 +751,32 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
         "id",
         "state",
         "kind",
-        "tokens",
+        "sending",
         "if all go",
     ));
     let mut running = 0;
     for item in &costly {
-        running += item.tokens;
+        let cost = going.costs.get(&item.id).copied().unwrap_or(0);
+        running += cost;
         // saying so here saves a call that would only be refused, and the reason is the same one
         // `amend` would give: it is not the model's to move
         let whose = match protected(item, mine, None) {
             Some(_) => " · not yours",
             None => "",
         };
+        // what it is holding on top of that, where it holds anything, because this row is where
+        // an agent decides what to give up and the difference is the thing giving it up will not
+        // free. A turn's thinking is gone from the request already
+        let holding = match going.held_back(item) {
+            0 => String::new(),
+            held => format!(" · holding {} the request does not carry", thousands(held)),
+        };
         out.push_str(&format!(
-            "{:>4}  {:<10}  {:<18}  {:>8}  {:>8}  {}{whose}\n",
+            "{:>4}  {:<10}  {:<18}  {:>8}  {:>8}  {}{whose}{holding}\n",
             item.id.0,
             item.state.to_string(),
             item.kind.name(),
-            thousands(item.tokens),
+            thousands(cost),
             thousands(running),
             glimpse(&format!("{}: {}", item.label, item.content.to_text())),
         ));
@@ -735,7 +785,9 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
         "\nthe fifth column is what eliding everything down to that row would save, give or take \
          what the markers cost. Eliding leaves a marker in place, so a tool result still answers \
          the call that asked for it; excluding one takes that call down with it, and the model \
-         then reads a conversation in which it never asked. `amend` does either.\n",
+         then reads a conversation in which it never asked. `amend` does either. A row that says \
+         it is holding something is holding it out of the request already - giving that row up \
+         frees the fourth column and not the rest.\n",
     );
 
     out

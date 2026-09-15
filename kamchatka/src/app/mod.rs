@@ -368,6 +368,75 @@ pub struct Going {
 }
 
 impl Going {
+    /// What the next request does with each item: what it costs, or why it is not in it.
+    ///
+    /// note: not [`ContextItem::tokens`], which is what an item *holds*. An elided one holds a
+    /// thousand tokens and costs the dozen its marker takes; an archived one holds whatever it
+    /// holds and costs nothing. A pane that showed the held figure under a column headed `tokens`
+    /// was answering a question nobody asked while the status line beside it answered the right
+    /// one, and the two disagreed by exactly the elided items.
+    ///
+    /// note: read out of the projection rather than worked out here, because what an elided item
+    /// costs is the marker the *projector* writes, in the brackets the projector chooses. A
+    /// client that computed it would be keeping a second copy of a decision that is not its own.
+    ///
+    /// note: and `left_out` comes from the projection for a sharper reason than tidiness. Whether
+    /// an item is going cannot be read off its *state*: a projector repairs a request to keep it
+    /// valid, and an item it repairs away is `Active`, holding everything it holds, and not in the
+    /// request. Restoring the whole of a truncated output beside the copy the model was shown
+    /// makes one - the pair answer one call, so the whole takes the call and the short copy is
+    /// dropped. A pane keyed on the state then had that row claiming to send its content, showing
+    /// `0` for it, and accounting for none of what it was holding: three wrong answers about one
+    /// item, from asking the item instead of asking the request.
+    pub fn of(kernel: &Kernel) -> Going {
+        let projection = kernel.project();
+        let counter = kernel.counter();
+        // `included` and `messages` line up one for one under a projector that makes a message
+        // per item; one that merges them has no per-item answer, and the item's own figure is a
+        // better guess than a number taken from the wrong message
+        let paired = projection.included.len() == projection.messages.len();
+
+        Going {
+            // what the model reads where an elided item's content was, which only a paired
+            // projection can answer: it is the message that came out, not anything the item
+            // holds
+            marker: match paired {
+                false => BTreeMap::new(),
+                true => projection
+                    .included
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, id)| kernel.item(**id).is_some_and(|item| item.state.is_elided()))
+                    .filter_map(|(at, id)| {
+                        let said = projection.messages[at].content.as_ref()?;
+                        Some((*id, said.to_text().into_owned()))
+                    })
+                    .collect(),
+            },
+            costs: projection
+                .included
+                .iter()
+                .enumerate()
+                .map(|(at, id)| {
+                    let cost = match paired {
+                        true => counter.count_message(&projection.messages[at]),
+                        false => kernel.item(*id).map(|item| item.tokens).unwrap_or(0),
+                    };
+
+                    (*id, cost)
+                })
+                .collect(),
+            // the projector's own words, rather than a second copy of them assembled out here
+            // from the state and the note - which is what this was, and which had no answer at
+            // all for an item the projector had repaired away
+            left_out: projection
+                .skipped
+                .into_iter()
+                .map(|skipped| (skipped.id, skipped.reason))
+                .collect(),
+        }
+    }
+
     /// Whether this item's own content is going into the request.
     ///
     /// note: two conditions rather than [`nachalnik::ContextState::sends_content`], and the
@@ -1977,77 +2046,14 @@ impl App {
 
     // -------------------------------------------------------------------- what the screen asks
 
-    /// What the next request does with each item: what it costs, or why it is not in it.
+    /// What the next request does with each item, for the screen that is about to draw it.
     ///
-    /// note: not [`ContextItem::tokens`], which is what an item *holds*. An elided one holds a
-    /// thousand tokens and costs the dozen its marker takes; an archived one holds whatever it
-    /// holds and costs nothing. A pane that showed the held figure under a column headed `tokens`
-    /// was answering a question nobody asked while the status line beside it answered the right
-    /// one, and the two disagreed by exactly the elided items.
-    ///
-    /// note: read out of the projection rather than worked out here, because what an elided item
-    /// costs is the marker the *projector* writes, in the brackets the projector chooses. A
-    /// client that computed it would be keeping a second copy of a decision that is not its own.
-    ///
-    /// note: and `left_out` comes from the projection for a sharper reason than tidiness. Whether
-    /// an item is going cannot be read off its *state*: a projector repairs a request to keep it
-    /// valid, and an item it repairs away is `Active`, holding everything it holds, and not in the
-    /// request. Restoring the whole of a truncated output beside the copy the model was shown
-    /// makes one - the pair answer one call, so the whole takes the call and the short copy is
-    /// dropped. A pane keyed on the state then had that row claiming to send its content, showing
-    /// `0` for it, and accounting for none of what it was holding: three wrong answers about one
-    /// item, from asking the item instead of asking the request.
+    /// note: one line, because the answer is the kernel's rather than the session's - see
+    /// [`Going::of`], which is where it used to live and where `context` reads it from too. The
+    /// model's account of its own budget and the person's are now one piece of arithmetic; they
+    /// were two, and they disagreed about every turn holding thinking the endpoint will not take.
     pub fn going(&self) -> Going {
-        let projection = self.kernel.project();
-        let counter = self.kernel.counter();
-        // `included` and `messages` line up one for one under a projector that makes a message
-        // per item; one that merges them has no per-item answer, and the item's own figure is a
-        // better guess than a number taken from the wrong message
-        let paired = projection.included.len() == projection.messages.len();
-
-        Going {
-            // what the model reads where an elided item's content was, which only a paired
-            // projection can answer: it is the message that came out, not anything the item
-            // holds
-            marker: match paired {
-                false => BTreeMap::new(),
-                true => projection
-                    .included
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, id)| {
-                        self.kernel
-                            .item(**id)
-                            .is_some_and(|item| item.state.is_elided())
-                    })
-                    .filter_map(|(at, id)| {
-                        let said = projection.messages[at].content.as_ref()?;
-                        Some((*id, said.to_text().into_owned()))
-                    })
-                    .collect(),
-            },
-            costs: projection
-                .included
-                .iter()
-                .enumerate()
-                .map(|(at, id)| {
-                    let cost = match paired {
-                        true => counter.count_message(&projection.messages[at]),
-                        false => self.kernel.item(*id).map(|item| item.tokens).unwrap_or(0),
-                    };
-
-                    (*id, cost)
-                })
-                .collect(),
-            // the projector's own words, rather than a second copy of them assembled out here
-            // from the state and the note - which is what this was, and which had no answer at
-            // all for an item the projector had repaired away
-            left_out: projection
-                .skipped
-                .into_iter()
-                .map(|skipped| (skipped.id, skipped.reason))
-                .collect(),
-        }
+        Going::of(&self.kernel)
     }
 
     /// What the next request is expected to cost, taken from what the last one really cost.
