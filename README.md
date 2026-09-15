@@ -48,19 +48,19 @@ Each crate's own readme says what it is and how to start; the longer material si
 ### 🖥️ the agent you can run
 
 ```console
-$ cargo run -p kamchatka -- -f src/lib.rs "what does this crate do?"
+$ cargo run -p kamchatka -- -f src/kernel.rs "what does the kernel do?"
 ```
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
-│  id  label         kind               sending   held  what it says, or why it is not being sent            │
-│  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                    │
-│  2 · user          user_message             6         what does the kernel do?                              │
-│  3 · assistant     assistant_message        7         asked for read                                        │
-│  4 - read          tool_result              0     15  excluded: pruned at the terminal                      │
-│  5 · assistant     assistant_message        7         asked for shell                                       │
-│  6 … shell         tool_result             11  9,004  compaction: compacted to make room                    │
-│  7 · assistant     assistant_message       62         The kernel is a state machine with five states. …     │
+│  id  label         kind               sending   held  what it says, or why it is not being sent              │
+│  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                     │
+│  2 · user          user_message             6         what does the kernel do?                               │
+│  3 · assistant     assistant_message        7         asked for read                                         │
+│  4 - read          tool_result              0     15  excluded: at the terminal, by `tool:read`              │
+│  5 · assistant     assistant_message        7         asked for shell                                        │
+│  6 … shell         tool_result             11  9,004  compaction: compacted to make room                     │
+│  7 · assistant     assistant_message       62         The kernel is a state machine with five states. …      │
 │                                                                                                              │
 └────────────────────────────────────────────────────────────────────────────── 7 items, 2 not going, 1 elided ┘
 ┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐

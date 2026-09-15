@@ -14,7 +14,7 @@ the context and the paper trail.
 ```console
 $ cargo install kamchatka
 $ export KAMCHATKA_API_KEY=sk-or-...
-$ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
+$ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 ```
 
 ```text
@@ -29,7 +29,7 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 │· read: 15 tokens                                                                                             │
 │                                                                                                              │
 │The kernel is a state machine with five states. `step` performs one transition and returns the state it       │
-│produced; `turn` repeats it until the model stops asking for tools. Nothing in it decides what the model is    │
+│produced; `turn` repeats it until the model stops asking for tools. Nothing in it decides what the model is   │
 │told - that is the projector's job.                                                                           │
 │                                                                                                              │
 └──────────────────────────────────────────────── alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions ┘

@@ -70,7 +70,13 @@ pub struct Setup {
     /// off and adds them to `wired.app.kernel` afterwards. The registry is live, so there is no
     /// moment at which it is too late.
     pub builtin_tools: bool,
-    /// Whether to confine the `shell` tool. Off means it reaches whatever the user running it can.
+    /// Whether to confine what the tools can reach.
+    ///
+    /// note: *the tools*, not the `shell` alone, which is what this said and is the half that
+    /// matters. It is `Reach::confined` as well as the Landlock ruleset - and an unconfined
+    /// `Reach` hands back every path untouched, so `read` of `~/.ssh/id_rsa` is a file rather
+    /// than a refusal. Somebody turning this off for one command should know they turned it off
+    /// for all five of the others.
     pub confine: bool,
     /// Paths outside the working directory the tools may also read and write.
     pub reachable: Vec<std::path::PathBuf>,

@@ -212,6 +212,18 @@ minor bump may break you.
 
 ### changed
 
+- **What `--no-sandbox` turns off is every tool, and it said the shell.** `--no-sandbox` sets
+  `Reach::confined` as well as dropping the Landlock ruleset, and an unconfined `Reach` hands back
+  every path untouched - so `read` of `~/.ssh/id_rsa` is a file rather than a refusal. The flag and
+  `wiring::Setup::confine` both described it as the shell's, which is the half that would let
+  somebody turn it off for one command believing the other five still held themselves to the
+  working directory. `SECURITY.md` had it right; the two places a person actually reads did not.
+
+- **`--compact` said the oldest tool results are *dropped*.** They are elided - replaced by a
+  marker, still answering their call, one keystroke from being spent again - which is the
+  distinction the whole `held` column exists to draw. The word a flag uses is where somebody learns
+  the vocabulary.
+
 - **The tool descriptions, read the way a model reads them.** Rendered the ten definitions as they
   go out - 3,356 tokens on every request, paid before anything is said - and went through them.
 

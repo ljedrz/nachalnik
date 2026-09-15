@@ -429,7 +429,8 @@ kamchatka [OPTIONS] [MESSAGE]...
                             read and write; comma-separated, may be repeated
       --sandbox-read <PATH> a path outside the working directory the tools may read
                             but not change; comma-separated, may be repeated
-      --no-sandbox          run the shell tool unconfined, reaching whatever you can
+      --no-sandbox          no confinement at all: the shell reaches whatever you can, and the
+                            tools that are not a process stop holding themselves to the workdir
       --forget-truncated    drop the whole of a shortened tool output instead of
                             keeping it as an archived item you can still read
       --config-file <PATH>  a JSON file of settings, for the ones you would otherwise

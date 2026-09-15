@@ -100,7 +100,8 @@ struct Args {
     #[arg(long, value_name = "N", default_value_t = 8)]
     requests: usize,
 
-    /// How full the context may get before the oldest tool results are dropped; `1` never does.
+    /// How full the context may get before the oldest tool results are elided to a marker they
+    /// can be restored from; `1` never does.
     #[arg(long, value_name = "FRACTION", default_value_t = 0.8)]
     compact: f64,
 
@@ -108,7 +109,8 @@ struct Args {
     #[arg(long)]
     parallel: bool,
 
-    /// Run the shell tool with no sandbox, reaching whatever the user running this can reach.
+    /// Run with no confinement at all: the shell reaches whatever the user running this can, and
+    /// the five tools that are not a process stop holding themselves to the working directory.
     #[arg(long)]
     no_sandbox: bool,
 

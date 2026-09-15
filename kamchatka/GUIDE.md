@@ -37,15 +37,15 @@ at. **context** is why this exists:
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
-│  id  label         kind               sending   held  what it says, or why it is not being sent            │
-│  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                    │
-│  2 ▪ q3.pdf        reference                6+        [application/pdf, 292.47kB]                           │
-│  3 · user          user_message             6         what does the kernel do?                              │
-│  4 · assistant     assistant_message        7         asked for read                                        │
-│  5 - read          tool_result              0     15  excluded: at the terminal, by `tool:read`             │
-│  6 · assistant     assistant_message        7         asked for shell                                       │
-│  7 … shell         tool_result             11  8,993  compaction: compacted to make room                    │
-│  8 · assistant     assistant_message       62  4,102  The kernel is a state machine with five states. …     │
+│  id  label         kind               sending   held  what it says, or why it is not being sent              │
+│  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                     │
+│  2 ▪ q3.pdf        reference                6+        [application/pdf, 292.47kB]                            │
+│  3 · user          user_message             6         what does the kernel do?                               │
+│  4 · assistant     assistant_message        7         asked for read                                         │
+│  5 - read          tool_result              0     15  excluded: at the terminal, by `tool:read`              │
+│  6 · assistant     assistant_message        7         asked for shell                                        │
+│  7 … shell         tool_result             11  8,993  compaction: compacted to make room                     │
+│  8 · assistant     assistant_message       62  4,102  The kernel is a state machine with five states. …      │
 │                                                                                                              │
 └────────────────────────────────────────────────────────────────────────────── 8 items, 2 not going, 1 elided ┘
 ```
@@ -486,7 +486,7 @@ the screen:
 ┌ chat │ context │ trace │ permissions ────────────────────────────────┐
 │> check whether example.com is up                                     │
 │                                                                      │
-└───────── alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions ┘
+└───────── alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions┘
 ┌ a tool wants to run · tab ───────────────────────────────────────────┐
 │ shell wants: shell, network                                          │
 │                                                                      │
