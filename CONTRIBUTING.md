@@ -22,6 +22,17 @@ cargo clippy --workspace --all-features --all-targets -- -D warnings
 cargo doc --workspace --all-features --no-deps   # with RUSTDOCFLAGS=-D warnings, as CI does
 ```
 
+These are pre-commit checks and not just CI steps, and the last one is the one that gets skipped.
+`RUSTDOCFLAGS` is not in the environment the way `RUSTFLAGS: -D warnings` is in CI's, so without it
+the command prints its warnings, exits `0` and reads as a pass; the `docs` job sets it and does not.
+It is worth running, because nothing else in the toolchain reads a doc comment - neither `clippy`
+nor the test suites resolve an intra-doc link - so what it catches is caught here or in CI and
+nowhere in between. Two shapes, both of which arrived in the same commit. A link to an item under a
+name it never had - `Shell::call`, where the method is `invoke` and arrives through a trait, so
+there is nothing on the type to read the name off and nothing but rustdoc to say so. And a public
+comment linking to a `pub(super)` item, which resolves for everyone in the module and for nobody on
+docs.rs.
+
 CI (`.github/workflows/ci.yml`) also builds with **default** features (the tests turn both on, so
 nothing else exercises that configuration), checks `nachalnik`, `nachalnik-mcp` and `kamchatka`
 with `--no-default-features`, runs the two keyless examples, and checks the whole workspace on the
