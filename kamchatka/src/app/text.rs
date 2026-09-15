@@ -489,7 +489,8 @@ pub(super) fn whole(content: &Content) -> String {
         .join("\n\n")
 }
 
-/// What the prompt could not put back if somebody edited this item, named for a note.
+/// Why a prompt could not hold this item, if it could not, written for the person who pressed
+/// the key.
 ///
 /// note: `e` shows `Content::to_text` and commits what comes back as `Content::text`, so it is
 /// faithful exactly where those two are the whole of the item. [`stored`] is the function that
@@ -506,20 +507,41 @@ pub(super) fn whole(content: &Content) -> String {
 /// note: `Content::Json` is not in here. It flattens to the string that would go on the wire
 /// either way, so the round trip changes the variant and not a byte the model reads; and a tool
 /// result full of JSON somebody wants to correct is the case `e` is most useful for.
+///
+/// note: the whole sentence rather than a noun for somebody else to build one out of, because
+/// the three shapes are refused for three different reasons and a shared sentence could only say
+/// the vague part of any of them. The keys that *do* work are appended where this is shown,
+/// since those are the same whichever shape it is.
 #[cfg(feature = "tui")]
 pub(super) fn beyond_a_prompt(item: &ContextItem) -> Option<&'static str> {
     if item.content.as_blob().is_some() {
-        return Some("a picture");
+        return Some(
+            "This item is a picture, and `e` changes what an item says.\n\nThere is no text \
+             here to put back. The prompt would open holding the line that stands in for a \
+             picture on a screen - `[image/png, 12.05kB]` - and committing it would write that \
+             sentence over the picture itself.",
+        );
     }
     if item.content.as_blocks().is_some() {
-        return Some("a turn recorded in the order it was produced");
+        return Some(
+            "This turn was recorded in the order it was produced, and `e` changes what an item \
+             says.\n\nWhat it says is the text among its blocks; the thinking and the tool calls \
+             between them are not said, and a prompt holding only the text would write that text \
+             over the whole of it.",
+        );
     }
 
     match &item.kind {
         ContextKind::AssistantMessage { tool_calls, .. }
             if !tool_calls.is_empty() && item.content.to_text().trim().is_empty() =>
         {
-            Some("a tool call and nothing else")
+            Some(
+                "This turn is a tool call and nothing else, and `e` changes what an item \
+                 says.\n\nA call is not something a turn said: it is held beside the content, \
+                 and this key writes content. So there is nothing here for a prompt to hold, \
+                 and committing into one would write a sentence onto a turn whose call it had \
+                 not touched.",
+            )
         }
         _ => None,
     }

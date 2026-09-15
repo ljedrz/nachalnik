@@ -108,13 +108,22 @@ minor bump may break you.
   into it was worse than the blank box: it wrote a sentence onto a turn whose call it had not
   touched, leaving an item that said one thing and did another.
 
-  <kbd>e</kbd> now declines an item whose substance a prompt cannot hold, and names it: a turn
-  that is only a call, a picture, or a turn recorded in the order it was produced, where the text
-  is the said parts and the thinking and the calls around them would be flattened away by putting
-  it back. The note points at <kbd>enter</kbd>, which reads every face of an item, and at
-  <kbd>space</kbd>, which takes one out of view. Nothing else changes: a tool *result* is text and
-  still edits, which is the case this key is most useful for, and so does a turn that said
-  something as well as calling for something - the calls are left alone, as they always were.
+  <kbd>e</kbd> now declines an item whose substance a prompt cannot hold, and says why in a panel
+  over the row it is about - the ordinary one, sized to what it has to say and gone on the next
+  key. Three shapes are refused, each with its own reason: a turn that is only a call, a picture,
+  where the prompt would open holding the `[image/png, 12.05kB]` line that stands in for one on a
+  screen, and a turn recorded in the order it was produced, where the text is the said parts and
+  the thinking and the calls between them would be flattened away by putting it back. The panel
+  points at <kbd>enter</kbd>, which reads every face of an item, and <kbd>space</kbd>, which takes
+  one out of view. Nothing else changes: a tool *result* is text and still edits, which is the
+  case this key is most useful for, and so does a turn that said something as well as calling for
+  something - the calls are left alone, as they always were.
+
+  On this tab, and that is the half worth saying twice. Every other note the context pane raises
+  goes to the conversation, which is right for something worth finding later and wrong for the
+  answer to a key just pressed: the chat is not the tab somebody is looking at when they press
+  <kbd>e</kbd> on a context row, so a line there would read as a key that did nothing at all -
+  the same failure as the empty box, one tab along.
 
   This is not a position on rewriting history. <kbd>e</kbd> exists to rewrite it. It is that the
   key could not reach the thing on the screen, and said so by opening an empty box.

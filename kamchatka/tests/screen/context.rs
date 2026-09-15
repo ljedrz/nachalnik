@@ -248,8 +248,14 @@ async fn editing_an_item_changes_what_the_model_reads_and_keeps_what_it_said() {
 /// prompt and no account of why. Committing into it was worse than useless: it wrote a sentence
 /// onto a turn whose call it had not touched, so the turn then said one thing and did another.
 ///
-/// note: what is asserted is that the keys did not move, because that is the half a wording
-/// change cannot break. The note is checked for the row it names rather than for its prose.
+/// note: it is answered on this tab, in a panel over the row it is about, and not as a line on
+/// the conversation where every other note the pane raises goes. The chat is not the tab somebody
+/// is looking at when they press `e` on a context row, so a note there read as a key that did
+/// nothing at all - which is the same failure as the empty box, one tab along.
+///
+/// note: what is asserted is that the keys did not move and that the answer is on the screen the
+/// key was pressed on, because that is the half a wording change cannot break. The panel is
+/// checked for the row it names rather than for its prose.
 #[tokio::test]
 async fn a_turn_that_is_only_a_tool_call_cannot_be_edited_and_says_so() {
     let mut harness = Harness::new([
@@ -278,13 +284,22 @@ async fn a_turn_that_is_only_a_tool_call_cannot_be_edited_and_says_so() {
         Focus::Body,
         "and the keys should still be on the pane"
     );
-    let note = harness
-        .app
-        .loose
-        .last()
-        .map(|entry| entry.text.clone())
-        .unwrap_or_default();
-    assert!(note.contains("[2] is a tool call"), "{note:?}");
+    // the answer is on this tab, over the row it is about, rather than on the conversation
+    let panel = harness.flat();
+    assert!(panel.contains("[2] cannot be edited"), "{panel}");
+    assert!(panel.contains("tool call and nothing else"), "{panel}");
+    assert!(
+        panel.contains("space") && panel.contains("enter"),
+        "the keys that do work: {panel}"
+    );
+    assert!(
+        harness
+            .app
+            .loose
+            .iter()
+            .all(|entry| !entry.text.contains("cannot be edited")),
+        "the conversation is not where this belongs"
+    );
 
     // the item is untouched: an `e` that refuses credits no hand and rewrites nothing
     let turn = &harness.app.kernel.items()[1];
@@ -295,6 +310,10 @@ async fn a_turn_that_is_only_a_tool_call_cannot_be_edited_and_says_so() {
         turn.content
     );
     assert_eq!(turn.calls().count(), 1, "the call is still there");
+
+    // any key closes it, as it does every panel
+    harness.press(KeyCode::Esc).await;
+    assert!(harness.app.overlay.is_none(), "{}", harness.flat());
 
     // and the result of that call is still editable, because its content is the whole of it
     harness.press(KeyCode::Down).await;

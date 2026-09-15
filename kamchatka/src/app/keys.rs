@@ -210,12 +210,16 @@ impl App {
             // a sentence beside a call it had not touched. `beyond_a_prompt` is the whole of the
             // question; `enter` is still the way to read every face of an item this cannot rewrite
             KeyCode::Char('e') => match beyond_a_prompt(&picked) {
-                Some(what) => self.say(
-                    Speaker::Note,
+                // note: a panel over this tab rather than a line on the chat. Every other note
+                // the pane raises goes to the conversation, which is right for something worth
+                // finding later and wrong for the answer to a key just pressed: the tab it
+                // appears on is not the tab somebody is looking at, so an `e` that refused read
+                // as an `e` that did nothing at all. This one is about the row under it and is
+                // gone on the next key
+                Some(why) => self.preview(
+                    format!("[{}] cannot be edited", picked.id),
                     format!(
-                        "[{}] is {what}, which `e` cannot rewrite; `enter` reads it, `space` \
-                         takes it out of view",
-                        picked.id
+                        "{why}\n\n`enter` reads every face of it · `space` takes it out of view"
                     ),
                 ),
                 None => {
