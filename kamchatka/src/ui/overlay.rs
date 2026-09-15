@@ -170,12 +170,16 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
         return 0;
     };
 
-    // yellow when the keys are on it, so that "this is answerable right now" and "this is waiting
-    // for you to come back" are not the same picture. The title says how to reach it, the way the
-    // prompt's does when the keys are somewhere else
+    // the accent when the keys are on it, so that "this is answerable right now" and "this is
+    // waiting for you to come back" are not the same picture. The title says how to reach it, the
+    // way the prompt's does when the keys are somewhere else
+    //
+    // note: red stays red whatever the frame is. It is the one colour here that is not saying
+    // where the keys are - it is saying a tool is waiting on somebody - and a person who set the
+    // frame red would otherwise have configured that distinction away
     let asking = app.focus == Focus::Body && app.tab == Tab::Chat;
     let style = match asking {
-        true => Style::default().fg(Color::Yellow),
+        true => Style::default().fg(app.accent),
         false => Style::default().fg(Color::Red),
     };
     let block = Block::bordered()

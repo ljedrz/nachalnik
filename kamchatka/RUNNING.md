@@ -329,13 +329,38 @@ parser for that in the tree already:
 }
 ```
 
-Every key is optional, every one is named after the argument it stands in for, and **anything
-given on the command line wins** — including a value that happens to be the default, because
-`--requests 8` is somebody saying eight rather than somebody saying nothing. A list on the command
+Every key is optional, every one is named after the argument it stands in for — with one
+exception, below — and **anything given on the command line wins**, including a value that happens
+to be the default, because `--requests 8` is somebody saying eight rather than somebody saying
+nothing. A list on the command
 line *replaces* the file's rather than adding to it: one rule for every key is the only kind worth
 predicting, and the other way round there is no way to ask for fewer. `--model` is the one setting
 with a variable behind it, so the order there is command line, then `KAMCHATKA_MODEL`, then the
 file.
+
+**`border` is the exception**, and the only setting with no argument behind it:
+
+```json
+{ "border": "#7aa2f7" }
+```
+
+Six hex digits, `#` optional, and it is the colour of the window's frame — along with everything
+else that is yellow to say *the keys are here*: the active tab, the prompt while it has them, a
+permission question you can answer where you stand. It exists because that yellow is the one
+colour in the program picked to sit beside *your* terminal theme rather than to mean something,
+and there is no argument for it because nobody types a colour twice. Left out, or `null`, it stays
+the terminal's own yellow — which is the right default precisely because it is not a hex: a window
+with nothing configured belongs to whatever palette it is opened in.
+
+What it does not touch is the vocabulary. `ask` on the permissions tab, a budget bar past seven
+tenths, a command that was killed, a pinned row — those are yellow because yellow *means*
+something there, and they stay yellow against a frame of any colour. Red is left alone for the
+same reason: a question nobody has come back to is red whatever you set, or you could configure
+away the difference between *answerable now* and *still waiting*.
+
+A colour that is not six hex digits stops the program and says so, naming the file and the form —
+including in a headless run, which has no frame to draw. One file is valid everywhere or invalid
+everywhere, rather than one that works until somebody opens it on a terminal.
 
 A leading `~` in `sandbox-allow` and `sandbox-read` is your home directory. That is the one place
 this program expands one, and the exception is narrower than it looks: every other way of giving

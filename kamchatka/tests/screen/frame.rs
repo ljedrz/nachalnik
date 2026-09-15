@@ -427,6 +427,55 @@ async fn every_window_is_framed_the_same_and_the_keys_say_where_they_are() {
     );
 }
 
+/// The frame is drawn in whatever colour it was given, and the vocabulary is not.
+///
+/// note: every border that is yellow to mean *the keys are here* moves together - the window, the
+/// active tab in its title, the prompt while it has them - because they are one statement, and a
+/// setting that moved two of three would leave the third reading as a different kind of thing.
+/// The unfocused prompt stays grey for the same reason: grey is what "not here" looks like, and
+/// it is not the accent in a darker shade.
+///
+/// note: and the yellows that *mean* something are checked to have stayed put. `ask` on the
+/// permissions tab, a budget past seven tenths, a pinned row - those are a vocabulary the model
+/// and the person both read, and a frame colour that swept them along would let somebody
+/// configure the difference between `ask` and `allow` into one colour by accident.
+#[tokio::test]
+async fn the_frame_is_drawn_in_the_colour_it_was_given() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("a.rs", "one").pinned());
+
+    // untouched, it is the terminal's own yellow rather than a hex of one - so a window with
+    // nothing configured belongs to whatever palette it is opened in
+    assert_eq!(harness.corners(), vec![Color::Yellow, Color::Yellow]);
+
+    let blue = Color::Rgb(0x7a, 0xa2, 0xf7);
+    harness.app.accent = blue;
+    assert_eq!(
+        harness.corners(),
+        vec![blue, blue],
+        "the window and the prompt that has the keys"
+    );
+    assert_eq!(harness.style_of("chat").0, blue, "the active tab with them");
+
+    // the prompt without the keys is still grey, which is the other half of what the colour says
+    harness.tab(Tab::Context);
+    assert_eq!(harness.corners(), vec![blue]);
+    harness.press(KeyCode::Char('e')).await;
+    harness.press(KeyCode::Tab).await;
+    assert_eq!(harness.corners(), vec![blue, Color::Gray]);
+
+    // and a pinned row is yellow because pinned means something, not because the frame is
+    harness.tab(Tab::Context);
+    assert_eq!(
+        harness.style_of("▪").0,
+        Color::Yellow,
+        "the vocabulary went with the frame"
+    );
+}
+
 #[tokio::test]
 async fn a_tab_with_more_than_fits_says_so_down_its_border() {
     let mut harness = Harness::new([]);

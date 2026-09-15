@@ -20,5 +20,7 @@
 
   "deadline": null,
   "spend": 200000,
-  "no-record": false
+  "no-record": false,
+
+  "border": null
 }

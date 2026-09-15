@@ -62,6 +62,30 @@ minor bump may break you.
   resume of *that* file reads nothing back. Two hops is the earlier `.jsonl`, which is what an
   append-only log is for.
 
+- **The window's frame takes a colour from the settings file.** `"border": "#7aa2f7"` — six hex
+  digits, `#` optional — sets the frame and everything else that is yellow to say *the keys are
+  here*: the active tab, the prompt while it has them, a permission question you can answer where
+  you stand. Left out or `null`, it stays the terminal's own yellow, which is the right default
+  precisely because it is not a hex: a window with nothing configured belongs to whatever palette
+  it is opened in, and `#ffff00` would look right in one theme and wrong in every other.
+
+  One setting rather than one per border, because the four are one statement. They are all that
+  colour to say the same thing, and a key that moved three of them would leave the fourth reading
+  as a different kind of thing rather than as the one somebody forgot.
+
+  It does not touch the vocabulary. `ask` on the permissions tab, a budget bar past seven tenths,
+  a command that was killed, a pinned row — those are yellow because yellow *means* something
+  there, and they stay yellow against a frame of any colour. Red is left alone for the same
+  reason: a question nobody has come back to is red whatever you set, or the difference between
+  *answerable now* and *still waiting* would be configurable away by accident.
+
+  This is the one key in the file with no argument behind it, which is a decision. Every other
+  setting stands in for something you would otherwise type, and nobody types a colour twice — it
+  is picked once to sit beside a terminal theme and then never thought about again, which is the
+  thing a file is for and the command line is not. A colour that is not six hex digits stops the
+  program and names the file and the form, in a headless run too: one file is valid everywhere or
+  invalid everywhere, rather than one that works until somebody opens it on a terminal.
+
 - **A release attaches a Linux binary.** Until now the only way to have this program was
   `cargo install kamchatka` and a toolchain; a `kamchatka-v*` tag now builds a static
   `x86_64-unknown-linux-musl` binary and attaches it to the GitHub release, with a `sha256` and

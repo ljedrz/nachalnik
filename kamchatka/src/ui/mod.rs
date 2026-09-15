@@ -204,13 +204,13 @@ fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) {
             format!(" {} ", tab.name()),
             match (tab == app.tab, tab == Tab::Chat && asked) {
                 (_, true) => Style::default().fg(Color::Red).bold(),
-                (true, _) => Style::default().fg(Color::Yellow).bold(),
+                (true, _) => Style::default().fg(app.accent).bold(),
                 _ => quiet(),
             },
         ));
     }
 
-    let edge = Style::default().fg(Color::Yellow);
+    let edge = Style::default().fg(app.accent);
     let block = Block::bordered()
         .title(Line::from(strip))
         .title_bottom(Line::styled(footer(app, going), quiet()).right_aligned())
@@ -386,7 +386,7 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
         (None, false) => " you · tab ".to_owned(),
     };
     let colour = match focused {
-        true => Color::Yellow,
+        true => app.accent,
         false => Color::Gray,
     };
     app.input.set_block(

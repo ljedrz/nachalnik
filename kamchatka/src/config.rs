@@ -25,7 +25,9 @@ use serde::{Deserialize, Serialize};
 /// note: the names are the arguments' own, with `-` where the argument has one, so that reading a
 /// file is reading `--help`. The ones left out are the ones that are not settings: a message, a
 /// session to resume and a file to attach belong to an invocation rather than to a project, and
-/// `--headless` decides itself from whether stdout is a terminal.
+/// `--headless` decides itself from whether stdout is a terminal. `border` is the one that goes
+/// the other way - a setting with no argument - and the note on it says why.
+///
 /// note: it serializes as well as deserializes, and every field is written even when it is
 /// `null` - which is what makes a settings file something a program can produce rather than only
 /// consume. `kamchatka.json` beside this crate is the shipped one, and the suite holds it to
@@ -74,6 +76,39 @@ pub struct Settings {
     pub forget_truncated: Option<bool>,
     /// Whether to leave the session unwritten when it ends.
     pub no_record: Option<bool>,
+    /// The colour the window's frame is drawn in, as `#rrggbb`.
+    ///
+    /// note: the one key here with no argument behind it, which is a decision rather than an
+    /// oversight. Every other setting stands in for something somebody would otherwise type, and
+    /// nobody types a colour twice - it is picked once to sit beside a terminal theme and then
+    /// never thought about again, which is exactly the thing a file is for and the command line
+    /// is not. A `--border` would also have to be `tui`-gated, and would put a colour in the
+    /// `--help` of a program half of whose runs have no screen.
+    ///
+    /// note: not gated here, for the reason `mcp` is not: one file works for every build. A
+    /// headless build reads this and has nothing to draw with it, which costs nothing and grants
+    /// nothing - unlike an MCP server it cannot run, which is worth refusing over.
+    pub border: Option<String>,
+}
+
+/// A `#rrggbb` colour, as the three bytes it names.
+///
+/// note: `#rrggbb` and nothing else. Not the sixteen colour *names*, because the terminal already
+/// has those and this setting exists for somebody whose palette is not one of them; not `#rgb`,
+/// because supporting two spellings of the same thing is two things to document and one more way
+/// to typo. The error says the form rather than only that the value was wrong, since a settings
+/// file has no `--help` beside it.
+pub fn rgb(hex: &str) -> Result<(u8, u8, u8), String> {
+    let digits = hex.strip_prefix('#').unwrap_or(hex);
+    if digits.len() != 6 || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format!(
+            "`{hex}` is not a colour; it should be six hex digits, as in `#7aa2f7`"
+        ));
+    }
+
+    let byte = |at: usize| u8::from_str_radix(&digits[at..at + 2], 16).expect("hex digits");
+
+    Ok((byte(0), byte(2), byte(4)))
 }
 
 impl Settings {
@@ -166,6 +201,29 @@ fn expanded(path: PathBuf, home: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A colour is six hex digits, and the error for anything else says so.
+    ///
+    /// note: the message is asserted rather than only the failure, because a settings file has no
+    /// `--help` beside it: the error *is* the documentation, and one saying "invalid value" would
+    /// leave somebody guessing between `#rgb`, `rgb()`, `yellow` and a bare number.
+    #[test]
+    fn a_border_is_six_hex_digits_and_says_so_when_it_is_not() {
+        assert_eq!(rgb("#7aa2f7"), Ok((0x7a, 0xa2, 0xf7)));
+        // the `#` is a convention rather than a requirement, and case is not a second spelling
+        assert_eq!(rgb("7AA2F7"), Ok((0x7a, 0xa2, 0xf7)));
+        assert_eq!(rgb("#000000"), Ok((0, 0, 0)));
+        assert_eq!(rgb("#ffffff"), Ok((255, 255, 255)));
+
+        // the near misses, which are what somebody actually types
+        for wrong in [
+            "#7af", "yellow", "#7aa2f", "#7aa2f77", "", "#nothex", "#7aa2f ",
+        ] {
+            let said = rgb(wrong).expect_err(&format!("`{wrong}` is not a colour"));
+            assert!(said.contains("six hex digits"), "{wrong:?}: {said}");
+            assert!(said.contains("#7aa2f7"), "the form is shown: {said}");
+        }
+    }
 
     #[test]
     fn a_leading_tilde_is_the_home_directory_and_nothing_else_is() {

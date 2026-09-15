@@ -503,6 +503,19 @@ pub struct App {
     /// The prompt.
     #[cfg(feature = "tui")]
     pub input: TextArea<'static>,
+    /// The colour of the window's frame, and of everything that is yellow to say *the keys are
+    /// here*: the active tab, the prompt while it has them, an answerable question.
+    ///
+    /// note: one field rather than one per border, because they are one statement. All four are
+    /// yellow to say the same thing, and a setting that moved three of them would leave the
+    /// fourth reading as a different kind of thing rather than as the one somebody forgot.
+    ///
+    /// note: not every yellow in the program. `ask` on the permissions tab, a budget bar past
+    /// seven tenths, a command that was killed, a pinned row - those are yellow because yellow
+    /// *means* something there, and they stay yellow against a frame of any colour. This is the
+    /// accent; those are the vocabulary.
+    #[cfg(feature = "tui")]
+    pub accent: ratatui::style::Color,
     /// Which pane the keys go to.
     pub focus: Focus,
     /// Which of the listed context items is picked out; an index into [`App::listed`], which is
@@ -680,6 +693,11 @@ impl App {
             trace: VecDeque::new(),
             #[cfg(feature = "tui")]
             input,
+            // note: the terminal's own yellow rather than a hex of one, so that a window with
+            // nothing configured still belongs to whatever palette it is opened in. A default
+            // written as `#ffff00` would look the same in one theme and wrong in every other
+            #[cfg(feature = "tui")]
+            accent: ratatui::style::Color::Yellow,
             focus: Focus::Input,
             selected: 0,
             sending_only: false,

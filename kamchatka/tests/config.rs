@@ -192,6 +192,33 @@ fn a_word_the_file_gets_wrong_is_refused() {
 /// note: the failure this format is most likely to have, and the one a person cannot see: a file
 /// that is accepted and ignored looks exactly like a file that worked. serde names the field and
 /// lists the ones it knows, which is better than anything worth writing by hand.
+/// A colour nobody can parse stops the program rather than being ignored.
+///
+/// note: this is the whole reason the value is read in `Args::under` and not where the frame is
+/// drawn. A settings file is written once and then trusted, so the failure mode worth designing
+/// against is not a crash - it is `"border": "#7aa2f"` sitting in a file for a month while the
+/// frame stays yellow and nobody can see why the setting does nothing.
+///
+/// note: a headless run, which is what the suite can drive - and it is the harder case rather
+/// than a dodge. A build with no screen still refuses the colour, so one settings file is either
+/// valid everywhere or invalid everywhere, instead of a file that works until somebody opens it
+/// on a terminal.
+#[test]
+fn a_border_that_is_not_a_colour_is_refused_by_name() {
+    let path = settings("border-bad", r##"{ "border": "#7aa2f" }"##);
+
+    let (ok, said) = run(&["--config-file", &path], "");
+
+    assert!(!ok, "a colour nobody can read is not a success");
+    assert!(said.contains("`border` in the settings file"), "{said}");
+    assert!(said.contains("six hex digits"), "the form is shown: {said}");
+
+    // and one that is a colour is simply taken
+    let good = settings("border-good", r##"{ "border": "#7aa2f7" }"##);
+    let (ok, said) = run(&["--config-file", &good], "/quit\n");
+    assert!(ok, "{said}");
+}
+
 #[test]
 fn an_unknown_key_is_refused_by_name() {
     let path = settings("unknown", r#"{ "modle": "typo" }"#);

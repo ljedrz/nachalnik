@@ -172,6 +172,15 @@ struct Args {
     /// here on the command line wins over what it says.
     #[arg(long, value_name = "PATH")]
     config_file: Option<std::path::PathBuf>,
+
+    /// The frame's colour, which only a settings file can say; see `Settings::border`.
+    ///
+    /// note: `skip` rather than an argument nobody would type twice, and it lives on `Args` all
+    /// the same so that the one merge in `under` stays the one place the file meets the command
+    /// line. A second path from a settings file to the program is a second set of rules about
+    /// which wins.
+    #[arg(skip)]
+    border: Option<String>,
 }
 
 impl Args {
@@ -229,6 +238,14 @@ impl Args {
         }
         if self.system.is_none() {
             self.system = settings.system;
+        }
+        // read here rather than where it is drawn, so that a colour nobody can parse is a startup
+        // error naming the file rather than a frame that is quietly still yellow. There is no
+        // argument to lose to, so there is nothing to ask `typed` about
+        if let Some(border) = &settings.border {
+            kamchatka::config::rgb(border)
+                .map_err(|e| anyhow::anyhow!("`border` in the settings file: {e}"))?;
+            self.border = settings.border;
         }
         if let Some(on_ask) = settings.on_ask.filter(|_| !typed("on_ask")) {
             self.on_ask = OnAsk::from_str(&on_ask, true)
@@ -420,6 +437,22 @@ async fn session() -> Result<()> {
     }
     .wire(provider)
     .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    // note: after the wiring rather than a field in `Setup`, because `Setup` is what an embedder
+    // fills in to get a session and this is a fact about a window. Somebody embedding `App` draws
+    // it themselves and sets this themselves, the way they already set `App::accent`'s neighbours
+    //
+    // note: parsed again rather than carried through as three bytes, and it cannot fail here -
+    // `under` refused the file if it would. Doing it there is what makes a bad colour an error
+    // about a settings file instead of a frame that is silently still yellow
+    #[cfg(feature = "tui")]
+    if let Some((r, g, b)) = args
+        .border
+        .as_deref()
+        .and_then(|it| kamchatka::config::rgb(it).ok())
+    {
+        app.accent = ratatui::style::Color::Rgb(r, g, b);
+    }
 
     // the servers have to outlive this scope: dropping one takes its child process, and its
     // tools, with it
