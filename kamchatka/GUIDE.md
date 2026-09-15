@@ -83,7 +83,7 @@ again.
 | --- | --- |
 | <kbd>space</kbd> | cycle how much of it the model gets: all of it → a `…` marker → nothing → back |
 | <kbd>p</kbd> | pin it, so that the compactor is refused if it tries |
-| <kbd>e</kbd> | change what it says |
+| <kbd>e</kbd> | change what it **says** — a tool call is not something a turn says, so a turn that is only a call declines this and tells you why |
 | <kbd>f</kbd> | list only what the next request carries, or everything again |
 | <kbd>/</kbd> | filter the rows: fuzzy, over the whole of what an item holds — see below |
 | <kbd>enter</kbd> | read the whole of it — see below |

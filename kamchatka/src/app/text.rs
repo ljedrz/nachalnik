@@ -489,6 +489,42 @@ pub(super) fn whole(content: &Content) -> String {
         .join("\n\n")
 }
 
+/// What the prompt could not put back if somebody edited this item, named for a note.
+///
+/// note: `e` shows `Content::to_text` and commits what comes back as `Content::text`, so it is
+/// faithful exactly where those two are the whole of the item. [`stored`] is the function that
+/// already knows where they are not - it exists because reading the content alone showed an empty
+/// box for a turn that was nothing but tool calls - and this is the same reading, answered as a
+/// reason rather than as a page.
+///
+/// note: what makes a turn's calls unreachable is that they are not its content. They are on the
+/// kind, beside it, and `Kernel::replace` writes content; so a person who edits one changes the
+/// sentence the turn opened with and not the call they were looking at, and a call-only turn
+/// offers them an empty box to do it in. Refusing is not a policy about rewriting history - `e`
+/// exists to rewrite it - it is that this key cannot reach the thing on the screen.
+///
+/// note: `Content::Json` is not in here. It flattens to the string that would go on the wire
+/// either way, so the round trip changes the variant and not a byte the model reads; and a tool
+/// result full of JSON somebody wants to correct is the case `e` is most useful for.
+#[cfg(feature = "tui")]
+pub(super) fn beyond_a_prompt(item: &ContextItem) -> Option<&'static str> {
+    if item.content.as_blob().is_some() {
+        return Some("a picture");
+    }
+    if item.content.as_blocks().is_some() {
+        return Some("a turn recorded in the order it was produced");
+    }
+
+    match &item.kind {
+        ContextKind::AssistantMessage { tool_calls, .. }
+            if !tool_calls.is_empty() && item.content.to_text().trim().is_empty() =>
+        {
+            Some("a tool call and nothing else")
+        }
+        _ => None,
+    }
+}
+
 /// The first line of something, shortened.
 pub(super) fn one_line(text: &str) -> String {
     let first = text.lines().next().unwrap_or_default();

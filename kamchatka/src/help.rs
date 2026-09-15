@@ -118,6 +118,8 @@ pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is 
                         (on a ▫ archived row, either of those sends the whole
                          of an output the model was shown a truncated copy of)
     e                   change what it says; what it said before is kept
+                        (what a turn *did* is not something it says, so a
+                         turn that is only a tool call declines the key)
     f                   list only what the next request carries, or everything
     enter               read the whole of it: what the model gets, what it
                         says, and what it said before it was rewritten

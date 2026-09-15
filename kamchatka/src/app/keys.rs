@@ -12,7 +12,7 @@ use serde_json::json;
 
 use super::{
     App, Focus, Overlay, Page, Search, Speaker, Tab,
-    text::{projected, stored, whole},
+    text::{beyond_a_prompt, projected, stored, whole},
 };
 
 /// How many lines `pgup` and `pgdn` move an overlay.
@@ -202,13 +202,30 @@ impl App {
             KeyCode::Esc => self.cancel_edit(),
             // changing what an item says, which is the verb the other keys were missing: `space`
             // and `p` decide whether the model reads it, and this decides what it reads
-            KeyCode::Char('e') => {
-                self.clear_input();
-                self.input.insert_str(picked.content.to_text());
-                self.input.move_cursor(CursorMove::End);
-                self.editing = Some(picked.id);
-                self.focus = Focus::Input;
-            }
+            //
+            // note: what it reads, and only that. An item whose substance the prompt cannot hold
+            // is refused here rather than opened - a tool call is on the item's kind and not in
+            // its content, so a turn that is nothing but calls used to open an empty box titled
+            // `editing [3]` over a row visibly holding one, and committing anything into it wrote
+            // a sentence beside a call it had not touched. `beyond_a_prompt` is the whole of the
+            // question; `enter` is still the way to read every face of an item this cannot rewrite
+            KeyCode::Char('e') => match beyond_a_prompt(&picked) {
+                Some(what) => self.say(
+                    Speaker::Note,
+                    format!(
+                        "[{}] is {what}, which `e` cannot rewrite; `enter` reads it, `space` \
+                         takes it out of view",
+                        picked.id
+                    ),
+                ),
+                None => {
+                    self.clear_input();
+                    self.input.insert_str(picked.content.to_text());
+                    self.input.move_cursor(CursorMove::End);
+                    self.editing = Some(picked.id);
+                    self.focus = Focus::Input;
+                }
+            },
             // how much of an item the model gets, in three steps out and one back: all of it,
             // then a marker where it was, then nothing at all
             //

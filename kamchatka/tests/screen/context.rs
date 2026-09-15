@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crossterm::event::KeyCode;
-use kamchatka::app::Tab;
+use kamchatka::app::{Focus, Tab};
 use nachalnik::{
     ContextItem, ContextState, ModelResponse,
     test::{ConstTool, call},
@@ -236,6 +236,71 @@ async fn editing_an_item_changes_what_the_model_reads_and_keeps_what_it_said() {
     let screen = harness.screen();
     assert!(screen.contains("│ v1"), "{screen}");
     assert!(screen.contains("rewritten by `user`"), "{screen}");
+}
+
+/// `e` on a turn that is nothing but a tool call says why it cannot, rather than opening an
+/// empty prompt over it.
+///
+/// note: the call is on the item's *kind*, beside the content, and `Kernel::replace` writes
+/// content - so `e` could never have reached the thing on the screen. What it did instead was
+/// open a box titled `editing [2]` holding the turn's content, which for a call-only turn is the
+/// empty string; somebody who pressed `e` on a row reading `dig({"where":"here"})` got a blank
+/// prompt and no account of why. Committing into it was worse than useless: it wrote a sentence
+/// onto a turn whose call it had not touched, so the turn then said one thing and did another.
+///
+/// note: what is asserted is that the keys did not move, because that is the half a wording
+/// change cannot break. The note is checked for the row it names rather than for its prose.
+#[tokio::test]
+async fn a_turn_that_is_only_a_tool_call_cannot_be_edited_and_says_so() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({ "where": "here" }))]),
+        ModelResponse::text("a bone"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("dig", "a bone")));
+    harness.send("dig").await;
+    harness.settle().await;
+
+    // the turn is the second item, and its row is the one showing the call
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Char('e')).await;
+
+    assert!(
+        harness.app.editing.is_none(),
+        "the prompt should not have been armed over an item it cannot put back"
+    );
+    assert_eq!(
+        harness.app.focus,
+        Focus::Body,
+        "and the keys should still be on the pane"
+    );
+    let note = harness
+        .app
+        .loose
+        .last()
+        .map(|entry| entry.text.clone())
+        .unwrap_or_default();
+    assert!(note.contains("[2] is a tool call"), "{note:?}");
+
+    // the item is untouched: an `e` that refuses credits no hand and rewrites nothing
+    let turn = &harness.app.kernel.items()[1];
+    assert!(turn.meta.get("revised").is_none(), "{:?}", turn.meta);
+    assert!(
+        turn.content.to_text().trim().is_empty(),
+        "{:?}",
+        turn.content
+    );
+    assert_eq!(turn.calls().count(), 1, "the call is still there");
+
+    // and the result of that call is still editable, because its content is the whole of it
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Char('e')).await;
+    assert!(harness.app.editing.is_some(), "a tool result is text");
+    assert_eq!(harness.app.input.lines(), ["a bone"]);
 }
 
 #[tokio::test]

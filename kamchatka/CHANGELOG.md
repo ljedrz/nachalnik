@@ -95,6 +95,30 @@ minor bump may break you.
   carries the `replaces` hint, so a context resumed from a session that superseded still draws in
   the order the request has. It is not the shape of a person fixing a sentence.
 
+### fixed
+
+- **<kbd>e</kbd> on a turn that is nothing but a tool call opened an empty prompt.** Most
+  assistant turns in a working session are exactly that, and the context row for one reads
+  `dig({"where":"here"})` - so pressing the key that changes what an item says put a box titled
+  `editing [2]` on the screen with nothing in it and no account of why.
+
+  The call was never reachable from there. A turn recorded in the conventional three slots keeps
+  its calls on its *kind*, beside its content, and `Kernel::replace` writes content - so the
+  prompt was showing the turn's prose, which for a call-only turn is the empty string. Committing
+  into it was worse than the blank box: it wrote a sentence onto a turn whose call it had not
+  touched, leaving an item that said one thing and did another.
+
+  <kbd>e</kbd> now declines an item whose substance a prompt cannot hold, and names it: a turn
+  that is only a call, a picture, or a turn recorded in the order it was produced, where the text
+  is the said parts and the thinking and the calls around them would be flattened away by putting
+  it back. The note points at <kbd>enter</kbd>, which reads every face of an item, and at
+  <kbd>space</kbd>, which takes one out of view. Nothing else changes: a tool *result* is text and
+  still edits, which is the case this key is most useful for, and so does a turn that said
+  something as well as calling for something - the calls are left alone, as they always were.
+
+  This is not a position on rewriting history. <kbd>e</kbd> exists to rewrite it. It is that the
+  key could not reach the thing on the screen, and said so by opening an empty box.
+
 ## [0.10.0] - 2026-09-14
 
 ### added
