@@ -4,7 +4,7 @@
 //! know about. `/context`, `/seams` and `/budget` read public values off a [`nachalnik::Kernel`]
 //! and print them; nothing in this file is a capability the runtime had to grow.
 
-use nachalnik::{ContextState, selectors::Selector};
+use nachalnik::{ContextItem, ContextState, selectors::Selector};
 
 use crate::{app::text::thousands, tools::Limits};
 
@@ -178,6 +178,9 @@ impl App {
             // and putting one there at the prompt are the same act at two moments, and a second
             // implementation of it is a second place for the media types to go stale
             "attach" => self.attach(rest),
+            // the same act as `/attach` with nothing to open: something the model should have,
+            // put where it will read it, without asking it to say anything back
+            "note" => self.note(rest),
             // note: one word per mechanism, and the mechanism here is a state. `/prune` moved an
             // item to `excluded` and every place the result is read back said `excluded`, so the
             // command is named for that now - and `amend`'s own five moves are named the same way,
@@ -530,6 +533,53 @@ impl App {
             self.ask(asked);
             self.start_turn();
         }
+    }
+
+    /// Puts something into the context that the model should have and does not have to answer.
+    ///
+    /// note: the gap this fills is a shape rather than a feature. Everything a person could say to
+    /// a model went in as a message, and a message starts a turn - so telling it a fact it will
+    /// need in four turns' time cost a request, an answer, and an "understood" nobody wanted. The
+    /// alternatives were worse: saying it *with* the next question buries it, and saying it
+    /// afterwards is too late.
+    ///
+    /// note: a [`ContextItem::memory`] - a `Reference` whose source is `memory` - rather than a
+    /// user message. The difference is *not* the wire: a reference projects as a user-role message
+    /// exactly as an attached file does, so a note and then a question is two user messages either
+    /// way, and every endpoint here takes that. The difference is what the item is to everything
+    /// that reads it. The model gets `note:` in front of the words, so it can tell a fact it was
+    /// handed from a thing it was asked; `/exclude memories` names every one of them and nothing
+    /// else; the chat draws it as what went in rather than as something said; and the runtime's
+    /// own taxonomy already had the word, with `amend`'s `note` writing the same kind of item from
+    /// the model's hand.
+    ///
+    /// note: not pinned, exactly as `/attach` is not. What is worth keeping from compaction is a
+    /// judgement about the note rather than about notes, and `p` is one key on the row.
+    fn note(&mut self, rest: &str) {
+        if rest.is_empty() {
+            self.say(
+                Speaker::Error,
+                "`/note` takes whatever the model should know without being asked to answer it: \
+                 `/note the CI runner has no network`. It goes in with the next request rather \
+                 than starting one, and `p` on the context tab keeps it from being compacted",
+            );
+            return;
+        }
+        // the same refusal `/attach` gives, for the same reason: an item pushed mid-turn changes
+        // the request the model is already answering
+        if self.busy || !self.kernel.pending_permissions().is_empty() {
+            self.say(
+                Speaker::Error,
+                "not while a turn is running or a call is waiting to be answered",
+            );
+            return;
+        }
+
+        // note: nothing is said about what went in, for the reason `/attach` says nothing: the
+        // chat derives a line from the item itself, and a sentence here would be a second account
+        // of one item written where it can go out of date. See `App::as_conversation`
+        self.kernel
+            .push(ContextItem::memory("note", rest.to_owned()).because("written at the prompt"));
     }
 
     /// Prunes, pins or restores whatever a selector names.

@@ -580,7 +580,7 @@ alphabetical order. Both are deterministic — two identical searches give the s
 same order, which matters because the answer becomes a context item, and two items differing only
 in their order are two items nobody can diff and a budget pays for twice.
 
-## 📎 putting a file in, and asking about it
+## 📎 putting something in, with or without a question
 
 `/attach` takes a path and then whatever you want to ask about it, so the file and the question
 go out as one request:
@@ -601,6 +601,32 @@ a file.
 
 `-f` at startup is the same thing at a different moment — one function, so `kamchatka -f
 diagram.png` works the same way — and with no question after the path, `/attach` just puts it in.
+
+**`/note` is the same act with a message instead of a file.**
+
+```text
+/note the CI runner has no network; a test that fetches will hang there
+```
+
+Everything else a person can say to a model goes in as a message, and a message starts a turn — so
+telling it a fact it will need in four turns' time cost a request, an answer, and an "understood"
+nobody wanted. Saying it *with* the next question buries it; saying it afterwards is too late.
+A note goes into the context and stops there: nothing is sent, and it is carried by the next
+request like everything else on that tab.
+
+It arrives as a **reference**, not as a message, and the model reads it with its label in front:
+
+```text
+note:
+the CI runner has no network; a test that fetches will hang there
+```
+
+That is the same shape an attached file goes out in, and it is what makes a note legible as
+something you *handed* the model rather than something you asked it. On this end it has a source of
+its own — `memory` — so `/exclude memories` names every note you have written and nothing else, the
+row says where it came from, and the chat draws it as what went in rather than as a line you spoke.
+Like an attachment it is **not** pinned: <kbd>p</kbd> on the row is how you say this one should
+survive compaction.
 
 The one difference between them is the pin, and it follows from what the two acts are. A file
 named on the command line is part of how the session was set up and is meant to still be there at

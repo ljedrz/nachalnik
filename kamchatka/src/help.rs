@@ -222,6 +222,10 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         image or a recording goes in as itself, which nothing
                         here can price. With no question it just goes in. Not
                         pinned - p does that - where -f at startup is
+    /note TEXT          the same with a message instead of a file: something
+                        the model should know and does not have to answer.
+                        It goes in with the next request rather than starting
+                        one, and the model reads it as `note: ...`
     /exclude SELECTOR   take items out of the request; also /prune. With no
                         selector, the whole selector language
     /pin SELECTOR       protect them from compaction; also /keep

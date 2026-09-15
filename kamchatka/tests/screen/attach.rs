@@ -242,6 +242,65 @@ async fn bytes_with_no_media_type_are_refused_and_the_context_is_unchanged() {
     );
 }
 
+/// `/note` is the same act with a message instead of a file: it goes in, and nothing is sent.
+///
+/// note: what is checked is the *absence* of a turn as much as the presence of an item. The
+/// harness holds one scripted answer, and a `/note` that started a turn would spend it - so the
+/// question asked afterwards would be answered by a session with nothing left to say.
+#[tokio::test]
+async fn a_note_goes_into_the_context_without_asking_for_an_answer() {
+    let mut harness = Harness::new([ModelResponse::text("understood")]);
+    harness.send("/note the CI runner has no network").await;
+
+    let items = harness.app.kernel.items();
+    let item = items.last().expect("the note");
+    assert_eq!(item.content.as_text(), Some("the CI runner has no network"));
+    assert_eq!(
+        item.kind.name(),
+        "reference",
+        "not a turn of the conversation"
+    );
+    assert_eq!(
+        item.source, "memory",
+        "which is what `/exclude memories` names"
+    );
+    assert_eq!(
+        item.label, "note",
+        "and what the model reads in front of it"
+    );
+    assert_eq!(
+        item.state,
+        nachalnik::ContextState::Active,
+        "not pinned - `p` is how that is said, as for an attachment"
+    );
+
+    // nothing was sent: the scripted answer is still waiting for the question that comes next
+    assert!(!harness.app.busy, "a note does not start a turn");
+    assert_eq!(
+        harness.app.kernel.items().len(),
+        1,
+        "one item, and no turn under it"
+    );
+
+    // and the chat says what went in by reading the item, once, as an attachment does
+    let screen = harness.flat();
+    assert!(screen.contains("note (memory)"), "{screen}");
+}
+
+/// A note with nothing in it says what the command is for rather than pushing an empty item.
+#[tokio::test]
+async fn an_empty_note_is_an_explanation_rather_than_an_item() {
+    let mut harness = Harness::new([]);
+    harness.send("/note").await;
+
+    assert!(harness.app.kernel.items().is_empty(), "nothing went in");
+    let screen = harness.flat();
+    assert!(
+        screen.contains("without being asked to answer it"),
+        "{screen}"
+    );
+}
+
 /// Nothing is attached in the middle of a turn, for the reason a message is not sent into one.
 #[tokio::test]
 async fn an_attachment_waits_for_the_turn_to_end() {

@@ -9,6 +9,26 @@ minor bump may break you.
 
 ### added
 
+- **`/note`: something the model should know, without asking it to answer.** Everything a person
+  could say to a model went in as a *message*, and a message starts a turn - so telling it a fact
+  it will need in four turns' time cost a request, an answer, and an "understood" nobody wanted.
+  Saying it with the next question buries it; saying it afterwards is too late. `/note the CI
+  runner has no network` puts it in the context and stops there.
+
+  It is `/attach` with a message instead of a file, down to what it does not do: nothing is sent,
+  nothing is said about the item (the chat derives that line from the item itself, so there is one
+  account of it rather than two), and it is not pinned, because what is worth keeping from
+  compaction is a judgement about the note rather than about notes - `p` is one key on the row.
+
+  It goes in as `ContextItem::memory`, a reference whose source is `memory`, which is the
+  constructor the runtime already had for exactly this and which nothing here was calling. The
+  difference from a user message is *not* the wire - a reference projects as a user-role message
+  just as an attached file does, so a note and then a question is two user messages either way.
+  It is what the item is to everything that reads it: the model gets `note:` in front of the words
+  and can tell a fact it was handed from a thing it was asked, `/exclude memories` names every one
+  of them and nothing else, and the chat draws it as what went in rather than as a line somebody
+  spoke.
+
 - **`grep` and `glob`: finding things costs `read` rather than `shell`.** There were four tools and
   none of them could look for anything, so every "where is this defined?" went through `shell` -
   which subsumes every other capability. A session that only wanted to be *asked about* a
