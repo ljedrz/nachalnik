@@ -1126,6 +1126,24 @@ async fn look_says_what_each_item_sends_and_what_it_is_holding_out() {
         "the row does not report both figures: {row}"
     );
 
+    // and it says what that column means, which a live run is the reason for: this model read the
+    // two figures correctly, named the turn holding 1,398 tokens of its own thinking, and answered
+    // that yes, it could free them by eliding it - which would free the 68 the turn was sending
+    // and none of the rest. The same sentence in front of the same question, one run later, came
+    // back "doing so would free only its 68 currently sending tokens"
+    assert!(
+        listing.contains("frees what it is `sending` and none of what it is holding"),
+        "nothing says what `held` means for a decision: {listing}"
+    );
+
+    // the turn carrying the call being answered has no result yet, so the projector drops it: `0`
+    // under `sending`, and the projector's own words for why. Also from the live run, where a
+    // model was shown that `0` about its own latest turn with nothing to account for it
+    assert!(
+        listing.contains("· not going: an assistant turn with no content and no answered calls"),
+        "the row that is not going does not say why: {listing}"
+    );
+
     // and reading the item back says the same thing in words, where the thinking itself is
     assert!(
         read_back.contains("held back from the next request"),

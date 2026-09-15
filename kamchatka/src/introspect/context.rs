@@ -284,14 +284,21 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
                 0 => String::new(),
                 held => thousands(held),
             },
-            row(item),
+            row(item, &going),
         ));
     }
 
+    // note: the second sentence is what a live run bought. The columns were right and a model
+    // read them wrong: asked which item was holding the most and whether it could change that, it
+    // named the turn holding 1,398 tokens of its own thinking and answered "yes, I can elide it" -
+    // which would free the 68 that turn is *sending* and not one token of the 1,398, because the
+    // endpoint was never being sent them. `budget` has said this under its own table all along;
+    // `look` is where an agent actually reads the figure, and it said nothing.
     out.push_str(
         "\n`look` with `ids` reads any of these back, including the reasoning recorded on an \
          assistant turn; a long one arrives as its start and its end unless you ask for the \
-         `whole` of it.\n",
+         `whole` of it. What a row shows under `held` is already out of the next request: giving \
+         that item up frees what it is `sending` and none of what it is holding.\n",
     );
 
     out
@@ -354,7 +361,7 @@ fn inherited(kernel: &Kernel, items: &[Arc<ContextItem>]) -> String {
 }
 
 /// One item's row: its label, then whatever else is worth knowing on one line.
-fn row(item: &ContextItem) -> String {
+fn row(item: &ContextItem, going: &Going) -> String {
     let glimpsed = glimpse(&item.content.to_text());
     let mut said = match glimpsed.is_empty() {
         true => item.label.clone(),
@@ -377,6 +384,15 @@ fn row(item: &ContextItem) -> String {
     }
     if let Some(note) = &item.note {
         said.push_str(&format!(" · {note}"));
+    }
+    // and why it is not in the request, where the state column cannot say. An item the projector
+    // dropped is `active` and not going, so the row reads `0` under `sending` with nothing to
+    // account for it - which a live run put in front of a model about its own latest turn: the
+    // turn carrying the call being answered has no result yet, so it is out of the projection for
+    // as long as the tool runs. The pane has said this on the row all along, in the projector's
+    // own words, and this is the same sentence out of the same place
+    if let Some(why) = going.left_out.get(&item.id) {
+        said.push_str(&format!(" · not going: {why}"));
     }
 
     said

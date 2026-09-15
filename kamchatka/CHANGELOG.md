@@ -225,6 +225,22 @@ minor bump may break you.
   agent's account of its own budget and the person's are now one piece of arithmetic rather than
   two that agreed until they did not.
 
+  Two sentences in `look` were bought by live runs against a free OpenRouter model, and both are
+  about a number being right and read wrong. Asked which item was holding the most and whether it
+  could change that, the model named the turn holding 1,398 tokens of its own thinking and
+  answered "yes, I can elide it" - which frees the 68 that turn is *sending* and not one token of
+  the rest, because the endpoint was never being sent them. `budget` has said so under its own
+  table all along; `look` is where the figure is actually read, and it said nothing. It now ends
+  "giving that item up frees what it is `sending` and none of what it is holding", and the same
+  model in front of the same question answered "doing so would free only its 68 currently sending
+  tokens - not the 1,395 already held back".
+
+  The other is the `0`. The turn carrying the call being answered has no result yet, so the
+  projector drops it while the tool runs - and a model was shown `sending 0` about its own latest
+  turn with nothing to account for it. The row now carries the projector's own reason, `· not
+  going: an assistant turn with no content and no answered calls`, which is the sentence the
+  context tab has had on that row all along.
+
 - **<kbd>e</kbd> on a turn that is nothing but a tool call opened an empty prompt.** Most
   assistant turns in a working session are exactly that, and the context row for one reads
   `dig({"where":"here"})` - so pressing the key that changes what an item says put a box titled
