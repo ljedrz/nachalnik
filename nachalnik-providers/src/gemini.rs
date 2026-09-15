@@ -400,6 +400,7 @@ impl Provider for Gemini {
             match contents.last_mut() {
                 Some(last) if last["role"] == role => {
                     if let Some(existing) = last["parts"].as_array_mut() {
+                        separate(existing, &parts);
                         existing.extend(parts);
                     }
                 }
@@ -794,5 +795,41 @@ impl Endpoint for Gemini {
 
     fn take_notice(&self) -> Option<String> {
         self.notice.lock().take()
+    }
+}
+
+/// Puts a boundary between two text parts that are about to become one turn.
+///
+/// note: this API concatenates the text parts of a turn with *nothing* between them, so two items
+/// merged above are read as one run of words. Found live, and the answer is what named it: a note
+/// ending `…the codename is kotelnaya` followed by a question beginning `what is the codename?`
+/// reached the model as `kotelnayawhat is the codename?`, and the model answered `codename is
+/// kotelnayawhat`. Every reference this client sends is one of these - a file put in with `-f`,
+/// an `/attach`, a `/note` - and the message after it is the question about it, which is the
+/// commonest shape there is.
+///
+/// note: the other dialect gets this for free by keeping one message per item, and that is the
+/// whole of the difference. Here the parts of a turn are the merge, so the separator has to live
+/// inside the text, and this is the last place that knows there were two of them.
+///
+/// note: text against text only. A `functionResponse` is a field of its own and reads as one
+/// whatever precedes it, and a blob is `inline_data`; neither runs into a neighbour. The boundary
+/// is normalised rather than appended to - trailing newlines trimmed, then exactly one blank
+/// line - so that a file ending in three of them and one ending in none are separated the same
+/// way, and rendering the same request twice produces the same bytes.
+fn separate(existing: &mut [Value], coming: &[Value]) {
+    let (Some(last), Some(next)) = (existing.last_mut(), coming.first()) else {
+        return;
+    };
+    let both_text = last.get("text").is_some()
+        && next.get("text").is_some()
+        && last.get("thought").is_none()
+        && next.get("thought").is_none();
+    if !both_text {
+        return;
+    }
+
+    if let Some(text) = last["text"].as_str() {
+        last["text"] = json!(format!("{}\n\n", text.trim_end_matches('\n')));
     }
 }

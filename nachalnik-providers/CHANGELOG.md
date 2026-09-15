@@ -5,6 +5,31 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **Two items merged into one Gemini turn ran into each other.** This API takes the parts of a
+  turn and concatenates their text with *nothing* between them, and the provider merges
+  consecutive same-role messages into one turn - which it has to, because the dialect alternates
+  and three tool results are three parts of one turn rather than three turns. What nothing
+  accounted for is that two *text* parts merged that way are read as one run of words.
+
+  Found live, and the model's answer is what named it: a note ending `...the codename is
+  kotelnaya` followed by a question beginning `what is the codename?` reached the model as
+  `kotelnayawhat is the codename?`, and it answered `codename is kotelnayawhat`. This is the
+  commonest shape there is - every reference a client sends is one of these, with the question
+  about it in the message after - and it has been true of `-f`, of an attachment and of a note
+  since the dialect existed. It is milder where the item ends in a newline of its own, which is
+  why a file reads as merely joined and a note reads as a typo.
+
+  The other dialect gets this for free by keeping one message per item; here the parts of a turn
+  *are* the merge, so the separator has to live inside the text, and the merge is the last place
+  that knows there were two of them. Text against text only - a `functionResponse` is a field of
+  its own and a blob is `inline_data`, and neither runs into a neighbour. The boundary is
+  normalised rather than appended to, so an item ending in three blank lines and one ending in
+  none are separated the same way and the same request renders to the same bytes twice.
+
 ## [0.2.0] - 2026-09-11
 
 ### changed

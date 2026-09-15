@@ -456,3 +456,98 @@ async fn a_part_this_provider_does_not_speak_is_dropped_rather_than_reattached()
     let raw = response.raw.as_ref().expect("recorded");
     assert!(raw.to_string().contains("inlineData"));
 }
+
+/// Two items merged into one turn do not run into each other.
+///
+/// note: found live, and the model's answer is what named it. This API concatenates the text
+/// parts of a turn with nothing between them, so a note ending `…is kotelnaya` and a question
+/// beginning `what is the codename?` reached the model as `kotelnayawhat is the codename?` - and
+/// it answered `codename is kotelnayawhat`. Every reference this client sends is one of these,
+/// with the question about it in the message after, which is the commonest shape there is.
+///
+/// note: what is asserted is the *joined* text rather than the parts, because that is what the
+/// model reads. The parts are an encoding detail this API chose; whether the separator ends up in
+/// the first part or in a third one between them is not something to pin.
+#[test]
+fn two_items_in_one_turn_are_not_read_as_one_run_of_words() {
+    let body = rendered(
+        vec![
+            ContextItem::memory("note", "the codename is kotelnaya"),
+            ContextItem::user("what is the codename?"),
+        ],
+        true,
+    );
+
+    let contents = body["contents"].as_array().expect("contents");
+    assert_eq!(
+        contents.len(),
+        1,
+        "one turn, as this API insists: {contents:#?}"
+    );
+    let joined: String = contents[0]["parts"]
+        .as_array()
+        .expect("parts")
+        .iter()
+        .filter_map(|part| part["text"].as_str())
+        .collect();
+
+    assert_eq!(
+        joined, "note:\nthe codename is kotelnaya\n\nwhat is the codename?",
+        "the two items have to be legible as two"
+    );
+}
+
+/// The boundary is the same however the item before it ended.
+///
+/// note: a file put in with `-f` ends in a newline and a note does not, and both are merged with
+/// whatever comes after. Normalising rather than appending is what makes the same request render
+/// to the same bytes twice, which is worth more here than preserving trailing blank lines nobody
+/// wrote on purpose.
+#[test]
+fn the_boundary_does_not_depend_on_what_the_item_before_it_ended_with() {
+    for ending in ["", "\n", "\n\n\n"] {
+        let body = rendered(
+            vec![
+                ContextItem::file("a.rs", format!("fn one() {{}}{ending}")),
+                ContextItem::user("what does it do?"),
+            ],
+            true,
+        );
+        let joined: String = body["contents"][0]["parts"]
+            .as_array()
+            .expect("parts")
+            .iter()
+            .filter_map(|part| part["text"].as_str())
+            .collect();
+
+        assert_eq!(
+            joined, "a.rs:\nfn one() {}\n\nwhat does it do?",
+            "{ending:?} should not change the boundary"
+        );
+    }
+}
+
+/// A tool result beside a question is untouched: it is a field of its own, not a run of text.
+#[test]
+fn a_function_response_needs_no_separator() {
+    let body = rendered(
+        vec![
+            ContextItem::assistant(
+                Content::text(""),
+                vec![ToolCall::new("c1", "read", json!({}))],
+            ),
+            ContextItem::tool_result(ToolCallId::from("c1"), "read", "one", false),
+            ContextItem::user("and now?"),
+        ],
+        true,
+    );
+
+    // two turns: the model's, and the one carrying both the answer and the question
+    let parts = body["contents"][1]["parts"].as_array().expect("parts");
+    assert_eq!(parts.len(), 2, "{parts:#?}");
+    assert!(parts[0]["functionResponse"].is_object(), "{parts:#?}");
+    assert_eq!(
+        parts[1]["text"], "and now?",
+        "nothing was appended to a field that is not text"
+    );
+}
