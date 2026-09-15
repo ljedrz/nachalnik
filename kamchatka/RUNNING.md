@@ -544,7 +544,7 @@ refused with or without a sandbox, and hedging about it would send a model looki
 that had nothing to do with it.
 
 **And it says where the session does reach**, which is the other half and was missing from the
-three tools that run in process: their refusal named the working directory and called it as far as
+tools that run in process: their refusal named the working directory and called it as far as
 this session goes, so a path opened up with `--sandbox-allow` was one the model then never tried.
 It names all of it now, in the same words the `shell` tool's description uses:
 

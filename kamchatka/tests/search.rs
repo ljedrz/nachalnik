@@ -466,3 +466,53 @@ async fn files_only_says_which_empty_it_is_too() {
 
     assert_eq!(said, "no matches for `Compactor` in . · 3 file(s) searched");
 }
+
+/// An argument a model quoted is read, and one nobody can read stops the search.
+///
+/// note: the scar is `introspect::log`'s, where `take: "3"` was swallowed by a bare `as_u64` and
+/// the tool answered as though it had been asked for the default. Here the default for
+/// `files_only` is the *expensive* answer, so a swallowed `"true"` costs three thousand tokens
+/// and says nothing about why.
+#[tokio::test]
+async fn a_quoted_argument_is_read_and_an_unreadable_one_is_refused() {
+    let dir = tree("grep-arguments");
+
+    // quoted, which is a spelling rather than a mistake
+    let said = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "Kernel", "files_only": "true" }),
+    )
+    .await;
+    assert!(said.starts_with("2 file(s) match"), "{said}");
+
+    let context = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "Kernel", "path": "src/app/keys.rs", "context": "1" }),
+    )
+    .await;
+    assert!(
+        context.contains("src/app/keys.rs-2-fn go() {}"),
+        "{context}"
+    );
+
+    // and a word where a number belongs is not a search that quietly did something else
+    for (args, what) in [
+        (
+            json!({ "pattern": "Kernel", "context": "some" }),
+            "`context` is a whole number",
+        ),
+        (
+            json!({ "pattern": "Kernel", "files_only": "yes" }),
+            "`files_only` is true or false",
+        ),
+    ] {
+        let refused = ask(&dir, "grep", args).await;
+        assert!(refused.starts_with(what), "{refused}");
+        assert!(
+            refused.contains("Nothing was searched"),
+            "it has to say the search did not happen: {refused}"
+        );
+    }
+}

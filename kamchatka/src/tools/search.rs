@@ -27,7 +27,7 @@ use serde_json::json;
 
 use crate::{
     sandbox::{Access, Reach},
-    tools::{Careful, Limits, arg, files::PATH_ARG, path_matches},
+    tools::{Careful, Limits, arg, files::PATH_ARG, path_matches, truth, whole},
 };
 
 /// How many matching lines one `grep` answers with.
@@ -385,8 +385,18 @@ impl Tool for Grep {
             None => None,
         };
 
-        let context = call.args["context"].as_u64().unwrap_or(0).min(10) as usize;
-        let files_only = call.args["files_only"].as_bool().unwrap_or(false);
+        // note: read rather than reached for. `as_u64().unwrap_or(0)` on an argument a model
+        // quoted - `"context": "3"` - is a search that quietly does something else and says it
+        // did what was asked, and for `files_only` that is the expensive answer arriving with
+        // nothing to explain it. See `tools::whole`
+        let context = match whole(&call.args, "context", 0) {
+            Ok(lines) => lines.min(10) as usize,
+            Err(why) => return Ok(ToolOutput::error(why)),
+        };
+        let files_only = match truth(&call.args, "files_only") {
+            Ok(only) => only,
+            Err(why) => return Ok(ToolOutput::error(why)),
+        };
         let barred = self.0.barred();
         let reach = self.0.reach.clone();
         let workdir = reach.workdir.clone();

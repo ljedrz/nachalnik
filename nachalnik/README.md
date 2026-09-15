@@ -175,7 +175,8 @@ checkable rather than asserted:
 
 ```text
 provider     gemini-3.5-flash via openai-compatible
-tools        6 offered: edit, epoch__from_stamp, epoch__to_stamp, read, shell, write
+tools        8 offered: edit, epoch__from_stamp, epoch__to_stamp, glob, grep, read, shell,
+                       write
 policy       kamchatka::tools::Careful
 projector    nachalnik::projection::LinearProjector
 counter      nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>

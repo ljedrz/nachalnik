@@ -352,6 +352,14 @@ pub struct Said<'a> {
 /// note: the two halves are one answer, taken from one projection, because they have to agree:
 /// every item is either in the request for some number of tokens or out of it for a reason, and a
 /// screen that worked the two out separately would have rows that are neither.
+///
+/// note: `#[non_exhaustive]`, which is what every public *enum* in this workspace carries and the
+/// first struct to. The reason is the same and this one earned it: `holds` was added to it this
+/// cycle, and a struct of public fields that anybody may build with a literal cannot gain one
+/// without breaking them. Nothing should build one - it is an answer rather than a request, and
+/// [`Going::of`] is where it comes from - so saying so costs the caller nothing and makes the
+/// next field a patch instead of a major.
+#[non_exhaustive]
 pub struct Going {
     /// What each item in the request costs it.
     pub costs: BTreeMap<ContextId, usize>,

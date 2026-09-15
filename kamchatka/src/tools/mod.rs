@@ -42,6 +42,57 @@ fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, BoxError> {
         .ok_or_else(|| format!("the `{name}` argument is required").into())
 }
 
+/// A whole number argument, what was left out, or what was passed where one belonged.
+///
+/// note: a numeric string is taken as the number, which costs nothing and saves a turn - models
+/// quote a number often enough that refusing one is refusing a spelling rather than a mistake. A
+/// word is not, because the answer a bare `as_u64().unwrap_or(..)` gives is the *default*, which
+/// reads as a tool that did what it was asked.
+///
+/// note: the same lesson `introspect::log`'s `counted` is named after, where `take: "3"` became
+/// `None`, which is what leaving `take` out does - so a model that asked for three lines got a
+/// summary and nothing saying its argument had not been read. The message is this side's rather
+/// than shared, because what a swallowed argument costs is different here: not an empty answer
+/// that reads as an empty log, but an expensive one that reads as the only one available.
+fn whole(args: &Value, name: &str, default: u64) -> Result<u64, String> {
+    let value = &args[name];
+    if value.is_null() {
+        return Ok(default);
+    }
+    if let Some(n) = value.as_u64() {
+        return Ok(n);
+    }
+    if let Some(n) = value.as_str().and_then(|it| it.trim().parse::<u64>().ok()) {
+        return Ok(n);
+    }
+
+    Err(format!(
+        "`{name}` is a whole number and this one is `{value}`. Nothing was searched, rather than \
+         something being searched for differently than you asked."
+    ))
+}
+
+/// A yes-or-no argument, read the same way and refused the same way.
+fn truth(args: &Value, name: &str) -> Result<bool, String> {
+    let value = &args[name];
+    if value.is_null() {
+        return Ok(false);
+    }
+    if let Some(yes) = value.as_bool() {
+        return Ok(yes);
+    }
+    match value.as_str().map(str::trim) {
+        Some("true") => return Ok(true),
+        Some("false") => return Ok(false),
+        _ => {}
+    }
+
+    Err(format!(
+        "`{name}` is true or false and this one is `{value}`. Nothing was searched, rather than \
+         something being searched for differently than you asked."
+    ))
+}
+
 /// How much of each tool's output the model is shown, which a person can change mid-session.
 ///
 /// note: a shared handle rather than a number beside each `spec`, because the thing that changes

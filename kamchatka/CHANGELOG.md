@@ -212,6 +212,23 @@ minor bump may break you.
 
 ### changed
 
+- **`Going` is `#[non_exhaustive]`.** It gained a field this cycle - `holds`, so that what an item
+  is holding and what it is sending are counted with one counter at one moment - and a struct of
+  public fields that anybody may build with a literal cannot gain one without breaking them. It is
+  an answer rather than a request, `Going::of` is where it comes from, and nothing in this
+  workspace or outside it builds one by hand; saying so costs a caller nothing and makes the next
+  field a patch instead of a major. The first struct in the workspace to carry the attribute every
+  public enum already does, for the reason they carry it.
+
+- **An argument a model quoted is read, and one nobody can read stops the search.** `grep`'s
+  `context` and `files_only` were read with a bare `as_u64`/`as_bool`, so `"context": "3"` and
+  `"files_only": "true"` - which models write often enough - became the default with nothing said.
+  This is `introspect::log`'s scar in a second place, and it is sharper here: the default for
+  `files_only` is the *expensive* answer, so a swallowed argument costs three thousand tokens and
+  reads as the only answer available. A quoted number or `"true"` is now taken as what it plainly
+  is, and a word where one of those belongs refuses the call rather than searching for something
+  else than was asked.
+
 - **<kbd>up</kbd> in an empty prompt puts the last message back.** A message typed into a running
   turn waits for the end of it, and until now that was the last anybody could do about it:
   `typed_ahead` holds one, the newest silently replaces it, and the only way to change what was

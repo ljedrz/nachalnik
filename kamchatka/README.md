@@ -47,8 +47,8 @@ $ kamchatka -m qwen/qwen3-coder -f src/lib.rs "what does this crate do?"
 > directory read-only, and nothing outside that directory is readable or writable, with one
 > deliberate exception: the system directories, because a command that cannot read `/usr/bin`
 > cannot be a command. So `cat /etc/passwd` works and `cat ~/.ssh/id_rsa` does not.
-> The three file tools are held to the same boundary by their own code and to a tighter one: they
-> refuse `/etc/passwd` too, and they never expand `~` — there is no shell in front of them, so a
+> The five tools that are not a process are held to the same boundary by their own code and to a
+> tighter one: they refuse `/etc/passwd` too, and they never expand `~` — there is no shell in front of them, so a
 > path is taken at its word and they say so rather than reporting the file as missing.
 > `--sandbox-allow PATH` opens up more, `--sandbox-read PATH` opens it for reading only, and
 > `--no-sandbox` turns it off. It is one LSM, not a container; see [what it does and does not
@@ -89,7 +89,7 @@ the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* cal
 with one reason — and the model is told, rather than left waiting on calls that silently vanished.
 
 So is how much of each tool's output the model is shown. `/limit` lists it — numbered, and the
-number is one the command takes, so `/limit read 64000` and `/limit 3 64000` are the same
+number is one the command takes, so `/limit read 64000` and `/limit 6 64000` are the same
 instruction — and either changes one from its next call onward. The result that has *already* been
 cut is recovered a different way: its whole is archived beside the copy the model was given, and <kbd>space</kbd> on
 it sends that instead — the projector answers one call with one result, so the whole takes the
