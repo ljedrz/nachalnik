@@ -774,6 +774,12 @@ pub struct App {
     /// note: compared against what is in the box rather than trusted on its own, so `down` undoes
     /// a recall and nothing else. A word typed onto the end makes it a message somebody is
     /// writing, and a key that emptied the box then would be the worst kind of shortcut.
+    ///
+    /// note: behind the feature, unlike `last_sent` above it, and the difference is which side of
+    /// the screen each belongs to. A line that was sent is a fact about the session - `submit`
+    /// records it whether anybody is watching or not - and this is a fact about the prompt box,
+    /// which a build with no screen does not have. Every use of it is in `keys`.
+    #[cfg(feature = "tui")]
     recalled: Option<String>,
     /// How much the running tool has said so far, for the one trace line that counts it.
     streamed_bytes: usize,
@@ -874,6 +880,7 @@ impl App {
             question_scroll: 0,
             typed_ahead: None,
             last_sent: None,
+            #[cfg(feature = "tui")]
             recalled: None,
             streamed_bytes: 0,
             outcomes,

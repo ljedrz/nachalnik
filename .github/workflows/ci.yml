@@ -26,6 +26,19 @@ jobs:
         run: cargo fmt --all --check
       - name: clippy
         run: cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
+      # and again with the screen off, because a lint that only fires there passes the run above
+      # and passes every step in the test job too - those build the feature combinations with
+      # `check` and `test`, which warn rather than fail. `recalled` reached a tag that way: a
+      # field every use of which lives behind `tui`, so the screenless build carried one nothing
+      # read and `--all-features` could not see it. `kamchatka` is the crate where a feature
+      # removes code rather than adding a dialect, and these are its two screenless shapes - the
+      # plain one, and the one the readme tells an embedder to build
+      - name: clippy, no screen
+        run: cargo clippy -p kamchatka --no-default-features --all-targets --locked -- -D warnings
+      - name: clippy, no screen with mcp
+        run: >
+          cargo clippy -p kamchatka --no-default-features --features mcp --all-targets --locked
+          -- -D warnings
       # both features are off by default and the documentation links into both, so this is the
       # configuration docs.rs will build rather than the one the tests happen to use
       - name: docs
