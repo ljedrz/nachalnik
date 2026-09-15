@@ -35,6 +35,12 @@ const HEARTBEAT: Duration = Duration::from_millis(120);
 /// here, because telling those apart means knowing what the command was and this program would
 /// be guessing. A guess that colours a working pipeline red, or a real failure yellow, is worse
 /// than the number itself.
+///
+/// note: the third is narrower off unix, where there are no signals to report. A Windows shell
+/// hands a killed child back to a native parent as an ordinary exit code - `kill -9` arrives as
+/// `2304` - so a command that was killed reads as one that failed, and it is the same guess to
+/// say otherwise. What is left yellow there is the stop this program does itself, which is not
+/// the platform's to report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exit {
     /// The command finished and reported success.
@@ -374,6 +380,16 @@ mod tests {
     ///
     /// note: `kill -9 $$` for the third, because a signal is the only way to leave a status with
     /// no code in it, and SIGKILL is the one a shell cannot decline.
+    ///
+    /// note: and unix-only, because that status does not exist elsewhere. The `sh` on a Windows
+    /// runner is git's, and it reports a signalled child to a native parent as an ordinary exit
+    /// code - `kill -9 $$` came back `2304`, which is `9 << 8` - so `ExitStatus::code` is `Some`
+    /// there and the tool reads a failure. It is not wrong to: telling a signal wearing an exit
+    /// code from a command that really exited `2304` means knowing what the command was, which is
+    /// the reason `grep`'s `1` is not a fourth `Exit` either. So this case asserts something true
+    /// of one platform, and is run on that one. What is left uncovered off unix is `Stopped`
+    /// through the interrupt - the tests that press the button are `#[cfg(unix)]` in
+    /// `tests/headless.rs` too, for want of a way to send the press.
     #[tokio::test]
     async fn what_a_command_reported_is_what_its_first_line_says() {
         let shell = Shell {
@@ -388,6 +404,7 @@ mod tests {
         for (command, meant) in [
             ("exit 0", Exit::Ok),
             ("exit 3", Exit::Failed),
+            #[cfg(unix)]
             ("kill -9 $$", Exit::Stopped),
         ] {
             let call = ToolCall::new("c1", "shell", json!({ "cmd": command }));

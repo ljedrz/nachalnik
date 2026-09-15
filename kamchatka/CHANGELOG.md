@@ -17,6 +17,12 @@ minor bump may break you.
   or a status that could not be read at all. The output under it is untouched, since a line that
   stands out only works while the ones around it do not.
 
+  The middle of those three is a unix reading. Windows has no signal to report, and the shell
+  there hands a killed child back as an ordinary exit code - `kill -9` arrives as `2304` - so a
+  command that was killed reads red, and nothing can tell it from a command that really exited
+  `2304`. What is yellow on every platform is the stop somebody asked for, which this program does
+  itself and does not have to read off a status.
+
   Three and not five. The fourth thing somebody would want - a `1` from `grep` meaning *no match*
   rather than a fault - is deliberately absent, because telling those apart means knowing what the
   command was, and a guess that paints a working pipeline red or a real failure yellow is worse
