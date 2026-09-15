@@ -72,6 +72,13 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
         sent.contains("compacted to make room"),
         "and says so where it was: {sent}"
     );
+    // and closes the retry, which is the half a live run needed: a model read a 10,000-token
+    // file into a 9,000-token context three times, with this marker in front of it each time
+    assert!(
+        sent.contains("would put the same tokens back")
+            && sent.contains("ask for the part you need"),
+        "a marker that only says what happened is read as an invitation to try again: {sent}"
+    );
     assert_eq!(
         request
             .messages

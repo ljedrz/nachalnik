@@ -319,6 +319,27 @@ minor bump may break you.
 
 ### fixed
 
+- **The compaction marker said what had happened and not what to do about it, so models read the
+  file again.** Watched live: a model read a 10,000-token file into a 9,000-token context, `Trim`
+  elided it, and the model read the same file again. Three times, thirty thousand tokens of output,
+  every one of them discarded on arrival - with the marker in front of it each time, saying only
+  that the content had been compacted away to make room.
+
+  It now closes the retry: *reading it again would put the same tokens back into a context that had
+  no room for them - ask for the part you need instead*. Which is the lesson `Reach::allows` learnt
+  one file over, where a refused `~` path was sent back unchanged six times in a turn until the
+  refusal said the next attempt would end the same way. Asked the same question twice with the same
+  model and the same 9,000-token limit, the old marker cost **ten** reads of one file and no
+  answer; the new one costs **one**, after which the model narrows to a `grep` on that path and
+  answers.
+
+  What it says is what *would* happen rather than what will: re-reading is not certainly compacted
+  again, since the threshold is about the whole context and something else may have gone since. And
+  it names a way out, because a closed retry with nowhere to go is worse than no sentence at all.
+  It costs what it says, too - the marker is the thing this refuses to elide anything smaller than,
+  so a longer reason raises that floor by a handful of tokens, paid once per elided item against a
+  pass that only runs when thousands are at stake.
+
 - **A session wrote its record over another session's, twice over.** The record is named for the
   session, and a session's name is not unique enough to be a filename. Two runs started inside one
   second share a stamp, so the second to finish replaced the first - found by starting two and

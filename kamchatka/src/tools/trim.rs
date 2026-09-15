@@ -79,9 +79,29 @@ impl Compactor for Trim {
         // written before anything is chosen, because what one elision recovers depends on it:
         // the kernel makes this the note on every item in the pass, and the note is the marker.
         // The model reads it too, in the brackets the projector puts round it, so it is written
-        // to be read by both - what happened, and why
+        // to be read by both - what happened, why, and what not to do about it
+        //
+        // note: the second sentence closes a retry, and it is the same lesson `Reach::allows`
+        // learnt one file over: a refusal that does not say the next attempt will end the same
+        // way is read as an invitation to make it. Watched live - a model read a 10,000-token
+        // file into a 9,000-token context, this took it, and the model read the same file again.
+        // Three times, thirty thousand tokens of output, every one of them discarded on arrival.
+        // It had the marker in front of it each time and the marker only said what had happened.
+        //
+        // note: what it says is what *would* happen rather than what will. Re-reading is not
+        // certainly compacted again - the threshold is about the whole context, and something
+        // else may have gone since - so the true sentence is about the tokens going back into a
+        // context that had no room for them, and the model can draw the conclusion. And it names
+        // the way out, because a closed retry with nowhere to go is worse than no sentence: the
+        // part it needs is a narrower read away, which is what `grep` is for.
+        //
+        // note: it costs what it says. The marker is the thing this refuses to elide anything
+        // smaller than, so a longer reason raises that floor by a handful of tokens - paid once
+        // per elided item, against a pass that only runs when thousands are at stake.
         let reason = format!(
-            "compacted to make room; the context had reached {}% of the {}-token limit",
+            "compacted to make room; the context had reached {}% of the {}-token limit. Reading \
+             it again would put the same tokens back into a context that had no room for them - \
+             ask for the part you need instead",
             (budget.fraction_used().unwrap_or_default() * 100.0).round() as usize,
             budget.limit.unwrap_or_default(),
         );

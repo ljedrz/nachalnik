@@ -78,6 +78,15 @@ reject, and the model would then be reading a conversation in which it never ask
 an elided item holds beyond its marker is counted as held back rather than spent, and
 <kbd>space</kbd> spends it again.
 
+The marker the model reads says one more thing than the row has room for, and it was bought with a
+live run: *reading it again would put the same tokens back into a context that had no room for
+them — ask for the part you need instead*. Without that half, a model that wanted the file back
+simply read it again, the compactor took it again, and the two of them did that three times in one
+turn. A refusal that does not say the next attempt ends the same way is read as an invitation to
+make it — which is the lesson the `~` refusal in `Reach` had already learnt, one file over. Asked
+the same question twice with the same model, the marker that only reports costs ten reads of one
+file; the one that closes the retry costs one, and the model narrows to a search instead.
+
 Item 8 is the last way the two columns come apart, and the one a session is full of rather than
 the one it has once: most endpoints have no field for an assistant turn's thinking, so the projector does not
 carry it back. The turn is `active`, every word it said is going, and the four thousand tokens it
