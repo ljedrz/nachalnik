@@ -474,9 +474,17 @@ impl App {
     /// Keys that belong to the trace tab, which is a log and therefore worth reading backwards.
     /// Keys the search box wants while it is open; `false` to let the pane underneath have it.
     ///
-    /// note: the arrows and the paging are deliberately *not* taken. The point of filtering eight
+    /// note: `up`, `down` and the paging are deliberately *not* taken. The point of filtering eight
     /// hundred events down to nine is to then read the nine, and a box that swallowed the scroll
     /// keys would mean closing the search - and so losing the filter - to look at what it found.
+    /// `home` and `end` stay with the pane for the same reason and one more: `g` and `G`, which are
+    /// what jumps to either end of a list everywhere else here, are letters, and while the box is
+    /// open a letter is a letter. They are the only way left to reach the ends.
+    ///
+    /// note: `left` and `right` *are* taken, because neither pane uses them - the one place they
+    /// mean something on the context tab is an open item, and an overlay takes the keys above
+    /// this. So a query could only be amended by rubbing out everything back to the mistake, which
+    /// is a poor trade for two keys that were doing nothing.
     pub(super) fn search_key(&mut self, key: KeyEvent) -> bool {
         let Some(search) = &mut self.search else {
             return false;
@@ -489,6 +497,18 @@ impl App {
             }
             KeyCode::Backspace => {
                 search.backspace();
+                true
+            }
+            KeyCode::Delete => {
+                search.delete();
+                true
+            }
+            KeyCode::Left => {
+                search.left();
+                true
+            }
+            KeyCode::Right => {
+                search.right();
                 true
             }
             // a modifier means it is somebody reaching past the box for one of the keys that work

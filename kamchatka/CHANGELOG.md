@@ -153,6 +153,22 @@ minor bump may break you.
   writing, and a key that emptied the box then would be the worst kind of shortcut. What it
   compares against is what is in the box.
 
+- **<kbd>←</kbd> and <kbd>→</kbd> move within a `/` query.** The search box could be typed into and
+  backspaced, and that was the whole of it: a mistake four letters back cost the four letters after
+  it, retyped. It now has a cursor. Typing goes in where it is, <kbd>backspace</kbd> takes out what
+  is behind it, <kbd>delete</kbd> what is in front of it - the key that only starts meaning
+  something once there is a cursor to be behind a character - and the `▏` in the box is drawn where
+  the cursor is rather than always at the end, so the box shows where the next letter lands.
+
+  Those two keys, and no others. Neither pane uses <kbd>←</kbd> or <kbd>→</kbd> - the one place
+  they mean something on the context tab is an open item, and an overlay takes the keys before the
+  box sees them - so this is two keys that were doing nothing, not two taken from the rows.
+  <kbd>↑</kbd> <kbd>↓</kbd> and the paging still belong to the pane, because the point of filtering
+  eight hundred events down to nine is to read the nine. So do <kbd>home</kbd> and <kbd>end</kbd>,
+  for that reason and one more: <kbd>g</kbd> and <kbd>G</kbd> are what reach the ends of a list
+  everywhere else here, and while the box is open a letter is a letter - those two keys are all
+  that is left of them.
+
 - **<kbd>ctrl+l</kbd> takes this program's own lines off the chat.** The `·` notes about what it
   just did, and the answers it gave to a key: a session that excludes eleven items one at a time
   has eleven lines saying so, interleaved with the run somebody is trying to read. Each was worth

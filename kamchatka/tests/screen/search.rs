@@ -218,6 +218,123 @@ async fn backspace_widens_the_search_again() {
     );
 }
 
+/// A query can be fixed where the mistake is, rather than rubbed out back to it.
+///
+/// note: what is checked is the *match*, not only the string: the pattern is reparsed from the
+/// query on every change, and an edit that wrote the text without reparsing would leave a box
+/// showing one query while the pane answered another.
+#[tokio::test]
+async fn the_query_can_be_amended_in_the_middle_of_it() {
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+    harness.send("go").await;
+    harness.settle().await;
+    harness.tab(Tab::Trace);
+
+    press(&mut harness, KeyCode::Char('/')).await;
+    type_in(&mut harness, "mopreq").await;
+    assert!(
+        harness.app.traced().is_empty(),
+        "there is no `p` in `model.requested` for the fuzzy match to land on"
+    );
+
+    // back over `req` and take out the letter that does not belong, keeping what came after it
+    for _ in 0..3 {
+        press(&mut harness, KeyCode::Left).await;
+    }
+    press(&mut harness, KeyCode::Backspace).await;
+
+    let found = harness.app.traced();
+    assert!(
+        !found.is_empty() && found.iter().all(|event| event.name.contains("model")),
+        "the pane answers the amended query: {:?}",
+        found.iter().map(|e| &e.name).collect::<Vec<_>>()
+    );
+
+    // and typing goes in where the cursor is, not at the end of the line
+    type_in(&mut harness, "d").await;
+    let search = harness.app.search.as_ref().expect("the box is still open");
+    assert_eq!(search.query, "modreq");
+    assert_eq!(search.parts(), ("mod", "req"));
+    assert!(!harness.app.traced().is_empty(), "and it still matches");
+
+    // the box draws the cursor where it is, between the two halves
+    let screen = harness.sized(120, 30);
+    assert!(screen.contains("/mod▏req"), "{screen}");
+}
+
+/// The two keys that take a character out take the one on their own side of the cursor.
+#[tokio::test]
+async fn backspace_and_delete_take_out_either_side_of_the_cursor() {
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+    harness.send("go").await;
+    harness.settle().await;
+    harness.tab(Tab::Trace);
+
+    press(&mut harness, KeyCode::Char('/')).await;
+    type_in(&mut harness, "abcd").await;
+    press(&mut harness, KeyCode::Left).await;
+    press(&mut harness, KeyCode::Left).await;
+
+    press(&mut harness, KeyCode::Backspace).await;
+    assert_eq!(
+        harness.app.search.as_ref().map(|s| s.parts()),
+        Some(("a", "cd")),
+        "backspace takes the character behind the cursor"
+    );
+
+    press(&mut harness, KeyCode::Delete).await;
+    assert_eq!(
+        harness.app.search.as_ref().map(|s| s.parts()),
+        Some(("a", "d")),
+        "delete takes the one in front of it"
+    );
+
+    // and neither runs off its end of the query
+    press(&mut harness, KeyCode::Backspace).await;
+    press(&mut harness, KeyCode::Backspace).await;
+    press(&mut harness, KeyCode::Left).await;
+    press(&mut harness, KeyCode::Delete).await;
+    press(&mut harness, KeyCode::Delete).await;
+    assert_eq!(
+        harness.app.search.as_ref().map(|s| s.query.as_str()),
+        Some(""),
+        "an empty query stays empty and the box stays open"
+    );
+}
+
+/// The keys the panes need while the box is open are still the panes'.
+///
+/// note: this is the half of the feature that is about what was *not* taken. `left` and `right`
+/// were free; `up`, `down` and the paging are how somebody reads what a filter found, and `home`
+/// and `end` are all that is left of `g` and `G` while every letter is going into the query.
+#[tokio::test]
+async fn the_box_leaves_the_rows_their_own_keys() {
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+    harness.send("go").await;
+    harness.settle().await;
+    harness.tab(Tab::Context);
+
+    press(&mut harness, KeyCode::Char('/')).await;
+    let rows = harness.app.listed().len();
+    assert!(rows >= 2, "not enough items: {rows}");
+
+    press(&mut harness, KeyCode::Down).await;
+    assert_eq!(harness.app.selected, 1, "down still moves between rows");
+    press(&mut harness, KeyCode::Home).await;
+    assert_eq!(
+        harness.app.selected, 0,
+        "and home is still the first of them"
+    );
+    press(&mut harness, KeyCode::End).await;
+    assert_eq!(harness.app.selected, rows - 1, "and end the last");
+
+    assert_eq!(
+        harness.app.search.as_ref().map(|s| s.query.as_str()),
+        Some(""),
+        "none of which typed anything into the query"
+    );
+}
+
 /// An empty pane and a filtered-empty pane are not the same empty, and only one of them has a
 /// key that undoes it. Both panes used to give the search's answer unconditionally or never: the
 /// trace told a session that had not done anything yet to press `esc` and clear a search nobody

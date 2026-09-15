@@ -248,10 +248,16 @@ its **kind**, so `tool_result` narrows a long pane to the tool results and `assi
 model said, which is the question a pane of eighty rows is usually being put. The kind is matched
 whether or not the column is on screen; it is dropped below 84 columns, and a filter that found
 less on a narrow terminal would be the worse surprise. A trace row matches on the name, the detail
-and the clock, so an hour or a date finds what happened in it. The
-arrows and the paging stay with the pane, deliberately: the point of filtering eight hundred events
-down to nine is to read the nine, and a box that swallowed the scroll keys would mean closing the
-search, and so losing the filter, to look at what it found. <kbd>esc</kbd> closes it, and closing
+and the clock, so an hour or a date finds what happened in it.
+
+<kbd>←</kbd> and <kbd>→</kbd> move within the query, so a mistake four letters back is one you can
+go to and fix — <kbd>backspace</kbd> takes out what is behind the cursor and <kbd>delete</kbd> what
+is in front of it, and typing goes in where the cursor is. Everything else stays with the pane,
+deliberately: the point of filtering eight hundred events down to nine is to read the nine, and a
+box that swallowed the scroll keys would mean closing the search, and so losing the filter, to look
+at what it found. So <kbd>↑</kbd> <kbd>↓</kbd> and the paging still move between the rows
+underneath, and so do <kbd>home</kbd> and <kbd>end</kbd> — which are all that is left of
+<kbd>g</kbd> and <kbd>G</kbd> while every letter is going into the box. <kbd>esc</kbd> closes it, and closing
 clears it — a filter that outlived its box would leave a window quietly showing four rows of eight
 hundred with nothing on screen saying why. Changing tabs clears it for the same reason.
 

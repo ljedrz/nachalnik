@@ -20,6 +20,12 @@ use parking_lot::Mutex;
 pub struct Search {
     /// The query, as typed.
     pub query: String,
+    /// Where the next character goes, as a byte offset into [`Search::query`].
+    ///
+    /// note: a byte offset rather than a character index, because every use of it is a slice of
+    /// the query and a character index would be converted at each one. It is kept on a character
+    /// boundary by the only four methods that move it, which is what makes those slices safe.
+    at: usize,
     /// The parsed form of it, rebuilt whenever the query changes.
     pattern: Pattern,
     /// note: kept rather than built per candidate, because a `Matcher` owns the slabs the
@@ -34,21 +40,69 @@ impl Search {
     pub fn new() -> Self {
         Self {
             query: String::new(),
+            at: 0,
             pattern: Pattern::default(),
             matcher: Mutex::new(Matcher::new(Config::DEFAULT)),
         }
     }
 
-    /// Adds a character to the query.
+    /// Adds a character where the cursor is.
     pub fn push(&mut self, c: char) {
-        self.query.push(c);
+        self.query.insert(self.at, c);
+        self.at += c.len_utf8();
         self.reparse();
     }
 
-    /// Removes the last character; leaves an empty query empty.
+    /// Removes the character before the cursor; leaves an empty query empty.
     pub fn backspace(&mut self) {
-        self.query.pop();
+        let Some(start) = self.before() else {
+            return;
+        };
+        self.query.remove(start);
+        self.at = start;
         self.reparse();
+    }
+
+    /// Removes the character under the cursor; at the end of the query, nothing.
+    ///
+    /// note: the key that only makes sense once there is a cursor to be behind something. Before
+    /// that, `delete` and `backspace` would have been two names for the same rub-out.
+    pub fn delete(&mut self) {
+        if self.at < self.query.len() {
+            self.query.remove(self.at);
+            self.reparse();
+        }
+    }
+
+    /// Moves the cursor one character towards the start.
+    pub fn left(&mut self) {
+        if let Some(start) = self.before() {
+            self.at = start;
+        }
+    }
+
+    /// Moves the cursor one character towards the end.
+    pub fn right(&mut self) {
+        if let Some(c) = self.query[self.at..].chars().next() {
+            self.at += c.len_utf8();
+        }
+    }
+
+    /// The query on either side of the cursor, for whatever is drawing it.
+    ///
+    /// note: two slices rather than the offset, so that the one place that knows the cursor is a
+    /// byte index is this file. A caller handed the number would have to trust it lands on a
+    /// character boundary; handed the halves, it cannot get that wrong.
+    pub fn parts(&self) -> (&str, &str) {
+        self.query.split_at(self.at)
+    }
+
+    /// Where the character before the cursor starts, if there is one.
+    fn before(&self) -> Option<usize> {
+        self.query[..self.at]
+            .chars()
+            .next_back()
+            .map(|c| self.at - c.len_utf8())
     }
 
     fn reparse(&mut self) {

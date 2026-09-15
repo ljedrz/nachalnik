@@ -424,13 +424,18 @@ fn draw_search(frame: &mut Frame, app: &mut App, area: Rect) {
         _ => app.kernel.items().len(),
     };
 
+    // where the next character goes, which is not the end of the query any more: `left` and
+    // `right` move it, so the bar is drawn between the two halves rather than after both
+    let (before, after) = search.parts();
+
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("/", Style::default().fg(Color::Yellow)),
-            Span::raw(search.query.clone()),
+            Span::raw(before.to_owned()),
             // the block is a cursor: the box has the keys, and nothing else on the screen should
             // look like it does
             Span::styled("▏", Style::default().fg(Color::Yellow)),
+            Span::raw(after.to_owned()),
             Span::styled(format!("  {found} of {of} · esc clears"), quiet()),
         ])),
         area,

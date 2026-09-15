@@ -134,7 +134,10 @@ pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is 
     /                   filter the rows: fuzzy, over the label, the kind and the
                         whole of what an item holds - so `tool_result` or
                         `assistant` narrows the pane to those - and not only
-                        over the line the row has room to show
+                        over the line the row has room to show. While the box
+                        is open, left and right move within what you have
+                        typed, and delete takes out the character in front of
+                        the cursor; the keys that move between rows still do
     esc                 clear the filter and close the box";
 
 /// The trace tab's own keys.
@@ -144,7 +147,9 @@ pub const TRACE: &str = "  THE TRACE TAB, which has the keys whenever it is open
     g / G               the oldest it still holds / the newest
     /                   filter the rows: fuzzy, over the name, the detail and
                         the clock, so an hour or a date finds what happened in
-                        it. Reading keys still work while the box is open
+                        it. Reading keys still work while the box is open, and
+                        left / right move within the query, so a mistake in the
+                        middle of one is a mistake you can go back to
     esc                 clear the filter and close the box";
 
 /// The permissions tab's own keys.
