@@ -61,7 +61,7 @@ impl Run {
 /// A session wired the way the program wires one, with a scripted model behind it.
 ///
 /// note: through `Setup` rather than by hand, which is the third caller of it and the point of
-/// its existing: what these tests want is what `main.rs` wants, minus the four tools and the
+/// its existing: what these tests want is what `main.rs` wants, minus the six tools and the
 /// child process it takes to find out what Landlock would allow. The model is swapped in
 /// afterwards because the runtime lets a seam be swapped while a session is running, and a
 /// scripted provider is not an `Endpoint`.
