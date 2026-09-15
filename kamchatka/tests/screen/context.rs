@@ -17,6 +17,23 @@ use serde_json::json;
 
 use crate::harness::Harness;
 
+/// A figure with its thousands separated, the way the pane writes one.
+///
+/// note: `thousands` is the pane's own and not something an integration test can reach, so this
+/// is that rule written out again - once, here, rather than inline in each test that needs it.
+fn grouped(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (at, digit) in digits.chars().enumerate() {
+        if at > 0 && (digits.len() - at).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+
+    out
+}
+
 #[tokio::test]
 async fn every_item_in_the_context_is_on_the_screen_with_what_it_costs() {
     let mut harness = Harness::new([]);
@@ -839,20 +856,9 @@ async fn a_figure_too_wide_for_its_column_does_not_run_into_the_one_beside_it() 
             "a row ran past the screen: {line:?}"
         );
     }
-    // `thousands` is the pane's own, and not something an integration test can reach
-    let grouped = {
-        let digits = held.to_string();
-        let mut out = String::new();
-        for (i, c) in digits.chars().enumerate() {
-            if i > 0 && (digits.len() - i).is_multiple_of(3) {
-                out.push(',');
-            }
-            out.push(c);
-        }
-        out
-    };
+    let exact = grouped(held);
     assert!(
-        !row.contains(&grouped),
+        !row.contains(&exact),
         "the exact figure does not fit seven columns and should not be printed in full: {row}"
     );
     assert!(
@@ -867,7 +873,7 @@ async fn a_figure_too_wide_for_its_column_does_not_run_into_the_one_beside_it() 
     // and what it is holding is still reported in full down on the status line, which has room
     let status = harness.screen();
     assert!(
-        status.contains(&format!("{grouped} held back")),
+        status.contains(&format!("{exact} held back")),
         "the status line still says all of it: {status}"
     );
 }
@@ -897,26 +903,38 @@ async fn the_pane_says_what_an_item_costs_now_and_what_it_is_holding_back() {
         .lines()
         .find(|line| line.contains("src/parser.rs"))
         .expect("the item is listed");
-    let held = harness
+    let item = harness
         .app
         .kernel
         .item(items[1].id)
         .expect("still there")
-        .tokens;
+        .clone();
+    let going = harness.app.going();
+    let marker = going
+        .costs
+        .get(&item.id)
+        .copied()
+        .expect("an elided item is in the request, as a marker");
+    let held = going.held_back(&item);
 
-    // an elided item holds what it always held and costs what its marker costs, and the column
-    // headed `sending` used to show the first of those - answering a question nobody asked while
-    // the status line beside it answered the right one
-    let sending: Vec<usize> = elided
+    // an elided item costs what its marker costs and keeps the rest of itself out, and the column
+    // headed `sending` used to show the whole of what it held - answering a question nobody asked
+    // while the status line beside it answered the right one
+    assert_eq!(
+        held,
+        item.tokens - marker,
+        "what it is keeping out is what it holds, less the marker that went in its place"
+    );
+    let figures: Vec<usize> = elided
         .split_whitespace()
         .filter_map(|word| word.replace(',', "").parse().ok())
         .collect();
     assert!(
-        sending.contains(&held),
-        "the held column reports what it holds: {elided}"
+        figures.contains(&held),
+        "the held column reports what the request is not carrying: {elided}"
     );
     assert!(
-        sending.iter().any(|n| *n > 0 && *n < held),
+        figures.contains(&marker) && marker < held,
         "and the sending column reports the marker, which is smaller: {elided}"
     );
 
@@ -930,6 +948,104 @@ async fn the_pane_says_what_an_item_costs_now_and_what_it_is_holding_back() {
     let header = screen.lines().nth(1).expect("the header row");
     let gap = header.find("kind").expect("the kind column") - header.find("label").expect("label");
     assert!(gap < 20, "twenty columns of nothing: {header}");
+}
+
+/// A turn whose thinking the endpoint will not take back is holding it, and the pane has to say so.
+///
+/// note: the bug this closes, from a real session. A reasoning model had put 25,903 tokens of
+/// thinking on one turn, and every row on the pane read under 2k - because the turn is `Active`,
+/// its words and its calls are going, so `sends_content` was true and the `held` column was left
+/// blank. What it was holding was almost the whole of the session. The same conflation for the
+/// fourth time: whether an item is going is not a yes or a no, and only the projection knows.
+#[tokio::test]
+async fn a_turn_whose_thinking_is_not_sent_says_what_it_is_holding() {
+    let mut harness = Harness::new([]);
+    // the dialect every OpenAI-compatible endpoint speaks: there is no agreed field for an
+    // assistant turn's thinking, so `OpenAiCompatible::projection` does not carry it back
+    harness
+        .app
+        .kernel
+        .set_projector(Arc::new(nachalnik::LinearProjector {
+            send_reasoning: false,
+            ..Default::default()
+        }));
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("rewrite the page"));
+    let turn = harness.app.kernel.push(
+        ContextItem::assistant("done - the deck reads better now", Vec::new())
+            .with_reasoning(Some("weighing the two openings. ".repeat(300).into())),
+    );
+    harness.tab(Tab::Context);
+
+    let item = harness.app.kernel.item(turn).expect("still there").clone();
+    let going = harness.app.going();
+    let sending = going
+        .costs
+        .get(&item.id)
+        .copied()
+        .expect("the turn is going");
+    let held = going.held_back(&item);
+    assert!(
+        held > sending * 10,
+        "the fixture must hold far more than it sends: {held} against {sending}"
+    );
+
+    let screen = harness.screen();
+    let row = screen
+        .lines()
+        .find(|line| line.contains("the deck reads better"))
+        .expect("the turn is listed");
+    assert!(
+        row.contains(&grouped(held)),
+        "the thinking is on no row: {row}"
+    );
+
+    // and the status line adds it up, because the corner and the pane are one answer
+    assert!(
+        screen.contains(&format!("{} held back", grouped(held))),
+        "{screen}"
+    );
+
+    // back to the chat tab before typing a command: on the context tab the letters are keys
+    harness.tab(Tab::Chat);
+    harness.send("/budget").await;
+    let budget = harness.flat();
+    assert!(
+        budget.contains(&format!("held back: {} tokens", grouped(held))),
+        "`/budget` disagrees with the pane: {budget}"
+    );
+    assert!(
+        budget.contains("thinking the endpoint will not take back"),
+        "and it does not say which of the four this is: {budget}"
+    );
+}
+
+/// The same turn, under a projector that does carry thinking back, is holding nothing.
+///
+/// note: the pair to the test above, and the half that says what the figure means. It is not
+/// "reasoning is expensive" - it is *this endpoint does not take it*, which is a property of the
+/// projector and can change with the provider under a context that has not moved.
+#[tokio::test]
+async fn the_same_turn_holds_nothing_where_the_thinking_is_sent() {
+    let harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("rewrite the page"));
+    let turn = harness.app.kernel.push(
+        ContextItem::assistant("done", Vec::new())
+            .with_reasoning(Some("weighing the two openings. ".repeat(300).into())),
+    );
+
+    let item = harness.app.kernel.item(turn).expect("still there").clone();
+    let going = harness.app.going();
+    assert_eq!(
+        going.held_back(&item),
+        0,
+        "the whole of it is in the request, so nothing is being held"
+    );
 }
 
 #[tokio::test]

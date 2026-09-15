@@ -171,6 +171,33 @@ minor bump may break you.
 
 ### fixed
 
+- **A turn's thinking was held back by the endpoint and counted by nobody.** A session against any
+  OpenAI-compatible endpoint holds every assistant turn's reasoning and sends none of it - that
+  dialect has no field for it, which `OpenAiCompatible::projection` has always said by turning
+  `send_reasoning` off. What nothing said is where those tokens went. The turn is `active`, its
+  words and its calls are going, so the `held` column - which fills in for an item that is *not*
+  going - was blank on exactly the rows holding the most. From the session that found it: 25,903
+  tokens of thinking on one turn, and no row on the pane reading over 2k.
+
+  The column now shows what the request does not carry, per item, rather than the whole of an item
+  that is not in it: `item.tokens` less what its projected message costs. Those are the same figure
+  for an excluded, archived or repaired-away row, and they differ for every row that is partly in -
+  an elided one, which holds its content and sends a marker, and any turn whose thinking is not
+  carried back. The two counts are like for like, because `count_item` and `count_message` both
+  count an assistant turn's reasoning and its calls.
+
+  So the same arithmetic is behind all three places that report it: the `held` column, the `held
+  back` figure in the corner, and `/budget`'s line - which now says "tokens the next request does
+  not carry" rather than "tokens in N item(s) the model is not being shown", since two of the four
+  ways of being held back leave the item in the request. An elided row's figure drops by what its
+  marker costs, ten-odd tokens, for the same reason: what it is keeping out is what it holds, less
+  what went in its place.
+
+  It is a figure about the *endpoint*, not about reasoning. Point the same context at a provider
+  whose projector carries thinking back and it reads as spent rather than held, without a byte of
+  it moving - which is also why it is not a suggestion to prune anything. Pruning a turn that is
+  mostly thinking frees what the request was already not carrying.
+
 - **<kbd>e</kbd> on a turn that is nothing but a tool call opened an empty prompt.** Most
   assistant turns in a working session are exactly that, and the context row for one reads
   `dig({"where":"here"})` - so pressing the key that changes what an item says put a box titled

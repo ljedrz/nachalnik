@@ -380,6 +380,28 @@ impl Going {
     pub fn sends_content(&self, item: &ContextItem) -> bool {
         item.state.sends_content() && self.costs.contains_key(&item.id)
     }
+
+    /// What this item holds that the next request will not carry - which is what sending the
+    /// whole of it would add.
+    ///
+    /// note: the difference between the two counts rather than the whole of an item that is not
+    /// going, because an item is not in or out any more. Those are the same number for an
+    /// excluded, archived or repaired-away item, whose message costs nothing; they are not for
+    /// the two that are partly there. An elided one holds its content and sends a marker. And an
+    /// assistant turn under an endpoint that will not take reasoning back - which is every
+    /// OpenAI-compatible one - sends what it said and holds what it thought, which on a reasoning
+    /// model is most of the session: 25,903 tokens of thinking on one turn, reported nowhere,
+    /// with every row on the pane reading under 2k.
+    ///
+    /// note: `count_item` and `count_message` count an assistant turn's reasoning and calls the
+    /// same way, so the two figures are like for like and the difference is a number rather than
+    /// an artefact. Where the projection adds something of its own - a label in front of a tool
+    /// result - the message is the larger of the two and this is nought, which is the right
+    /// answer: nothing is being held back.
+    pub fn held_back(&self, item: &ContextItem) -> usize {
+        item.tokens
+            .saturating_sub(self.costs.get(&item.id).copied().unwrap_or(0))
+    }
 }
 
 /// What the kernel's task reports when it stops.
@@ -2115,14 +2137,18 @@ impl App {
     /// here: it counts an excluded, archived or elided item and misses one the projector repaired
     /// away, because that one's state says it is sending. `/budget` and the context tab have to
     /// agree about this figure or they are two accounts of one request again.
+    ///
+    /// note: and [`Going::held_back`] per item rather than the whole of one that is not going,
+    /// which was the same conflation one level down - "is this item going" answered as though it
+    /// were a yes or a no. A turn whose thinking the endpoint will not take back is going and is
+    /// holding tens of thousands of tokens, and this counted none of it.
     pub(crate) fn withheld(&self, going: &Going) -> (usize, usize) {
         self.kernel
             .items()
             .iter()
-            .filter(|item| !going.sends_content(item))
-            .fold((0, 0), |(tokens, count), item| {
-                (tokens + item.tokens, count + 1)
-            })
+            .map(|item| going.held_back(item))
+            .filter(|held| *held != 0)
+            .fold((0, 0), |(tokens, count), held| (tokens + held, count + 1))
     }
 
     /// The context items a pending call names, described the way a row on the context tab is.

@@ -44,8 +44,8 @@ at. **context** is why this exists:
 │  4 · assistant     assistant_message        7         asked for read                                        │
 │  5 - read          tool_result              0     15  excluded: at the terminal, by `tool:read`             │
 │  6 · assistant     assistant_message        7         asked for shell                                       │
-│  7 … shell         tool_result             11  9,004  compaction: compacted to make room                    │
-│  8 · assistant     assistant_message       62         The kernel is a state machine with five states. …     │
+│  7 … shell         tool_result             11  8,993  compaction: compacted to make room                    │
+│  8 · assistant     assistant_message       62  4,102  The kernel is a state machine with five states. …     │
 │                                                                                                              │
 └────────────────────────────────────────────────────────────────────────────── 8 items, 2 not going, 1 elided ┘
 ```
@@ -60,22 +60,31 @@ tokenizer for a PDF, and a bare `0` would have made the largest thing in the req
 cheapest row in the pane you opened to decide what to delete.
 
 **sending** is what an item puts into the next request; **held** is what it is keeping out of one.
-For most rows the first is everything and the second is blank. The two that differ are the ones
-worth finding: item 6 holds nine thousand tokens and spends eleven of them on the marker that
-replaced it, and item 4 spends nothing at all. The `sending` column adds up to the figure on the
-status line, and the `held` column to the `held back` beside it — which they did not, when the row
-reported what an item held under a heading that said what it cost. Item 4 is marked `-` and says on its own
+For most rows the first is everything and the second is blank. The rows where they differ are the
+ones worth finding: item 7 holds nine thousand tokens and spends eleven of them on the marker that
+replaced it, item 5 spends nothing at all, and item 8 sends what it said while holding what it
+thought. The `sending` column adds up to the figure on the status line, and the `held` column to
+the `held back` beside it — which they did not, when the row reported what an item held under a
+heading that said what it cost. Item 5 is marked `-` and says on its own
 row why it is out, in the projector's words. Item 1 is `▪`, pinned, so the compactor will be
 refused if it comes for it. Nothing disappeared: things changed state, and the state is on screen.
 
-Item 6 is `…`, **elided**, which is the third answer between in and out. It is still in the
-request — as the one line the row shows, saying it was compacted away — so the call on row 5 still
+Item 7 is `…`, **elided**, which is the third answer between in and out. It is still in the
+request — as the one line the row shows, saying it was compacted away — so the call on row 6 still
 has an answer, and the model reads a conversation in which it asked for something and can no
 longer see what came back. That is the truth. Dropping the result outright would have forced the
 projector to drop the call with it, since a call with no result is a request most providers
 reject, and the model would then be reading a conversation in which it never asked at all. What
-an elided item holds is counted as held back rather than spent, and <kbd>space</kbd> spends it
-again.
+an elided item holds beyond its marker is counted as held back rather than spent, and
+<kbd>space</kbd> spends it again.
+
+Item 8 is the last way the two columns come apart, and the one a session is full of rather than
+the one it has once: most endpoints have no field for an assistant turn's thinking, so the projector does not
+carry it back. The turn is `active`, every word it said is going, and the four thousand tokens it
+*thought* are in the record, on this pane and in nothing that goes out. That belongs in the `held`
+column rather than nowhere — it is what sending the whole of that turn would add, and on a
+reasoning model it is most of what a session weighs. Switch to a provider that does take thinking
+back and the same context reports it as spent, without a byte of it moving.
 
 <kbd>tab</kbd> moves the keys between the prompt and the table:
 

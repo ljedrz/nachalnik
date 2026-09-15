@@ -423,12 +423,18 @@ pub(super) fn draw_context(
                     },
                     style,
                 ),
+                // note: what the request does not carry, rather than the whole of an item that is
+                // not in it. The two are the same figure for a row that is wholly out and differ
+                // for the ones that are partly in - an elided item, whose marker is going, and an
+                // assistant turn whose thinking the endpoint will not take back. The second of
+                // those was blank here, so a session whose model thought in tens of thousands of
+                // tokens had them on no row on the pane
                 Span::styled(
                     format!(
                         "{:>7}  ",
-                        match going.sends_content(item) {
-                            true => String::new(),
-                            false => fitted(item.tokens, 7),
+                        match going.held_back(item) {
+                            0 => String::new(),
+                            held => fitted(held, 7),
                         }
                     ),
                     quiet(),

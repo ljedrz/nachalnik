@@ -920,11 +920,17 @@ impl App {
             ));
         }
         if withheld != 0 {
-            // and "not sending" is not what an elided item has done either: it is in the request,
-            // as a line saying it used to be something else
+            // note: "tokens the next request does not carry", rather than "tokens in N items the
+            // model is not being shown", which is what this said. Two of the four ways of being
+            // held back leave the item in the request: an elided one is there as a line saying it
+            // used to be something else, and an assistant turn whose thinking this endpoint will
+            // not take back is there in full apart from the thinking. Saying it the old way of a
+            // turn that is mostly what it thought would be telling somebody they are not being
+            // shown a turn they can read on the chat tab
             lines.push(format!(
-                "held back: {} tokens in {out} item(s) the model is not being shown - excluded, \
-                 archived, or elided to a marker",
+                "held back: {} tokens the next request does not carry, in {out} item(s) - \
+                 excluded, archived, elided to a marker, or thinking the endpoint will not take \
+                 back",
                 thousands(withheld)
             ));
         }
