@@ -109,6 +109,57 @@ async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `/load` takes every spelling `/save` does, which is the only way the pair round-trips.
+///
+/// note: a session is two files, so `/save notes.jsonl` writes `notes.json` beside the log it was
+/// named after - and `/load notes.jsonl` took its argument at its word and went looking for
+/// `notes.jsonl.json`, which nothing had ever written.
+///
+/// note: the *suffix* is the part case does not matter to, and the stem is not - `NOTES.JSON`
+/// names a different file from `notes.json` on any filesystem that cares, and this one is on
+/// Linux. What the suffix buys is the person who typed the extension in caps on a filesystem that
+/// does not care, which is every one outside Linux.
+///
+/// note: driven through `/load`'s own answer rather than by calling the helper, because what the
+/// pair has to agree about is the *file*, and only the command knows which one it opened. The
+/// error names the path it tried, which is what makes a wrong one visible here at all.
+#[tokio::test]
+async fn load_takes_every_spelling_save_does() {
+    let dir = common::scratch("naming");
+    let stem = dir.join("notes");
+
+    let mut harness = Harness::new([ModelResponse::text("4817, noted")]);
+    harness.send("remember 4817").await;
+    harness.settle().await;
+    harness.send(&format!("/save {}", stem.display())).await;
+    assert!(dir.join("notes.json").exists() && dir.join("notes.jsonl").exists());
+
+    for spelling in [
+        "notes",
+        "notes.json",
+        "notes.jsonl",
+        "notes.JSON",
+        "notes.JSONL",
+    ] {
+        let mut second = Harness::new([]);
+        second
+            .send(&format!("/load {}", dir.join(spelling).display()))
+            .await;
+
+        let said = second.flat();
+        assert!(
+            !said.contains("could not read"),
+            "`/load {spelling}` named a file nothing wrote: {said}"
+        );
+        assert!(
+            said.contains("4817"),
+            "`/load {spelling}` did not bring the session back: {said}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A directory is a place to put a session, not a name to give it.
 ///
 /// note: found by driving a headless run. `/save sessions/` took the whole argument as the stem

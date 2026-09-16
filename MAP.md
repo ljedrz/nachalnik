@@ -26,8 +26,11 @@ obvious from the file names. [AGENTS.md](AGENTS.md) has the one-line version.
 | `test.rs` | feature `test`: `ScriptedProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |
 
 `kamchatka/src`: `app/` (the state - `mod.rs` is what a caller may ask of it and what a kernel
-event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands and `text.rs`
-turns a runtime value into a line), `wiring.rs` (`Setup`: the nine steps
+event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands, `text.rs`
+turns a runtime value into a line, `search.rs` is the `/` filter over a pane's rows and `when.rs`
+the clock a trace line is stamped with - the last two are here rather than in `ui/` because a pane
+that searched one string and drew another would find nothing where it says there is something),
+`wiring.rs` (`Setup`: the nine steps
 a session is assembled in, two of which are not guessable - the subscription has to come before
 the wiring, and `introspect::install` hands back a handle the caller has to keep),
 `headless.rs` (the other loop: a line of stdin where the
@@ -46,6 +49,11 @@ walk a directory of them with ripgrep's engine, and `shell.rs` for the one that 
 per file, named for the noun each is about: `context` reads the context, `log` the record beside
 it, `setup` what the session is running with, `amend` changes any of it - with `mod.rs` holding
 `install` and the handful of things they all use),
+`sandbox.rs` (the Landlock ruleset the `shell` tool is re-executed under, `Reach` for what the
+in-process tools will open, and `Confinement` for every way the first of those can fail to be
+there - see [SECURITY.md](SECURITY.md) before changing any of it), `attach.rs` (one file into the
+context: the short table of media types this program is prepared to name, and text for everything
+else),
 `provider.rs` (**not a provider**: the four environment variables this program reads, and the two
 `connect` functions that turn them into one), `main.rs` (arguments, and the loop that draws). It is
 a library plus a binary so the screen can be drawn against a `TestBackend` in tests, and because

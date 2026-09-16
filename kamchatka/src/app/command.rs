@@ -1088,10 +1088,12 @@ impl App {
             return;
         }
 
+        // the same spellings `/save` takes, because a pair of commands that accept different ones
+        // is a pair that does not round-trip: `/save notes.jsonl` writes `notes.json` beside the
+        // log, and `/load notes.jsonl` used to go looking for `notes.jsonl.json`
         let file = match path {
             "" => "session.json".to_owned(),
-            given if given.ends_with(".json") => given.to_owned(),
-            given => format!("{given}.json"),
+            given => format!("{}.json", without_suffix(given)),
         };
         let snapshot: nachalnik::Snapshot = match std::fs::read(&file)
             .map_err(|e| format!("could not read {file}: {e}"))
@@ -1170,13 +1172,9 @@ impl App {
     }
 
     fn save(&mut self, path: &str) {
-        // both extensions, so that `/save notes.jsonl` does not write `notes.jsonl.jsonl`
         let stem = match path {
             "" => "session",
-            given => given
-                .strip_suffix(".jsonl")
-                .or_else(|| given.strip_suffix(".json"))
-                .unwrap_or(given),
+            given => without_suffix(given),
         };
         // note: a directory is a place to put it rather than a name for it. `/save sessions/`
         // took the whole argument as the stem and wrote `sessions/.json` and `sessions/.jsonl` -
@@ -1225,4 +1223,31 @@ impl App {
             Err(e) => self.say(Speaker::Error, e),
         }
     }
+}
+
+/// A session's path with the extension taken off, whichever of the two it was spelled with.
+///
+/// note: shared by `/save` and `/load` because a pair of commands that accept different spellings
+/// is a pair that does not round-trip. A session is two files - the snapshot and the log - so
+/// `/save notes.jsonl` writes `notes.json` beside `notes.jsonl`, and `/load` taking that same
+/// argument at its word went looking for `notes.jsonl.json`.
+///
+/// note: the suffix is matched without regard to case, the way `attach::media_type` reads an
+/// extension - and the stem is left exactly as it was typed, because that half really does name a
+/// different file wherever the filesystem cares. What it buys is `notes.JSON` on a filesystem that
+/// does not, which is every one outside Linux.
+fn without_suffix(path: &str) -> &str {
+    for suffix in [".jsonl", ".json"] {
+        let Some(at) = path.len().checked_sub(suffix.len()) else {
+            continue;
+        };
+        if path
+            .get(at..)
+            .is_some_and(|end| end.eq_ignore_ascii_case(suffix))
+        {
+            return &path[..at];
+        }
+    }
+
+    path
 }

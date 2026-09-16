@@ -7,6 +7,15 @@ minor bump may break you.
 
 ## [unreleased]
 
+### fixed
+
+- `/load` takes every spelling `/save` does. A session is two files, so `/save notes.jsonl` writes
+  `notes.json` beside the log it was named after - and `/load notes.jsonl` took its argument at its
+  word and went looking for `notes.jsonl.json`, which nothing had ever written. Both go through one
+  function now, and it reads the suffix without regard to case the way `attach` reads an extension,
+  so `notes.JSON` names the session on a filesystem that does not care how a name is spelled. The
+  stem is left exactly as typed, because that half really does name a different file where it does.
+
 ### changed
 
 - `budget` names the three held-back states that are the model's (`excluded`, `archived`, `elided`)

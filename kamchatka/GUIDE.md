@@ -675,7 +675,8 @@ context tab reads
 the corner stops being a floor the moment the request has gone out once — because from then on
 the provider's own number has the document inside it. If you want the estimate to be right
 *before* that, `Kernel::set_counter` takes a counter that knows your vendor's formula, and
-[`pricing_a_picture.rs`][pricing] in the runtime is forty lines showing one.
+[`pricing_a_picture.rs`][pricing] in the runtime is one written out, beside the same context
+counted by a counter that has no formula and says so.
 
 [pricing]: https://github.com/ljedrz/nachalnik/blob/master/nachalnik/examples/pricing_a_picture.rs
 
