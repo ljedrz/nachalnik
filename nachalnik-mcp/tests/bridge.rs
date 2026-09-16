@@ -21,7 +21,7 @@ use rmcp::{
     model::{
         CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, ListResourcesResult,
         ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse,
-        ReadResourceResult, Resource, ResourceContents, ServerInfo, Tool as McpTool,
+        ReadResourceResult, Resource, ResourceContents, ServerConfig, Tool as McpTool,
         ToolAnnotations,
     },
     service::RequestContext,
@@ -44,8 +44,8 @@ fn schema(properties: Value) -> Arc<serde_json::Map<String, Value>> {
 }
 
 impl ServerHandler for Bench {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::default()
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::default()
     }
 
     async fn list_tools(
