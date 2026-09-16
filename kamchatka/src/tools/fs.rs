@@ -75,12 +75,10 @@ impl Tool for Fs {
             "fs",
             format!(
                 "the filesystem: `read` a whole text file, `glob` for paths, `grep` inside \
-                 files, `write` a whole file, `edit` part of one. `action` says which, and the \
-                 arguments it wants are named on each. `glob` and `grep` walk a directory here, \
-                 with no shell: they obey `.gitignore`, they do look at hidden files, and what \
-                 they passed over is counted at the end. At most {MATCHES} matches or {PATHS} \
-                 paths come back, a line wider than {WIDTH} characters is cut with a `…`, and an \
-                 answer that stopped early says so and says what to do about it."
+                 files, `write` a whole file, `edit` part of one. `glob` and `grep` walk a \
+                 directory here with no shell: they obey `.gitignore`, they do look at hidden \
+                 files, and they count what they passed over. At most {MATCHES} matches or \
+                 {PATHS} paths come back, and a line wider than {WIDTH} characters is cut."
             ),
         )
         .with_schema(json!({
@@ -89,9 +87,9 @@ impl Tool for Fs {
                 "action": {
                     "type": "string",
                     "enum": OPS,
-                    "description": "`read` needs `path`. `glob` and `grep` need `pattern` and \
-                                    take `path` for where to look. `write` needs `path` and \
-                                    `content`. `edit` needs `path`, `old` and `new`.",
+                    "description": "what each needs: `read` a `path`; `glob` and `grep` a \
+                                    `pattern`, and a `path` for where to look; `write` a `path` \
+                                    and `content`; `edit` a `path`, `old` and `new`",
                 },
                 "path": {
                     "type": "string",
@@ -120,7 +118,11 @@ impl Tool for Fs {
                     "type": "string",
                     "description": "for `edit`: what to put there instead",
                 },
-                "glob": { "type": "string", "description": GLOB_ARG },
+                "glob": {
+                    "type": "string",
+                    "description": "for `grep`: search only the files whose path matches this, \
+                                    written the way `pattern` is for a `glob`",
+                },
                 "ignore_case": {
                     "type": "boolean",
                     "description": "for `grep`: match without regard to case; false by default",

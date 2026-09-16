@@ -135,6 +135,16 @@ minor bump may break you.
   was offering `fs`. `setup tools` reports them as the figure they share and then whichever ones do
   not, rather than as a column that would have had one number standing for `fs:read` and `fs:grep`
   alike.
+- **The tool definitions are 5.5% smaller**, and two of them were wrong. `fs`'s `glob` argument -
+  which is what `grep` filters files by - carried the glob *grammar* as its description and never
+  said what it was for, so the schema explained the same syntax twice and neither copy said which
+  of the two arguments filtered anything. `context` said `archive` puts an item away "for good"
+  three sentences before saying every item can be restored, and said all nine of its changing
+  operations are named for the state they leave, which is true of five of them. The rest of the
+  saving is duplication: sentences in a description that the argument beside it already said, and
+  claims a tool was making about how well it reports itself. Every argument now says which
+  operation it belongs to the way `fs`'s do - `for `note`: a short name` rather than `note: a
+  short name`, which read as a remark.
 - **Every tool is offered by default**, the four that read and manage the session among them.
   `--introspect` is gone: it was a flag for those four, answerable only before the session started,
   and what it was really being used for was a fact about a project rather than about an

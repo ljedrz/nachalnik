@@ -87,35 +87,33 @@ impl Tool for Context {
         ToolSpec::new(
             "context",
             "your own context: what is in it, what it costs, and what you carry into the next \
-             request. Four actions read it and nine change it; `action` says which. \
+             request. Four actions read it and nine change it. \
              `look` lists every item - what it is, what it costs, whether it is going into the \
              next request and why not if it is not - and with `ids` reads any of them back, block \
-             by block, including what you were thinking when you produced them. A long one comes \
-             back as its start and its end; `whole` if you need all of it anyway. `budget` is \
-             what the next request costs against what there is, what the last one really cost, \
-             and which items are the expensive ones - read it before deciding what to give up. \
+             by block, including what you were thinking when you produced them. `budget` is what \
+             the next request costs against what there is, what the last one really cost, and \
+             which items are the expensive ones: read it before deciding what to give up. \
              `request` shows the request you are about to send, message by message, what it \
-             repaired, and what was left out and by which rule: a state you set, which you can \
+             repaired, and what was left out and by which rule - a state you set, which you can \
              undo, or the projector, which you cannot. `search` finds text anywhere in your \
-             context - archived items included, which `look` can only read by copying them in - \
-             and says how many lines match and what they would cost before it shows you one. \
-             Each of the nine that change is named for what it leaves behind, which is the same \
-             word you will read back on the item afterwards. `elide` replaces what an item says \
-             with a short marker, which is what to reach for when a tool result has served its \
-             purpose: the call it answers stays answered and stops costing what it holds. \
-             `exclude` takes it out of the request altogether, which also takes down the call \
-             that asked for it. `archive` puts it away for good. `pin` protects it from being \
-             compacted away. `restore` is the way back from any of them. Name the items with \
-             `ids`, or with `select` for a whole class of them at once. `revise` rewrites what \
-             one item says, for when you wrote something down wrong. `note` writes something into \
-             your context - a plan, a conclusion, a thing not to try again - which is not the \
-             same as thinking it: thinking belongs to the turn that produced it and is not \
-             carried into later requests, while a note is an item of its own that goes into every \
-             one and can be pinned. `undo` and `redo` walk back through the changes *you* made \
-             here. Nothing destroys anything: every item keeps its number and can be restored. A \
-             pinned item, a system instruction and the turn you are speaking in are refused - \
-             they are not yours. Anything that changes something needs a `reason`, in your own \
-             words, and the person you work with reads it.",
+             context, archived items included, which `look` can only read by copying them in; it \
+             says how many lines match and what they would cost before showing you one. \
+             The five that move an item are named for the state they leave, which is the word \
+             you will read back on it. `elide` replaces what an item says with a short marker: \
+             the call it answers stays answered and stops costing what it holds, which is what to \
+             reach for once a tool result has served its purpose. `exclude` takes it out of the \
+             request altogether, and takes down the call that asked for it. `archive` says the \
+             same and means you are done with it. `pin` protects it from being compacted away. \
+             `restore` is the way \
+             back from any of them. `revise` rewrites what one item says, for when you wrote \
+             something down wrong. `note` writes something into your context - a plan, a \
+             conclusion, a thing not to try again. Saying it in a turn is not the same: thinking \
+             is not carried into later requests, a note is an item of its own that goes into \
+             every one and can be pinned. `undo` and `redo` walk back through the changes *you* \
+             made here. Nothing destroys anything: every item keeps its number and can be \
+             restored. Everything that changes something needs a `reason`. A pinned item, a \
+             system instruction and the turn you are speaking in are refused - they are not \
+             yours.",
         )
         .with_schema(json!({
             "type": "object",
@@ -127,9 +125,10 @@ impl Tool for Context {
                 "ids": {
                     "type": "array",
                     "items": { "type": "integer" },
-                    "description": "look: read these items in full instead of listing all of \
-                                    them; search: look only in these; the nine that change: the \
-                                    items to move, and exactly one for revise",
+                    "description": "for `look`: read these items in full instead of listing \
+                                    all of them. For `search`: look only in these. For the nine \
+                                    that change: the items to move, and exactly one for \
+                                    `revise`",
                 },
                 // note: the forms, with the variable part written as a placeholder. It listed
                 // examples - `tool:shell`, `kind:assistant_message` - and a model reading them as
@@ -149,13 +148,13 @@ impl Tool for Context {
                 },
                 "text": {
                     "type": "string",
-                    "description": "search: what to look for, case ignored",
+                    "description": "for `search`: what to look for, case ignored",
                 },
                 // note: what leaving it out does is in the tool's own description - the count
                 // and the price first - and saying it twice cost twelve tokens on every request
                 "take": {
                     "type": "integer",
-                    "description": "search: show this many of the matching lines",
+                    "description": "for `search`: show this many of the matching lines",
                 },
                 // note: declared, because the tool reads it, the description tells the model to
                 // use it, and `look`'s own last line and the marker in a sampled item both end by
@@ -164,12 +163,13 @@ impl Tool for Context {
                 // an endpoint validating against the schema will refuse outright
                 "whole": {
                     "type": "boolean",
-                    "description": "look: read the named items entire, rather than as a start and \
-                                    an end. It costs what carrying them costs",
+                    "description": "for `look`: read the named items entire rather than as a \
+                                    start and an end. It costs what carrying them costs",
                 },
                 "content": {
                     "type": "string",
-                    "description": "revise: what the item should say instead. note: what to write down",
+                    "description": "for `revise`: what the item should say instead. For `note`: \
+                                    what to write down",
                 },
                 // note: what it is *not* is half of this line, and it is the half a live run
                 // needed. `label` reads as a key, five notes went in under one name meaning to
@@ -178,13 +178,13 @@ impl Tool for Context {
                 // the name is being chosen rather than regretted.
                 "label": {
                     "type": "string",
-                    "description": "note: a short name for it, so you can find it again. Not a \
-                                    key: a second note under a name is a second item, and \
+                    "description": "for `note`: a short name for it, so you can find it again. \
+                                    Not a key: a second note under a name is a second item, and \
                                     `revise` is what changes one you already wrote",
                 },
                 "pin": {
                     "type": "boolean",
-                    "description": "note: protect it from compaction, for a finding that \
+                    "description": "for `note`: protect it from compaction, for a finding that \
                                     has to outlast the context it was found in",
                 },
                 "reason": {
@@ -194,7 +194,8 @@ impl Tool for Context {
                 },
                 "steps": {
                     "type": "integer",
-                    "description": "undo, redo: how many of your own changes to walk; 1 by default",
+                    "description": "for `undo` and `redo`: how many of your own changes to walk; \
+                                    1 by default",
                 },
             },
             "required": ["action"],

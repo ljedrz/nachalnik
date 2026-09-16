@@ -56,17 +56,16 @@ impl Tool for Setup {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "setup",
-            "reads what you are running with, which is not something you can otherwise find out. \
-             `model` is which model you are, what parameters it is being sent, how much context it \
-             has, and whether this conversation was resumed from a snapshot - which matters, \
-             because a resumed context can be somebody else's earlier turns and nothing in them \
-             says so. `tools` lists every tool you are offered, what each one declares it needs, \
-             and how much of its output you are shown; a tool that went away mid-session is simply \
-             not here, and `log` says when. `permissions` is what the policy allows, refuses, or \
-             will stop and ask about - so you can tell a thing that will be refused from a thing \
-             that has not come up. `policy` is what the compactor and the projector will do to \
-             your context without being asked. All of it is read-only; `context` is what changes \
-             a context, and nothing here changes a session.",
+            "reads what you are running with, which you cannot otherwise find out. `model` is \
+             which model you are, what parameters it is being sent, how much context it has, and \
+             whether this conversation was resumed from a snapshot - which matters, because a \
+             resumed context can be somebody else's earlier turns and nothing in them says so. \
+             `tools` is every tool you are offered, what each declares it needs, and how much of \
+             its output you are shown; one that went away mid-session is simply not here. \
+             `permissions` is what the policy allows, refuses, or will stop and ask about, so you \
+             can tell a thing that will be refused from a thing nobody has decided. `policy` is \
+             what the compactor and the projector will do to your context unasked. All of it is \
+             read-only; `context` is what changes one.",
         )
         .with_schema(json!({
             "type": "object",

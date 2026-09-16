@@ -50,13 +50,13 @@ impl Tool for Fork {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "fork",
-            "asks a copy of you, on a copy of your context, and costs a request. `draft` answers \
-             the conversation as it stands and shows you what you would say *before* you say it, \
-             so you can check your answer against your context and fix either. `ask` puts a \
-             `question` to the copy instead, optionally with some items left out - for weighing an \
-             approach, or for finding out whether a piece of your context is what is leading you \
-             astray. A fork has no tools: it can think, not act, and it answers once. Nothing it \
-             does reaches your context, and nobody has read what it said.",
+            "asks a copy of you, on a copy of your context, and costs a request. `draft` \
+             answers the conversation as it stands, so you can read what you would say *before* \
+             you say it and fix either the answer or the context. `ask` puts a `question` to the \
+             copy instead, optionally with some items left out - for weighing an approach, or for \
+             finding out whether a piece of your context is what is leading you astray. A fork \
+             has no tools: it can think, not act, and it answers once. Nothing it does reaches \
+             your context, and nobody has read what it said.",
         )
         .with_schema(json!({
             "type": "object",
@@ -67,14 +67,14 @@ impl Tool for Fork {
                 },
                 "question": {
                     "type": "string",
-                    "description": "ask: what to put to the copy",
+                    "description": "for `ask`: what to put to the copy",
                 },
                 "without": {
                     "type": "array",
                     "items": { "type": "integer" },
-                    "description": "ask: item ids the copy does not get to see. Taking one away is \
-                                    what makes this an experiment rather than the same context \
-                                    answering twice",
+                    "description": "for `ask`: item ids the copy does not get to see. Taking one \
+                                    away is what makes this an experiment rather than the same \
+                                    context answering twice",
                 },
             },
             "required": ["action"],

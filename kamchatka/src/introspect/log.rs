@@ -58,12 +58,11 @@ impl Tool for Log {
             "reads the session's own record: an append-only log of what happened, kept beside \
              your context and not part of it. Every item added, replaced, elided, undone or \
              compacted; every permission asked for and answered; every tool that appeared or went \
-             away. Called bare it says only how many records there are, of what kinds, and what \
-             they would cost you - ask again with `take`, `ids`, `since` or `kinds` to get them. \
-             Every answer opens with the true total, so what you are not being shown is never a \
-             surprise. You cannot write to it. A replacement is the one entry that keeps what the \
-             item said before, because once it falls out of the undo window that text exists \
-             nowhere else.",
+             away. On its own it says how many records there are, of what kinds, and what they \
+             would cost you; the arguments below narrow that down and hand them over. Every \
+             answer opens with the true total, so a short one is never absence. You cannot write \
+             to it. A replacement keeps what the item said before, which once it leaves the undo \
+             window is nowhere else at all.",
         )
         .with_schema(json!({
             "type": "object",
