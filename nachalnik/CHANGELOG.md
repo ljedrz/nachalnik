@@ -30,7 +30,13 @@ minor bump may break you.
   number in a refusal is the model's own count of the same bytes, and the only one taken in the
   units the limit is enforced in. Without it a session that had run out of room corrected nothing,
   because every request from then on failed and no failure was a lesson.
-
+- `#[non_exhaustive]` on `Selector` and `Which`, which name a syntax that grows, and on
+  `StateChange`, `Record`, `Removed` and `CompactionReport`, which this crate answers with and
+  nothing outside it builds - so the next field on any of them is a patch. The attribute closes
+  exhaustive matching and not construction, and nothing in the workspace needed changing for it.
+  Deliberately not marked: `Grant` and `Verdict`, which are the whole of what a decision can be;
+  and `Budget`, `Usage`, `ModelInfo`, `ToolOutput`, `CompactionPlan`, `Projection` and `Skipped`,
+  each of which looks like an answer and is built by somebody implementing one of the six traits.
 - `Event::ContextRecounted` and `Event::SessionResumed` no longer call their figures the projected
   total. Both carry `Context::tokens()` - the sum over the items sending their content - and *the
   projected total* means something else here: what the projected messages cost, which is the figure

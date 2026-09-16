@@ -153,7 +153,12 @@ struct Diff {
 /// note: The three lists are kept apart because "there is no item 12" and "item 12 was already
 /// excluded" are different things to tell a user, and a single count of what moved cannot say
 /// which happened.
+///
+/// note: `#[non_exhaustive]` because this is an answer rather than a request. Nothing outside
+/// this crate builds one - [`Kernel::set_state`] is where they come from - so the attribute costs
+/// a caller nothing and makes a fourth list, the day there is one to report, a patch.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct StateChange {
     /// The items that moved.
     pub changed: Vec<ContextId>,

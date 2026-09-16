@@ -207,8 +207,27 @@ for, so there is nothing for it to agree with.
   is there.
 - **`#[non_exhaustive]`** on every public enum that names things the world can add to: `Event`,
   `Error`, `State`, `Delta`, `Content`, `Role`, `StopReason`, `Capability`, `GrantSource`,
-  `ContextKind`, `ContextState`. A new variant is not a breaking change; forgetting the attribute
-  on a new enum is.
+  `ContextKind`, `ContextState`, `Selector`, `Which`. A new variant is not a breaking change;
+  forgetting the attribute on a new enum is. `Grant` and `Verdict` are deliberately without it:
+  allow/deny and allow/ask/deny are the whole of what a decision can be, and `Verdict::strictest`
+  is an ordering over exactly three.
+
+  **And on a struct the kernel answers with, which is the half that is easy to miss.** `Budget`,
+  `Usage`, `ModelInfo`, `ToolOutput`, `CompactionPlan`, `Projection` and `Skipped` all look like
+  answers and are not: each is built by somebody implementing one of the six traits, and closing
+  them would mean a downstream crate needing a core change to do an ordinary thing. What is left -
+  `StateChange`, `Record`, `Removed`, `CompactionReport`, and `Going` over in `kamchatka` - is
+  produced here and read there, so the attribute costs nothing and makes the next field a patch.
+  The question to ask is not "is this an output" but **"does anything outside this crate build
+  one"**, and `grep` answers it.
+
+  The attribute on an enum does *not* cover its variants: a struct-like variant gaining a field
+  breaks every caller who wrote the pattern out, which is what `Event::ModelFailed` gaining
+  `overrun` did. Marking the variants would fix that and cost more than it is worth - measured,
+  54 patterns in this workspace would need `..`, and 26 places in `kamchatka`'s screen suite that
+  build an event to drive the app could not build one at all, since the attribute closes
+  construction from outside the crate. A field on an `Event` variant is a break, it is rare, and
+  the version number is where it is said.
 - **One word per mechanism, and it is the word the result is read back in.** An output limit
   **truncates**, a compactor **elides**, `/exclude` **excludes**, `Kernel::supersede`
   **supersedes**. A second word for something that already has one is a second thing to learn and

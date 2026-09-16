@@ -21,7 +21,12 @@ use std::{fmt, str::FromStr, sync::Arc};
 use crate::context::{ContextId, ContextItem, ContextKind, ContextState};
 
 /// Which of the matching items a [`Selector::Tool`] refers to.
+///
+/// note: `#[non_exhaustive]`, like [`Selector`] itself. Both name a syntax that grows - the table
+/// below is longer than it was - and a client still writes `Which::Latest`, since the attribute
+/// closes exhaustive matching and not construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Which {
     /// All of them.
     All,
@@ -65,6 +70,7 @@ impl std::error::Error for SelectorError {}
 /// src/parser.rs          anything else is taken as a label
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Selector {
     /// A single item, by identifier.
     Id(ContextId),

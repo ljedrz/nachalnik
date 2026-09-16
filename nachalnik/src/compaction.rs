@@ -111,7 +111,12 @@ pub struct CompactionPlan {
 }
 
 /// An item a compaction pass removed.
+///
+/// note: `#[non_exhaustive]`, with [`CompactionReport`] - both are accounts of what the kernel
+/// did, and neither is built by a [`Compactor`], which hands over a [`CompactionPlan`] and is
+/// told the result. The plan stays open for exactly that reason.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Removed {
     /// The item's identifier; it can be brought back with [`Kernel::set_state`].
     pub id: ContextId,
@@ -127,6 +132,7 @@ pub struct Removed {
 /// every field here exists so that the user can be shown what happened, disagree, and put
 /// something back.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct CompactionReport {
     /// The items that were excluded.
     pub removed: Vec<Removed>,

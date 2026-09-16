@@ -32,7 +32,12 @@ use crate::{
 };
 
 /// A single entry in a session's history.
+///
+/// note: `#[non_exhaustive]` because the log is written here and read everywhere else. A reader
+/// deserializes these rather than building them, which the attribute does not touch, and
+/// something else worth recording beside an event is then a patch rather than a break.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Record {
     /// The entry's sequence number, starting at 1 and never reused.
     pub seq: u64,

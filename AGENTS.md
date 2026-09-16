@@ -157,8 +157,10 @@ the mistake it came from - which is the half that makes them stick.
   does, the line is wrong.
 - **Dependencies are rationed.** Five in `nachalnik`, declared in the workspace manifest, each
   non-obvious one carrying a comment saying why.
-- **`#[non_exhaustive]`** on every public enum the world can add to. Forgetting it on a new enum
-  is the breaking change; adding a variant is not.
+- **`#[non_exhaustive]`** on every public enum the world can add to, and on every struct this
+  workspace answers with and nothing outside it builds. Forgetting it on a new enum is the
+  breaking change; adding a variant is not. It does not extend to an enum's variants: a field on
+  one of those is a break, and the version number is where that is said.
 - **One word per mechanism, and it is the word the result is read back in.** Truncate, elide,
   exclude, supersede. This is about what the program *says*: a synonym in a `match` is a kindness,
   a synonym in an enum or a help line is the bug.
