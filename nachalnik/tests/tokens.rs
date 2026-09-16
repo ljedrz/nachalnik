@@ -734,3 +734,91 @@ async fn a_refusal_of_something_unpriced_teaches_the_counter_nothing() {
         "the picture is most of what was refused and none of what was counted"
     );
 }
+
+/// A request the kernel can already see is too long is not sent.
+///
+/// note: what the round trip would buy is the endpoint's own account of a figure that is already
+/// on the screen, and it buys it after reading the whole request. The counter is an estimator, so
+/// the check is `Config::refuse_oversized_requests` and not a rule; what it is not is a margin -
+/// the endpoint refuses at the limit, and refusing earlier would be the kernel having a policy
+/// about how full a context may be.
+#[tokio::test]
+async fn a_request_over_the_limit_is_refused_before_it_is_sent() {
+    let kernel = kernel();
+    let provider = Arc::new(
+        ScriptedProvider::new([ModelResponse::text("never asked")]).with_info(
+            nachalnik::ModelInfo {
+                context_limit: Some(1_000),
+                ..nachalnik::ModelInfo::new("scripted", "scripted")
+            },
+        ),
+    );
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("a".repeat(8_000)));
+
+    let mut events = kernel.subscribe();
+    let refused = kernel.step().await;
+
+    assert!(
+        matches!(refused, Err(nachalnik::Error::TooLong(_))),
+        "{refused:?}"
+    );
+    assert_eq!(
+        provider.requests().len(),
+        0,
+        "and the provider was never asked"
+    );
+    assert_eq!(provider.remaining(), 1, "so its answer is still waiting");
+
+    let overrun = drain(&mut events)
+        .into_iter()
+        .find_map(|event| match event {
+            Event::StepFailed { overrun, .. } => overrun,
+            _ => None,
+        });
+    assert_eq!(
+        overrun,
+        Some(Overrun {
+            tokens: kernel.budget().used() as u64,
+            limit: Some(1_000)
+        }),
+        "the numbers are on the stream, the same two a provider's own refusal carries"
+    );
+}
+
+/// Turned off, every request goes out and the endpoint has the last word.
+#[tokio::test]
+async fn a_kernel_told_not_to_refuse_sends_it_anyway() {
+    let kernel = Kernel::new(Config {
+        refuse_oversized_requests: false,
+        ..Config::default()
+    });
+    let provider = Arc::new(
+        ScriptedProvider::new([ModelResponse::text("answered")]).with_info(nachalnik::ModelInfo {
+            context_limit: Some(1_000),
+            ..nachalnik::ModelInfo::new("scripted", "scripted")
+        }),
+    );
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("a".repeat(8_000)));
+
+    kernel.step().await.expect("it was sent");
+    assert_eq!(provider.requests().len(), 1);
+}
+
+/// And a provider that does not say what the model holds has nothing to be measured against.
+#[tokio::test]
+async fn nothing_is_refused_against_a_limit_nobody_stated() {
+    let kernel = kernel();
+    let provider = Arc::new(
+        ScriptedProvider::new([ModelResponse::text("answered")]).with_info(nachalnik::ModelInfo {
+            context_limit: None,
+            ..nachalnik::ModelInfo::new("scripted", "scripted")
+        }),
+    );
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("a".repeat(8_000)));
+
+    kernel.step().await.expect("it was sent");
+    assert_eq!(provider.requests().len(), 1);
+}

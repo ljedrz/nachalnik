@@ -290,6 +290,15 @@ pub enum Event {
     /// with no account of what went wrong. The error is the same one [`Kernel::step`] returns.
     #[serde(rename = "step.failed")]
     StepFailed {
+        /// How long the request was, where the step gave up because it is longer than the model
+        /// will read.
+        ///
+        /// note: the same field [`Event::ModelFailed`] carries, because it is the same fact
+        /// arriving one step earlier - the kernel's own arithmetic instead of the endpoint's
+        /// verdict. A client that says how much has to go says it the same way for both, which is
+        /// the whole reason this is not an event of its own.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        overrun: Option<Overrun>,
         /// What went wrong.
         error: String,
     },

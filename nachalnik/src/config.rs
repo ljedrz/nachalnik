@@ -6,7 +6,7 @@
 //! pushed.
 
 #[cfg(doc)]
-use crate::{Compactor, Event, Kernel, ToolSpec};
+use crate::{Compactor, Event, Kernel, TokenCounter, ToolSpec};
 
 /// The kernel's configuration. See the source of [`Config::default`] for the defaults.
 ///
@@ -41,6 +41,26 @@ pub struct Config {
     /// note: This is a stop, not a policy: reaching it just ends the turn, and calling
     /// [`Kernel::turn`] again resumes exactly where it left off.
     pub max_requests_per_turn: Option<usize>,
+    /// Whether a request the kernel can already see is longer than the model will read is
+    /// refused here instead of being sent.
+    ///
+    /// note: on by default, because the round trip buys nothing: the endpoint answers a request
+    /// over the limit with an error, having read the whole of it first. What comes back is
+    /// [`Error::TooLong`](crate::Error::TooLong), carrying the same two numbers a provider's own
+    /// refusal does, and [`Event::StepFailed`] carries them too - so a client says how much has
+    /// to go without having to tell the two kinds of refusal apart.
+    ///
+    /// note: it acts on an *estimate*, which is the reason it is a knob rather than a rule. The
+    /// counter says so itself - [`TokenCounter`] is an estimator and this crate holds no
+    /// tokenizer - so a counter that reads high for a particular model would refuse a request
+    /// that endpoint would have accepted, and the way out has to be something other than editing
+    /// the context until an estimate is happy. Turn it off and every request goes out; what is
+    /// lost is one round trip per refusal, and what is kept is the endpoint's own verdict.
+    ///
+    /// note: nothing is refused when the provider does not say what the model holds. The
+    /// comparison needs both halves, and inventing the second is how a limit that belongs to one
+    /// model gets applied to another.
+    pub refuse_oversized_requests: bool,
     /// The default limit (in bytes) applied to tool output, used for tools whose
     /// [`ToolSpec::output_limit`] is `None`; `None` means tool output is never truncated by
     /// the kernel.
@@ -120,6 +140,7 @@ impl Default for Config {
             record_progress: false,
             context_undo_depth: 16,
             max_requests_per_turn: Some(8),
+            refuse_oversized_requests: true,
             default_tool_output_limit: None,
             keep_truncated_output: true,
             record_payloads: false,

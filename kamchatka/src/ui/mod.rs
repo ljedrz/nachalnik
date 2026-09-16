@@ -16,7 +16,7 @@
 
 use std::time::Duration;
 
-use nachalnik::{Kernel, State};
+use nachalnik::{Budget, Kernel, State};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -127,7 +127,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // own would be three walks of the context per redraw, and - worse - three answers that could
     // disagree about the same request
     let going = app.going();
-    draw_body(frame, app, &going, body);
+    // and one budget a frame, for the same reason: the corner and the context tab's own line are
+    // two readings of the request that is about to go, and two walks could disagree about it
+    let budget = app.kernel.budget();
+    draw_body(frame, app, &going, &budget, body);
     if question != 0 {
         // what the frame could really scroll to is what the keys work against from here on, the
         // same write-back the overlay does
@@ -138,7 +141,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         (false, true) => draw_input(frame, app, input),
         (false, false) => {}
     }
-    draw_status(frame, app, &going, status);
+    draw_status(frame, app, &going, &budget, status);
 
     if app.overlay.is_some() {
         // what the frame could actually scroll to is what the keys work against from here on.
@@ -186,7 +189,7 @@ pub(super) fn faint() -> Style {
 /// tabs, by the selected row, which is reversed under the keys and underlined without them. Both
 /// of those sit next to the thing they are describing, which a border a whole window away does
 /// not.
-fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) {
+fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, budget: &Budget, area: Rect) {
     // the chat tab has a second thing the keys can be on, and only while a question is pinned
     // there; on the other three, `Focus::Body` is the only place they ever are
     let asked = app.asked().is_some();
@@ -213,7 +216,7 @@ fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, area: Rect) {
     let edge = Style::default().fg(app.accent);
     let block = Block::bordered()
         .title(Line::from(strip))
-        .title_bottom(Line::styled(footer(app, going), quiet()).right_aligned())
+        .title_bottom(Line::styled(footer(app, going, budget), quiet()).right_aligned())
         .border_style(edge);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -287,7 +290,7 @@ pub(super) fn scrollbar(frame: &mut Frame, window: Rect, border: Style, scrolled
 }
 
 /// What the open tab has to say about itself, along the bottom.
-pub(super) fn footer(app: &App, going: &Going) -> String {
+pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> String {
     match app.tab {
         // note: a conversation somebody has scrolled back through stays where they left it, so
         // this is the line that has to say there is more underneath - and how to get to it. Left
@@ -322,10 +325,24 @@ pub(super) fn footer(app: &App, going: &Going) -> String {
                 .filter(|item| !going.sends_content(item))
                 .count();
             let elided = items.iter().filter(|item| item.state.is_elided()).count();
-            match (out, elided) {
-                (0, _) => format!(" {} items, all of them going ", items.len()),
-                (n, 0) => format!(" {} items, {n} not going ", items.len()),
-                (n, e) => format!(" {} items, {n} not going, {e} elided ", items.len()),
+            let counted = match (out, elided) {
+                (0, _) => format!("{} items, all of them going", items.len()),
+                (n, 0) => format!("{} items, {n} not going", items.len()),
+                (n, e) => format!("{} items, {n} not going, {e} elided", items.len()),
+            };
+
+            // note: the figure to act on, on the tab where acting on it happens. The corner says
+            // the request is over the limit and turns red about it; what it has no room to say is
+            // *by how much*, and the difference between "over" and "over by two thousand" is the
+            // difference between reading a list of forty rows and taking one of them out. Not
+            // shown under the limit, where it is not a number anybody needs
+            match budget
+                .limit
+                .map(|limit| budget.used().saturating_sub(limit))
+                .filter(|over| *over != 0)
+            {
+                Some(over) => format!(" {counted} · ~{} over the limit ", thousands(over)),
+                None => format!(" {counted} "),
             }
         }
         // the pane keeps the last few hundred; the log keeps everything, and `/save` writes it
@@ -442,7 +459,7 @@ fn draw_search(frame: &mut Frame, app: &mut App, area: Rect) {
     );
 }
 
-fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
+fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, area: Rect) {
     let dim = quiet();
     let mut spans = match app.busy {
         true => {
@@ -472,17 +489,13 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
         add(format!("{} @ {}", info.model, app.provider.host()), dim);
     }
 
-    let budget = app.kernel.budget();
     // what the next request would cost with the message being typed in it, taken from what the
     // last one really cost wherever there is one to take it from. The `~` stays either way -
     // both are predictions - but an anchored one is out by a few percent of what has changed
     // since the last request rather than of the whole context, and a draft moving the figure is
     // only worth showing at that accuracy. See `App::anchored`
     let draft = app.drafted();
-    let next = app
-        .anchored(going, &budget)
-        .unwrap_or_else(|| budget.used())
-        + draft;
+    let next = app.anchored(going, budget).unwrap_or_else(|| budget.used()) + draft;
     let used = thousands(next);
     let fraction = budget
         .limit

@@ -325,6 +325,12 @@ struct Found {
     searched: usize,
     /// What was left out of the walk, and why.
     skipped: Skipped,
+    /// Which files matched and how often, kept whichever way the answer was asked for.
+    ///
+    /// note: in line mode this is a by-product - one entry per matching file, at most a hundred
+    /// of them - and it is what a lines answer too big to send falls back to. Collected always so
+    /// that the fallback is a rearrangement of what was already found rather than a second walk.
+    by_file: Vec<(String, usize)>,
     /// Whether the room ran out before the walk did.
     full: bool,
     /// Whether somebody stopped it.
@@ -348,7 +354,8 @@ impl Tool for Grep {
                      {MATCHES} matches come back \
                      ({PATHS} files with `files_only`), a line wider than {WIDTH} characters is \
                      cut with a `…`, and an answer that stopped early says so and says what to \
-                     do about it."
+                     do about it. Lines that would not fit are answered as the files they were \
+                     in, rather than as the first few thousand bytes of them."
                 ),
             )
             .with_schema(json!({
@@ -464,12 +471,10 @@ impl Tool for Grep {
                 files: 0,
                 searched: 0,
                 skipped: Skipped::default(),
+                by_file: Vec::new(),
                 full: false,
                 stopped: false,
             };
-            // what `files_only` is collecting instead of lines, kept apart so that it can be put
-            // in the order that answers the question it is asked for
-            let mut matching: Vec<(String, usize)> = Vec::new();
 
             for entry in walk(&root) {
                 if sink.is_interrupted() {
@@ -546,9 +551,9 @@ impl Tool for Grep {
                 }
                 found.matches += lines.matched;
                 found.files += 1;
-                match files_only {
-                    true => matching.push((lines.named, lines.matched)),
-                    false => found.lines.extend(lines.kept),
+                found.by_file.push((lines.named, lines.matched));
+                if !files_only {
+                    found.lines.extend(lines.kept);
                 }
 
                 // the cap is on whichever thing the answer is made of: lines of one file after
@@ -568,22 +573,78 @@ impl Tool for Grep {
             // *where does this live*, and the file with twelve matches is the answer to it far
             // more often than the file with one. The path breaks a tie, so it is still the same
             // answer twice for the same tree
+            found
+                .by_file
+                .sort_by(|(a, count), (b, than)| than.cmp(count).then_with(|| a.cmp(b)));
             if files_only {
-                matching.sort_by(|(a, count), (b, than)| than.cmp(count).then_with(|| a.cmp(b)));
-                found.lines = matching
-                    .into_iter()
-                    .map(|(path, count)| format!("{path}: {count}"))
-                    .collect();
+                found.lines = found.by_file.iter().map(as_a_count).collect();
             }
 
             found
         })
         .await?;
 
-        Ok(ToolOutput::new(report(
-            &found, &pattern, &asked, files_only, wanted,
-        )))
+        let answer = report(&found, &pattern, &asked, files_only, wanted);
+        // note: a lines answer that will not fit is answered as the files those lines were in,
+        // rather than as the first however-many-thousand bytes of it. Both are less than was
+        // found; the difference is that one of them is *true of the whole tree it looked at* and
+        // the other is true of whatever the walk reached before the room ran out - measured on a
+        // broad pattern here, an answer cut at the limit came entirely from `.github/` and never
+        // reached the file the question was about. The advice this tool already gives a capped
+        // answer - ask for `files_only` - is the same move, so taking it rather than printing it
+        // is one round trip saved and several thousand tokens of lines nobody asked for.
+        //
+        // note: what is lost is that the lines are not archived beside the shortened copy, the
+        // way an output limit's truncation leaves them. They were never handed over: a tool
+        // deciding what its answer *is* is a different thing from the kernel shortening one it
+        // was given, and this tool has always decided - it stops at a hundred matches and never
+        // mentions the hundred and first.
+        let over = self
+            .0
+            .limits
+            .of("grep")
+            .is_some_and(|limit| answer.len() > limit);
+        let answer = match over && !files_only && !found.by_file.is_empty() {
+            true => instead(&found, &pattern, &asked, answer.len()),
+            false => answer,
+        };
+
+        Ok(ToolOutput::new(answer))
     }
+}
+
+/// One file and how often it matched, as `files_only` reads it back.
+fn as_a_count((path, count): &(String, usize)) -> String {
+    format!("{path}: {count}")
+}
+
+/// The answer a lines search gives when its lines would not fit: where they were.
+///
+/// note: it says what happened to the lines and what to do to see some of them, because a model
+/// handed a list of files where it asked for lines will otherwise ask the same question again.
+/// The two ways out are the two this tool has always named - narrow it, or take one file - and
+/// naming them here is what stops the retry.
+fn instead(found: &Found, pattern: &str, path: &str, bytes: usize) -> String {
+    let head = format!(
+        "{} match(es) in {} file(s) for `{pattern}` in {path}{} · the lines came to {bytes} \
+         bytes, which is more than this answers with, so here is where they are. Narrow the \
+         pattern or name one of these files to read them",
+        found.matches,
+        found.files,
+        // the same caveat a capped lines answer carries, because the same thing happened to it:
+        // the walk stopped when the room ran out, so these are the files it reached and not
+        // every file that matches
+        match found.full {
+            true => ", which is as many as this searches for, so there may be more",
+            false => "",
+        },
+    );
+
+    said(
+        head,
+        [found.skipped.line()],
+        &found.by_file.iter().map(as_a_count).collect::<Vec<_>>(),
+    )
 }
 
 /// What a search says about itself, above the lines it found.

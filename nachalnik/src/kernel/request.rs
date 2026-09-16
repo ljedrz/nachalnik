@@ -11,7 +11,9 @@ use crate::{
     context::ContextItem,
     error::{Error, Result},
     event::{DeltaSink, Event},
-    model::{Block, Content, ModelRequest, ModelResponse, TooLong, ToolCall, ToolCallId, Usage},
+    model::{
+        Block, Content, ModelRequest, ModelResponse, Overrun, TooLong, ToolCall, ToolCallId, Usage,
+    },
     projection::Projection,
     tokens::TokenCounter,
     tool::ToolSpec,
@@ -38,11 +40,25 @@ impl Kernel {
             Ok(prepared) => prepared,
             Err(e) => {
                 self.emit(Event::StepFailed {
+                    overrun: None,
                     error: e.to_string(),
                 });
                 return Err(e);
             }
         };
+
+        // the compactor has already had its turn, above, and this is what is left when it could
+        // not get there - everything it might have taken is pinned, or there was nothing of the
+        // kind it takes. Sending anyway buys one round trip and the endpoint's own account of a
+        // figure that is already on the screen; see `Config::refuse_oversized_requests` for the
+        // half of this that is a judgement rather than arithmetic
+        if let Some(overrun) = self.oversized(provider.info().context_limit, &cost) {
+            self.emit(Event::StepFailed {
+                overrun: Some(overrun),
+                error: Error::TooLong(overrun).to_string(),
+            });
+            return Err(Error::TooLong(overrun));
+        }
 
         // the provider's own account of what it is about to send, when it can give one and the
         // user has asked for it to be kept; see `Config::record_payloads` for why it is not free
@@ -181,6 +197,25 @@ impl Kernel {
         };
 
         Ok((request, projection, cost))
+    }
+
+    /// Whether a request this size is one the model will refuse to read, and by how much.
+    ///
+    /// note: `>` rather than a fraction of the limit. What is being decided is whether the
+    /// endpoint will refuse this, and it refuses at the limit - so a margin here would be the
+    /// kernel refusing requests on its own account, which is a policy and not this crate's.
+    ///
+    /// note: a request carrying something the counter could not price is *bigger* than the
+    /// figure, never smaller, so the comparison holds in the direction that matters. The estimate
+    /// being an estimate is why the whole check is a knob.
+    fn oversized(&self, limit: Option<usize>, cost: &Cost) -> Option<Overrun> {
+        let limit = limit
+            .filter(|limit| self.0.config.refuse_oversized_requests && cost.tokens > *limit)?;
+
+        Some(Overrun {
+            tokens: cost.tokens as u64,
+            limit: Some(limit as u64),
+        })
     }
 
     /// Asks the compactor whether the context needs managing, and applies whatever it says.

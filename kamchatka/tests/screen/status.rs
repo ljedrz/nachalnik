@@ -14,6 +14,7 @@ use nachalnik::{
 use nachalnik_providers::OpenAiCompatible;
 
 use crate::harness::Harness;
+use kamchatka::app::Tab;
 
 #[tokio::test]
 async fn the_budget_puts_the_estimate_beside_what_was_really_charged() {
@@ -942,4 +943,52 @@ async fn a_change_of_model_drops_the_anchor() {
         screen.contains("~") && screen.contains("tokens"),
         "the corner should fall back to the plain estimate rather than showing nothing: {screen}"
     );
+}
+
+/// The context tab says how much has to go, because that is the tab somebody goes to in order to
+/// make it go.
+///
+/// note: the corner turns red past the limit and says the compactor runs first, and it has no
+/// room for the figure that decides what to do next. The difference between "over" and "over by
+/// two thousand" is the difference between reading forty rows and taking one of them out - a
+/// session was watched five exclusions deep and still 2,814 over, with nothing on the screen
+/// saying how close it was.
+#[tokio::test]
+async fn the_context_tab_says_how_far_over_the_limit_the_request_is() {
+    let mut harness = Harness::new([]);
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    harness.app.kernel.push(ContextItem::file(
+        "big.txt",
+        "a line of routine diagnostic output. ".repeat(limit),
+    ));
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    let over = harness.app.kernel.budget().used() - limit;
+    let packed = harness.packed();
+    // the same spelling the rest of the screen uses for a figure this size
+    let written = over
+        .to_string()
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
+        .collect::<Vec<_>>()
+        .join(",");
+    assert!(packed.contains(&written), "over by {over}: {packed}");
+    assert!(packed.contains("overthelimit"), "{packed}");
+}
+
+/// Under it, there is no such figure, because there is nothing to act on.
+#[tokio::test]
+async fn the_context_tab_says_nothing_about_a_request_that_fits() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("a short question"));
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    assert!(!harness.packed().contains("overthelimit"));
 }

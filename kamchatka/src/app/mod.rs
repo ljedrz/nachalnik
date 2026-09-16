@@ -1668,7 +1668,10 @@ impl App {
                 // gets drawn either way
                 self.caught_up(item);
             }
-            Event::ModelFailed { error, overrun } => {
+            // one arm, because they are one fact: a request too long to send, said by the
+            // kernel's own arithmetic or by the endpoint that read it. Which of the two it was is
+            // in the sentence above the line
+            Event::ModelFailed { error, overrun } | Event::StepFailed { error, overrun } => {
                 self.close();
                 self.say_error(error);
                 // note: the sentence above is the server's, and every one of them says the same
@@ -1699,10 +1702,6 @@ impl App {
                         },
                     );
                 }
-            }
-            Event::StepFailed { error } => {
-                self.close();
-                self.say_error(error);
             }
             // note: a refusal the policy made on its own, which nobody was asked about and which
             // the tool result records only as `the call was not permitted`. When the tool's own

@@ -286,6 +286,13 @@ question, so the context tab is a keystroke away while it stands and <kbd>p</kbd
 answer to "not that one". Saying yes works the pass out again, so a pin made while reading the
 list is honoured rather than refused after the fact.
 
+Past the limit the request is not sent at all: the runtime refuses it rather than paying a round
+trip for an endpoint to say what the corner already says, and the line it prints is the same one a
+real refusal gets — what the request came to, and how much of it has to go. The context tab says
+the same figure while you are deciding which rows answer for it. `nachalnik`'s
+`refuse_oversized_requests` turns that off for a session that would rather let the endpoint have
+the last word.
+
 Down a pipe there are no keys, so `--headless` prints the same list to stderr and takes it. That is
 the opposite of what `--on-ask` does with a tool's question, and they are different questions: a
 tool's is the model asking to do something nobody vouched for, and this one is a line the operator

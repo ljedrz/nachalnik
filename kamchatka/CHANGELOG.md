@@ -23,6 +23,16 @@ minor bump may break you.
   `--headless` prints the list and takes it, there being no key to press down a pipe. The opposite
   of what `--on-ask` does with a tool's question, because they are different questions: a tool's is
   the model asking to do something nobody vouched for, and this one is a line the operator typed.
+- The context tab says how far over the limit the next request is, when it is over. The corner
+  turns red and says the compactor runs first, and has no room for the figure that decides what to
+  do next; the difference between "over" and "over by two thousand" is the difference between
+  reading forty rows and taking one of them out.
+- `grep` answers with the files its matches were in when the lines will not fit, rather than with
+  the first few thousand bytes of them. A capped lines answer is filled from wherever the walk
+  started and says so, which is why it already advised `files_only`; this takes that advice rather
+  than printing it. The saving is the shape that prompted it: four broad searches in one turn, each
+  capped at a hundred matches and each still filling its byte limit with context lines, put forty
+  thousand tokens into a context in one step.
 - A request the model refused for its length says what that length was and how much of it has to
   go. The sentence above it is the server's, and every vendor writes those two numbers in a
   different order; this says what they mean here. It matters because the only other figure in

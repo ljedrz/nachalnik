@@ -550,3 +550,63 @@ async fn a_context_wider_than_the_answer_gives_says_so() {
         "{inside}"
     );
 }
+
+/// Lines that will not fit are answered as the files they were in, not as the first few thousand
+/// bytes of them.
+///
+/// note: the shape that prompted it. Four broad searches in one turn, each capped at a hundred
+/// matches and each still filling its whole byte limit, put forty thousand tokens into a context
+/// in one step - and a capped lines answer is filled from wherever the walk started, so most of
+/// what it cost was lines nobody had asked about. The advice the capped answer already gives is
+/// `files_only`; this takes it rather than printing it.
+#[tokio::test]
+async fn lines_that_will_not_fit_come_back_as_the_files_they_were_in() {
+    let dir = tree("grep-too-wide");
+    // sparse matches in wide files, which is the shape that costs: consecutive matches share
+    // their context lines and add nothing, and a match every eighth line pulls six more with it
+    let filler = format!("// {}\n", "n".repeat(190));
+    let hit = format!("let x = Kernel; // {}\n", "n".repeat(190));
+    let block = format!("{}{hit}", filler.repeat(7));
+    for file in 0..12 {
+        put(&dir, &format!("src/wide{file}.rs"), &block.repeat(20));
+    }
+
+    // with `context`, which is what makes a lines answer big enough to matter: a hundred matches
+    // at two hundred characters is deliberately under the byte limit, and the same hundred with
+    // three lines either side is seven times that. Both of the searches that prompted this asked
+    // for context
+    let said = ask(&dir, "grep", json!({ "pattern": "Kernel", "context": 3 })).await;
+
+    assert!(
+        said.contains("more than this answers with, so here is where they are"),
+        "{said}"
+    );
+    assert!(
+        said.contains("src/wide0.rs: "),
+        "and where that is, by file: {said}"
+    );
+    assert!(!said.contains("// nnn"), "not the lines themselves: {said}");
+    assert!(
+        said.len() < 4_000,
+        "and it is small enough to be worth the swap: {} bytes",
+        said.len()
+    );
+    // the two ways out, named, because a model handed files where it asked for lines asks again
+    assert!(
+        said.contains("Narrow the pattern or name one of these files"),
+        "{said}"
+    );
+}
+
+/// An answer that fits is left exactly as it was.
+#[tokio::test]
+async fn lines_that_fit_are_still_the_lines() {
+    let dir = tree("grep-fits");
+    let said = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
+
+    assert!(
+        said.contains("src/kernel.rs:1:pub struct Kernel;"),
+        "{said}"
+    );
+    assert!(!said.contains("here is where they are"), "{said}");
+}

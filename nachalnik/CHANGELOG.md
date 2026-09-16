@@ -20,6 +20,17 @@ minor bump may break you.
   what it must not become is a guess from the estimate at which convention an endpoint speaks,
   which is circular and resolves in favour of the error the counter already has.
 - `test::TooLongProvider`, which refuses every request the way a model out of room does.
+- `Config::refuse_oversized_requests`, on by default: a request the kernel can already see is
+  longer than the model will read is refused here rather than sent, as `Error::TooLong`, and
+  `Event::StepFailed` carries the same `Overrun` `ModelFailed` does - so a client says how much
+  has to go without telling the two kinds of refusal apart. The round trip bought the endpoint's
+  own account of a figure that was already on the screen, and it bought it after reading the whole
+  request. It is a knob rather than a rule because it acts on an estimate: a counter that reads
+  high for one model would refuse a request that endpoint would have taken, and the way out of
+  that cannot be editing a context until an estimate is happy. Nothing is refused where the
+  provider does not say what the model holds, and the comparison is `>` the limit rather than a
+  fraction of it - a margin here would be the kernel having a policy about how full a context may
+  be.
 
 ### changed
 

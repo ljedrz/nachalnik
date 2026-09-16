@@ -8,8 +8,8 @@
 use std::fmt;
 
 #[cfg(doc)]
-use crate::{Kernel, Provider, State, Tool};
-use crate::{context::ContextId, permissions::PermissionId};
+use crate::{Config, Kernel, Provider, State, Tool};
+use crate::{context::ContextId, model::Overrun, permissions::PermissionId};
 
 /// An error produced by user-supplied code (a [`Provider`] or a [`Tool`]) and carried by the
 /// kernel without being interpreted.
@@ -45,6 +45,12 @@ pub enum Error {
     NoProvider,
     /// The [`Provider`] returned an error.
     Provider(BoxError),
+    /// The request is longer than the model will read, and was not sent.
+    ///
+    /// note: the kernel's own arithmetic rather than an endpoint's verdict - see
+    /// [`Config::refuse_oversized_requests`], which turns it off. The numbers are the same shape
+    /// either way, so a client showing what has to go says it the same way for both.
+    TooLong(Overrun),
     /// The projection of the current context contains no messages, so there is nothing to send.
     EmptyProjection,
     /// The referenced context item does not exist.
@@ -59,6 +65,20 @@ impl fmt::Display for Error {
             Self::Busy => write!(f, "the kernel is busy"),
             Self::NoProvider => write!(f, "no provider is set"),
             Self::Provider(e) => write!(f, "the provider failed: {e}"),
+            Self::TooLong(overrun) => match overrun.limit {
+                Some(limit) => write!(
+                    f,
+                    "the request is about {} tokens and the model takes {limit}, so it was not \
+                     sent",
+                    overrun.tokens,
+                ),
+                None => write!(
+                    f,
+                    "the request is about {} tokens, which is more than the model takes, so it \
+                     was not sent",
+                    overrun.tokens,
+                ),
+            },
             Self::EmptyProjection => write!(f, "the context projects to an empty request"),
             Self::UnknownItem(id) => write!(f, "there is no context item {id}"),
             Self::UnknownPermission(id) => write!(f, "there is no pending permission request {id}"),
