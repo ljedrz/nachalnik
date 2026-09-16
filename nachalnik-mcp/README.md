@@ -94,6 +94,13 @@ of your understanding of it.
 Among them is a server offering a tool called `delete_everything` that claims to be read-only.
 Under the default it buys nothing.
 
+An in-process server shares this crate's own SDK, though, so a second suite answers the question
+that leaves open: a server written in Python, speaking newline-delimited JSON-RPC by hand and
+spawned as a child process, which is the transport most servers arrive over. It skips when
+`python3` is not on the path. One test in it goes further and offers those tools to a real model,
+because whether an identifier survives a provider's charset and whether a description is enough to
+pick the right tool out of three are not things a scripted provider can be wrong about.
+
 ---
 
 ### 📜 license

@@ -11,6 +11,18 @@ minor bump may break you.
 
 - One fewer direct dependency: `async-trait` is the runtime's, and every `#[async_trait]` here is
   already written against `nachalnik`'s re-export. Depending on it twice let the two drift.
+- `tokio` belongs to the `child-process` feature rather than to the crate, and asks for `process`
+  rather than for `rt` and `sync`. `Server::spawn` names a `tokio::process::Command` and nothing
+  else here touches the runtime, so the two features it did ask for were never used and the one it
+  needs was arriving through `rmcp/transport-child-process` - true today and not this crate's to
+  rely on. A `--no-default-features` build now has no `tokio` of its own at all.
+- The `rmcp` dev-dependency asks for 3.4, which is where `model::ServerConfig` arrived; the bench
+  server in `tests/bridge.rs` has named it that since the 3.4 bump, so `3.1` was a requirement the
+  tests could not be built under. The library's own floor stays at 3.1, because every name in
+  `src/` is there.
+- The readme's tests section described one of the two suites. The second stands up a server written
+  in Python, over the child-process transport most servers actually arrive on, and hands its tools
+  to a real model.
 
 ## [0.5.0] - 2026-09-11
 
