@@ -1660,8 +1660,9 @@ impl App {
                         match over {
                             Some(over) => format!(
                                 "the model read that request as {} tokens: ~{} more than it \
-                                 takes. Nothing is sent until that much goes - `/prune` what \
-                                 you can spare, or pick it off in the context tab",
+                                 takes. Nothing is sent until that much goes - `/compact` says \
+                                 what a pass would take before it takes it, and `/exclude` is \
+                                 the same decision made by hand",
                                 thousands(overrun.tokens as usize),
                                 thousands(over as usize),
                             ),

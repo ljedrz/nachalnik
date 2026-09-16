@@ -9,11 +9,24 @@ minor bump may break you.
 
 ### added
 
+- `/compact`, which asks the compactor by hand and shows its answer before applying it: every item
+  it would take, with the identifier, what it is and what it is holding, and nothing moved. Pin
+  what should stay - <kbd>p</kbd> on the context tab, or `/pin 17` - and `/compact yes` takes the
+  rest. The pass is worked out again on the way in rather than applying the plan that was shown,
+  so a pin made while reading the list is honoured rather than refused after the fact.
+
+  It is also the only way out of a context too big to send. `context` and `amend` are the model's
+  tools and reaching them costs a request - the request that is failing - so until now a session
+  that had run out of room could only be pruned by hand, item by item.
 - A request the model refused for its length says what that length was and how much of it has to
   go. The sentence above it is the server's, and every vendor writes those two numbers in a
   different order; this says what they mean here. It matters because the only other figure in
   front of somebody at that point is the corner, which is the estimate that has just turned out to
   be wrong - and which the same refusal is correcting.
+- `X-OpenRouter-Categories: cli-agent,programming-app` beside the referer and title, which is what
+  puts an app in the [marketplace](https://openrouter.ai/apps) rather than only in the rankings.
+  Sent only to OpenRouter; `KAMCHATKA_NO_ATTRIBUTION` turns all attribution off. An unrecognised
+  category is dropped silently by OpenRouter, so nothing here checks the spelling.
 
 ### fixed
 
@@ -40,13 +53,6 @@ minor bump may break you.
 - `ratatui` is taken with three of its five default features. `macros` is out because `ui` builds
   its layout from calls rather than from a declaration, and `all-widgets` because its only member
   is the calendar.
-
-### added
-
-- `X-OpenRouter-Categories: cli-agent,programming-app` beside the referer and title, which is what
-  puts an app in the [marketplace](https://openrouter.ai/apps) rather than only in the rankings.
-  Sent only to OpenRouter; `KAMCHATKA_NO_ATTRIBUTION` turns all attribution off. An unrecognised
-  category is dropped silently by OpenRouter, so nothing here checks the spelling.
 
 ## [0.11.0] - 2026-09-15
 

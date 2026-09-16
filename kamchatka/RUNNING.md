@@ -279,6 +279,17 @@ counts what each elision actually recovers and leaves alone any result no bigger
 that would replace it. Eliding a `wrote 412 bytes to …` makes the request *bigger*, and a pass
 that took twenty of them is how that was found.
 
+`/compact` asks that same compactor by hand, and shows its answer before anything happens: every
+item it would take, with the identifier, what it is and what it is holding. Nothing moves until
+`/compact yes`, so the list is somewhere to read, pin from — <kbd>p</kbd> on the context tab, or
+`/pin 17` — and then agree. The pass is worked out again on the way in, so a pin made while
+reading the list is honoured rather than refused after the fact.
+
+It is also the way out of a session too big to send. The tools that prune a context are the
+*model's* — `context` and `amend` — and reaching them costs a request, which is the thing that is
+failing. A context nothing will accept had, until this, only one way out, and it went through the
+request that no longer works.
+
 ## 🧩 embedding it
 
 The program is a library with a loop on top, and both halves are yours. `wiring::Setup` assembles

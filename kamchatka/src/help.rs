@@ -232,6 +232,10 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /restore SELECTOR   put them back
     /budget             the estimate, what the last request really cost, and the
                         correction the counter has worked out from the difference
+    /compact            what the compactor would take, listed, before it takes
+                        anything. Pin what you want kept and run it again
+    /compact yes        take it; the list is worked out afresh, so a pin made
+                        since is honoured
     /spend [TOKENS]     what the provider has charged for this session, and the
                         ceiling it stops at; 0 takes the ceiling away
     /seams              what is plugged into each of the runtime's six parts

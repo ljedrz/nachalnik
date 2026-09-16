@@ -7,6 +7,7 @@
 
 use std::sync::Arc;
 
+use crossterm::event::KeyCode;
 use kamchatka::tools::Trim;
 use nachalnik::{ContextItem, ContextState, test::call};
 use serde_json::json;
@@ -639,4 +640,122 @@ async fn over_the_limit_with_no_compactor_promises_nothing() {
         !screen.contains("the compactor runs first"),
         "there is no compactor, so the request really is this big: {screen}"
     );
+}
+
+// ------------------------------------------------------------------------------- asking for one
+
+/// A context with one compactable result in it, and a compactor that will take it.
+async fn ready_to_compact() -> (Harness, nachalnik::ContextId) {
+    use nachalnik::{Content, ToolCall};
+
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(Some(Arc::new(Trim {
+        threshold: 0.0,
+        target: 0.0,
+    })));
+
+    let call = ToolCall::new("call-1", "read", Arc::new(json!({"path": "big.rs"})));
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("what is in big.rs?"));
+    harness.app.kernel.push(ContextItem::assistant(
+        Content::text("let me look"),
+        vec![call.clone()],
+    ));
+    let result = harness.app.kernel.push(ContextItem::tool_result(
+        call.id.clone(),
+        "read",
+        Content::text("x".repeat(40_000)),
+        false,
+    ));
+    harness.drain();
+
+    (harness, result)
+}
+
+/// `/compact` says what a pass would take and takes none of it.
+///
+/// note: the whole point of the command, and the half an automatic pass cannot have. A pass that
+/// announces itself afterwards leaves somebody reading what they have lost; this is the same
+/// information one step earlier, with the identifiers to pin from, while it is still a decision.
+#[tokio::test]
+async fn compact_lists_what_would_go_and_takes_nothing() {
+    let (mut harness, result) = ready_to_compact().await;
+
+    harness.send("/compact").await;
+
+    let packed = harness.packed();
+    assert!(packed.contains(&format!("[{result}]")), "{packed}");
+    assert!(
+        packed.contains("elide"),
+        "and what would happen to it: {packed}"
+    );
+    assert!(packed.contains("Nothinghashappenedyet"), "{packed}");
+
+    assert_eq!(
+        harness.app.kernel.item(result).unwrap().state,
+        ContextState::Active,
+        "and nothing did"
+    );
+}
+
+/// A pin made after reading that list is honoured, because the pass is worked out again.
+///
+/// note: the reason `yes` re-plans instead of applying what it showed. The list is a snapshot of
+/// a context somebody was invited to change, and applying the old plan would take exactly what
+/// they had just protected - caught by the kernel, which refuses a pinned item, but caught
+/// afterwards and reported, which is the shape this command exists to get away from.
+#[tokio::test]
+async fn a_pin_made_after_the_list_is_honoured_by_the_pass() {
+    let (mut harness, result) = ready_to_compact().await;
+
+    harness.send("/compact").await;
+    // the list is an overlay, like every other body long enough to need its own screen; it is
+    // dismissed the way they all are, and the prompt is the prompt again
+    harness.press(KeyCode::Esc).await;
+    harness.send(&format!("/pin {result}")).await;
+    harness.send("/compact yes").await;
+    harness.drain();
+
+    assert_eq!(
+        harness.app.kernel.item(result).unwrap().state,
+        ContextState::Pinned,
+        "the pin stands"
+    );
+    let screen = harness.flat();
+    assert!(
+        screen.contains("found nothing it may take"),
+        "and the pass says so rather than reporting a refusal: {screen}"
+    );
+}
+
+/// And with nobody pinning anything, `yes` takes it - reported by the same event any other pass
+/// is reported by.
+#[tokio::test]
+async fn compact_yes_takes_it_and_says_what_it_took() {
+    let (mut harness, result) = ready_to_compact().await;
+
+    harness.send("/compact yes").await;
+    harness.drain();
+
+    assert_eq!(
+        harness.app.kernel.item(result).unwrap().state,
+        ContextState::Elided
+    );
+    let screen = harness.flat();
+    assert!(screen.contains("compacted:"), "{screen}");
+}
+
+/// With no compactor installed there is nothing to ask, and it says so rather than saying
+/// nothing.
+#[tokio::test]
+async fn compact_without_a_compactor_says_there_is_none() {
+    let (mut harness, _) = ready_to_compact().await;
+    harness.app.kernel.set_compactor(None);
+
+    harness.send("/compact").await;
+
+    let screen = harness.flat();
+    assert!(screen.contains("no compactor is installed"), "{screen}");
 }

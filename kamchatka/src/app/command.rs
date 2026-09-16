@@ -4,7 +4,7 @@
 //! know about. `/context`, `/seams` and `/budget` read public values off a [`nachalnik::Kernel`]
 //! and print them; nothing in this file is a capability the runtime had to grow.
 
-use nachalnik::{ContextItem, ContextState, selectors::Selector};
+use nachalnik::{ContextId, ContextItem, ContextState, selectors::Selector};
 
 use crate::{app::text::thousands, tools::Limits};
 
@@ -168,6 +168,7 @@ impl App {
             "limit" => self.limit(rest),
             "spend" => self.spend_command(rest),
             "budget" => self.budget(),
+            "compact" => self.compact(rest).await,
             "seams" => self.seams(),
             "introspect" => self.introspect(),
             // it used to print a line naming the allowed capabilities. The tab is that line, plus
@@ -880,6 +881,118 @@ impl App {
                 ),
             ),
         }
+    }
+
+    /// Shows what a compaction pass would take, and takes it once somebody has said so.
+    ///
+    /// note: the compactor the kernel runs before a request is the same object, asked by hand.
+    /// What this adds is the half an automatic pass cannot have: the list, before anything
+    /// happens, with the identifiers to pin from. A pass that announces itself afterwards is
+    /// already an improvement on one that does not, but it leaves somebody reading what they have
+    /// lost; this is the same information one step earlier, where it is still a decision.
+    ///
+    /// note: it exists for the session that cannot ask the model to tidy up, which is the one
+    /// most likely to need tidying. `context` and `amend` are the model's tools, and reaching
+    /// them costs a request - the request that is failing. A context too big to send is a context
+    /// whose only way out was through the thing that no longer works.
+    ///
+    /// note: `yes` re-plans rather than applying the plan it showed. The list is a snapshot of a
+    /// context somebody was invited to change - to pin from, mostly - and applying the old plan
+    /// would take exactly what they had just protected. The kernel refuses a pinned item anyway
+    /// and reports it, so the stale plan would be caught; it would just be caught after the fact,
+    /// in a report, which is the shape this command exists to get away from.
+    async fn compact(&mut self, rest: &str) {
+        let Some(compactor) = self.kernel.compactor() else {
+            self.say(
+                Speaker::Error,
+                "no compactor is installed, so there is nothing to ask one for. \
+                 `/exclude SELECTOR` takes items out by hand",
+            );
+            return;
+        };
+
+        let items = self.kernel.items();
+        let budget = self.kernel.budget();
+        let Some(plan) = compactor.plan(&items, &budget).await else {
+            self.say(
+                Speaker::Note,
+                format!(
+                    "{} found nothing it may take: the next request is ~{} tokens{}",
+                    compactor.name(),
+                    thousands(budget.used()),
+                    match budget.limit {
+                        Some(limit) => format!(" of {}", thousands(limit)),
+                        None => String::new(),
+                    },
+                ),
+            );
+            return;
+        };
+
+        let described = |ids: &[ContextId], doing: &str| -> Vec<String> {
+            ids.iter()
+                .map(|id| match items.iter().find(|item| item.id == *id) {
+                    None => format!("[{id}] there is no such item"),
+                    Some(item) => format!(
+                        "[{id}] {doing} · {} · {} · {} tokens",
+                        item.label,
+                        item.kind.name(),
+                        thousands(item.tokens),
+                    ),
+                })
+                .collect()
+        };
+
+        let holding: usize = plan
+            .remove
+            .iter()
+            .chain(&plan.elide)
+            .filter_map(|id| items.iter().find(|item| item.id == *id))
+            .map(|item| item.tokens)
+            .sum();
+        let count = plan.remove.len() + plan.elide.len();
+
+        if !matches!(rest.trim(), "yes" | "y" | "apply") {
+            let mut body = described(&plan.elide, "elide, leaving a marker in its place");
+            body.extend(described(
+                &plan.remove,
+                "exclude, out of the request entirely",
+            ));
+            if let Some(summary) = &plan.summary {
+                body.push(format!("and {} goes in, in their place", summary.label));
+            }
+            // note: the tokens are what the items are *holding*, not what the request would fall
+            // by. An elided item leaves a marker behind and the marker costs what it costs, so
+            // the two figures differ by that much per item - which is a difference worth stating
+            // rather than rounding away, since this whole command is somebody deciding whether
+            // the trade is worth it
+            body.push(String::new());
+            body.push(format!(
+                "{count} item(s) holding {} tokens, less what the markers cost. Nothing has \
+                 happened yet.\n\nPin what you want kept - `/pin 17`, or `p` on the context tab - \
+                 and run this again; the list is worked out afresh each time. `/compact yes` \
+                 takes it.",
+                thousands(holding),
+            ));
+
+            self.preview(
+                format!("what {} would take", compactor.name()),
+                body.join("\n"),
+            );
+            self.say(
+                Speaker::Note,
+                format!(
+                    "{count} item(s) holding {} tokens would go; nothing has yet. \
+                     `/compact yes` takes it, `/pin SELECTOR` keeps something out of it",
+                    thousands(holding),
+                ),
+            );
+            return;
+        }
+
+        // the report says what happened, through `Event::Compacted` like any other pass: one
+        // account of a compaction, whoever asked for it
+        self.kernel.apply_compaction(plan);
     }
 
     fn budget(&mut self) {
