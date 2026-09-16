@@ -18,6 +18,8 @@ minor bump may break you.
   suite no longer tests how the line narrows - `edges.rs` pins that offline.
 - A release archive is the binary and `kamchatka.json`, and nothing else. The licence and the four
   documents are out; they are a link away and always current.
+- One fewer direct dependency: `async-trait` is the runtime's, and every `#[async_trait]` here is
+  already written against `nachalnik`'s re-export. Depending on it twice let the two drift.
 
 ### added
 

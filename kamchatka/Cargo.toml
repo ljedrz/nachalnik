@@ -51,7 +51,6 @@ nachalnik-mcp = { workspace = true, optional = true }
 # is that nothing above the trait finds out which it got
 nachalnik-providers = { workspace = true, features = ["gemini"] }
 
-async-trait.workspace = true
 parking_lot.workspace = true
 # `derive` for the settings file, which is the one thing here with a shape somebody else writes
 serde = { workspace = true, features = ["derive"] }

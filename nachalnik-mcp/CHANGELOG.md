@@ -5,6 +5,13 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- One fewer direct dependency: `async-trait` is the runtime's, and every `#[async_trait]` here is
+  already written against `nachalnik`'s re-export. Depending on it twice let the two drift.
+
 ## [0.5.0] - 2026-09-11
 
 ### added

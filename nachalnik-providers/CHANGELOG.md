@@ -35,6 +35,11 @@ minor bump may break you.
   that already has one keeps its visibility - which is what makes it safe to expose, since a caller
   of somebody else's app cannot hide it. Public is the default and sends nothing.
 
+### changed
+
+- One fewer direct dependency: `async-trait` is the runtime's, and every `#[async_trait]` here is
+  already written against `nachalnik`'s re-export. Depending on it twice let the two drift.
+
 ### fixed
 
 - `with_client` documents that a caller's own client needs `install_crypto` first. reqwest is built

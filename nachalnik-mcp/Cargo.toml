@@ -30,7 +30,6 @@ http = ["rmcp/transport-streamable-http-client-reqwest"]
 
 [dependencies]
 nachalnik.workspace = true
-async-trait.workspace = true
 serde_json.workspace = true
 # the official MCP SDK. `default-features = false` because its defaults build a *server*, and
 # nothing here is one

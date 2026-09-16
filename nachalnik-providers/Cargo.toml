@@ -33,7 +33,6 @@ conformance = ["nachalnik/test", "tokio/io-util", "tokio/net"]
 
 [dependencies]
 nachalnik.workspace = true
-async-trait.workspace = true
 parking_lot.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
