@@ -84,8 +84,8 @@ Read a request for a capability with that split in mind before deciding where it
 `compaction.rs`, `event.rs`, `session.rs`. `test.rs` (feature `test`) holds the scripted provider,
 the fake tools and the table policy: use those rather than writing another mock.
 
-`kamchatka/src`: `app/` is the state, `ui/` draws and decides nothing, `tools/` is the six tools,
-`introspect/` the off-by-default ones an agent reads and manages its own session with, `wiring.rs`
+`kamchatka/src`: `app/` is the state, `ui/` draws and decides nothing, `tools/` is the filesystem
+and the shell, `introspect/` the four an agent reads and manages its own session with, `wiring.rs`
 assembles a session in nine steps and `main.rs` is arguments and a loop - which is the shape to
 keep it in.
 

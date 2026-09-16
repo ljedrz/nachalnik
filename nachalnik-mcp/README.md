@@ -25,14 +25,16 @@ based on annotations received from untrusted servers". A permission policy that 
 hints would be taking the word of the thing it is meant to be gating. A server that would rather
 not be asked about need only claim to be read-only.
 
-So `Trust` defaults to believing none of it. Every tool from a server declares one capability
-naming that server - `mcp:files` - which is a fact rather than a claim, and which makes "ask me
-once about this server" something a policy can say in a line:
+So `Trust` defaults to believing none of it. Every tool from a server declares `mcp:call` and
+nothing more, whatever its annotations say. Where a tool *came from* is a fact rather than a claim,
+and it is recorded by whoever spawned the server rather than by the tool - which is what makes "ask
+me once about this server" something a policy can say without taking the server's word for
+anything:
 
 ```rust
 Server::spawn("files", cmd).await?                        // believes nothing (the default)
 Server::spawn("files", cmd).await?.trusting(Trust::Annotations)   // believes the server
-Server::spawn("files", cmd).await?.trusting(Trust::Fixed(vec![Capability::Read]))
+Server::spawn("files", cmd).await?.trusting(Trust::Fixed(vec![Capability::fs("read")]))
 ```
 
 `Trust::Annotations` is reasonable for a server you run yourself, and a mistake for one you do

@@ -20,7 +20,7 @@ use std::{
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
     Budget, Capability, Content, ContextId, ContextItem, ContextKind, Delta, Domain, Event, Grant,
-    GrantSource, Kernel, Overrun, PermissionRequest, Record, State, Usage, Verdict,
+    GrantSource, Kernel, Overrun, PermissionRequest, Record, State, Tool, Usage, Verdict,
     selectors::Selector,
 };
 use nachalnik_providers::Endpoint;
@@ -637,12 +637,26 @@ pub struct App {
     /// mechanism of its own.
     versions: BTreeMap<ContextId, Vec<Content>>,
 
-    /// The handle the introspection tools reach the kernel through, while they are offered.
+    /// The handle the introspection tools reach the kernel through, kept for as long as the
+    /// session lasts.
     ///
-    /// note: it is here rather than in `main` because `/introspect` turns them on and off, and this is
-    /// the thing that has to move when it does: they hold a weak handle to it, so dropping it is
-    /// what takes their reach away. See [`crate::introspect::install`].
+    /// note: it is here rather than in `main` because it has to outlive the tools: they hold a
+    /// weak handle to it, and dropping it is what takes their reach away. See
+    /// [`crate::introspect::install`].
+    ///
+    /// note: it used to be what `/introspect` moved - the four tools were switched off by dropping
+    /// this, which also threw away what `amend` was remembering. Turning a tool off is
+    /// [`App::toggle`] now, and a shelved tool is still the same tool: what it pinned is still
+    /// pinned, and what it could still walk back it still can.
     pub introspect: Option<Arc<Kernel>>,
+    /// The tools this session is not offering, by id, kept so that they can be offered again.
+    ///
+    /// note: the tool itself rather than its id, which is what makes this work for a tool nobody
+    /// here wrote. A list of names would mean rebuilding whatever was named, and there is no way
+    /// to rebuild an MCP server's tool or an embedder's - so turning one off would have been
+    /// turning it off for good. What [`Kernel::remove_tool`] hands back is the tool; keeping it is
+    /// the whole mechanism.
+    pub shelved: BTreeMap<String, Arc<dyn Tool>>,
     /// How much of the shell's sandbox the kernel agreed to, asked once at startup.
     ///
     /// note: on `App` rather than worked out where it is drawn, because finding out means
@@ -875,6 +889,7 @@ impl App {
             limits,
             versions: BTreeMap::new(),
             introspect: None,
+            shelved: BTreeMap::new(),
             // the terminal's own default, for a screen test that never spawns anything; the
             // program overwrites it with what a child process actually reported
             confinement: Confinement::Unsupported,
@@ -1921,6 +1936,33 @@ impl App {
         );
 
         true
+    }
+
+    /// Stops offering a tool, or offers one this session had turned off; `None` if there is no
+    /// tool of that name either way.
+    ///
+    /// note: the registry is live, so this lands on the next request rather than needing a
+    /// restart - the same property [`nachalnik::Kernel::add_tool`] is documented for and the
+    /// plainest thing to demonstrate it with. Nothing else moves: what is in the context stays
+    /// there, and a result the tool already produced is still a result.
+    ///
+    /// note: one function for both directions, because they are one act. Two - an `offer` and a
+    /// `drop` - would need a caller that knew which state a tool was in before it could ask for
+    /// the other one, and the thing asking is a person who read the name off a list.
+    ///
+    /// note: what it does **not** do is change what the tool is allowed to do. A shelved tool's
+    /// permission rules are still in the table, and a tool offered again is under exactly the
+    /// rules it was under before - which is the answer a person who turned it off for one turn
+    /// wants, and a thing to know before turning one off as a way of stopping it.
+    pub fn toggle(&mut self, id: &str) -> Option<bool> {
+        if let Some(tool) = self.kernel.remove_tool(id) {
+            self.shelved.insert(id.to_owned(), tool);
+            return Some(false);
+        }
+
+        self.kernel.add_tool(self.shelved.remove(id)?);
+
+        Some(true)
     }
 
     /// Sets the ceiling, or takes it away, and lets a stopped session carry on under the new one.

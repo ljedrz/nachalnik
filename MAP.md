@@ -45,7 +45,7 @@ and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that flo
 fitting), `tools/` (the six tools - `files.rs` for the three that open one file, `search.rs` for the two that
 walk a directory of them with ripgrep's engine, and `shell.rs` for the one that is a process - with
 `policy.rs` for `Careful` and `trim.rs` for the compactor),
-`introspect/` (the off-by-default tools an agent inspects and manages its own session with - one
+`introspect/` (the four tools an agent inspects and manages its own session with - one
 per file, named for the noun each is about: `context` reads the context, `log` the record beside
 it, `setup` what the session is running with, `amend` changes any of it - with `mod.rs` holding
 `install` and the handful of things they all use),
@@ -87,7 +87,7 @@ formats token counts for a model to read, so neither can live in the module that
 program rather than the screen: `policy`, `sandbox` and `introspect` never draw, and `headless`
 drives a whole session - a message, a command, a tool call, a question nobody can answer - through
 an `App` that has no screen at all. CI runs it. Adding `--features mcp` adds the `mcp` suite, which
-spawns a real server and grants it with `--allow mcp:py`: somebody else's tools with no terminal
+spawns a real server and grants it with `--allow-server py`: somebody else's tools with no terminal
 anywhere, which is the configuration an embedder is most likely to be in. The binary builds in all
 of that too and is headless in it, so `--no-default-features` is a program rather than a library.
 

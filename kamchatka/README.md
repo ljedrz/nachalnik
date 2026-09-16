@@ -47,9 +47,9 @@ $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 > directory read-only, and nothing outside that directory is readable or writable, with one
 > deliberate exception: the system directories, because a command that cannot read `/usr/bin`
 > cannot be a command. So `cat /etc/passwd` works and `cat ~/.ssh/id_rsa` does not.
-> The five tools that are not a process are held to the same boundary by their own code and to a
-> tighter one: they refuse `/etc/passwd` too, and they never expand `~` — there is no shell in front of them, so a
-> path is taken at its word and they say so rather than reporting the file as missing.
+> `fs`, which is not a process, is held to the same boundary by its own code and to a
+> tighter one: it refuses `/etc/passwd` too, and it never expands `~` — there is no shell in front
+> of it, so a path is taken at its word and it says so rather than reporting the file as missing.
 > `--sandbox-allow PATH` opens up more, `--sandbox-read PATH` opens it for reading only, and
 > `--no-sandbox` turns it off. It is one LSM, not a container; see [what it does and does not
 > protect you from][protection], and [the permissions tab][guide-permissions] for what the screen
@@ -57,39 +57,44 @@ $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 
 ## 🔧 what it comes with
 
-Six tools — `read`, `write`, `edit`, `grep`, `glob`, `shell` — and a policy that asks about all of
-it. Nothing is allowed on your behalf before you have been asked, `read` included. Answering **always** answers for a *capability*, not a
-tool name, which is what makes it work for tools this program has never heard of:
+Six tools — `fs`, `shell`, `context`, `log`, `setup`, `amend` — and a policy that asks about all of
+it. Nothing is allowed on your behalf before you have been asked, reading a file included. A tool
+is a *domain* and what it does is an *operation* in it, so `fs:read` is the subject and `fs` is
+every one of them; answering **always** answers for one of those rather than for a tool's name,
+which is what makes it work for tools this program has never heard of:
 
 ```console
 $ kamchatka --mcp 'files=npx -y @modelcontextprotocol/server-filesystem /srv'
 ```
 
-Those arrive through [`nachalnik-mcp`][nachalnik-mcp] carrying `mcp:files`, so "always, for
-mcp:files" is one server and not the next one. The `name=` is worth giving: it prefixes the
-server's tools and it is what the grant is *for*, and without it the name comes from the program,
-which for most of the servers people actually run is `npx`.
+Those arrive through [`nachalnik-mcp`][nachalnik-mcp] declaring what their annotations claim and
+nothing else, and where they *came from* is a subject of its own: `--allow-server files` is one
+server and not the next one. The `name=` is worth giving, because it is what that grant names —
+without it the name comes from the program, which for most of the servers people actually run is
+`npx`.
 
-`grep` and `glob` are ripgrep's engine linked in rather than shelled out to, and the reason they
-exist is the capability they ride. Finding a symbol used to mean `shell`, which subsumes every
-other capability — so a session that only wanted to be asked *about* a repository had to hand over
-the one permission that answers for everything. These declare `read`, walk a directory without a
+`fs`'s `grep` and `glob` are ripgrep's engine linked in rather than shelled out to, and the reason
+they exist is the subject they ride. Finding a symbol used to mean `exec:run`, which subsumes every
+other permission — so a session that only wanted to be asked *about* a repository had to hand over
+the one that answers for everything. These are `fs:grep` and `fs:glob`, walk a directory without a
 shell in front of them, honour a `.gitignore`, and cut at a number of matches rather than at bytes,
 saying so where they cut. The path rules bind them too: a walk cannot ask about `.env`, so it does
 not open it and says how many it left alone.
 
-`--introspect` adds four more, off by default: `context` reads the context, `log` the record kept
+Four of them are about the session itself: `context` reads the context, `log` the record kept
 beside it, `setup` what the session is running with, and `amend` changes the first of them. Every
 action in them is a public function the screen was already calling, which is the argument for the
 whole workspace rather than a feature of this program — [what each does][guide-introspect].
 
-The registry is live rather than fixed at startup: `/tools drop shell` stops offering it from the
-next request onward, which is one call on the kernel and no restart. When a model has gone down
+The registry is live rather than fixed at startup: `/tools toggle shell` stops offering it from the
+next request onward and `/tools toggle shell` again offers it, which is one call on the kernel each way
+and no restart. The `tools` key in a settings file says which of them a session starts
+with. When a model has gone down
 the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* call it is waiting on
 with one reason — and the model is told, rather than left waiting on calls that silently vanished.
 
 So is how much of each tool's output the model is shown. `/limit` lists it — numbered, and the
-number is one the command takes, so `/limit read 64000` and `/limit 6 64000` are the same
+number is one the command takes, so `/limit fs:read 64000` and `/limit 6 64000` are the same
 instruction — and either changes one from its next call onward. The result that has *already* been
 cut is recovered a different way: its whole is archived beside the copy the model was given, and <kbd>space</kbd> on
 it sends that instead — the projector answers one call with one result, so the whole takes the

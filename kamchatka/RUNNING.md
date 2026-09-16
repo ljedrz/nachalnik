@@ -34,8 +34,8 @@ Nothing can be asked at a prompt that is not there, so the answers are given in 
 
 | flag | what it does |
 | --- | --- |
-| `--allow read,shell` | answer `allow` for a capability, a path rule (`--allow 'src/**'`) or one action of a tool (`--allow amend:note`) |
-| `--deny write,.env*` | the same, refused; the strictest of everything consulted still wins |
+| `--allow fs,exec:run` | answer `allow` for a whole domain, one operation in one (`--allow context:note`) or a path rule (`--allow 'src/**'`) |
+| `--deny fs:write,.env*` | the same, refused; the strictest of everything consulted still wins |
 | `--on-ask deny` | what happens to a question nobody answered in advance. The default |
 
 `--on-ask deny` rather than `allow` is the one default worth arguing about, and it is deliberate:
@@ -51,12 +51,13 @@ I’m not able to execute shell commands directly, but the command you asked abo
 straightforward. …
 ```
 
-Somebody else's tools are given the same way. Every tool an MCP server offers arrives carrying
-`mcp:<name>` and nothing else, so `--mcp files=… --allow mcp:files` is the whole of granting one
-server — the same subject the permissions tab writes when somebody answers **always** at the
-prompt, given before the server has been spawned or said what it offers. Without it the tools are
-there and every call is refused, which is the right way round: a server named on a command line is
-not thereby trusted to run.
+Somebody else's tools are given the same way, and where a tool came from is a subject of its own:
+`--mcp files=… --allow-server files` is the whole of granting one server — the same subject the
+permissions tab writes when somebody answers **always** at the prompt, given before the server has
+been spawned or said what it offers. Without it the tools are there and every call is refused,
+which is the right way round: a server named on a command line is not thereby trusted to run. It
+is its own argument rather than a spelling of `--allow` because a server's name and a domain are
+both bare words and nothing in either says which it is.
 
 Nothing else can stop a run nobody is watching, so three things can. `--deadline 300` interrupts
 whatever is in flight and leaves by the ordinary door — what arrived is kept and the session is
@@ -125,7 +126,7 @@ line work the same against either and nothing above them knows which wire format
 
 ```console
 $ export KAMCHATKA_API_KEY=...        # a Google AI Studio key
-$ kamchatka --gemini --introspect "what does src/kernel.rs do?"
+$ kamchatka --gemini "what does src/kernel.rs do?"
 ```
 
 ## 🔀 the model, and the address it lives at
@@ -326,8 +327,8 @@ order they have to go in, and hands back the two receivers a loop needs:
 
 ```rust
 let wired = kamchatka::wiring::Setup {
-    introspect: true,
-    allow: vec![Subject::parse("read")],
+    tools: Some(vec!["fs".into(), "context".into()]),
+    allow: vec![Subject::parse("fs:read")],
     system: Some("you are working in a Rust workspace".into()),
     spend: Some(50_000),
     ..Default::default()
@@ -370,7 +371,8 @@ parser for that in the tree already:
   "system": "you are working in a Rust workspace; run `cargo test` before saying anything is done",
   "mcp": ["files=npx -y @modelcontextprotocol/server-filesystem /srv"],
   "sandbox-read": ["~/.rustup", "~/.cargo"],
-  "allow": ["read", "mcp:files"],
+  "allow": ["fs:read"],
+  "allow-server": ["files"],
   "spend": 200000
 }
 ```
@@ -384,7 +386,7 @@ predicting, and the other way round there is no way to ask for fewer. `--model` 
 with a variable behind it, so the order there is command line, then `KAMCHATKA_MODEL`, then the
 file.
 
-**`border` is the exception**, and the only setting with no argument behind it:
+**`border` and `tools` are the exceptions**, the two settings with no argument behind them:
 
 ```json
 { "border": "#7aa2f7" }
@@ -407,6 +409,26 @@ away the difference between *answerable now* and *still waiting*.
 A colour that is not six hex digits stops the program and says so, naming the file and the form —
 including in a headless run, which has no frame to draw. One file is valid everywhere or invalid
 everywhere, rather than one that works until somebody opens it on a terminal.
+
+**`tools` is the other one**, and it says which of the six a session starts with:
+
+```json
+{ "tools": ["fs", "shell", "context", "log", "setup"] }
+```
+
+Left out, or `null`, every tool is offered — that list is the whole set minus `amend`, which is
+how a project says *read this session all you like, do not rewrite it*. An empty list offers none
+of them, which is a session with whatever an MCP server brought and nothing else. A name that is
+not a tool stops the program and says which ones there are, for the same reason an unknown key
+does: a file asking for `contxt` and quietly getting a session with no context tool is worse than
+one that does not start.
+
+There is no argument behind it because which tools a project wants its agent to have is settled
+once and then not thought about again — and because the *other* thing it was used for, turning one
+off for a while, is `/tools toggle ID` at the prompt, at the moment somebody wants it rather than before
+the session starts. `/tools toggle` works on every tool, including the ones a server brought, and a tool
+turned off this way is kept rather than thrown away: `/tools toggle` again offers the same one back,
+still holding whatever it was remembering.
 
 A leading `~` in `sandbox-allow` and `sandbox-read` is your home directory. That is the one place
 this program expands one, and the exception is narrower than it looks: every other way of giving
@@ -456,14 +478,11 @@ kamchatka [OPTIONS] [MESSAGE]...
       --parallel            run the model's tool calls at the same time
       --gemini              talk to Google's own API rather than an OpenAI-compatible
                             one, so a turn keeps the order it was produced in
-      --introspect          offer the model the tools that read its own context, its own
-                            record and what it is running with, and manage the first of
-                            them; /introspect turns them on and off while it runs
       --headless            drive the session from lines on stdin: the session log to
                             stdout, one JSON record a line, and what the model says to
                             stderr. Implied when stdout is not a terminal
-      --allow <SUBJECT>     answer `allow` in advance for a capability, a path or one
-                            tool action, as read, shell, mcp:files, .env*, amend:note ;
+      --allow <SUBJECT>     answer `allow` in advance for a domain, one operation in one
+                            or a path, as fs, fs:read, exec:run, .env* ;
                             comma-separated, may be repeated
       --deny <SUBJECT>      the same, refused
       --on-ask <ANSWER>     what a question nobody is there to answer gets, in a
@@ -476,8 +495,8 @@ kamchatka [OPTIONS] [MESSAGE]...
                             read and write; comma-separated, may be repeated
       --sandbox-read <PATH> a path outside the working directory the tools may read
                             but not change; comma-separated, may be repeated
-      --no-sandbox          no confinement at all: the shell reaches whatever you can, and the
-                            tools that are not a process stop holding themselves to the workdir
+      --no-sandbox          no confinement at all: the shell reaches whatever you can, and `fs`
+                            stops holding itself to the working directory
       --forget-truncated    drop the whole of a shortened tool output instead of
                             keeping it as an archived item you can still read
       --send-oversized      send a request that looks too long for the model anyway,

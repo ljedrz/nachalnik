@@ -110,15 +110,10 @@ struct Args {
     parallel: bool,
 
     /// Run with no confinement at all: the shell reaches whatever the user running this can, and
-    /// the five tools that are not a process stop holding themselves to the working directory.
+    /// `fs`, which is not a process, stops holding itself to the working directory.
     #[arg(long)]
     no_sandbox: bool,
 
-    /// Offer the model the tools that read its own context, the record kept beside it and what
-    /// the session is running with, and manage the first of them: `context`, `log`, `setup` and
-    /// `amend`.
-    #[arg(long)]
-    introspect: bool,
     /// Do not write the session out when it ends. It is written to a temporary directory
     /// otherwise, and the path is the last thing printed.
     #[arg(long)]
@@ -150,9 +145,9 @@ struct Args {
     #[arg(long)]
     headless: bool,
 
-    /// Allow a capability, a path or one tool action outright, as `read`, `shell`, `mcp:files`,
-    /// `.env*`, `amend:note`. May be repeated, and takes a comma-separated list. Answering at the
-    /// prompt writes the same table.
+    /// Allow a whole domain, one operation in one, or a path, as `fs`, `fs:read`, `exec:run`,
+    /// `.env*`. May be repeated, and takes a comma-separated list. Answering at the prompt writes
+    /// the same table.
     #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
     allow: Vec<String>,
 
@@ -197,6 +192,17 @@ struct Args {
     /// which wins.
     #[arg(skip)]
     border: Option<String>,
+
+    /// Which tools to offer at startup, which only a settings file can say; see `Settings::tools`.
+    ///
+    /// note: `skip` for the reason above, and for one of its own. This was `--introspect`, a flag
+    /// for four of the tools, and what it was really being used for was a project where those four
+    /// were worth the tokens - which is a fact about the project and belongs in the file beside it
+    /// rather than in front of somebody's hands. What it was *also* used for was turning them off
+    /// for one session, and that is `/tools toggle` now, at the moment somebody wants it rather
+    /// than before the session starts.
+    #[arg(skip)]
+    tools: Option<Vec<String>>,
 }
 
 impl Args {
@@ -230,7 +236,6 @@ impl Args {
             requests,
             compact,
             parallel,
-            introspect,
             no_sandbox,
             sandbox_allow,
             sandbox_read,
@@ -266,6 +271,9 @@ impl Args {
                 .map_err(|e| anyhow::anyhow!("`border` in the settings file: {e}"))?;
             self.border = settings.border;
         }
+        // the other one with no argument to lose to. Checking the names is `Setup::wire`'s, since
+        // the tools it would be checking against are the ones it is about to build
+        self.tools = settings.tools;
         if let Some(on_ask) = settings.on_ask.filter(|_| !typed("on_ask")) {
             self.on_ask = OnAsk::from_str(&on_ask, true)
                 .map_err(|e| anyhow::anyhow!("`on-ask` in the settings file: {e}"))?;
@@ -460,10 +468,9 @@ async fn session() -> Result<()> {
             .map(|it| Subject::parse(it))
             .chain(args.deny_server.iter().cloned().map(Subject::Server))
             .collect(),
-        introspect: args.introspect,
+        tools: args.tools.clone(),
         system: args.system.clone(),
         files: args.file.clone(),
-        ..Default::default()
     }
     .wire(provider)
     .map_err(|e| anyhow::anyhow!("{e}"))?;

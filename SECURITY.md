@@ -29,9 +29,9 @@ Referenced from [AGENTS.md](AGENTS.md).
   ruleset, ABI 10 and the kernel's own `BIND_UDP`/`CONNECT_SEND_UDP` notwithstanding, and the
   readmes say so rather than rounding it up - and the working directory is the edge of the world.
   The `exec` is load-bearing rather than tidy: a helper standing in front of the command is what a
-  stopped call would kill instead of the command. The five tools that are not a process - the three that
-  open one file, and the two that walk a directory of them - are held to the same boundary by
-  their own code, which is weaker in kind and said to be.
+  stopped call would kill instead of the command. The `fs` tool, which is not a process - it opens a
+  file, or walks a directory of them - is held to the same boundary by its own code, which is
+  weaker in kind and said to be.
   `#![deny(unsafe_code)]` is why it is a re-exec rather than `Command::pre_exec` - and why the UDP
   rights stay out of reach until the crate exposes them.
 - **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it

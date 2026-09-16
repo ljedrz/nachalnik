@@ -72,7 +72,7 @@ fn wired(script: Vec<ModelResponse>) -> Wired {
 /// The same, with a ceiling on what the provider may charge before the session stops.
 fn capped(script: Vec<ModelResponse>, spend: Option<u64>) -> Wired {
     let wired = Setup {
-        builtin_tools: false,
+        tools: Some(Vec::new()),
         compact: None,
         spend,
         // never spoken to: `App` holds one for `/model` and `/params`, and these use neither
@@ -473,7 +473,7 @@ async fn a_line_answers_the_caller() {
 
     // a command that only says a line hands back the line, and no page - the one `/seams` opened
     // is still on the overlay, and reporting it again is what this is careful not to do
-    let reply = app.submit("/tools drop nothing").await;
+    let reply = app.submit("/tools toggle nothing").await;
     assert!(reply.page.is_none(), "a stale page came back");
     assert_eq!(reply.said.len(), 1);
     assert_eq!(reply.said[0].speaker, Speaker::Error);

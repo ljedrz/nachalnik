@@ -1197,7 +1197,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     harness.send("/limit fs:read 0").await;
     assert_eq!(declared(&harness, "fs:read"), Some(48_000), "unchanged");
     assert!(
-        harness.flat().contains("tools drop fs:read"),
+        harness.flat().contains("/tools toggle fs"),
         "{}",
         harness.flat()
     );
@@ -1221,8 +1221,8 @@ async fn the_output_limit_can_be_raised_without_restarting() {
 /// shown" - `amend`, `context`, `log` and `setup` among them, none of them installed, because the
 /// table is the `Limits` map and the map holds a row for everything this program ships. Setting
 /// one took, silently, and answered "from its next call onwards" about a tool that has no calls.
-/// The rows are right to be there - a limit set before `/introspect` is in force the moment it
-/// runs, which this checks - and it is the sentence over them that was claiming too much.
+/// The rows are right to be there - a limit set before the tool arrives is in force the moment it
+/// does, which this checks - and it is the sentence over them that was claiming too much.
 #[tokio::test]
 async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
     let mut harness = Harness::new([]);
@@ -1265,7 +1265,11 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
     );
 
     // and it is in force the moment the tool arrives, which is what the row is for
-    harness.send("/introspect").await;
+    harness.app.introspect = Some(kamchatka::introspect::install(
+        &harness.app.kernel,
+        harness.app.policy.clone(),
+        harness.app.limits.clone(),
+    ));
     assert_eq!(
         harness
             .app
@@ -1278,10 +1282,10 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
         "the limit set before the tool existed is the one it declares"
     );
 
-    // and its row is no longer marked. This harness installs no builtin tools, so `read` and
+    // and its row is no longer marked. This harness installs no builtin tools, so `fs` and
     // `shell` are legitimately still unoffered here - which is why the check is of the row rather
-    // than of the whole listing, and why the sentence under the table does not claim that
-    // `/introspect` accounts for every mark
+    // than of the whole listing, and why the sentence under the table does not claim to account
+    // for every mark
     harness.send("/limit").await;
     let marked = row(&mut harness, "context");
     assert!(

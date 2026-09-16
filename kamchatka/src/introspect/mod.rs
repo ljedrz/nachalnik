@@ -105,7 +105,7 @@ type Pinned = Arc<Mutex<BTreeSet<ContextId>>>;
 
 /// A sentence pointing at a sibling tool, or nothing if that tool is not on offer.
 ///
-/// note: bought by a live run. `/tools drop log` took the log away mid-session, and `setup tools`
+/// note: bought by a live run. `/tools toggle log` took the log away mid-session, and `setup tools`
 /// went on ending with "`log` with `kinds: [\"tools.changed\"]` says when it went" - advice naming
 /// a tool the model had just been told it does not have. It is the same rule a refusal follows:
 /// name only what the session can actually reach, because everything named in an answer is read as

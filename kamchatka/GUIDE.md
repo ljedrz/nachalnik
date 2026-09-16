@@ -437,23 +437,26 @@ negotiable. A registered `shell` that is not refused can read, write and reach t
 the other rows say — so `shell: confined` (or `shell: a command can do any of these`) is what makes
 the rest of the table mean anything.
 
-Three kinds of row. A **capability** is what a tool declares, which is what makes "always" work for
-tools this program has never heard of — including an MCP server's, which all carry `mcp:<name>`. A
-**path rule** is finer than any capability: `read: allow` is a reasonable thing to want and
-`read .env: allow` is not, and the difference is a property of the file rather than of the tool
-that opened it. It binds every tool that is handed a path — the three that open one, and the two
-that walk a directory of them. A walk cannot *ask*, so what `grep` and `glob` do about a rule that
-is not `allow` is not open the file, and say how many they left alone. An **action rule** is the
-same idea one tool along, spelled `<tool>:<action>`, for when a tool is worth splitting up: `note`
-adds an item to your context and `revise` rewrites one, and those are not the same decision.
+Four kinds of row, and the first two are one thing at two depths. A **domain** is what a tool acts
+in — `fs`, `exec`, `context` — and answering for one answers for everything done in it, which is
+what makes "always" work for tools this program has never heard of. An **operation** is one thing
+done in a domain, spelled `<domain>:<operation>`: `fs:read` and `fs:write` are not the same
+decision, and neither are `context:note`, which adds an item to your context, and
+`context:revise`, which rewrites one. A **path rule** is finer than either — `fs:read: allow` is a
+reasonable thing to want and `fs:read .env: allow` is not, and the difference is a property of the
+file rather than of the tool that opened it. It binds every tool that is handed a path, the walks
+included: a walk cannot *ask*, so what `grep` and `glob` do about a rule that is not `allow` is
+not open the file, and say how many they left alone. A **server** is the odd one out, because it
+is about where a tool came from rather than what it does — which is the one thing about an MCP
+tool that nobody has to take the server's word for.
 
-A capability is the whole of its tool, and a rule finer than one is about the part it names.
-`--allow amend` allows amend; `--allow amend:note` allows a note and says nothing about the rest;
-`--allow amend --deny amend:revise` is everything but that one. The only thing a finer rule cannot
-do is overrule a refusal — a tool you have *denied* stays denied however finely an action of it is
-named, because the strictest of everything consulted wins and `--deny` is the last word.
-`network` is the odd one: no tool declares it, because a model
-that wants the network writes `curl` — so the row says which shell it reaches, and when.
+The most specific rule that has an answer decides, and a refusal above it overrules.
+`--allow context` allows the lot; `--allow context:note` allows a note and says nothing about the
+rest; `--allow context --deny context:revise` is everything but that one. What a finer rule cannot
+do is overrule a refusal — a domain you have *denied* stays denied however finely an operation in
+it is named, because the strictest of everything consulted wins and `--deny` is the last word.
+`net:reach` is the one nothing declares, because a model that wants the network writes `curl` — so
+the row says which shell it reaches, and when.
 
 <kbd>space</kbd> cycles a row through **ask → allow → deny**, or <kbd>a</kbd>/<kbd>n</kbd>/<kbd>r</kbd>
 directly, and it takes effect on the next call. Answering "always" at a permission prompt writes to
@@ -689,8 +692,10 @@ counted by a counter that has no formula and says so.
 
 ## 🔎 letting the agent read and manage its own context
 
-`--introspect`, or `/introspect` at any point, offers more tools. They are off by default,
-because a model that can rewrite its own context is a decision rather than a default. There are
+Four of the tools are for reading and managing the session itself, and they are offered like the
+rest of them. `/tools toggle amend` takes one away and `/tools toggle amend` again gives it back, and the
+`tools` key in a settings file says which of them a session starts with — which is where a
+project that does not want a model rewriting its own context says so. There are
 [write-ups](https://ljedrz.github.io/nachalnik/) of three sessions driven from the two that
 existed when they were recorded, `context` (called `introspect` then) and `amend`:
 one where an agent found a false note in its own context and corrected it, one where it took back

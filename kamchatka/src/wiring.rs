@@ -31,7 +31,7 @@ use crate::{
 /// Everything a session is set up with, and what each of them means.
 ///
 /// note: a settings struct with a `Default` rather than a builder, the way
-/// [`nachalnik::Config`] is. `Setup { introspect: true, ..Default::default() }` is the shape, and
+/// [`nachalnik::Config`] is. `Setup { confine: false, ..Default::default() }` is the shape, and
 /// the defaults below are the ones the program uses - so a caller who wants what `kamchatka` does
 /// writes almost nothing, and a caller who wants something else changes the field that says so.
 pub struct Setup {
@@ -74,19 +74,34 @@ pub struct Setup {
     /// failure nothing else here catches - a model that has found a loop and a caller that is not
     /// watching. See [`App::set_spend`](crate::app::App::set_spend).
     pub spend: Option<u64>,
-    /// Whether to offer `read`, `write`, `edit` and `shell`.
+    /// Which of this program's own tools to offer, by id; `None` is all of them.
     ///
-    /// note: a caller whose tools all come from MCP servers, or who brings its own, turns this
-    /// off and adds them to `wired.app.kernel` afterwards. The registry is live, so there is no
-    /// moment at which it is too late.
-    pub builtin_tools: bool,
+    /// note: a list rather than a flag per family, because "which tools" is one question and it
+    /// was being answered in two places that could disagree. What is offered is a property of the
+    /// session, so it is one field, and the two answers people actually want - all of them, or
+    /// these - are the two shapes an `Option<Vec<_>>` has.
+    ///
+    /// note: naming a subset still *builds* the others and shelves them, so
+    /// [`App::toggle`](crate::app::App::toggle) can offer one mid-session. That is what makes this
+    /// a starting position rather than a decision: a session that started without `shell` can be
+    /// given one, and it is confined exactly as it would have been.
+    ///
+    /// note: an empty list is the exception, and builds none of them at all - which is what a
+    /// caller whose tools all come from MCP servers, or who brings its own, is asking for. There
+    /// is nothing to offer later either, which is what asking for none means. It also skips the
+    /// question of what the sandbox will take, and that question costs a child process.
+    ///
+    /// note: this program's own tools, and not the ones an MCP server brings. Those arrive after
+    /// the wiring, under names nothing here can know in advance, and they are offered as they
+    /// arrive; `/tools toggle` turns one off like any other.
+    pub tools: Option<Vec<String>>,
     /// Whether to confine what the tools can reach.
     ///
     /// note: *the tools*, not the `shell` alone, which is what this said and is the half that
     /// matters. It is `Reach::confined` as well as the Landlock ruleset - and an unconfined
     /// `Reach` hands back every path untouched, so `read` of `~/.ssh/id_rsa` is a file rather
     /// than a refusal. Somebody turning this off for one command should know they turned it off
-    /// for all five of the others.
+    /// for everything `fs` does as well.
     pub confine: bool,
     /// Paths outside the working directory the tools may also read and write.
     pub reachable: Vec<std::path::PathBuf>,
@@ -99,8 +114,6 @@ pub struct Setup {
     pub allow: Vec<Subject>,
     /// The same, refused. The strictest of everything consulted wins, so this beats `allow`.
     pub deny: Vec<Subject>,
-    /// Whether to offer the tools an agent reads and manages its own context with.
-    pub introspect: bool,
     /// A system instruction, pinned. The runtime ships none of its own.
     pub system: Option<String>,
     /// Files to put in the context, pinned; a PDF or an image goes in as itself.
@@ -118,13 +131,12 @@ impl Default for Setup {
             refuse_oversized: true,
             compact: Some(0.8),
             spend: None,
-            builtin_tools: true,
+            tools: None,
             confine: true,
             reachable: Vec::new(),
             readable: Vec::new(),
             allow: Vec::new(),
             deny: Vec::new(),
-            introspect: false,
             system: None,
             files: Vec::new(),
         }
@@ -189,8 +201,14 @@ impl Setup {
         // once here rather than per command either way - see the note on `Shell::confiner` - and a
         // caller that turns the built-in tools off and brings its own shell is the one building
         // the confiner, so it is the one that asks
+        //
+        // note: asked whether or not `shell` is among the tools *offered*, because a shelved one
+        // can be offered later and it has to be the same shell. Deciding this from the starting
+        // list would make `/tools toggle shell` in a session that started without one an unconfined
+        // shell, with nothing on the screen saying so
         let mut confinement = sandbox::Confinement::Unsupported;
-        if self.builtin_tools {
+        let building = self.tools.as_ref().is_none_or(|it| !it.is_empty());
+        if building {
             let program =
                 std::env::current_exe().map_err(|e| format!("could not find myself: {e}"))?;
             if self.confine {
@@ -223,12 +241,11 @@ impl Setup {
             }
         }
 
-        // the handle the tools reach the kernel through, which `App` then holds so that
-        // `/introspect` can turn them off again; see `introspect::install` for why it is a weak
-        // handle to something out here rather than a kernel the tools hold
-        let introspect = self
-            .introspect
-            .then(|| introspect::install(&kernel, policy.clone(), limits.clone()));
+        // the handle the tools reach the kernel through, which `App` then holds for the rest of
+        // the session; see `introspect::install` for why it is a weak handle to something out here
+        // rather than a kernel the tools hold
+        let introspect =
+            building.then(|| introspect::install(&kernel, policy.clone(), limits.clone()));
 
         if let Some(system) = self.system {
             kernel.push(ContextItem::system(system).pinned());
@@ -247,6 +264,33 @@ impl Setup {
         app.confinement = confinement;
         app.introspect = introspect;
         app.set_spend(self.spend);
+
+        // note: everything is built and then what was not asked for is turned off, rather than
+        // only the named ones being built. That is what makes the list a starting position: the
+        // rest are on the shelf, `/tools toggle` reaches them, and a `shell` offered later is
+        // the one the confiner above was decided for.
+        //
+        // note: a name that is not a tool stops the session rather than being skipped, for the
+        // reason `deny_unknown_fields` is on the settings struct. Asking for `contxt` and getting
+        // a session with no context tool and nothing said about it is the failure this setting is
+        // most likely to have
+        if let Some(wanted) = self.tools {
+            let offered: Vec<String> = app
+                .kernel
+                .tool_specs()
+                .into_iter()
+                .map(|it| it.id)
+                .collect();
+            if let Some(unknown) = wanted.iter().find(|it| !offered.contains(it)) {
+                return Err(format!(
+                    "`{unknown}` is not one of this program's tools; they are {}",
+                    offered.join(", ")
+                ));
+            }
+            for id in offered.iter().filter(|it| !wanted.contains(it)) {
+                app.toggle(id);
+            }
+        }
 
         Ok(Wired {
             app,

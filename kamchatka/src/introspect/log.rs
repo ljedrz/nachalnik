@@ -239,7 +239,7 @@ impl Query {
                 if unknown.contains(&"action") {
                     // the siblings by name only where the session still has them, for the reason
                     // `if_offered` exists: a sentence that says `setup` has actions, in a run
-                    // where `/tools drop setup` has already happened, is naming something to try
+                    // where `/tools toggle setup` has already happened, is naming something to try
                     // that is not there
                     let siblings: Vec<&str> = ["context", "setup", "amend"]
                         .into_iter()

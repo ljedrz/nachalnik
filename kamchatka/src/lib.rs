@@ -19,8 +19,8 @@
 //! `/budget` all say a piece of the figure is missing rather than putting a `0` where a number
 //! should be. It sends pictures and draws none: a terminal cell is not a pixel.
 //!
-//! `--introspect`, or `/introspect` at any point, adds more tools for reading and managing a
-//! session from the inside. [`introspect::Context`] lists what is being carried and what each item
+//! Four of the tools are for reading and managing a session from the inside, and they are offered
+//! like the rest of them. [`introspect::Context`] lists what is being carried and what each item
 //! costs, reports the budget against what the last request really cost, shows the request about to
 //! go out, finds text anywhere in it - the archive included, which nothing else can read without
 //! paying to carry it again - and answers on a throwaway fork so an answer can be read before it
@@ -35,7 +35,9 @@
 //! something down that compaction cannot take, and walks its own changes back. None of them is
 //! allowed to touch what a person pinned. Nothing in the runtime knows about any of this - it is
 //! what a tool can already do with a context that is a list of public values and a request that
-//! can be built without being sent.
+//! can be built without being sent. `/tools toggle ID` stops offering one of them, or any other
+//! tool, and offers it again; the `tools` key in a settings file says which of them a session
+//! starts with.
 //!
 //! `--gemini` swaps the wire format for Google's own, in which an assistant turn is an ordered
 //! list of parts rather than a content slot beside a list of calls. What that buys is the order

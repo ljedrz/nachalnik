@@ -88,6 +88,11 @@ minor bump may break you.
   resumed or loaded session, and an undo or a redo. `1 items` is the corner of a screen quietly
   saying it is not looking, and somebody who notices has no way to tell whether the figure beside
   it is approximate too - `6 items, ~16342 tokens` was both at once.
+- `/limit` marked every `fs` row `not offered` in a session that was offering `fs`, and told
+  anybody setting one that the tool had no next call until something added it. The rows are keyed
+  `fs:read` and `fs:grep` because what a whole file costs and what a repo-wide search costs are not
+  one number; the check against the registry was comparing that key with a tool id, and five of the
+  ten rows have not been tool ids since `fs` became one tool.
 - `/load` takes every spelling `/save` does. A session is two files, so `/save notes.jsonl` writes
   `notes.json` beside the log it was named after - and `/load notes.jsonl` took its argument at its
   word and went looking for `notes.jsonl.json`, which nothing had ever written. Both go through one
@@ -97,6 +102,27 @@ minor bump may break you.
 
 ### changed
 
+- **Every tool is offered by default**, the four that read and manage the session among them.
+  `--introspect` is gone: it was a flag for those four, answerable only before the session started,
+  and what it was really being used for was a fact about a project rather than about an
+  invocation. What that costs is the six schemas in every request - 2,683 tokens where `fs` and
+  `shell` alone are 810 - and the two settings below are how a session that does not want to pay it
+  says so.
+- `/tools toggle ID` replaces `/tools drop ID` and `/introspect`, and works on every tool there is,
+  including the ones an MCP server brought. It goes both ways, which is the half that was missing:
+  a dropped tool used to be dropped, and `/introspect` could only put back the one group of four -
+  by building new ones, which threw away whatever `amend` was remembering. A tool turned off now is
+  kept rather than rebuilt, so the one that comes back is the one that went away, still holding
+  what it pinned and what it could still walk back. `/tools` marks the ones that are off, since
+  their names are exactly what somebody needs to get them back.
+- `tools` in a settings file says which of them a session starts with, by id; left out, all of
+  them. `["fs", "shell", "context", "log", "setup"]` is the whole set minus `amend`, which is how
+  a project says *read this session all you like, do not rewrite it*. An empty list offers none of
+  them. A name that is not a tool stops the program and says which there are, for the reason an
+  unknown key does. The ones left out are still built and can be offered with `/tools toggle` - and a
+  `shell` offered that way is confined exactly as one offered at startup would have been.
+- `wiring::Setup`'s `builtin_tools` and `introspect` are one field, `tools: Option<Vec<String>>`,
+  with the same meanings: `None` is every tool, `Some(vec![])` builds none at all.
 - `budget` names the three held-back states that are the model's (`excluded`, `archived`, `elided`)
   instead of counting them off as "the first three". Models read the ordinal as item ids.
 - `amend` says in words which way the request figure went - smaller, larger or unchanged - and that

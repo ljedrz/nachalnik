@@ -243,14 +243,13 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /spend [TOKENS]     what the provider has charged for this session, and the
                         ceiling it stops at; 0 takes the ceiling away
     /seams              what is plugged into each of the runtime's six parts
-    /tools              what the model is offered
-    /tools drop ID      stop offering one of them, from now on
+    /tools              what the model is offered, and what is turned off
+    /tools toggle ID    stop offering one of them, or offer it again. The one
+                        that reads this session's context and the one that
+                        changes it are tools like any other
     /limit              how much of each tool's output the model is shown,
                         numbered, and the number is one the next line takes
     /limit ID BYTES     change one, from its next call onwards
-    /introspect         offer the model the tools that read its own context, its own
-                        record and what it is running with, and manage the first of
-                        them; or stop offering them
     /policy             open the permissions tab; also /permissions
     /model [ID]         show or switch the model, and say where it is
     /models [FILTER]    what this endpoint serves, which is what /model takes

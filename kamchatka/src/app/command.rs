@@ -18,7 +18,7 @@ impl App {
     ///
     /// note: `pub` because the prompt is not the only thing entitled to say a line. Every verb
     /// this program has - `/model`, `/exclude`, `/limit`, `/step`, `/save`, `/load`, `/tools
-    /// drop` - is reachable only through here, and while this was `pub(super)` the only way in
+    /// toggle` - is reachable only through here, and while this was `pub(super)` the only way in
     /// was to synthesize a key press. That is why `examples/recorded.rs` re-wires a kernel from
     /// this crate's parts instead of driving an [`App`]: to drive one, it would have had to type.
     /// A caller that is not a person at a terminal hands the same line to the same function.
@@ -133,40 +133,18 @@ impl App {
                 };
                 self.preview("the provider's last answer, verbatim", body);
             }
-            // the registry is live rather than fixed at startup, and taking a tool out of it is
-            // the plainest demonstration of that: the next request simply does not offer it
-            "tools" if rest.starts_with("drop ") => {
-                let id = rest.strip_prefix("drop ").unwrap_or_default().trim();
-                match self.kernel.remove_tool(id) {
-                    Some(_) => self.say(
-                        Speaker::Note,
-                        format!(
-                            "`{id}` is no longer offered; the next request will not mention it"
-                        ),
-                    ),
-                    None => self.say(Speaker::Error, format!("there is no tool called `{id}`")),
-                }
-            }
-            "tools" => {
-                let body = self
-                    .kernel
-                    .tool_specs()
-                    .into_iter()
-                    .map(|spec| {
-                        let capabilities: Vec<_> =
-                            spec.capabilities.iter().map(|c| c.to_string()).collect();
-                        format!(
-                            "{:<24}{}\n{:<24}[{}]\n",
-                            spec.id,
-                            spec.description,
-                            "",
-                            capabilities.join(", ")
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                self.preview("what the model is offered", body);
-            }
+            // the registry is live rather than fixed at startup, and taking a tool out of it and
+            // putting it back is the plainest demonstration of that: the next request simply does
+            // not mention it, and the one after that does again
+            "tools" => match rest.strip_prefix("toggle") {
+                Some(id) => self.toggle_tool(id.trim()),
+                None if rest.is_empty() => self.tools(),
+                None => self.say(
+                    Speaker::Error,
+                    "`/tools` lists them; `/tools toggle ID` stops offering one, or offers it \
+                     again",
+                ),
+            },
             // note: the answer to a result the model has just reported as cut off. It changes the
             // *next* call rather than recovering that one, and does not need to recover it: the
             // whole of a shortened result is archived beside the copy the model was shown, and
@@ -176,7 +154,6 @@ impl App {
             "budget" => self.budget(),
             "compact" => self.compact().await,
             "seams" => self.seams(),
-            "introspect" => self.introspect(),
             // it used to print a line naming the allowed capabilities. The tab is that line, plus
             // the ones that are refused, plus the ones nobody has decided about yet, plus what
             // each of them covers - and every row can be changed where it is read
@@ -435,44 +412,85 @@ impl App {
         }
     }
 
-    /// Offers the model the tools that read its own context, the record kept beside it and what
-    /// the session is running with, and manage the first of them - or stops offering them.
+    /// Stops offering one of the tools, or offers it again.
     ///
-    /// note: `add_tool` and `remove_tool`, like `/tools drop` - the registry is live and this is
-    /// the plainest thing to demonstrate that with. What it also has to move is the handle the
-    /// tools reach the kernel through, because that is the piece with an end to it: taking them
-    /// away drops it, and with it whatever `amend` had been remembering - which items it pinned,
-    /// and the changes it could still walk back. That is the right answer rather than a
-    /// shortcoming. The tools that come back are new ones, and they have not done anything yet.
-    fn introspect(&mut self) {
-        match self.introspect.take() {
-            Some(_) => {
-                self.kernel.remove_tool("context");
-                self.kernel.remove_tool("log");
-                self.kernel.remove_tool("setup");
-                self.kernel.remove_tool("amend");
-                self.say(
-                    Speaker::Note,
-                    "`context`, `log`, `setup` and `amend` are no longer offered; the next request \
-                     will not mention them",
-                );
-            }
-            None => {
-                self.introspect = Some(crate::introspect::install(
-                    &self.kernel,
-                    self.policy.clone(),
-                    self.limits.clone(),
-                ));
-                self.say(
-                    Speaker::Note,
-                    "`context`, `log`, `setup` and `amend` go into the next request: the model can \
-                     now read its own context, the record of what happened to it and what the \
-                     session is running with, preview what it would say, ask a fork of itself, \
-                     prune what it is carrying and walk its own changes back. It cannot touch \
-                     anything you pinned",
-                );
-            }
+    /// note: this is the whole of what `--introspect`, `/introspect` and `/tools drop` used to
+    /// be, and the program is smaller for it. The first two were a flag and a command for one
+    /// group of four tools, and the third was the only word for every other tool and had no way
+    /// back: a session that dropped `fs` had dropped it. One word covers both directions and
+    /// every tool there is, including the ones an MCP server brought - see [`App::toggle`].
+    ///
+    /// note: it names what it did in terms of the *next request*, because that is when it takes
+    /// effect and because it is the thing a person is usually doing this for. Nothing about the
+    /// session as it stands changes.
+    fn toggle_tool(&mut self, id: &str) {
+        if id.is_empty() {
+            self.say(
+                Speaker::Error,
+                "`/tools toggle ID` stops offering a tool, or offers it again; `/tools` lists \
+                 them and marks the ones that are off",
+            );
+            return;
         }
+
+        match self.toggle(id) {
+            Some(true) => self.say(
+                Speaker::Note,
+                format!("`{id}` is offered again, from the next request"),
+            ),
+            Some(false) => self.say(
+                Speaker::Note,
+                format!("`{id}` is no longer offered; the next request will not mention it"),
+            ),
+            None => self.say(Speaker::Error, format!("there is no tool called `{id}`")),
+        }
+    }
+
+    /// What the model is offered, and what this session is holding back.
+    ///
+    /// note: both, since `toggle` goes both ways: a list of what is on tells somebody how to turn
+    /// a tool off and nothing about how to get it back, and the name of a tool that is off is
+    /// precisely what they would have to remember. They are one list with a mark rather than two,
+    /// because what is being read is one question - what can this model do - and a second list
+    /// under a heading is a second place to look for a name.
+    fn tools(&mut self) {
+        let offered = self
+            .kernel
+            .tool_specs()
+            .into_iter()
+            .map(|spec| (true, spec));
+        let shelved = self
+            .shelved
+            .values()
+            .map(|tool| (false, tool.spec()))
+            .collect::<Vec<_>>();
+        let mut all: Vec<_> = offered.chain(shelved).collect();
+        all.sort_by(|(_, one), (_, two)| one.id.cmp(&two.id));
+
+        let body = all
+            .into_iter()
+            .map(|(on, spec)| {
+                let capabilities: Vec<_> =
+                    spec.capabilities.iter().map(|c| c.to_string()).collect();
+                let mark = match on {
+                    true => "▸",
+                    false => "·",
+                };
+                format!(
+                    "{mark} {:<22}{}\n{:<24}[{}]\n",
+                    spec.id,
+                    spec.description,
+                    "",
+                    capabilities.join(", ")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        self.preview(
+            "what the model is offered · /tools toggle ID turns one off",
+            body,
+        );
     }
 
     /// Reads a file into the context, pinned, as text or as bytes depending on what it is - and
@@ -768,12 +786,11 @@ impl App {
     /// Shows the output limits, or changes one.
     ///
     /// note: the table is the `Limits` map rather than the registry, and it holds a row for every
-    /// tool this program ships - `context`, `log`, `setup` and `amend` included, which are off
-    /// until `/introspect`. That is right, because a limit set before a tool arrives is in force
-    /// when it does; what was wrong was saying it under "how much of each tool's output the model
-    /// is shown", over a session offering six tools and listing eight. A row nobody has is marked,
-    /// for the reason `introspect::if_offered` exists on the other side of the screen: a name in
-    /// an answer reads as a thing that is there.
+    /// tool this program ships whether or not this session is offering it. That is right, because
+    /// a limit set before a tool arrives is in force when it does; what was wrong was saying it
+    /// under "how much of each tool's output the model is shown", over a session offering six
+    /// tools and listing eight. A row nobody has is marked, for the reason `introspect::if_offered`
+    /// exists on the other side of the screen: a name in an answer reads as a thing that is there.
     fn limit(&mut self, rest: &str) {
         let offered = self.kernel.tool_ids();
         let table = |limits: &Limits| {
@@ -788,7 +805,7 @@ impl App {
                         "{:<wide$} {tool:<14}{:>9} bytes{}",
                         format!("[{}]", nth + 1),
                         thousands(bytes),
-                        match offered.contains(&tool) {
+                        match offered.iter().any(|id| id == whose(&tool)) {
                             true => "",
                             false => "   · not offered",
                         }
@@ -817,7 +834,7 @@ impl App {
                     .limits
                     .all()
                     .iter()
-                    .any(|(tool, _)| !offered.contains(tool))
+                    .any(|(tool, _)| !offered.iter().any(|id| id == whose(tool)))
                 {
                     // said once, under the table, rather than argued on every marked row - and
                     // true whichever rows are marked, since which tools a session is missing is
@@ -825,7 +842,7 @@ impl App {
                     true =>
                         " A row marked `not offered` is a limit held for a tool this session does \
                          not have; it is what that tool declares the moment something adds it, \
-                         and `/introspect` is what adds `context`, `log`, `setup` and `amend`.",
+                         and `/tools toggle` is what offers one that was turned off.",
                     false => "",
                 }
             );
@@ -855,8 +872,9 @@ impl App {
             self.say(
                 Speaker::Error,
                 format!(
-                    "0 would send the model nothing but a truncation marker; `/tools drop {tool}` \
-                     is how a tool stops being offered"
+                    "0 would send the model nothing but a truncation marker; `/tools toggle {}` \
+                     is how a tool stops being offered",
+                    whose(tool)
                 ),
             );
             return;
@@ -871,9 +889,9 @@ impl App {
                     thousands(was),
                     thousands(bytes),
                     // a limit that took, on a tool nobody is offering - which is a real thing to
-                    // set up ahead of `/introspect` and a confusing thing to be told nothing
-                    // about, since "from its next call onwards" implies there will be one
-                    match offered.iter().any(|id| id == tool) {
+                    // set up ahead of a toggle and a confusing thing to be told nothing about,
+                    // since "from its next call onwards" implies there will be one
+                    match offered.iter().any(|id| id == whose(tool)) {
                         true => String::new(),
                         false => format!(
                             ". `{tool}` is not offered in this session, so it has no next call \
@@ -1347,6 +1365,18 @@ impl App {
             Err(e) => self.say(Speaker::Error, e),
         }
     }
+}
+
+/// Which tool a limit row belongs to: the key itself, or the half of it before the action.
+///
+/// note: the rows were tool ids until `fs` became one tool with five actions, and three of them
+/// read `fs:read`, `fs:grep`, `fs:write` now. That is the right key for a *limit* - what a whole
+/// file costs and what a repo-wide search costs are not one number - and the wrong one for asking
+/// whether the tool is offered, which is what every use of it here is doing. Nothing said so: the
+/// listing marked all five `fs` rows `not offered` in a session that was offering `fs`, and told
+/// anybody setting one that it had no next call.
+fn whose(row: &str) -> &str {
+    row.split_once(':').map_or(row, |(tool, _)| tool)
 }
 
 /// A session's path with the extension taken off, whichever of the two it was spelled with.

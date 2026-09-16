@@ -2989,7 +2989,7 @@ async fn look_says_which_items_this_session_did_not_produce() {
 
 /// An answer names only the tools this session actually has.
 ///
-/// note: bought by a live run. `/tools drop log` took the log away mid-session, and `setup tools`
+/// note: bought by a live run. `/tools toggle log` took the log away mid-session, and `setup tools`
 /// went on ending with "`log` with `kinds: [\"tools.changed\"]` says when it went" - advice naming
 /// a tool in the same breath as reporting that the model does not have it. It is the rule a
 /// refusal already follows: everything named in an answer is read as something to try, so name

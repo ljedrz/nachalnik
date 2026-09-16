@@ -7,7 +7,7 @@
   "requests": 8,
   "compact": 0.8,
   "parallel": false,
-  "introspect": false,
+  "tools": null,
   "forget-truncated": false,
   "send-oversized": false,
 

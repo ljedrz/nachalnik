@@ -224,12 +224,12 @@ into the tool result beside the kernel's account of it.
 
 Three things follow, and none of them is a bug:
 
-* **A `Capability` is a declaration, not a verified property.** A tool that declares `Read` and
+* **A `Capability` is a declaration, not a verified property.** A tool that declares `fs:read` and
   opens a socket is lying, and the kernel has nothing to check it against. The defence is that you
   chose to register it.
-* **`Capability::Shell` subsumes every other one.** A command can read, write and reach the
-  network, so a policy that allows `Shell` has allowed all of it whatever it answers about the
-  rest - unless something outside the runtime is confining the command.
+* **`exec:run` subsumes every other one.** A command can read, write and reach the network, so a
+  policy that allows it has allowed all of it whatever it answers about the rest - unless something
+  outside the runtime is confining the command.
 * **Context can be hostile.** A fetched page, a file, an MCP server's output: anything in the
   context is something a model reads, and it can carry instructions. What this runtime offers
   against that is not a cleverer model but the two things it is built on - a policy that nothing

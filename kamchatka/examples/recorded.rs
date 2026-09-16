@@ -124,7 +124,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into_iter()
             .map(Subject::Capability)
             .collect(),
-        introspect: introspecting,
+        // the two that are about something other than this session, named rather than a flag
+        // turned off: which tools a session offers is one list now, and this is what the control
+        // arm's looks like
+        tools: (!introspecting).then(|| vec!["fs".to_owned(), "shell".to_owned()]),
         system: Some(std::env::var("BRIEF").unwrap_or_else(|_| BRIEF.to_owned())),
         ..Default::default()
     }

@@ -233,6 +233,55 @@ fn an_unknown_key_is_refused_by_name() {
     );
 }
 
+/// The file says which tools a session starts with, and one word moves either of them.
+///
+/// note: this is what `--introspect` was, and the reason it is a list in a file rather than a
+/// flag. Which tools a project wants its agent to have is settled once; what a *session* wants is
+/// answered at the prompt, and it used to be answerable in one direction only - `/tools drop`
+/// stopped offering a tool and nothing put one back.
+///
+/// note: what it reads the answer off is the marks in `/tools`, which is also the only place a
+/// person can see that a tool is turned off at all. A list of what is on would say nothing about
+/// what to type to get the rest back.
+#[test]
+fn the_file_says_which_tools_a_session_starts_with() {
+    let path = settings("tools", r#"{ "tools": ["fs", "context"] }"#);
+
+    let (ok, said) = run(
+        &["--config-file", &path],
+        "/tools\n/tools toggle amend\n/tools\n",
+    );
+
+    assert!(ok, "{said}");
+    // the two that were asked for are offered and listed as such
+    assert!(said.contains("▸ fs"), "{said}");
+    assert!(said.contains("▸ context"), "{said}");
+    // and the ones that were not are still there to be had, rather than gone
+    let off = said
+        .find("· amend")
+        .unwrap_or_else(|| panic!("no `amend` row: {said}"));
+    assert!(said.contains("· shell"), "{said}");
+    let on = said
+        .find("▸ amend")
+        .unwrap_or_else(|| panic!("`/tools toggle amend` offered nothing: {said}"));
+    assert!(off < on, "it was offered before it was turned on: {said}");
+}
+
+/// A tool the file names that this program does not have stops it, the way an unknown key does.
+#[test]
+fn a_tool_the_file_names_that_does_not_exist_is_refused() {
+    let path = settings("tools-bad", r#"{ "tools": ["fs", "contxt"] }"#);
+
+    let (ok, said) = run(&["--config-file", &path], "");
+
+    assert!(!ok, "a tool nobody can offer is not a success");
+    assert!(
+        said.contains("`contxt` is not one of this program's tools"),
+        "{said}"
+    );
+    assert!(said.contains("context"), "and it says which are: {said}");
+}
+
 /// The one this crate ships works, names every setting there is, and grants nothing.
 ///
 /// note: three claims, and the third is the one worth stating out loud. A starting point somebody

@@ -54,8 +54,19 @@ pub struct Settings {
     pub compact: Option<f64>,
     /// Whether tool calls may run at the same time rather than in the order they were asked for.
     pub parallel: Option<bool>,
-    /// Whether to offer the tools an agent reads and manages its own context with.
-    pub introspect: Option<bool>,
+    /// Which of this program's tools to offer, by id; left out, all of them are.
+    ///
+    /// note: the second key with no argument behind it, and it is here for the reason `border` is:
+    /// which tools a project wants its agent to have is settled once and then not thought about
+    /// again. It replaced `--introspect`, which was a flag for four of the six and could only be
+    /// answered before the session started; `/tools toggle` answers it at any point, and this
+    /// says where the toggles start.
+    ///
+    /// note: an empty list offers none of them, which is a session with whatever an MCP server
+    /// brought and nothing else. A name that is not a tool is refused at startup, like an unknown
+    /// key - a settings file asking for `contxt` and quietly getting a session with no context
+    /// tool is the failure worth naming.
+    pub tools: Option<Vec<String>>,
     /// Whether to run the `shell` tool unconfined.
     pub no_sandbox: Option<bool>,
     /// Paths outside the working directory the tools may also read and write.

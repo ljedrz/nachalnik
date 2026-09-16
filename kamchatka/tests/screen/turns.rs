@@ -164,26 +164,26 @@ async fn what_the_screen_shows_of_the_next_request_is_the_next_request() {
     assert!(screen.contains("\"role\""), "{screen}");
 }
 
+/// The tools that read and change this session are tools like any other, and `/tools toggle` is
+/// how one stops being offered.
+///
+/// note: this was `/introspect`, one command for these four. It switched them off by dropping the
+/// handle they reach the kernel through, which also threw away what `amend` was remembering - and
+/// it left every other tool with `/tools drop`, which had no way back. One word for every tool
+/// replaced both, so what this now checks is that these four are not special.
 #[tokio::test]
-async fn introspect_offers_the_tools_and_takes_them_away_again() {
+async fn the_tools_that_read_this_session_go_off_and_on_like_any_other() {
     let mut harness = Harness::new([]);
     assert!(harness.app.kernel.tool_ids().is_empty());
     let before = harness.app.undecided();
 
-    harness.send("/introspect").await;
+    harness.app.introspect = Some(kamchatka::introspect::install(
+        &harness.app.kernel,
+        harness.app.policy.clone(),
+        harness.app.limits.clone(),
+    ));
     let offered = harness.app.kernel.tool_ids();
     assert_eq!(offered, ["amend", "context", "log", "setup"]);
-    assert!(harness.app.introspect.is_some());
-    // and the announcement names every one of them. `setup` arrived and this sentence did not
-    // change, so a session was told it had three tools while holding four - the same shape of
-    // wrong as an answer naming a tool that is gone, and nothing failed
-    let screen = harness.screen();
-    for tool in &offered {
-        assert!(
-            screen.contains(&format!("`{tool}`")),
-            "the announcement does not name `{tool}`: {screen}"
-        );
-    }
     // the policy has one more subject to ask about per *operation* these tools offer, because
     // the tab reads what the registered tools declare and what they declare is what they do.
     // Reading your own items, reading the record beside them and rewriting one are different
@@ -200,17 +200,25 @@ async fn introspect_offers_the_tools_and_takes_them_away_again() {
     );
 
     harness.tab(Tab::Chat);
-    harness.send("/introspect").await;
-    assert!(harness.app.kernel.tool_ids().is_empty());
-    // and the handle they reached the kernel through has gone with them
-    assert!(harness.app.introspect.is_none());
-    let screen = harness.screen();
     for tool in &offered {
+        harness.send(&format!("/tools toggle {tool}")).await;
+        let screen = harness.screen();
         assert!(
-            screen.contains(&format!("`{tool}`")),
+            screen.contains(&format!("`{tool}` is no longer offered")),
             "the withdrawal does not name `{tool}`: {screen}"
         );
     }
+    assert!(harness.app.kernel.tool_ids().is_empty());
+    // and the handle they reach the kernel through has *not* gone with them, which is the
+    // difference this replaced: a tool that is not offered is still the same tool, so what `amend`
+    // pinned is still pinned and what it could walk back it still can
+    assert!(harness.app.introspect.is_some());
+
+    // and back, which is the half there was no way to do before
+    for tool in &offered {
+        harness.send(&format!("/tools toggle {tool}")).await;
+    }
+    assert_eq!(harness.app.kernel.tool_ids(), offered);
 }
 
 #[tokio::test]
@@ -313,7 +321,7 @@ async fn a_tool_can_stop_being_offered_without_restarting() {
             .any(|spec| spec.id == "shell")
     );
 
-    harness.send("/tools drop shell").await;
+    harness.send("/tools toggle shell").await;
 
     assert!(
         harness
@@ -326,6 +334,23 @@ async fn a_tool_can_stop_being_offered_without_restarting() {
         "the next request should not offer it"
     );
     assert!(harness.screen().contains("no longer offered"));
+
+    // and the same word puts it back, which is what the tool being kept rather than dropped is
+    // for. A `ConstTool` could be built again; an MCP server's could not
+    harness.send("/tools toggle shell").await;
+
+    assert!(
+        harness
+            .app
+            .kernel
+            .preview_request()
+            .unwrap()
+            .tools
+            .iter()
+            .any(|spec| spec.id == "shell"),
+        "the next request should offer it again"
+    );
+    assert!(harness.screen().contains("offered again"));
 }
 
 #[tokio::test]

@@ -132,7 +132,7 @@ fn truth(args: &Value, name: &str) -> Result<bool, String> {
 /// them (`/limit`) is in another file from the tools that declare them - and because `/limit`
 /// lists the table, and a person raising one wants to see the others. [`Tool::spec`] is called
 /// afresh for every request, so a change here lands on the next call rather than needing a
-/// restart: the same property `/tools drop` leans on.
+/// restart: the same property `/tools toggle` leans on.
 ///
 /// note: raising a limit does not recover a result that has already been shortened, and does not
 /// need to. The whole of that one is archived beside the copy the model was shown, and one

@@ -234,7 +234,7 @@ async fn the_help_lists_the_keys_that_exist() {
     // a leading slash could not tell the two kinds apart and read a correctly documented key as a
     // command listed twice.
     //
-    // the whole left column, not the first word: `/tools` and `/tools drop ID` are two entries
+    // the whole left column, not the first word: `/tools` and `/tools toggle ID` are two entries
     // for one command and belong in here twice
     let help = ui::everything();
     let commands: Vec<&str> = help

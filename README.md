@@ -75,8 +75,9 @@ words. `space` cycles how much of an item the model gets, `p` pins it, `e` chang
 `u` undoes. `/step` performs exactly one transition of the state machine, which is the only way to
 stand in `Ready`: the model has said what it wants to do, and none of it has run yet.
 
-Ordinary user code on top of the crate, and nothing else: two providers, ten tools - six it
-always offers and four more behind `--introspect` - a policy, a compactor and the drawing. Not one of them is a privileged feature of the runtime. See
+Ordinary user code on top of the crate, and nothing else: two providers, six tools - four of them
+about the session itself - a policy, a compactor and the drawing. Not one of them is a privileged
+feature of the runtime. See
 [its readme](kamchatka/README.md) for the sandbox, the keys, and the rest.
 
 **The screen is a feature, and the program without it is the same program.** `--headless` drives a
@@ -104,7 +105,7 @@ server, tools arriving and leaving are `add_tool` and `remove_tool`, a structure
 untrusted server, so the bridge believes none of them by default. Its tests include a server
 offering a tool called `delete_everything` that claims to be read-only.
 
-**[`kamchatka --introspect`](kamchatka)** hands the model four tools, and every action in them is
+**[`kamchatka`](kamchatka)** hands the model four tools about its own session, and every action in them is
 a public function a user interface was already calling. `context` reads the context - `look`,
 `budget`, `request`, `search`, and `draft` and `fork`, which answer on a throwaway copy. `log`
 reads the append-only record kept beside it. `setup` says what the session is running with: which

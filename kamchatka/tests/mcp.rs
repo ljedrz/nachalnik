@@ -81,7 +81,7 @@ async fn session(
     script: Vec<ModelResponse>,
 ) -> (Wired, Vec<nachalnik_mcp::Server>) {
     let wired = Setup {
-        builtin_tools: false,
+        tools: Some(Vec::new()),
         compact: None,
         allow: allow
             .iter()
