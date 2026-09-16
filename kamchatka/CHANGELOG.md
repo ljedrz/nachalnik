@@ -7,6 +7,19 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **A release archive is the binary and `kamchatka.json`, and nothing else.** The settings file is
+  the one thing that is worth more beside the binary than it is on a web page: every setting there
+  is, named and at its default, so somebody who is tired of typing the same four arguments runs
+  `kamchatka --config-file kamchatka.json` and edits it. A `cargo install` copies no files, so an
+  archive is the only way it reaches anybody who did not clone the repository.
+
+  Out go the licence and the four documents. A copied document is a document that goes out of date
+  in somebody's downloads folder while the one it was copied from is corrected - the readme, the
+  guide, the running notes and the changelog are a link away and always current - and the licence
+  is in the repository, which is not a thing anybody downloads a binary to read.
+
 ### added
 
 - **The requests say what kind of program is making them, not only which one.** `cli-agent` and

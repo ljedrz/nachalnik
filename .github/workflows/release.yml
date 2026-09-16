@@ -85,13 +85,21 @@ jobs:
           build-tool: cargo
           locked: true
           checksum: sha256
-          # what somebody who downloaded one file rather than the repository would otherwise have
-          # to go and find: the licence, what the program is, how to drive it, and how to point it
-          # at an endpoint - which is the first thing a binary with no repository around it needs
+          # the one file that is worth more beside the binary than it is on a web page. Every
+          # setting the program has, named and at its default, for somebody who wants to stop
+          # typing the same four arguments: `kamchatka --config-file kamchatka.json` and edit it.
+          # A `cargo install` copies no files, so an archive is the only way it reaches anybody
+          # who did not clone the repository.
           #
-          # note: these land at the root of the archive under their basenames, so the `kamchatka/`
-          # in front of three of them is where they are read from and not where they end up
-          include: LICENSE-MIT,kamchatka/README.md,kamchatka/GUIDE.md,kamchatka/RUNNING.md,kamchatka/CHANGELOG.md
+          # note: the licence and the four documents used to be in here and are not, because a
+          # copy of a document is a document that goes out of date in somebody's downloads folder
+          # while the one it was copied from is corrected. The readme, the guide, the running
+          # notes and the changelog are a link away and always current; the licence is in the
+          # repository and is not something a reader of it downloads a binary to find.
+          #
+          # note: it lands at the root of the archive under its basename, so the `kamchatka/` in
+          # front of it is where it is read from and not where it ends up
+          include: kamchatka/kamchatka.json
           leading-dir: true
           dry-run: ${{ github.event_name == 'workflow_dispatch' }}
           token: ${{ secrets.GITHUB_TOKEN }}

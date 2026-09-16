@@ -322,6 +322,13 @@ for, so there is nothing for it to agree with.
   already checks; the workspace `v*` tag builds nothing, since it would be the same binary under
   a name that does not say so.
 
+  **Two files in the archive: the binary and `kamchatka.json`.** The settings file is worth more
+  beside the binary than on a web page, because `cargo install` copies no files and an archive is
+  the only way it reaches somebody who did not clone anything. Nothing else is, and the reasoning
+  is the same in reverse: a copied document goes out of date in a downloads folder while the one
+  it was copied from is corrected, and the readme, the guide, these notes and the changelog are a
+  link away and always current.
+
   The changelog section has to exist under the number being tagged or the job fails, which is one
   more reason the release commit is the one that dates the changelogs. Static musl rather than
   glibc so that the download runs wherever the kernel is new enough rather than wherever the

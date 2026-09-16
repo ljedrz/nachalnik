@@ -37,13 +37,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   in a way a figure can see.
 
 - **Getting the shipped settings file to somebody who installed the binary.** `kamchatka.json`
-  ships in the crate, so it reaches whoever clones the repository or unpacks the `.crate` - and
-  `cargo install` copies no files, so it reaches nobody else. Two ways to close that and they
-  compose: `include_str!` it into the binary behind a flag that prints it, or look for
-  `./kamchatka.json` (and an XDG path) when `--config-file` was not given. The second is the one
-  with a decision in it - a file that applies because of where you are standing is a file that
-  surprises you, and the answer to that is usually "say which one you read, on the way in". It is
-  open rather than decided, and `--config-file` works meanwhile.
+  ships in the crate and in the release archive, so it reaches whoever clones the repository,
+  unpacks the `.crate`, or downloads a build - and `cargo install` copies no files, so it reaches
+  nobody who took that road. Two ways to close the rest and they compose: `include_str!` it into
+  the binary behind a flag that prints it, or look for `./kamchatka.json` (and an XDG path) when
+  `--config-file` was not given. The second is the one with a decision in it - a file that applies
+  because of where you are standing is a file that surprises you, and the answer to that is
+  usually "say which one you read, on the way in". It is open rather than decided, and
+  `--config-file` works meanwhile.
 
 - **`--reconcile`: one context out of several hard forks of one session.** Two or more past
   snapshots that share an ancestor, folded into one session to carry on from. Nothing about it is
