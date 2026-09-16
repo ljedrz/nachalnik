@@ -97,6 +97,13 @@ impl Harness {
             .await;
     }
 
+    /// Presses a key with alt held, which is how the tabs are reached.
+    pub(crate) async fn alt(&mut self, code: KeyCode) {
+        self.app
+            .on_key(KeyEvent::new(code, KeyModifiers::ALT))
+            .await;
+    }
+
     /// Presses a key with control held.
     pub(crate) async fn chord(&mut self, code: KeyCode) {
         self.app

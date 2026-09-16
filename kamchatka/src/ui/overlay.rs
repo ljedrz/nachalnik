@@ -15,7 +15,7 @@ use ratatui::{
 };
 
 use crate::{
-    app::{App, Focus, Overlay, Page, Tab},
+    app::{App, Focus, Overlay, Page, Tab, text::thousands},
     ui::text::{refit, wrapped},
 };
 
@@ -48,7 +48,11 @@ fn question_parts(
     columns: usize,
     cut: bool,
 ) -> Option<(Vec<String>, Vec<Line<'static>>, Vec<String>)> {
-    let request = app.asked()?;
+    // a tool's question comes first where both are somehow open, because it is the one holding a
+    // turn still. A compaction holds nothing: it is somebody's own command, waiting on them
+    let Some(request) = app.asked() else {
+        return compaction_parts(app, columns, cut);
+    };
     let waiting = app.kernel.pending_permissions().len();
 
     // what the policy will actually consult, not what the tool declared: `shell` reaching for the
@@ -125,6 +129,50 @@ fn question_parts(
     ))
 }
 
+/// The other question: a compaction pass, listed, waiting on a `y`.
+///
+/// note: the list goes where a tool's arguments go, so it scrolls the same way and the panel does
+/// not have to know it is reading something else. What a person needs to decide is the same shape
+/// in both cases - what is about to happen, to what - and the one thing this adds is that the
+/// items are named by identifier, because the answer to "not that one" is `p` on the context tab
+/// and that is the number it is found by.
+fn compaction_parts(
+    app: &App,
+    columns: usize,
+    cut: bool,
+) -> Option<(Vec<String>, Vec<Line<'static>>, Vec<String>)> {
+    let proposed = app.proposed.as_ref()?;
+
+    let answers = format!(
+        "{}[y] take it   [n] leave it{}",
+        match app.focus == Focus::Body && app.tab == Tab::Chat {
+            true => "",
+            false => "[tab] puts the keys here, and then:\n",
+        },
+        match cut {
+            true => "   pgup / pgdn for the rest",
+            false => "",
+        },
+    );
+
+    let head = wrapped(
+        &format!(
+            "compacting would take {} item(s), holding {} tokens - less what the markers cost.              Nothing has happened yet: `p` on the context tab keeps one out of it\n",
+            proposed.count,
+            thousands(proposed.holding),
+        ),
+        columns,
+        "",
+    );
+    let shown = proposed
+        .rows
+        .iter()
+        .flat_map(|row| refit(&Line::raw(row.clone()), columns))
+        .collect();
+
+    Some((head, shown, wrapped(&answers, columns, "")))
+}
+
 /// The same lines, without the empty ones at the end.
 fn trimmed(mut lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
     while lines
@@ -190,10 +238,14 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
         false => Style::default().fg(Color::Red),
     };
     let block = Block::bordered()
-        .title(match asking {
-            true => " a tool wants to run ".to_owned(),
-            false => " a tool wants to run · tab ".to_owned(),
-        })
+        .title(
+            match (asking, app.proposed.is_some() && app.asked().is_none()) {
+                (true, false) => " a tool wants to run ".to_owned(),
+                (false, false) => " a tool wants to run · tab ".to_owned(),
+                (true, true) => " what a compaction would take ".to_owned(),
+                (false, true) => " what a compaction would take · tab ".to_owned(),
+            },
+        )
         .border_style(style)
         .padding(ratatui::widgets::Padding::horizontal(1));
     let inner = block.inner(area);

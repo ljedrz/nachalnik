@@ -605,6 +605,25 @@ impl App {
     /// settling timer used to be for. See the note on [`App::locked_key`] for what that is
     /// protecting against and why a timer could not do it.
     pub(super) async fn question_key(&mut self, key: KeyEvent) {
+        // the compaction's own answers, where that is what is standing there. It scrolls with the
+        // same keys, because it is the same panel showing a longer list than it has room for
+        if self.asked().is_none() && self.proposed.is_some() {
+            match key.code {
+                KeyCode::PageUp => self.question_scroll = self.question_scroll.saturating_sub(PAGE),
+                KeyCode::PageDown => self.question_scroll += PAGE,
+                KeyCode::Up => self.question_scroll = self.question_scroll.saturating_sub(1),
+                KeyCode::Down => self.question_scroll += 1,
+                KeyCode::Char('y') => self.take_proposal(true).await,
+                // `esc` as well as `n`, because a panel somebody opened and thought better of is
+                // the one thing everybody tries `esc` on. There is no turn to interrupt here for
+                // it to mean anything else: `esc` stops a run, and a question is the loop resting
+                KeyCode::Char('n') | KeyCode::Esc => self.take_proposal(false).await,
+                _ => {}
+            }
+
+            return;
+        }
+
         let Some(request) = self.asked() else {
             // the question went away rather than being answered - the turn was stopped, or the
             // calls were dropped - so the prompt is back, and this key belongs to it instead of

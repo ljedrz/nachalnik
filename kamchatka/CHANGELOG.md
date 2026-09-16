@@ -10,14 +10,19 @@ minor bump may break you.
 ### added
 
 - `/compact`, which asks the compactor by hand and shows its answer before applying it: every item
-  it would take, with the identifier, what it is and what it is holding, and nothing moved. Pin
-  what should stay - <kbd>p</kbd> on the context tab, or `/pin 17` - and `/compact yes` takes the
-  rest. The pass is worked out again on the way in rather than applying the plan that was shown,
-  so a pin made while reading the list is honoured rather than refused after the fact.
+  it would take, with the identifier, what it is and what it is holding, and then `y` or `n`. The
+  question stands in the prompt's place like a tool's and is pinned rather than modal, so the
+  context tab is a keystroke away while it waits and `p` there keeps a row out of the pass. Saying
+  yes works the pass out again rather than applying the list that was shown, so a pin made while
+  reading it is honoured rather than refused after the fact.
 
   It is also the only way out of a context too big to send. `context` and `amend` are the model's
   tools and reaching them costs a request - the request that is failing - so until now a session
   that had run out of room could only be pruned by hand, item by item.
+
+  `--headless` prints the list and takes it, there being no key to press down a pipe. The opposite
+  of what `--on-ask` does with a tool's question, because they are different questions: a tool's is
+  the model asking to do something nobody vouched for, and this one is a line the operator typed.
 - A request the model refused for its length says what that length was and how much of it has to
   go. The sentence above it is the server's, and every vendor writes those two numbers in a
   different order; this says what they mean here. It matters because the only other figure in

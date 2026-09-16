@@ -9,7 +9,7 @@ use nachalnik::{ContextId, ContextItem, ContextState, selectors::Selector};
 use crate::{app::text::thousands, tools::Limits};
 
 use super::{
-    App, Did, Reply, Speaker, Tab,
+    App, Did, Proposed, Reply, Speaker, Tab,
     text::{nothing_to_send, pretty, request_preview},
 };
 
@@ -168,7 +168,7 @@ impl App {
             "limit" => self.limit(rest),
             "spend" => self.spend_command(rest),
             "budget" => self.budget(),
-            "compact" => self.compact(rest).await,
+            "compact" => self.compact().await,
             "seams" => self.seams(),
             "introspect" => self.introspect(),
             // it used to print a line naming the allowed capabilities. The tab is that line, plus
@@ -883,7 +883,7 @@ impl App {
         }
     }
 
-    /// Shows what a compaction pass would take, and takes it once somebody has said so.
+    /// Lists what a compaction pass would take, and asks whether to take it.
     ///
     /// note: the compactor the kernel runs before a request is the same object, asked by hand.
     /// What this adds is the half an automatic pass cannot have: the list, before anything
@@ -896,12 +896,23 @@ impl App {
     /// them costs a request - the request that is failing. A context too big to send is a context
     /// whose only way out was through the thing that no longer works.
     ///
-    /// note: `yes` re-plans rather than applying the plan it showed. The list is a snapshot of a
-    /// context somebody was invited to change - to pin from, mostly - and applying the old plan
-    /// would take exactly what they had just protected. The kernel refuses a pinned item anyway
-    /// and reports it, so the stale plan would be caught; it would just be caught after the fact,
-    /// in a report, which is the shape this command exists to get away from.
-    async fn compact(&mut self, rest: &str) {
+    /// note: the question stands in the prompt's place like a tool's, and for the same reason it
+    /// is pinned rather than modal: the context tab is a keystroke away while it waits, `p` there
+    /// is the answer to "not that one", and `y` afterwards works the pass out again. What it
+    /// costs is that the prompt is not available while it waits, so keeping an item is `p` rather
+    /// than `/pin` - which is the gesture the question names.
+    async fn compact(&mut self) {
+        // one question at a time, because there is one place to put one. A turn is also a poor
+        // moment to be reading a list of what the context holds, since it is being added to while
+        // the list is read
+        if self.busy || self.asking() {
+            self.say(
+                Speaker::Error,
+                "something is already waiting for an answer; `/compact` when it is done",
+            );
+            return;
+        }
+
         let Some(compactor) = self.kernel.compactor() else {
             self.say(
                 Speaker::Error,
@@ -943,6 +954,23 @@ impl App {
                 .collect()
         };
 
+        let mut rows = described(&plan.elide, "elide, leaving a marker in its place");
+        rows.extend(described(
+            &plan.remove,
+            "exclude, out of the request entirely",
+        ));
+        // counted before the summary row, which is a line about something being *added*: a pass
+        // that takes one result and writes a marker in its place takes one item, and a question
+        // that said two would be overstating what it is asking for
+        let count = rows.len();
+        if let Some(summary) = &plan.summary {
+            rows.push(format!("and {} goes in, in their place", summary.label));
+        }
+
+        // note: what the items are *holding*, not what the request would fall by. An elided item
+        // leaves a marker behind and the marker costs what it costs, so the two figures differ by
+        // that much per item - which is worth stating rather than rounding away, since this whole
+        // question is somebody deciding whether the trade is worth it
         let holding: usize = plan
             .remove
             .iter()
@@ -950,49 +978,23 @@ impl App {
             .filter_map(|id| items.iter().find(|item| item.id == *id))
             .map(|item| item.tokens)
             .sum();
-        let count = plan.remove.len() + plan.elide.len();
 
-        if !matches!(rest.trim(), "yes" | "y" | "apply") {
-            let mut body = described(&plan.elide, "elide, leaving a marker in its place");
-            body.extend(described(
-                &plan.remove,
-                "exclude, out of the request entirely",
-            ));
-            if let Some(summary) = &plan.summary {
-                body.push(format!("and {} goes in, in their place", summary.label));
-            }
-            // note: the tokens are what the items are *holding*, not what the request would fall
-            // by. An elided item leaves a marker behind and the marker costs what it costs, so
-            // the two figures differ by that much per item - which is a difference worth stating
-            // rather than rounding away, since this whole command is somebody deciding whether
-            // the trade is worth it
-            body.push(String::new());
-            body.push(format!(
-                "{count} item(s) holding {} tokens, less what the markers cost. Nothing has \
-                 happened yet.\n\nPin what you want kept - `/pin 17`, or `p` on the context tab - \
-                 and run this again; the list is worked out afresh each time. `/compact yes` \
-                 takes it.",
+        self.proposed = Some(Proposed {
+            rows,
+            count,
+            holding,
+        });
+        // said as well as asked, so the scrollback keeps the fact that it was proposed at all:
+        // the panel goes the moment it is answered, and a session read back afterwards would
+        // otherwise show a compaction with nothing in front of it
+        self.say(
+            Speaker::Note,
+            format!(
+                "{} would take {count} item(s) holding {} tokens",
+                compactor.name(),
                 thousands(holding),
-            ));
-
-            self.preview(
-                format!("what {} would take", compactor.name()),
-                body.join("\n"),
-            );
-            self.say(
-                Speaker::Note,
-                format!(
-                    "{count} item(s) holding {} tokens would go; nothing has yet. \
-                     `/compact yes` takes it, `/pin SELECTOR` keeps something out of it",
-                    thousands(holding),
-                ),
-            );
-            return;
-        }
-
-        // the report says what happened, through `Event::Compacted` like any other pass: one
-        // account of a compaction, whoever asked for it
-        self.kernel.apply_compaction(plan);
+            ),
+        );
     }
 
     fn budget(&mut self) {

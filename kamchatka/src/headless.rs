@@ -198,6 +198,32 @@ impl<'a> Headless<'a> {
                                     .map_err(|e| e.to_string())?;
                             }
                         }
+                        // `/compact` asks, and there are no keys here to answer with. Taken
+                        // rather than left, which is the opposite of what `--on-ask` does with a
+                        // tool's question - and the two are different questions. A tool's is the
+                        // *model* asking to do something nobody vouched for, so the default is
+                        // no; this one is the operator's own line, and a script that says
+                        // `/compact` and is answered "left alone" has been refused the thing it
+                        // asked for. The list is on stderr above it either way
+                        if let Some(proposed) = app.proposed.clone() {
+                            // the list itself, which on a screen is in the panel and down a pipe
+                            // has nowhere else to go. Without it this mode takes items on the
+                            // strength of a line saying how many, which is the opposite of what
+                            // the command is for
+                            self.fresh_line()?;
+                            for row in &proposed.rows {
+                                writeln!(self.prose, "· {row}").map_err(|e| e.to_string())?;
+                            }
+                            app.take_proposal(true).await;
+                            // and what it did, in the same breath as what it proposed. The pass
+                            // reports itself through an event like any other, and the loop would
+                            // otherwise read that one on some later turn round - after the next
+                            // line of the script, if there is one
+                            while let Ok(event) = events.try_recv() {
+                                self.say(&event)?;
+                                app.on_event(event);
+                            }
+                        }
                     }
                     // stdin has closed. Whatever is running still finishes, and the loop leaves
                     // when it has: a script that pipes one question in and goes away is asking

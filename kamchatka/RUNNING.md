@@ -280,10 +280,16 @@ that would replace it. Eliding a `wrote 412 bytes to …` makes the request *big
 that took twenty of them is how that was found.
 
 `/compact` asks that same compactor by hand, and shows its answer before anything happens: every
-item it would take, with the identifier, what it is and what it is holding. Nothing moves until
-`/compact yes`, so the list is somewhere to read, pin from — <kbd>p</kbd> on the context tab, or
-`/pin 17` — and then agree. The pass is worked out again on the way in, so a pin made while
-reading the list is honoured rather than refused after the fact.
+item it would take, with the identifier, what it is and what it is holding. It then waits, in the
+prompt's place, for <kbd>y</kbd> or <kbd>n</kbd> — pinned rather than modal, like a tool's
+question, so the context tab is a keystroke away while it stands and <kbd>p</kbd> there is the
+answer to "not that one". Saying yes works the pass out again, so a pin made while reading the
+list is honoured rather than refused after the fact.
+
+Down a pipe there are no keys, so `--headless` prints the same list to stderr and takes it. That is
+the opposite of what `--on-ask` does with a tool's question, and they are different questions: a
+tool's is the model asking to do something nobody vouched for, and this one is a line the operator
+typed.
 
 It is also the way out of a session too big to send. The tools that prune a context are the
 *model's* — `context` and `amend` — and reaching them costs a request, which is the thing that is

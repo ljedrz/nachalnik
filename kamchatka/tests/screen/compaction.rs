@@ -674,13 +674,13 @@ async fn ready_to_compact() -> (Harness, nachalnik::ContextId) {
     (harness, result)
 }
 
-/// `/compact` says what a pass would take and takes none of it.
+/// `/compact` says what a pass would take, takes none of it, and waits for an answer.
 ///
 /// note: the whole point of the command, and the half an automatic pass cannot have. A pass that
 /// announces itself afterwards leaves somebody reading what they have lost; this is the same
 /// information one step earlier, with the identifiers to pin from, while it is still a decision.
 #[tokio::test]
-async fn compact_lists_what_would_go_and_takes_nothing() {
+async fn compact_lists_what_would_go_and_waits() {
     let (mut harness, result) = ready_to_compact().await;
 
     harness.send("/compact").await;
@@ -691,31 +691,57 @@ async fn compact_lists_what_would_go_and_takes_nothing() {
         packed.contains("elide"),
         "and what would happen to it: {packed}"
     );
-    assert!(packed.contains("Nothinghashappenedyet"), "{packed}");
+    assert!(packed.contains("[y]takeit"), "and how to answer: {packed}");
 
     assert_eq!(
         harness.app.kernel.item(result).unwrap().state,
         ContextState::Active,
-        "and nothing did"
+        "and nothing has happened"
     );
+
+    // the question has the prompt's place rather than standing above it. Stacked, the two
+    // disagree about the room on any short window: the question needs it, so the prompt gives way
+    // and goes on holding the keys from off the screen
+    assert!(
+        !harness.flat().contains("ask for something"),
+        "the prompt is not on the screen beside it: {}",
+        harness.flat()
+    );
+    assert!(!harness.app.prompted());
 }
 
-/// A pin made after reading that list is honoured, because the pass is worked out again.
+/// The question is pinned rather than modal, so the thing it is about stays reachable: the
+/// context tab, and `p` on the row somebody wants kept.
 ///
-/// note: the reason `yes` re-plans instead of applying what it showed. The list is a snapshot of
-/// a context somebody was invited to change, and applying the old plan would take exactly what
-/// they had just protected - caught by the kernel, which refuses a pinned item, but caught
-/// afterwards and reported, which is the shape this command exists to get away from.
+/// note: this is what the question being in the prompt's place buys, and the reason `y` works the
+/// pass out again instead of applying the list it showed. Applying the old plan would take
+/// exactly what was just protected - caught by the kernel, which refuses a pinned item, but
+/// caught afterwards and reported, which is the shape the question exists to get away from.
 #[tokio::test]
-async fn a_pin_made_after_the_list_is_honoured_by_the_pass() {
+async fn a_pin_made_while_the_question_waits_is_honoured() {
     let (mut harness, result) = ready_to_compact().await;
 
     harness.send("/compact").await;
-    // the list is an overlay, like every other body long enough to need its own screen; it is
-    // dismissed the way they all are, and the prompt is the prompt again
-    harness.press(KeyCode::Esc).await;
-    harness.send(&format!("/pin {result}")).await;
-    harness.send("/compact yes").await;
+    // over to the list, onto the row the question named, and keep it - all of it while the
+    // question waits, which is what a question in the prompt's place is for
+    harness.alt(KeyCode::Char('2')).await;
+    harness
+        .press(KeyCode::Char(
+            char::from_digit(result.0 as u32, 10).unwrap(),
+        ))
+        .await;
+    harness.press(KeyCode::Char('G')).await;
+    harness.press(KeyCode::Char('p')).await;
+    assert_eq!(
+        harness.app.kernel.item(result).unwrap().state,
+        ContextState::Pinned,
+        "the context tab still takes keys with a question open"
+    );
+
+    // and back to answer the question that was waiting the whole time
+    harness.alt(KeyCode::Char('1')).await;
+    harness.press(KeyCode::Tab).await;
+    harness.press(KeyCode::Char('y')).await;
     harness.drain();
 
     assert_eq!(
@@ -725,18 +751,19 @@ async fn a_pin_made_after_the_list_is_honoured_by_the_pass() {
     );
     let screen = harness.flat();
     assert!(
-        screen.contains("found nothing it may take"),
+        screen.contains("nothing left to take"),
         "and the pass says so rather than reporting a refusal: {screen}"
     );
 }
 
-/// And with nobody pinning anything, `yes` takes it - reported by the same event any other pass
-/// is reported by.
+/// `y` takes it, reported by the same event any other pass is reported by.
 #[tokio::test]
-async fn compact_yes_takes_it_and_says_what_it_took() {
+async fn y_takes_it_and_says_what_it_took() {
     let (mut harness, result) = ready_to_compact().await;
 
-    harness.send("/compact yes").await;
+    harness.send("/compact").await;
+    harness.press(KeyCode::Tab).await;
+    harness.press(KeyCode::Char('y')).await;
     harness.drain();
 
     assert_eq!(
@@ -745,6 +772,27 @@ async fn compact_yes_takes_it_and_says_what_it_took() {
     );
     let screen = harness.flat();
     assert!(screen.contains("compacted:"), "{screen}");
+}
+
+/// `n` leaves it, and says so rather than going quiet.
+#[tokio::test]
+async fn n_leaves_it_alone() {
+    let (mut harness, result) = ready_to_compact().await;
+
+    harness.send("/compact").await;
+    harness.press(KeyCode::Tab).await;
+    harness.press(KeyCode::Char('n')).await;
+
+    assert_eq!(
+        harness.app.kernel.item(result).unwrap().state,
+        ContextState::Active
+    );
+    let screen = harness.flat();
+    assert!(screen.contains("left alone"), "{screen}");
+    assert!(
+        !screen.contains("[y]takeit"),
+        "and the question is gone: {screen}"
+    );
 }
 
 /// With no compactor installed there is nothing to ask, and it says so rather than saying

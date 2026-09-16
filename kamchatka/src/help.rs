@@ -166,8 +166,9 @@ pub const PERMISSIONS: &str = "  THE PERMISSIONS TAB, which has the keys wheneve
 
 /// The keys that answer a waiting tool, offered only while one is waiting.
 pub const QUESTION: &str =
-    "  A TOOL IS WAITING TO RUN - in the prompt's place, on the chat tab, which
-  goes red on the tab strip while one is there
+    "  SOMETHING IS WAITING FOR AN ANSWER - in the prompt's place, on the chat
+  tab, which goes red on the tab strip while one is there. A tool asking to
+  run, or the compaction `/compact` proposed
     tab                 put the keys on it. None of the answers below does
                         anything until you have, and nor does enter
     y / n               once / no
@@ -177,6 +178,10 @@ pub const QUESTION: &str =
                         the calls already waiting behind it
     i                   the exact JSON, and the tool's own definition
     d                   drop every call it is waiting on, and tell it why
+    (a compaction takes y, n, esc and the scrolling keys, and nothing else.
+     It is holding nothing up: alt+2 to the context tab, p on what should
+     stay, back, and answer - the pass is worked out again, so what you kept
+     is not in it)
     (it never takes the keys by itself. The answers are bare letters, and a
      question that arrived while somebody was typing once read the `a` of
      `what` as `always, for shell` and kept it for the rest of the session -
@@ -232,10 +237,9 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /restore SELECTOR   put them back
     /budget             the estimate, what the last request really cost, and the
                         correction the counter has worked out from the difference
-    /compact            what the compactor would take, listed, before it takes
-                        anything. Pin what you want kept and run it again
-    /compact yes        take it; the list is worked out afresh, so a pin made
-                        since is honoured
+    /compact            what the compactor would take, listed, and then `y` or
+                        `n`. The list waits, so `p` on the context tab keeps
+                        something out of it and the pass is worked out again
     /spend [TOKENS]     what the provider has charged for this session, and the
                         ceiling it stops at; 0 takes the ceiling away
     /seams              what is plugged into each of the runtime's six parts

@@ -1556,3 +1556,51 @@ async fn help_down_a_pipe_is_the_whole_of_it() {
     // and each page is named, because six of them run together with nothing between is a wall
     assert!(run.prose.contains("-- commands --"), "{}", run.prose);
 }
+
+/// `/compact` down a pipe is taken rather than left waiting for a key that is never coming.
+///
+/// note: the opposite of what `--on-ask` does with a tool's question, and they are different
+/// questions. A tool's is the model asking to do something nobody vouched for, so the default is
+/// no. This one is the operator's own line, and a script that says `/compact` and is answered
+/// "left alone" has been refused the thing it asked for. The list is on stderr either way, which
+/// is where the transparency lives when there is no panel to put it in.
+#[tokio::test]
+async fn compact_down_a_pipe_is_taken_and_said() {
+    use nachalnik::{Content, ContextItem, ToolCall};
+
+    let call = ToolCall::new("call-1", "read", Arc::new(json!({"path": "big.rs"})));
+    let run = run("/compact\n", vec![], |app| {
+        app.kernel
+            .set_compactor(Some(Arc::new(kamchatka::tools::Trim {
+                threshold: 0.0,
+                target: 0.0,
+            })));
+        app.kernel.push(ContextItem::user("what is in big.rs?"));
+        app.kernel.push(ContextItem::assistant(
+            Content::text("let me look"),
+            vec![call.clone()],
+        ));
+        app.kernel.push(ContextItem::tool_result(
+            call.id.clone(),
+            "read",
+            Content::text("x".repeat(40_000)),
+            false,
+        ));
+    })
+    .await;
+
+    assert!(
+        run.prose.contains("would take 1 item(s)"),
+        "the list is still said: {}",
+        run.prose
+    );
+    assert!(run.prose.contains("compacted:"), "{}", run.prose);
+    assert!(
+        run.app
+            .kernel
+            .items()
+            .iter()
+            .any(|item| item.state == nachalnik::ContextState::Elided),
+        "and it was taken"
+    );
+}

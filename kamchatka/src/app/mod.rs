@@ -218,6 +218,23 @@ pub struct Page {
     pub body: String,
 }
 
+/// A compaction pass, listed and waiting to be told whether to take what it listed.
+///
+/// note: what it holds is the *list*, not the plan. Answering `y` works the pass out again, so
+/// a pin made while reading this is honoured rather than refused after the fact - which is the
+/// whole reason the question is pinned rather than modal: the context tab is a keystroke away
+/// while it waits, and `p` there is the answer to "not that one".
+#[derive(Clone)]
+pub struct Proposed {
+    /// One line per item, in the order the compactor chose them.
+    pub rows: Vec<String>,
+    /// How many items there are.
+    pub count: usize,
+    /// What they are holding between them, which is not what the request will fall by: an elided
+    /// item leaves a marker behind, and the difference is the marker.
+    pub holding: usize,
+}
+
 /// Who produced a line of the transcript.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Speaker {
@@ -759,6 +776,13 @@ pub struct App {
     /// what stands in the prompt's place is drawn from `pending_permissions()` every frame, so
     /// there is no state saying a question is open and none to get out of step with the kernel.
     pub question_scroll: usize,
+    /// A compaction pass waiting on a `y` or an `n`, if one is.
+    ///
+    /// note: held here, where `App::asked` is asked of the kernel every time. The kernel knows
+    /// nothing about this one: a compaction nobody has agreed to yet is not a state the runtime
+    /// has, and giving it one would be this program's screen leaking into the runtime's model of
+    /// a session. What the kernel is told is the pass itself, once, when somebody says yes.
+    pub proposed: Option<Proposed>,
     /// A message somebody sent into a turn that was already running, waiting for it to end.
     ///
     /// note: one, and the newest wins - which used to mean a second message typed into the same
@@ -878,6 +902,7 @@ impl App {
             reported_repairs: Vec::new(),
             since: Instant::now(),
             question_scroll: 0,
+            proposed: None,
             typed_ahead: None,
             last_sent: None,
             #[cfg(feature = "tui")]
@@ -1905,7 +1930,7 @@ impl App {
     /// does not, since what they are looking at is that tab; the page is still one key away, and
     /// the tab strip is already red to say the question is there.
     pub(super) fn help(&mut self) {
-        let asked = self.asked().is_some();
+        let asked = self.asking();
         let here = match (self.tab, asked) {
             (Tab::Chat, true) => "question",
             (Tab::Chat, false) => "chat",
@@ -2032,7 +2057,7 @@ impl App {
             // `tab` moves the keys to the other thing on the screen that wants them, and on a tab
             // with no prompt there is no other thing - so it means the one gesture that is always
             // worth having: back to where typing happens
-            (KeyCode::Tab, _) => match (self.tab, self.asked().is_some()) {
+            (KeyCode::Tab, _) => match (self.tab, self.asking()) {
                 // it is what puts the keys on a waiting question, and the only thing that does
                 // from this tab. There is nothing to hand them back to until the question is
                 // answered - it has the prompt's place - so pressing it again is not a way out
@@ -2050,7 +2075,7 @@ impl App {
                 (Tab::Chat, Focus::Body) => self.question_key(key).await,
                 // a question is on the screen and has not been given the keys, so the prompt is
                 // not on the screen either and there is nothing here for a key to do
-                (Tab::Chat, Focus::Input) if self.asked().is_some() => self.locked_key(key),
+                (Tab::Chat, Focus::Input) if self.asking() => self.locked_key(key),
                 (Tab::Context, Focus::Body) => self.context_key(key, &count),
                 (Tab::Trace, Focus::Body) => self.trace_key(key),
                 (Tab::Permissions, Focus::Body) => self.permissions_key(key),
@@ -2103,7 +2128,7 @@ impl App {
         self.search = None;
 
         self.tab = tab;
-        self.focus = match (tab, self.asked().is_some()) {
+        self.focus = match (tab, self.asking()) {
             (Tab::Chat, false) => Focus::Input,
             _ => Focus::Body,
         };
@@ -2116,6 +2141,56 @@ impl App {
     /// answer, or shut when there is - and [`App::prompted`] reads it for the same reason.
     pub fn asked(&self) -> Option<PermissionRequest> {
         self.kernel.pending_permissions().into_iter().next()
+    }
+
+    /// Whether anything is standing in the prompt's place, waiting to be answered.
+    ///
+    /// note: the two kinds are a tool waiting on a decision and a compaction waiting on one, and
+    /// everything about the screen that cares - what has the keys, what `tab` reaches, whether
+    /// there is a prompt at all - cares only that there is one. Which it is, is a question for
+    /// the panel that draws it and the key that answers it.
+    pub fn asking(&self) -> bool {
+        self.asked().is_some() || self.proposed.is_some()
+    }
+
+    /// Answers the compaction standing in the prompt's place.
+    ///
+    /// note: `take` works the pass out again rather than applying what was listed. The list is a
+    /// snapshot of a context somebody has just been invited to change, so applying it would take
+    /// exactly what they had protected while reading it. The kernel refuses a pinned item and
+    /// says so, which would catch it - afterwards, in a report, which is the shape this whole
+    /// question exists to get away from.
+    ///
+    /// note: public because the screen is not the only thing entitled to answer. `--headless` has
+    /// no keys and answers this itself; see the note there for why it takes it rather than
+    /// refusing it the way it refuses a tool's question.
+    pub async fn take_proposal(&mut self, take: bool) {
+        self.proposed = None;
+        self.focus = Focus::Input;
+        // the next question starts at the top of itself, whatever was being read in this one
+        self.question_scroll = 0;
+        if !take {
+            self.say(Speaker::Note, "left alone; nothing was compacted");
+            return;
+        }
+
+        let Some(compactor) = self.kernel.compactor() else {
+            return;
+        };
+        match compactor
+            .plan(&self.kernel.items(), &self.kernel.budget())
+            .await
+        {
+            // the report is said by `Event::Compacted`, like any other pass: one account of a
+            // compaction, whoever asked for it
+            Some(plan) => {
+                self.kernel.apply_compaction(plan);
+            }
+            None => self.say(
+                Speaker::Note,
+                "nothing left to take: everything the pass had listed is pinned now",
+            ),
+        }
     }
 
     /// Whether the prompt is on the screen at all.
@@ -2137,7 +2212,7 @@ impl App {
     /// what stands between a keystroke and a prompt that is not there.
     pub fn prompted(&self) -> bool {
         match self.tab {
-            Tab::Chat => self.asked().is_none(),
+            Tab::Chat => !self.asking(),
             _ => self.editing.is_some(),
         }
     }

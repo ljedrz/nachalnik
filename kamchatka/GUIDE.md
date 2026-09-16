@@ -70,8 +70,10 @@ row why it is out, in the projector's words. Item 1 is `▪`, pinned, so the com
 refused if it comes for it. Nothing disappeared: things changed state, and the state is on screen.
 
 A pin is worth most *before* a pass rather than after one, which is what `/compact` is for: it
-lists every item the compactor would take, and takes none of them until `/compact yes`. Read it,
-pin what should stay, and run it again — the pass is worked out afresh each time.
+lists every item the compactor would take and waits, in the prompt's place, for <kbd>y</kbd> or
+<kbd>n</kbd>. The question is pinned rather than modal, so this tab is one keystroke away while it
+stands: come here, <kbd>p</kbd> what should stay, go back and answer. Saying yes works the pass out
+again, so what you just kept is not in it.
 
 Item 7 is `…`, **elided**, which is the third answer between in and out. It is still in the
 request — as the one line the row shows, saying it was compacted away — so the call on row 6 still
