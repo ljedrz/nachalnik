@@ -90,7 +90,11 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             session,
             items,
             tokens,
-        } => format!("session {session}: {items} items, ~{tokens} tokens"),
+        } => format!(
+            "session {session}: {}, ~{} tokens",
+            plural(*items, "item"),
+            thousands(*tokens)
+        ),
         Event::SessionFinished => "nothing more will be recorded".to_owned(),
         Event::Interrupted => "stopped; whatever had arrived is kept".to_owned(),
         // the one event that carries content, because it is the only operation that overwrites
@@ -101,7 +105,9 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             tokens_after,
             was,
         } => format!(
-            "[{id}] {tokens_before} → {tokens_after} tokens; it said: {}",
+            "[{id}] {} → {} tokens; it said: {}",
+            thousands(*tokens_before),
+            thousands(*tokens_after),
             one_line(&was.to_text())
         ),
         Event::ContextUndone {
@@ -109,7 +115,8 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             removed,
             changed,
         } => format!(
-            "{items} items now; {} taken back out, {} put back as they were",
+            "{} now; {} taken back out, {} put back as they were",
+            plural(*items, "item"),
             removed.len(),
             changed.len()
         ),
@@ -118,7 +125,8 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             restored,
             changed,
         } => format!(
-            "{items} items now; {} back in, {} changed again",
+            "{} now; {} back in, {} changed again",
+            plural(*items, "item"),
             restored.len(),
             changed.len()
         ),
@@ -629,10 +637,6 @@ pub(crate) fn charged(usage: &Usage) -> String {
 /// `1 items` in the corner of a screen is the kind of small wrongness that makes somebody wonder
 /// what else is approximate. Only `s` plurals, because every noun on that line is one.
 ///
-/// note: gated with the screen, because the screen is what it is for - a build with no `tui` has
-/// nowhere to put a line whose whole job is to read well, and every count it does print is one a
-/// model is reading.
-#[cfg(feature = "tui")]
 pub(crate) fn plural(n: usize, thing: &str) -> String {
     match n {
         1 => format!("1 {thing}"),

@@ -1076,4 +1076,22 @@ async fn the_context_tab_counts_one_item_as_one_item() {
     let packed = harness.packed();
     assert!(packed.contains("1item,"), "{packed}");
     assert!(!packed.contains("1items"), "{packed}");
+
+    // and so does every other line that counts them for a person. The trace draws the same
+    // sentences, so `1 items now` off an undo is the same wrongness one tab along
+    harness.app.on_event(nachalnik::Event::ContextUndone {
+        items: 1,
+        removed: Vec::new(),
+        changed: Vec::new(),
+    });
+    harness.app.on_event(nachalnik::Event::SessionResumed {
+        session: "s".to_owned(),
+        items: 1,
+        tokens: 12_345,
+    });
+    harness.tab(Tab::Trace);
+
+    let packed = harness.packed();
+    assert!(packed.contains("1itemnow"), "{packed}");
+    assert!(packed.contains("1item,~12,345tokens"), "{packed}");
 }

@@ -83,9 +83,11 @@ minor bump may break you.
   left the context exactly where it was, for as long as it stayed in that band. The floor is now a
   fraction of the threshold rather than a constant, which cannot rise above it; `Trim::under` is
   the pair and the reason it has to be ordered, in one place instead of at the call site.
-- The context tab counts one item as `1 item`. A status line reading `1 items` is the corner of a
-  screen quietly saying it is not looking, and somebody who notices has no way to tell whether the
-  figure beside it is approximate too.
+- Everything that counts items for a person counts one of them as `1 item`, and every token
+  figure beside one is written with its thousands separator: the context tab's own line, a
+  resumed or loaded session, and an undo or a redo. `1 items` is the corner of a screen quietly
+  saying it is not looking, and somebody who notices has no way to tell whether the figure beside
+  it is approximate too - `6 items, ~16342 tokens` was both at once.
 - `/load` takes every spelling `/save` does. A session is two files, so `/save notes.jsonl` writes
   `notes.json` beside the log it was named after - and `/load notes.jsonl` took its argument at its
   word and went looking for `notes.jsonl.json`, which nothing had ever written. Both go through one

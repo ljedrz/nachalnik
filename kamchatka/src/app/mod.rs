@@ -1199,10 +1199,10 @@ impl App {
         self.say(
             Speaker::Note,
             format!(
-                "resumed session {}: {} items, ~{} tokens{}{}",
+                "resumed session {}: {}, ~{} tokens{}{}",
                 self.kernel.session_name(),
-                items.len(),
-                self.kernel.budget().context_tokens,
+                text::plural(items.len(), "item"),
+                thousands(self.kernel.budget().context_tokens),
                 match withheld {
                     0 => String::new(),
                     n => format!(", {n} of which the pane says are not being sent"),

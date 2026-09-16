@@ -10,7 +10,7 @@ use crate::{app::text::thousands, tools::Limits};
 
 use super::{
     App, Did, Proposed, Reply, Speaker, Tab,
-    text::{nothing_to_send, pretty, request_preview},
+    text::{nothing_to_send, plural, pretty, request_preview},
 };
 
 impl App {
@@ -1282,9 +1282,9 @@ impl App {
         self.say(
             Speaker::Note,
             format!(
-                "loaded {} items from session `{}` ({file}); {} of your own {} archived, \
+                "loaded {} from session `{}` ({file}); {} of your own {} archived, \
                  anything pinned stayed, and `u` twice puts the rest back",
-                loaded.len(),
+                plural(loaded.len(), "item"),
                 snapshot.session,
                 standing.len(),
                 match standing.len() {
