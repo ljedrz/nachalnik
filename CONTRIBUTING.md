@@ -35,7 +35,7 @@ docs.rs.
 
 CI (`.github/workflows/ci.yml`) also builds with **default** features (the tests turn both on, so
 nothing else exercises that configuration), checks `nachalnik`, `nachalnik-mcp` and `kamchatka`
-with `--no-default-features`, runs the two keyless examples, and checks the whole workspace on the
+with `--no-default-features`, runs the three keyless examples, and checks the whole workspace on the
 MSRV, **1.88**. Edition is 2024. `RUSTFLAGS: -D warnings` throughout, so a warning is a failure.
 
 The live suite is the only thing that can check that a real API accepts what this crate builds:

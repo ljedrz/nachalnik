@@ -104,6 +104,8 @@ jobs:
         run: cargo run -p nachalnik --example transparency --features selectors --locked
       - name: the compacting example
         run: cargo run -p nachalnik --example compaction --locked
+      - name: the pricing example
+        run: cargo run -p nachalnik --example pricing_a_picture --locked
 
   msrv:
     name: msrv (1.88)

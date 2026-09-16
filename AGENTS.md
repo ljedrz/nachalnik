@@ -104,7 +104,7 @@ cargo doc --workspace --all-features --no-deps   # with RUSTDOCFLAGS=-D warnings
 ```
 
 CI (`.github/workflows/ci.yml`) also builds with **default** features, checks `nachalnik`,
-`nachalnik-mcp` and `kamchatka` with `--no-default-features`, runs the two keyless examples, and
+`nachalnik-mcp` and `kamchatka` with `--no-default-features`, runs the three keyless examples, and
 checks the whole workspace on the MSRV, **1.88**. Edition is 2024, `RUSTFLAGS: -D warnings`
 throughout, so a warning is a failure.
 

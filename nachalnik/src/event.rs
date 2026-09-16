@@ -65,7 +65,13 @@ pub enum Event {
         session: String,
         /// How many items came back.
         items: usize,
-        /// What the projected ones are estimated to cost.
+        /// What the ones sending their content are estimated to cost, summed over the items.
+        ///
+        /// note: the items' own figures, not *the projected total* - which in this crate means
+        /// what [`Projection::messages`](crate::Projection::messages) costs, the figure
+        /// [`Budget::context_tokens`](crate::Budget::context_tokens) carries. The two differ by
+        /// whatever the projector adds or takes away: a reference gains its label, and an elided
+        /// item is a marker here and nothing at all in the sum.
         tokens: usize,
     },
     /// A session was declared finished by its owner.
@@ -177,11 +183,15 @@ pub enum Event {
         meta: Value,
     },
     /// Every item's token count was recomputed, e.g. after the token counter was replaced.
+    ///
+    /// note: the two figures are summed over the items that send their content, which is what
+    /// this event is about - the items' own numbers are the ones that moved. They are not *the
+    /// projected total*; see [`Event::SessionResumed`] for the difference.
     #[serde(rename = "context.recounted")]
     ContextRecounted {
-        /// The projected total before.
+        /// What the items sending their content cost before.
         tokens_before: usize,
-        /// The projected total after.
+        /// And after.
         tokens_after: usize,
     },
     /// The [`Provider`] was set or replaced.

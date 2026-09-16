@@ -1521,6 +1521,7 @@ impl Kernel {
         let from = std::mem::replace(&mut machine.state, to.clone());
         self.emit(Event::StateChanged { from, to });
     }
+
     /// Adds an item to the context, optionally checkpointing it for [`Kernel::undo`] first.
     fn add_item(&self, item: ContextItem, checkpoint: bool) -> ContextId {
         let counter = self.counter();

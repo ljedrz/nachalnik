@@ -336,8 +336,13 @@ impl Content {
         let text = self.to_text();
 
         // the note's own length depends on the number it reports, so settle on a cut that fits
-        // before committing to one
-        let mut cut = limit;
+        // before committing to one.
+        //
+        // note: the limit is a measure of `byte_len` and the cut is an index into `to_text`, and
+        // for a blob or a turn of blocks those are two different strings - a 4 MB picture is over
+        // any limit and names itself in nineteen characters. Starting at the limit would walk
+        // down a character boundary at a time from a number the text never reaches
+        let mut cut = limit.min(text.len());
         let (truncated, dropped) = loop {
             while cut > 0 && !text.is_char_boundary(cut) {
                 cut -= 1;
@@ -350,7 +355,7 @@ impl Content {
             }
             if cut == 0 {
                 // there is no room for the note at all, so spend the budget on content instead
-                let mut cut = limit;
+                let mut cut = limit.min(text.len());
                 while cut > 0 && !text.is_char_boundary(cut) {
                     cut -= 1;
                 }

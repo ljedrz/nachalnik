@@ -5,6 +5,27 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- `Event::ContextRecounted` and `Event::SessionResumed` no longer call their figures the projected
+  total. Both carry `Context::tokens()` - the sum over the items sending their content - and *the
+  projected total* means something else here: what the projected messages cost, which is the figure
+  `Budget::context_tokens` carries and `projection_cost` is the one definition of. They differ by
+  whatever the projector does on the way out, a reference's label and an elided item's marker
+  included. Documentation only; the numbers are the ones they always were.
+- The readme's Google AI Studio invocation named `NACHALNIK_MODEL`, which nothing reads. The live
+  suite reads `NACHALNIK_TEST_MODEL`, and getting it wrong is quiet: the suite falls back to its
+  default model, that endpoint refuses a name it does not serve, and the failures are about tool
+  calls rather than about the variable.
+- `Content::truncate_to` starts its search at the end of the text rather than at the limit. What
+  has to fit is `byte_len` and what is cut is `to_text`, and for a blob or a turn of blocks those
+  are two different strings - a 4 MB picture names itself in nineteen characters - so the search
+  walked down one character boundary at a time from an index the text never reaches. Same result,
+  and `pricing_a_picture` is the third keyless example CI runs now, so the blob path has a run
+  behind it rather than only a unit test.
+
 ## [0.5.2] - 2026-09-14
 
 ### changed
