@@ -836,7 +836,9 @@ impl App {
             if !rest.trim().is_empty() {
                 self.say(
                     Speaker::Error,
-                    "`/limit <tool> <bytes>`, or `/limit` on its own to see them",
+                    // `<subject>`, which is what the rows are and what the table two lines down
+                    // calls them. A limit stopped being a tool's the day one tool did five things
+                    "`/limit <subject> <bytes>`, or `/limit` on its own to see them",
                 );
                 return;
             }
