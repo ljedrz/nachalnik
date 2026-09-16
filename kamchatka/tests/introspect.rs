@@ -1076,6 +1076,25 @@ async fn the_expensive_list_ranks_by_what_a_row_sends_not_by_what_it_holds() {
         said.contains("thinking this endpoint will not take back"),
         "the figure above the list does not say what the fourth way of being held back is: {said}"
     );
+
+    // and it divides the four in place rather than counting them off. It used to end `Only the
+    // first three are yours to change`, meaning the first three causes - and a live session read
+    // it as items 1, 2 and 3, which is a fair reading when every other number on the screen is an
+    // item id and the table below opens with a column of them. It spent the next four calls
+    // hunting for what items 1-3 were hiding, reached outside the sandbox, and dumped the whole
+    // log looking for them
+    assert!(
+        !said.contains("the first three"),
+        "an ordinal here reads as item ids, because the table under it is a column of them: {said}"
+    );
+    assert!(
+        said.contains("three states you set"),
+        "so the three that are the caller's are named as states instead: {said}"
+    );
+    assert!(
+        said.contains("which is not yours to change"),
+        "and the fourth is marked where it is said, not by counting: {said}"
+    );
 }
 
 /// And `look` reports both figures, because one of them is always the wrong answer to something.

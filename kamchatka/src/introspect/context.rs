@@ -690,6 +690,16 @@ fn around(needle: &str) -> impl Fn(&str) -> String + '_ {
 /// correction the counter has worked out from the difference, because the estimate is made without
 /// the model's tokenizer and is usually low. An agent budgeting against a number nobody has
 /// checked is the thing this crate exists not to do quietly.
+///
+/// note: the four ways of being held back are named and then divided in place, rather than counted
+/// off by an ordinal. It used to end `Only the first three are yours to change`, which meant the
+/// first three of those four causes and was read by a live session as *items 1, 2 and 3* - an
+/// understandable reading, because every other number on this screen is an item id and the table
+/// under it opens with a column of them. The model spent the next four calls hunting for what
+/// items 1-3 were hiding, reached outside the sandbox for `/proc/self/fd/0`, and then dumped the
+/// whole log with `since: 0` - a 2,938-token item that was the most expensive thing it carried for
+/// the next forty turns. An ordinal in a tool whose output is a numbered table has two readings and
+/// costs whatever the wrong one costs.
 fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
     let budget = kernel.budget();
     let going = Going::of(kernel);
@@ -711,8 +721,9 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
 
     let mut out = format!(
         "the next request is ~{} tokens{room}\n  {} in the context, {} in the tool definitions\n\
-         ~{} tokens are being held back - excluded, archived, elided to a marker, or thinking \
-         this endpoint will not take back. Only the first three are yours to change\n",
+         ~{} tokens are being held back: excluded, archived or elided to a marker - three states \
+         you set, and `amend` takes any of them off again - or thinking this endpoint will not \
+         take back, which is not yours to change\n",
         thousands(budget.used()),
         thousands(budget.context_tokens),
         thousands(budget.tool_tokens),

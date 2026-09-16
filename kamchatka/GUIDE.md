@@ -712,8 +712,9 @@ that says what the rule is.
 ```text
 the next request is ~48,120 tokens of 128,000 (38% full, ~79,880 left)
   47,343 in the context, 777 in the tool definitions
-~34,512 tokens are being held back - excluded, archived, elided to a marker, or thinking this
-endpoint will not take back. Only the first three are yours to change
+~34,512 tokens are being held back: excluded, archived or elided to a marker - three states you
+set, and `amend` takes any of them off again - or thinking this endpoint will not take back,
+which is not yours to change
 the last request really cost 52,905 in / 214 out, as the provider counted it
 the estimate is corrected by x1.09, learned from 6 request(s)
 

@@ -9,6 +9,20 @@ minor bump may break you.
 
 ### changed
 
+- **`budget` names the three ways of being held back that are the model's, instead of counting
+  them off.** The line ended `Only the first three are yours to change`, which meant the first
+  three of the four causes it had just listed. A live session read it as *items 1, 2 and 3* - and
+  that is a fair reading, because every other number on that screen is an item id and the table
+  directly under the sentence opens with a column of them. It went looking for what items 1-3 were
+  hiding, found nothing, reached outside the sandbox for `/proc/self/fd/0`, and then dumped the
+  whole session log with `since: 0`: a 2,938-token item that was the most expensive thing it
+  carried for the next forty turns, from a sentence meant to save it work.
+
+  So the ordinal is gone rather than clarified. The three that `amend` can take off are named where
+  they are listed, and the fourth is marked as the endpoint's in the same breath. An ordinal in a
+  tool whose output is a numbered table has two readings, and it costs whatever the wrong one
+  costs.
+
 - **A release archive is the binary and `kamchatka.json`, and nothing else.** The settings file is
   the one thing that is worth more beside the binary than it is on a web page: every setting there
   is, named and at its default, so somebody who is tired of typing the same four arguments runs
