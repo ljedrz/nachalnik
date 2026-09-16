@@ -90,7 +90,16 @@ ignore = "0.4"
 # `event-stream` so that the terminal's keys arrive as a `Stream` and can be selected on
 # alongside the kernel's events; the same crossterm `ratatui` is built against
 crossterm = { version = "0.29", features = ["event-stream"], optional = true }
-ratatui = { version = "0.30", optional = true }
+# three of the five defaults. `macros` is out because `ui` builds its layout from calls rather
+# than from a declaration, and `all-widgets` because its only member is the calendar. LTO drops
+# both from the binary either way, so what this buys is a crate fewer to compile and a manifest
+# that says which widgets the program is made of
+ratatui = { version = "0.30", default-features = false, features = [
+    "crossterm",
+    # the solved layout is kept across frames, and `ui` redraws the whole screen on every tick
+    "layout-cache",
+    "underline-color",
+], optional = true }
 # the editing an input line is expected to do - words, selection, undo, paste - which is not
 # something this crate should be writing
 ratatui-textarea = { version = "0.9", optional = true }

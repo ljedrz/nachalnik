@@ -20,6 +20,9 @@ minor bump may break you.
   documents are out; they are a link away and always current.
 - One fewer direct dependency: `async-trait` is the runtime's, and every `#[async_trait]` here is
   already written against `nachalnik`'s re-export. Depending on it twice let the two drift.
+- `ratatui` is taken with three of its five default features. `macros` is out because `ui` builds
+  its layout from calls rather than from a declaration, and `all-widgets` because its only member
+  is the calendar.
 
 ### added
 
