@@ -71,20 +71,29 @@ const TAKES: [(&str, &[&str]); 13] = [
     ("budget", &[]),
     ("request", &[]),
     ("search", &["ids", "text", "take"]),
-    // note: `label` is on the five that move because they read it - not to move anything by, but
-    // to answer a call that named one instead of `ids` with the `select: "label:…"` it meant.
-    // An argument a tool answers about is not one it ignored, which is the only thing this table
-    // is for; taking it off here would replace that answer with a worse one
-    ("elide", &["ids", "select", "label", "reason"]),
-    ("exclude", &["ids", "select", "label", "reason"]),
-    ("archive", &["ids", "select", "label", "reason"]),
-    ("pin", &["ids", "select", "label", "reason"]),
-    ("restore", &["ids", "select", "label", "reason"]),
+    ("elide", MOVES),
+    ("exclude", MOVES),
+    ("archive", MOVES),
+    ("pin", MOVES),
+    ("restore", MOVES),
     ("revise", &["ids", "content", "reason"]),
     ("note", &["content", "label", "pin", "reason"]),
     ("undo", &["steps", "reason"]),
     ("redo", &["steps", "reason"]),
 ];
+
+/// What the five that move an item take, which is one list because they are one function.
+///
+/// note: named rather than written out five times, and the difference is not brevity. Five
+/// identical rows are five chances to disagree about one fact, and a mutation run found exactly
+/// that: `label` taken off `restore` alone changed a real answer - a `restore` that named a label
+/// instead of `ids` would stop being told the `select: "label:…"` it meant - and nothing in the
+/// workspace noticed, because the test for that answer asks `elide`. One list cannot drift.
+///
+/// note: `label` is in here because [`Amend::moved`] reads it. Not to move anything by: to answer
+/// a call that gave one instead of `ids` with the spelling it wanted. An argument a tool answers
+/// about is not one it ignored, which is the only thing this table is for.
+const MOVES: &[&str] = &["ids", "select", "label", "reason"];
 
 /// Reads the context and changes it: what is in it, what it costs, and what goes into the next
 /// request.
