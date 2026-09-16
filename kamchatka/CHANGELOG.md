@@ -9,3159 +9,845 @@ minor bump may break you.
 
 ### changed
 
-- **`budget` names the three ways of being held back that are the model's, instead of counting
-  them off.** The line ended `Only the first three are yours to change`, which meant the first
-  three of the four causes it had just listed. A live session read it as *items 1, 2 and 3* - and
-  that is a fair reading, because every other number on that screen is an item id and the table
-  directly under the sentence opens with a column of them. It went looking for what items 1-3 were
-  hiding, found nothing, reached outside the sandbox for `/proc/self/fd/0`, and then dumped the
-  whole session log with `since: 0`: a 2,938-token item that was the most expensive thing it
-  carried for the next forty turns, from a sentence meant to save it work.
-
-  So the ordinal is gone rather than clarified. The three that `amend` can take off are named where
-  they are listed, and the fourth is marked as the endpoint's in the same breath. An ordinal in a
-  tool whose output is a numbered table has two readings, and it costs whatever the wrong one
-  costs.
-
-- **`amend` says which way the figure went when a change makes the request *smaller*, too.** Growth
-  has been accounted for since a note was blamed on an elision it had not performed; a drop was
-  left as two numbers to subtract, on the reasoning that a drop is what the caller asked for and
-  needs no explaining.
-
-  It needs explaining. A live session pruned three times running, was told `~9,679, from ~10,273`,
-  then `~9,810, from ~9,840`, then `~10,521, from ~11,137` - three drops, each one stated with the
-  figure it dropped from - and called all three of them growth, because it was measuring against a
-  number it remembered from a `budget` several turns earlier rather than the one in the sentence it
-  had just been handed. It concluded that pruning *adds* cost, acted on the conclusion with `undo
-  steps: 6`, and bought itself 8,619 tokens. The sentence now says the direction in words, and says
-  where the figure it is measured against comes from: what the request cost when the change found
-  it, which is not what an earlier `budget` said it would.
-
-- **And `amend` says when a change moves the figure not at all.** The third arm of the same thing.
-  A pin changes what compaction may take rather than what the request carries, so the two figures
-  come out identical - and a live session read `now ~6,097 tokens, from ~6,097` as *"huh, pinning
-  increased the cost slightly?"*. Two numbers that were not even different were still read as a
-  rise, which says the arithmetic was never what was being done. It is said in words now, and the
-  sentence also rules out the other reading of an unmoved figure: a change that quietly did not
-  take.
-
-- **The status line ends at the figures.** `F1 for the keys` is off it. The same key is offered on
-  the first screen anybody sees, by `GREETING`, and again by every `there is no /x` - three places
-  for one key, and the one that gave way is on the line whose right-hand end a narrow terminal
-  loses first. `esc stops it` stays, because what a running turn can be stopped with is not said
-  anywhere else. What the ladder in `shrink_address` is protecting is now only the figures, which
-  is what it was always for.
-
-  The live suite stops narrowing the terminal to check which parts of the line give way. That
-  ladder is drawn from a string and a width - it needs no endpoint and no token, and `edges.rs`
-  already pins every rung of it at widths it chooses. There it was worse than redundant: it tied
-  the suite's result to how long the configured host happens to be, and it went red for a hint
-  taken off the line hours after the offline suite it belongs in had gone green.
-
-- **A release archive is the binary and `kamchatka.json`, and nothing else.** The settings file is
-  the one thing that is worth more beside the binary than it is on a web page: every setting there
-  is, named and at its default, so somebody who is tired of typing the same four arguments runs
-  `kamchatka --config-file kamchatka.json` and edits it. A `cargo install` copies no files, so an
-  archive is the only way it reaches anybody who did not clone the repository.
-
-  Out go the licence and the four documents. A copied document is a document that goes out of date
-  in somebody's downloads folder while the one it was copied from is corrected - the readme, the
-  guide, the running notes and the changelog are a link away and always current - and the licence
-  is in the repository, which is not a thing anybody downloads a binary to read.
+- `budget` names the three held-back states that are the model's (`excluded`, `archived`, `elided`)
+  instead of counting them off as "the first three". Models read the ordinal as item ids.
+- `amend` says in words which way the request figure went - smaller, larger or unchanged - and that
+  the `from ~` figure is what the request cost when the change found it, not what an earlier
+  `budget` reported. Models compared against a remembered figure and read drops as growth.
+- The status line ends at the figures; `F1 for the keys` is off it. `esc stops it` stays. The live
+  suite no longer tests how the line narrows - `edges.rs` pins that offline.
+- A release archive is the binary and `kamchatka.json`, and nothing else. The licence and the four
+  documents are out; they are a link away and always current.
 
 ### added
 
-- **The requests say what kind of program is making them, not only which one.** `cli-agent` and
-  `programming-app`, in `X-OpenRouter-Categories` beside the referer and the title that were
-  already going out. Attribution without them reaches the rankings, which are a list of who spent
-  the most tokens; the [marketplace](https://openrouter.ai/apps) is the half organised by what a
-  program is, and an app filed under nothing is not in it.
-
-  Two because two per request is the limit, and these two because they are simply true:
-  `cli-agent` is "terminal-based coding assistants" in OpenRouter's own words, which is the whole
-  of what this is, and `programming-app` is the wider group it also belongs to. The rest of that
-  group is somebody else - this is not an editor plugin, it does not run in anybody's cloud, and
-  it builds no apps.
-
-  Everything that was already true of attribution is still true of this: it goes **only** to
-  OpenRouter, because `KAMCHATKA_BASE_URL` points this at anything and two words volunteered to
-  somebody's own machine are still two words nobody asked to send, and `KAMCHATKA_NO_ATTRIBUTION`
-  turns the whole of it off. What goes out is the name of the program and what kind of program it
-  is - not the key, not the model, not a syllable of what anybody asked.
-
-  Nothing checks the spelling, here or in the provider, because there is nothing to check it
-  against: OpenRouter drops a category it does not recognise without an error, so a typo would
-  fail no request and no test and show up only as a page filed under nothing.
+- `X-OpenRouter-Categories: cli-agent,programming-app` beside the referer and title, which is what
+  puts an app in the [marketplace](https://openrouter.ai/apps) rather than only in the rankings.
+  Sent only to OpenRouter; `KAMCHATKA_NO_ATTRIBUTION` turns all attribution off. An unrecognised
+  category is dropped silently by OpenRouter, so nothing here checks the spelling.
 
 ## [0.11.0] - 2026-09-15
 
 ### added
 
-- **`grep` answers with the files that matched, when that is the question.** `files_only` is what
-  `grep -l` is for: every file that matched and how many matches it has, most first, instead of the
-  lines. Found by watching a live model open with `grep tools` over the whole tree and spend its
-  entire turn on what came back.
+- `grep` takes `files_only`: every file that matched and how many matches it has, most first,
+  instead of the lines. Against this repository a broad search costs 3,223 tokens of lines and never
+  reaches the file in question; `files_only` costs 894 and sees all 205 files. A capped answer names
+  it first among the things to try.
+- `grep` and `glob`, declaring `read` rather than `shell` - so a read-only session can search. Built
+  on ripgrep's engine (`grep-searcher`, `grep-regex`, `ignore`, `globset`) linked in, so no `rg` on
+  the machine and no second process for the sandbox.
 
-  Measured against this repository, that pattern costs **3,223 tokens** of lines - and because the
-  walk is alphabetical and the cap fires at a hundred matches, every one of them comes from files
-  beginning with `.github/`. It never reaches the file the question was about. The same search with
-  `files_only` costs **894**, sees all 205 files, and puts `kernel/mod.rs` and `command.rs` near the
-  top. So a capped answer now names `files_only` first among the four things to try, because it is
-  the one that answers the situation rather than working around it.
-
-  Ranked by how much each file matched rather than by path, which is the one thing here that does
-  not answer in walk order: the question is *where does this live*, and the file with twelve
-  matches is the answer to it far more often than the file with one. The path breaks a tie, so it
-  is still the same answer twice for the same tree. Everything else is the search it already was -
-  the same walk, the same skips, the same path rules, the same first line accounting for what was
-  not read.
-
-- **`/note`: something the model should know, without asking it to answer.** Everything a person
-  could say to a model went in as a *message*, and a message starts a turn - so telling it a fact
-  it will need in four turns' time cost a request, an answer, and an "understood" nobody wanted.
-  Saying it with the next question buries it; saying it afterwards is too late. `/note the CI
-  runner has no network` puts it in the context and stops there.
-
-  It is `/attach` with a message instead of a file, down to what it does not do: nothing is sent,
-  nothing is said about the item (the chat derives that line from the item itself, so there is one
-  account of it rather than two), and it is not pinned, because what is worth keeping from
-  compaction is a judgement about the note rather than about notes - `p` is one key on the row.
-
-  It goes in as `ContextItem::memory`, a reference whose source is `memory`, which is the
-  constructor the runtime already had for exactly this and which nothing here was calling. The
-  difference from a user message is *not* the wire - a reference projects as a user-role message
-  just as an attached file does, so a note and then a question is two user messages either way.
-  It is what the item is to everything that reads it: the model gets `note:` in front of the words
-  and can tell a fact it was handed from a thing it was asked, `/exclude memories` names every one
-  of them and nothing else, and the chat draws it as what went in rather than as a line somebody
-  spoke.
-
-- **`grep` and `glob`: finding things costs `read` rather than `shell`.** There were four tools and
-  none of them could look for anything, so every "where is this defined?" went through `shell` -
-  which subsumes every other capability. A session that only wanted to be *asked about* a
-  repository had to hand over the one permission that answers for everything, and a read-only run
-  was not possible at all. These two declare `read`, and the path rules that bind `read` bind them.
-
-  Underneath is ripgrep's own engine - `grep-searcher`, `grep-regex`, `ignore`, `globset` - linked
-  in rather than shelled out to. The `rg` binary is those libraries plus a printer, so this is not
-  a search written here; it also needs no `rg` on the machine, and adds no second process for the
-  sandbox to account for. The printer is the half worth writing:
-
-  ```text
-  3 match(es) in 2 file(s) · 205 file(s) searched
-  skipped: 1 file(s) a path rule says to ask about, 2 binary file(s)
-  src/ui/mod.rs:413:fn draw_search(frame: &mut Frame, app: &mut App, area: Rect) {
-  ```
-
-  **The cut is at matches, not at bytes.** A byte limit takes the tail of the last file searched
-  and leaves the model believing it has seen the rest - the thing that makes an agent run the same
-  search three times. A hundred matches, a line cut at two hundred characters, and a first line
-  that says it stopped and what to do about it. The byte limit is still there underneath, listed by
-  `/limit` like every other, as the backstop for one pathological line rather than as the thing
-  that shapes an answer. It leads rather than trails because an output limit cuts from the end,
-  which is what `shell`'s exit line already knew.
-
-  **And the answer accounts for what it did not read.** The count of files searched is what tells
-  "it is not there" from "nothing was opened", and the `skipped:` line names each reason. The one
-  that had to be built rather than linked is the path rules: `Careful` matches them against the
-  path *in the call*, and a search names a directory - so `.env*: ask` bound `read` and would have
-  waved a walk straight through. A rule that is not `allow` now stops the walk opening that file,
-  since "ask me first" is not a thing nine hundred files can honour, and the nearest honest thing
-  to it is not to read them and to say how many.
-
-  Three walking rules, each of them a thing a model would otherwise conclude something false from.
-  What a `.gitignore` hides is skipped and `.git` always, because it is a database rather than
-  anything anybody wrote. Hidden files *are* searched, because a model that cannot find
-  `.github/workflows` concludes the file does not exist, and an absence it cannot account for is
-  worse than a few extra files opened. And the order is sorted rather than the parallel walker's,
-  because the answer becomes a context item: two identical searches differing only in their order
-  are two items nobody can diff and a budget pays for twice.
-
-  A symbolic link is read where it points inside the working directory and counted where it points
-  out, which is `Reach::allows` answering - the same call, with the same answer, that `read` makes
-  about the same path. That is the second rule this had: the first was to skip every link, and a
-  live run in this repository argued it down, where five crates each carry a `LICENSE-MIT` link to
-  the file at the root and every answer to every search led with `skipped: 5 symbolic link(s)`.
-  Noise on a line whose whole job is to be rare, and a claim that something was withheld when
-  nothing was.
-
-- **A shell result says how it went in colour.** Every line of a tool result is drawn quiet, which
-  is right for the wall of output and wrong for the one line somebody is waiting for: the first
-  line of a `shell` result is what the command exited with, and it read the same as the output
-  under it. It is now green where the command reported success, red where it reported a failure,
-  and yellow where it never got to report - stopped at the person's request, killed by a signal,
-  or a status that could not be read at all. The output under it is untouched, since a line that
-  stands out only works while the ones around it do not.
-
-  The middle of those three is a unix reading. Windows has no signal to report, and the shell
-  there hands a killed child back as an ordinary exit code - `kill -9` arrives as `2304` - so a
-  command that was killed reads red, and nothing can tell it from a command that really exited
-  `2304`. What is yellow on every platform is the stop somebody asked for, which this program does
-  itself and does not have to read off a status.
-
-  Three and not five. The fourth thing somebody would want - a `1` from `grep` meaning *no match*
-  rather than a fault - is deliberately absent, because telling those apart means knowing what the
-  command was, and a guess that paints a working pipeline red or a real failure yellow is worse
-  than the number on its own. Yellow is therefore not "a small failure", which nothing in a status
-  line can tell: it is *the command never reported*.
-
-  The colours are the three this program already uses for this question - `allow`/`ask`/`deny` on
-  the permissions tab, and the budget bar as it fills - rather than a fourth vocabulary to learn.
-  And the reading of the line lives in `tools::shell` beside the writing of it, as `Exit`, because
-  a colour worked out at the drawing end from a string it does not own is a second opinion about
-  what a result means; the two drift the first time the wording changes. A `debug_assert` in the
-  tool checks that what it wrote reads back as what it meant, so every test in the crate that runs
-  a command is also a test of that.
-
-- **A resumed session reads back what its items used to say.** A `Snapshot` carries items and not
-  events, and the text a rewrite replaced is an event - `context.replaced`, the one event in the
-  runtime that carries content, which is the whole reason it does. So `-r` came back with every
-  `v1` page empty, while the words were sitting in a file next to the one it was reading: `/save`
-  writes the `.jsonl` of every event and the `.json` snapshot together, under one name.
-
-  `App::recall` now opens the `.jsonl` of the same name beside whatever path `-r` was handed, and
-  walks its `context.replaced` records through the same `App::remember` the live path uses - so a
-  resumed `v1` is the `v1` the session had, eight deep, in the order it happened, and an item
-  whose rewrite was undone is deduped by the line that dedupes it live. Only for items that came
-  back: a rewrite of something an `undo` removed before the snapshot was written is history for
-  an item this session does not have, and a resumed kernel has no undo stack to bring it back on.
-  The resume line says what it picked up, beside the item and token counts it already said.
-
-  Best effort, deliberately. The session has resumed by the time the log is read, so nothing
-  found there is worth failing over: a record that is absent, unreadable or cut off mid-line
-  costs a page under `enter` rather than a session, and a line that will not parse is skipped
-  rather than ending the walk - the last line of a log from a run that was killed is the one most
-  likely to be half a record, and the ones before it are fine.
-
-  What it does not do is carry the lineage forward. A resumed session's own log starts at
-  `session.resumed`, so a `/save` of it writes a record with none of these rewrites in it, and a
-  resume of *that* file reads nothing back. Two hops is the earlier `.jsonl`, which is what an
-  append-only log is for.
-
-- **The window's frame takes a colour from the settings file.** `"border": "#7aa2f7"` — six hex
-  digits, `#` optional — sets the frame and everything else that is yellow to say *the keys are
-  here*: the active tab, the prompt while it has them, a permission question you can answer where
-  you stand. Left out or `null`, it stays the terminal's own yellow, which is the right default
-  precisely because it is not a hex: a window with nothing configured belongs to whatever palette
-  it is opened in, and `#ffff00` would look right in one theme and wrong in every other.
-
-  One setting rather than one per border, because the four are one statement. They are all that
-  colour to say the same thing, and a key that moved three of them would leave the fourth reading
-  as a different kind of thing rather than as the one somebody forgot.
-
-  It does not touch the vocabulary. `ask` on the permissions tab, a budget bar past seven tenths,
-  a command that was killed, a pinned row — those are yellow because yellow *means* something
-  there, and they stay yellow against a frame of any colour. Red is left alone for the same
-  reason: a question nobody has come back to is red whatever you set, or the difference between
-  *answerable now* and *still waiting* would be configurable away by accident.
-
-  This is the one key in the file with no argument behind it, which is a decision. Every other
-  setting stands in for something you would otherwise type, and nobody types a colour twice — it
-  is picked once to sit beside a terminal theme and then never thought about again, which is the
-  thing a file is for and the command line is not. A colour that is not six hex digits stops the
-  program and names the file and the form, in a headless run too: one file is valid everywhere or
-  invalid everywhere, rather than one that works until somebody opens it on a terminal.
-
-- **A release attaches a Linux binary.** Until now the only way to have this program was
-  `cargo install kamchatka` and a toolchain; a `kamchatka-v*` tag now builds a static
-  `x86_64-unknown-linux-musl` binary and attaches it to the GitHub release, with a `sha256` and
-  the licence, readme, guide and running notes beside it.
-
-  Static musl rather than glibc, so what comes down runs wherever the kernel is new enough rather
-  than wherever the distribution is - there is no glibc floor to read off a download page. The
-  sandbox survives the change and that was the thing worth checking before shipping a single file
-  that claims to confine what it runs: the whole of this crate's suite passes against that target,
-  the Landlock tests included, `network: deny` still refused by the kernel rather than by reading
-  the command.
-
-  The release profile earns its keep here for the first time, since until there was a binary to
-  publish nothing in this workspace was built in release. Measured 2026-09-15 on that target:
-  23.3MB at the defaults, 14.3MB stripped, and 10.8MB with fat LTO and one codegen unit, against
-  22s and 72s to build. A build that happens once per tag can afford the slow half of that trade.
-  `panic = "abort"` would shave more and is deliberately not set: a panicking tool is reported and
-  the turn carries on, and aborting would take the session with it.
-
-- **A permission question draws an edit as a diff.** `edit` is the call where saying yes to the
-  wrong thing is hardest to notice: two blocks of near-identical text, one above the other, and
-  which of them is on its way out was told only by the three-letter word at the top of each. The
-  value of `old` is now red and the value of `new` green — the colours a fenced diff already gets
-  on the chat tab — so the pair reads as what it is before a word of it has been read.
-
-  The value and not the name, because what is green should be exactly the text that would end up
-  in the file; a green `new:` would be the panel labelling its own structure in the vocabulary it
-  has just borrowed for the contents. By argument name rather than by tool, so an MCP tool whose
-  arguments are called `old` and `new` reads the same way, and a tool that names them something
-  else is drawn as it always was.
-
-  The terminal's own red and green rather than a hex pair, for the reason the highlighter gives:
-  this program does not know what is behind them. That the panel can already be red is not a
-  clash — the border's red says nobody is at the keys, and this one arrives with a green beside it
-  and a pair of colours is what a diff is. Nothing else in the question is either colour.
+  The cut is at matches, not bytes: a hundred matches, lines cut at two hundred characters, and a
+  first line saying it stopped and what to do. The answer reports files searched and a `skipped:`
+  line naming each reason, so "it is not there" can be told from "nothing was opened". A path rule
+  that is not `allow` stops the walk opening that file. `.gitignore` is obeyed and `.git` always
+  skipped; hidden files *are* searched. Results are sorted, so two identical searches are one
+  context item. A symlink is read where it points inside the working directory.
+- `/note TEXT` puts a fact in the context without starting a turn. Goes in as `ContextItem::memory`,
+  so the model sees `note:` in front of it and `/exclude memories` names every one. Not pinned.
+- A shell result's exit line is coloured: green for success, red for failure, yellow where the
+  command never reported - stopped by the person, killed by a signal, or an unreadable status. On
+  Windows a killed child arrives as an ordinary exit code, so only this program's own stop is yellow
+  everywhere. The reading lives in `tools::shell` as `Exit`, beside the writing of it.
+- A resumed session reads back what its items used to say. A `Snapshot` carries items, not events,
+  so `-r` came back with every `v1` page empty; `App::recall` now walks the sibling `.jsonl`'s
+  `context.replaced` records. Best effort - a missing or truncated log costs a page, not a session.
+  It does not carry lineage forward: a resumed session's log starts at `session.resumed`.
+- `"border": "#7aa2f7"` in the settings file sets the window frame and everything else that is
+  yellow to mean *the keys are here*. Left out or `null`, it stays the terminal's own yellow. It
+  does not touch the vocabulary: `ask`, a full budget bar, a killed command and a pinned row stay
+  yellow, and red is left alone. A value that is not six hex digits stops the program, headless too.
+- A release attaches a static `x86_64-unknown-linux-musl` binary, built from a `kamchatka-v*` tag,
+  with a `sha256`. Static musl, so there is no glibc floor; the whole suite including the Landlock
+  tests passes against that target. `panic = "abort"` is deliberately not set - a panicking tool is
+  reported and the turn carries on.
+- A permission question draws an `edit` as a diff: `old` red, `new` green. By argument name rather
+  than by tool, so an MCP tool using those names reads the same way.
 
 ### changed
 
-- **What `--no-sandbox` turns off is every tool, and it said the shell.** `--no-sandbox` sets
-  `Reach::confined` as well as dropping the Landlock ruleset, and an unconfined `Reach` hands back
-  every path untouched - so `read` of `~/.ssh/id_rsa` is a file rather than a refusal. The flag and
-  `wiring::Setup::confine` both described it as the shell's, which is the half that would let
-  somebody turn it off for one command believing the other five still held themselves to the
-  working directory. `SECURITY.md` had it right; the two places a person actually reads did not.
-
-- **`--compact` said the oldest tool results are *dropped*.** They are elided - replaced by a
-  marker, still answering their call, one keystroke from being spent again - which is the
-  distinction the whole `held` column exists to draw. The word a flag uses is where somebody learns
-  the vocabulary.
-
-- **The tool descriptions, read the way a model reads them.** Rendered the ten definitions as they
-  go out - 3,356 tokens on every request, paid before anything is said - and went through them.
-
-  One was **false**: `grep` and `glob` both claimed to skip symbolic links, which stopped being
-  true when a link pointing inside the working directory became an ordinary file with a second
-  name. One was **advice the model could not take**: `read` said "a shell command is the way to
-  read part of one", which is the one answer unavailable in a session that refuses the shell - and
-  a worse answer than `grep` with a `path` even where it is available. It now names `grep`, and
-  says what that gets you: ten lines either side of a match, and no more, so it is not promising a
-  function body.
-
-  The rest was length. The shared `PATH_ARG` restated its own first sentence, in five schemas on
-  every request. `grep`'s description enumerated four kinds of skip that the answer already reports
-  at the moment one applies - so it now says the one rule that cannot be seen from the outside
-  (`.gitignore` obeyed, hidden files searched) and leaves the rest to the line under the header.
-  `grep`'s `glob` filter and `glob`'s own pattern say one thing from one string rather than two
-  descriptions of one language.
-
-- **A `context` wider than the answer gives says so instead of clamping in silence.** Watched live:
-  a model asked for twenty lines either side, got ten, asked again for twenty-five and got the same
-  answer back - a request spent on a ceiling nothing had mentioned. It is the compaction marker's
-  lesson one tool along, and the same fix: the answer now names the ceiling and what was asked for.
-  Told once, the same model's next call asked for ten and moved on; the question that had cost
-  8,760 tokens of whole-file `read` cost 1,070.
-
-- **`Going` is `#[non_exhaustive]`.** It gained a field this cycle - `holds`, so that what an item
-  is holding and what it is sending are counted with one counter at one moment - and a struct of
-  public fields that anybody may build with a literal cannot gain one without breaking them. It is
-  an answer rather than a request, `Going::of` is where it comes from, and nothing in this
-  workspace or outside it builds one by hand; saying so costs a caller nothing and makes the next
-  field a patch instead of a major. The first struct in the workspace to carry the attribute every
-  public enum already does, for the reason they carry it.
-
-- **An argument a model quoted is read, and one nobody can read stops the search.** `grep`'s
-  `context` and `files_only` were read with a bare `as_u64`/`as_bool`, so `"context": "3"` and
-  `"files_only": "true"` - which models write often enough - became the default with nothing said.
-  This is `introspect::log`'s scar in a second place, and it is sharper here: the default for
-  `files_only` is the *expensive* answer, so a swallowed argument costs three thousand tokens and
-  reads as the only answer available. A quoted number or `"true"` is now taken as what it plainly
-  is, and a word where one of those belongs refuses the call rather than searching for something
-  else than was asked.
-
-- **<kbd>up</kbd> in an empty prompt puts the last message back.** A message typed into a running
-  turn waits for the end of it, and until now that was the last anybody could do about it:
-  `typed_ahead` holds one, the newest silently replaces it, and the only way to change what was
-  waiting was to send a second message and hope the replacement was what you meant. `up` hands it
-  back to the prompt, where it can be read, changed, sent again - or left there, which is how it is
-  dropped, since nothing is queued afterwards and nothing goes in when the turn ends.
-
-  With nothing waiting, the same key puts back a copy of the last line that was sent - the
-  question you just asked, to read again or ask differently. The same key for both, because to
-  somebody pressing it they are one thing: *the last message*. Which of the two it is decides only
-  what happens to it - a waiting message is taken, since editing a copy of something still queued
-  as it was is not editing it at all, and a sent one is copied, since it is in the context.
-
-  One deep, deliberately. A prompt that walked back through a session would be a second history
-  beside the context tab, which holds every message already and says more about each of them than a
-  prompt can show. The thing wanted often enough to need a key is the last one.
-
-  And only from an empty prompt. `up` on a line being typed still moves the cursor, and at the top
-  of the box it still scrolls the conversation, so nothing that already did something does
-  something else now. The line saying a message was queued stays on the transcript when it is taken
-  back - it was said, and this program does not rewrite what it has said - with a line under it
-  saying nothing is waiting any more, which is what accounts for the message no longer being drawn
-  at the end of the conversation.
-
-  `down` puts a recalled line away again, while the prompt still says exactly what came back. Not
-  "while something was recalled": a word typed onto the end makes it a message somebody is
-  writing, and a key that emptied the box then would be the worst kind of shortcut. What it
-  compares against is what is in the box.
-
-- **<kbd>←</kbd> and <kbd>→</kbd> move within a `/` query.** The search box could be typed into and
-  backspaced, and that was the whole of it: a mistake four letters back cost the four letters after
-  it, retyped. It now has a cursor. Typing goes in where it is, <kbd>backspace</kbd> takes out what
-  is behind it, <kbd>delete</kbd> what is in front of it - the key that only starts meaning
-  something once there is a cursor to be behind a character - and the `▏` in the box is drawn where
-  the cursor is rather than always at the end, so the box shows where the next letter lands.
-
-  Those two keys, and no others. Neither pane uses <kbd>←</kbd> or <kbd>→</kbd> - the one place
-  they mean something on the context tab is an open item, and an overlay takes the keys before the
-  box sees them - so this is two keys that were doing nothing, not two taken from the rows.
-  <kbd>↑</kbd> <kbd>↓</kbd> and the paging still belong to the pane, because the point of filtering
-  eight hundred events down to nine is to read the nine. So do <kbd>home</kbd> and <kbd>end</kbd>,
-  for that reason and one more: <kbd>g</kbd> and <kbd>G</kbd> are what reach the ends of a list
-  everywhere else here, and while the box is open a letter is a letter - those two keys are all
-  that is left of them.
-
-- **<kbd>ctrl+l</kbd> takes this program's own lines off the chat.** The `·` notes about what it
-  just did, and the answers it gave to a key: a session that excludes eleven items one at a time
-  has eleven lines saying so, interleaved with the run somebody is trying to read. Each was worth
-  saying once. None of them is worth keeping, and until now none of them could be got rid of
-  except by scrolling past.
-
-  What the key means in a shell, narrowed to the only thing on this screen that is safe to clear.
-  The conversation stays, because the conversation *is* the context: nothing here hides an item,
-  which is the context tab's to do and says so on the row afterwards. A line still arriving stays
-  too - only a streamed answer is ever open, and what must never happen is a line vanishing
-  mid-sentence.
-
-  Nothing is said to report that it happened, which would be the first line of the pile it just
-  cleared, and the trace is untouched: it is the record, and this is a screen.
-
-- **An edit at the terminal rewrites the item instead of superseding it.** <kbd>e</kbd> committed
-  a *new* item and left the original behind as a row of its own, marked `~`, reading
-  `superseded: replaced by item 8`. That row said what the `v1` page under <kbd>enter</kbd>
-  already said - and it said it second, because a terminal edit was copying the item's version
-  history onto the replacement anyway. Two mechanisms for "what did this say before?", one of
-  which cost three things to keep upright.
-
-  A state to carry over by hand, because a new item starts `Active`: editing a pruned item
-  quietly put it back into the next request until that was found, and an archived one promoted
-  the whole of an oversized tool output into it. A kind to rebuild whole, because an assistant
-  turn carries its tool calls inside it and a turn rebuilt without them orphans their results.
-  And a `replaces` hint on the new item, because a superseding item is appended - its identifier
-  is therefore the highest in the context, and a conversation read in identifier order put a
-  correction to a turn from twenty exchanges ago after everything that followed it.
-  `Kernel::replace` has none of those: there is nothing to carry over, because nothing moved.
-
-  So: one row, the number the item always had, the state it was already in, and `v1` under
-  <kbd>enter</kbd> - eight versions deep, as for any other rewrite. The item also says whose hand
-  it was, as `revised: {by: user}` on its `meta` - the same key `amend: revise` writes with
-  `by: amend` - so the `as stored` page reads `` rewritten by `user`: edited at the terminal ``,
-  and a model reading its own metadata is never shown its own tool as the editor of a sentence a
-  person rewrote.
-
-  `Kernel::supersede` keeps its place in the runtime, and none of this is an argument against it.
-  It is one undoable operation, which the two public calls it is made of are not; it is the right
-  shape for a caller whose next round replaces the last while the earlier ones stay readable -
-  `nachalnik/examples/panel.rs` is exactly that; and `App::in_order` still places an item that
-  carries the `replaces` hint, so a context resumed from a session that superseded still draws in
-  the order the request has. It is not the shape of a person fixing a sentence.
-
-- **<kbd>/</kbd> on the context tab matches the kind column too.** It searched an item's label and
-  the whole of its content, which is two of the three things on a row somebody would type at it -
-  so `tool_result` filtered on those words turning up in somebody's *content*, and a pane with a
-  tool result in it answered that there were none.
-
-  The kind is the column most worth filtering on, because it is the question a pane of eighty rows
-  is usually being put: which of these are the tool results, which are what the model said, where
-  did the files go. `ContextKind::name` rather than a second vocabulary, so what you type is what
-  the column shows - and it is matched whether or not that column is drawn, since it is dropped
-  below 84 columns and a filter that found less on a narrow terminal would be the worse surprise.
-
-  The state is deliberately still out. It is on the row as a mark rather than a word, so there is
-  nothing anybody would be typing to match it, and `/prune state:excluded` is the language that
-  already asks that question.
+- `--no-sandbox` is documented as turning off every tool's confinement, not just the shell's. It
+  sets `Reach::confined` as well as dropping the Landlock ruleset, so `read` of `~/.ssh/id_rsa`
+  becomes a file rather than a refusal.
+- `--compact` says the oldest tool results are *elided*, not dropped.
+- The tool descriptions were rendered as they go out (3,356 tokens per request) and corrected. One
+  was false: `grep` and `glob` claimed to skip symlinks. One was unusable advice: `read` pointed at
+  the shell, which a read-only session refuses; it names `grep` now.
+- `grep`'s `context` argument says so when the answer is capped below what was asked for, instead of
+  clamping silently.
+- `Going` is `#[non_exhaustive]`. It gained `holds`, and a struct of public fields cannot gain one
+  without breaking literal construction. `Going::of` is where it comes from.
+- `grep` reads a quoted `"3"` or `"true"` as the number or boolean it plainly is, and refuses
+  anything else by name rather than falling back to the default. The default for `files_only` is the
+  expensive answer, so a swallowed argument cost three thousand tokens.
+- <kbd>up</kbd> in an empty prompt puts the last message back - the one waiting for a running turn
+  to end, or else a copy of the last line sent. A waiting message is taken, a sent one copied. One
+  deep, and only from an empty prompt. <kbd>down</kbd> puts a recalled line away again.
+- <kbd>←</kbd> and <kbd>→</kbd> move a cursor within a `/` query, and <kbd>delete</kbd> works. The
+  arrows, paging, <kbd>home</kbd> and <kbd>end</kbd> stay with the pane.
+- <kbd>ctrl+l</kbd> clears this program's own `·` notes off the chat. The conversation stays,
+  because the conversation *is* the context; a line still arriving stays too.
+- An edit at the terminal rewrites the item through `Kernel::replace` instead of superseding it, so
+  there is one row with the number the item always had, its existing state, and `v1` under
+  <kbd>enter</kbd>. The item records `revised: {by: user}` on its `meta`. `Kernel::supersede` keeps
+  its place in the runtime.
+- <kbd>/</kbd> on the context tab matches the kind column too, via `ContextKind::name`, whether or
+  not that column is drawn. The state stays out: `/prune state:excluded` already asks that.
 
 ### fixed
 
-- **The compaction marker said what had happened and not what to do about it, so models read the
-  file again.** Watched live: a model read a 10,000-token file into a 9,000-token context, `Trim`
-  elided it, and the model read the same file again. Three times, thirty thousand tokens of output,
-  every one of them discarded on arrival - with the marker in front of it each time, saying only
-  that the content had been compacted away to make room.
-
-  It now closes the retry: *reading it again would put the same tokens back into a context that had
-  no room for them - ask for the part you need instead*. Which is the lesson `Reach::allows` learnt
-  one file over, where a refused `~` path was sent back unchanged six times in a turn until the
-  refusal said the next attempt would end the same way. Asked the same question twice with the same
-  model and the same 9,000-token limit, the old marker cost **ten** reads of one file and no
-  answer; the new one costs **one**, after which the model narrows to a `grep` on that path and
-  answers.
-
-  What it says is what *would* happen rather than what will: re-reading is not certainly compacted
-  again, since the threshold is about the whole context and something else may have gone since. And
-  it names a way out, because a closed retry with nowhere to go is worse than no sentence at all.
-  It costs what it says, too - the marker is the thing this refuses to elide anything smaller than,
-  so a longer reason raises that floor by a handful of tokens, paid once per elided item against a
-  pass that only runs when thousands are at stake.
-
-- **A session wrote its record over another session's, twice over.** The record is named for the
-  session, and a session's name is not unique enough to be a filename. Two runs started inside one
-  second share a stamp, so the second to finish replaced the first - found by starting two and
-  reading one back, where a 112-record log had become a 12-record one. And the commoner case is
-  worse: **a resumed session keeps the name of the session it resumed**, which is right for what a
-  name is for and meant that `-r`, the line this program prints at the end of every run, wrote over
-  the very file it had just read. The snapshot survived that by luck, since a resumed context
-  renders to nearly the same bytes; the log did not, and the log is the half that says what
-  happened rather than where things ended up. Both were silent, and both printed a path claiming a
-  record had been written.
-
-  The name stays what it is and the *file* moves: `…Z-2.jsonl` beside `…Z.jsonl`, which sorts next
-  to its sibling and reads as the second sitting of one session. Renaming the session instead would
-  put a process identifier in every filename to fix something rare, and the name is what a fork
-  derives from and what the trace shows. The claim is `create_new` rather than a question about
-  whether the file is there, because between asking and writing is exactly where the first of those
-  two collisions lives.
-
-- **A turn's thinking was held back by the endpoint and counted by nobody.** A session against any
-  OpenAI-compatible endpoint holds every assistant turn's reasoning and sends none of it - that
-  dialect has no field for it, which `OpenAiCompatible::projection` has always said by turning
-  `send_reasoning` off. What nothing said is where those tokens went. The turn is `active`, its
-  words and its calls are going, so the `held` column - which fills in for an item that is *not*
-  going - was blank on exactly the rows holding the most. From the session that found it: 25,903
-  tokens of thinking on one turn, and no row on the pane reading over 2k.
-
-  The column now shows what the request does not carry, per item, rather than the whole of an item
-  that is not in it: `item.tokens` less what its projected message costs. Those are the same figure
-  for an excluded, archived or repaired-away row, and they differ for every row that is partly in -
-  an elided one, which holds its content and sends a marker, and any turn whose thinking is not
-  carried back. The two counts are like for like, because `count_item` and `count_message` both
-  count an assistant turn's reasoning and its calls.
-
-  So the same arithmetic is behind all three places that report it: the `held` column, the `held
-  back` figure in the corner, and `/budget`'s line - which now says "tokens the next request does
-  not carry" rather than "tokens in N item(s) the model is not being shown", since two of the four
-  ways of being held back leave the item in the request. An elided row's figure drops by what its
-  marker costs, ten-odd tokens, for the same reason: what it is keeping out is what it holds, less
-  what went in its place.
-
-  It is a figure about the *endpoint*, not about reasoning. Point the same context at a provider
-  whose projector carries thinking back and it reads as spent rather than held, without a byte of
-  it moving - which is also why it is not a suggestion to prune anything. Pruning a turn that is
-  mostly thinking frees what the request was already not carrying.
-
-- **The `context` tool was telling the model the same thing, and acting on it.** Worse than a
-  missing figure, because this one is read by something that makes decisions with it. `budget`
-  ranks "the most expensive item(s) actually going into it" - the list an agent gives things up
-  from - and it ranked by what each item *held*. A turn holding 25,903 tokens of thinking and
-  putting 1,035 into the request therefore stood at the top of that list, offering twenty-five
-  thousand tokens for an elision that would free a thousand. Under a note whose whole point is
-  that the list must not offer what giving something up would not buy: the same sentence was
-  already there about an orphaned tool result, and reasoning walked straight past it.
-
-  It ranks on what a row sends, which is the column the decision is made from, and the column is
-  headed `sending` rather than `tokens` so it cannot be read as the item's weight. Where a row is
-  holding something on top of that, the row says so - `· holding 24,868 the request does not
-  carry` - and the closing note says what that means: giving the row up frees what it sends and
-  not the rest.
-
-  `look` grows a second column for the same reason, and it is the pane's pair: `sending` and
-  `held`. One column could only have been one of those, and either one alone is wrong about the
-  rows worth reading. As a budget, the held figure invites giving up what the request is not
-  carrying; as an inventory, the sending figure hides tens of thousands of tokens the agent
-  really is holding. Reading an item back with `ids` says both in words, which is where the
-  thinking itself is printed. `budget`'s summary line names the fourth way of being held back and
-  says which of them are the agent's to change.
-
-  All of it is `Going`, which moved from the screen to the kernel - `Going::of(&kernel)` - so the
-  agent's account of its own budget and the person's are now one piece of arithmetic rather than
-  two that agreed until they did not.
-
-  Two sentences in `look` were bought by live runs against a free OpenRouter model, and both are
-  about a number being right and read wrong. Asked which item was holding the most and whether it
-  could change that, the model named the turn holding 1,398 tokens of its own thinking and
-  answered "yes, I can elide it" - which frees the 68 that turn is *sending* and not one token of
-  the rest, because the endpoint was never being sent them. `budget` has said so under its own
-  table all along; `look` is where the figure is actually read, and it said nothing. It now ends
-  "giving that item up frees what it is `sending` and none of what it is holding", and the same
-  model in front of the same question answered "doing so would free only its 68 currently sending
-  tokens - not the 1,395 already held back".
-
-  The other is the `0`. The turn carrying the call being answered has no result yet, so the
-  projector drops it while the tool runs - and a model was shown `sending 0` about its own latest
-  turn with nothing to account for it. The row now carries the projector's own reason, `· not
-  going: an assistant turn with no content and no answered calls`, which is the sentence the
-  context tab has had on that row all along.
-
-- **Every row looked as though it was holding a little, and none of them was.** A live session
-  against Gemini found it, which is the endpoint where the figure should always be nought: its
-  projector carries thinking *and* ordered blocks back in full, so nothing is held - and eighteen
-  rows reported 1,264 tokens held between them.
-
-  Two rulers. `ContextItem::tokens` is counted when the item arrives; a projected message is
-  counted now; and a `Calibrating` counter moves the scale under them on every response. The
-  items already in the context keep the figure they were counted with until something recounts
-  them, which happens when a *turn* ends - so every reading taken while one is running compared a
-  figure on the old scale with one on the new, and the few percent between them read as tokens
-  held back. The `context` tool is only ever called from inside a turn, so for the model it was
-  every time.
-
-  `Going` now counts what each item holds at the same moment as what its message costs, with the
-  same counter, and the subtraction is between those two. The same live run under the same
-  endpoint reports nothing held on every row but the one carrying the call in flight, which says
-  why it is out. `look`'s per-item line reads from the same figure, so the two numbers in one
-  sentence there are on one scale as well.
-
-- **<kbd>e</kbd> on a turn that is nothing but a tool call opened an empty prompt.** Most
-  assistant turns in a working session are exactly that, and the context row for one reads
-  `dig({"where":"here"})` - so pressing the key that changes what an item says put a box titled
-  `editing [2]` on the screen with nothing in it and no account of why.
-
-  The call was never reachable from there. A turn recorded in the conventional three slots keeps
-  its calls on its *kind*, beside its content, and `Kernel::replace` writes content - so the
-  prompt was showing the turn's prose, which for a call-only turn is the empty string. Committing
-  into it was worse than the blank box: it wrote a sentence onto a turn whose call it had not
-  touched, leaving an item that said one thing and did another.
-
-  <kbd>e</kbd> now declines an item whose substance a prompt cannot hold, and says why in a panel
-  over the row it is about - the ordinary one, sized to what it has to say and gone on the next
-  key. Three shapes are refused, each with its own reason: a turn that is only a call, a picture,
-  where the prompt would open holding the `[image/png, 12.05kB]` line that stands in for one on a
-  screen, and a turn recorded in the order it was produced, where the text is the said parts and
-  the thinking and the calls between them would be flattened away by putting it back. The panel
-  points at <kbd>enter</kbd>, which reads every face of an item, and <kbd>space</kbd>, which takes
-  one out of view. Nothing else changes: a tool *result* is text and still edits, which is the
-  case this key is most useful for, and so does a turn that said something as well as calling for
-  something - the calls are left alone, as they always were.
-
-  On this tab, and that is the half worth saying twice. Every other note the context pane raises
-  goes to the conversation, which is right for something worth finding later and wrong for the
-  answer to a key just pressed: the chat is not the tab somebody is looking at when they press
-  <kbd>e</kbd> on a context row, so a line there would read as a key that did nothing at all -
-  the same failure as the empty box, one tab along.
-
-  This is not a position on rewriting history. <kbd>e</kbd> exists to rewrite it. It is that the
-  key could not reach the thing on the screen, and said so by opening an empty box.
+- The compaction marker says what to do rather than only what happened: *reading it again would put
+  the same tokens back into a context that had no room for them - ask for the part you need
+  instead*. Before it, a model read one file ten times; after, once.
+- A session no longer writes its record over another's. Two runs starting inside one second share a
+  stamp, and a resumed session keeps the name of the session it resumed - so `-r` overwrote the file
+  it had just read. The name stays and the file moves to `…Z-2.jsonl`, claimed with `create_new`.
+- The `held` column, the corner figure and `/budget` count what the request does not carry per item
+  (`item.tokens` less its projected message), rather than the whole of an item that is not in it. An
+  assistant turn whose reasoning the endpoint will not take showed blank while holding 25,903
+  tokens. It is a figure about the endpoint, not about reasoning, and not a suggestion to prune.
+- `context: budget` ranks the expensive items by what they *send*, not what they hold, and the
+  column is headed `sending`. A turn holding 25,903 tokens and sending 1,035 stood at the top,
+  offering an elision that would free a thousand. `look` gained the second column for the same
+  reason, and says that giving a row up frees what it sends and none of what it holds.
+- `Going` counts what an item holds and what its message costs at the same moment with the same
+  counter. `Calibrating` moves the scale on every response and items keep their figure until a turn
+  ends, so every reading taken inside a turn compared two scales - and the `context` tool is only
+  ever called inside one.
+- <kbd>e</kbd> declines an item a prompt cannot hold - a call-only turn, a picture, or a turn
+  recorded in block order - and says why in a panel over the row. It used to open an empty box and
+  commit a sentence onto a turn whose call it had not touched.
 
 ## [0.10.0] - 2026-09-14
 
 ### added
 
-- **`amend: note` says when the name it was given is already taken.** A live session wrote five
-  notes under one label - `in_progress`, then `step 2`, `step 3`, `step 4`, `complete: true` -
-  each plainly meant to replace the last, and pinned four of them. `note` appends: a label is how
-  an item is found again, not a key that stands for one. So the context ended up asserting four
-  different steps at once, permanently, and compaction could clear none of them.
+- `amend: note` says when the label is already taken, and names `revise`. A label finds an item
+  again rather than standing for one, so five notes under one name left five live assertions that
+  compaction could not clear. Unlabelled notes, and archived or excluded ones, do not count.
+- Permission rules can name one tool action: `<tool>:<action>`, shipped for `amend:elide`,
+  `amend:exclude`, `amend:archive` and `amend:revise`. Each is `ask` until answered, whatever
+  `amend` itself says, so `--allow amend,amend:note` lets notes through while `exclude` asks. An
+  action rule can only *tighten*. A tool whose actions nobody has an opinion about is judged by its
+  capability as before.
 
-  Nothing said so. The result was `[17] experiment_status is in your context now`, five times,
-  with a different number each time - the `[id]` was the only signal, and it is a constant-shaped
-  one in a template that reads the same on every call, which is the shape a model learns to skim.
-  Now a second note under a taken name reads: ``[3] carries that name too. A note is a new item
-  every time - a label finds one again rather than standing for one - so `label:status` now names
-  2 and every one of them goes into the request. `revise` rewrites the one you wrote before.``
-  `revise` by name, because the action for what that session was actually doing was already in
-  this tool's own enum.
+  **`--allow amend` no longer covers those four** - the one thing here that will surprise an
+  existing settings file.
+- `context: request` reports items left out by their own state separately from items the projector
+  dropped. `restore` fixes the first and does nothing for the second.
+- `setup`, a fourth introspection tool, for what the session is running *with* rather than what
+  happened. `model` (model, parameters, context limit, and whether the session was **resumed from a
+  snapshot**), `tools`, `permissions`, and `policy` (compactor and projector). Pending permission
+  requests are listed. It reads `Careful`'s table rather than calling `evaluate`, which would evict
+  entries from the bounded queue of refusal reasons. Declares `Capability::Custom("setup")`, output
+  limit 32,000 bytes, 255 tokens of spec; the four introspection tools total 1,846.
+- `context: search` reads the archive without copying it back. Answers with how many lines match,
+  what taking them would cost, and which items they are in; `take` shows that many. It never returns
+  the item. Case is ignored.
+- `log`, a third introspection tool: the session's record from the inside - what an item used to
+  say, which permissions were answered how, which tools came and went.
 
-  Three things it deliberately does not say. A name nobody chose cannot be taken, so two
-  unlabelled notes - both called `note` - report nothing; a clash between two names the model
-  never picked is not news. An archived or excluded note does not count: it costs nothing and
-  contradicts nothing, and a warning about one is a warning about nothing. And past four, the rest
-  are counted rather than listed - the point is that there are others and what to do about it.
+  Every answer opens with the true total, which is what makes it safe to hand a model: a bare call
+  returns no records, only how many there are, of what kinds, and what taking them would cost.
+  `take`, `ids`, `since` and `kinds` narrow, against a header stating what exists rather than what
+  matched, so truncation cannot read as absence. A malformed filter is refused rather than answered
+  with an empty list, and a filter matching nothing lists the kinds the session does hold.
 
-  The schema line for `label` says the same thing one step earlier, where the name is being chosen
-  rather than regretted: *not a key: a second note under a name is a second item, and `revise` is
-  what changes one you already wrote*. The tool description is unchanged and still under the
-  1,500-character ceiling `every_tool_says_what_it_is_and_what_each_argument_is_for` holds it to.
-
-- **A permission rule can be about one tool action, not just a whole tool.** `amend` was one
-  decision and it is not one act: `note` adds an item to the context and `exclude` takes one out,
-  `revise` rewrites what one says - a user's own message included - and answering `always` to the
-  first was answering for the last. So `<tool>:<action>` is a subject like any other, and the four
-  that change or remove what is already there ship as rules: `amend:elide`, `amend:exclude`,
-  `amend:archive`, `amend:revise`. Each is `ask` until somebody answers about it, whatever `amend`
-  itself says.
-
-  `--allow amend,amend:note` is what this buys: notes go through without a question and an
-  `exclude` still stops and asks. The strictest of everything consulted wins, so an action rule can
-  only *tighten* - there is deliberately no way to spell "the tool is refused but this one action
-  is fine", for the same reason a path rule cannot reopen a denied `read`.
-
-  It is one addition to `Careful::judges`, which is already the one place a call's *arguments*
-  become subjects - that is what a path rule is. Nothing new to parse: `amend:exclude` is a custom
-  capability, spelled the way `mcp:files` is, so `--allow`, `--deny`, the settings file and
-  `--deny "$(a row off the permissions tab)"` all take one already. Which of the two a name is gets
-  answered against the registry rather than off its shape, since nothing in the text says: `amend`
-  is a registered tool and nothing is called `mcp`.
-
-  A rule is consulted only where one exists, which is the part that keeps this from quietly
-  narrowing everything. A tool whose actions nobody has an opinion about is judged by its
-  capability exactly as before, so `--allow context` still means every `context` action. The list
-  is a closed set of four, seeded like the credential paths in `SUSPECT` and for the same reason -
-  and naming one on the command line makes it live, so `--deny amend:undo` is a rule about an
-  action the list does not carry.
-
-  **`--allow amend` no longer covers those four.** A session that allowed the tool up front and
-  expected silence now gets a question on the first `exclude`. That is the point of it, and it is
-  the one thing here that will surprise an existing settings file.
-
-  The permissions tab says which tool a rule binds and when - `amend, when the call names that
-  action` - through the same field that explains `network` beside `shell`. `setup: permissions`
-  gives them a section of their own rather than a capability row reading `nothing you have declares
-  it`, and counts the undecided ones in a line instead of spending four rows on the same verdict,
-  which is what it already does for the eleven path rules.
-
-- **`context: request` says which rule left each item out.** It listed what the projector had
-  skipped and what it had repaired, in one undifferentiated list, and the two halves are answered
-  completely differently. An item left out by its own state is one `amend` with `restore` puts
-  straight back. An item the projector dropped - an orphaned tool result, a second result for one
-  call, an assistant turn with nothing left in it - reads as `active`, is costing nothing, and
-  `restore` on it does exactly nothing: it is a consequence of something else, and the cause is
-  what there is to move.
-
-  So they are reported apart, each named after what decided it, with the projector named by the
-  name it can be looked up under. `setup policy` is the other half of the same answer: this says
-  what the rule did to the next request, that says what the rule is.
-
-  The description grew past the 1,500-character ceiling
-  `every_tool_says_what_it_is_and_what_each_argument_is_for` holds every tool to, which is the
-  guard doing its job, so three clauses came back out - the reason an item arrives sampled now
-  lives only on `whole`'s own schema line, which is where it is read at the moment the choice is
-  made. 1,445 characters, and `context`'s spec is unchanged at 563 tokens.
-
-- **`setup`, a fourth introspection tool: what the session is running *with*.** State rather than
-  events, which is the split that makes it a tool of its own rather than an action on `log`. `log`
-  says a tool was taken away at record 118; this says which tools there are now. `log` says a
-  permission was answered; this says what the policy will say next time. Neither is recoverable
-  from the other.
-
-  Four actions, each answering something the program previously could not tell a model about
-  itself. `model` is which model it is, what parameters it is being sent, how much context it has,
-  and whether this conversation was **resumed from a snapshot** - the one that could not be worked
-  out from inside, because a restored context carries first-person turns this model never produced
-  and nothing in a turn records which hand wrote it. `tools` enumerates the toolset, which nothing
-  anywhere did, so a tool removed mid-session was something a model could only keep asking for or
-  confabulate a reason for not using. `permissions` is what the policy allows, refuses or will ask
-  about, so a thing that will be refused can be told from a thing nobody has decided. `policy`
-  names the compactor and the projector and says what each will do unasked - `look` has always
-  reported whether an item is going into the next request and never the rule that decided.
-
-  **It reads the policy's table rather than asking the policy.** `PermissionPolicy::evaluate` is
-  the only way to get a verdict through the trait, and `Careful` answers it by recording the reason
-  it refused into a bounded queue of sixty-four that a genuine refusal is going to read - so a read
-  tool asking four speculative questions would evict the explanations somebody needs. `install` now
-  takes the `Arc<Careful>`, which every caller already has, and the report names the policy the
-  kernel is actually consulting beside the table it read, so a session running somebody else's
-  policy shows the disagreement rather than a confident answer about the wrong thing.
-
-  Pending permission requests are listed on purpose. An agent that can see it is blocked on
-  somebody's answer is an agent that can decide to do something else with the turn, which is the
-  argument for all of this; the alternative is a call that appears to have hung.
-
-  It declares `Capability::Custom("setup")`, has an output limit of 32,000 bytes, and costs 255
-  tokens of spec. The four together come to 1,846 - `amend` 682, `context` 574, `log` 335, `setup`
-  255 - which is 4.6% of a 40,000-token session.
-
-- **`context: search` reaches the archive, which was write-only from the agent's side.** An
-  archived item is kept in full and never sent, and the only way to see inside one was to read it
-  back with `look` - which copies it into the context, so a session that had archived eleven
-  megabytes could not look at any of it without undoing the saving it had just made. `amend` could
-  put things away and bring them back and there was no way to *read* one where it lay.
-
-  It answers with how many lines match, what taking them would cost, and which items they are in;
-  `take` then shows that many of the lines. That is `log`'s rule for `log`'s reason - a search that
-  answered with what it found would be a second way to pay for an item without meaning to, which is
-  the thing the action exists to undo. It never returns the item.
-
-  Case is ignored. A model that searched for `landlock` in a context full of `Landlock` and was
-  told there are no matches has been told something false about itself and has no way to find out,
-  which is the one shape of wrong answer a search must not have; a nil result says what it looked
-  at rather than only that it found nothing, for the same reason.
-
-  An action rather than a tool, because it reads the context and `context` is the tool that reads
-  the context. It costs 107 tokens of spec - `context` goes from 456 to 563 - against a design
-  estimate of about 60, the difference being that an action with two arguments of its own is not
-  an enum entry.
-
-- **`log`, a third introspection tool: the session's own record, read from the inside.** The
-  context is what the agent is carrying and goes out with every request; the log sits beside it,
-  costs nothing until something asks for it, and holds what a context cannot - what an item *used*
-  to say, which permissions were asked for and how they were answered, which tools appeared and
-  went away. Nothing anywhere let an agent read that, so a model asked what had happened to it had
-  no way to do anything but reconstruct an answer from what it was still carrying.
-
-  **Every answer opens with the true total**, and that one rule is the whole of what makes it safe
-  to hand a model rather than a way to spend a context window by accident. It is `budget` applied
-  to the log: price it before you carry it. A bare call hands back no records at all - how many
-  there are, of what kinds, and what taking them would cost - and `take`, `ids`, `since` and
-  `kinds` ask for some of them, against a header that states what exists rather than what matched.
-  So a short answer is self-describing, and truncation cannot read as absence. That matters more
-  here than anywhere else in this program, because the one wrong answer a log can give is *nothing
-  happened*.
-
-  Two consequences follow from the same rule and both are in the tests. A malformed `since` or
-  `take` comes back as something to correct rather than as an empty list - the schema is
-  descriptive, the kernel validates nothing against it, and an empty answer to a bad filter reads
-  exactly like an empty session. And a filter that genuinely matched nothing says so in words, and
-  lists the kinds this session does hold, because a filter matching nothing is usually one spelled
-  for a different session.
-
-  **Raw rather than digested.** Records come back in order, named the way the kernel names them and
-  detailed by the same function that writes the trace pane - so the account a model reads and the
-  account a person reads cannot drift apart. There is no sentence about what any of it means and no
-  banner on the interesting one: the histogram counts every kind, and `context.replaced 3` in a
-  list of five is a fact rather than a flag. Noticing that it is an interesting fact is the model's
-  job. The alternative - a tool that hides a cheap honest fact to keep a reading interesting - is
-  the wrong trade for something people use for real.
-
-  `whole` is the one concession, and it is the word `context: look` already uses for the same
-  trade: a replacement is shown as its first line, with the size of the rest and how to ask for it,
-  because a first line that does not admit to being one is the shape of thing these tools exist not
-  to produce.
-
-  It declares `Capability::Custom("log")`, so it is separately grantable - and separately
-  revocable, which is not a side effect to design away: a session whose agent loses the ability to
-  check the record half way through is a thing worth being able to set up. Its output limit is
-  32,000 bytes, matching `context`, and it is a backstop rather than the mechanism.
-
-  **No change to the runtime.** `Kernel::with_history` was already there, the mirror of
-  `with_context`, and the tool reads the log through it without copying a record.
-
-### fixed
-
-- **`/save` into a directory wrote two dotfiles.** `/save sessions/` took the whole argument as the
-  stem, so it wrote `sessions/.json` and `sessions/.jsonl` - files `ls` does not show - and then
-  printed a confirmation naming both paths, which reads as though it had worked. A directory is a
-  place to put a session rather than a name to give it, and the name it goes under is the one it
-  already has, which is what this program uses when it writes a session out on its own at the end
-  of a run. With or without the trailing separator: an existing directory is a directory either
-  way.
-
-- **`/limit` listed six tools under "how much of each tool's output the model is shown", in a
-  session offering four.** The table is the `Limits` map, which holds a row for every tool this
-  program ships - `context`, `log`, `setup` and `amend` among them, none of them installed until
-  `/introspect`. Two lines after `/tools` said "4 offered: edit, read, shell, write", `/limit`
-  numbered six and invited `/limit 2 8000` on any of them; setting one took, silently, and answered
-  "from its next call onwards" about a tool that has no calls. The rows belong there, because a
-  limit set before a tool arrives is what it declares the moment it does - so they are marked
-  rather than hidden, and a change to one that nobody is offering says as much.
-
-- **`amend` reported an item asked into the state it was already in as having moved.**
-  `StateChange::unchanged` means "already in that state *with that note*", so pinning something
-  already pinned, for a new reason, comes back as `changed` - which is true of the note and false
-  of the item. The report read that as a move: `1 item(s) are now pinned: 2`, over figures that had
-  not shifted by a token, and it put a step in this tool's journal that `undo` then described as
-  `2 back to pinned` about an item that was still pinned. A model that restated two pins had two
-  things to walk back and neither walked anything. What happened is that the reason was rewritten,
-  which is worth knowing and is now what it says; the journal holds the moves, and the two lines
-  for "did not move" - same note, and new reason - are one line with a clause.
-
-- **`context: search` read its `take` with a bare `as_u64`, so most of what a model could pass was
-  swallowed.** `log` has held the same argument to a number since it was written, and refuses a
-  word by name because the wrong answer to give is an empty result that reads as an empty log. Its
-  sibling took anything that was not a positive integer as `None` - which is the summary, which is
-  what leaving `take` out does, so a model that asked for three lines got a count with nothing
-  saying its argument had not been read. `take: 0` was worse than swallowed: it reached
-  `0.min(len)` and printed `the first 0; 2 more match and are not here:` - a heading, a colon, and
-  nothing under it. A whole number of lines is now what it takes, `"3"` is `3` the way `log` reads
-  it, `0` is the count and the price, and anything else is named and refused.
-
-- **`context: search` counted an item that is not there as one it had looked at.** Narrowed with
-  `ids: [99]` in a session with no item 99, it answered "no line of your context says `landlock` ...
-  and 1 item(s) were looked at" - the figure was the length of `ids` rather than the number of items
-  the loop actually read. So a search of an item that does not exist reported having searched it and
-  found nothing, which is false in the one direction a search must never be wrong in: it leaves the
-  model certain the item is there. `look` has always answered `[99] there is no such item`, and
-  there is no reading on which it should be the honest one of the two. The count is now of what was
-  read, the ids that name nothing are named, and they are named on an answer that *found*
-  something too - where a missing id otherwise slips past behind the matches.
-
-- **A failure after the first one was said in silence.** A live session met a model with one canned
-  refusal, which failed three times with the same sentence: the first was red on the screen and the
-  other two were nowhere, so somebody typed twice into what looked like a working session and got
-  no answer and no reason. The dedup responsible is worth keeping and was asking the wrong
-  question - one failure genuinely does arrive twice, as the event the kernel emitted and as the
-  end the turn came to, the second wrapping the first - but it compared against the last *loose*
-  line, and a loose line outlives its turn. Nothing said between two turns leaves one, because a
-  message and an answer are both drawn from the context, so the first red line of a session stayed
-  the last loose line for the rest of it and every later failure with those words was swallowed.
-  It is scoped to the running turn now, which is what "the same failure twice" was always about.
-  The `--headless` path says so too, where the reason for a non-zero exit is the prose and nothing
-  repeats it at the end.
-
-- **Five things a live model found, that reading the output did not.** A session was resumed under
-  a *second* model and asked whether it had written a turn the first one wrote - the trap
-  `setup model` exists for. It got the answer wrong four times running, and three of the four were
-  the tools' fault.
-
-  **`log` ignored arguments it does not take.** The call was `log {action: "look"}` - every sibling
-  tool has an `action`, so it is the obvious mistake - and the summary came back as though nothing
-  were wrong. The model read it as the answer to a question it had not asked, and then cited it.
-  That is the same failure as a filter nobody can parse, one step earlier: the reply is a real
-  answer, so nothing in it says the request was not honoured. Unknown arguments are refused by
-  name now, with a sentence for `action` in particular.
-
-  **`log ids:[n]` answered a provenance question with five true and irrelevant records.** Asked
-  where an inherited item came from, it returned five `model.requested` rows naming it - each one
-  true, because the item had been in every request since - and the model read them as proof it had
-  written the item itself. What settled the question was the record that was *not* there: an item
-  restored from a snapshot has no `context.added` in the log that follows it. An absence is the one
-  thing a list of matches cannot report, so it is reported explicitly, in the zero-match case too.
-
-  **`since` is exclusive and nothing said which number means everything.** Reaching for "all of
-  it", a model wrote `since: 1` - which is *after* record 1, and record 1 in a resumed session is
-  always `session.resumed`, the record that would have answered its question. It read everything
-  except the thing it was looking for. The description says `0` now.
-
-  **An empty filter list was refused.** `{ids: [], kinds: [], since: 0, take: 20}` is how a model
-  spells "every argument, none of them constraining anything", and it cost a turn. An empty list
-  constrains nothing; a list of things that are not item numbers is still a mistake and still says
-  so.
-
-  **`look` said nothing about items this session did not produce.** Every one of those runs reached
-  for `look` and none called `setup model`, which has had the fact since it existed. A restored
-  item is an ordinary item with no field marking it, so the listing read as though the model had
-  written all of it - and it duly confabulated a first-person account of writing another model's
-  sentence. `look` now opens with which items were already there and sends the reader to
-  `setup model`; a session nobody resumed says none of it. It is a count of items in a listing that
-  already counts items, not a warning, and the model is still free to ignore it. Twice more, it
-  did.
-
-- **Adding `search` made an older warning false, and a model repeated it.** When a session hides
-  items having written nothing down, `amend` warns it - and the warning said "what those items said
-  survives only in what you have already said". That was true the day it was written and stopped
-  being true the day `context: search` arrived: an elided item keeps every byte and only *projects*
-  as a marker. A live session read the sentence and told its user the content was "gone" and "no
-  longer retrievable", which is the opposite of this program's central promise. The warning is
-  still worth making - a finding you have to go and look for again is not one you are carrying -
-  but it now says that rather than claiming destruction. Asked the same question afterwards, the
-  model answered "is it still recoverable? Yes", and named `restore`, `search` and `note`.
-
-- **A fork says whether it actually kept anything from the copy.** It reported "on 9 of your
-  items", which cannot be read as "on all of them" - so a session that asked a copy what it would
-  conclude *"without knowing my earlier statement"*, passed no `without` at all, and got the same
-  answer back could report that as an ablation with nothing in the reply to contradict it. The item
-  it named had been in front of the copy the whole time. A fork that left nothing out now says so,
-  and says why a question asking a model to disregard something is not the same as taking it away:
-  it is still reading it.
-
-  Two runs later the same prompt produced the other failure. The model called `fork(...)` as a bare
-  tool - it is an `action` of `context` - got the runtime's "there is no tool named `fork`", and
-  fell back on **excluding the item from its own live session** to simulate the copy, then reported
-  that as a fork. `context`'s description now says its actions are actions of that tool rather than
-  tools; `amend`'s already did. With both changes the same prompt produced `context look` followed
-  by `fork` with `without: [1]` on the first attempt. The sentence costs 11 tokens - `context` goes
-  from 563 to 574 - and its first draft came to 1,519 characters against the 1,500 the screen test
-  holds every description to, which is that guard earning its place for the second time this week.
-
-- **A drained log said nothing had happened.** `Kernel::drain_history` is the supported way to
-  stop a long session growing forever: it takes the records out and hands them to the caller to
-  keep elsewhere. Afterwards the tool answered "this session's log is empty, which is not the same
-  as a log you have not been shown" - in a session whose log had just been taken away, which is
-  exactly a log you are not being shown. It is the one mistake this tool exists not to make, made
-  in so many words, in the sentence written to avoid it.
-
-  A drain leaves the sequence counter alone, so the two cases were already distinguishable by
-  arithmetic that was there all along. An emptied log now says how many records went through it and
-  where the next one will start. On a kernel this is the *only* way to be empty - a fresh one has
-  already recorded `session.started` - so the old sentence was wrong in every case it could
-  actually be printed in, rather than merely wrong sometimes. An item with no beginning in a
-  shortened log now blames the drain rather than offering a snapshot that never happened.
-
-- **A compaction record says what moved it, not only what moved.** The line read `1 out, 4 elided,
-  8863 → 725 tokens` and stopped. `CompactionReport::reason` is the compactor's own sentence -
-  which threshold it crossed and by how much - and both readers of that line were dropping it, so a
-  pass could not be told from a pass that should not have happened. It is a field of the event
-  rather than a gloss on one, and the trace pane gains it too.
-
-- **An answer no longer points at a tool the session has had taken away.** `/tools drop log`
-  mid-run, and `setup tools` went on ending with "`log` with `kinds: [\"tools.changed\"]` says when
-  it went" - naming a tool in the same breath as reporting that the model does not have it. Three
-  other sentences did the same. It is the rule a refusal already follows: everything named in an
-  answer is read as something to try, so name only what can be reached. The sentence goes when its
-  subject does; the report around it is unchanged.
-
-- **Four things reading the real output found, that the tests did not.** Written down because the
-  lesson is the finding: every one was in a sentence a model reads, all four suites were green, and
-  printing the answers and reading them took a minute.
-
-  A filtered `log` header read `~205 tokens if you take them all total. 15 match , ~205 tokens` -
-  two halves of a sentence built from one prefix that only fitted one of them, and a match count
-  that was really the total, because `take` was being treated as something that narrows what counts
-  rather than something that shortens what is shown. A call carrying only `take` now says what is
-  true of it: `15 records, ~205 tokens in all. Showing the 3 most recent; 12 older are not here.`
-
-  `short` took the last `::` segment of a whole type path, so the counter this program ships -
-  `Calibrating<BytesPerToken>` - was named `BytesPerToken>`: the wrong type, the outer one dropped,
-  and a stray bracket as the only sign of it. That was on the trace pane before `setup` existed. It
-  strips the modules from every path in the string now.
-
-  `setup` printed `nachalnik::projection::LinearProjector` where the rest of the program prints
-  `LinearProjector`, and listed all eleven shipped path rules at `ask` - ninety tokens spent saying
-  "nobody has decided" eleven times. The permissions tab already had the answer to that and its own
-  note says why: a row for a `.aws` rule nobody has thought about is not information. They are
-  counted and named on one line, because standing silently for eleven rules would be a different
-  kind of dishonest.
-
-- **`/introspect` said there were three tools while it was handing over four.** `setup` was
-  installed, removed, permissioned and limited along with the rest, and the only thing that never
-  learned about it was the sentence announcing them: "`context`, `log` and `amend` go into the next
-  request". The `--introspect` flag's own help said the same, so the two places a person is told
-  what they have just turned on were the two places that had it wrong. Both name all four now, and
-  the screen test that watches the registry now reads the announcement beside it - it asserts that
-  every tool `install` registers is named in what the screen says, which is the check that would
-  have caught this when `setup` landed.
-
-- **`log`'s "there are no actions here" named its siblings from a fixed list.** The sentence that
-  unmakes a `log {action: "look"}` points at the tools that do take an `action`, and it named
-  `context`, `setup` and `amend` whether or not the session still had them - which is precisely the
-  case `if_offered` was added for one commit earlier. It reads the registry now, and says the two
-  that are left when one is dropped.
-
-- **Prose that four changes in a row had made false.** `context` grew a sixth action and three
-  notes went on saying it had five; the module note for the family described three tools and a
-  handle; the crate's own doc had `amend` unlinked and mid-paragraph where `setup` had been spliced
-  in, and did not mention `search` at all. The README quoted a `fork` reply and a filtered `log`
-  header that both predate the commits that changed them, and `examples/recorded.rs` told the model
-  "two tools let you do something about that" while granting it four and teaching it `prune`, which
-  is the spelling this program stopped saying. None of it is code, all of it is read - by a person
-  in the README and by a model in the brief - and nothing in a test suite fails when a sentence
-  goes stale.
+  Records come back raw, named the way the kernel names them, detailed by the same function that
+  writes the trace pane. Declares `Capability::Custom("log")`, so it is separately grantable and
+  revocable. No runtime change: `Kernel::with_history` was already there.
 
 ### changed
 
-- **A tool call on the trace is the colour a tool call is everywhere else.** The pane drew a
-  permission in yellow and a failure in red and left everything else white, so the tool events -
-  which are most of what a turn produces, and the rows somebody is usually scanning for - were the
-  same colour as `state.changed`. They are cyan now, which is not a new colour: it is what a call
-  is already drawn in on the chat tab, so a row on the trace and the line it accounts for agree
-  without anybody having to learn which pane they are reading. `.failed` still matches first,
-  because a call that went wrong is a failure before it is a call.
+- `introspect` is called `context` - the tool id, the capability and the struct. The module, the
+  `--introspect` flag and the `/introspect` command are unchanged.
 
-  Cyan rather than the logo's own `#59b8b2`, which is what it stands in for. Every colour here is
-  a named one, so the terminal's palette and its background decide how it lands; a hardcoded
-  triple would be the only thing on the screen ignoring both, and on a light background it would
-  be the wrong side of legible.
+  **A permission rule naming `introspect` stops matching** rather than failing, since nothing
+  declares that capability any more. Spell it `context`; no alias is accepted. The tools are off by
+  default, so a session that never passed `--introspect` is unaffected.
+- A tool call on the trace is cyan, matching the chat tab. `.failed` still matches first.
+- The UDP wording names the `landlock` crate rather than the LSM. ABI 10 (Linux 7.2) added the two
+  UDP rights; the crate stops at ABI 9 and is `#[non_exhaustive]` over a sealed trait, so they
+  cannot be requested from here. Nothing about the confinement changed. A test asserts the hole and
+  is there to fail when the crate catches up. `AccessNet::ConnectTcp | AccessNet::BindTcp` stays
+  spelled out rather than `from_all`, which would silently start handling UDP on a `cargo update`.
 
-- **Landlock grew UDP rights and this still cannot use them, so the wording names the crate rather
-  than the LSM.** ABI 10, which is Linux 7.2, added `LANDLOCK_ACCESS_NET_BIND_UDP` and
-  `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` - the thing every sentence here has been describing as the
-  hole a confined command can put a DNS query through. The kernel is no longer what is in the way.
+### fixed
 
-  The `landlock` crate is. It stops at ABI 9, `AccessNet` has `ConnectTcp` and `BindTcp` and
-  nothing else, and it is `#[non_exhaustive]` over a sealed `Access` trait - so the two bits cannot
-  be handed to a ruleset from out here, whatever the kernel under it supports. What is left is the
-  raw syscall, and `#![deny(unsafe_code)]` is the reason this program re-execs itself rather than
-  using `Command::pre_exec`; it is not going to be spent on this. So nothing about the confinement
-  changed, and could not have.
-
-  What changed is that "Landlock has no UDP right" was true when it was written and is now false
-  about Landlock while staying true about this program. The module note, the README and `AGENTS.md`
-  now say the crate rather than the LSM, and name the ABI and the two rights, so that whoever reads
-  it next knows what closing the hole is waiting on rather than believing it cannot be closed.
-
-  A test asserts the hole: a confined command sends a datagram to a loopback socket the test holds
-  open, and it arrives. It is there to fail - on the day the crate grows those rights, that is the
-  thing which says the wording may change, and the wording is the part a person actually relies on.
-  Measured on Linux 7.2.4, which reports ABI 10: TCP refused with `EACCES`, the datagram through.
-
-  `AccessNet::ConnectTcp | AccessNet::BindTcp` stays spelled out rather than `AccessNet::from_all`,
-  which is the same two rights today. `from_all` would quietly start handling UDP on a `cargo
-  update`, and a sandbox that begins refusing more than it promises is a surprise in the direction
-  people notice last.
-
-- **`introspect` is called `context`.** The tool id, the capability it declares and the struct
-  behind it; the module, the `--introspect` flag and the `/introspect` command are unchanged,
-  and so is what any of it does.
-
-  The name was accurate while there were two tools and stops being accurate the moment anything
-  else reads a session from the inside - a session's own log and the settings it is running under
-  are introspection too, and would each have had to be called something that did not say so.
-  `introspect` is the word for the family; the tool is one member of it, and what it is about is
-  the context. `context: fork` also reads as what it is in a way `introspect: fork` never did.
-
-  So the flag stays put on purpose. It switches the *family* on, the family is still the
-  introspection tools, and renaming a switch that installs more than one of them after one of them
-  would be the same over-claim in the other direction.
-
-  **A permission rule naming `introspect` stops matching.** `--allow introspect`, `--deny
-  introspect` and an `allow`/`deny` entry in a settings file parse into `Capability::Custom`, and
-  nothing declares that one any more - so the rule matches nothing rather than failing, which is
-  the quiet way for this to go wrong. Spell it `context`. No alias is accepted: a capability is a
-  tool's declaration of what it needs, and one that answered to two names would be a grant whose
-  scope depended on how it was typed. The tools are off by default, so a session that never passed
-  `--introspect` is unaffected.
-
-  Three of the write-ups under `docs/` quote the old name inside verbatim transcripts. They are
-  recordings and are not edited; each carries a line saying what the tool is called now.
+- `/save sessions/` writes into the directory under the session's own name instead of creating
+  `sessions/.json` and `sessions/.jsonl`.
+- `/limit` marks rows for tools the session is not offering, instead of listing six in a session
+  with four. The rows belong there: a limit set before a tool arrives is what it declares on
+  arrival.
+- `amend` reports a re-request of the state an item is already in as a rewritten reason rather than
+  a move, and no longer puts a no-op step in its journal.
+- `context: search` refuses a `take` it cannot read, rather than silently falling back to the
+  summary, and `take: 0` no longer prints a heading with nothing under it.
+- `context: search` counts what it actually read. `ids: [99]` in a session with no item 99 reported
+  having searched it and found nothing; ids naming nothing are now named, including on an answer
+  that found something.
+- A second failure with the same wording is no longer swallowed. The dedup compared against the last
+  *loose* line, which outlives its turn; it is scoped to the running turn now.
+- Five things found by a live model resuming a session under a *second* model and being asked
+  whether it wrote a turn the first one wrote:
+  - `log` refuses arguments it does not take, with a sentence for `action` in particular. It used to
+    answer `log {action: "look"}` as though nothing were wrong.
+  - `log ids:[n]` reports an absence explicitly, in the zero-match case too. Five true
+    `model.requested` rows were read as proof the model had written the item itself; what settled it
+    was the `context.added` that was not there.
+  - `since` is documented as exclusive, and `0` is named as the way to ask for everything. A model
+    wrote `since: 1` and skipped `session.resumed`, the record that answered its question.
+  - An empty filter list is accepted - it constrains nothing.
+  - `look` opens with which items were already in the context and points at `setup model`. A
+    restored item has no field marking it, so the listing read as though the model wrote all of it.
+- The `amend` warning about hiding items with nothing written down no longer claims the content is
+  destroyed. An elided item keeps every byte and only *projects* as a marker; a live session read
+  the old wording and told its user the content was unrecoverable.
+- A fork says when it left nothing out, so a question asking a model to disregard something is not
+  reported as an ablation. `context`'s description also says its actions are actions of that tool -
+  a model called `fork(...)` as a bare tool, then excluded the item from its own live session
+  instead.
+- A drained log says how many records went through it and where the next one starts, rather than
+  "this session's log is empty, which is not the same as a log you have not been shown".
+- A compaction record carries `CompactionReport::reason`, so a pass can be told from a pass that
+  should not have happened.
+- Answers no longer name tools the session has had taken away.
+- Four things found by reading the real output: a filtered `log` header built from one prefix that
+  fitted only half the sentence and reported the total as a match count; `short` took the last `::`
+  segment, naming `Calibrating<BytesPerToken>` as `BytesPerToken>`; `setup` printed a full Rust path
+  and listed eleven `ask` path rules at ninety tokens.
+- `/introspect` and `--introspect`'s help name all four tools. The screen test now reads the
+  announcement beside the registry.
+- `log`'s "there are no actions here" reads the registry rather than a fixed list of siblings.
+- Prose four changes had made false, in three notes, the module and crate docs, the README and
+  `examples/recorded.rs`.
 
 ## [0.9.0] - 2026-09-12
 
+### breaking
+
+- `app::Traced` grew `wall: SystemTime` and `after_a_person: bool`. It has no private fields and is
+  not `#[non_exhaustive]`, so `Traced { name, detail, at }` no longer compiles and there is no
+  `Default` to spread from.
+- `ui::HELP` is gone. `help::SECTIONS` is one page per tab and `help::everything()` is the whole of
+  it as one string. `ui` re-exports both; `help` is a public module, so a screenless build can reach
+  the text.
+
 ### changed
 
-- **F1 answers for where somebody is standing.** The panel was the same eight sections wherever it
-  was pressed from, and six of those are about one tab each - so asking what the keys are on the
-  trace answered with about a hundred lines of which four fifths were about somewhere else, and the
-  six that applied were somewhere in the middle of it. It had grown to a page and a half of a
-  forty-row window and was still growing, because every key added to any tab went into the same
-  list.
-
-  It is one page per tab now, plus one for the slash commands and one for the keys that mean the
-  same thing everywhere, and it opens at the page for the tab it was pressed from. A seventh
-  appears while a tool is waiting to run, and is the one it opens at from the chat tab, because
-  that is the thing stopping the session - from another tab it is not, since what somebody is
-  looking at is that tab, and the strip is already red to say the question is there.
-
-  **Pages rather than a filter, so that nothing is lost.** The sections that do not apply are one
-  `←` away and the strip along the top names every one of them, which is the difference between a
-  shorter reference and a smaller one - a reader who wanted `/save` from the trace tab would
-  otherwise have to know to go somewhere else and press it again. `question` is the one section
-  ever left out, and only because the keys it lists do not exist until a tool asks for something.
-
-  This is `preview_pages`, which the context item viewer has used since it had more than one honest
-  answer to "what is this?"; nothing new was needed to draw it, and the box already sizes itself to
-  the page rather than to the whole. `THE TABS` and `ANYWHERE` are one page called `everywhere`:
-  they were separated by which of them was about the tab strip, which is a distinction the reader
-  does not have, and two headings answering "what works no matter where I am" made the panel look
-  longer than it was.
-
-  `help::SECTIONS` is what the text is now, and `help` is a public module - which `ui`'s own note
-  has claimed since the text moved out of it, on the grounds that `/help` is answered by a build
-  with no screen. It was not true: `help` was private and the only way in was `ui::HELP`, behind
-  the feature that draws. `ui` still re-exports it for whoever is on that path.
-
-  `help::everything()` is the whole of it - the one a reader with no way to turn a page is handed.
-  A headless run is exactly that reader, so `/help` down a pipe now prints every page with its
-  name over it rather than the one the panel would have opened at; one page of six with no key to
-  ask for the other five is a reference with most of itself missing. What that costs at the
-  boundary is under `### breaking`.
-
-- **The gap column says nothing about how long a person took.** It answers *which step was slow*,
-  and a session spends most of its wall time in two places where nothing is stepping at all: a
-  permission question nobody has answered yet, and the wait between one turn and the next thing
-  somebody types. Both were drawn like any other gap, so the largest figure in the column was
-  routinely a measure of how long somebody had been reading - which is the one number in there
-  nobody should act on, and the one the eye goes to first. The readme's own example of the pane had
-  `+11.0s` beside `permission.decided` and described it as one of the interesting ones.
-
-  The line that ends such a wait keeps its clock and is given no gap. *When* a question was
-  answered is a real question, and somebody matching the pane against a server log needs it; only
-  *how long* the answering took is nobody's business.
-
-  `Traced::after_a_person` is what carries it, set at the two doors a person comes through -
-  `App::submit`, where a line is handed in, and the answer to a permission question. Set where the
-  program *learns* somebody acted rather than where the waiting begins, which is what makes it land
-  on the right line: a question opening emits itself, a state change and a recount in the same
-  millisecond, so a flag set there would be spent on one of those and the eleven seconds would
-  still be drawn beside `permission.decided`. `App::trace` takes it, so exactly one line is marked.
-
-  The clock behind the column is untouched - `replace` still runs on every line - so the line
-  *after* a person's still measures from the one before it. What is skipped is drawing the figure,
-  not keeping time.
-
-### fixed
-
-- **`?` did nothing on an empty context or permissions tab.** Both handlers return early when their
-  list has no rows in it - there is nothing to pick, and the keys that pick are most of what they
-  do - and `?` was inside the part that was skipped. So the one moment somebody is most likely to
-  ask what the keys are, on a tab that has not got anything in it yet, was the one moment it did
-  not answer. The trace tab has no such guard and was fine, which is why this survived: two of the
-  three worked.
-
-  Answered beside F1 now, above the per-tab handlers, so that no tab can swallow it and a fourth
-  tab cannot reintroduce this by forgetting. `Focus::Body` is the guard rather than the tab alone,
-  so the `?` of a sentence typed into an item being edited is still a `?`.
-
-- **An empty pane said which empty it was on one tab and guessed on the other two.** Both of these
-  arrived with the search and neither was visible without one.
-
-  The trace said `nothing here matches; esc clears the search` whenever it had no rows to draw -
-  including when nothing had happened yet, which is what a session opens on. So the first thing
-  somebody saw on that tab was an instruction to clear a search they had not started, and pressing
-  `esc` on the strength of it did nothing, which is how a key comes to look broken.
-
-  The context had the opposite half of the same bug. It knows two empties apart already - nothing
-  here, and nothing being sent because `f` is on - but a search that matches nothing empties it
-  too, and `held_back` is every item `listed` dropped rather than the ones `f` dropped. So a query
-  that found nothing was reported as `n item(s) are hidden, and `f` lists them again`: the wrong
-  key, over a count that was the two filters added together.
-
-  Each pane says which of its empties it is in now. The search is named first where both apply,
-  because it is the thing somebody just did and the thing `esc` undoes, and `f` is named beside it
-  rather than instead of it - a pane naming one of two reasons is a pane somebody clears and finds
-  still empty. No count is given while a search is on, because the only figure available is the
-  mixture, and a number blaming `f` for rows the query hid is worse than no number.
+- F1 opens at the page for the tab it was pressed from - one page per tab, plus the slash commands
+  and the keys that mean the same thing everywhere, plus a seventh while a tool is waiting. It was
+  eight sections and about a hundred lines wherever it was pressed. Pages rather than a filter, so
+  nothing is lost. A headless `/help` prints `help::everything()`.
+- The trace's gap column is blank on the line that ends a wait for a person, so the largest figure
+  in it is no longer how long somebody spent reading. `Traced::after_a_person` carries it, set where
+  the program learns somebody acted rather than where the waiting began. The clock itself is
+  untouched.
 
 ### added
 
-- **`/` filters the context and the trace.** Eight hundred events is a log nobody reads; it is a
-  log somebody scrolls past looking for one line. The panes had no way to ask for that line, so the
-  way to find it was `g` and then a lot of `pgdn`.
-
-  `/` opens a box in the prompt's place - which on these panes is empty, because they are read and
-  operated rather than typed into - and what is typed filters the rows. One row high: what goes in
-  it is a phrase, not a message, and a box that grew would be taking rows from the very thing it is
-  filtering. It counts what it found beside the query, because a filter that found nothing and a
-  filter that found everything look identical from a pane scrolled halfway down.
-
-  Fuzzy, and `nucleo-matcher`, which is Helix's - that is where the expectation of what fuzzy
-  *feels* like comes from, and people type `mreq` for `model.requested`. The matcher alone rather
-  than `nucleo`: the full crate is a worker pool and an injector for streaming millions of
-  candidates into a picker, and this is a few hundred rows already in memory. One crate in the
-  lockfile; its unicode dependencies were already there.
-
-  The box has the keys while it is open, and takes `esc` before the arm that reads it as "stop the
-  turn" - `ctrl+c` is what interrupts a run and is handled above anything that could shadow it,
-  whereas a box that `esc` does not close is the one thing everybody tries. The arrows and the
-  paging are deliberately left to the pane: the point of filtering eight hundred events down to
-  nine is to read the nine, and a box that swallowed the scroll keys would mean closing the search,
-  and so losing the filter, to look at what it found. Closing clears it - a filter that outlived
-  its box would leave a window quietly showing four rows of eight hundred with nothing on screen
-  saying why - and changing tabs clears it for the same reason, since a query written for the trace
-  means nothing against the context.
-
-  Two smaller decisions worth writing down. A context row matches on the whole of what the item
-  holds rather than the one line the row has space for, because the filename somebody is looking
-  for is almost never on the first line; the row still shows its preview, and the match is allowed
-  to be about more than the row can show. And a trace continuation - an event with no name, which
-  is more of what the line above had to say - is kept or dropped with the event it belongs to,
-  rather than matched alone and left as the second half of a message whose first half was filtered
-  out from over it.
-
-- **The trace says when each event happened, not only how long it took.** The pane showed the gap
-  to the line above and nothing else. The argument for that is a good one, and is why the gap is
-  still here, still blank under a tenth of a second, and still the one painted yellow: the question
-  somebody brings to a log is which step was slow, and a column of timestamps makes them do the
-  subtraction.
-
-  What it missed is that a gap answers no question beginning "when". Matching the pane against a
-  server log, a provider's dashboard, a ticket, or a memory of what happened before lunch all need
-  an absolute time, and none of them can be reached by adding up a column of deltas. They are also
-  what a search over the trace is given to match on - "the hour it broke" is a query; "seven
-  hundred milliseconds after the line above" is not.
-
-  So an event carries two clocks, because neither can answer the other's question. `at` stays an
-  `Instant`: monotonic, and immune to the system clock being set mid-session in a way a duration
-  computed from wall time is not. `wall` is a `SystemTime` and is what gets rendered. This could
-  not have been done by formatting what was already there - an `Instant` is deliberately opaque and
-  has no rendering as a time of day.
-
-  The date is a rule across the pane rather than a column, drawn only where it changes. A session
-  can outlast a day - that is the shape of run this is for - and `00:15` against two different
-  Tuesdays says nothing at all; repeating the date on all eight hundred lines to disambiguate two
-  of them would spend eleven columns on the same answer almost every time. The zone is said out
-  loud there rather than implied by a colour. The clock itself is drawn only where there is room
-  for it: a narrow window spends its columns on the event names instead.
-
-  `time` does the calendar, and is no longer optional. Not a new crate in the tree -
-  `ratatui-widgets` already builds it, so a screen build is the same compilation with
-  `local-offset` turned on - but a headless build pays for it now, which is the price of the two
-  halves agreeing: what a search matches on has to be what the pane shows, so the stamp is built in
-  `app` where the filtering is rather than in `ui`. The local offset is read in `main` before the runtime is built, beside the
-  sandbox block that is there for a structurally identical reason - working out a local time means
-  asking libc, which reads the process environment, and `time` refuses to answer once a program is
-  threaded. Where a platform will not say, or in a test, which never goes through `main`, it falls
-  back to UTC and marks it: a column of times silently two hours out is worse than one that admits
-  which zone it is in.
+- `/` filters the context and the trace, fuzzily, via `nucleo-matcher`. One row high, in the
+  prompt's place, counting what it found beside the query. It takes `esc` before the arm that reads
+  it as "stop the turn"; `ctrl+c` still interrupts. Arrows and paging stay with the pane. Closing or
+  changing tabs clears it. A context row matches on the whole item, not the one line it shows.
+- The trace shows when each event happened as well as the gap. An event carries two clocks: `at`
+  stays an `Instant`, immune to the system clock being set mid-session, and `wall` is a `SystemTime`
+  and is what gets rendered. The date is a rule drawn only where it changes, with the zone named.
+  `time` is no longer optional, so a headless build pays for it; the local offset is read in `main`
+  before the runtime is built, because `time` refuses once a program is threaded, and falls back to
+  UTC and marks it.
 
 ### fixed
 
-- **A `~` in a settings file reached nothing on Windows.** `expanded` read `HOME`, which Windows
-  does not set, so `"sandbox-read": ["~"]` there got a root that is a directory called `~`, which
-  canonicalizes to nothing and therefore opens up nothing, silently. That is not the Linux-only
-  half of the sandbox - Landlock is, but `Reach` is not, and the in-process `read` and `write`
-  tools are held to their boundary by this program's own code everywhere. It is exactly the failure
-  this expansion exists to prevent, the path in a file silently reaching nothing while the same
-  path typed at a shell works, on the platform where nothing in front of the program would have
-  expanded it either.
-
-  The test that was supposed to catch it could not: it read the same variable to find out what the
-  answer ought to be, so it panicked before its first assertion on the one platform where the
-  function was in fact wrong.
-
-  The lookup is its own function now - `HOME`, then `USERPROFILE` where there is no `HOME`. `HOME`
-  is still asked first, because a shell that sets one on Windows, as an MSYS shell does, is a shell
-  somebody is typing paths into, and that home is the one they mean. The environment and nothing
-  else, for the reason `~user` is left alone: the password database's answer and the one the person
-  running this is working from are allowed to differ. The separator goes with it, through
-  `std::path::is_separator` rather than a literal `~/`, so `~\.cargo` is expanded where that is how
-  it is spelled and a file named `~\x` here is still a file named `~\x`. The home is an argument
-  rather than something `expanded` reads for itself, which is what lets the test run everywhere,
-  pass with `HOME` unset, and put the native separator through as well.
-
-### breaking
-
-- `app::Traced` grew two public fields. It carries a `wall: SystemTime` beside its `at: Instant` -
-  the two clocks the trace pane needs, since neither answers the other's question - and an
-  `after_a_person: bool` saying whether the time before it was somebody thinking rather than the
-  program working. The struct has no private fields and is not `#[non_exhaustive]`, so
-  `Traced { name, detail, at }` no longer compiles. There is no `Default` to spread from, so the
-  fix is both fields: `SystemTime::now()` and `false` for something being built to draw, and the
-  event's own arrival time for anything reconstructing a trace that already happened.
-
-  This is the one that moves the number, and it landed with the clock rather than with anything
-  since. `app::App` grew one in the same cycle and is *not* breaking, which is the distinction
-  worth keeping straight: it has thirteen private fields, so nothing outside the crate could write
-  a literal for it in the first place.
-
-- `ui::HELP` is gone. The key reference is `help::SECTIONS`, one page per tab, and
-  `help::everything()` is the whole of it as one string - which is what `HELP` was, so a reader
-  that wants all of it changes the path and the call. `ui` re-exports both for whoever is on that
-  path already, and `help` is a public module now, so a build with no screen can reach the text
-  that a screenless build has always been able to *print*.
+- `?` answers on an empty context or permissions tab. Both handlers return early with no rows, and
+  `?` was inside the skipped part. It is answered beside F1 now, guarded by `Focus::Body`.
+- Each pane says which of its empties it is in. The trace claimed a search was filtering a session
+  that had not started; the context blamed `f` for rows a query had hidden, over a count that was
+  both filters added together. No count is given while a search is on.
+- `~` in a settings file expands on Windows: `HOME`, then `USERPROFILE`. The home is an argument
+  rather than something `expanded` reads, and the separator goes through `std::path::is_separator`.
+  The old test read the same variable to find its expected answer, so it panicked before asserting
+  on the one platform where the function was wrong.
 
 ## [0.8.0] - 2026-09-11
 
 ### added
 
-- **A spend ceiling: `Setup::spend`, `--spend TOKENS` and `/spend`.** `--deadline` has bounded the
-  time since the headless mode existed, and time is the wrong guard for the failure that actually
-  happens: a model that has found a loop - a tool that fails the same way, a question it keeps
-  re-asking - will stay inside any deadline you were willing to give it and spend the whole of it
-  on requests. This adds up what the provider charged, `input + output` per response, and stops
-  the session: the turn in flight is interrupted, what arrived is kept, the session is written out,
-  and it leaves by the ordinary door rather than by a kill.
+- A spend ceiling: `Setup::spend`, `--spend TOKENS` and `/spend`. It adds up `input + output` per
+  response and stops the session by the ordinary door - the turn in flight is interrupted, what
+  arrived is kept, the session is written out. `--deadline` bounds time, which a model stuck in a
+  loop will stay inside while spending the whole of it.
 
-  It belongs to the **session**, not to the loop driving it. `App::on_event` is the door every
-  caller comes through - the screen, the headless driver, and a host with a loop of its own - so
-  that is where the figures are added up, and `App::start_turn` is where the next turn is refused.
-  A guard that only the program's own loop applied would be no guard for the embedder who most
-  needs one, and a caller cannot get round this one by not asking.
+  It belongs to the session: `App::on_event` counts and `App::start_turn` refuses, so an embedder
+  cannot get round it. In tokens, because a figure in money would be a price list. A stopping rule
+  rather than a cap, since a response's cost is known only once it has arrived. `/spend N` raises
+  the ceiling, `/spend 0` removes it, and an endpoint reporting no usage is said so once.
+- `--config-file PATH`, a JSON file for the settings otherwise typed every time, each key named
+  after its argument and all optional.
 
-  In tokens, and it has to be. Nothing in this workspace carries a price list, and a figure in
-  money would be one - a table per model per endpoint, kept up to date by somebody, wrong quietly.
-  Tokens are what the provider reports, and `Usage` already defines `input + output` to be the
-  whole of a request's bill whichever dialect answered it.
+  The command line wins, including over a value that happens to equal the default - the merge asks
+  clap which arguments were *typed*. A list on the command line replaces the file's rather than
+  adding to it. `--model` reads command line, then `KAMCHATKA_MODEL`, then the file. An unknown key
+  is an error naming the ones that exist. A leading `~` in the two sandbox lists is expanded, and
+  that is the only place in this crate that expands one. It carries nothing belonging to an
+  invocation - a message, `-r`, `-f`, `--headless` - and there is no search for a file.
+- `kamchatka.json` ships beside the readme: every setting at its default. It grants nothing -
+  `allow` empty, both sandbox lists empty, `on-ask: deny`. The one non-default value is a spend
+  ceiling, which is a tightening. `Settings` serializes too, so the suite holds the shipped file to
+  having a key for every field.
+- `--headless`: the same program driven by lines instead of keys. A line of stdin is a message or a
+  `/` command; the session log goes to stdout one JSON record per line and the model's words to
+  stderr. Implied when stdout is not a terminal, and says so.
 
-  It is a stopping rule rather than a cap, because what a response cost is known only once it has
-  arrived: the session ends a little over the line and says by how much. `/spend` says what has
-  been charged and against what, `/spend N` raises the ceiling and `/spend 0` takes it away - the
-  way back for whoever set it too low, and the reason a screen session can be given one at all.
-  And an endpoint that reports no usage is told about, once: a ceiling nothing can reach is worse
-  than no ceiling, since whoever set it is reading that session as bounded. `--deadline` is the
-  guard that needs nobody's cooperation, and the notice says so.
+  Records come from `Kernel::history_since`, so they are the same bytes `/save` writes, including
+  `session.started` and `session.finished`. `--allow`/`--deny` answer permissions in advance and
+  `--on-ask` covers the rest, defaulting to **deny**.
 
-  Live against `mercury-2.5`, where a model asked for five tool calls in one response and the
-  response itself crossed the line: `· spent 2,264 tokens of 2,000; stopping`, the first call ran,
-  the other four were dropped and the model was told why. The line is printed where the bill is
-  read - at the response - so the calls that response had already asked for are announced under
-  it; that is the same order `--deadline` prints in, and it is the event stream's own.
-
-  Measured, one mutation per moving part, each caught by the test written for it: counting only the
-  output half of the bill, crossing the line without interrupting the turn, letting `start_turn`
-  run anyway, letting the headless loop go on reading lines it will only refuse, and raising the
-  ceiling without letting a stopped session go again.
-
-- **`--config-file PATH`: a JSON file for the settings somebody would otherwise type every
-  time.** A model, a system instruction, MCP servers, the sandbox paths, the permission answers, a
-  spend ceiling - each key named after the argument it stands in for, and every one of them
-  optional. JSON because a project's settings are a handful of strings, numbers and lists, there
-  is a parser for that in the tree already, and a second grammar is a second thing to have
-  opinions about.
-
-  **The command line wins, and it wins over a value that happens to be the default.** That is the
-  whole of why the merge asks clap which arguments were *typed* rather than comparing against the
-  defaults: `--requests 8` is somebody saying eight, and a merge that could not tell the two apart
-  would let a file quietly override what was asked for. A list given on the command line replaces
-  the file's rather than adding to it - one rule for every key is the only kind anybody can
-  predict, and the other way round there is no way to ask for fewer than the file says. `--model`
-  is the one setting with a variable behind it, and it reads command line, then `KAMCHATKA_MODEL`,
-  then the file.
-
-  An unknown key is an error naming it and listing the ones that exist, because a settings file
-  that is accepted and ignored looks exactly like one that worked. A build without the `mcp`
-  feature refuses an `mcp` key rather than skipping it, for the same reason.
-
-  A leading `~` in the two sandbox lists is expanded, and that is the only place in this crate
-  that expands one. The exception is narrower than it looks: every other way of giving those paths
-  has a shell in front of it, so not expanding here would not be one rule applied evenly - it
-  would be `--sandbox-read ~/.rustup` working and the same path in a file silently reaching
-  nothing. The tools go on refusing a leading `~`, because those paths are written by a model
-  rather than by the person whose home it is.
-
-  What it does not carry is anything belonging to an invocation rather than to a project: a
-  message, `-r`, `-f`, and `--headless`, which decides for itself. There is no search for a file
-  either - one that applies because of where you are standing is one that surprises you.
-
-- **The headless suite drives the binary against a socket**, which is what lets the last of it be
-  tested without a key: the program builds its own provider out of two environment variables, in a
-  process of its own, so a scripted provider cannot be swapped into it and a listener is the only
-  seam a child process has. With one, a tool call, a spend ceiling, a recorded session and two
-  signals are all reachable from `cargo test`.
-
-  What that closed, in the order the questions were asked. **A second `ctrl+c` leaves a tool that
-  will not stop** - and finding a case to show it in took measuring three: a model that has gone
-  quiet ends on the *first* press in about 200ms, a `shell` command halfway through `sleep 30` is
-  killed by the first press, and neither is a turn the first press cannot stop. What is one is an
-  MCP server that never answers: a kernel interrupt lands between steps, and a call already in
-  flight is not between steps. So the guard has a test, and the test is also about the hazard -
-  somebody else's process, on the other side of a pipe, must not be able to hold this one hostage.
-
-  **The first press, too**: it stops a `shell` command that is running and keeps what arrived, which
-  is the re-exec being load-bearing rather than tidy. **`--spend` through the command line**, where
-  the ceiling had only been tested through the library and against a real endpoint. **The session
-  a run writes when nobody said `--no-record`** - what every real run does at the end, and the one
-  thing about a headless run that nothing checked, because every suite passes `--no-record` and a
-  test that wrote a file somewhere would be a test that left one. And **a screenless build at a
-  terminal**, under a pty, which is the shape of the bug below that shipped: with `tui` off, the
-  same command draws nothing and must run headless, and no piped test can tell you so.
-
-- **A starting point ships with the crate**, `kamchatka.json` beside the readme: every setting
-  there is, each at the program's own default, so that setting one up is editing rather than
-  remembering. It grants nothing, and that is the substance of it rather than a gap - `allow` is
-  empty, both sandbox lists are empty and `on-ask` is `deny`. A shipped default that pre-granted
-  `read`, or opened up `~/.cargo` so that `cargo` works out of the box, would be this program
-  deciding on somebody's behalf the one class of thing it exists not to decide on their behalf;
-  `~/.cargo` holds a registry token. The single value in it that is not a default is a spend
-  ceiling, which is a tightening and the one thing a file adopted sight-unseen can safely offer.
-
-  `Settings` serializes as well as deserializes, which is what lets the suite hold the shipped
-  file to having a key for every field - written out and compared as key sets, rather than a list
-  of names in a test that would go stale the day a field is added. A starting point missing the
-  setting somebody is looking for is worth less than none, because they stop looking.
-
-- **A live test that a PDF goes out as a document in Google's native dialect**, which is the half
-  of `/attach` that had never been sent at a real endpoint. The OpenAI-dialect test for the same
-  act cannot be pointed at Google at all: its shim answers a `file` content part with
-  `400 Invalid content part type: file`, so that part is OpenAI's and OpenRouter's to accept, and
-  `inline_data` is how the same bytes reach the same model when the dialect is Google's own. Both
-  are this workspace's code and only one of them had been tried.
-
-  With it, `cargo test -p kamchatka --test live` passes in full against a single Google key -
-  every test, both dialects - where before, five of them were unrunnable without a second
-  endpoint.
+  A line is read only while the kernel rests, so lines cannot overtake the turns they belong to; a
+  question is answered only once the kernel rests; the model's words end their line before anything
+  else writes one; and the session is ended by the loop rather than its caller.
+- `headless::Headless`, that loop, over any `AsyncBufRead` and two `Write`s. `--deadline 300`
+  interrupts what is in flight, records it, and leaves by the ordinary door; `ctrl+c` does the same
+  once and leaves at once if pressed again. Both are the driver's rather than a `timeout` around it,
+  since a dropped future never finishes the session. `Headless::stops_on_ctrl_c` is off by default.
+- `wiring::Setup`: a session assembled, with a `Default`, and `wire(provider)` returning the `App`
+  and two receivers. Two of its steps are not guessable: the subscription must happen *before*
+  anything is plugged in, and `introspect::install` returns a handle the caller must keep. It does
+  not reach the network or read the environment.
+- `mcp::attach`, which was `main.rs`'s own. The part that is not obvious is the name: it prefixes
+  the server's tools and is what `always, for mcp:<name>` grants.
+- A `tui` feature, on by default, holding the screen and keys. The binary declares
+  `required-features = ["tui"]`. `cargo tree -e normal` goes from 267 crates to 179 with MCP on.
+  Three of the six test suites run without it.
+- The headless suite drives the binary against a socket, which is what lets the rest be tested
+  without a key. It closed: a second `ctrl+c` against a tool that will not stop (an MCP server that
+  never answers - a kernel interrupt lands between steps, and a call in flight is not); the first
+  press stopping a `shell` command; `--spend` through the command line; the session written when
+  nobody said `--no-record`; and a screenless build at a terminal, under a pty.
+- A live test that a PDF goes out as a document in Google's native dialect. The OpenAI-dialect test
+  cannot be pointed there - the shim answers `400 Invalid content part type: file`. With it,
+  `cargo test -p kamchatka --test live` passes in full against a single Google key.
 
 ### changed
 
-- The live test about a turn carrying its thinking asks a different question, because the one it
-  asked could not be answered any more. It wanted thinking, speech and a call in one turn;
-  measured on 2026-09-11, a response that makes a call carries no thought summary at all, in ten
-  of ten requests across two models. What it asserts now is that *wherever* a summary turns up it
-  is carried in the turn, in order, and findable through `thinking()` - which is this crate's
-  claim, where whether the endpoint summarises is not. It still tries the tools-in-place shape
-  first, since that is where the summary showed up in the runs this was written from.
-
-  The lite models return no summaries in any condition tried, so it skips there - and says which
-  condition it was in when it did. The note it replaces recorded a measurement that had gone
-  stale, and a test that skips for a reason nobody wrote down reads as a model's whim.
-
-- A live test whose model said nothing now says what the *program* said instead. A rejected
-  request leaves an empty answer and the reason on `App::loose`, so
-  `400 Invalid content part type: file` read as "the model should have read the attachment: " -
-  an empty string, and an hour spent looking at the wrong half of the program.
-
-- **`--sandbox-allow` and `--sandbox-read` take a comma-separated list**, the way `--allow` and
-  `--deny` do: `--sandbox-allow /srv/repo,/tmp/work`. Both could already be repeated, which is the
-  form that survives a path with a comma in it; what the list adds is the spelling people reach for
-  first. `--sandbox-allow a b` reads `b` as the message to send, which is clap doing exactly what
-  it was told and is a poor way to find out.
+- `App::submit` returns a `Reply`: what the line did (`Did::Asked`, `Did::Queued`, `Did::Ran`), the
+  lines it said, and the page it opened. Breaking. The page had no other way out - it came back by
+  `take()`ing the overlay, so a command that opened no page reported the last one that did.
+- `App::submit` and `App::interrupt` are `pub`. Every verb is reachable only through `submit`, and
+  while it was `pub(super)` the only way in from outside was to synthesize a key press.
+- `ui::HELP` moves to a private `help` module with the selector listing; `thousands` and `charged`
+  move to `app::text`. The public path `ui::HELP` is unchanged.
+- The chat-against-the-request property drives a generated sequence of moves rather than six chosen
+  ones, and carries its own reachability check over the nine-move alphabet. Drawing an archived item
+  on the chat is caught by this and nothing else.
+- `--sandbox-allow` and `--sandbox-read` take a comma-separated list, like `--allow` and `--deny`.
+  Repetition still works and survives a path with a comma in it.
+- The live test about a turn carrying its thinking asserts that *wherever* a summary appears it is
+  carried in the turn, in order, and findable through `thinking()`. Measured 2026-09-11, a response
+  that makes a call carries no thought summary at all.
+- Requires `nachalnik` 0.5.0, whose `PermissionPolicy::why` takes a `PermissionRequest`. `Careful`
+  keeps its own record of the last sixty-four refusals, because its second reader is the permissions
+  tab, which asks by identifier off an event carrying no arguments.
 
 ### fixed
 
-- **Every early stop in a headless run left the process hung.** `ctrl+c`, `--deadline`, the spend
-  ceiling, `/quit` - each of them ended the session correctly, wrote the whole log with
-  `session.finished` on the end, printed where the recording had gone, and then sat there until
-  somebody killed it. The cause is one line and none of it is the loop's: `tokio::io::stdin` reads
-  on a blocking thread, a blocking read on a pipe nobody is writing to does not return, and
-  dropping a runtime waits for its blocking threads. So the program hung on the one thread that
-  had nothing left to do.
-
-  It only ever happened when stdin was still *open*, which is why nothing caught it: a piped run
-  ends because the input ended, and that is every test and most uses. A person at a terminal, or a
-  script that holds the pipe, got the hang - and the promise in the readme that `ctrl+c` "leaves at
-  once" was false for however long it had been there. The runtime is let go of with
-  `shutdown_background` now, which is safe exactly where it is: the last statement, after the
-  session is written and the MCP servers have been dropped with the scope that killed their
-  children.
-
-  There is a test for it, and it is the first here to send a signal: the run is a child process,
-  so `kill -INT` is a command. It asserts the difference between stopping and being killed - the
-  line that says so, `session.finished` at the end of the log, and an exit that is not a failure -
-  and it fails against a plain `drop`.
-
-- **A build with no screen panicked the moment it was run in a terminal.** `--no-default-features`
-  is this crate's own headline configuration - the program, with nothing drawing it - and
-  `kamchatka -m … "a question"` at a prompt printed `built without the `tui` feature, so this is a
-  headless run` and then hit `unreachable!("there is no screen in this build")`. Having no screen
-  was written as a *notice* beside a decision that was never made: the mode was `--headless` or a
-  piped stdout, and neither is true of somebody typing at a terminal.
-
-  No test could have caught it as the suite is written - every test of this binary pipes its
-  stdout, which is the one condition where the missing case cannot arise. It was found by running
-  the thing. The decision is a named function now, with the four cases under it.
-
-- A resumed headless run says how it is driven. The opening line and the replay line were arms of
-  one match, so a session carried on from a file was told what it had picked up and not what a
-  question nobody is there to answer would get - which a resumed run needs exactly as much as a
-  fresh one.
-
-- **A refusal from the three file tools named the working directory and called it as far as the
-  session reached**, which stopped being true the moment anybody passed `--sandbox-allow` or
-  `--sandbox-read`. It names all of it now - `outside what this session reaches, which is /w
-  read-write, /tmp/work read-write, /home/you/.rustup read-only` - and a write refused for landing
-  on a read-only path names where it *may* write instead.
-
-  Under-reporting a boundary costs more than over-reporting it: a model reads a refusal as the
-  whole of the rule, so a path opened up for exactly this was one it then never tried, and there is
-  nothing in front of it to say otherwise. `shell` has named them in its own description since the
-  same thing happened to a confined command; the tools that run in process were the half left
-  behind. The words are `Sandbox`'s own, down to the `read-write` after each path, because the two
-  are describing one session.
-
-- **A line the program said while an answer was still arriving never reached the person reading
-  it**, in a headless run. The driver marked its place in `App::loose` by length, and that list is
-  not append-only: a turn being recorded takes back every line that streamed out of it, because
-  the context says those now. So the mark slid backwards under itself and everything said between
-  one shrink and the next look was skipped. It counts what it has *printed* now - the notes and
-  the errors, which are the part that never streams and so never goes away.
-
-  Invisible to every test in this crate, and it took a live run to see: a scripted model answers
-  between two looks at the list, so nothing shrinks in between. The test for it has a provider of
-  its own that pauses mid-answer. What went missing live was the ceiling's own `spent 1,106 tokens
-  of 500; stopping` - decided, recorded, the turn interrupted, and nothing printed - and the
-  reasoning notice went the same way whenever a model streamed any prose at all.
-
-- **`/spend` answered `0 tokens spent` after turns that had plainly cost some.** The counting was
-  inside the ceiling's own guard, so a session with no ceiling counted nothing - and a `/spend N`
-  half way through one then started from zero and gave away everything spent up to that point.
-  The total is kept whether or not anything is watching it. Also found by reading a live run.
-
-- `Entry` derives `Debug`. `Reply` hands a caller a `Vec<Entry>` and `Did` was already printable,
-  so the half of a reply that says what was *said* was the half nothing could print.
-
-- **A suite for the two flags that had never been run together: `--mcp` and `--headless`.** They
-  meet at a question. Every tool an MCP server offers declares `mcp:<server>` and nothing else,
-  `Careful` asks about whatever nobody has answered for, and a headless run has nobody to ask - so
-  a server's tools are all there and every call is refused unless `--allow mcp:<server>` was given
-  in advance. That grant is recorded while the session is being wired, *before* the server has been
-  spawned or said what it offers, and the ordering is the half worth pinning.
-
-  A real child process rather than an in-process fixture, because the child is the untested path:
-  `mcp::attach` is handed a command line, splits it on whitespace and spawns it. The server is a
-  short Python file in `tests/mcp_server.py` with one tool in it, and the suite skips without an
-  interpreter, the way the live tests skip without a key. It wants the `mcp` feature and not the `tui` one, so
-  `--no-default-features --features mcp` runs it: somebody else's tools, no screen compiled in.
-
-  Run against a real endpoint both ways, because a scripted model cannot decide to work around a
-  refusal. With `--allow mcp:py` the call is `grant: allow, source: policy` and `mercury-2.5` gets
-  its 42 back through a Python child process with nobody watching any of it. Without, the same run
-  is `grant: deny, source: user`, and what a refused model does next is the part worth having seen:
-  it tried `shell`, was refused, tried `write`, was refused, and then answered from its own
-  arithmetic - three refusals and their explanations at eighty to ninety tokens each, which is what
-  `--on-ask deny` costs when a model has other tools to reach for.
-
-  Measured, and it found that `--allow` had nothing testing it at all. Dropping the two lines in
-  `wiring` that record those verdicts breaks exactly one test in this crate, and it is the new one;
-  deriving the server's name from the program rather than from `name=` - so that the grant reads
-  `mcp:python3` and the tools are prefixed `python3__` - breaks three. What it does *not* catch is
-  `main` letting go of the servers: the tools stay registered when the child dies, so listing them
-  says nothing, and only a call notices. There is a test for the call, and what it pins is that a
-  dead server fails rather than hangs - the model is handed `the MCP server refused: …` and the
-  turn ends, which is what an unattended run needs it to do.
-
-- **`--headless`: the same program driven by lines instead of by keys.** A line of stdin is what a
-  line typed at the prompt is - a message, or a command starting with `/` - the session log goes
-  to stdout one JSON record per line, and what the model says goes to stderr. It is implied when
-  stdout is not a terminal, and says so when it decides that for itself.
-
-  ```console
-  $ printf 'what is 2+2? answer with just the number\n/budget\n' \
-      | kamchatka --headless -m mercury-2 > session.jsonl
-  ```
-
-  The records are taken out of `Kernel::history_since` rather than off the broadcast, so they are
-  the same bytes `/save` writes - including the `session.started` no subscriber can catch, and the
-  `session.finished` a caller that ended the session afterwards would have written every record
-  but. Verified against a real endpoint, which is where three of the four things below were found.
-
-  Permissions are the part a headless run cannot improvise: `--allow read,shell,mcp:files,.env*`
-  and `--deny` answer in advance and write the same table the prompt does, and `--on-ask` says
-  what happens to a question nobody is there for. It defaults to **deny**, which is the difference
-  between this and `examples/recorded.rs`: granting every question is right for a recording
-  somebody is watching and wrong for a program.
-
-  Four things the live runs settled, none of which a scripted provider would have shown. A line is
-  read only while the kernel rests, so a script's lines cannot overtake the turns they belong to -
-  a piped `/budget` ran *above* the answer it was asked after, and a message sent into a running
-  turn is held in a slot that holds one, so the third line of a three-line script would have
-  quietly replaced the second. A question is answered only once the kernel is resting, because it
-  is broadcast while the turn that raised it is still in flight. The model's own words end their
-  line before anything else writes one, or the closing line arrives stuck to the answer. And the
-  session is ended by the loop rather than by its caller, or the last record never reaches the
-  stream.
-
-- **`wiring::Setup`: a session, assembled.** A settings struct with a `Default`, the way
-  `nachalnik::Config` is, and `wire(provider)` hands back the `App` and the two receivers a loop
-  needs. It exists because it had been written twice — `main.rs` and `examples/recorded.rs` did
-  the same nine steps in the same order — and an embedder would have written it a third time out
-  of reading `main.rs` and hoping.
-
-  Two of those steps are not guessable, which is most of the argument: the subscription has to
-  happen *before* anything is plugged in or the trace is missing the wiring, and
-  `introspect::install` hands back a handle the caller has to keep, because the tools hold a weak
-  reference to it and stop the moment it is dropped.
-
-  Three callers now — the program, that example, and `tests/headless.rs`, which builds its
-  sessions through it rather than by hand. `main.rs` lost about 120 lines and is arguments and a
-  loop again. What `Setup` deliberately does not do is reach the network or read the environment:
-  it takes the provider already connected, because where the requests go and which key pays for
-  them are the caller's to decide.
-
-- **`mcp::attach`**, which was `main.rs`'s own. An embedder that wants somebody else's tools
-  should not have to re-derive the one part of it that is not obvious, which is the name: it
-  prefixes every tool the server offers and it is what `always, for mcp:<name>` grants.
-
-- **A headless run exits non-zero when its last turn failed.** It used to exit `0` with an
-  unreachable model: the loop had completed, which is not the same as the session having happened,
-  and a script would have reported a run that never got a single answer as a success. The *last*
-  turn rather than any, because a turn that failed and was then carried on from is a session that
-  recovered. Found by the first test to run the binary rather than the loop.
-
-- **A deadline and a `ctrl+c` that keep what arrived.** `--deadline 300` interrupts whatever is
-  in flight, lets it be recorded, and leaves by the ordinary door; `ctrl+c` does the same once and
-  leaves at once if pressed again. Until this there was nothing at all that could stop an
-  unattended run: `--requests` bounds one turn and says nothing about an hour spent.
-
-  Both are the driver's rather than a `timeout` around it, which is where `examples/recorded.rs`
-  had its deadline and what that cost — a dropped future never reaches the end of the loop, so the
-  session was never finished and the records of the turn it was stopped in went nowhere. That is
-  exactly the run worth reading afterwards. `Headless::stops_on_ctrl_c` is off by default, because
-  taking a process-wide signal is the caller's decision and a host with its own shutdown has one.
-
-- **`headless::Headless`**, which is that loop, over any `AsyncBufRead` and two `Write`s. It is
-  what `examples/recorded.rs` now uses: the forty lines of turn loop, permission answering,
-  follow-up pushing and deadline it had are one call, and what is left in the example is what the
-  example is actually for - a planted context, a small budget, and a `session.md` that is a
-  reading of the context rather than a log of the session.
-
-- **A `tui` feature, on by default, holding the screen and the keys** - `ui`, the prompt and the
-  bindings - so that the rest of the library is the program without one. `App` keeps the session,
-  the tools, the policy, the trace and every verb; drawing it is one caller.
-
-  This is a boundary move rather than a new capability: nothing behaves differently, and the
-  binary declares `required-features = ["tui"]` because there is not yet a second way to drive a
-  session from outside. What it buys now is a measurement instead of a claim -
-  `cargo check -p kamchatka --no-default-features` builds, and `cargo tree -e normal` goes from
-  267 crates to 179 with MCP still on, six direct dependencies (`ratatui`, `ratatui-textarea`,
-  `crossterm`, `tui-markdown`, `synoptic`, `unicode-segmentation`) and 88 crates with them.
-
-  Three of the six test suites come with it: `policy`, `sandbox` and `introspect` never draw
-  anything, so `cargo test -p kamchatka --no-default-features` runs them and CI does. The other
-  three press keys or read characters off a frame and are `required-features = ["tui"]`. What that
-  is worth, exactly: none of the three builds an `App`, so a session driven without a screen is
-  still checked nowhere - there is nothing to drive one with yet. `examples/recorded.rs` does
-  compile with no features at all, which is the same point from the other side: the one headless
-  thing in this crate needed none of the terminal, and re-wired a kernel out of the parts instead.
-
-### changed
-
-- **`App::submit` answers its caller**, returning a `Reply`: what the line did (`Did::Asked`,
-  `Did::Queued`, `Did::Ran`), the lines it said, and the page it opened. Breaking, and worth
-  breaking now rather than after somebody has embedded this.
-
-  What it replaces is a caller watching `App::loose` and `App::overlay` change to work out what
-  its own line had done - which is how a *screen* finds out, because a screen re-reads both every
-  frame, and which the headless loop was reduced to. The page is the half that had no other way
-  out: it came back by `take()`ing the overlay, and a command that opened no page would then have
-  reported the last one that did. `App::previews` counts pages opened so that "this call opened
-  one" and "one is open" are different questions; a test pins it, and it is the only test that
-  catches the difference.
-
-  The state changes are unchanged: the lines are still in `loose` and the page is still on
-  `overlay`, because the terminal draws both from there.
-
-- **`App::submit` and `App::interrupt` are `pub`.** Every verb this program has - `/model`,
-  `/exclude`, `/limit`, `/step`, `/save`, `/load`, `/tools drop`, `/introspect` - is reachable
-  only through `submit`, and while it was `pub(super)` the only way to reach any of them from
-  outside was to synthesize a key press. That is why `examples/recorded.rs` re-wires a kernel out
-  of this crate's parts instead of driving an `App`: to drive one, it would have had to type. The
-  compiler said so as soon as the keys went behind a feature - with no screen, `submit` had no
-  caller and the whole command surface was dead code.
-
-  `interrupt` is the same argument from the other end: `esc` is one caller, and a deadline or a
-  budget ceiling watching from another task is another.
-
-  What a command *says* still goes where the screen reads it, `App::say` for a line and an overlay
-  for anything longer. Handing back what a command produced, rather than posting it to a
-  transcript, is the part this does not do.
-
-- `ui::HELP` is re-exported from a new private `help` module rather than declared in `ui`, and
-  the selector listing moved with it: `/prune` and the `amend` tool print them, and neither is
-  drawing. `thousands` and `charged` moved to `app::text` for the same reason - half the lines
-  they format are read by a *model* through `introspect`. The public path `ui::HELP` is unchanged.
-
-- **The chat-against-the-request property drives a generated sequence of moves**, where it drove
-  six somebody chose. The sentence it checks is the one the chat was redesigned around and has
-  not moved: what a person reads is what the model reads, item by item, after every change.
-
-  The six were `excluded, restored, elided, edited, undone, redone` over three fixed items, which
-  is one path through a space that also has `pinned`, `archived` and `superseded` in it - and no
-  interleaving at all, when interleavings are where this went wrong before: a line drawn twice
-  needs a state left and returned to, and six moves in a fixed order cannot do that. Measured
-  rather than argued: drawing an **archived** item on the chat is caught by this property and by
-  nothing else in the suite, because no other test here ever archives anything. Drawing an
-  excluded or a superseded one was already caught several times over, which is the honest half of
-  the same measurement.
-
-  The shrinker is the other half of the reason. The hand-written version failed immediately on its
-  own fixture - two items ending in the same word - and finding out why took reading; a generated
-  one hands back the shortest sequence that still breaks. Distinctive words are fixed-width now so
-  that no item's marker can be a substring of another's, which is what that first failure was.
-
-  It carries its own reachability check, the way `nachalnik`'s invariants do: nine moves are in the
-  alphabet and a run that reached two of them is not a property anybody should trust, so what a
-  run reaches is counted and asserted. That failure mode is a reweighted `prop_oneof!` rather than
-  anybody's decision, which is exactly why nothing else would catch it.
-
-  A `tokio` runtime is driven from inside a synchronous property, because `proptest!` builds a
-  plain `#[test]` and this harness is async. One runtime for the run, a fresh harness per case.
-
-- Requires `nachalnik` 0.5.0, whose 0.5.0 asks `PermissionPolicy::why` with the
-  `PermissionRequest` rather than a `ToolCallId`. `Careful`'s implementation of it reads
-  `request.call` and hands back the same sentence as before, so a refused model reads exactly what
-  it read yesterday.
-
-  `Careful` keeps its own record of the last sixty-four refusals rather than answering the kernel
-  from the request. The reason is its second reader: the permissions tab asks by identifier off
-  `Event::PermissionDecided`, which carries no arguments, so the record is what puts a refusal on
-  a screen at all. Answering the *model* from the request instead - which is now possible, and
-  would put that copy beyond the sixty-four - is a change with a different meaning, since a reason
-  computed on demand describes the stances as they stand and a remembered one describes the ones
-  that actually refused.
+- Every early stop in a headless run left the process hung. `tokio::io::stdin` reads on a blocking
+  thread, a blocking read on an open pipe does not return, and dropping a runtime waits for its
+  blocking threads. Only reachable with stdin still open, which no piped test is. The runtime is let
+  go with `shutdown_background` as the last statement.
+- A build with no screen panicked when run in a terminal. Having no screen was a notice beside a
+  decision never made: the mode was `--headless` or a piped stdout, and neither is true of somebody
+  typing at a terminal. Every test of this binary pipes stdout.
+- A refusal from the three file tools names every path the session reaches, and a write refused for
+  a read-only path names where it may write instead. It named only the working directory, which
+  stopped being true the moment anybody passed `--sandbox-allow` or `--sandbox-read`.
+- A line said while an answer was still arriving reaches a headless reader. The driver marked its
+  place in `App::loose` by length, and that list is not append-only - a recorded turn takes back
+  every line that streamed out of it. The spend ceiling's own stopping line went missing this way.
+- `/spend` counts whether or not a ceiling is set, so `/spend N` part way through a session does not
+  start from zero.
+- A resumed headless run says how it is driven, not only what it picked up.
+- `Entry` derives `Debug`.
+- A headless run exits non-zero when its *last* turn failed. A turn that failed and was carried on
+  from is a session that recovered.
+- A suite for `--mcp` with `--headless`. They meet at a question: MCP tools declare `mcp:<server>`
+  and a headless run has nobody to ask, so every call is refused unless `--allow mcp:<server>` was
+  given in advance - recorded before the server has been spawned or said what it offers. A real
+  child process, skipping without a Python interpreter. What it pins about a dead server is that a
+  call fails rather than hangs.
 
 ## [0.7.0] - 2026-09-10
 
 ### added
 
-- **`/attach PATH [TEXT]` puts a file in the context and asks about it in the same breath.**
-  Source and markdown go in as text, exactly as `-f` has always read them; a PDF, an image or a
-  recording goes in as `Content::Blob`, which nothing here can price and which everything that
-  reports a number now says so about. With no question after the path it just goes in, which is
-  what `-f` does at startup - and it *is* `-f`, one function reached two ways, so `-f report.pdf`
-  no longer fails with a decoding error at the one moment a person has the least idea what this
-  program can do.
+- `/attach PATH [TEXT]` puts a file in the context and asks about it in one act. Text goes in as
+  text; a PDF, image or recording goes in as `Content::Blob`. It *is* `-f`, one function reached two
+  ways, so `-f report.pdf` no longer fails with a decoding error.
 
-  The extension decides, and only for the ten types listed in `attach::TYPES`. Sniffing the
-  content was the obvious alternative and it gets the interesting case wrong: an uncompressed PDF
-  is valid UTF-8 for pages at a time, so "is this text?" answers yes and sends the model PDF
-  source where the endpoint has a part that would have carried the document. A file that is
-  neither a listed type nor valid text is refused rather than guessed at - a media type is a
-  claim about what the bytes are, and an invented one buys an error message about a shape instead
-  of one about a file.
-
-  The path travels *with* the payload, as a text block beside it, because `LinearProjector`
-  labels a reference by prepending its label to the text - so a reference that is not text loses
-  its label on the way out, and the model would be handed a document with nothing saying which
-  file it was in a conversation where the person had just typed the name.
-
-  Not pinned, where `-f` is, and the two differ because the acts differ: a file named on the
-  command line is part of how the session was set up, and one attached at the prompt is something
-  brought into a conversation, as ordinary as a message and getting old the same way. `p` pins the
-  one that is meant to last.
-
-  Measured against Gemini through OpenRouter, in the live test that pins it: a 535-byte one-page
-  PDF, a request the counter puts at 19 tokens with one piece unpriced, and 540 charged. Dividing
-  the base64 by four would have said 179 for the document, which is not the answer either - a
-  number about an encoding never becomes a number about a model. Declining is what makes the
-  budget say `unpriced: 1 piece(s)` instead of picking one of the two wrong figures.
-
-- The context pane marks a row the counter would not price: its figure reads `0+` rather than
-  `0`. The two things that zero meant - "measured, and free" and "there is a picture here and
-  nothing priced it" - were the same cell, which invites the wrong conclusion from a pane
-  somebody opens to decide what to get rid of. A picture is the most expensive thing in the
-  request and was reading as the cheapest row in the list.
-
-- **The figure in the corner is anchored on what the provider charged.** `App::anchored` takes
-  the reported cost of the last request, adds what the context estimates now, and subtracts
-  what the estimator says the items that figure covered would cost now. An item that has not
-  moved appears in both estimates and cancels, so it contributes its *measured* cost and no
-  error at all - only what changed since the last request is estimated.
-
-  The counter has no tokenizer and is out by a few percent of everything it is asked about, so
-  an estimate of a large context is out by a lot of tokens even where it is a good percentage:
-  1% of a hundred thousand is a thousand, and "does the next message fit" is exactly the
-  question that figure gets read for. Measured against a scripted provider reporting 9,000 for
-  a request the calibrated counter put at 8,060, the anchored figure is the 9,000 plus the cost
-  of the answer.
-
-  It also absorbs, exactly and for nothing, what the counter is structurally blind to:
-  per-message framing, the tool schemas, and any `Content::Blob` that has already been sent -
-  a picture the counter refuses to price is inside the provider's number, so it stops being
-  unaccounted for the moment it has gone out once.
-
-  Both estimates are taken with the counter as it currently stands, which is what makes the
-  cancellation exact: storing what each item was estimated at when the request went out would
-  not, because `Calibrating` revises its scale on the way past - when the very response the
-  figure comes from is observed - and every stored figure would be in older money than the ones
-  it is subtracted from.
-
-  It falls back to the plain estimate before any response, on an endpoint that reports no
-  usage, and after a change of model until the next response. What it does not catch until the
-  next request re-anchors it is a tool added or dropped, since the schemas are inside the
-  provider's figure and are not itemised in it.
-
-- **A message being typed is counted before it is sent.** `App::drafted` measures the prompt
-  with the same counter as everything else, and the status line adds it to the anchored figure
-  and says how much of the total is not sent yet. A slash command is not a message and counts
-  as nothing. Worth showing only because the figure it lands on is anchored - a draft moving a
-  total that is itself a thousand tokens uncertain would be precision theatre.
-
-- `/budget` says which of the two figures the corner is showing, and what the anchored one is
-  built from. The estimate and the provider's number were already side by side there; what was
-  missing is that they are answers to the same question by different methods.
-
-
-- A context item holding `nachalnik::Content::Blob` - bytes that are not text - draws, as the row
-  naming what it is and what it costs: `[image/png, 12.05kB]`. This program renders no
-  pictures and is not going to: a terminal cell is not a pixel, and a half-hearted attempt would
-  be worse than none. What it owes a picture is what it owes anything else it cannot show, which
-  is to say that it was there - and that is what `to_text` already answers, so every view got it
-  without a line of drawing code. `tests/edges.rs` pins that it really does, at every size.
-
-  `/request`, `/payload` and `/raw` name it too, rather than printing it. Those three are the only
-  places this program shows raw JSON, and a blob in any of them is several megabytes of
-  `AAAAAAAA` where somebody was looking for the shape of a request - so the payload is replaced
-  with `[ base64 blob, image/png, 12048 bytes ]` and the rest of the body is left alone. By shape
-  rather than by length, in all three of the shapes this workspace produces - the kernel's own
-  `Content::Blob`, a `data:` URI, and Google's `inline_data` - because a long tool *result* is
-  something somebody opened `/request` to read and must not be cut. The session log keeps the
-  whole of it; these are views.
-
-### fixed
-
-- **Past the limit, the corner says the compactor stands between that figure and the request.**
-  A pass runs when a request is *built*, not when a turn ends, so a tool loop leaves the context
-  fat: the corner sat at `~16,254 tokens, 270.9% (6.0k)` in red while the request that followed
-  cost 1,100. The number was true of the context and false of what was about to be sent, and
-  nothing said which. It reads `· the compactor runs first` now, and `/budget` has the half the
-  corner has no room for - including that the pass may find everything it would take is pinned,
-  which is the case where the figure means exactly what it says. With no compactor it claims
-  nothing.
-
-- A file put in the context is announced once, not twice. `Event::ContextAdded` said
-  `[1] notes.md is in the context, 10 tokens` and the chat derived
-  `[1] notes.md (file), 10 tokens` off the item, one directly above the other, for every `-f` and
-  every `/attach`. The derived line is the one that cannot go out of date, so it is the one that
-  stays - and it counts in thousands now, like every other figure on the screen.
-
-- `/budget` no longer puts a Rust type path in the middle of a sentence. `TokenCounter::name`
-  defaults to the type, so the unpriced line read "of content
-  `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` would not put a number on" -
-  sixty-two characters of generics in a line meant to be read. `/seams` answers which counter, in
-  a table where a full path is the useful form.
-
-- **The compactor filled the context it was clearing.** Every pass wrote a summary and nothing
-  ever took one back out - a summary is a `Reference`, and this pass only ever considers a tool
-  result. Measured live at a 6,000-token limit: twenty-one identical summaries of 67 tokens each,
-  1,407 tokens, a quarter of the budget, all of it the same sentence. Each pass now supersedes
-  the last one's, so exactly one is in the request, and it counts every elision rather than the
-  handful this pass made. `remove` and not `elide`, because a marker where a summary was is a
-  line of text saying a line of text has been taken away; the superseded ones stay in the
-  context, on the tab, restorable.
-
-- **A call waiting on a decision was drawn as something the model is not being shown.** The
-  projector leaves a turn out while one of its calls has no result, so `sends_content` says no
-  for the whole of the time a permission prompt is open - and the chat read that as "left out"
-  and drew `[2] an assistant turn with no content and no answered calls` directly above the call
-  the person was being asked to authorise. It fired on every prompt, which is the most common
-  interactive path in the program.
-
-- **Switching model kept the old model's anchor.** `App::anchored` has always documented a
-  fallback "after a change of model until the next response" and nothing implemented it: the
-  anchor was set on a response and never cleared. `/model` and `/provider` drop it now. What it
-  cost was one request's worth of confidently wrong, since the previous model's reported figure
-  is that model's tokenizer counting that model's framing.
-
-- **The figure in the corner could fall to `~0` and stay there.** Reported from a real session:
-  attach a 12,278-token file, elide it, ask one more question, and a context of twelve thousand
-  tokens describes itself as empty for the rest of the session - which is the one direction that
-  number must never be wrong in.
-
-  An elided item is still *in* a request, as a marker. `Anchor` recorded every item the request
-  was built from and then took the whole of what each one **holds** back out of the provider's
-  figure, so an item that had contributed one line of text had twelve thousand tokens subtracted
-  for it and the total ran off the bottom of the clamp. It now records which items' *content* was
-  in that request and what the markers came to, separately: the content is re-estimated on the
-  way past, so an item that has not moved still cancels exactly against itself, and the marker
-  figure is stored, because the text of a marker is gone the moment the item stops being elided
-  and a line of text in older money is worth a fraction of a token.
+  The extension decides, for the ten types in `attach::TYPES` - sniffing gets the interesting case
+  wrong, since an uncompressed PDF is valid UTF-8 for pages at a time. A file that is neither a
+  listed type nor valid text is refused rather than guessed at. The path travels with the payload as
+  a text block, because `LinearProjector` labels a reference by prepending to its text. Not pinned,
+  where `-f` is.
+- The corner figure is anchored on what the provider charged: reported cost, plus what the context
+  estimates now, less what the estimator says the items that figure covered would cost now. An item
+  that has not moved cancels and contributes its measured cost, so only what changed is estimated.
+  It absorbs per-message framing, the tool schemas, and any blob already sent. Falls back to the
+  plain estimate before any response, on an endpoint reporting no usage, and after a model change.
+- `App::drafted` counts a message being typed, and the status line adds it to the anchored figure. A
+  slash command counts as nothing.
+- `/budget` says which of the two figures the corner shows and what the anchored one is built from.
+- The context pane marks a row the counter would not price as `0+` rather than `0`. "Measured, and
+  free" and "nothing priced this picture" were the same cell.
+- A `Content::Blob` item draws as `[image/png, 12.05kB]`. This program renders no pictures.
+  `/request`, `/payload` and `/raw` name it rather than printing megabytes of base64 - by shape
+  rather than by length, so a long tool result is not cut.
 
 ### changed
 
-- The chat line for a reference names what the item carries and what nobody could price:
-  `[1] results.pdf (file) [application/pdf, 292.47kB], 6 tokens and 1 piece(s) nothing here can
-  price`. It is derived off the item like every other line, which is why `/attach` says nothing
-  for itself - a command that pushed an item and then announced it would be two accounts of one
-  thing, with only one of them able to go out of date.
+- The chat is derived from the context rather than accumulated beside it. `App::transcript` is gone;
+  `App::conversation` reads the context every frame and `App::loose` holds only what that cannot
+  account for - mid-stream fragments and chrome.
 
-- `-f` takes any file, not only a text one. It goes through the same `attach::attached` the new
-  command does, so a PDF named on the command line is attached rather than refused by
-  `read_to_string`.
+  Gone with it: `Entry::item`, `Entry::was`, `App::attribute`, `App::attribute_waiting`,
+  `App::resay`, `App::edit_of`, `App::said`, `App::retell`, `App::last_turn`. All answered one
+  question - which line goes with which item - that a derived conversation never asks. `App::replay`
+  now says only what a resumed session picked up.
+- The chat shows the conversation the model is in: an item that is not projected is not on it. This
+  reverses a decision - the context tab is already the record of what happened, so the chat answers
+  "what is going" and the tab answers "what happened". An elided item stays, marked, because it *is*
+  in the request; so does a turn whose tool call has not been answered yet.
+- An elided turn reads as the projector's own marker, taken out of the projection rather than
+  assembled again.
+- An edit reads where the turn it replaced was. `App::in_order` places an item that replaces another
+  in the other's place; `commit_edit` records which on `meta`, so a resumed session draws it there
+  too. An edit supersedes, so otherwise a correction to the first question read last.
+- A turn rewritten in place reads as it is now - there is no copy of the words taken on arrival.
+- The rewrite line is `~ [id] · rewritten here, N earlier version(s)`, drawn for any rewrite.
+- The chat drops the lines naming what a tool call cost, what the output limit took, and the stub
+  above a rewritten turn - each is a fact about an item and a column on the context tab.
+  `{tool} reported an error` survives.
+- `App::ask` says, pushes and attributes a message as one act. `--message` did the first two, so the
+  opening line of every `-m` session was unreachable by any context change.
+- A reference's chat line names what the item carries and what nobody could price, derived off the
+  item - which is why `/attach` says nothing for itself.
+- `-f` takes any file through `attach::attached`, not only a text one.
+- `Trim` takes a tool result carrying a blob first, and the size arithmetic gets no say about one.
+  Every counter puts a blob at `0` tokens, and the pass runs on two rules that both read that
+  figure. Size decides nothing in either direction: an eight-pixel PNG is a hundred bytes and 255
+  tokens at a vendor charging 85 plus 170 a tile.
+- `Trim::should_compact` answers yes to anything in the request the counter would not price. Without
+  it a context that is mostly pictures never reached the threshold. `plan` still answers `None` when
+  there is nothing it may take.
+- The pass's summary names the blobs it took.
+- `/budget` says how many pieces of content the counter would not price, and names the counter.
+- `provider::connect` and `provider::gemini::connect` read `KAMCHATKA_API_KEY`,
+  `KAMCHATKA_BASE_URL`, `KAMCHATKA_CONTEXT_LIMIT` and `KAMCHATKA_NO_ATTRIBUTION` and pass them in.
+  The providers read no environment at all now. Nothing changes for anyone running the program.
+- Two fewer direct dependencies: `reqwest` and `rustls` belong to the providers.
 
-- **The chat is derived from the context rather than accumulated beside it.** `App::transcript`
-  is gone. `App::conversation` reads the context every frame and turns it into the lines it
-  reads as; `App::loose` holds the only two things that reading cannot account for - the
-  fragments arriving between a model starting to speak and the kernel recording what it said,
-  and the chrome that is nobody's context at all.
+### fixed
 
-  What goes with it: `Entry::item` and `Entry::was`, the back-pointers a line carried so the
-  drawing could find its item; `App::attribute`, the backwards walk that set them, with its two
-  stopping rules and the live-run regression each of them was written for;
-  `App::attribute_waiting`; `App::resay`; `App::edit_of`; `App::said`; `App::retell`;
-  `App::last_turn`; and the flag that remembered whether a provider had streamed so the answer
-  would not be printed twice. All of them answered one question - which line goes with which
-  item - and a derived conversation never has to ask it.
-
-  `App::replay` says what a resumed session picked up and nothing else. It used to walk the
-  context turning items into lines, which was a *second* implementation of "what does this item
-  look like as a conversation" beside the one the live path built event by event, and the two
-  disagreed: a resumed turn showed none of its thinking, and a resumed tool result's line left
-  out what the output limit had taken.
-
-  A line that is not a context item is anchored to the newest item that existed when it was
-  said, so it keeps its place while the turns around it are excluded, edited, undone or
-  compacted - the anchor itself going away included. One said *while* something was still
-  arriving is re-anchored to whatever that arrival becomes, because "stopped" is said
-  mid-sentence and belongs after the half-answer it interrupted, not above it.
-
-- **An elided turn reads as the marker the model reads.** It used to print the content behind
-  a rule down its left, which is a picture of the model still having it - and the one thing an
-  elision means is that it does not. What is drawn now is the projector's own sentence in the
-  brackets it put round it, taken out of the projection rather than assembled a second time
-  here, with the speaker's usual prefix: an elided question still reads as a question.
-  `Going::marker` is where it comes from.
-
-- **An edit reads where the turn it replaced was.** An edit supersedes, so the new words are a
-  new item appended to the context and the highest identifier in it - and a conversation read
-  off the context in identifier order put a correction to the first question after everything
-  that followed it, which is an order no request ever had. `App::in_order` places an item that
-  replaces another in the other's place, following a chain so a turn edited twice stays put;
-  `commit_edit` records which item that is on `meta`, where it rides in the snapshot, so a
-  resumed session draws the edit where it was too.
-
-- **The chat says less.** The line naming what a tool call cost, the one saying how much the
-  output limit took, and the stub above a rewritten turn are all gone. Each is a fact about an
-  item rather than anything anybody said, each is a column on the context tab already, and a
-  conversation with a line of accountancy under every tool call is one you have to read
-  around. What survives is `{tool} reported an error`, because that is the one of them that
-  changes how the turns either side of it read.
-
-- **The chat shows the conversation the model is in.** An item that is not projected - excluded,
-  archived, superseded - is not on it, rather than being greyed out and marked, and an item
-  whose content is rewritten in place reads as it is now rather than as it arrived.
-
-  This reverses a decision, and the reason is that there are two views and only one of them was
-  answering. The argument for marking was that the chat is the record of what happened - but the
-  context tab is already that record: an excluded turn is still a row on it, still holding every
-  byte, one keystroke from coming back. What nothing showed was what is actually being sent, and
-  a transcript that keeps every turn anybody ever took out is not that. So the chat answers
-  "what is going" and the context tab answers "what happened", and neither has to answer both
-  badly.
-
-  An **elided** item stays, marked, because an elided item is in the request - as a one-line
-  marker, which is what the model reads there too. So is a turn whose tool call has not been
-  answered yet: the projector repairs one of those out of the request, and hiding on that basis
-  blanked the call out of the conversation at the exact moment a permission question was asking
-  about it. The check is the item's state, not the projection.
-
-- A turn rewritten in place reads as it is now. The line's words used to be a copy taken when
-  it arrived, and those stop agreeing with the item the moment anything rewrites content in
-  place - which `amend revise` does through `Kernel::replace`, and which a terminal edit
-  deliberately does not. The chat showed the pre-amend words while the context tab, the `enter`
-  overlay and the request itself all showed the new ones, with nothing on screen to say which
-  of the two a model had read. There is no copy now.
-
-- The line saying a turn was rewritten is `~ [id] · rewritten here, N earlier version(s)` and
-  is drawn for any rewrite, `amend`'s included. It was `~ [old] → [new] · edited here`, and it
-  appeared only for an edit made at this terminal, because it was drawn off a pointer only that
-  path set.
-
-- `App::ask` says a message of the person's own, pushes it and attributes it, as one act.
-  `--message` did the first two and not the third, so the opening message of every `-m` session
-  was a transcript line no context change could reach - it could not be dropped when excluded
-  and could not be updated when rewritten, for the whole session.
-
-- `Trim` takes a tool result carrying a blob before it takes anything else, and the size
-  arithmetic gets no say about one. It could not take one at all before: every counter in this
-  workspace puts a `Content::Blob` at `0` tokens, and the pass runs on two rules that both read
-  that figure - oldest first, and nothing smaller than the marker replacing it - so the largest
-  thing in the context was ranked last by age and then skipped for recovering nothing.
-
-  Size decides nothing about a blob in *either* direction, including "too small to bother", and
-  that half is deliberate: a small blob is small in base64, which is the one measure that says
-  nothing about what it costs. An eight-pixel PNG is a hundred bytes and 255 tokens at a vendor
-  charging 85 plus 170 a tile.
-
-- `Trim::should_compact` answers yes to anything in the request the counter would not price, as
-  well as to the threshold. Without it, taking blobs first bought nothing: a context that is
-  mostly pictures reports a handful of tokens, so the fraction never reached the threshold, so
-  `plan` was never called and the pass slept through the one state it is most needed in. It is
-  not a second threshold - `plan` still answers `None` when there is nothing it may take, so an
-  unpriced item that is pinned, elided, or not a tool result costs one empty ask per request and
-  never a summary or an undo.
-
-- The pass's summary names the blobs it took. What a model reads in place of an elided item is
-  the pass's reason, which says the context was full and nothing about what used to be there - so
-  a turn that read `[image/png, 12.05kB]` a moment earlier became a sentence about a token
-  limit, with nothing left to say a picture had ever been in the conversation.
-
-- `/budget` says how many pieces of content the counter would not price, and names the counter
-  saying so. Every figure above that line is a floor when it is not zero, and nothing else
-  distinguished that from a context that is genuinely small: both look like a low percentage.
-
-
-- `provider::connect` and the new `provider::gemini::connect` are what is left here, and they are
-  the part that was always this program's: `KAMCHATKA_API_KEY`, `KAMCHATKA_BASE_URL`,
-  `KAMCHATKA_CONTEXT_LIMIT` and `KAMCHATKA_NO_ATTRIBUTION` are read here and passed in. The
-  providers read no environment at all now, which is not a library's to read. Nothing changes for
-  anyone running the program: the same four variables do the same four things.
-
-- Two fewer direct dependencies. `reqwest` and `rustls` were here for the providers and are
-  theirs now.
+- Past the limit the corner says `· the compactor runs first`. A pass runs when a request is
+  *built*, so a tool loop left the corner at 270% in red while the request that followed cost 1,100.
+  With no compactor it claims nothing.
+- A file put in the context is announced once. The derived line is the one that cannot go stale.
+- `/budget` no longer puts a Rust type path in the middle of a sentence.
+- The compactor no longer fills the context it is clearing. Every pass wrote a summary and nothing
+  took one back out, since a summary is a `Reference` and the pass only considers tool results - at
+  a 6,000-token limit, twenty-one identical summaries and a quarter of the budget. Each pass now
+  supersedes the last one's.
+- A call waiting on a decision is not drawn as something the model is not being shown. The projector
+  leaves a turn out while one of its calls has no result, so the chat drew "an assistant turn with
+  no content and no answered calls" above the very call being authorised.
+- `/model` and `/provider` drop the anchor. `App::anchored` documented that fallback and nothing
+  implemented it.
+- The corner figure cannot fall to `~0` and stay there. `Anchor` subtracted the whole of what each
+  item *holds* from the provider's figure, so an elided item contributing one line had twelve
+  thousand tokens taken off. It records which items' content was in the request and what the markers
+  came to, separately.
 
 ### removed
 
 - `kamchatka::provider::OpenAiCompatible`, `kamchatka::gemini::Gemini`, `provider::Endpoint`,
   `provider::same_model`, `provider::NOT_A_STREAM` and the `gemini` module. Both providers are now
-  [`nachalnik-providers`](https://crates.io/crates/nachalnik-providers), a crate of their own, and
-  this one depends on it. Anything reaching for them through this crate imports them from there
-  instead; nothing about what they do has changed.
-
-  The reason to move them is that nobody else could use them. The runtime ships no provider by
-  design, and the only two complete implementations in this workspace were here - behind ratatui,
-  crossterm, clap and landlock - and in a crate marked `publish = false` for ever. So the first
-  thing an adopter of the runtime had to write was a thousand lines of streamed HTTP, and the two
-  copies of it in this workspace could not be merged: a published crate may not depend on one that
-  is not.
+  [`nachalnik-providers`](https://crates.io/crates/nachalnik-providers); nothing they do has
+  changed. They moved because nobody else could use them - the runtime ships no provider by design,
+  and the only two complete implementations were locked inside a terminal program.
 
 ## [0.6.1] - 2026-09-09
 
-### fixed
-
-- What a turn cost to generate is on the screen, and so is how much of it was thinking. Every
-  provider here reported it and nothing read it out: the trace said `in / out`, `/budget`
-  accounted for the request and went silent about the answer, and the two figures `introspect`
-  hands a model about its own spending did the same. On an endpoint that bills for reasoning and
-  returns none of it there was nowhere in this program to find out where a turn went -
-  `mercury-2.5` answers one question with 1,139 reasoning tokens and 273 of answer, and its stream
-  carries no reasoning field at all, so the context tab shows a turn with nothing where the
-  thinking was. All four places now read `1,412 out, 1,139 of it reasoning` through one renderer,
-  and the reasoning is shown as a share of what was generated rather than added to it.
-
-  A model that is charged for reasoning it does not send back is also said so once, in the
-  conversation, the first time it happens - once, because it is a fact about the endpoint and not
-  news about a turn, which is the trap a standing repair fell into and left a line about item 4
-  after every message for a session.
-
-- The Gemini dialect's `output_tokens` includes the thinking. It reported `candidatesTokenCount`
-  alone, which is the answer without the thoughts beside it - and Google defines its own
-  `totalTokenCount` as the prompt plus the thoughts plus the candidates, so the number this crate
-  was carrying was not that dialect's idea of what a turn cost either. On a model thinking for a
-  thousand tokens and replying in twenty it understated the bill fifty to one. `thoughtsTokenCount`
-  still says how much of it was thinking, so the answer's own cost is a subtraction away.
-
-- A model listing is read for what the model takes under either name the two dialects publish it
-  as. `supported_parameters` is OpenRouter's and was the only one read; Inception's endpoint calls
-  it `supported_sampling_parameters`, so its list went unread and `/params` fell silent - the check
-  that exists to say *this parameter is sent and ignored* said nothing about a `top_p` that
-  `mercury-2.5` does not take. Silence there is indistinguishable from an endpoint that publishes
-  no list at all, which ollama and a bare proxy really do, so there was nothing on screen to
-  suggest the answer was missing rather than empty.
-
-  What the narrower name costs is written down beside it: it lists the sampling knobs only and
-  leaves `tools` and `response_format` to `supported_features`, so a non-sampling parameter set
-  against such an endpoint is now reported as unlisted when it is served perfectly well. The
-  message no longer guesses about that class either, which is the other half of this. An
-  exhaustive list settles what happens to a parameter missing from it - sent, not taken, ignored -
-  and that is the sentence worth having. A list of the sampling knobs alone settles nothing:
-  `reasoning_effort` is absent from `mercury-2.5`'s and is read all the same, validated hard
-  enough that a bad value comes back a 400, and `instant`/`low`/`medium`/`high` walk its reasoning
-  tokens from none to hundreds. Reporting *that* as ignored would be a restriction invented out of
-  a list which never claimed to be complete. So `Endpoint::lists_every_parameter` says which kind
-  of list is behind the answer, an endpoint publishing only the narrow one says so, and `/params`
-  words it as what it is: "publishes its sampling parameters only, so nothing here says what
-  becomes of reasoning_effort: sent, and unchecked", as a note rather than an error, because not
-  knowing is not a fault. The line beside it that offers what else the model takes is qualified
-  the same way.
-
-- Thinking an endpoint sends as a finished summary is thinking. `delta.reasoning` was the only
-  shape read, which is the thinking as fragments while it is generated; an endpoint may instead
-  send one whole summary of it, `{"content": ..., "status": "complete"}` on the chunk rather than
-  in the delta, after the answer it explains. Inception's does, and both of this workspace's
-  OpenAI-dialect providers threw it away: `mercury-2` asked with `reasoning_summary: true` answers
-  with eleven hundred reasoning tokens and a summary of them in that field, and the turn went onto
-  the context with nothing where the thinking was - the exact hole the note about a model billed
-  for reasoning it does not send back was written to describe, on an endpoint that was in fact
-  sending it. It is read now, drawn as it arrives and kept on the turn.
-
-  Two details worth having in writing. It sends more than one summary over a turn, each covering
-  the reasoning done since the last, so they are appended rather than replaced - the same
-  endpoint's non-streamed field is those same summaries joined, which settles what joining them
-  should look like. And a streamed request needs `reasoning_summary_wait: true` beside the first
-  parameter or the stream ends before any summary exists: measured, two of ten chunks carry one
-  with the wait and none of seven without it. This crate always streams, so both parameters are
-  what a person has to set. `mercury-2.5` accepts both, spends the reasoning tokens, and returns
-  `null` however it is asked - so the note about thinking that goes unseen is still exactly right
-  there, and is now silent on a model whose thinking arrives.
-
-- A refused request is reported by the sentence in it. A validated endpoint answers a bad
-  parameter with a *list* of what was wrong rather than a sentence about it - Inception's
-  `error.message` is the pydantic shape, `[{"type": "value_error", "loc": ["body",
-  "reasoning_effort"], "msg": ...}]` - and `message` not being a string is where the reader gave
-  up: three hundred characters of envelope, clipped mid-key, went into the transcript and into the
-  session log, with the sentence somewhere inside it. `reasoning_effort: "banana"` now reads
-  `400 Bad Request: Value error, reasoning_effort must be one of: 'instant', 'low', 'medium',
-  'high'`, which is ninety-seven characters and the whole of the news. Where a failure's own
-  wording names nothing - "Input should be a valid boolean" - `loc` is prepended, because a
-  refusal that does not say which of eight parameters it means is one somebody has to guess at.
-
-- One failure is one red line. A provider that fails is reported twice, as the event and as the
-  outcome the turn came to, the second wrapping the first; the guard against saying it twice was
-  on the event and not on the outcome, so every refused request said itself and then said itself
-  again with `the provider failed:` in front of it. It is one method both paths call now.
-
 ### added
 
-- `/params` says when a parameter would make the answer unreadable. One does, and it is
-  documented rather than obscure: Inception's `diffusing`, "show the diffusion effect in the
-  streamed response", sends the *whole answer again* in `delta.content` at each denoising step.
-  This program reads a stream the way every client of that dialect reads one - as text arriving
-  in order - so it appends them. Measured against `mercury-2.5`: four fragments, the first three
-  noise (`ThR rMmchatka tYS>rf5Ta in Russia`) and the last the finished paragraph, and a
-  120-character answer arrived in the context as 1,443 characters of drafts - in the transcript,
-  in the token count, and in the session log, with nothing on screen to say why.
+- `/params` warns when a parameter would make the answer unreadable. Inception's `diffusing` sends
+  the whole answer again at each denoising step, so a 120-character answer arrived as 1,443
+  characters of drafts. A warning and not a refusal: parameters go to the provider verbatim.
 
-  It is a warning and not a refusal. Parameters belong to the person and go to the provider
-  verbatim, which is the runtime's rule and not this program's to break, and nothing on the wire
-  marks a snapshot as one, so a reader trying to cope would be a reader guessing. What this
-  program owes is not to be quietly wrong about its own record. Setting it says what it does;
-  setting it to `false`, which is what it is unset, says nothing.
+### fixed
+
+- What a turn cost to generate is on the screen, with the reasoning as a share of it:
+  `1,412 out, 1,139 of it reasoning`, through one renderer in all four places. A model charged for
+  reasoning it does not send back is said so once.
+- The Gemini dialect's `output_tokens` includes the thinking. `candidatesTokenCount` alone
+  understated a thinking-heavy turn fifty to one.
+- A model listing is read under either name the dialects publish: `supported_parameters` and
+  `supported_sampling_parameters`. The narrower name lists sampling knobs only, so
+  `Endpoint::lists_every_parameter` says which kind of list is behind an answer and `/params` words
+  an incomplete one as a note rather than an error.
+- Thinking sent as a finished summary is read: `{"content": ..., "status": "complete"}` on the chunk
+  rather than in the delta. More than one arrives per turn, each covering the reasoning since the
+  last, so they are appended. A streamed request needs `reasoning_summary_wait: true` beside
+  `reasoning_summary: true`, or the stream ends before any summary exists.
+- A refused request is reported by the sentence inside it, including when `error.message` is a list
+  rather than a string. Where the wording names nothing, `loc` is prepended.
+- One failure is one red line. The guard was on the event and not on the outcome wrapping it.
 
 ## [0.6.0] - 2026-09-08
 
 ### added
 
-- `/limit`, which is how much of each tool's output the model is shown - and now something a
-  person can change. `/limit` lists the table; `/limit read 64000` moves one, from that tool's
-  next call onward. `Tool::spec` is called afresh for every request, so it lands without a
-  restart, the same property `/tools drop` leans on; the limits live in one shared `Limits` table
-  that the tools declaring them and the command changing them both hold, because a second copy is
-  a command that reports success and does nothing.
-
-  The rows are numbered and the number is one the command takes, so `/limit 3 64000` is the same
-  instruction as naming the tool - `introspect` is eleven characters to reach the one limit that
-  most often wants moving. A tool has no identifier but its name, which is what the model calls
-  and what `/tools drop` takes, so the number belongs to the listing rather than to the tool; that
-  is exactly why it is only worth printing if it can then be typed, and a row out of range is
-  answered by the same listing a name nothing limits gets, since that listing is where the range
-  is written down. Same argument as `23G` on the context tab, settled the same way.
-
-  It exists because of a session that asked a copy of itself three questions and got back the
-  copy's deliberation with all three answers cut off the end. 32,000 bytes is right for the four
-  other things `introspect` does and wrong for a fork, and there was no way to say so without
-  restarting - so watching a result arrive shortened left a choice between living with it and
-  losing the session.
-
-  It changes the *next* call and says so, because the one already shortened is recovered a
-  different way and always could be: its whole is archived beside the copy the model was shown,
-  and one `space` on the context tab sends that instead. That is safe rather than merely possible,
-  because the projector answers one call with one result: the whole claims the call and the short
-  copy drops out with a repair line saying why.
-
-- The conversation says which of itself the model is still being shown. A turn that has been
-  excluded, archived, elided or superseded keeps its place and its words, and takes a rule down its
-  left with a line above it naming the item and saying why it is out in the projector's own words -
-  `~ [2] superseded: replaced by item 3`, and then the turn.
-
-  Marked rather than hidden, which is the whole decision. The conversation is the record of what
-  happened and the context is what will be sent; a chat that quietly dropped the turn would let
-  somebody see what the model sees and lose what they did to it. Both halves of a turn are marked,
-  what it thought as well as what it said, and the rule runs the length of the block rather than
-  sitting on its first row.
-
-  The reading asks the projection and not the item's state, for the reason `Going` exists at all:
-  an item the projector repaired away is `Active` and is not in the request. The mark and the
-  reason come out of the context tab rather than being assembled again here, so the two screens
-  cannot end up giving different accounts of the same item.
-
-  `app::Entry` grew `item` and `was` to carry this, and its fields are public, so anything
-  constructing one literally will need them. A line nothing attributed shows unmarked: `None` there
-  means nothing knows, not "not going".
+- `/limit`, which is how much of each tool's output the model is shown, and now changeable.
+  `/limit read 64000` moves one from that tool's next call onward; `Tool::spec` is called afresh for
+  every request, so it lands without a restart. The limits live in one shared `Limits` table. Rows
+  are numbered and the number is one the command takes. The already-shortened call is recovered a
+  different way: its whole is archived beside the copy the model saw.
+- The conversation marks which of itself the model is still being shown. An excluded, archived,
+  elided or superseded turn keeps its place and words, with a rule down its left and a line naming
+  the item and why it is out. Marked rather than hidden. The reading asks the projection, not the
+  item's state. `app::Entry` grew public `item` and `was`.
 
 ### changed
 
-- A session is named for when it started, in UTC, and that name is also its two files:
-  `/tmp/kamchatka/2026-09-08T06-45-17Z.jsonl`. It was `kamchatka-1788849917`, written into a
-  directory called `kamchatka` - so half of every filename repeated the directory it was in, and
-  the other half said nothing whatever to somebody reading a list of them. The same name is what
-  the last line printed on the way out says, what `Event::SessionStarted` carries and what a fork
-  hangs `#fork` off, because it is one identity rather than a filename with a label beside it.
+- A session is named for when it started, in UTC, and that name is its two files:
+  `/tmp/kamchatka/2026-09-08T06-45-17Z.jsonl`. `App::session_stamp` does the calendar in Howard
+  Hinnant's `civil_from_days` - no dependency for a filename. Still to the second, so two sessions
+  inside one second collide as before.
+- A permission question stands in the prompt's place on the chat tab rather than as a modal overlay,
+  and the prompt is on the chat tab only. Being asked whether `amend` may elide item 22 used to mean
+  deciding with the box covering the list saying what item 22 is.
 
-  `App::session_stamp` is public and does the calendar itself, in Howard Hinnant's
-  `civil_from_days` - five lines of integer arithmetic that get the leap years right for every
-  year rather than for the ones a test happened to try, and no dependency for a filename. UTC, and
-  the name says `Z`, because a local time needs the timezone database to work out and would mean
-  something different depending on where it was written. Still to the second, so two sessions
-  started inside one second collide exactly as they did before.
+  The settling window is gone with it: a question used to take every key on arrival with a 300ms
+  timer deciding which, and one session granted `shell` for the rest of it with the `a` of "what".
+  `tab` is what gives a question the keys now. It takes the prompt's rows rather than sitting above
+  them, so a short window cannot leave the prompt holding the keys off-screen. What was typed is not
+  lost - the prompt is not drawn rather than cleared.
 
-- A permission question stands in the prompt's place on the chat tab instead of being an overlay
-  over the middle of the screen, and the prompt is on the chat tab only. The two go together: a
-  question was modal, so while one was up nothing else worked, and being asked whether `amend` may
-  elide item 22 meant deciding about item 22 with the box asking the question covering the list
-  that says what item 22 is. `App::about` exists because of that - it copies the items' labels into
-  the question, because they could not be reached any other way - and it is a convenience now
-  rather than the only route. The chat tab goes red on the strip while one waits, so the other
-  three say what the session is waiting for.
+  `App::locked_key` is the guard: until `tab`, only the keys that scroll the conversation do
+  anything. The panel carries `[tab] puts the keys here, and then:` rather than promising a key it
+  has not got.
 
-  Dropping the prompt from the other three tabs is what makes the keys unambiguous. It was under
-  all four so that a message could be sent from anywhere, and the cost was a mode: every letter on
-  those tabs was a key or a character depending on where the focus had got to, and `space` after
-  sending a message typed a space instead of cycling the row somebody was looking at. Now
-  context/trace/permissions have no prompt and no mode, `tab` from any of them is the way back to
-  typing, and `Focus::Body` on the chat tab means the waiting question.
-
-  The settling window is gone with it, and so is the failure it patched. A question used to take
-  every key on arrival and hand back the ones that were not answers, with a 300ms timer deciding
-  which - one live session granted `shell` for the rest of it with the `a` of "what". Nothing is
-  timed now: a question appears without asking for the keys at all, and `tab` is what gives them
-  to it. So does coming back to the chat tab while one waits, because that is what the trip was
-  for - go and read the item, come back, one key.
-
-  It takes the prompt's rows rather than sitting above them, which is the second half of the same
-  decision and was the second half of the same bug. Stacked, the two disagreed on any window
-  shorter than about fifteen rows: the question needs the room, so the prompt gave way - and went
-  on holding the keys, and whatever had been typed into it, from off the screen. That is a session
-  waiting on an answer nobody can give it without first pressing a key nothing on the screen
-  mentions, and the box that says `· tab` is the one telling you to press it. Now the box holding
-  the keys is always the box on the screen, at every window size.
-
-  What was typed is not lost. The prompt is not drawn rather than cleared, so answering hands its
-  place back with the draft still in it and the keys already on it - no second `tab`. What it costs
-  is that a message cannot be *sent* while a question waits, which is the honest shape of "answer
-  this first": the queue a message typed into a running turn goes into is still there, and a turn
-  that has stopped to ask is not running.
-
-  `App::locked_key` is the guard, and it is a guard rather than a consequence of the layout. Until
-  `tab` is pressed the only keys that do anything are the ones that scroll the conversation, since
-  reading is not answering and the whole reason the question is not modal is so somebody can go and
-  look at what it is about. Everything else is swallowed - the answers, because they are bare
-  letters and that is the `a` of "what" again, and `enter`, because a prompt that still took it
-  would send the half-written message the question interrupted and start a turn on the way to
-  answering. The panel says so where it is read: until it has the keys it carries a `[tab] puts the
-  keys here, and then:` line above the answers, because listing `[y] once` beside a `y` that is
-  being deliberately ignored is a screen promising a key it has not got.
-
-  A blank row separates the answers from what the tool was asked to do, since `path: /etc/hosts`
-  and `[y] once` on consecutive rows read as one list of things rather than as a question and the
-  ways of answering it - and the header was already separated from the arguments this way, so the
-  answers were the odd ones out. It is a row of the layout rather than a line of the answers, which
-  is what makes it the first thing to give way: in the answers it would be the top line of the one
-  region that gets its rows before anything else, so a panel with a single row to spare would have
-  spent it on a blank and pushed `[y] once` off the bottom.
-
-  It is also one less thing to keep in step: the panel is drawn from `pending_permissions()` every
-  frame rather than from an `Overlay::Permission` that had to be opened and closed, so it cannot be
-  up with nothing to answer or absent with something waiting.
-
-  This takes public API away, so the next release is a minor: `app::SETTLING` and `App::open` are
-  gone, and so is the `Overlay::Permission` variant. `App::asked`, `App::prompted` and
-  `App::question_scroll` are what replaced them. Nothing in this workspace sits above `kamchatka`,
-  so no other crate has to follow and nothing is forced today - but a `0.5.1` published with this
-  in it would be resolved by every `^0.5` requirement out there and break at the match.
-
-- The permissions tab says which policy is deciding, and what it answers about everything the list
-  does not mention: `Careful · anything it has not been told about: ask`, above the rows and there
-  whether or not there are any. The tab was every answer somebody had given and no account of what
-  was deciding in between - so the first question a screen of permissions raises was the one thing
-  not on it, and answering it meant reading `/seams` for the name and the source for the behaviour.
-
-  Both halves come out of the policy rather than being written into the screen. The name is what
-  the kernel answers when asked, which is the same answer `/seams` gives and the one that would
-  notice if the policy were ever swapped; `Careful::untold` is new, and is the value the two arms
-  of `Careful::stance` fall back to, so a sentence describing this policy cannot come to disagree
-  with what it does. `App::policy_name` shortens the path - `PermissionPolicy::name` defaults to
-  the implementing type's own, which is right for a panel whose subject is which types are plugged
-  in and spends thirty columns of a list saying `kamchatka::tools::Careful`.
-
-  With nothing decided the tab now says the emptiness is not permission - `nothing has been decided
-  yet, which is why this list is empty rather than permissive` - and goes on to the part that is
-  not guessable: a fresh policy holds a rule for each of a handful of paths that are credentials by
-  convention, those are questions too and so are not rows either, and they begin to earn their keep
-  the moment a capability is answered `always`, because the strictest thing consulted wins and a
-  rule can only tighten what a capability allows. It names no paths. Three of the eleven read as
-  the list, and the count along the bottom is already the honest answer to how many there are.
-
-- An item's page says why it is in the context, which is now a sentence that exists. `enter` on a
-  context row shows what the model gets and what the item stores; the `as stored` page now opens
-  with `included_because` where there is one, which is the same line `introspect`'s own item view
-  has printed all along. What fills it in is the runtime keeping a shortened tool result's pointer
-  to its whole half somewhere a state change cannot wipe - so `space` on either row no longer
-  loses which item holds what.
-
-- `/budget` says how much of the last request the provider served from its cache. Both dialects
-  have reported it all along - `prompt_tokens_details.cached_tokens` and
-  `cachedContentTokenCount` - and nothing read it out to anybody. It belongs beside the real cost
-  because it is the figure that prices a *change* rather than a request: the front of a request is
-  the tool definitions and the oldest messages, so anything that rewrites them is paid for in full
-  on the next one. A session reading `20,000, 18,000 of it (90%) served from the provider's cache`
-  is being told what a rewrite up there would cost, which is the number that settles most questions
-  about whether one is worth making.
-
-- `amend`'s `note` says what it is for, which is the question it kept prompting: how is writing a
-  note different from thinking? Four ways, and the description and the code now say them. Thinking
-  belongs to the turn that produced it, so pruning the turn prunes the thought; it has no
-  identifier, so it cannot be revised, pinned, or protected from a compactor; it is not reliably
-  carried back at all - this program's OpenAI-compatible dialect has never put reasoning on the
-  wire and cannot - and it is not a row on the context tab with a reason beside it. A note is an
-  item: numbered, projected into every request from then on, pinnable, and visible to the person.
-  It is the one thing in a context that is there because the agent judged a finding worth keeping.
-
-- A fork leads with the answer and puts the thinking after it. An output limit cuts from the end,
-  and on a reasoning model the thinking is the bulk of a fork: measured on one real 34,287-byte
-  fork, 68% thinking against the answer's 30%, sitting last. So the limit ate the answer and kept
-  the deliberation about how to answer, which is the one part nobody asked for. The section is
-  still labelled, and now says the reasoning came before the answer above it, so the order is a
-  decision about what survives a limit rather than a claim about what the copy did.
-
-- An edit reads where the turn was. It used to leave the turn it replaced sitting in the
-  conversation with a note underneath saying the numbers had changed, and never show the words the
-  model had actually been given; now the lines move onto the item that replaced them and the row
-  above says what happened - `~ [2] → [3] · edited here, 13 tokens replaced · enter on [3] reads
-  what it said`.
-
-  Saying the new text instead is the obvious version and it is wrong. `say` appends, so a turn
-  edited twenty exchanges ago lands after everything that followed it and the only account of the
-  session is then in an order no request ever had. It reads fine for the turn just taken and lies
-  about every older one, which is backwards: the older the edit, the more the screen has to be
-  trusted.
-
-  Only the line that showed what the turn *said* takes the new words. An edit carries the kind over
-  whole, so the calls and the thinking are unchanged and the lines showing them are still true;
-  what they need is the new identifier, so that excluding the edited turn later takes them out with
-  it. Nothing is hidden by this - `commit_edit` already filed the old content under the *new*
-  identifier and `faces` builds it into a `v1` page, which is what the row now points at.
-
-  Replaying a saved session is deliberately left alone: `retell` is handed every item including the
-  superseded ones, and a session read back off disk is a record rather than a conversation.
+  This removes public API: `app::SETTLING`, `App::open` and `Overlay::Permission` are gone, replaced
+  by `App::asked`, `App::prompted` and `App::question_scroll`.
+- The permissions tab names the policy and what it answers about everything not listed:
+  `Careful · anything it has not been told about: ask`. Both halves come from the policy -
+  `Careful::untold` is what `Careful::stance` falls back to. With nothing decided, the tab says the
+  emptiness is not permission.
+- An item's `as stored` page opens with `included_because` where there is one.
+- `/budget` says how much of the last request the provider served from cache. It prices a *change*
+  rather than a request: the front of a request is the tool definitions and oldest messages, so
+  anything rewriting them is paid for in full next time.
+- `amend`'s `note` says what it is for. Thinking belongs to the turn that produced it, has no
+  identifier, is not reliably carried back, and is not a row on the context tab. A note is an item:
+  numbered, projected into every request, pinnable, visible.
+- A fork leads with the answer and puts the thinking after it, since an output limit cuts from the
+  end. On one 34,287-byte fork the thinking was 68% and sat last.
+- An edit reads where the turn was, with the row above saying what happened. Saying the new text
+  instead is wrong: `say` appends, so an old edit lands after everything that followed it.
 
 ### fixed
 
-- Nothing this crate's test suites write goes in `/tmp` any more. Every one of them cleared its
-  directory on the way in rather than on the way out - a test that fails is a test whose leavings
-  you want to look at - and the name carried the process identifier, so a fresh directory arrived
-  with every run and none of them ever left. Thirty runs had put eight hundred and ten of them in
-  `/tmp`. `tests/common::scratch` hands out a directory under `CARGO_TARGET_TMPDIR`, which cargo
-  provides for exactly this, is inside `target/`, and `cargo clean` sweeps. The names lost the
-  identifier with the prefix, since one only has to be unique within its own suite and a stable
-  one is what somebody debugging a failure can find.
-
-  One path stays in the temp directory and has to: the claim it checks is that the temp directory
-  is *not* opened up even though a writable directory inside it is handed to the command, and a
-  path under `target/` would be testing something else. It leaves nothing behind, because the
-  write it makes is refused.
-
-- Two sandbox tests stopped leaving a confined command's scratch directory behind. The directory
-  is named after the command's own process so that whoever spawned it can find it again - the
-  command cannot remove it, `/tmp` not being writable under the ruleset - and these two called
-  `output()`, which consumes the child, and then removed `scratch_for(std::process::id())`: the
-  *test's* identifier, naming a directory that never existed. So each run of that file left two
-  behind for good, which is the sixty `kamchatka-<pid>` directories that were not from the suite's
-  own workspaces. They spawn and wait now, the way this file's own `run` helper does and documents.
-
-- A repair the request needs every time is said once in the conversation rather than after every
-  message. A projection is built afresh for every request, so a projector that dropped an orphaned
-  call last turn drops it again this turn and honestly reports doing so - which is right of the
-  projector and wrong of the screen: one tool result taken out at the terminal put
-  `the request was repaired: dropped the call ... from item 4` under every answer for the rest of
-  the session, for a decision made once and unchanged since.
-
-  All four kinds behave this way, which is what makes it worth fixing rather than special-casing:
-  an orphaned call, an orphaned result, a flattened ordered turn and a result held back until its
-  call arrives all last exactly as long as the state that caused them. So the conversation says
-  what is being repaired when the set of repairs changes, and the count it gives is the whole of
-  it rather than what is newly so, because that is the number `ctrl+p` will show.
-
-  The wording moved to the present tense - `the request is repaired, and will be while this
-  stands` - because the past tense reads as something that happened to this one request, which is
-  exactly what somebody then goes looking for a cause of in a turn that has nothing to do with it.
-
-  The trace is the other way round and stays that way: it keeps every one of them, because
-  `model.requested` really did carry that repair each time and a log that hid a repeated entry
-  would be the wrong thing entirely. Nothing about any of this ever reached the model - a repair is
-  an `Event`, and `Event::ModelRequested` names the items a request was built from rather than
-  carrying its messages, so the sentence exists on the screen and the log and nowhere on the wire.
-
-- The chat tab looks as open as the other three. The window border went yellow when the keys were
-  on the tab's body, and on the chat tab they never are: `Focus::Body` there means the pinned
-  question, which has a box of its own. So the tab most of a session is spent on was the one window
-  that could not light up, and it had nothing else yellow on it either - an unfocused frame reads as
-  "this is not where you are", which of the four screens it is the least true of.
-
-  The border is the frame of the open window now, drawn in the same yellow the open tab's name
-  already wears on the strip above it. That is the one thing it is agreeing with, and there was
-  nothing else left for it to say: what has the keys *within* a window is said by the box that has
-  them, and on the two list tabs by the selected row, which is reversed under the keys and
-  underlined without them. Both of those sit beside the thing they describe, which a border a whole
-  window away does not.
-
-  So the prompt is what answers "where does what I type go?", and it now answers in the same yellow
-  the pinned question uses rather than in white - which against grey is a difference in brightness
-  rather than in hue, the weaker of the two signals and the first to go on a pale theme. An edit was
-  yellow whether it had the keys or not, which was that colour doing a second job; what says the
-  prompt is not composing a message is its title, which spells the whole of it out, and which now
-  gains `· tab` when the keys are elsewhere the way the other two titles do.
-
-- An edit that has been undone comes off the conversation with the item it named. The chat's
-  account of an edit was written into the transcript when the edit was made, and `undo` takes the
-  replacement item back out of the context without telling the screen which line had been moved
-  onto it - so the conversation went on showing the new words beside a row offering `enter on [3]`
-  for an item that no longer existed, while the context tab beside it had the original answer back.
-  Showing somebody a conversation the model is not in is the one thing this program exists not to
-  do.
-
-  It is a reading now rather than a copy, which is the same move the withheld mark made for the
-  same reason: an edit is a fact about the context, not about the transcript. `Entry::text` keeps
-  what was said at the time and `App::said` asks the item what it says now, so the line follows an
-  undo and a `redo` both - and a row that cannot be opened is never drawn. `App::said` and
-  `App::edit_of` are public, beside `Entry::was` which they read.
-
-- `cargo doc` builds again. Four intra-doc links added with `Entry::item` and `Entry::was` name
-  private methods from public documentation, which rustdoc refuses under `-D warnings` - so the
-  lint job was red and the two commits that added them did not run it. They are plain code spans
-  now: a reader of the public docs could not have followed them anyway.
-
-- `Trim` does not ask for a result that is pinned. `ContextState::sends_content` says yes to a
-  pinned item - it is in the request, that is what the state is for - so the candidate filter took
-  one, and the kernel then refused it, as it must: a pin is a promise. That refusal is not free.
-  The plan was still a plan, a plan carries a summary, and one pinned result bigger than the target
-  keeps the context over the threshold for the rest of the session, so the pass is asked again
-  before every request and refuses again every time. Measured against a real endpoint: three turns,
-  three summaries saying a result had been elided when none had, three undos spent, and the request
-  climbing 2,637 → 2,716 → 2,788. Not naming what it may not take is what makes the plan `None`
-  instead. The kernel no longer banks a summary for a pass that moved nothing either, which is the
-  same hole from the other side and closes it for any compactor.
-
-- `/budget`'s account of what the counter has learned drops its percentage. It read "so it was
-  reading 54.3% low", computed from `scale - 1`, which is the error as a fraction of the counter's
-  own guess - while "reading 54.3% low" is read as a fraction of the truth. On the same pair of
-  numbers those are 54.3% and 35.2%, so the sentence asserted one and meant the other. The guess,
-  the charge and the scale between them are what somebody came to the line for, and all three were
-  already on it.
-
-- `amend`'s list of the five moves does not claim a difference the budget does not make. `archive`
-  read "keep it, do not send it, and stop counting it against the budget" - three things `exclude`
-  does as well, so the clause could only mean something by implying that an excluded item is still
-  charged for. It is not: measured against a real endpoint the two produce the same request to the
-  token, 3,451 active and 2,219 either way, with the same figure held back. What separates them is
-  what the person reading the pane is meant to conclude - one is set aside, the other is done with
-  - and that is what the line says now.
-
-- `Trim` pays for the marker it leaves behind. Eliding a tool result does not recover what the
-  result was costing: the projector puts `[... <the pass's reason> ...]` where the content was, and
-  the kernel makes that reason the note on every item in the pass, so each elision buys back the
-  content *less* one copy of the same sentence - about 21 tokens of it. The pass subtracted the
-  whole item and stopped as soon as its own arithmetic said it had reached the target, which on a
-  context of small results is a target it never reached at all. Twenty `write` confirmations of
-  seven tokens each, elided for twenty-one tokens apiece: the plan reported 140 tokens recovered
-  and took the request from 852 to 1,190 - through the 1,000-token limit the pass exists to keep it
-  under, having spent one of the person's undos to get there.
-
-  It now credits itself with the net of each elision and skips any result no bigger than the marker
-  that would replace it, which is a floor rather than a refusal to work - one result worth eliding
-  among twenty that are not is still elided, and the twenty are left alone. A pass with nothing
-  worth doing returns `None`, which is the same answer the 0.5.0 fix arrived at from the other
-  direction. The marker's cost is estimated from the reason's own length at four bytes a token, and
-  is allowed to be an estimate: a counter that has learnt a different ratio moves the boundary by
-  one small result, where crediting the whole item moved it by everything.
-
-- A stream that stops arriving keeps what arrived. `parse_stream` returned the transport's error,
-  which failed the turn and dropped every token the model had produced - and been billed for. One
-  session died that way 148 seconds into its 22nd request, `error decoding response body`, having
-  just asked a copy of itself the question the whole session was built around; nothing of the
-  answer survived. Eleven lines above the line that did it, the interrupt path already had the
-  right answer written down: *"whatever has been parsed is kept and the rest of the socket is
-  abandoned"*. A dropped connection is that case without the consent, so it now gets the same
-  handling under a name of its own - the turn ends at `cut off`, the status line says the model was
-  cut off mid-answer and that what arrived was kept, and the calls that arrived whole are kept too,
-  because the permission policy is still what decides whether they run and a provider quietly
-  dropping them would be deciding that instead.
-
-  Retrying was the other candidate and is worse: every attempt is billed, so an answer that
-  reliably outruns an upstream's patience is paid for four times and fails anyway - and the loop
-  that waits out a busy server retries only where nothing was generated. A complete answer whose
-  trailing bytes were lost is not reported as cut off, and a stream that carried nothing at all
-  still fails, because there is nothing to keep and the transport's own account is the best there
-  is.
-
-  Both dialects, and the case is in the shared conformance suite rather than in either of them, so
-  the third provider was fixed by the same commit and a fourth cannot get this wrong quietly. That
-  suite exists because this workspace has three providers and had been fixing one bug in one copy
-  at a time; this is the fourth instance, and the first where the *note* had been fixed in one copy
-  while the behaviour was fixed in none - `nachalnik-utils` carried a paragraph claiming it retried
-  a body that stopped arriving, naming this exact error. It never did.
-
-- A row the projector repaired away says what it is holding. Putting the whole of a truncated tool
-  result back beside the copy the model was shown - which is the intended way to send the whole -
-  made the row *below* it drop to `0`. The pair answer one call, so the whole takes the call and
-  the short copy is dropped: correct, and the request was right the whole time. What was wrong is
-  that three of the four places reporting on it disagreed. The row claimed to be sending its
-  content, showed `0` for what that cost, and accounted for none of the 8,583 tokens it was
-  holding; `/budget` and the status line said nothing was held back at all; and `f`, whose whole
-  job is to hide rows that are holding something back, kept it.
-
-  One conflation, for the third time: whether an item is going cannot be read off its *state*. An
-  item a projector repairs away to keep a request valid is `Active`, holding everything it holds,
-  and not in the request - a fourth way of not being sent, after excluded, archived and elided,
-  and the only one `ContextState` cannot express. `App::costs` became `App::going`, which carries
-  what each item costs *and* why each item that is not in the request was left out, both read off
-  one projection; `Going::sends_content` is the question every column, reason, filter and figure
-  now asks, so they cannot drift apart again. The reason on the row is `Projection::skipped`'s own
-  words rather than a second copy assembled out here from the state and the note - which is what
-  it was, and which had no answer at all for this case.
-
-  One projection per frame, computed once in `draw` and handed to the three places that report on
-  it, rather than each asking for its own.
-
-- One word per mechanism, in `amend` and at the prompt. `amend` had a `prune` action with a
-  `state` argument, which put the word for *one* move over five of them - `pin` and `restore`
-  included, so "prune to pin it" was the documented way to protect something - and an item you
-  pruned then read back as `archived` on every screen that lists it. Two live models in a row
-  spent a call each asking for `restore` as an action, were told it was a state and not an action,
-  and gave up. They were right and the levels were wrong: the five moves are actions now, each
-  named for the state it leaves behind, and the `state` argument is gone. `/prune` becomes
-  `/exclude` for the same reason - it only ever moved an item to `excluded` - and `/keep` becomes
-  `/pin`.
-
-  Nothing that used to work stopped working. `prune` with a `state`, `/prune`, `/keep`, `unelide`,
-  `unpin` and `include` are all still accepted and none of them is documented, because taking a
-  word somebody reached for costs nothing and refusing it costs them a turn. AGENTS.md carries the
-  convention now, including that distinction: a synonym in an enum, a help line or a message is
-  the bug, a synonym in a `match` is a kindness.
-
-- The question about an `amend` says which items it would change. `ids: [22]` is a true account of
-  the arguments and a useless one to be asked about: the tool rewrites and hides pieces of the
-  context, the box asking covers the list those numbers refer to, and the answer is one key - so
-  somebody asked whether item 22 may be elided had to already know what item 22 was, from a screen
-  they could no longer see. The question now names each item the way the context tab does, and
-  expands a `select` into what it matches, which is the argument least answerable without it. Only
-  for the two tools this program installs itself, because `ids` on somebody else's tool is
-  somebody else's vocabulary and a confident description of the wrong thing is worse than none.
-
-- A leading `~` is refused in words instead of quietly becoming a directory called `~`. The three
-  file tools run in process with no shell in front of them, so nothing has ever expanded it -
-  `read` on `~/.gitconfig` joined it onto the working directory and came back
-  `/w/~/.gitconfig: No such file or directory`. That is the `access(2)` trap in a second form: an
-  error indistinguishable from the file being absent, which a model believes, so it concludes the
-  home directory is empty rather than that its path was taken at its word.
-
-  Not expanding it is the right default and it is kept - expanding here would have `--no-sandbox`
-  hand over `$HOME/.ssh/id_rsa` for real, on a path a model wrote - so the refusal is a sentence
-  naming what happened, where to write a path instead, and `./~` for a file really called that.
-  It comes *before* the unconfined early return, because that is the case it matters most in. Only
-  a leading `~` is refused: `notes.txt~` is a real file and `./~` is how a shell asks for a literal
-  one.
-
-  Said twice, the way the confinement is. `Reach::allows` is what lands, but it lands as a surprise
-  unless the argument said so first, so the three file tools share one `PATH_ARG` describing the
-  rule once. It costs 87 tokens across the tool definitions - 406 to 493 - which is a constant paid
-  per request against a model that otherwise spends whole calls hunting for a home directory it
-  cannot reach, and one such call is worth more than that.
-
-- `amend` accounts for a change with the reason for *that* change. One sentence served all four of
-  the things that can move the figure, and it named eliding as the cause - so a model that wrote a
-  note, which makes the request bigger because that is what a note is for, was told its ten extra
-  tokens were the marker of an elision it had not performed. The whole reason that sentence exists
-  is that models read the two figures and did not work out which way they had gone; a wrong account
-  of a number is worse than the bare number. Eliding still explains its marker, content coming back
-  says it is content, and a note says nothing beyond the figures, which are the answer rather than
-  a surprise in it.
-
-- The `~` refusal closes the retry and names no other path. Two changes, both from watching models
-  read the sentence added earlier in this release. It now says the same path will be refused again
-  as it stands, because one that did not say so was sent back unchanged six times in a single turn
-  by the same model - a refusal that does not close the retry is an invitation to retry, and after
-  the change that model asked once and got it right. And the literal-`~` spelling has moved out of
-  it into `PATH_ARG`: two models answered a refusal about `~/notes.txt` by reading `./~`, because
-  every concrete path in a refusal is read as a path to try. A refusal is read under pressure to
-  try something else; a schema is read while choosing, which is when a rare spelling is worth
-  knowing and nobody is about to act on it.
-
-- A move given a `label` instead of `ids` is told how to say what it meant. `label` is in the same
-  schema - it names a `note` - and a model reaching for a way to say *which item* took it, which is
-  a fair reading and a wasted call. The refusal now hands back the spelling: `select:
-  "label:secrets.txt"`, which is a selector that works and was there all along.
-
-- The status line's give-way ladder has the rung it was missing. The address gives way before the
-  figures, in two steps, and there it stopped - so a long *name* pushed `F1 for the keys` off the
-  right edge with the address already gone and nothing left to give.
-  `dots-studio/dots-3-note-preview:free` is 36 columns and perfectly ordinary on OpenRouter, which
-  is this program's default endpoint. The vendor prefix goes next, then the name is cut from the
-  left, which is the opposite end from a host and for the same reason: the distinguishing part of
-  `openrouter.ai` is at the front and the distinguishing part of a model id is at the back.
-
-- A provider's notice reaches whoever is holding the `App`, not only this program's own loop.
-  `take_notice` was drained on a tick in `main`, so "the model was cut off mid-answer; what had
-  arrived is kept" - written for exactly the moment a person needs to know something is missing -
-  went nowhere for any other caller, and could land after the turn it describes. `on_outcome`
-  drains it first now, so it sits with that turn; the tick keeps draining it for the notices that
-  belong to no turn.
-
-- A compaction pass says what it moved. The line in the chat and the row in the trace both counted
-  `report.removed` and nothing else - but removing and eliding are two mechanisms, and the
-  compactor that ships here only ever elides, on purpose, so that the call each result answers
-  keeps its answer. Every pass it has ever made therefore announced itself as `compacted: 0 items
-  out` in the only account a person gets of a context changing under them. Third instance of one
-  conflation, after `Trim`'s candidates and `/budget`'s held-back line.
-
-- The blank lines a provider puts in front of a message are no longer read as content. Some
-  providers send them - `inception/mercury` opens every message with two, and the recorded `gemini`
-  sessions have none - so it is a habit of the provider rather than anything the runtime did. The
-  item goes on keeping exactly what arrived, because a record of "what arrived, tidied up" cannot
-  answer what arrived; the screen stops spending rows on it.
-
-  Cosmetic in the conversation and not cosmetic in a tool result. The preview is the first six
-  *lines*, so two blank ones in front cost a third of it and truncate it two lines early: on one
-  real transcript four of the six rows were empty. The padding was eating the evidence.
-
-  Leading blank *lines* rather than leading whitespace, which would take the indentation off the
-  first line of a message that opens with a code block. The answer itself needed no fixing and gets
-  none - it is rendered as markdown and the renderer already swallows them. The thinking, a tool's
-  output and an item's pages are shown as the text they are, and those are where this was read.
+- Nothing this crate's test suites write goes in `/tmp`. Each cleared its directory on the way in
+  rather than out and the name carried the process id, so thirty runs left 810 directories.
+  `tests/common::scratch` hands out one under `CARGO_TARGET_TMPDIR`. One path stays in the temp
+  directory, because the claim it checks is that the temp directory is *not* opened up.
+- Two sandbox tests stopped leaving a confined command's scratch directory behind: they called
+  `output()`, which consumes the child, then removed a directory named for the *test's* own id.
+- A repair the request needs every time is said once rather than after every message, in the present
+  tense, and the count is the whole of it. The trace keeps every one.
+- The chat tab's border lights like the other three. It went yellow when the keys were on the tab's
+  body, which on the chat tab they never are. The prompt now answers "where does what I type go?" in
+  the same yellow the pinned question uses.
+- An undone edit comes off the conversation with the item it named. It is a reading now rather than
+  a copy: `Entry::text` keeps what was said and `App::said` asks the item what it says now.
+- `cargo doc` builds again - four intra-doc links named private methods from public documentation.
+- `Trim` does not ask for a pinned result. `ContextState::sends_content` says yes to one, so the
+  filter took it and the kernel refused - and the plan still carried a summary, so three turns
+  produced three summaries saying a result had been elided when none had, three undos spent, and the
+  request climbing 2,637 → 2,716 → 2,788.
+- `/budget` drops the percentage from its account of what the counter learned. It was computed from
+  `scale - 1`, the error as a fraction of the guess, while the sentence reads as a fraction of the
+  truth - 54.3% against 35.2%.
+- `amend`'s list of moves no longer implies an excluded item is still charged for. Measured,
+  `archive` and `exclude` produce the same request to the token.
+- `Trim` credits itself with the net of each elision and skips a result no bigger than its marker.
+  Each elision buys back the content less one copy of the pass's reason, about 21 tokens - so twenty
+  seven-token confirmations "recovered" 140 tokens and took the request from 852 to 1,190, through
+  the limit the pass exists to hold.
+- A stream that stops arriving keeps what arrived, rather than failing the turn and dropping tokens
+  already billed for. Retrying is worse: every attempt is billed. Both dialects, via the shared
+  conformance suite.
+- A row the projector repaired away says what it is holding. Whether an item is going cannot be read
+  off its *state* - an item repaired away is `Active`, holding everything, and not in the request.
+  `App::costs` became `App::going`, and `Going::sends_content` is what every column, reason, filter
+  and figure asks. One projection per frame.
+- One word per mechanism, in `amend` and at the prompt. The `prune` action with a `state` argument
+  put one move's word over five, so "prune to pin it" was the documented way to protect something.
+  The five moves are actions now, each named for the state it leaves behind; `/prune` becomes
+  `/exclude` and `/keep` becomes `/pin`. The old spellings are still accepted and undocumented.
+- The question about an `amend` names each item the way the context tab does, and expands a `select`
+  into what it matches. Only for the two tools this program installs itself.
+- A leading `~` is refused in words rather than becoming a directory called `~`. Not expanding is
+  the right default and is kept; the three file tools share one `PATH_ARG` describing the rule, at
+  87 tokens across the definitions.
+- The `~` refusal says the same path will be refused again as it stands, and names no other concrete
+  path - every concrete path in a refusal is read as a path to try. The literal-`~` spelling moved
+  into `PATH_ARG`.
+- `amend` accounts for a change with the reason for *that* change, so a note is not told its extra
+  tokens are the marker of an elision it did not perform.
+- A move given a `label` instead of `ids` is told the spelling: `select: "label:secrets.txt"`.
+- The status line's give-way ladder gained the rung it was missing: after the address, the vendor
+  prefix goes, then the name is cut from the left.
+- A provider's notice reaches whoever holds the `App`, via `on_outcome`, so it sits with its turn.
+- A compaction pass counts elisions, not only removals. The compactor here only ever elides, so
+  every pass announced itself as `compacted: 0 items out`.
+- Blank lines a provider puts in front of a message are not drawn. The item keeps what arrived.
+  Cosmetic in the conversation and not in a tool result, whose preview is the first six *lines*.
 
 ## [0.5.0] - 2026-09-06
 
-### fixed
-
-- The budget no longer charges for thinking this dialect cannot send. `LinearProjector`'s
-  `send_reasoning` is on by default - correctly, since a provider that does not want an assistant
-  turn's reasoning ignores the field - but `to_wire` here has never put it on the wire at all, and
-  cannot: most endpoints speaking the OpenAI-compatible dialect reject a message carrying a field
-  they do not know, and there is no agreed name for that one. The budget is counted over the
-  messages the projector produced, so every turn of reasoning in the context was in the estimate
-  and in none of the requests. Measured on one ordinary turn with 3.4KB of thinking, the estimate
-  charged 928 tokens where the request carried 73.
-
-  `Calibrating` cannot take this out, which is why it went unnoticed for so long and why it looks
-  worst where it is read most. The wedge grows with the number of reasoning turns the context is
-  holding, while the correction is a single multiplier learned cumulatively over the whole
-  session - so the scale is a blend dominated by the earlier, thinner requests, and a long session
-  drifts steadily high while a short one looks fine. One reported at `~93,663 tokens` against
-  `82,381 really` was out by roughly thirteen turns' worth.
-
-  The projection is now the provider's own answer - `Endpoint::projection`, beside the `to_wire`
-  that has to honour it - rather than a second decision made from the same flag in `main.rs`,
-  which is how the two came apart. Gemini's answer is unchanged in substance and now says so in
-  its own file: it sends the ordering *and* the thinking, as a part marked `thought`. Nothing
-  changes on the wire for either. The turn keeps its reasoning in the record, on the context tab
-  and prunable, exactly as before.
-
-- `/load` puts every token figure on one scale. A snapshot carries what its counter had learnt,
-  and reading one in moves the correction under everything already counted - but the load counted
-  the items it brought *first* and applied the correction afterwards, which is the reverse of the
-  ordering `Kernel::resume` documents and warns about. So every loaded item carried a figure from
-  whatever scale this session happened to be on, while the budget beside it is projected live and
-  was already on the loaded one: a context that really came to 3,998 tokens read 2,002, and the
-  `held` column disagreed with the `sending` column on the same row by exactly the correction. It
-  goes through `Kernel::recalibrate` now, before it counts: the front door applies the correction
-  and recounts, which is what brings the items the load sets aside - and which `held back` adds to
-  the loaded ones - onto the same scale, loudly, as `context.recounted`.
-
-- `/budget`'s two halves answer the same question. The tokens it reports as held back come from
-  `tokens_withheld`, which counts an elided item - it is in the request as a marker and is not
-  sending what it holds - and the count beside them came from what is not *projected*, which does
-  not. So the one command whose whole job is to say what the next request costs and what it does
-  not read `held back: 9,004 tokens in 0 items the projector is not sending`: a count of nothing
-  against the figure it was supposed to account for, and a clause that is untrue of an elided item
-  besides. It is the same conflation `Trim` was making, in the place it is most read.
-
-- `Trim` stops asking once there is nothing left to elide. Its candidates were the projected tool
-  results, and an elided item *is* projected - as a marker - so every item a pass had already
-  elided came back as a candidate on the next one. The plan was therefore never empty, never
-  `None`, and its summary went into the context before every single request from then on: a
-  compactor adding a line and burning one of the person's sixteen undos per request, growing the
-  thing it exists to shrink, for as long as the session lasted. A pinned `--file` bigger than the
-  target is enough to get there, and six passes over one took the context from three items to
-  eight. It looks at what an item is *sending* now.
-
-- A loaded session hands over the tool call identifiers it already used. `/load` pushes a
-  snapshot's turns into the running kernel and dropped `used_calls` on the floor, so the kernel
-  had never heard of the identifiers those turns carry - and a provider that numbers its calls
-  from zero every turn, which is the reason the repair exists at all, would hand one straight
-  back. Nothing would have repaired it and the next request would have answered one
-  `tool_call_id` twice. `kamchatka` could not do anything about this from out here, so the
-  runtime grew `Kernel::reserve_calls` for it.
-
-- The `shell` tool's temporary directory is never made *through* whatever is already at its name.
-  It has to be predictable - it is named after the confined process so that the one which spawned
-  it can remove it afterwards - and `create_dir_all` was satisfied by anything it found there,
-  including a symlink. The ruleset grants that directory everything a writable root gets and hands
-  it over as `TMPDIR`, so a link left in `/tmp` by another account would have opened up whatever
-  it pointed at. It is created exclusively now, at `0700`; something of this program's own left by
-  a run whose process identifier has come round again is removed and remade, and something that is
-  not cannot be unlinked, which leaves the command with no temporary directory rather than with
-  somebody else's.
-
-- `introspect` declares the `whole` argument it reads. The tool read it, its description told the
-  model to use it, and both `look`'s last line and the marker in a sampled item ended by telling
-  the model to ask for the `whole` of an item - while the schema declared four properties, none of
-  them that one. A model following the schema could not pass it, and an endpoint validating
-  against the schema would have refused the call.
-
-- The policy's two per-call notes drop the oldest rather than all of them. Both the calls a person
-  granted the network to and the reasons refusals were refused were emptied outright once they got
-  past thirty-two, which throws away exactly the entry most likely to be wanted: each is written
-  down when the policy answers and read when the call runs, so the live one is among the newest.
-
-- `amend`'s `note` does not spend two of the person's undos to write one thing down. Pinning it
-  was a second state change after the push, which is the arithmetic `revise` already keeps its own
-  account out of the note to avoid; the item is pinned as it is written, and `because` was already
-  carrying the reason.
-
-- A long answer keeps its beginning. The transcript bounded a *still arriving* entry at eight
-  thousand bytes and replaced whatever came before it with `[...]` - which is right for a `find /`
-  and wrong for a message. A model writing a long answer had its first paragraphs eaten while it
-  was still writing the last one, and nothing ever put them back: the finished item is read off the
-  kernel only for a provider that did not stream, so what was lost stayed lost for the rest of the
-  session. The bound is now on a tool's output and on nothing else. Nothing anybody said is
-  shortened on the way to the screen, however long it is.
-
-- Git is no longer killed outright by a configuration it cannot read. Under Landlock, `access(2)`
-  still answers from the file's own permissions, so git asked whether `~/.gitconfig` was readable,
-  was told yes, opened it, got `EACCES`, and took the *unreadable configuration* branch rather
-  than the *no configuration* branch: `fatal: unknown error occurred while reading the
-  configuration files`, exit 128, and every git command in a confined session dead - `git log`,
-  `git diff`, `git status`, all of them. A missing file is fine and an unreadable one is not, and
-  a command has no way to tell git which it has. A confined command whose global configuration is
-  out of reach is now handed `GIT_CONFIG_GLOBAL` pointing at nothing, which is the case git
-  handles. One that is in reach is left alone, so an identity and aliases that could be read still
-  are, and a `GIT_CONFIG_GLOBAL` somebody set is never overwritten.
-
-- A multi-byte character split across two reads of a stream is no longer destroyed. Both providers
-  assembled the response by decoding each chunk off the socket as it arrived, lossily, so a
-  character whose bytes straddled a chunk boundary was decoded twice - once with its tail missing
-  and once with its head - and became two replacement characters. `zażółć` came back `za??ółć`,
-  and it then went into the context, the transcript and the session log with nothing to say it had
-  ever been anything else. It depends only on where the network happened to break the stream, so
-  every language with diacritics and every typographic dash was a coin toss. The buffer holds bytes
-  now and only whole lines are decoded.
-- A confined command cannot truncate a file outside the working directory. The Landlock ruleset was
-  built on ABI 1, and an access right a ruleset does not *handle* is not restricted at all -
-  truncation has had a right of its own since ABI 3, because `truncate(2)` takes a path and never
-  opens the file, so `WriteFile` does not cover it. `os.truncate('/home/you/.bashrc', 0)` came back
-  with nothing to say and a file of nought bytes. GNU `truncate(1)` opens the file and so was
-  refused all along, which is why nothing noticed. The ruleset asks for ABI 3, which brings `Refer`
-  with it and so also allows a `mv` between two directories of the working directory.
-- A credential rule is about the file that gets opened. The rules were matched against the raw
-  argument by splitting it on `/` and taking the last piece, while the file was opened at a
-  *resolved* path - and the two disagreed about the simplest thing there is. `read` with a `path`
-  of `.env/` matched no rule and opened `.env`, so in a session where somebody had answered
-  `always` to an ordinary read, the whole list of credential patterns came off with a trailing
-  slash. The path is read as a `Path` now, so a trailing slash, a doubled separator and a `.` in
-  the middle all name the file they name.
-- The pattern matcher backtracks. It walked a pattern's literals with `find` and took the first
-  hit, so `a*bc` refused `abcbc`: the `bc` it found was the one the star should have swallowed and
-  there was no way back. A permission rule that silently fails to match is the worst way for one to
-  be wrong, and `*credentials*.json` is not an exotic thing to write.
-- The session written on the way out goes into a `0700` directory. It holds a whole conversation
-  and every byte of output every tool produced, written without anybody asking for it, and under an
-  ordinary umask that was a world-readable file in a directory everyone on the machine could list.
-
 ### added
 
-- <kbd>ctrl+home</kbd> and <kbd>ctrl+end</kbd> go to the beginning of the conversation and to the
-  end of it, the second one following the newest again from there. Control is held because
-  <kbd>home</kbd> and <kbd>end</kbd> belong to the prompt, which is under every tab - a line editor
-  whose <kbd>home</kbd> moved something else would be a trap.
-
-- `--sandbox-read PATH` opens a path outside the working directory for reading and no more, next
-  to `--sandbox-allow`, which opens one for reading and writing. What sends most people here is a
-  toolchain: `$HOME` is not a system directory, `cargo` is a rustup shim that reads
-  `~/.rustup/settings.toml` before it does anything at all, and a confined `cargo build` therefore
-  failed with `could not read settings file: Permission denied` - which looks exactly like a
-  missing compiler. A live model spent six calls hunting for one that was installed the whole
-  time. `--sandbox-allow ~/.rustup` would have fixed it and handed the model the ability to
-  replace the toolchain it was about to run; this is the flag that was missing. The three file
-  tools honour it too: `read` reaches a read-only path and `write` and `edit` are refused with a
-  message that says which of the two it is.
-- A permission error from a confined command says when the confinement caused it. Landlock refuses
-  an `open` with `EACCES`, which is the same thing the kernel says about a file that is somebody
-  else's, so `Permission denied (os error 13)` gave a model no way at all to tell a boundary from
-  a protected file - and the tool description saying so in general did not stop one spending six
-  calls on it. A refused command that names a path outside its reach now gets a line naming that
-  path and what the command can reach instead, directly under the status line, where an output
-  limit cutting from the end cannot take it. A refusal that names only paths the command *can*
-  reach gets nothing: `cat /etc/shadow` is refused with or without a sandbox, and hedging about it
-  would send a model looking for a boundary that had nothing to do with it.
+- <kbd>ctrl+home</kbd> and <kbd>ctrl+end</kbd> go to the beginning and end of the conversation.
+  Control is held because <kbd>home</kbd> and <kbd>end</kbd> belong to the prompt.
+- `--sandbox-read PATH` opens a path for reading only, beside `--sandbox-allow`, which opens one for
+  reading and writing. A confined `cargo build` fails on `~/.rustup/settings.toml` in a way that
+  looks like a missing compiler; `--sandbox-allow ~/.rustup` would have fixed it and handed the
+  model the ability to replace the toolchain.
+- A refused confined command names the path outside its reach and what it can reach instead, under
+  the status line where an output limit cannot take it. Landlock refuses with `EACCES`, which is
+  also what the kernel says about somebody else's file. A refusal naming only reachable paths gets
+  nothing.
 
 ### changed
 
-- `sandbox::confine` takes an `Option<&Path>` for the scratch directory, and `sandbox::make_scratch`
-  is the thing that makes one. A path that cannot be opened makes the ruleset fail to build, which
-  comes back `Unavailable` - a command running *unconfined* because its temporary directory was not
-  there - so the one case where there is no scratch has to be sayable rather than inferred.
-- `network: deny` is described as what Landlock actually refuses, which is TCP. `ConnectTcp` and
-  `BindTcp` are its only two network access rights, so a confined command can still send a UDP
-  datagram - enough to put bytes in a DNS query - and AF_UNIX needs a kernel from 2026 to reach at
-  all. The screen, the tool's own description to the model and both readmes now say TCP rather than
-  "the network". Nothing about the confinement changed; what it was described as did.
-- `--requests 0` says in `--help` that it means no limit at all, which it has always done.
+- `sandbox::confine` takes `Option<&Path>` for the scratch directory and `sandbox::make_scratch`
+  makes one, so "there is no scratch" is sayable rather than inferred.
+- `network: deny` is described as refusing TCP, which is what Landlock's two network rights cover. A
+  confined command can still send a UDP datagram. Nothing about the confinement changed.
+- `--requests 0` says in `--help` that it means no limit.
+
+### fixed
+
+- The budget no longer charges for thinking this dialect cannot send. `send_reasoning` is on by
+  default but `to_wire` has never put it on the wire and cannot. One turn with 3.4KB of thinking was
+  charged 928 tokens against a request carrying 73. `Calibrating` cannot correct it, since the wedge
+  grows with the number of reasoning turns while the scale is a single cumulative multiplier. The
+  projection is `Endpoint::projection` now, rather than a second decision made in `main.rs`.
+- `/load` puts every token figure on one scale, going through `Kernel::recalibrate` before counting.
+  It counted first and corrected afterwards, so a context that came to 3,998 tokens read 2,002.
+- `/budget`'s two halves answer the same question. The figure came from `tokens_withheld`, which
+  counts an elided item, and the count beside it from what is not projected, which does not - so it
+  read `held back: 9,004 tokens in 0 items`.
+- `Trim` looks at what an item is *sending*. Its candidates were the projected tool results, and an
+  elided item is projected as a marker - so every already-elided item came back as a candidate, the
+  plan was never empty, and a summary went in before every request.
+- `/load` hands over the tool call identifiers the snapshot already used; it dropped `used_calls` on
+  the floor. The runtime grew `Kernel::reserve_calls` for it.
+- The `shell` tool's temporary directory is created exclusively at `0700`. It has to be predictable,
+  and `create_dir_all` was satisfied by anything already there, including a symlink left by another
+  account.
+- `introspect` declares the `whole` argument it reads. Three places told the model to use it while
+  the schema did not declare it.
+- The policy's two per-call notes drop the oldest past thirty-two rather than all of them.
+- `amend`'s `note` does not spend two of the person's undos to write one thing down.
+- A long answer keeps its beginning. The transcript bounded a still-arriving entry at eight thousand
+  bytes and replaced what came before with `[...]`, and nothing put it back. The bound is on a
+  tool's output and nothing else.
+- Git survives a configuration it cannot read. Under Landlock `access(2)` answers from the file's
+  own permissions, so git was told `~/.gitconfig` was readable, got `EACCES` opening it, and took
+  the *unreadable configuration* branch - exit 128 for every git command in a confined session. Such
+  a command is now handed `GIT_CONFIG_GLOBAL` pointing at nothing.
+- A multi-byte character split across two reads is no longer destroyed. Both providers decoded each
+  chunk lossily as it arrived, so `zażółć` came back `za??ółć` and went into the context, the
+  transcript and the log. The buffer holds bytes and only whole lines are decoded.
+- A confined command cannot truncate a file outside the working directory. The ruleset was built on
+  ABI 1, and a right a ruleset does not *handle* is not restricted at all; truncation has had its
+  own right since ABI 3, because `truncate(2)` takes a path and never opens the file. The ruleset
+  asks for ABI 3, which brings `Refer`.
+- A credential rule matches the resolved path rather than the raw argument split on `/`, so a `path`
+  of `.env/` no longer opens `.env` unmatched.
+- The pattern matcher backtracks - it took the first `find` hit, so `a*bc` refused `abcbc`.
+- The session written on the way out goes into a `0700` directory.
 
 ## [0.4.0] - 2026-09-05
 
-### fixed
-
-- A request that stalls is waited out, the way a busy server already was. A 429 or a 5xx got four
-  tries and a doubling; a connection that timed out got `?` and took the session with it - which
-  is the same event wearing different clothes. Eleven of fourteen runs against one upstream died
-  this way while the same model answered a single request in six seconds; run one at a time they
-  all passed, so what they had met was load, not a wall. A refused connection is deliberately not
-  retried: an address with nothing behind it is an answer, and making a typo take four doublings
-  to report helps nobody.
-
-- A request that has not been answered yet is watched the way a stream already was: `esc` stops
-  it, the silence is reported at ten seconds and then at intervals, and it gives up after 150.
-  Only the *stream* was watched before, so all of that began at the first byte - and a server
-  that accepted the connection and then went away never sent one. The status line read `asking`
-  and nothing else could be done; the longest measured case held the terminal for eighteen
-  minutes, waiting for the operating system to notice. Giving up now says which of the two
-  happened, because a model that hung up mid-answer and one that never spoke are not the same
-  problem.
-  Google's dialect gets all of this too: its `send` was a bare `?`, so a stall there got neither
-  the doubling nor the noticing, and ended the turn whenever the operating system got round to
-  it.
-
 ### added
 
-- Every session is written out when it ends, to a temporary directory, and the path is the last
-  thing printed - the way `/save` writes it, and without anybody having had to think of it.
-  `--no-record` turns it off. The old condition was backwards: a session that ended badly is the
-  one worth reading afterwards, and it was the one that left nothing. Nine runs against a provider
-  that timed out left empty files and no way to see how far any of them had got. A session is now
-  named `kamchatka-<seconds>` rather than a counter that restarts at 1 with the process, which is
-  fine as an identity and useless as a filename; a resumed session keeps the name in its snapshot,
-  so carrying on writes back to the same pair of files.
-
-- `/params` shows what else the model takes, and names any you have set that it does not. A
-  parameter a model does not accept is not refused - it is sent, ignored, and nothing says so, so
-  a `seed` set for a reproducible run buys no reproducibility and looks exactly like one that
-  worked. Two models compared one session apart differed by eight of them. The list is read from
-  the same listing entry the context limit already comes from, so it costs no extra round trip,
-  and an endpoint that publishes nothing is read as silence rather than as a prohibition.
-
-- A `prune` that hides items while the agent has written nothing down says so. A run gathered
-  ~19,400 tokens of evidence across seventeen tool results, said nothing in any of its own seven
-  turns, elided all seventeen in one call, and then answered all ten questions from a context that
-  no longer held any of it - confidently, and wrong on every one, inventing a crate and seven enum
-  variants. The tool had told it what it saved (`~19,380` down to `~2,453`) and nothing about what
-  it had just spent. It now adds one line naming `note` as the thing that would have kept a
-  finding, and says nothing once a note is in context.
-
-- `look` hands back a long item as its start and its end rather than the whole of it, and
-  `whole: true` asks for all of it. Reading an item copies that item into the context, so a model
-  asking to see a 9,000-token tool result *in order to decide whether to keep it* pays very nearly
-  what keeping it costs. One did exactly that, twice, and finished a correct clean-up 7,688 tokens
-  heavier than it started - it identified 9,324 tokens of genuine rubbish, removed them, and spent
-  17,142 finding out. The sample keeps both ends, because what tells build noise from something
-  worth keeping is usually visible at the edges, and it names the bytes it left out. Recovering an
-  archived output whole is still possible, which is why this is an argument rather than a cap.
-- Hiding an item says how to get it back, on the line where it says what it did. `amend` has one
-  way back from all four of the states that hide or hold an item, and it is a `state` called
-  `restore` rather than an `action` - which a session that had just elided twenty-two items could
-  not find. It asked for an `action` called `restore` twice, was told no such thing existed, and
-  gave up with its whole context hidden. Six words on the line that hid them is cheaper than that,
-  and it names `undo` too, which is the better answer when the whole call was the mistake.
-- `state` takes any of the words for putting something back. There is exactly one such state and
-  a great many spellings, so `unelide`, `unexclude`, `unarchive`, `unpin`, `include` and `active`
-  all reach it. They are accepted and deliberately left out of the schema's `enum`: a list of
-  eleven words, six of them the same word, is harder to read than a list of five.
-- The error for an unrecognised `state` says what each one *does* rather than only what it is
-  called. Choosing between `elide` and `exclude` is the decision that settles whether a tool call
-  keeps its answer, and five bare words never helped anybody make it.
-- A prune that made the request *bigger* says so. An elided item leaves a marker carrying the
-  reason given for eliding it, and on a short item that reason costs more than the content did: a
-  live session elided twenty-two items and added 162 tokens. Both figures were already printed and
-  a careful reader could work it out; three models in a row did not, and one went on to elide
-  everything it had.
-
-- The requests say which program made them, where the endpoint keeps a ranking of programs.
-  OpenRouter builds an app's page against the `HTTP-Referer` it is sent and names it from
-  `X-OpenRouter-Title`; without them a session is anonymous traffic, and [the crate's own
-  page](https://openrouter.ai/docs/app-attribution) is the thing that goes missing. What is sent
-  is this crate's own directory and the word `kamchatka` - not the key, not the model, not a syllable of
-  what anybody asked - and it is sent **only to OpenRouter**, because `KAMCHATKA_BASE_URL` points
-  this at anything and a `HTTP-Referer` volunteered to somebody's own machine is something they
-  did not ask to send. The host is matched on its authority rather than by looking for the name in
-  the address, so `openrouter.ai.example.com` is not it. `KAMCHATKA_NO_ATTRIBUTION` turns it off:
-  a program that names its user's tooling to a third party should say so and let them stop it.
-  The library type takes it as `OpenAiCompatible::on_behalf_of` and defaults to none, so anything
-  built on the crate is not quietly filed under this one.
-
-- <kbd>f</kbd> on the context tab lists only what the next request carries. After a compaction most
-  of the pane is items the model will never read again - archived originals, elided markers, the
-  superseded halves of rewrites - and reading past them to find the conversation is the thing the
-  tab is for. The rule is one anybody can hold in their head: it hides every row with a figure in
-  the `held` column. Nothing is changed and nothing is logged, because it is a view; the header
-  says how many rows are missing and which key brings them back, and the selection follows the item
-  it was on rather than the row number, since the rows underneath have just moved. Asking for a
-  hidden item by number says it is hidden rather than that it does not exist, which are two
-  different answers and only one of them is somebody's typo.
-
-- `--forget-truncated`, which drops the whole of a tool's output once it has been shortened rather
-  than keeping it as an archived item. The runtime has had the switch since it had the behaviour
-  and its documentation says when to reach for it - "when a tool can produce more than you are
-  willing to go on holding" - and nothing here reached it, so the answer for a terminal was always
-  yes. It is worth a flag because the cost is not in the session, it is in the file: `/save` writes
-  the snapshot, an archived output goes into it whole, and one `grep` that wandered into `./target`
-  put 11MB of build noise into every save of that session from then on. Keeping it is still the
-  default, because being able to open the item and read what the command actually said is the
-  point of the pane.
+- Every session is written out when it ends, to a temporary directory, with the path printed last.
+  `--no-record` turns it off. The old condition was backwards: a session that ended badly is the one
+  worth reading and the one that left nothing.
+- `/params` shows what else the model takes and names any set parameter it does not. An unaccepted
+  parameter is sent, ignored, and nothing says so, so a `seed` set for a reproducible run buys
+  nothing and looks like it worked. Read from the listing the context limit already comes from.
+- A `prune` that hides items while the agent has written nothing down says so, and names `note`. A
+  run elided seventeen tool results in one call and then answered ten questions from a context
+  holding none of it - wrong on every one, inventing a crate and seven enum variants.
+- `look` returns a long item as its start and its end; `whole: true` asks for all of it. Reading an
+  item copies it into the context, so a model inspecting a 9,000-token result to decide whether to
+  keep it pays nearly what keeping it costs.
+- Hiding an item says how to get it back, and names `undo`.
+- `state` accepts any spelling for putting something back - `unelide`, `unexclude`, `unarchive`,
+  `unpin`, `include`, `active` - deliberately left out of the schema's `enum`.
+- The error for an unrecognised `state` says what each one does, not only what it is called.
+- A prune that made the request *bigger* says so. An elided item's marker carries the reason for
+  eliding it, which on a short item costs more than the content did.
+- The requests say which program made them, where the endpoint ranks programs. This crate's
+  directory and the word `kamchatka`, sent only to OpenRouter, matched on the authority so
+  `openrouter.ai.example.com` is not it. `KAMCHATKA_NO_ATTRIBUTION` turns it off.
+- <kbd>f</kbd> on the context tab lists only what the next request carries: it hides every row with
+  a figure in the `held` column. Nothing is changed and nothing is logged. Asking for a hidden item
+  by number says it is hidden rather than absent.
+- `--forget-truncated` drops a tool's whole output once shortened rather than archiving it. The cost
+  is in the file: one `grep` into `./target` put 11MB of build noise into every save. Keeping it is
+  still the default.
 
 ### fixed
 
-- Both readmes said the sandbox reaches further than it does. "Nothing outside that directory is
-  reachable either way" and "nothing outside the working directory is readable or writable at all"
-  are true of writing and false of reading: the system paths - `/usr`, `/etc`, `/bin`, `/lib`,
-  `/proc` and the rest - are readable on purpose, because a command that cannot read `/usr/bin`
-  cannot be a command, and `sandbox.rs` has said so in a note since it was written. Two live
-  sessions read `/etc/passwd` through a confined shell with nothing refusing them, which is
-  correct behaviour and was documented as impossible. A claim about what a sandbox stops is the
-  last place to be loose, so both now say what is writable, what is readable, and give the two
-  commands that show where the line is: `cat /etc/passwd` works, `cat ~/.ssh/id_rsa` does not.
-  The file tools are unaffected - they refuse `/etc/passwd` by their own code, and always did.
-- A test pins that boundary from both sides now. The one that sounded like it covered the claim
-  reaches for `/home/*/.bashrc`, which is outside the system paths and so was never the case in
-  question; it keeps its assertion and loses its name, and the case it appeared to cover has a
-  test of its own.
-
-- A tool call numbered from one left a phantom call at zero. The streamed `index` says which call
-  a fragment belongs to; it is not a position in a list, and using it as one meant a first call at
-  `index: 1` pushed an empty `PartialCall` into slot zero that nothing ever filled. That reached
-  the kernel with no identifier and no name, was assigned one by the repair path, and came back to
-  the model as `tool.unknown` for a tool called `""` - a wasted round trip every turn and an error
-  it had to read and work around. Found by pointing this at `minimax/minimax-m3`, which numbers
-  its calls from one. An index is looked up now rather than indexed into, so any base works, and
-  so does a provider that skips a number.
-- The same treatment for an error that arrives *mid-stream*, which is a different shape and was
-  missed the first time. A refused request nests its sentence under `error`; a stream that fails
-  halfway sends the object on its own with `message` at the top, and that path printed the whole
-  thing. Found with `inception/mercury-2.5-preview`, whose upstream answers a question it does not
-  like with a 502 whose message is the refusal - so the screen and the session log got
-  `{"code":502,"message":"...","metadata":{"error_type":"provider_unavailable"}}` where one
-  sentence would do. One function reads both shapes now.
-- A refused request no longer copies the server's whole envelope into the transcript. A spent
-  daily quota came back as six hundred characters of JSON - the message, the remedy, the
-  rate-limit headers, and the account's `user_id` - and all of it went on the screen and into the
-  session log, which is a file people send each other. What is reported now is the server's own
-  sentence, plus the upstream's where the wrapper only says that something upstream failed, and
-  the account identifier is not in it.
-- `Retry-After` is honoured where the server sends one, instead of always doubling. The two are
-  not the same question: a per-minute limit answers `5`, and a spent daily quota answers with the
-  seconds until midnight. Past a minute this stops rather than sitting through four doublings to
-  discover the answer will not change, and says how long it was asked to wait.
-- `amend` points a state-named action at the argument it belongs to. `restore` is what `prune`
-  puts an item back to, and `there is no ``restore``` was true of the action list and useless to a
-  model holding the right tool at the wrong level - two live models in a row spent a call each on
-  it and gave up. A word this tool knows anywhere now comes back with the call that would have
-  worked. A word it does not know still gets the list.
-- A figure too wide for its column stopped taking the columns from its neighbour. The `held`
-  column is seven wide, which stops at `999,999`, and `{:>7}` pads without truncating - so an item
-  holding 3,370,258 tokens printed all nine characters, ran into the `sending` figure beside it
-  (`0` and `1,400,000` arriving as `01,400,000`) and pushed two characters off the end of the row.
-  It is the one column where an unbounded number can turn up: what is being *sent* is bounded by
-  the window it is being sent to, and what is being *held* is whatever a tool actually produced.
-  The figure is abbreviated when it will not fit and exact whenever it will, which is almost
-  always; the status line goes on reporting the whole of it, where there is room.
+- A request that stalls is waited out, like a busy server. A connection that timed out used to take
+  the session with it - eleven of fourteen runs against one upstream died that way while the same
+  model answered a single request in six seconds. A refused connection is deliberately not retried.
+- A request not yet answered is watched like a stream: `esc` stops it, silence is reported at ten
+  seconds and then at intervals, and it gives up after 150. Only the stream was watched, so all of
+  that began at the first byte; the longest measured case held the terminal for eighteen minutes.
+  Google's dialect gets it too.
+- Both readmes said the sandbox reaches further than it does. The system paths are readable on
+  purpose, because a command that cannot read `/usr/bin` cannot be a command. Both now give the two
+  commands that show the line: `cat /etc/passwd` works, `cat ~/.ssh/id_rsa` does not. The file tools
+  refuse `/etc/passwd` by their own code and always did.
+- A tool call numbered from one no longer leaves a phantom call at zero. The streamed `index` says
+  which call a fragment belongs to and is not a position in a list; it is looked up now, so any base
+  works and so does a provider that skips a number.
+- An error arriving *mid-stream* is read too - it sends the object on its own with `message` at the
+  top, where a refused request nests it under `error`.
+- A refused request reports the server's sentence rather than its whole envelope. A spent daily
+  quota came back as six hundred characters of JSON including the account's `user_id`, into the
+  session log, which is a file people send each other.
+- `Retry-After` is honoured where the server sends one, and past a minute this stops rather than
+  sitting through four doublings. A per-minute limit answers `5`; a spent daily quota answers with
+  the seconds until midnight.
+- `amend` points a state-named action at the argument it belongs to, so a word it knows anywhere
+  comes back with the call that would have worked.
+- A figure too wide for its column no longer takes the columns from its neighbour. The `held` column
+  is the one where an unbounded number can turn up; it is abbreviated when it will not fit.
 
 ## [0.3.0] - 2026-09-01
 
 ### added
 
-- `Careful` hands its reason for a refusal to the model as well as to the screen, through the
-  runtime's new `PermissionPolicy::why`. It had written down which capability or path rule did it
-  since the day it was built, and nothing carried it any further than the transcript: what reached
-  the model was `the call was not permitted`, from which a standing `deny` and a one-off `n` are
-  indistinguishable. The reason is no longer handed out once, because there are two readers now
-  and whichever asked first used to get it.
-- A marker that says the runtime is still working: three dots under `asking` or `running`, one of
-  them lit and moving, joined after five seconds by how long it has been going. Which dot is lit
-  comes from the clock rather than from a frame counter, so it moves at a steady rate whatever the
-  screen is doing and stops where it is if the screen stops being drawn - `asking` on its own is
-  the same word whether a request is in flight or the program is wedged. Absent while the runtime
-  is resting, including while it waits on an answer from you.
-- `/load [PATH]`, the other half of `/save`. `kamchatka -r` was the only way back into a saved
-  session and it is a restart, which is right for what it does - `Kernel::resume` is a constructor,
-  and a second kernel built inside a running one would arrive with no provider, no policy, no
-  tools and none of the subscriptions the screen draws from. So this is a context operation
-  instead, and it follows the rule the rest of them do: nothing is destroyed. The current context
-  is archived, keeping its numbers and contents; pinned items stay, because a pin is the person
-  saying so and `--system` is pinned; the saved items come in as new items and are read back onto
-  the chat tab as the conversation they were; the parameters and the counter's calibration come
-  with them; and `u` twice puts it all back. A saved file is now a checkpoint you can return to
-  mid-session. Refused while a turn is running or a call is waiting to be answered.
-- <kbd>enter</kbd> on a context item opens a paged box instead of a single body, moved between
-  with `←` and `→`. `to the model` is what the item puts into the next request - read out of the
-  projection of the *whole* context, so a call the projector dropped or an ordered turn it
-  flattened shows as the repair it is, and an item that is not going says so with the reason.
-  `as stored` is what the item holds. For an elided or an excluded item those are two different
-  answers, and the box opens on the first one rather than the second, because the gap between
-  them is what somebody pressed enter to find.
+- `Careful` hands its reason for a refusal to the model as well as the screen, through
+  `PermissionPolicy::why`. The model used to read `the call was not permitted`, from which a
+  standing `deny` and a one-off `n` are indistinguishable.
+- A working marker: three dots under `asking` or `running`, joined after five seconds by elapsed
+  time. Which dot is lit comes from the clock, so it stops where it is if the screen stops drawing.
+- `/load [PATH]`, the other half of `/save`, as a context operation rather than a restart. Nothing
+  is destroyed: the current context is archived, pinned items stay, the saved items arrive as new
+  items with their parameters and calibration, and `u` twice puts it back. Refused while a turn is
+  running or a call is waiting.
+- <kbd>enter</kbd> on a context item opens a paged box moved between with `←` and `→`. `to the
+  model` is what the item puts into the next request, read out of the projection of the whole
+  context; `as stored` is what the item holds. It opens on the first.
 - `v1`, `v2`, … pages: what an item said before it was rewritten, newest first, up to eight deep.
-  A terminal edit supersedes and leaves the old text a row of its own, but `amend revise`
-  replaces in place - deliberately, so the model keeps the number it refers to the item by - and
-  the old text then exists nowhere but the `context.replaced` event. `App` keeps what that event
-  carries, which is what the event carries content *for*. No change to the runtime.
-
-### fixed
-
-- A stopped `shell` command lost the line saying so. `[the command was stopped before it
-  finished]` was appended after the standard error, and an output limit cuts from the end - so
-  the one command that most often has more to say than the limit allows was also the one whose
-  explanation went, leaving output that stopped mid-sentence under a truncation marker with
-  nothing to say why. It is on the exit line now, first in the result, where nothing can cut it.
-- A markdown table wider than the window came apart. The renderer lays a table out at the width
-  its contents want and hands back rows of box characters, and those were then wrapped like
-  prose - so half a border arrived on the next line and the borders scattered across the pane.
-  Tables are drawn here now, the way fenced blocks already were: the columns give when the window
-  is short, widest first and down to a floor, the cells wrap inside them with their inline styling
-  intact, and the delimiter row's colons decide which end of its column a cell sits at. A table
-  inside a fence is still a code block.
+  `amend revise` replaces in place, so the old text exists nowhere but `context.replaced`. No
+  runtime change.
 
 ### changed
 
 - **Breaking, for the library:** `Overlay::Permission` is a struct variant carrying its own
-  `scroll`, and `Overlay::Text` holds `pages` and `page` where it held one `body`. Both follow
-  from the same discovery - that a box showing one thing had no way to admit there was more than
-  one - and neither is expressible without changing the shape somebody matches on. The library
-  exists so that the screen can be tested against a `TestBackend`; the program is the product, and
-  it is unaffected.
-- The trace says what its events carry. A third of them printed a dotted name against an empty
-  line - including `context.replaced`, which holds the only surviving copy of what an item used to
-  say, and `tool.repaired`, which is the kernel announcing that a provider reused a call
-  identifier. They all say something now, and a test refuses a name with nothing beside it.
-  `tools.changed` lists the tools rather than counting them, and `permission.decided` says who
-  answered in words rather than in a `Debug` of the source.
-- A column down the left of the trace holds the gap since the line above, blank under a tenth of a
-  second. A log with no clock cannot answer the question people bring to one - which step was slow
-  - and a column of timestamps would make them subtract to find out. Nearly everything happens
-  between one frame and the next, so what is left with a number beside it is the model thinking, a
-  command running, and however long somebody took to answer a question. It is dropped on a window
-  too narrow to spare the columns.
-- The context pane's token column reported what an item *held* under a heading that said what it
-  cost, so an elided item claimed the nine thousand tokens it was no longer spending and the
-  status line beside it disagreed by exactly that much. There are two columns now: `sending`, read
-  out of the projection so that an elided item costs what its marker costs and an archived one
-  costs nothing, and `held`, which is what it is keeping out of the request. They add up to the
-  two figures on the status line.
-- The label column is as wide as the widest label rather than a fixed twenty-six. A session whose
-  longest label is `read` was spending twenty columns on nothing, and they belong to the column
-  saying what an item holds.
-- One word per mechanism. An output limit **truncates** and a compactor **elides**, and both were
-  being called "shortened" - in the same pane, on adjacent rows. The archived half of a truncated
-  result now says `the model was shown a truncated copy`, and `Trim`'s summary says its results
-  were `elided`, which is the word on the row, the word `amend`'s `prune` takes, and the name of
-  the state itself.
-- The tool definitions are written for the thing that reads them. Every argument says what it is
-  for - a bare `{"type": "string"}` left a model to guess whether a path was absolute, what `old`
-  had to match exactly, what a `select` accepts, and a guess costs a turn each time. `read` and
-  `shell` admit that long output is cut off; `write` says it replaces the whole file and points at
-  `edit`; `shell` says it is confined **when it is**, because a command stopped by Landlock comes
-  back with an ordinary permission error and a model that cannot tell those apart spends its turns
-  trying `sudo`. The exit line reads `exit: 0` rather than `exit: exit status: 0`, and a non-zero
-  one says it is a failure.
-- Nothing a model reads is written in this program's own vocabulary any more: no `at the
-  terminal`, which is this codebase's idiom for "a person did it here" and reads to a model like a
-  state it should recognise. A test now holds every offered tool to all of it.
-- A path outside the sandbox told the model to restart the program with `--sandbox-allow`, which
-  is advice for somebody who can do that. It now says what the model can do instead.
+  `scroll`, and `Overlay::Text` holds `pages` and `page` where it held one `body`.
+- The trace says what its events carry. A third printed a dotted name against an empty line,
+  including `context.replaced`. A test refuses a name with nothing beside it.
+- The trace gains a gap column, blank under a tenth of a second. A log with no clock cannot answer
+  which step was slow, and timestamps would make somebody subtract.
+- The context pane has two token columns: `sending`, read out of the projection, and `held`. One
+  column reported what an item held under a heading saying what it cost.
+- The label column is as wide as the widest label rather than a fixed twenty-six.
+- One word per mechanism: an output limit **truncates** and a compactor **elides**. Both were called
+  "shortened", in the same pane on adjacent rows.
+- The tool definitions are written for the thing that reads them - every argument says what it is
+  for. `shell` says it is confined **when it is**, because a command stopped by Landlock returns an
+  ordinary permission error and a model that cannot tell those apart tries `sudo`.
+- Nothing a model reads is written in this program's own vocabulary - no `at the terminal`, which
+  reads to a model like a state it should recognise.
+- A path outside the sandbox tells the model what it can do instead, rather than suggesting a
+  restart with `--sandbox-allow`.
 
 ### fixed
 
-- The first line of a new session was wrong in both halves. `tab moves to the context` is
-  something tab has never done - on the chat tab there is nothing to move the focus to, so it
-  does nothing at all - and `ctrl+t swaps it for the trace` describes the second press, not the
-  first. It is `ui::GREETING` now, beside `HELP` and for the same reason: a test checks that the
-  keys it names do what it says they do, and that F1 lists every one of them.
-- `ctrl+p` in a session nobody had typed into yet answered with `the context projects to an empty
-  request`. That is the runtime's own sentence for a rule it is enforcing correctly - `step`
-  refuses to send a request with no messages - but it is the wrong answer to "what would go
-  next?" when what happened is that nothing has been said, and it reads as a fault. It now says
-  there is nothing in the context yet and what puts something there. When the context is *not*
-  empty and still sends nothing, the list of what was left out and why goes above the answer -
-  which is the one moment that list is worth most, and exactly when it used to be thrown away,
-  because the error returned before the list was built. `/request` and `/payload` too.
-- A request that stalled sat at `asking` for ever without saying so. The heartbeat in both
-  providers only made a silent stream *interruptible* - it woke up, checked whether escape had
-  been pressed, and went back to waiting - so a server that answered the connection and then went
-  quiet, which is what an overloaded one does, was indistinguishable on screen from a model
-  thinking hard. A stream that has said nothing for ten seconds now says so, again every thirty
-  after that, says when it starts again, and is given up on at a hundred and fifty. A turn that
-  asks for a tool makes two requests rather than one, which is twice the exposure - and is the
-  shape "it hangs whenever it uses a tool" really has.
-- The retry budget for a busy server belonged to the session rather than to the request, so an
-  afternoon that had already ridden out four `503`s answered the fifth by giving up on the first
-  try.
-- The conversation stayed where it was scrolled to. Every fragment of a streamed answer set the
-  window back to following the newest line, so scrolling up to re-read something during a long
-  turn lasted exactly until the next fragment arrived - which is to say, not at all. Only a
-  message of your own moves it now; the chat tab's footer says how many lines have arrived
-  underneath, `ctrl+e` follows again, and so does scrolling down to the end.
-- A permission question whose arguments were longer than the screen lost its answers. The box was
-  sized to its whole body and then clipped to what would fit, and what came last in the body was
-  the line saying `y` and `n` were keys - so an `amend` carrying a rewritten tool result, which is
-  as long as the result was, produced a question that could only be answered by guessing. It is
-  three regions now: the header and the answers hold their rows, and the arguments scroll between
-  them with `pgup` / `pgdn`, which until now moved the conversation hidden behind the box. Both
-  overlays also remember how far they really scrolled rather than how many times a key was
-  pressed, so four pages down past the end is no longer four pages back up before anything moves.
+- A stopped `shell` command keeps the line saying so: it is on the exit line, first in the result,
+  where an output limit cutting from the end cannot take it.
+- A markdown table wider than the window is drawn rather than wrapped as prose: columns give widest
+  first down to a floor, cells wrap with their styling, and the delimiter row's colons decide
+  alignment.
+- The greeting is `ui::GREETING`, with a test that the keys it names do what it says. Both halves of
+  the old one were wrong.
+- `ctrl+p` in an empty session says there is nothing in the context yet and what puts something
+  there, rather than the runtime's sentence for a rule it is enforcing correctly. When the context
+  is not empty and still sends nothing, the list of what was left out goes above the answer - it
+  used to be thrown away, because the error returned before the list was built.
+- A stalled request says so: silence for ten seconds is reported, again every thirty, and given up
+  on at a hundred and fifty. The heartbeat only made a silent stream interruptible.
+- The retry budget for a busy server belongs to the request rather than the session.
+- The conversation stays where it is scrolled to. Every streamed fragment used to set the window
+  back to following the newest line. `ctrl+e` follows again.
+- A permission question whose arguments are longer than the screen keeps its answers. It is three
+  regions now, with the arguments scrolling between the header and the answers. Both overlays
+  remember how far they really scrolled rather than how many times a key was pressed.
 
 ## [0.2.0] - 2026-08-30
 
-A second wire format, in which a turn keeps its order, and two tools an agent reads and manages
-its own context with.
+A second wire format, in which a turn keeps its order, and two tools an agent reads and manages its
+own context with.
 
 ### added
 
-- `--gemini` talks to Google's own API instead of an OpenAI-compatible one, and the difference is
-  the whole point: `generateContent` answers with `content.parts[]` - a thinking part, a sentence,
-  a `functionCall`, in the order they were produced - and the compatible shim flattens that into a
-  `content` string beside a `tool_calls` array, because the dialect it imitates has no order to
-  report. `kamchatka/src/gemini.rs` records the order as `Content::Blocks` and sends it back the
-  same way, with `LinearProjector::send_blocks` turned on to match. Streamed, with the same
-  heartbeat that makes `esc` reach a request that has gone quiet.
-  Signatures are the reason to bother beyond tidiness. This API answers `400 Function call is
-  missing a thought_signature` to a request that returns a turn without one, and it signs text
-  parts as well as calls; every part's own fields ride back out on the block they arrived on,
-  unread. `finishReason` is deliberately not what decides the stop reason - it says `STOP` for a
-  turn that asked for three tools - so the parts are.
-- `provider::Endpoint`, the half of a provider the person at the terminal drives: where the
-  requests go, what is served there, which model is being asked, what the last retry was about.
-  `Provider` is the kernel's half and is one method. `App` now holds an `Arc<dyn Endpoint>` and
-  never finds out which wire format is behind it, so `/model`, `/models`, `/provider` and the
-  status line work the same against either.
-- `introspect` and `amend` read an ordered turn. `look` reads a turn back block by block, marking the
-  ones that came signed, because between two calls is where the thinking that led to the second
-  one belongs and the request the model will be sent has it looking like a field instead. The
-  guard that stops `amend` excising the turn it is speaking in now finds that turn by its calls
-  wherever they are recorded - matching on the kind alone, it would have found an ordered turn to
-  have asked for nothing, and quietly stopped holding.
-  `enter` on the context tab reads out the blocks in order rather than only the text.
+- `--gemini` talks to Google's own API. `generateContent` answers with `content.parts[]` in the
+  order they were produced, where the compatible shim flattens that into a `content` string beside a
+  `tool_calls` array. Recorded as `Content::Blocks` and sent back the same way, with
+  `LinearProjector::send_blocks` on.
 
-- `--introspect`, and `/introspect` while it is running, offer the model two more tools for
-  reading and managing its own context. `introspect` reads: `look` lists every item with its
-  state, its cost and the projector's own reason for leaving it out, and reads any of them in full
-  - block by block, including what the model was thinking when it produced them. `budget` is what
-  a decision about what to give up is made from: the next request against the limit, split into
-  context and tool definitions, what the last one really cost as the provider counted it, the
-  correction the counter has learned from the difference, and the most expensive items *actually*
-  going into it - an orphaned tool result the projector repairs away costs nothing however active
-  it looks, and offering it as something to elide would be advice that buys nothing. Items that
-  are not the model's to move are marked as such, rather than costing it a refused call.
-  `request` summarizes what would go next, and summarizes it on purpose: the request *is* the
-  context, so quoting it would double every token being asked about. `draft` and `fork` snapshot
-  the context, resume it as a second kernel with no tools and a limit of one request, ask it, and
-  hand back only what it said - `draft` for reading your own answer before giving it, `fork` for
-  putting a question to a copy of yourself with some items left out. A fork can think and cannot
-  act, and nothing it does reaches this session's context or its log. None of it needed anything
-  added to the runtime: forking a session is what `Kernel::snapshot` and `Kernel::resume` already
-  are.
-  `amend` manages: `prune` moves items between the states the context tab's `space` key moves
-  them between, named by `ids` or by `select`, which takes the same selector language `/prune`
-  does - so "the tool results I am done with" is one call rather than twelve numbers read off a
-  listing, and a selector it gets wrong is answered with the whole grammar. `revise` rewrites what
-  one item says (recording the old text as `context.replaced`, which is the one event that carries
-  content, and the reason in the item's metadata). `note` writes something into the context - a
-  plan, a conclusion, a thing not to try again - attributed to `agent` so the pane can say who put
-  it there, and pinnable, because saying the same thing out loud in a turn is not a promise about
-  anything and a pin is. `undo` and `redo` walk this tool's own changes. Deliberately not
-  `Kernel::undo`: that stack belongs to the person at the terminal, and its top while a tool is
-  running is always the assistant turn that asked for the call - one step would erase the model's
-  own question and orphan the answer it is waiting for. A reason is required on every change and
-  it is what the context pane shows. A pinned item, a system instruction and the turn the model is
-  speaking in are refused, and the refusal is handed back to it; it may unpin only what it pinned
-  itself.
-  Two tools rather than one with a mode argument, because a `ToolSpec` declares its capabilities
-  once for every call it will ever receive: one tool would have made "may it read its own
-  context?" and "may it rewrite a tool result?" the same question. They declare `introspect` and
-  `amend`, and the permissions tab grows a row for each without being told anything.
-  Off by default. The tools hold a weak handle to a `Kernel` the `App` owns rather than a kernel
-  of their own - the cycle the runtime's documentation warns about - so `/introspect` taking them
-  away really does take their reach away, and what `amend` had been remembering goes with it.
+  Signatures are the reason to bother: this API answers `400 Function call is missing a
+  thought_signature` to a turn returned without one, and it signs text parts as well as calls.
+  `finishReason` does not decide the stop reason - it says `STOP` for a turn that asked for three
+  tools.
+- `provider::Endpoint`, the half of a provider the person at the terminal drives: where the requests
+  go, what is served, which model, what the last retry was about. `App` holds an `Arc<dyn Endpoint>`
+  and never learns which wire format is behind it.
+- `introspect` and `amend` read an ordered turn. The guard stopping `amend` excising the turn it is
+  speaking in finds that turn by its calls wherever they are recorded.
+- `--introspect`, and `/introspect` while running, offer two tools for reading and managing the
+  model's own context. Off by default.
+
+  `introspect` reads. `look` lists every item with its state, cost and the projector's reason for
+  leaving it out, and reads any in full. `budget` is what a decision about what to give up is made
+  from: the next request against the limit, split into context and tool definitions, what the last
+  one really cost, the correction learned from the difference, and the most expensive items
+  *actually* going in. `request` summarizes rather than quotes - the request *is* the context, so
+  quoting would double every token being asked about. `draft` and `fork` snapshot the context,
+  resume it as a second kernel with no tools and one request, and return only what it said. A fork
+  can think and cannot act.
+
+  `amend` manages. `prune` moves items between states, by `ids` or `select`. `revise` rewrites an
+  item, recording the old text as `context.replaced`. `note` writes into the context, attributed to
+  `agent`, pinnable. `undo` and `redo` walk this tool's own changes - deliberately not
+  `Kernel::undo`, whose stack belongs to the person and whose top while a tool runs is the assistant
+  turn that asked for the call. A reason is required on every change. A pinned item, a system
+  instruction and the turn the model is speaking in are refused.
+
+  Two tools rather than one with a mode argument: a `ToolSpec` declares its capabilities once, so
+  one tool would make "may it read its own context?" and "may it rewrite a tool result?" the same
+  question. They hold a weak handle to the `App`'s kernel, so `/introspect` taking them away really
+  takes their reach away.
 
 ## [0.1.0] - 2026-08-29
 
@@ -3169,189 +855,85 @@ The first release: a terminal agent built on `nachalnik`, and a demonstration of
 
 ### added
 
-- Four tabs, each taking the whole window: `chat`, `context`, `trace`, `permissions`. `ctrl+t`
-  for the next, `alt+1` to `alt+4` for one in particular, `tab` between the prompt and the open
-  tab. The prompt and the status line are under all of them; a message sent into a turn that is
-  already running waits for the end of it, says so, and then goes in and gets a turn of its own.
-  A long message wraps in the prompt rather than sliding sideways under the left border, and the
-  box grows to hold every row of it: breaks fall at word bounds, so a path or a URL with no spaces
-  in it is broken at a `/` rather than run off the edge, and a word too long for a row of its own
-  is split. The box is sized by `ui::wrapped_rows`, which counts the rows the widget will draw -
-  two pieces of code that have to agree, so a test asks the widget rather than trusting the
-  arithmetic.
-  A pasted block goes into the prompt as the lines it was pasted as: bracketed paste stops a
-  pasted newline being read as `enter` and sending half of what was pasted, and the carriage
-  returns a terminal spells those newlines with are put back, or the whole of it arrives as one
-  line with invisible characters in it. A scrollbar runs down the right border of any tab holding
-  more than fits, and of the overlays - drawn on the border rather than in a column of its own,
-  so nothing gets narrower and a window with nothing to scroll looks exactly as it did.
-- The context tab is a table: every item the runtime holds, its kind, what it costs, whether it is
-  going into the next request, and what the model will actually read of it - or, for the ones that
-  are not going, why not, in the projector's own words. `space` cycles how much of it the model
-  gets - all of it, then a `…` marker where it was, then nothing, then all of it again - `p` pins
-  it, `enter` reads the whole of it, `u` undoes the last change, and `23G` goes to the item
-  numbered 23, the number every note names and every selector takes. The middle step is the one
-  worth a key: taking a tool result out makes the projector drop the call that asked for it, and
-  eliding it leaves the call answered, so which of the two somebody wants is a choice rather than
-  something this program should be guessing at.
-- `e` on a context item changes what it says, through `Kernel::supersede`: the original stays,
-  marked `~`, naming the item that replaced it, and one `u` brings it back. `space` and `p` decide
-  whether the model reads an item; this decides what it reads.
-- The trace tab is every event as it happens, in the same names the session log uses, in two
-  aligned columns, wrapped rather than cut off, and readable backwards.
+- Four tabs, each taking the whole window: `chat`, `context`, `trace`, `permissions`. `ctrl+t` for
+  the next, `alt+1`–`alt+4` for one in particular, `tab` between the prompt and the open tab. A
+  message sent into a running turn waits, says so, then gets a turn of its own. The prompt wraps at
+  word bounds and grows to hold every row; a pasted block arrives as the lines it was pasted as, via
+  bracketed paste. A scrollbar runs down the right border rather than in a column of its own.
+- The context tab is a table: every item, its kind, cost, whether it is going into the next request,
+  and what the model will read of it - or why not, in the projector's words. `space` cycles how much
+  the model gets, `p` pins, `enter` reads the whole, `u` undoes, `23G` goes to item 23. The middle
+  step is the one worth a key: taking a tool result out makes the projector drop the call that asked
+  for it, and eliding leaves the call answered.
+- `e` on a context item changes what it says, through `Kernel::supersede`.
+- The trace tab is every event as it happens, in the session log's own names, two aligned columns,
+  wrapped rather than cut off.
 - A `permissions` tab: every capability the policy has an opinion about *and* every capability a
-  registered tool declares, what the policy will answer about each, and which tools that covers.
-  `space` cycles a row through ask, allow and deny; `a`/`n`/`r` set one directly. The permission
-  prompt writes to the same table, so "always" and the tab are one object rather than two - and a
-  refusal is visible in advance rather than only when it fires. The tab lists the answers somebody
-  has actually given and counts the rest along the bottom, since `ask` is what the policy does
-  when it has not been told anything and a screenful of it buried the one or two lines that say
-  what this agent can do without stopping. Cycling a row back to `ask` takes it off the tab, which
-  is what taking a decision back looks like.
-- **Every stance starts at `ask`**, `read` and `network` included. `read: allow` would have been
-  the answer most people would have given and `network: deny` the cautious one, and both would
-  still be answers given on somebody's behalf before they had been asked - by a program whose
-  whole argument is that it does not do that. The tab starts empty, the first `read` is a
-  question, and what is on the tab is what somebody decided.
-- Permissions are finer than a capability where that is worth anything: `Careful` holds path rules
-  as well as capability stances - `.env*`, `*.pem`, `id_rsa*`, `.ssh/` and a few more, all `ask` -
-  and the strictest of everything consulted wins. Reading `src/main.rs` is silent; reading `.env`
-  is a question, and stays one the moment `read` is answered `always`: the capability goes to
-  `allow` and `.env*` does not. They bind `read`, `write` and `edit` and deliberately not `shell`,
-  because a command names its files inside a string and a check over that string would refuse
-  `cat .env` while waving `sed -n 1p .env` through.
-- The permission question names everything the policy actually consults, and `[a] always` answers
-  for all of it - including the calls already waiting behind it. A `yes, always` that answered only
-  for the declared capability would ask again on the very next call, whether the question came from
-  the network fold or from a path rule; and a model that asks for three commands in one answer
-  produces three questions, all of them decided before the first is drawn, so an `always` that did
-  not reach them would go back on itself one keystroke later. Anything still waiting that the
-  policy would now let through is let through; anything that needs something else is still a
-  question.
-- A tool's arguments are shown as the lines they are rather than as `\n` inside a JSON string,
-  since the permission question is the moment somebody has to read them; `[i]` still shows the
-  JSON verbatim. A question that arrives while somebody is typing does not take their typing as an
-  answer - its keys are ordinary letters - so the letters go on reaching the prompt until the
-  typing stops. `d` drops every call the model is waiting on, with one reason, and the model is
-  told: a call that silently vanished would leave it waiting.
-- A call the policy refuses on its own says which stance refused it - ``shell: refused by
-  `network`, which this command reaches for`` - because the tool result records only `the call was
-  not permitted`, and when the tool's own capability is `allow` that leaves a refused call with
-  nothing on screen accounting for it.
+  registered tool declares, what the policy will answer, and which tools that covers. `space` cycles
+  a row; `a`/`n`/`r` set one directly. The permission prompt writes to the same table. Cycling back
+  to `ask` takes a row off the tab.
+- **Every stance starts at `ask`**, `read` and `network` included. Both `read: allow` and
+  `network: deny` would be answers given on somebody's behalf before they had been asked.
+- Permissions are finer than a capability: `Careful` holds path rules as well as stances - `.env*`,
+  `*.pem`, `id_rsa*`, `.ssh/` and a few more, all `ask` - and the strictest of everything consulted
+  wins. They bind `read`, `write` and `edit` and deliberately not `shell`, since a check over a
+  command string would refuse `cat .env` while waving `sed -n 1p .env` through.
+- The permission question names everything the policy consults, and `[a] always` answers for all of
+  it including calls already waiting. Arguments are shown as the lines they are; `[i]` shows the
+  JSON verbatim. A question arriving while somebody is typing does not take the typing as an answer.
+  `d` drops every waiting call with one reason, and the model is told.
+- A call the policy refuses on its own says which stance refused it.
 - Four tools (`read`, `write`, `edit`, `shell`) and a policy that asks about all of it. "Always"
-  answers for a capability rather than a tool name, so it works for tools the program has never
-  heard of. The `network` stance is consulted for a `shell` call whose command names a program that
-  goes out to the network - `curl`, `pip install`, `git push` - because no tool declares
-  `Capability::Network`, a model that wants the network writes `curl`, and a row reading `deny`
-  beside `nothing registered needs it` would be a restriction that is not there. The policy's own
-  documentation is plain about the heuristic being over the command as written rather than a
-  sandbox.
-- **The `shell` tool runs under [Landlock](https://landlock.io)**, so the permission stances are
-  enforced rather than reported: `network: deny` is refused by the kernel at `connect()`,
-  `write: deny` makes the working directory read-only, and nothing outside that directory is
-  readable or writable either way. It is applied by re-executing this program in a mode that
-  confines itself and then *becomes* the command: Landlock restricts the calling thread, and a
-  single-threaded helper is the shape that needs no thought about which one. The `exec` matters -
-  the domain is inherited across it, so nothing is given up by leaving, and the process a stopped
-  call kills is the command rather than a helper standing in front of it. A directory of the run's
-  own is handed over as `TMPDIR` and `/tmp` itself is not opened up; the spawning process removes
-  that directory afterwards, being the only one of the two that can, since unlinking a directory is
-  a write to the one it sits in.
+  answers for a capability rather than a tool name. The `network` stance is consulted for a `shell`
+  command naming a program that goes out to the network, because no tool declares
+  `Capability::Network` and a model that wants the network writes `curl`. The heuristic is over the
+  command as written rather than a sandbox, and says so.
+- **The `shell` tool runs under [Landlock](https://landlock.io)**, so the stances are enforced
+  rather than reported: `network: deny` is refused by the kernel at `connect()` and `write: deny`
+  makes the working directory read-only. Applied by re-executing this program in a mode that
+  confines itself and then *becomes* the command - Landlock restricts the calling thread, and the
+  `exec` means the domain is inherited and a stopped call kills the command rather than a helper. A
+  directory of the run's own is handed over as `TMPDIR`; `/tmp` itself is not opened up.
 - `read`, `write` and `edit` are held to the same boundary by their own code, resolving `..` and
   symlinks before comparing. Weaker in kind than a ruleset, and said to be.
-- `--sandbox-allow PATH` opens up another path, `--no-sandbox` turns the whole thing off, and the
+- `--sandbox-allow PATH` opens another path, `--no-sandbox` turns the whole thing off, and the
   permissions tab says which of `shell: confined` and `shell: a command can do any of these` is
-  true here - the second of them also while a registered tool that runs commands is not refused
-  outright, since `Capability::Shell` subsumes every other capability and a tab that listed five
-  verdicts without saying so would be reporting four restrictions that are not there. The binary
-  that confines a command is settled once at startup rather than asked for per call, and if it
-  cannot confine, the shell runs unconfined and the tab says so.
-- The model's answers are rendered as markdown - headings, emphasis, inline code, lists and
-  fenced blocks - because a terminal that printed the asterisks would be showing the punctuation
-  instead of what it meant. `tui-markdown` does the parsing; the styling is this crate's, since
-  the defaults put a coloured slab behind headings and code, which reads as a redaction on a dark
-  theme and a bruise on a light one. Nothing else is treated as markdown: a tool's output is what
-  the tool said.
-- Fenced code blocks are syntax-coloured, by token *name* rather than by theme: `synoptic` says
-  which pieces are comments, strings, keywords, numbers and calls, and this program picks the
-  colours. The fences are split out before the markdown renderer sees them, which is what makes the
-  language, the whole block and the rule down its left all available at once - a block still
-  streaming in is a block, and one in a language nothing recognises still gets the rule.
-- Nothing is drawn against a background this program does not know it has. The secondary things -
-  why an item is not being sent, what an event says, the tab headers, the status line - are `Gray`
-  rather than `DarkGray`, which is the terminal's bright *black* and sits a shade off the
-  background on many themes; `DarkGray` is left to the things that draw lines rather than words.
-  The selected row of a tab the keys are not on is underlined rather than backed by a slab of some
-  guessed-at colour.
-- `/step` performs exactly one transition of the state machine instead of a whole turn, which is
-  the only way to stand in `State::Ready` - the moment the model has said what it wants to do and
-  none of it has run. A turn walks through that state without ever drawing it.
-- `/seams` says what is plugged into each of the runtime's six parts, asked of the kernel rather
-  than restated from what this program set up: the provider, the tools, the policy, the projector,
-  the counter and the compactor - or that no compactor is installed and nothing will ever be
-  dropped to make room.
-- `/tools drop ID` stops offering a tool from the next request onward, because the kernel's
-  registry is live rather than fixed at startup. `/prune` with no selector prints the language
-  rather than reporting that the empty string is not a selector.
-- `ctrl+p` heads the request with what the projector left out and what it repaired, because "why
-  is that not in there?" is the question somebody opens it to answer.
-- `/budget`, and a `~` on the status line's estimate beside what the provider really charged: the
-  runtime's counter corrects itself from the difference, and this is where that is visible. It asks
-  whichever counter is installed what it has learned, through the kernel, rather than keeping a
-  typed handle to one this program set up - and a counter that never corrects itself says so in a
-  sentence rather than leaving the line out.
-- Cooperative stopping on `esc`: the provider returns what it had streamed, the shell tool kills
-  the command - and everything the command started, since it runs in a process group of its own -
-  and still answers the call, and the partial turn is an ordinary context item. Both of them wait
-  on a heartbeat rather than on the next byte, so a model or a command that has said nothing at
-  all is as interruptible as a chatty one.
-- A compactor that shortens the oldest tool results to a marker past `--compact` of the limit, and
-  is refused anything pinned. It elides rather than removes, so the call each result answers keeps
-  its answer: removing them would have the projector take the calls down too - a call with no
-  result is a request most providers reject - and the model would have been reading a conversation
-  in which it never asked for any of this, directly above a summary saying the results had been
-  dropped. Nothing is deleted; every one is on the context tab marked `…`, holding every byte it
-  held, and restoring it is a keystroke. The tab's footer counts them separately, because "going"
-  and "not going" is the wrong question about an item that is in the request without being read.
+  true. If it cannot confine, the shell runs unconfined and the tab says so.
+- The model's answers render as markdown, via `tui-markdown` with this crate's own styling - the
+  defaults put a coloured slab behind headings and code. Nothing else is treated as markdown: a
+  tool's output is what the tool said.
+- Fenced code blocks are syntax-coloured by token *name* via `synoptic`, split out before the
+  markdown renderer sees them, so a block still streaming in is a block.
+- The secondary things are `Gray` rather than `DarkGray`, which is the terminal's bright *black* and
+  sits a shade off the background on many themes.
+- `/step` performs exactly one transition instead of a whole turn, which is the only way to stand in
+  `State::Ready`.
+- `/seams` says what is plugged into each of the runtime's six parts, asked of the kernel.
+- `/tools drop ID` stops offering a tool from the next request onward.
+- `ctrl+p` heads the request with what the projector left out and what it repaired.
+- `/budget`, and a `~` on the status line's estimate beside what the provider really charged.
+- Cooperative stopping on `esc`: the provider returns what it streamed, the shell tool kills the
+  command and everything it started, since it runs in a process group of its own, and still answers
+  the call. Both wait on a heartbeat rather than the next byte.
+- A compactor that elides the oldest tool results past `--compact` of the limit, refused anything
+  pinned. It elides rather than removes, so each call keeps its answer. Nothing is deleted.
 - MCP servers with `--mcp '[name=]cmd args'`, behind the default `mcp` feature. The name prefixes
-  the server's tools and is what an "always" grant is for, so it is worth giving: taken from the
-  program it would be `npx` for most of them.
-- `/model [ID]` and `/provider [URL [ID]]` show or change the model and the address its requests go
-  to, without restarting. The second takes a model too, since a model belongs to the address that
-  serves it, and given none it keeps the name and asks the new endpoint whether it has one by that
-  name rather than leaving a 404 for the next request. Both are shown, because the same model name
-  at a different address is a different model, and a comparison that cannot see the address is a
-  comparison of names. The key is not changed with the address: it is read from the environment at
-  startup, and a key typed at the prompt would be a key in the transcript.
-- `/models [FILTER]` asks the endpoint what it serves, marks the one in use with `▸`, and takes a
-  filter because fifty-four of them is not an answer. The ids belong to the address rather than to
-  the model - the same thing is `google/gemini-3.5-flash` at one and `gemini-3.5-flash` at another
-  - so `/model` was a command you could only use if you already knew what to type, and after a
-  `/provider` you did not. The provider had always fetched this list, to say when a model is not
-  on it; this is the same call with the answer shown rather than checked.
-- The status line carries the host beside the model name - `gpt-4o-mini @ openrouter.ai`,
-  `qwen3-coder @ localhost:11434` - so the address is there without being asked for. Naming it only
-  in `/model`, `/provider` and `/seams` meant a session pointed at a local model drew exactly like
-  one talking to a hosted one, which is the confusion the paragraph above says it is avoiding. The
-  host alone, since the rest of the URL is `/provider`'s to show and there is no room for it here.
-  Where even that does not fit, the address is what gives way rather than the figures beside it:
-  shortened with a `…` while enough of it is left to recognise, and dropped below that. The line
-  is drawn without wrapping, so anything past the right edge is gone, and what sits at that end is
-  the one number on it this program did not estimate.
-- **The TLS is `rustls` over `ring`, and building it needs nothing installed first.** In reqwest
-  0.13 `default-tls` means rustls with `aws-lc-rs`, which is 1,659 C files and, on some platforms,
-  cmake and NASM - so `cargo install kamchatka` was asking for a build toolchain nobody had been
-  told about. `ring` is 17 C and assembly files and no system libraries. It is a smaller surface
-  rather than none: the pure-Rust providers are unaudited, which is not a trade a program that
-  talks about sandboxing should make.
-- `--help` lists the environment as well as the flags. `KAMCHATKA_MODEL` was there, because it is
-  declared to `clap`; `KAMCHATKA_BASE_URL` and `KAMCHATKA_CONTEXT_LIMIT` are read directly and so
-  appeared nowhere the program itself would tell you about - and the base URL is the one somebody
-  running a local model needs before anything works at all.
-- `/save PATH` writes the event log and a resumable snapshot beside it; `-r PATH` picks it back
-  up in a fresh process. Both take a path you chose, on your disk - there is no session id, no
-  server, and nothing to look up. Saving over files that already exist says which ones it
-  replaced.
+  the server's tools and is what an "always" grant is for.
+- `/model [ID]` and `/provider [URL [ID]]` show or change the model and address without restarting.
+  Both are shown, because the same model name at a different address is a different model. The key
+  is not changed with the address: a key typed at the prompt would be a key in the transcript.
+- `/models [FILTER]` asks the endpoint what it serves and marks the one in use with `▸`. The ids
+  belong to the address, so `/model` was a command you could only use if you already knew what to
+  type.
+- The status line carries the host beside the model name; where it does not fit, the address gives
+  way rather than the figures.
+- **The TLS is `rustls` over `ring`**, so building needs nothing installed first. In reqwest 0.13
+  `default-tls` means rustls with `aws-lc-rs`: 1,659 C files and, on some platforms, cmake and NASM.
+  `ring` is 17 C and assembly files and no system libraries.
+- `--help` lists the environment as well as the flags. `KAMCHATKA_BASE_URL` and
+  `KAMCHATKA_CONTEXT_LIMIT` are read directly and so appeared nowhere the program would tell you
+  about.
+- `/save PATH` writes the event log and a resumable snapshot beside it; `-r PATH` picks it back up
+  in a fresh process. Both take a path you chose - there is no session id and no server.
 - Tested by drawing the screen into a `TestBackend` and reading the characters back, against a
-  scripted model - including that an item taken out of the context really does leave the next
-  request.
+  scripted model.

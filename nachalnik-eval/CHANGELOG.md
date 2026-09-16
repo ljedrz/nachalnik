@@ -9,645 +9,343 @@ minor bump may break you.
 
 ### added
 
-- **Independent work runs abreast, under a ceiling and a rate: `Pace`, `Permits`, `Permit`,
-  `Governor`, `Paced`, `together` and `evaluate_with`.** A whole suite against one model took three
-  hours and eight minutes, and almost none of that was arithmetic. `attribution` alone is 126
-  requests of the 723, because it ablates every note in every dossier one at a time, and each of
-  those was waiting for the one before it to come back.
+- Independent work runs abreast, under a ceiling and a rate: `Pace`, `Permits`, `Permit`,
+  `Governor`, `Paced`, `Acquiring`, `together` and `evaluate_with`. A whole suite against one model
+  took three hours and eight minutes, almost none of it arithmetic.
 
-  Not all of it can run at once, and the distinction is the interesting part. The probes inside a
-  battery - solve, then introspect, then predict - are a conversation: each one extends the same
-  session and the next question is written out of the last answer. An ablation sweep is not. Every
-  copy there is resumed from the `Origin` frozen before a single claim was made, so no copy can see
-  another's. The sweep is fanned out; the conversations are left alone.
+  Only independent work is fanned out. The probes inside a battery are a conversation - each extends
+  the same session and the next question is written out of the last answer. An ablation sweep is
+  not, since every copy resumes from the `Origin` frozen before any claim was made.
 
-  `evaluate` is unchanged and still says in its own doc comment that nothing runs concurrently.
-  `evaluate_with` is the opt-in, and the two are not interchangeable: the scores are the same
-  either way, since nothing a figure is computed from depends on what else was in flight, but
-  concurrency can make a run *fail* where a sequential one would have trickled through. A burst
-  collects 429s, the retries behind them eat the budget, probes come back `Unreadable`, and a
-  report quietly becomes a page of untested claims. Measured, and not hypothetically: a run at
-  eight in flight against a small free endpoint took it down inside a minute, and single requests
-  to it recovered ninety seconds after the run was stopped.
+  `evaluate` is unchanged and runs nothing concurrently; `evaluate_with` is the opt-in. The scores
+  are the same either way, but concurrency can make a run *fail* where a sequential one trickles
+  through - a burst collects 429s, the retries eat the budget, and probes come back `Unreadable`. A
+  run at eight in flight took a small free endpoint down inside a minute.
 
-  So there are two limits, because endpoints publish two kinds and neither implies the other.
-  `Permits` caps how many are in flight. A rate caps how many are *started* in a window, which is
-  how a free tier words it and which no count of things in flight can stand in for - eight at once
-  against a fast endpoint is eighty a second. A sliding window rather than a token bucket, because
-  the limit is worded as one: "20 per minute" refuses the twenty-first request within sixty seconds
-  of the first, where a bucket permits a burst of its whole capacity after any quiet spell. It
-  records when a request was admitted rather than when it finished, since a limit on how many may
-  be started is not a limit on how many may be outstanding, and on an endpoint that sometimes takes
-  ten minutes those come apart badly.
+  Two limits, because endpoints publish two kinds. `Permits` caps how many are in flight; a rate
+  caps how many are *started* in a window, which is how a free tier words it - eight at once against
+  a fast endpoint is eighty a second. A sliding window rather than a token bucket, recording when a
+  request was *admitted* rather than when it finished.
 
-  The ceiling is a `Provider` decorator rather than something wrapped around the loops, and a test
-  is why: the first version governed the ablation sweep, and a run of nine experiments promptly put
-  nine live probes on the wire underneath it. Wrapping the provider is the only place that cannot
-  be evaded, including by an experiment this crate has never seen. It is applied to the subject
-  rather than to each request because a subject hands its provider on - to the siblings raised for
-  its other dossiers and to every copy resumed from a snapshot of it - so one wrapping covers all
-  three.
+  The ceiling is a `Provider` decorator, which is the only place that cannot be evaded - including
+  by an experiment this crate has never seen. Applied to the subject, which hands its provider on to
+  siblings and resumed copies.
 
-  `together` is written here rather than taken from `futures-util`. What that crate would buy over
-  eighty lines is an intrusive linked list making a wake O(1) instead of re-polling, which at a few
-  dozen network round trips is an optimisation of the cheapest thing in the run. Nothing spawns, so
-  there is one task and no question about what happens to a spawned request when a run is dropped
-  halfway. Results come back in the order they were asked for and never the order they arrived,
-  because a report whose rows move with the weather cannot be diffed against last week's.
+  `together` is written here rather than taken from `futures-util`: nothing spawns, so there is one
+  task and no question about a spawned request when a run is dropped halfway. Results come back in
+  the order they were asked for.
 
-  The one new dependency is `tokio`'s `time` feature - not a new crate in anybody's tree, since
-  `nachalnik` already depends on tokio for `JoinSet` and `broadcast`, but worth saying plainly that
-  a rate-limited run now needs a running timer driver where a sequential one did not. The default
-  `Pace` sets no rate, so nothing pays that unasked. `Rate` reads `tokio::time::Instant` rather
-  than `std`'s, and that is correctness rather than convenience: the timestamps have to be on the
-  same clock as the sleep they are compared against, or a test on a paused clock ages nothing out
-  of the window and `admit` waits for room that never appears.
+  One new dependency: tokio's `time` feature. A rate-limited run needs a running timer driver where
+  a sequential one did not; the default `Pace` sets no rate. `Rate` reads `tokio::time::Instant`, so
+  the timestamps are on the same clock as the sleep they are compared against.
 
-  What is not here: what to do once a limit has been exceeded anyway. A `429` and its `Retry-After`
-  are answered in whichever `Provider` the caller supplied, because that is the layer that knows
-  the wire format they arrived in. These two are about not provoking one.
-
-  The instrument digests are untouched and
-  `the_instrument_is_pinned_so_that_it_cannot_change_quietly` still passes, so a run taken today
-  still pools with the v5 collection: concurrency changes the schedule, not the material.
-
-  `Acquiring` - the future `Permits::acquire` hands back - is exported with the rest of them. It
-  was `pub` inside a private module and missing from the re-export, which means nothing outside the
-  crate could name it: `acquire` could be awaited where it was called and nowhere else, so a caller
-  wanting to hold one, keep it in a struct or select over it had a type it was not allowed to write
-  down. Nothing reports that. An unnameable return type is legal Rust, and the only trace of it is
-  a page absent from the documentation - which is where this was found, comparing the public API
-  against the last release.
-
-- **A minimum gap between admissions, alongside the window rather than instead of it.** A sliding
-  window of twenty a minute is obeyed perfectly by firing twenty requests in the window's first
-  instant and sitting out the other fifty-nine seconds. That is not a reading of the limit anyone
-  intends, and it is not what an endpoint's own limiter sees: measured, a run at eight in flight
-  with `--per-minute 18` took a small free model down inside a minute while staying well inside
-  eighteen a minute.
-
-  The gap is the window divided by what it allows. Neither it nor the window subsumes the other -
-  the window is the limit as the endpoint words it, the spacing is what stops a run from spending
-  the whole allowance in a second and then idling. It is the difference between not exceeding a
-  limit on average and not exceeding it at any moment, and it is what makes the two settings
-  independent rather than one covering for the other: before it, a rate constrained the average and
-  did nothing about burstiness, so the only thing standing between a run and a rejected burst was
-  `at_once` tuned by hand against an endpoint nobody has the numbers for.
-
-  The test asserts the shape of the traffic rather than its total - the tightest gap between any
-  two consecutive requests, against the spacing the rate implies. With the spacing taken back out
-  it fails at `0ns apart`, which is what a test of a total would have passed straight through.
-
-- **`Ablation::observe` runs its replicates at once, and `Ablation::observe_each` takes a sweep.**
-  The fan-out was first written into `attribution`'s sweep by hand. That works and does not scale:
-  every other experiment would need the same block written into it, and an experiment written next
-  year would get the ceiling and the rate for free - those are in the provider - while quietly
-  running its ablations one at a time because nobody told its author there was a way not to.
-
-  So it lives on `Ablation`, which is the type every experiment already reaches for. `observe` runs
-  its replicates at once, which no experiment has to know about at all: a run at three replicates
-  gets it by calling the same method it always called. `observe_each` takes many interventions and
-  runs them together, which is what an experiment with a sweep asks for instead of writing a loop.
-
-  Nothing about the record changes. Replicates are folded in the order they were asked for, so
-  `applied`, `items` and `repairs` still hold what the last one found; `observe_each` returns
-  results in the order the interventions were given, so the caller records them exactly as it did
-  in a loop. It hands back a `Vec` of results rather than a result of a `Vec` on purpose - an
-  experiment records what it got before it stops on what it did not, and one copy going silent
-  should not discard the eleven beside it that answered.
-
-  `attribution`, `feedback` and `instrumented` use it: 527 of the 723 requests a whole suite made.
-  Three are deliberately left alone. `repair` runs no ablations at all - it is a conversation, and
-  its only concurrent axis is across ladders, which record into the shared `Trial` as they go;
-  fanning those out would interleave the append-only record non-deterministically, and a study
-  artifact whose step order moves between runs is worse than a slow one. `privilege`, `recursion`,
-  `conflict`, `lie` and `provenance` are sixty-one requests between them, each interleaving two
-  ablations against two origins, which is more churn than eight per cent is worth in an instrument.
-
-- **`evaluate_with` takes `landed`, called with each outcome the moment that experiment finishes.**
-  Without it a caller had to choose between fanning the suite out and showing anything at all:
-  `evaluate_with` prints nothing, a library having no business writing to somebody's terminal, and
-  a run of hundreds of requests that shows nothing until the last one is a run nobody can tell from
-  a hung one. A concurrent run was also all-or-nothing for anyone checkpointing, writing nothing
-  until every experiment had finished. The `Report` still lists outcomes in the order they were
-  given; only the callback fires in the order they finish.
+  Answering a `429` stays in whichever `Provider` the caller supplied. These are about not provoking
+  one. Instrument digests are untouched: concurrency changes the schedule, not the material.
+- A minimum gap between admissions, alongside the window. A sliding window of twenty a minute is
+  obeyed perfectly by firing twenty in its first instant and idling - and a run at eight in flight
+  with `--per-minute 18` took a small free model down while staying well inside eighteen a minute.
+  The gap is the window divided by what it allows: the difference between not exceeding a limit on
+  average and not exceeding it at any moment.
+- `Ablation::observe` runs its replicates at once and `Ablation::observe_each` takes a sweep. It
+  lives on `Ablation` so an experiment written next year gets it without its author knowing.
+  Replicates are folded in the order asked for and `observe_each` returns results in the order the
+  interventions were given. It returns a `Vec` of results rather than a result of a `Vec`, so one
+  copy going silent does not discard the eleven that answered. Used by `attribution`, `feedback` and
+  `instrumented`: 527 of the 723 requests a whole suite makes.
+- `evaluate_with` takes `landed`, called with each outcome as that experiment finishes. A library
+  has no business writing to somebody's terminal, and a run of hundreds of requests showing nothing
+  until the last cannot be told from a hung one. The `Report` still lists outcomes in the order they
+  were given.
 
 ### fixed
 
-- **An intra-doc link under `evaluate_with` named a type that was no longer in scope**, which
-  `cargo doc` is run with `-D warnings` and the docs job failed on. `Permits` stopped being
-  imported there when the ceiling moved behind `Governor`; it is qualified now rather than
-  re-imported, because the import would exist only to satisfy a doc comment. It is the one kind of
-  breakage the test suite cannot see.
-
-  Two other things in the same block were wrong in ways `rustdoc` does not check. The note said "a
-  count is not a rate, and this enforces only the count", which was true when it was written and
-  stopped being true when the rate went in - left alone it would have told a reader to go and solve
-  a problem that had already been solved, and read as a reason to set `at_once` high to compensate,
-  which is the thing that took an endpoint down. And three references to `at_once` were left over
-  from when it was this function's own parameter; they are `Pace::at_once` now, and links rather
-  than backticks, so the next rename is rustdoc's problem rather than a reader's.
+- An intra-doc link under `evaluate_with` named a type no longer in scope, failing the docs job
+  under `-D warnings`. Two other things in the same block were wrong in ways `rustdoc` does not
+  check: a note saying the ceiling enforces only a count, and three references to `at_once` left
+  over from when it was a parameter.
 
 ### changed
 
-- **The `bench` example keeps what landed, and takes the pace.** The report was written once, after
-  the last experiment, so a run that was killed - or that hung and had to be killed - left nothing
-  at all however many experiments had already finished. That happened twice in one day: a suite
-  stopped seven experiments in had seven complete outcomes in memory and wrote none of them, and
-  the console summary that survives is the scores, not the questions and answers they were computed
-  from, so there was nothing to score again.
-
-  It is written after every experiment now, and written atomically. Atomicity is the half that is
-  easy to skip and the half that matters: the file goes to `<path>.partial` and is renamed onto the
-  target, so a reader - or a process killed mid-write - sees either the whole previous checkpoint
-  or the whole new one, never the flushed half of one. The temporary is in the same directory,
-  because a rename across filesystems is not a rename. A failed checkpoint warns rather than
-  returns: losing one is worth saying loudly and is not worth throwing away the hours of run still
-  to come, and the final write is the one where a failure is fatal, so "the whole record is in X"
-  is never printed over a file that failed to write.
-
-  On by default, named from the model and the hour when nobody says otherwise - the model because a
-  directory of `report.json` tells nobody which model any of them measured, and the time because
-  the same model gets measured more than once and a second run silently overwriting the first is
-  how a day's work disappears. `--no-json` is the opt-out.
-
-  `-j` and `--per-minute` set the pace: one `Pace` for the whole run, built once and handed to
-  every experiment, because a rate is only obeyed if the window is shared - a limit of twenty a
-  minute applied afresh per experiment is nine times the limit. The example fans the suite out only
-  when the pace leaves room. At one request in flight there is none by definition, and starting all
-  nine anyway would interleave nine sessions through a single-file queue: the same total time, but
-  every experiment finishing near the end rather than one after another, which is the progress a
-  long run is read by and the partial record a killed one is left with.
+- The `bench` example writes its report after every experiment rather than after the last, and
+  atomically - to `<path>.partial`, renamed onto the target, with the temporary in the same
+  directory. A failed checkpoint warns; the final write is where failure is fatal. On by default,
+  named from the model and the hour; `--no-json` opts out.
+- `-j` and `--per-minute` set the pace: one `Pace` for the whole run, because a rate is only obeyed
+  if the window is shared - twenty a minute applied afresh per experiment is nine times the limit.
+  The suite is fanned out only when the pace leaves room.
 
 ## [0.3.0] - 2026-09-11
 
 ### changed
 
-- Requires `nachalnik` 0.5.0, whose 0.5.0 re-signed `PermissionPolicy::why` to take the
-  `PermissionRequest` it was asked about rather than a `ToolCallId`. `Granted` - the policy the
-  `handles` experiment installs, which refuses everything but its own two tools - implements that
-  method and follows the signature; what it answers is the same sentence it always answered, since
-  its reason never depended on which call it was.
-
-  No experiment changes and no template changes, so every digest is untouched and the instrument
-  is still `v5`: a run taken last week is comparable with one taken today.
+- Requires `nachalnik` 0.5.0, whose `PermissionPolicy::why` takes a `PermissionRequest`. `Granted`
+  follows the signature and answers the same sentence. No experiment or template changes, so every
+  digest is untouched and the instrument is still `v5`.
 
 ## [0.2.0] - 2026-09-10
 
 ### changed
 
-- A report marks its thousands. A whole suite against one model came to
-  `748 requests, 1380348 in / 791210 out`, which is a figure nobody reads at a glance and two
-  nobody compares; the per-experiment `cost:` lines had the same problem at six digits. The JSON
-  is unchanged and is still where anything computing on these should look.
-
-- Requires `nachalnik` 0.4.0. Nothing in this crate's own API moved, but it names runtime types
-  in its public interface - so a caller cannot mix this release with a `nachalnik` from the
-  0.3 series, and cargo reads the middle number as the major. The runtime's 0.4.0 added
-  `Budget::uncounted`, `ContextItem::uncounted` and `Blob::meta`, each a public field on a
-  struct that is not `#[non_exhaustive]`, and dropped `Eq` from `Blob`.
+- A report marks its thousands. The JSON is unchanged and is still where anything computing on these
+  should look.
+- Requires `nachalnik` 0.4.0, which added `Budget::uncounted`, `ContextItem::uncounted` and
+  `Blob::meta` - public fields on structs that are not `#[non_exhaustive]` - and dropped `Eq` from
+  `Blob`. Nothing in this crate's API moved.
 
 ## [0.1.2] - 2026-09-09
 
 ### added
 
-- `Conflict`, a ninth experiment, and `Kind::Consistency` for what it scores. It is `Lie` with the
-  tiebreak taken out: the same shape of contradiction is planted in a dossier, but both sides are
-  `records/...` notes of equal standing, so the brief's promise that the records are accurate
-  cannot be kept and nothing in the context says which side to believe. `Lie` asks which note is
-  wrong, and that question has an answer. This one asks whether the subject notices that the
-  question has none.
+- `Conflict`, a ninth experiment, and `Kind::Consistency`. It is `Lie` with the tiebreak taken out:
+  the same contradiction is planted, but both sides are `records/...` notes of equal standing, so
+  nothing says which to believe. `Lie` asks which note is wrong, a question with an answer; this
+  asks whether the subject notices that the question has none.
 
-  Four claims are measured off one planted note. Whether the subject reports the disagreement
-  **unprompted**, before anything is pointed at. Which note it says the disagreement is with, once
-  one side is named - the same claim `Lie` scores, on material where naming a *wrong* note would be
-  a category error. Which side its answer was made of, which is a claim about itself with a ground
-  truth the copies supply rather than the author. And, per side, whether taking that side away
-  moves the copies.
+  Four claims off one planted note: whether the disagreement is reported **unprompted**, which note
+  it is said to be with, which side the answer was made of, and whether taking each side away moves
+  the copies.
 
-  The detection question has a **negative control**, which is the only thing that makes a detection
-  rate a measurement. The same question is put to copies that still have both notes, where the true
-  answer is yes, and to copies with one side removed, where the context is consistent and the true
-  answer is no. A model that says `yes` to both has reported nothing, and is now scored as having
-  reported nothing. `Kind::Consistency` is its own family for the reason `Kind::Provenance` is:
-  noticing that something is *missing* and noticing that two things *collide* come apart, and one
-  figure over both would read as a model that had got worse at reading notes.
+  The detection question has a **negative control**, which is what makes a detection rate a
+  measurement: the same question is put to copies holding both notes (true answer yes) and to copies
+  with one side removed (true answer no). The both-sides arm is unscored on the task, since no
+  answer the notes support exists; the single-sided arms are scored.
 
-  The arm with both sides in front of it is deliberately unscored on the task: there is no answer
-  the notes support, which is the premise. The two single-sided arms are scored, because there is -
-  a copy whose answer does not follow the note that survived was reading neither of them, and a
-  contradiction that is never resolved either way is not one that was detected.
-
-  Five disagreements ship, one per tractable dossier, written line by line against the note each
-  contradicts so that neither side reads more like a correction than the other; four dispute a
-  figure and `RETIREMENT` disputes whether an option is in the running at all. Each is planted
-  three notes after the one it contradicts, because adjacent makes the detection question free and
-  last confounds noticing a contradiction with noticing the most recent thing in the context.
-  Eleven requests.
-
-  Still instrument `v5`, and every existing digest is untouched: two templates and a note nothing
-  else reads. A `lie` run taken last week is comparable with one taken today.
+  Five disagreements ship, one per tractable dossier, each planted three notes after the one it
+  contradicts. Eleven requests. Still instrument `v5`.
 
 ### fixed
 
-- Two counts in the docs that had stopped being true. `suite::all`'s note said the whole suite
-  runs in about seventy requests, which is the figure `provenance` left it at, and the README's
-  honesty section said "eight experiments over two invented dossiers" when six dossiers have
-  shipped since v4. Both are numbers a reader would size a budget or a caveat against.
+- Two counts in the docs that had stopped being true: `suite::all`'s note said seventy requests, and
+  the README said "eight experiments over two invented dossiers" when six dossiers ship since v4.
 
 ## [0.1.1] - 2026-09-08
 
 ### added
 
-- `Provenance`, an eighth experiment, and `Kind::Provenance` for what it scores. It writes a real
-  tool call, its result and the answer drawn from it into a subject's context, then asks copies two
-  questions - did you run anything, and is this the whole of the conversation - with the result
-  left alone, elided, and excluded. Both answers have a ground truth the harness knows because the
-  harness wrote the record, so nothing here is scored against a fork.
+- `Provenance`, an eighth experiment, and `Kind::Provenance`. It writes a real tool call, its result
+  and the answer drawn from it into a subject's context, then asks copies whether they ran anything
+  and whether this is the whole conversation - with the result left alone, elided, and excluded.
+  Both answers have a ground truth the harness wrote.
 
-  It measures the thing this crate has been treating as a caveat. `Observation::repairs` has always
-  said that excluding a tool result takes its call down as well, and
-  `excluding_a_tool_result_takes_its_call_down_and_eliding_one_does_not` now settles offline what
-  that costs: the elided arm keeps all four items and repairs nothing, and the excluded arm keeps
-  two - the orphaned call is repaired away, which empties the turn that made it, which is a turn
-  the projector drops. The copy reads a conversation in which nothing was ever run, with the answer
-  still in it quoting a figure from a result that is no longer there.
+  It measures what had been a caveat: excluding a tool result takes its call down as well, which
+  empties the turn that made it, which the projector drops. The copy reads a conversation in which
+  nothing was run, with the answer still quoting a figure from a result that is no longer there.
 
-  Which makes the two interventions a trade rather than a preference. `Without` leaves no trace in
-  the request, so a copy cannot tell it is being measured; it also leaves a record that supports
-  the wrong answer, and a model that reads it correctly reports a falsehood. `Elided` leaves a
-  marker a model can be honest about and a demand characteristic a study has to declare. The
-  experiment puts a number on both arms, and its `standing` arm is the base rate that makes either
-  readable: a model that suspects tampering in an untouched context is not detecting anything.
-
-  Cheapest thing in the suite at six requests, and the only one that asks the subject nothing.
+  So the two interventions are a trade. `Without` leaves no trace in the request but leaves a record
+  supporting the wrong answer; `Elided` leaves a marker a model can be honest about and a demand
+  characteristic a study must declare. The `standing` arm is the base rate. Six requests, and the
+  only experiment that asks the subject nothing.
 
 ### changed
 
-- `Cohort::is_unanimous` says what it checks. Its line read "whether the agreement reaches the
-  significance the preregistration asks of it", and it does not: it is unanimity, and three models
-  agreeing is unanimous and `p = 0.125`. The type's own note has always said that the cohort size
-  is a registered decision for exactly this reason, so the method's line was the one place the
-  crate overstated a claim - in the one method a model-level claim would be read off.
+- `Cohort::is_unanimous` says what it checks. It claimed "the significance the preregistration asks
+  of it", and three models agreeing is unanimous at `p = 0.125`.
+- `Intervention::Elided` says it is visible to the copy: the treated arm reads
+  `[... left out of this copy ...]` where the control reads nothing of the kind. `Provenance` uses
+  it as an arm rather than an ablation; everywhere else `Without` is what to reach for.
 
-- `Intervention::Elided` says that it is visible to the copy. An elided item is projected as a
-  marker made of its note, and this sets that note - so the treated arm reads
-  `[... left out of this copy ...]` where the control reads nothing of the kind, which is a
-  difference between the arms besides the one under test. `Provenance` is the one experiment that
-  uses it, and uses it as an arm rather than as an ablation; everywhere else `Without` is still
-  what to reach for, and the documentation now says why.
+  note: two questions were added and none changed, so `script::VERSION` and every digest are
+  unmoved. A run against this is comparable with a run against 0.1.0.
 
-note: two questions were *added* and no question changed, so `script::VERSION` is where it was and
-every digest in `tests/machinery.rs` is unmoved - which is the distinction `script.rs` is built
-around, checked by the seven pinned fingerprints still reading `v5` beside the two new ones. A run
-against this is comparable with a run against 0.1.0.
-
-note: `the_version_moved_and_this_time_it_took_every_question_with_it` pairs experiments with their
-old fingerprints by name rather than by position. It zipped two lists in the same order, which
-survives an append and silently breaks on an insertion: every experiment gets compared with the
-previous one's digest, and since the assertion is that they *differ*, it passes while checking
-nothing. Inserting `provenance` in the middle of `all()` is what found it.
+  note: `the_version_moved_and_this_time_it_took_every_question_with_it` pairs experiments with
+  their old fingerprints by name rather than position. Zipping two lists survives an append and
+  breaks silently on an insertion - every experiment gets the previous one's digest, and since the
+  assertion is that they *differ*, it passes while checking nothing.
 
 ### fixed
 
 - `Granted` no longer grants a tool that declares nothing. It checked that every capability a call
-  needed was one of its two, and `all` over an empty list is `true` - so a tool built with
-  `ToolSpec::new` and never told what it needs was allowed by the policy whose whole point is that
-  it allows exactly `introspect` and `amend`. The supplied handles both declare theirs, so nothing
-  an experiment in `suite` does changes; what changes is what happens to a subject carrying a tool
-  somebody else registered.
+  needed was one of its two, and `all` over an empty list is `true`.
 
 ## [0.1.0] - 2026-09-05
 
-### pooling a sweep, and the sign test that makes a claim about models
-
-- `Cohort`: the exact one-sided sign test over one figure per model, against the *registered*
-  effect size rather than against zero - "the difference was positive" is a much weaker claim than
-  the one the preregistration makes and the two must not share a column. It is the only test in the
-  crate that treats a whole run as one observation, which is honest here and nowhere else: models
-  are independent of each other in a way that items sharing a dossier never are. A model that could
-  not be measured leaves the denominator rather than counting as disagreement.
-- `Report::surface` and `Report::model`: the endpoint pooled across a run's experiments, and what
-  the run measured. Pooled at the report level because H1 is a claim about a model, and
-  `attribution`, `feedback` and `privilege` are only different ways of putting the same
-  counterfactual to it.
-- `Surface::of` builds the figure from counts pooled elsewhere, and `Surface::over` now goes
-  through it, so a per-model figure and a pooled one cannot be computed by two different routes.
-- `examples/pool.rs` reads saved reports and prints the per-model table and the sign test. It
-  re-runs nothing: the analysis of a sweep costs nothing and can be repeated by somebody who was
-  not there, which is what `--json` holding every question and answer is for. It also says when a
-  report predates the endpoint and cannot be read for it, rather than printing a dash.
-
-### the endpoint needs six dossiers, and the decoys have to be named
-
-- `Attribution` runs over **every dossier** by default rather than `depot` alone, raising a sibling
-  per dossier the way the two ladders do. The primary endpoint's denominator is *inert items*, and
-  one dossier yields about seven: measured on `deepseek/deepseek-v4-flash-0731`, `depot` gave four
-  numeric and three plain, a difference of +25 points, and an interval a hundred points wide. Six
-  give roughly forty. `Attribution::on` remains, and is a probe setting.
-- `Dossier::decoys` names the numeric red herrings instead of inferring them from
-  `Expected::Holds`, which was wrong in the one place it mattered most. `mill/records/yards` is
-  `Holds` - the copies do not move without it - and it is the buried correction the falsification
-  dossier is built around, carrying "600 logs" and mattering enormously to anyone reading the
-  arithmetic. Inferred, it counted as a red herring, so a subject that spotted it would have scored
-  as one fooled by irrelevant figures: exactly backwards. `Expected` says what removal does;
-  decoyhood says what a note was written for, and the two come apart.
-
-### instrument v4: the note full of figures that does nothing
-
-Reanalysis of the pilots found a subject's claim about what its answer depends on is predicted 94%
-of the time by whether the note carries a number of two or more digits, against 76% for the
-subject's claims about the truth. Every error was a table of figures claimed as load-bearing where
-removing it changed nothing; there were no missed dependencies at all. The material could not test
-that - every inert note in all six dossiers carried three digits or fewer, so the cue and the truth
-were confounded across the whole instrument.
-
-- **Two numeric red herrings per dossier**: a plausible figure for each of the three options on a
-  dimension with no bearing on the question. Two and not one because one was measured to be too
-  few - the figures shortcut still scored 0.83 against the truth, beating the 0.76 the subjects
-  themselves managed, and a shortcut that outscores the subject makes the comparison meaningless.
-  Planted at a different index in each dossier, since six arriving last would confound "full of
-  numbers" with "most recent".
-- `Surface`, the new primary endpoint: among items whose ablation *provably did not move the
-  copies*, the share of numeric ones the subject claimed were load-bearing against the share of
-  plain ones. Restricted to the inert stratum, because across the whole material notes with figures
-  really are more likely to matter and an unrestricted contrast would pay a subject for a lucky
-  prior.
-- `Note::carries_a_figure` and `dossier::surface`: the cue as code rather than as a description of
-  code, and a lookup from material and label so that `score.rs` still knows nothing about dossiers.
-- `Surface::discrimination` splits the numeric half in two, and it is the figure that says what the
-  cue actually is. A **red herring** is inert by design and full of figures; **off-pivot
-  arithmetic** belongs to the question's sum and merely did not decide it for this subject. Over-
-  claiming both is reading digits, which is the hypothesis. Over-claiming only the second is
-  reading "this resembles the arithmetic", which is a different and better-behaved thing to do -
-  and the exploratory data that produced the hypothesis contained *only* the second kind, because
-  there were no irrelevant numbers in the material to over-claim. Registered as P2b before
-  collection, because that outcome is the one most likely to get written up as the other.
-- `attribution`, `feedback`, `privilege` and `recursion` now file the material and the label on
-  their counterfactual claims. The endpoint could not be read from the cheapest experiments
-  otherwise, and their intervals were the naive too-narrow kind; `privilege` gains a
-  cluster-adjusted interval it should always have had.
-- **Every digest moves, the five report-only experiments included.** No v4 figure is comparable
-  with a v3 or v2 one on any experiment. The comparability test now asserts that and says why.
-- The offline fixture works the note label out of the question instead of carrying one rule per
-  label - adding a note used to stop it testing that note, which read in a report as a subject
-  declining to use its handles. It also over-claims both of depot's red herrings on purpose.
-
-### the repair ladder is run three times, and a grant stops at its session
-
-A rung of the repair ladder is one task answer per dossier, so the five-dossier set gave each
-paired contrast five items - and five improvements with no regressions is `p = 0.031`, the whole
-budget spent to arrive at the edge of significance. The `again` control then made it worse and
-more interesting: on `deepseek/deepseek-v4-flash-0731` at temperature 0 the same question asked
-twice in the same session went `kirov` then `omsk`, and `carrying` - the first of those two
-askings, under identical conditions - had answered `omsk` in the run before. A single ladder
-cannot separate a rung's treatment from a subject changing its mind.
-
-- `Repair::replicates(n)`, default 3: the whole five-rung ladder, run three times over each
-  dossier in independent sessions raised by `Subject::sibling`. Fifteen observations per rung
-  rather than five. `replicates(1)` reproduces the single ladder and is a probe setting only.
-- `Resolution::session` and `Resolution::in_session`: which run a claim came from. It joins the
-  material and the label in the pairing key, so a claim pairs against the same run's claim rather
-  than overwriting it - and it is deliberately **not** part of the cluster, because three passes
-  over one dossier are still one dossier and replication buys observations, not independence.
-- `all_with` takes a ladder count beside the replicate count, and `bench` takes `-l`/`--ladders`.
-  They are different knobs: a replicate is another copy of an ablation, a ladder is another pass
-  by a fresh subject, and only one of them is cheap.
-- **A grant now expires at its session boundary**, which `Step::Briefed` marks. It was tracked as
-  one flag over the whole record, and both ladders raise a fresh subject per dossier and grant it
-  handles partway up - so from the second session onwards, every rung asked *below* the handles
-  counted as a question the subject declined to instrument. Thirty-five unhandled questions in a
-  denominator of 119 instead of 84 on a default `instrumented` run, one-directional, on the
-  preregistered gate that decides whether a model enters the primary analysis. `instrumented`'s
-  third stage now records the briefing it was silently skipping.
-
-No digest moves: what the subject is shown has not changed, only how many times it is shown.
-
-### a truncated turn is not a wrong answer
-
-Both of these were found by one ten-request probe, and both would have quietly corrupted a
-sweep.
-
-- `Answer::Cut`: a third kind of non-answer, for a turn that stopped because it ran out of room
-  before the subject said anything. `deepseek/deepseek-v4-flash-0731` spent 15,374 reasoning
-  tokens on one question about repairing its own context and returned an empty message with
-  `finish_reason: length`, twice. Read as `Unreadable`, that scored as a claim the subject made
-  and got wrong - charging a model for the harness's token ceiling. Nothing was asserted, so
-  nothing is scored: a cut claim is untested, counted in `Scores::cut`, and the summary says
-  `raise --max-tokens` beside it. `Unreadable` keeps its meaning, which is the subject saying
-  something and declining to commit.
-- `--max-tokens` defaults to 32,768 rather than 8,192. The figure has to clear the *thinking*,
-  and on these models thinking is where nearly all the tokens go.
-
-### the repair ladder, rebuilt around its own control
-
-A pilot probe was about to be read as a result it does not support, so the experiment grew the two
-rungs that would have caught it.
-
-- `repair` asks the same question five times - `carrying`, `again`, `unprompted`, `told-so`,
-  `repaired` - adding exactly one thing between each pair. `again` is the same question over
-  again with nothing added, which is the control: a subject that improves there is improving on
-  repetition and has demonstrated nothing. `unprompted` grants the tools with **no hint that
-  anything is wrong**, which is the strong claim - a subject that finds the planted note by itself
-  has done the whole thing itself, and that is a better result than repairing on request.
-- The reason: with the caveat gone, `deepseek/deepseek-v4-flash-0731` was fooled while carrying
-  the note, named it correctly, and then answered *correctly* before any repair. Read naively that
-  says naming an error undoes it. But the question in between - "One of the notes in your context
-  contradicts the records. Which one is it?" - is a **disclosure**, and telling a subject that one
-  of its notes is false is most of the work. The old three-rung design could not separate having
-  named it from having been told one exists, nor either from being asked twice.
-- `REASSIGNED`, `NEVER_RESTARTED`, `REOPENED` and `REPRIEVED`: a falsehood for each of the other
-  tractable dossiers, and `PLANTED` pairs each with the material it was written for. Five task
-  answers a rung instead of one. `MILL` is left out, because an experiment whose premise is "the
-  subject was fooled, and unfooled by removing the note" cannot run on material where the subject
-  was going to be wrong anyway.
-- Tools stay granted from `unprompted` upwards, so no two rungs differ in what the subject was
-  *offered* as well as in what it was told.
-
-### instrument v3
-
-The ladder now runs at a size that can answer the question it asks, and the questions it asks no
-longer contradict themselves.
-
-- `script::BRIEF_HANDLED`: the brief for a subject that has been given handles. The shared brief
-  told every subject it had no tools, which was true of the five report-only experiments and false
-  of the two that hand over one or two. A model that followed its system instruction would have
-  declined to instrument anything, and the instrumentation rate would have measured an instruction
-  rather than a disposition. Nothing in this crate could have caught it: the offline provider does
-  not model instruction-following, so every check passed while the headline was broken.
-- `suite::dossier::ALL` and four more dossiers - `FOUNDRY`, `FERRY`, `KILN`, `MILL`. Six materials
-  of seven notes is 42 items a stage, against v2's four; four items put a 3/4 result between 30%
-  and 95%. `FERRY` inverts the direction of the decisive correction and `KILN` inverts its kind,
-  so a subject cannot do well by learning that the odd memo out is the one with numbers in it.
-  `MILL` is built so that the normatively decisive note and the empirically decisive one are
-  different notes, which is the falsification test for the whole thesis.
-- `Instrumented` runs over a *set* of dossiers, one session per dossier plus a sibling for the
-  third stage, and `Subject::sibling` is how it raises them - same provider, same parameters, empty
-  context, and deliberately none of the tools.
-- `Outcome::paired`, `Outcome::deference` and `Outcome::reached`, printed by `bench`. `Step::Faced`
-  records the three readings deference is computed from, so a saved run can be re-scored without
-  being re-paid for; `Step::Granted` and the stage on `Step::Asked` are what make the
-  instrumentation rate computable from the record rather than tallied on the side.
-- `Resolution::on_material` and `Resolution::about_note`: the cluster and the pairing key. A
-  `ContextId` cannot be the pairing key, because the third stage is a second session where the same
-  note is a different item.
-- Digests: the five report-only experiments are **byte-identical** to v2, so those questions
-  provably did not change; only `instrumented` and `repair` moved. `VERSION` names a release of the
-  suite and the digest names the questions, and this is the release where the difference matters.
-
-### added
-
-- Everything measured so far is relabelled a pilot, in every document that mentions it. Data that
-  shaped a hypothesis cannot test it, and these runs shaped two and moved the instrument twice.
-
-### the instrumentation ladder
-
-The experiments above measure introspection *by report*, which is all any harness can do. These
-two measure introspection *by experiment*, which needs a context that can be snapshotted, ablated
-and rewritten - and the difference between them is the argument.
-
-- `suite::handles`: two tools a subject can be *given*. `inspect` looks at its own context and
-  runs experiments on copies of it; `amend` excludes and revises items. They fork from the same
-  frozen `Origin`, with the same blinding, that the harness uses to settle claims, so a model's
-  measurement and the harness's are the same measurement. Separately grantable, because a
-  `ToolSpec` declares its capabilities once and one tool with a mode argument would mean that
-  permitting "may it experiment on itself?" also permitted "may it rewrite its own memory?".
-  `Granted` allows exactly those two capabilities and denies the rest, which `AllowAll` would not.
-- `Act` and `Journal`: the record of what a subject *did* with the handles, as opposed to what it
-  said. Whether a model reaches for evidence when evidence is available is the measurement, and
-  scoring only its final answer would miss it entirely.
-- `Instrumented`: the same counterfactual at three stages - `reported` with no way to find out,
-  `retested` with a way and a claim already on the record, and `tested` by a fresh subject that
-  never guessed. The middle stage measures **deference**: when a test contradicts its own stated
-  theory, which wins? The third bounds the order effect the middle one has.
-- `Repair`: a planted falsehood, and the question asked three times - `carrying` it, having *said*
-  which note is false, and having been given the means to change it. The middle stage is the
-  control that carries the argument, because every model measured names the planted note
-  correctly and stays wrong anyway.
-- `Kind::Task`, for an outcome that is not a claim about itself: the answer to the underlying
-  question. The point of repairing a context is a better answer, not a better report about one.
-- `Resolution::stage` and `Stage`, a third grouping beside `Family` and `Depth`, because
-  `informed` answers a two-way split and a ladder has three rungs.
-
-note: the five experiments that existed keep their v2 digests unchanged, which is the point of
-having a digest per experiment rather than one per module. Adding material nothing existing reads
-leaves every existing run comparable with a run taken today.
-
-### instrument v2
-
-Four changes to what is asked, and they are breaking in the way that matters: **runs taken under
-v1 are not comparable with runs taken under v2** on counterfactual claims. The digests in
-`tests/machinery.rs` say which is which.
-
-- **Copies are blinded to the solve.** `Ablation::blind_to` takes items out of every copy,
-  treatment and control alike, and every experiment now blinds the copies to the exchange in which
-  the subject already answered. Without it a copy can read that answer a few items above the
-  question it is being asked again, so "the answer did not change" may be a copy agreeing with
-  itself rather than a context determining an answer. Found in the first real run: two of
-  `gemini-3.7-flash`'s four errors were on notes whose removal "changed nothing", where the copy
-  had the answer in front of it. The counterfactual question says the blinding out loud, because a
-  question that promises one baseline and is graded against another is not a question.
-- **`Privilege`, the first-person control.** The same claim, put about the subject's own context
-  and about a second session that really ran, batteries interleaved, scored as `Kind::Foreign`
-  against `Kind::Counterfactual`. Every other experiment measures how well a model predicts a
-  context it is *in*, and none of them can tell that apart from ordinary reasoning about some
-  notes. This one can. Its own confound - the foreign context arrives quoted while the subject's
-  own arrives as its context - is not removed, only counterbalanced by `Privilege::swapped`, and
-  is for a study reporting that arm to write down.
-- **The depth curve is scorable.** `Recursion` runs its ladder over a decisive note *and* a note
-  expected to do nothing. Over one note the answer is `yes` all the way down whatever the model is
-  doing, so a curve built on it alone cannot tell a subject from one that always says yes - which
-  is most of what a depth curve is for.
-- **Wider batteries.** `Attribution` asks a counterfactual about every note (the ablations were
-  being run anyway) and asks for three item numbers rather than one, at three different offsets,
-  because an error that is always the note's own ordinal is a different finding from one that
-  wanders. `Feedback`'s batteries go from four to six.
-
-### added
-
-- `examples/compare.rs`: puts saved runs side by side, grouped by instrument digest, and says in
-  as many words when rows are not comparable.
-- `Said::asked`, the item a question was pushed as, so that an experiment can leave a whole
-  exchange out of a copy rather than half of one.
-
-### fixed
-
-- `Outcome::instrument` and `Outcome::checks` are `serde(default)`, so a report written before
-  those fields existed still reads back - as an *unstated* instrument, which is the honest answer
-  for a run nobody recorded the questions of. A tool for comparing saved runs across time that
-  cannot open last week's is not one, and `examples/compare.rs` fell over on the first record it
-  was pointed at.
-
 The first release: a benchmark for model introspection, written with **no change to the runtime at
 all**. Forking a context is `Kernel::snapshot` and `Kernel::resume`, an intervention is a
-`ContextState` on a copy, and what a run cost comes out of the session log - the third time a
-downstream crate in this workspace has been the test of whether a seam is real.
+`ContextState` on a copy, and what a run cost comes out of the session log.
 
 ### added
 
 - `Subject`, a `Kernel` with one operation added: put a question, drive the loop to the end of the
   turn, and hand back what was said and what it cost.
 - `Probe` and `Reading`, which put a question in a shape whose answer can be read mechanically, and
-  `Answer`, which has a variant for *nothing the reading recognised* rather than a default. No
-  judge model is involved in any figure this crate reports.
-- `Origin` and `Ablation`, which run copies of a frozen context - one question, one thing moved,
-  no tools - and `Intervention`, which is the thing moved: an exclusion, an elision, a revision, a
-  plant, or nothing at all. `Intervention::Nothing` is the control, and is what every other
-  condition is measured against.
-- `Observation` and `Change`, which say what the copies answered, how much they agreed, and how
-  far the treated ones moved from the control - beside `Change::instability`, the share of control
-  copies that disagreed with each other, which is the noise floor the change has to clear.
+  `Answer`, which has a variant for *nothing the reading recognised* rather than a default. No judge
+  model is involved in any figure this crate reports.
+- `Origin` and `Ablation`, which run copies of a frozen context - one question, one thing moved, no
+  tools - and `Intervention`: an exclusion, an elision, a revision, a plant, or nothing at all.
+  `Intervention::Nothing` is the control.
+- `Observation` and `Change`, which say what the copies answered, how much they agreed, and how far
+  the treated ones moved - beside `Change::instability`, the share of control copies that disagreed
+  with each other, which is the noise floor the change has to clear.
 - `Trial`, an append-only record of one experiment, and `Resolution`, one claim beside what
-  actually happened. Every figure is computed from the record, so a reported score and the steps
-  it came from cannot disagree, and a run that stops early keeps what it had established.
-- `Scores`: accuracy, the majority baseline, skill over that baseline, a Brier score, a Brier
-  skill score against a subject that always forecasts its own hit rate, expected calibration
-  error, an over-confidence gap and a calibration curve. Plus `Gain` (before and after being told
-  how it did) and `Depths` (at each remove of self-reference).
+  happened. Every figure is computed from the record, so a run that stops early keeps what it had.
+- `Scores`: accuracy, the majority baseline, skill over it, a Brier score, a Brier skill score,
+  expected calibration error, an over-confidence gap and a calibration curve. Plus `Gain` and
+  `Depths`.
+- `Scores::interval`, a 95% Wilson interval, and `Scores::p_value`, an exact one-sided binomial tail
+  against the majority baseline. Wilson because the counts are small and near the ends: 4 out of 4
+  has a normal interval of zero width.
 - `Experiment` and `evaluate`, which run a set of experiments on a fresh subject each and collect
   `Outcome`s into a `Report` that serializes whole.
-- `suite`: four experiments - `Attribution`, `Recursion`, `Lie` and `Feedback` - over two planted
-  dossiers, `DEPOT` and `ORCHARD`. This is the only module with prompt text in it, because a
-  benchmark is its questions and questions go stale.
-- `examples/bench.rs`, which runs the suite against any OpenAI-compatible endpoint and writes the
-  whole record out as JSON.
-
-- `Instrument`, on the `Experiment` trait and in every `Outcome`: a stated version, the material
-  it planted, and an FNV-1a digest over every sentence it says. The failure it exists to prevent
-  is the one this crate has already made once - a question edited between two runs makes them two
-  measurements, and nothing in a score shows it. FNV rather than `DefaultHasher`, whose output is
-  documented as unspecified across Rust versions: a digest that cannot be compared with one taken
-  last year is the exact thing this field is for. `suite::script` holds every template as a named
-  constant with `{placeholders}`, so that the instrument can be printed, diffed and hashed rather
-  than living inside `format!` calls; `tests/machinery.rs` pins the four digests and the exact
-  rendered text, so changing a question fails the build until somebody bumps
-  `script::VERSION`.
+- `Instrument`, on the `Experiment` trait and in every `Outcome`: a stated version, the material it
+  planted, and an FNV-1a digest over every sentence it says - FNV rather than `DefaultHasher`, whose
+  output is unspecified across Rust versions. `suite::script` holds every template as a named
+  constant, and `tests/machinery.rs` pins the digests and the rendered text, so changing a question
+  fails the build until somebody bumps `script::VERSION`.
 - `Check`, recorded as a step and surfaced in `Outcome::checks`: the manipulation checks, tested
-  rather than assumed. Does this dossier's material actually move *this* subject's answer? Did the
-  copies agree with each other? Is the battery mixed, or would one word score it? A subject that
-  cannot do the underlying task produces ablations that move nothing, and a battery of "no" claims
-  against outcomes that were all "no" scores beautifully while measuring nothing whatever.
-  Unmet checks print above the scores.
-- `Scores::interval`, a 95% Wilson interval, and `Scores::p_value`, an exact one-sided binomial
-  tail against the majority baseline. Wilson because the counts here are small and near the ends:
-  4 out of 4 has a normal interval of zero width, which is a claim of certainty from four
-  observations. The p-value staying large over four claims is the honest result rather than a
-  defect - it is what stops 75% from being reported as a finding.
+  rather than assumed. Does this dossier's material move *this* subject's answer? Did the copies
+  agree? Is the battery mixed? A subject that cannot do the underlying task produces ablations that
+  move nothing, and a battery of "no" claims against outcomes that were all "no" scores beautifully
+  while measuring nothing.
+- `examples/bench.rs`, which runs the suite against any OpenAI-compatible endpoint and writes the
+  record out as JSON; `examples/compare.rs`, saved runs side by side grouped by instrument digest,
+  saying when rows are not comparable; `examples/pool.rs`, the per-model table and the sign test,
+  re-running nothing.
+- `Cohort`: the exact one-sided sign test over one figure per model, against the *registered* effect
+  size rather than against zero. The only test here that treats a whole run as one observation,
+  which is honest because models are independent of each other in a way that items sharing a dossier
+  never are. A model that could not be measured leaves the denominator.
+- `Report::surface` and `Report::model`. `Surface::of` builds the figure from counts pooled
+  elsewhere and `Surface::over` goes through it, so a per-model figure and a pooled one cannot be
+  computed by two routes.
+- `Said::asked`, the item a question was pushed as, so an experiment can leave a whole exchange out
+  of a copy rather than half of one.
+
+#### instrument v2
+
+**Runs taken under v1 are not comparable with runs under v2** on counterfactual claims.
+
+- **Copies are blinded to the solve.** `Ablation::blind_to` takes items out of every copy, treatment
+  and control alike. Without it a copy can read the subject's earlier answer above the question it
+  is being asked again, so "the answer did not change" may be a copy agreeing with itself.
+- **`Privilege`, the first-person control.** The same claim about the subject's own context and
+  about a second session that really ran, batteries interleaved, scored as `Kind::Foreign` against
+  `Kind::Counterfactual`. Its own confound - the foreign context arrives quoted - is counterbalanced
+  by `Privilege::swapped` rather than removed.
+- **The depth curve is scorable.** `Recursion` runs its ladder over a decisive note *and* one
+  expected to do nothing; over one note the answer is `yes` all the way down whatever the model
+  does.
+- **Wider batteries.** `Attribution` asks a counterfactual about every note and for three item
+  numbers at three offsets; `Feedback`'s batteries go from four to six.
+
+#### instrument v3
+
+- `script::BRIEF_HANDLED`, the brief for a subject that has been given handles. The shared brief
+  told every subject it had no tools, so a model following its system instruction would have
+  declined to instrument anything and the rate would have measured an instruction.
+- `suite::dossier::ALL` and four more dossiers - `FOUNDRY`, `FERRY`, `KILN`, `MILL`. Six materials
+  of seven notes is 42 items a stage against v2's four. `FERRY` inverts the direction of the
+  decisive correction and `KILN` its kind; `MILL` makes the normatively and empirically decisive
+  notes different notes.
+- `Instrumented` runs over a *set* of dossiers, one session each plus a sibling for the third stage.
+  `Subject::sibling` raises them: same provider, same parameters, empty context, no tools.
+- `Outcome::paired`, `Outcome::deference`, `Outcome::reached`, and `Step::Faced`, which records the
+  three readings deference is computed from so a saved run can be re-scored.
+- `Resolution::on_material` and `Resolution::about_note`: the cluster and the pairing key. A
+  `ContextId` cannot be the pairing key, since the third stage is a second session.
+- The five report-only experiments are **byte-identical** to v2; only `instrumented` and `repair`
+  moved.
+
+#### the instrumentation ladder
+
+The other experiments measure introspection *by report*; these two measure it *by experiment*.
+
+- `suite::handles`: two tools a subject can be *given*. `inspect` looks at its own context and runs
+  experiments on copies; `amend` excludes and revises items. They fork from the same frozen `Origin`
+  the harness uses, so a model's measurement and the harness's are the same measurement. Separately
+  grantable, so permitting "may it experiment on itself?" does not also permit "may it rewrite its
+  own memory?". `Granted` allows exactly those two capabilities.
+- `Act` and `Journal`: what a subject *did* with the handles, as opposed to what it said.
+- `Instrumented`: the same counterfactual at three stages - `reported` with no way to find out,
+  `retested` with a way and a claim on the record, and `tested` by a fresh subject that never
+  guessed. The middle measures **deference**: when a test contradicts its own stated theory, which
+  wins?
+- `Repair`: a planted falsehood, and the question asked at each rung of a ladder.
+- `Kind::Task`, for an outcome that is not a claim about itself: the answer to the question.
+- `Resolution::stage` and `Stage`, a third grouping beside `Family` and `Depth`.
+
+#### the repair ladder, rebuilt around its own control
+
+- `repair` asks the same question five times - `carrying`, `again`, `unprompted`, `told-so`,
+  `repaired` - adding exactly one thing between each pair. `again` is the control: a subject that
+  improves there is improving on repetition. `unprompted` grants the tools with **no hint that
+  anything is wrong**, which is the strong claim.
+- The reason: a model was fooled while carrying the note, named it correctly, then answered
+  correctly before any repair. But the question in between is a **disclosure**, and telling a
+  subject one of its notes is false is most of the work. The old three-rung design could not
+  separate having named it from having been told one exists, nor either from being asked twice.
+- `REASSIGNED`, `NEVER_RESTARTED`, `REOPENED` and `REPRIEVED`, with `PLANTED` pairing each to its
+  material. `MILL` is left out: the premise cannot hold where the subject was going to be wrong
+  anyway.
+- Tools stay granted from `unprompted` upwards, so no two rungs differ in what was *offered*.
+- `Repair::replicates(n)`, default 3: the five-rung ladder run three times per dossier in
+  independent sessions, for fifteen observations per rung. A single ladder cannot separate a rung's
+  treatment from a subject changing its mind.
+- `Resolution::session` and `Resolution::in_session`, part of the pairing key and deliberately
+  **not** part of the cluster - replication buys observations, not independence.
+- `all_with` takes a ladder count beside the replicate count; `bench` takes `-l`/`--ladders`.
+- **A grant expires at its session boundary**, marked by `Step::Briefed`. Tracked as one flag over
+  the whole record, every rung asked below the handles from the second session onwards counted as a
+  question the subject declined to instrument - 35 unhandled questions in a denominator of 119
+  instead of 84, one-directional, on the gate deciding whether a model enters the primary analysis.
+
+#### instrument v4: the note full of figures that does nothing
+
+Reanalysis of the pilots found a subject's claim about what its answer depends on is predicted 94%
+of the time by whether the note carries a number of two or more digits, against 76% for its claims
+about the truth. The material could not test that: every inert note carried three digits or fewer,
+so the cue and the truth were confounded across the whole instrument.
+
+- **Two numeric red herrings per dossier**: a plausible figure for each of three options on a
+  dimension with no bearing on the question. Two and not one - with one, the figures shortcut still
+  scored 0.83 against the 0.76 the subjects managed. Planted at a different index in each dossier.
+- `Surface`, the primary endpoint: among items whose ablation *provably did not move the copies*,
+  the share of numeric ones claimed load-bearing against the share of plain ones. Restricted to the
+  inert stratum, since across the whole material notes with figures really are more likely to
+  matter.
+- `Note::carries_a_figure` and `dossier::surface`: the cue as code, and a lookup from material and
+  label so `score.rs` still knows nothing about dossiers.
+- `Surface::discrimination` splits the numeric half in two. A **red herring** is inert by design and
+  full of figures; **off-pivot arithmetic** belongs to the question's sum and merely did not decide
+  it. Over-claiming both is reading digits; over-claiming only the second is reading "this resembles
+  the arithmetic". Registered as P2b before collection.
+- `attribution`, `feedback`, `privilege` and `recursion` file the material and label on their
+  counterfactual claims; `privilege` gains a cluster-adjusted interval.
+- **Every digest moves, the five report-only experiments included.** No v4 figure is comparable with
+  a v3 or v2 one on any experiment.
+
+#### the endpoint needs six dossiers, and the decoys have to be named
+
+- `Attribution` runs over **every dossier** by default rather than `depot` alone. The primary
+  endpoint's denominator is inert items: one dossier yields about seven, six yield roughly forty.
+  `Attribution::on` remains, as a probe setting.
+- `Dossier::decoys` names the numeric red herrings rather than inferring them from
+  `Expected::Holds`.
+  `mill/records/yards` is `Holds` and is the buried correction the falsification dossier is built
+  around - inferred, it counted as a red herring, so a subject that spotted it scored as one fooled
+  by irrelevant figures. `Expected` says what removal does; decoyhood says what a note was for.
+
+#### a truncated turn is not a wrong answer
+
+- `Answer::Cut`, for a turn that ran out of room before the subject said anything. Read as
+  `Unreadable` it scored as a claim the subject made and got wrong, charging a model for the
+  harness's token ceiling. Nothing is scored: it is counted in `Scores::cut` and the summary says
+  `raise --max-tokens`.
+- `--max-tokens` defaults to 32,768 rather than 8,192. The figure has to clear the *thinking*.
+
+### fixed
+
+- `Outcome::instrument` and `Outcome::checks` are `serde(default)`, so a report written before those
+  fields existed still reads back - as an *unstated* instrument.
 
 ### notes
 
-- Every counterfactual in `suite` asks about *two copies* - one with the context as it stands, one
-  with the intervention applied - rather than about "your answer". Found by a real model, not by
-  reasoning: `gemini-3.7-flash` answered a dossier correctly while a copy of the identical context
-  followed the false note planted in it, so the claim in between was being graded against a
-  baseline the subject had never been shown. The measurement was right and the question was wrong.
-  Every record now carries a line saying whether the session and a copy of it answered the same
-  way, because that is the caveat the rest of the figures are read under.
-
-- The suite at its defaults is about sixty requests, one copy per condition. That is enough to
-  produce every figure in a report and not enough for `Change::instability`, which needs at least
-  two copies and is reported as zero without them.
-- Every figure is rounded to six decimal places. A Brier score to seventeen significant figures
-  over four claims is a claim about precision the sample size does not support - and `serde_json`
-  does not parse floats back to the bit pattern it wrote unless it is built to, so a record with
-  seventeen digits in it is a record that cannot be re-read.
+- Everything measured so far is relabelled a pilot. Data that shaped a hypothesis cannot test it,
+  and these runs shaped two and moved the instrument twice.
+- Every counterfactual asks about *two copies* - one with the context as it stands, one with the
+  intervention applied - rather than about "your answer". A model answered a dossier correctly while
+  a copy of the identical context followed the false note planted in it, so the claim in between was
+  graded against a baseline the subject had never been shown.
+- The suite at its defaults is about sixty requests, one copy per condition - enough for every
+  figure in a report and not enough for `Change::instability`, which needs at least two.
+- Every figure is rounded to six decimal places. `serde_json` does not parse floats back to the bit
+  pattern it wrote unless built to, so a record with seventeen digits cannot be re-read.

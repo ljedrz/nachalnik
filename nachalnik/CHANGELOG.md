@@ -9,737 +9,288 @@ minor bump may break you.
 
 ### changed
 
-- **`session.rs` said the log carries no content, and it does.** The module note read "nothing in
-  the log carries content, so a log cannot rebuild a context", and `Event::ContextReplaced::was`
-  two files away reads "This is the one event that carries content". Both cannot be right, and the
-  event is: a replacement is the only operation that overwrites something, so once the change falls
-  out of the undo window the old text exists in no snapshot and in no other record.
-
-  Not cosmetic, which is why it is an entry rather than a typo fix. The sentence is in the place
-  somebody goes to learn the rule, and it stated an invariant strictly stronger than the one this
-  crate keeps - so the way it goes wrong is that a reader takes it at its word and *enforces* it,
-  drops the content from `ContextReplaced` to make the two agree, and destroys the only account
-  there is of an overwrite. The note now names the exception, says what taking it out would cost,
-  and names the other two ways content reaches a log: `Config::record_payloads` and
-  `Config::record_progress`, both off by default and both asked for. `Snapshot`'s own note gains
-  the consequence, which is that a snapshot plus the replacements since it was taken can wind an
-  item back through its overwrites - something neither half can do alone.
-
-  Nothing about the behaviour changed and no test was added:
-  `a_replacement_is_the_one_thing_that_would_otherwise_be_lost` in `tests/context/undo.rs` already
-  asserts the content is in the event *and* in the serialized log, which is exactly the thing the
-  wrong sentence invited somebody to remove.
-
-- **`Session` says how a caller reaches one.** `Kernel::with_history` is the mirror of
-  `with_context` and copies nothing, and it is named for what it holds rather than for its
-  argument's type - so a reader grepping the kernel for "session" finds `session_name` and
-  concludes there is no read access to the log at all. That has now happened to somebody writing
-  against this crate, and the answer was a sentence rather than an accessor.
+- `session.rs` no longer claims the log carries no content. `Event::ContextReplaced` does: a
+  replacement is the only operation that overwrites something, so once the change falls out of the
+  undo window the old text exists nowhere else. The note names the exception and the other two ways
+  content reaches a log - `Config::record_payloads` and `Config::record_progress`, both off by
+  default. Documentation only.
+- `Session` says how a caller reaches one: `Kernel::with_history`, the mirror of `with_context`.
+  Grepping the kernel for "session" finds only `session_name`.
 
 ## [0.5.1] - 2026-09-12
 
 ### changed
 
-- **`Kernel::interrupt` says what it can still stop, and that depends on how the calls are run.**
-  It said the kernel does not start the calls that had not begun "in the serial case". That clause
-  is load-bearing and nothing said so: run together, `invoke_together` spawns every call in the
-  batch before the first one answers, so there is no queue left for an interrupt to empty, and the
-  only thing it can reach is a `Tool` that checks `OutputSink::is_interrupted` for itself.
-
-  A caller who read the sentence and turned `parallel_tool_calls` on would keep the guarantee in
-  mind and no longer have it - in exactly the case somebody reaches for an interrupt over, which is
-  a batch of calls that each do something. Both places say it now: the flag that makes the trade,
-  and the method whose promise it narrows.
-
-  So does the part that was never true in either mode. A tool that blocks without ever looking at
-  the sink cannot be stopped at all, because the kernel does not own the thread it is on and there
-  is no safe way to take it back. What the kernel does do in every mode is record: every call gets
-  an output, even when the output is that it never ran.
-
-  Two tests rather than two sentences, because this is the guarantee somebody will assume they
-  still have. They run the same three slow calls, interrupted forty milliseconds in, and assert
-  opposite things - in turn, the first finishes and the other two are recorded as interrupted
-  before they were made; together, all three had already started and all three ran. The tool they
-  use never looks at the sink, which is the point: what is pinned is what the kernel can do about a
-  tool that does not cooperate, because that is the case a caller has to reason about when the tool
-  is somebody else's.
-
-- **`ToolSpec::schema` says that the kernel does not validate arguments against it.** It said what
-  it was and not what it means, and the two readings lead somewhere different: a tool author who
-  assumed the kernel validates writes `invoke` as though the arguments have already been checked,
-  and one who assumed it does not writes the check twice. Nothing in the crate settled it.
-
-  It does not validate. The schema is sent to the model and counted for what it costs to send -
-  `request.rs` is the only thing that looks at it, and it looks at it with a token counter - and a
-  tool is handed whatever the model produced.
-
-  Written down rather than changed, because the boundary is the right one. Enforcing would mean
-  this crate choosing a JSON Schema dialect and a validator on behalf of everybody who ever writes
-  a tool, for models that do not agree about which dialect they emit against; and the check is a
-  line in the tool that has to parse the arguments to use them anyway. Doing it there also makes a
-  mismatch an ordinary `ToolOutput::error` - which the model reads and can correct - where a
-  refusal from underneath would be a failure it never sees the shape of. A caller who wants it
-  everywhere wraps `Tool` once and installs the wrapper, which is the seam this leaves open rather
-  than closes.
+- `Kernel::interrupt` documents that what it can stop depends on how the calls are run. Run
+  together, `invoke_together` spawns every call before the first answers, so the only thing an
+  interrupt reaches is a `Tool` checking `OutputSink::is_interrupted` itself. A tool that blocks
+  without looking at the sink cannot be stopped in either mode. What the kernel does in every mode
+  is record: every call gets an output, even when the output is that it never ran.
+- `ToolSpec::schema` documents that the kernel does not validate arguments against it. The schema is
+  sent to the model and counted for what it costs to send. Enforcing would mean choosing a JSON
+  Schema dialect and a validator for every tool author, and checking in the tool makes a mismatch an
+  ordinary `ToolOutput::error` the model can correct. A caller who wants it everywhere wraps `Tool`.
 
 ### added
 
-- **A section on surviving a crash, in the crate documentation, and the tests that hold it up.**
-  The primitives were all here and nothing put them together: a `ToolCallId` survives a snapshot,
-  `Snapshot::used_calls` refuses it afterwards, an unanswered call is still in the context, and
-  `history_since` and `drain_history` are two different operations for a reason. What was missing
-  was anything saying how they compose, so the questions they answer had to be worked out from
-  first principles by whoever asked them.
+- A section on surviving a crash, with tests. Whether a side effect happened is not the kernel's to
+  know; what it provides is a durable *name* for the attempt - the call's own `ToolCallId`, which
+  outlives the process - so an external operation keyed on it can be asked about afterwards.
 
-  **Whether the thing happened is not the kernel's to know.** It did not perform the side effect
-  and cannot ask the system that did. What it provides is a durable *name* for the attempt - the
-  call's own id, which outlives the process - so an external operation keyed on it is one an
-  application can go back and ask about. A tool that mints an identifier inside `invoke` has minted
-  one that dies with the process that minted it; passing the call's own through is the whole trick,
-  and it is why no new execution id from the runtime is needed. Returning `ToolOutput::error` is
-  not the crash case: that is an answer, recorded as a failure the model reads, with nothing left
-  outstanding. The test blocks the call and drops the future instead, which is the state a
-  `SIGKILL` leaves, and pairs it with a ledger that is idempotent on the key - the half an
-  application has to bring.
-
-  **Checkpointing is two writes, and the order decides what a crash costs.** Copy, write, drop,
-  then snapshot. `history_since` hands back clones and leaves the kernel holding them;
-  `drain_history` hands back the only copy there is, so draining before writing opens a window in
-  which the records exist nowhere - not in the kernel, which has let them go, and not on the disk,
-  which has not got them - and a crash inside it loses them silently. Writing first cannot lose
-  anything: the worst a crash there does is leave the kernel holding records the disk already has.
-  The snapshot goes last for the same reason turned round - a snapshot ahead of the log is a state
-  nothing accounts for, a snapshot behind it is a state the log can explain. Of the two orders only
-  one leaves every crash recoverable, and there is a test for each direction.
-
-  No new primitive came out of it, which was the thing worth finding out. The exercise was set up
-  so that a seam that did not exist would show up as a test that could not be written, and every
-  one of them could be.
+  Checkpointing is two writes and the order decides what a crash costs: copy, write, drop, then
+  snapshot. `history_since` hands back clones; `drain_history` hands back the only copy, so draining
+  before writing opens a window in which the records exist nowhere. The snapshot goes last, since a
+  snapshot ahead of the log is a state nothing accounts for.
 
 ## [0.5.0] - 2026-09-11
 
-### changed
+### breaking
 
-- The live test about an interrupt no longer asserts that the endpoint took the continuation. What
-  the step after an interrupt sends is a request *ending with a model turn* - the model's own
-  partial answer, to be carried on from - and that is not something every endpoint accepts:
-  Google's OpenAI-compatible shim answers `400 Requests ending with a model turn are not
-  supported`, where OpenAI's own API and OpenRouter continue from it. The claim in that test is
-  that trying clears the outstanding interrupt, which is this crate's business; whether a given
-  endpoint will resume a half-finished turn is not, and it was being asserted by accident. With
-  it, the whole suite passes against Google AI Studio - 27 tests, the vision one included.
-
-### added
-
-- A live test that a tool result recorded after a *later* turn still reaches a real endpoint
-  beside the call it answers. The fourth of these and the first about the *order* of the messages
-  rather than which of them are there: the other three take something out of a valid conversation
-  and ask whether the API still accepts what is left, and this one hands the projector a
-  conversation that was never valid. Pushed by hand, because the loop cannot produce that order -
-  a client importing turns it did not issue can, which is the client `Kernel::reserve_calls`
-  exists for, so the identifiers are claimed here the way it would claim them.
-
-  It is the check the fix below was missing. A projector change is a change to the request path,
-  and the rule about those is that a mock cannot tell you an API accepts what was built - the
-  property suite and the screen tests all talk to scripted providers, and none of them can refuse
-  a request the way an endpoint does.
-
-  Run, and it found something the fix's own reasoning had wrong. Against the pre-fix projector
-  this test sends `[User, Assistant, Assistant, Tool, User]`, and Inception Labs' `mercury-2.5`
-  **accepts it**: the turn finishes, the answer comes back, no error at all. So the claim that an
-  OpenAI-compatible API refuses a misplaced result is true of the specification and of a strict
-  endpoint, and is not true of every endpoint - which means "a real API accepted it" was never
-  going to be evidence that the order was right. The test asserts the *position* of the result for
-  that reason, and the comment in `projection.rs` that said otherwise now says what was measured.
-
-- A property that a snapshot resumes into the session it was taken from, over the same generated
-  sequences. `session.rs` has had this as three cases; what the property adds is the shapes nobody
-  writes by hand - a context in the middle of an undo stack, an item superseded and then excluded,
-  a result recorded before the call it answers. The assertion is that the resumed session projects
-  to the same *request*, not merely that it holds the same items: items equal and request
-  differing is precisely the kind of disagreement this file exists to find. Through serde on the
-  way, because a field that serialises and does not come back reads as an empty one. `Snapshot`
-  derives `PartialEq`, so a snapshot of the resumed session equalling the original is one
-  assertion covering the whole of it - and that is a real claim rather than a tautology, since
-  resuming recounts.
-
-- `the_generators_reach_what_the_properties_are_about`, which counts the states the properties
-  above have a branch for and fails if a run produces none of one.
-
-  This exists because four properties in this workspace were measurably weaker than they read,
-  and each was found the slow way - by breaking the implementation on purpose and noticing that
-  nothing failed. A name strategy that topped out below the length limit it was written to test.
-  An alphabet with nothing unpriced in it, so the invariant about abstaining could not fail. An
-  alphabet in which a result never preceded its call, so the branch that holds one back was never
-  entered. Every one of them read like a thorough test.
-
-  Two hand-written cases that were here are not any more: one asserting that an operation changing
-  nothing takes no checkpoint, one that a bulk operation is a single undo. `tests/context/undo.rs`
-  already had both, written first and covering more, and the audit above is what found that out.
-  They were derived from the doc comments on `Kernel::set_state` and `Kernel::undo` without anyone
-  checking the tests next door - a cheap mistake to make, because a duplicated case passes,
-  measures nothing, and reads like coverage.
-
-  It is not a coverage measurement and does not try to be one. It is a short list of specific
-  configurations - a sequence longer than the undo depth, an unpriced payload, a result before its
-  call, a turn with two answers, an ordering pass that actually moved something, an orphan
-  dropped, an undo that undid, a redo that redid, something superseded, a reserved identifier -
-  each asserted to occur. Checked by taking generators away: removing the payload, the early
-  result, the two-call turn or the long sequences fails it by name.
-
-  It found one of those four while being written, which is the argument for it. `Call` made turns with
-  exactly one call, so two branches had never run: the arithmetic deciding whether a turn's
-  results were already beside it, and the half of the adjacency rule saying nothing else may
-  arrive until *every* call in a turn has an answer. `Calls` is in the alphabet now, and so is
-  `Reserve`, because `Snapshot::used_calls` was always empty - no turn runs in these sequences, so
-  no call was ever issued.
-
-- `tests/invariants.rs`: what holds of a context and its projection after every operation of a
-  generated sequence. Invariants rather than a reference model, because a model faithful enough to
-  compare against is a second implementation of the context that has to be kept honest, and a
-  wrong model reads exactly like a broken kernel. What is checked instead are sentences this
-  crate had already written down - `set_state`'s note that an operation changing nothing takes no
-  checkpoint, `undo`'s that the granularity is one operation and not one item, `Projection`'s that
-  a repair is named rather than done quietly - and the family where two things must agree about
-  one request, which is where every bug worth fixing in the recent releases lived.
-
-  The alphabet is the whole of context control: `push`, `push_all`, the five moves over one
-  identifier or several, `replace`, `supersede`, `undo`, `redo`. Sequences run past the default
-  undo depth, because an undo stack is a bounded thing and the interesting arithmetic is at its
-  bound. The checks run after *every* operation rather than at the end, so a counterexample is the
-  shortest prefix that breaks something.
-
-  What it is worth was measured rather than argued, and the measurement is the interesting part.
-  Ten mutations of the runtime, each run against the *whole* workspace suite, asking not whether
-  something caught it but whether anything **other** than these properties did. Most of it is
-  ground already held: a projector that stops repairing orphaned calls fails thirteen existing
-  tests, a budget that reports every request as fully counted fails six, a `push_all` that
-  checkpoints per item fails two. What nothing else holds is narrow and real - a `resume` that
-  forgets which identifiers are spent, and the projection bug below, which lived in a suite of
-  five hundred and ninety-seven passing tests and is caught by these and by nothing at all.
-
-  So the honest account of this file is that it earns its place on the projection ordering and on
-  resume, and duplicates existing coverage everywhere else. That is a reasonable trade for a
-  property suite - the duplication costs a second of CI - but it is not the same claim as "five
-  mutations caught", which is what a run against the properties alone would have reported.
-
-  The invariant about `uncounted` could not fail at all until the alphabet could push a
-  `Content::Blob`: with nothing unpriced in any generated context, a kernel changed to report
-  every request as fully counted broke nothing here. An invariant that cannot fire reads exactly
-  like one that holds.
-
-  It found the projection bug below on its fourth generated sequence, and the assertion that found
-  it is stated at full strength rather than narrowed to what held while the bug did: a tool result
-  reaches the wire immediately after the call it answers, with nothing between them and nothing
-  else until that turn has all of its results.
-
-  A third hole turned up while the fix was being pinned, the same way as the other two. The
-  alphabet's `Answer` only ever answers a call that already exists, so every result it produced was
-  already after its call and the ordering pass's deferral - what holds a result back until the turn
-  that asked for it has gone out - was never reached at all. `Early`, a result answering the call
-  the *next* turn will ask for, is in the alphabet for that; without it, taking the deferral out
-  broke nothing, and with it, two tests.
-
-- A test that a refusal can name the argument that earned it: two calls to one tool, the same
-  capability twice, one of the two paths ending in `.env`, and a policy that holds nothing at all.
-  It is the case the old signature could not reach - the identifiers are the kernel's to hand out
-  and the tool and the capability are the same one twice, so the arguments are the only thing that
-  tells the pair apart.
+- `PermissionPolicy::why` is asked with the `PermissionRequest` rather than a `ToolCallId`. A policy
+  overriding it reads `request.call` where it read the argument. `evaluate` was handed everything
+  known about a call and `why` only its name, so a policy whose reason depends on the arguments had
+  to remember it in a map keyed by call - which wants a bound, past which the reason is gone.
 
 ### fixed
 
-- **A tool result reaches the wire immediately after the call it answers, whatever the context put
-  between the two.** It did not when another assistant turn stood between a call and its result:
-  `LinearProjector` kept a *count* of what the current turn was still waiting for and reset that
-  count on the next turn, so a result belonging to an older turn had nothing anchoring it and went
-  out wherever the context happened to hold it. Two turns in a row with the first one's result
-  recorded after the second put a `tool` message four messages from its call - the shape the
-  comment three lines above that code says an OpenAI-compatible API refuses outright, naming the
-  identifier that went unanswered. A count also let *any* result decrement it, including one
-  answering a different turn.
-
-  The order is a pass over the whole list now rather than bookkeeping carried through the loop that
-  builds it. Each turn's results are gathered to it and everything else keeps the order the context
-  had, which cannot get either half wrong: a result goes where its own call is, and a call is a
-  place in a list rather than a number something has to maintain. It costs one walk, drops nothing -
-  a result whose call is not in the request at all, which `repair_orphans` normally takes care of
-  and a caller can turn off, keeps its place rather than going missing - and takes the messages
-  rather than copying them, since a projection is built for every budget and every preview.
-
-  What a client sees change: the repair reads `moved item 5 up behind the call \`c0\` it answers`
-  where it read `held item 2 back until the turn it landed in had its results`. One repair per
-  result that moved, rather than one per item it moved past, which is also the truer account of
-  what happened. The messages a valid context projected to are unchanged, which is what the
-  existing tests for both projector shapes check and go on checking.
-
-### breaking
-
-- `PermissionPolicy::why` is asked with the `PermissionRequest`, where it was asked with a
-  `ToolCallId`. A policy that overrides it - one that has something to say, which is the only
-  reason the method exists - changes the signature and reads `request.call` wherever it read the
-  argument.
-
-  The two halves of the seam were being asked different questions about the same call. `evaluate`
-  is handed everything known about it; `why` was handed its name. So a policy whose reason is a
-  function of the arguments - *the rule for `**/.env` refused `deploy/.env`* - had to write that
-  sentence down at the moment it decided and find it again when it was asked, which is a map keyed
-  by call. A map wants a bound, and a bound is a number of refusals in one step past which the
-  reason is simply gone; `kamchatka`'s remembers sixty-four. None of that is a policy's problem to
-  have.
-
-  The kernel was holding the request the whole time. `PreparedCall` has carried it since
-  permission stopped being decided inside execution, so this hands over a field that was already
-  there rather than building one to answer with, and what a policy sees in `why` is the identical
-  value it saw in `evaluate`.
-
-  What the model reads is unchanged, and no policy in this workspace answers differently:
-  `kamchatka`'s `Careful` keeps its own copy either way, because its other reader is a screen with
-  nothing but an identifier - `Event::PermissionDecided` carries no arguments. This moves the seam
-  rather than the program, which is the honest summary of a release with one signature in it.
-
-## [0.4.0] - 2026-09-10
+- A tool result reaches the wire immediately after the call it answers. `LinearProjector` kept a
+  *count* of what the current turn was waiting for and reset it on the next turn, so a result
+  belonging to an older turn went out wherever the context held it - putting a `tool` message four
+  messages from its call, which an OpenAI-compatible API refuses. A count also let any result
+  decrement it. The order is a pass over the whole list now; the messages a valid context projected
+  to are unchanged. A client reads `moved item 5 up behind the call \`c0\` it answers`, one repair
+  per result that moved.
 
 ### added
 
-- `examples/pricing_a_picture.rs`, which is what `Blob::meta` and
-  `TokenCounter::uncounted` are *for*. It counts one context three ways - with the default
-  counter, with one that applies a vendor's tiling formula to `{"w": .., "h": ..}`, and with
-  the same formula handed a blob nobody measured - so that "put a real tokenizer behind
-  `Kernel::set_counter`" stops being advice and becomes forty lines somebody can copy. The
-  third case is the one worth reading: a counter that knows a formula still abstains on a
-  payload with no dimensions on it, exactly as the default one does.
+- A live test that a tool result recorded after a *later* turn still reaches a real endpoint beside
+  the call it answers, with identifiers claimed through `Kernel::reserve_calls`. Measured: against
+  the pre-fix projector the misordered request is **accepted** by Inception Labs' `mercury-2.5`, so
+  "a real API accepted it" was never evidence the order was right. The test asserts the *position*.
+- A property that a snapshot resumes into the session it was taken from, asserting that the resumed
+  session projects to the same *request* rather than merely holding the same items, through serde.
+- `the_generators_reach_what_the_properties_are_about`, which counts the states the properties have
+  a branch for and fails if a run produces none of one. Four properties here were measurably weaker
+  than they read - a name strategy topping out below the length limit it tested, an alphabet with
+  nothing unpriced in it, one where a result never preceded its call.
+- `tests/invariants.rs`: what holds of a context and its projection after every operation of a
+  generated sequence. Invariants rather than a reference model, since a model faithful enough to
+  compare against is a second implementation to keep honest. The alphabet is the whole of context
+  control, sequences run past the default undo depth, and checks run after every operation so a
+  counterexample is the shortest prefix. Measured against ten mutations: most ground is already held
+  by existing tests, and what nothing else holds is a `resume` that forgets which identifiers are
+  spent, plus the projection bug above, which lived in a suite of 597 passing tests.
+- A test that a refusal can name the argument that earned it - the case the old `why` signature
+  could not reach.
 
-- `Content::Blob`, and the `Blob` it holds: bytes that are not text - an image, a document, a
-  recording. The runtime does not look inside one. It carries it, measures it and hands it to a
-  `Provider`, the same as everything else, and *names* it wherever it has to become text, because
-  a gap where a picture was is worse than a sentence saying there was one:
-  `[image/png, 12.05kB]` is what `to_text` answers, and `as_blob` is how anything that wants
-  the payload asks for it.
+### changed
 
-  The payload is held **already base64**, which is deliberate. It is the form both dialects put it
-  on the wire in - a `data:` URI in one, `inline_data` in the other - so nothing is encoded on the
-  way out; `byte_len` really is the size in the form it would be sent in rather than three
-  quarters of it; a session log is the base64 string rather than a JSON array of six hundred
-  thousand numbers; and a base64 codec stays out of a crate with five dependencies and a rule
-  about growing a sixth. Whoever reads a PNG off a disk encodes it, where a base64 crate is free
-  to be.
+- The live interrupt test no longer asserts the endpoint took the continuation. The step after an
+  interrupt sends a request *ending with a model turn*, which Google's OpenAI-compatible shim
+  refuses with `400` where OpenAI's own API and OpenRouter continue from it.
 
-  `Content` is `#[non_exhaustive]`, so this breaks no `match` - and `nachalnik-providers` renders
-  it in both dialects as of its first release.
+## [0.4.0] - 2026-09-10
 
+### breaking
+
+- `Budget`, `ContextItem` and `Blob` each grew a public field and none is `#[non_exhaustive]`, so a
+  struct literal no longer compiles. The fix is `..` or the constructor.
+- `Blob` no longer derives `Eq`, because `serde_json::Value` does not. It is still `PartialEq`.
+
+### added
+
+- `Content::Blob` and the `Blob` it holds: bytes that are not text. The runtime does not look inside
+  one - it carries, measures and hands it to a `Provider` - and *names* it where it must become
+  text: `to_text` answers `[image/png, 12.05kB]`, and `as_blob` is how anything wanting the payload
+  asks. The payload is held **already base64**, the form both dialects put it on the wire in, so
+  nothing is encoded on the way out, `byte_len` is the size as sent, a log is the base64 string, and
+  a base64 codec stays out of the dependency list. `Content` is `#[non_exhaustive]`.
 - `Budget::uncounted` and `ContextItem::uncounted`: how many pieces of content the active
-  `TokenCounter` would not put a number on, so that a count can **abstain out loud**. A counter
-  returning `0` because it measured something and found it free and a counter returning `0`
-  because there is a picture in front of it and nothing priced one were the same figure until
-  there was a second one beside them - and the difference is the difference between a floor
-  somebody can act on and a fiction. `Budget::fully_counted` is the question worth asking before
-  believing `used()` or `fraction_used()`.
-
-  The budget's figure is counted over the *projected messages*, like its tokens, so a picture
-  that has been elided is not reported as a hole in a request that no longer carries one. The
-  item's figure is about the item, and stays.
-
-- `TokenCounter::uncounted`, `uncounted_item` and `uncounted_message`: the trio behind those,
-  mirroring `count`, `count_item` and `count_message`. All three are defaulted to `0`, which is
-  the honest answer for a real tokenizer and is why implementing them is optional.
-
-- `Blob::meta`, an `Arc<Value>` the kernel never reads. The same bargain `ContextItem::meta`
-  strikes: somewhere to put a fact the runtime has no business having an opinion about. The fact
-  that matters here is whatever a counter would need to price a payload, because a byte length
-  cannot reach it - `{"w": 1024, "h": 768}` for a picture, `{"pages": 12}` for a document,
-  `{"seconds": 184, "fps": 30}` for a recording. Every vendor's formula is over figures like
-  those and each vendor's is different, so this crate carries none of them and carries the place
-  to put the inputs instead. Whoever produced the base64 had the payload decoded a moment
-  earlier, which is why it costs a caller nothing to fill in and is the only place that knows.
-
-  On the blob rather than on the item, and that is checkable rather than a preference: a budget
-  is counted over the projected messages, and a `Message` carries a `Content` and nothing else a
-  counter could read. A fact left on `ContextItem::meta` reaches `count_item` and never reaches
-  the figure a `Compactor` acts on.
-
-  A counter is the reason it exists and not the only thing entitled to read it. A `Provider` may
-  too, and one already does: the conventional dialect's attachment part will not go out without a
-  filename, so `nachalnik-providers` reads `name` here. That is a convention between a caller and
-  a provider rather than anything this crate enforces - there is no key here whose meaning the
-  kernel knows, which is the entire point of the field.
-
-- A test that a payload survives a snapshot, nested where a client attaching a file actually puts
-  one and with its `meta` intact. Three things that each break silently and none of which the
-  session suite reached: serde carrying a `Content::Blob` inside a `Content::Blocks`, the two
-  different paths a `meta` that is set and a `meta` that is null take through one `Deserialize`,
-  and `uncounted` coming back the same on the other side - a resumed context reporting a picture
-  as free would be the abstention lost at the moment nobody would look for it. It round-trips;
-  what was missing was anything saying so.
-
-- `Content::blobs`, which collects every `Blob` in a piece of content **including those nested in
-  a `Content::Blocks` turn**. This is the seam a counter needs and could not build for itself, and
-  the nesting is the whole reason; see the fix below. `Blob::wire_len` is the payload and the
-  media type naming it, which is what a blob costs on the wire and what has to come off a byte
-  count.
+  `TokenCounter` would not price, so a count can abstain out loud. `Budget::fully_counted` is the
+  question worth asking before believing `used()`. The budget's figure is counted over the projected
+  messages, so an elided picture is not a hole in a request that no longer carries one.
+- `TokenCounter::uncounted`, `uncounted_item` and `uncounted_message`, mirroring `count`,
+  `count_item` and `count_message`. All default to `0`, so implementing them is optional.
+- `Blob::meta`, an `Arc<Value>` the kernel never reads: somewhere to put what a counter needs to
+  price a payload, which a byte length cannot reach - `{"w": 1024, "h": 768}`, `{"pages": 12}`.
+  Every vendor's formula differs, so this crate carries the place to put the inputs instead. On the
+  blob rather than the item, because a `Message` carries a `Content` and nothing else a counter
+  could read. A `Provider` may read it too: `nachalnik-providers` reads `name` for the attachment
+  part's required filename.
+- `Content::blobs`, collecting every `Blob` including those nested in a `Content::Blocks` turn, and
+  `Blob::wire_len`, the payload plus the media type naming it.
+- `examples/pricing_a_picture.rs`: one context counted three ways - the default counter, a vendor
+  tiling formula over `Blob::meta`, and that formula handed a blob nobody measured, which abstains.
+- A test that a payload survives a snapshot, nested where a client attaching a file puts one.
 
 ### fixed
 
 - `BytesPerToken` no longer counts a picture at four bytes a token when it arrives inside a turn.
-  The abstention was a match on `Content::Blob` and everything else fell through to
-  `Content::byte_len`, which sums the blobs nested in a `Content::Blocks` - so the same 400 KB
-  screenshot counted `0` on its own and **100,005 tokens** in the sentence-and-a-screenshot turn
-  both dialects actually send, which is the shape a model is realistically shown one in. Free or a
-  hundred thousand tokens depending on which shape it arrived in, and the hundred thousand is the
-  exact failure the abstention was written to prevent.
-
-- A request carrying something the counter would not price no longer teaches `Calibrating`
-  anything. It corrects with a single multiplier, so an unpriced screenshot did not stay a local
-  gap: it got spread over the bytes the counter *could* see. Two thousand tokens of prose beside
-  one picture settles on a scale of about 1.5, and from then on the prose reads three thousand
-  while the picture still reads nothing - two figures wrong in opposite directions and no item's
-  number right. The ratio is cumulative, so deleting the picture did not undo it; it diluted over
-  the next few text-only requests, and `BOUNDS` capped the damage at ten times and did nothing
-  else. The counter disowned that content and the kernel now respects the disownment.
+  The abstention matched on `Content::Blob` and everything else fell through to `Content::byte_len`,
+  which sums nested blobs - so one 400 KB screenshot counted `0` alone and **100,005 tokens** in the
+  sentence-and-a-screenshot turn both dialects actually send.
+- A request carrying something the counter would not price no longer teaches `Calibrating`. It
+  corrects with a single multiplier, so an unpriced screenshot was spread over the bytes the counter
+  could see: the prose then reads high while the picture still reads nothing, cumulatively, so
+  deleting the picture did not undo it.
 
 ### changed
 
-- A blob names its size the way a person reads one: `[image/png, 12.05kB]` rather than
-  `[image/png, 12048 bytes]`. That string lands in a terminal's narrowest column, in a model's
-  context, and in the sentence a dialect sends where it has nowhere to put a payload, and in all
-  three the digits past the third are noise. Two decimals, because these figures get compared
-  against each other and `1.05MB` beside `1.10MB` is a comparison where `1MB` beside `1MB` is
-  not; thousands rather than 1024, and `kB` rather than `KiB`, because what they get compared
-  against is an API's documented limit and those are quoted decimal. Under a thousand it stays an
-  exact count with no decimals at all.
-
-- `BytesPerToken` returns `0` for a `Content::Blob` rather than dividing its bytes by four. Those
-  bytes are base64, and base64 over four is a number about an encoding and not about a model: a
-  400 KB screenshot would arrive as a hundred thousand tokens and send a compactor after a context
-  that is nowhere near full. What a picture really costs is a formula over its *dimensions* which
-  every vendor publishes and each publishes differently, and none of them is reachable from a byte
-  length.
-
-  So the figure is a **floor**, and it no longer is one silently: `BytesPerToken::uncounted`
-  answers `1` per blob, and that rides up to `Budget::uncounted` and `ContextItem::uncounted`
-  above. A real tokenizer through `Kernel::set_counter` is still the answer for anyone who needs
-  the number itself to be right, and `Blob::meta` is where it gets the inputs.
-
-### breaking
-
-- `Budget`, `ContextItem` and `Blob` each grew a public field, and none of the three is
-  `#[non_exhaustive]`, so a struct literal for any of them no longer compiles. The fix is `..` or
-  the constructor; nothing was removed and no signature changed.
-- `Blob` no longer derives `Eq`, because `serde_json::Value` does not implement it. It is still
-  `PartialEq`, so `==` is unaffected; a bound that named `Eq` is the only thing that breaks.
+- A blob names its size as `[image/png, 12.05kB]` rather than `12048 bytes`. Two decimals, since
+  these figures get compared; thousands rather than 1024, since what they get compared against is an
+  API's documented limit. Under a thousand it stays an exact count.
+- `BytesPerToken` returns `0` for a `Content::Blob` rather than dividing base64 by four, which is a
+  number about an encoding. The figure is a **floor** and no longer a silent one:
+  `BytesPerToken::uncounted` answers `1` per blob.
 
 ## [0.3.3] - 2026-09-09
 
 ### fixed
 
-- An interrupt no longer outlives the turn it stopped. `Kernel::interrupt` raises a flag that one
-  `step` is spent putting down, which is what stops an interrupt landing between two checks from
-  being lost - and there is one path where no step is ever spent on it: a `Provider` that watches
-  `DeltaSink::is_interrupted` and hands back what it had honours the interrupt *itself*. The turn
-  ends in `Finished` with the flag still up, and the next turn is the one that spends a step on
-  it: it transitions nothing and returns the state it was already in.
-
-  What that looks like from a client is a stop that eats the next message. Measured through
-  `kamchatka` against a real endpoint: press stop mid-answer, type "say apple", and the message
-  lands in the context with nothing answering it - the turn was consumed clearing a flag - while
-  the message *after* it gets a reply. The context then holds a question nobody answered, and the
-  screen shows an outcome carrying the previous turn's state, so nothing says why. Reaching
-  `Finished` now puts the flag down, on the grounds that a turn which is over has nothing left to
-  interrupt. The resting states an interrupt is actually for - `Ready`, `Deciding`, and `Idle`
-  mid-loop, the ones another request would otherwise go out from - are untouched, so the window
-  the single reader closes stays closed.
-
-- `Usage::output_tokens` says whether the reasoning is inside it, and `Usage::reasoning_tokens`
-  says it is a part of that number rather than a second one beside it. Documentation only - no
-  behaviour here moves - but the absence was load-bearing: the field said "tokens in the response"
-  and the dialects disagree about what that means. OpenAI's `completion_tokens` contains the
-  reasoning, Google reports `candidatesTokenCount` and `thoughtsTokenCount` side by side, and a
-  Google endpoint speaking the OpenAI dialect sends neither and leaves the thinking in the
-  difference between a total and its parts. Three providers in this workspace read those three
-  shapes into one field and settled the question three different ways, none of them written down,
-  because nothing here had settled it for them. A figure that means something different depending
-  on which endpoint answered is not a figure anybody can put beside another - which is the whole
-  claim `Usage` makes by existing separately from `Kernel::budget`.
+- An interrupt no longer outlives the turn it stopped. A `Provider` watching
+  `DeltaSink::is_interrupted` honours the interrupt itself, so the turn ends in `Finished` with the
+  flag still up and the *next* turn is spent clearing it - which from a client is a stop that eats
+  the next message. Reaching `Finished` now puts the flag down; the resting states an interrupt is
+  for are untouched.
+- `Usage::output_tokens` says whether the reasoning is inside it, and `Usage::reasoning_tokens` that
+  it is part of that number rather than a second one beside it. OpenAI's `completion_tokens`
+  contains the reasoning, Google reports `candidatesTokenCount` and `thoughtsTokenCount` side by
+  side, and a Google endpoint speaking the OpenAI dialect sends neither.
 
 ## [0.3.2] - 2026-09-08
 
 ### added
 
-- `ModelResponse::thinking`, which reads what the model thought wherever it is recorded - the same
-  accessor `ContextItem::thinking` has had all along, on the type a turn arrives as rather than the
-  one it is kept as. A turn is recorded one of two ways - the `reasoning` field, or a
-  `Block::Reasoning` among ordered blocks - and which one a caller gets is a property of whichever
-  provider it happens to be talking to. Both `calls` accessors read both, and a context item reads
-  both; a `ModelResponse` in hand was the one place left where asking what the model thought meant
-  reading a field, and being right on one dialect only.
-
-  An iterator of `Content`, because that is the shape of the two accessors beside it. Found while
-  writing a conformance case asserting that a stream cut mid-thought keeps the thinking: it did
-  keep it, in blocks, where the assertion was not looking.
+- `ModelResponse::thinking`, reading what the model thought wherever it is recorded - the
+  `reasoning` field or a `Block::Reasoning` among ordered blocks. An iterator of `Content`.
 
 ### changed
 
-- The `compare` example is `compare_models`. `nachalnik-eval` ships an example called `compare`
-  too - it puts saved *runs* side by side where this one puts *models* - and two example targets
-  with one name collide at `target/debug/examples/compare`, so `cargo build --workspace
-  --examples` produced one binary where two were asked for and whichever built last won. Cargo
-  says so and says it may become a hard error; it is a `cargo` warning rather than a `rustc` one,
-  which is why `RUSTFLAGS: -D warnings` never caught it and CI has been green over it since
-  `nachalnik-eval` landed.
-
-  This one gives way rather than the other because the eval crate's example names are quoted in
-  the write-up of a run, and a command in a paper that no longer exists is worse than a longer
-  command here. `compare_models` also says which of the two things it compares, which the bare
-  word never did once there were two.
+- The `compare` example is `compare_models`. `nachalnik-eval` ships one called `compare` too, and
+  two example targets with one name collide at `target/debug/examples/compare`. It is a `cargo`
+  warning rather than a `rustc` one, which is why `RUSTFLAGS: -D warnings` never caught it.
 
 ### fixed
 
-- A compaction pass that moved nothing leaves nothing behind. The checkpoint was already
-  conditional on the pass having done something - and then the summary went in whether or not it
-  had, and the condition on the checkpoint counted `summary.is_some()` as something done. A summary
-  stands *in the place of* what was taken, which is what its documentation says, so a pass that
-  took nothing has nowhere to put one. Left alone this compounds rather than annoys: the pass is
-  asked again before the next request, the context is no smaller than it was, so it says yes again.
-  Measured against a real endpoint with one pinned tool result over the target - the case
-  `Trim`'s own note names - three requests produced three summaries, each saying an earlier tool
-  result had been elided when none had, each spending one of the person's undos, and each growing
-  the request 53 tokens: a compactor enlarging the context it exists to shrink, for as long as the
-  session lasts.
-
+- A compaction pass that moved nothing leaves nothing behind. The summary went in regardless and the
+  checkpoint condition counted `summary.is_some()` as something done - so the pass was asked again
+  before the next request, the context was no smaller, and it said yes again.
 - A pass may only take what the request is carrying, and the projection is what knows. The guard
-  asked the item - `is_projected`, which is a question about the state - so an item the projector
-  had repaired away passed it: `Active`, holding everything it holds, contributing nothing. A
-  second result for a call that already has one is exactly that, and putting the whole of a
-  truncated output back beside the copy the model was shown produces one. Eliding it recovers
-  nothing while the report credits the pass with the whole of it (204 tokens, on a live run), and
-  moves something the model was never being shown into a state nobody chose. `apply_compaction`
-  already projects the context to get `tokens_before`; it now reads `included` from that same
-  projection and answers both questions from it, which is the answer `Projection` was the one
-  place holding.
-
-- A `CompactionReport`'s two totals are the projected ones its documentation always said they
-  were. They came from summing the items that were sending content, which drops an elided item
-  from the total altogether and never charges for the marker put in its place - so a pass was
-  credited with the whole of what it took away and nothing for what it left behind. On a plan
-  eliding one 4,000-byte result the report said 5 tokens remained where a request made right then
-  cost 27, the difference being the note in the projector's brackets; on a pass eliding twenty
-  small results the arithmetic reports a decrease on a context it has made bigger.
-
-  `Kernel::projected` had this right and said why in a note - "an elided item is a marker the size
-  of a line where the item behind it may be ten thousand tokens" - and `apply_compaction` was the
-  one place not going through it. Both now share a single `projection_tokens`, so the figure in a
-  report can be held against the `Budget` that provoked it, which is the only reason a client is
-  given both. `Event::ContextRecounted` keeps its item sums: recounting *is* about the items.
-
-  It costs one projection of the context at each end of a pass, which happens at most once per
-  request and moves `Content` by pointer.
-
-- What a shortened tool result *is* outlives every state it passes through. `note` is documented
-  as why an item is in its current state, and it is replaced whenever that changes - correctly,
-  because a reason for being excluded stops being true the moment something is put back. The pair
-  an output limit leaves behind was keeping a fact about its *content* in there: which item holds
-  the whole of it. So a session that cycled both rows with `space` while trying to understand them
-  lost the only sentence saying that one was a short copy of the other - destroyed by looking at
-  it, and by the one gesture a person makes while looking.
-
-  It goes in `included_because` now, which is why an item is in the context at all and which no
-  state change touches. The archived half keeps its note as well, because "the model was shown a
-  truncated copy" really is why *that* one is archived. Both fields say in their own docs which
-  facts belong in which, since the answer is not obvious and getting it wrong is silent:
-  `included_because` for anything that has to survive a state change, `note` for the state.
-
-  `included_because` has been read out by `kamchatka`'s item view and by `Event::ContextAdded`
-  since both existed, and was always empty because nothing in the kernel set it. This is the first
-  thing that does.
-
-- A second result for one call is not reported as a missing call. There are two ways for a tool
-  result to fail to claim its call and the repair described both as the first: a call this
-  projection does not carry is an orphan, but a call it *does* carry whose answer is already spoken
-  for is a second result for it. That is not a fault - it is what restoring the whole of a
-  truncated output beside the copy the model was shown produces, which is the intended way to
-  send the whole instead, and the pairing then drops the short copy exactly as it should. Somebody
-  who has just done that read `the call \`c1\` is not in the projection` about a call sitting on
-  their screen. It now says `already has a result`, and `Skipped::reason` says
-  `a second result for one call` rather than `an orphaned tool result`.
-
-- A superseded item's note no longer repeats the state it is in. `Kernel::supersede` set it to
-  `superseded by item 8` while the state was already `Superseded`, and a skipped item's reason is
-  written as `{state}: {note}` - so every screen built on that read `superseded: superseded by item
-  8`. The note is now `replaced by item 8`, which reads correctly composed and also on its own,
-  which the shorter `by item 8` would not: a client listing an item on one line shows the note
-  bare, and `by item 8` there says nothing.
+  asked `is_projected`, a question about the state, so an item the projector had repaired away
+  passed it. `apply_compaction` reads `included` from the projection it already takes.
+- A `CompactionReport`'s two totals are the projected ones its documentation said they were. They
+  summed the items sending content, which drops an elided item and never charges for its marker - so
+  a pass eliding one 4,000-byte result reported 5 tokens remaining where a request cost 27. Both
+  paths share `projection_tokens`. `Event::ContextRecounted` keeps its item sums.
+- What a shortened tool result *is* outlives every state it passes through. The pair an output limit
+  leaves behind kept "which item holds the whole of it" in `note`, which is replaced whenever the
+  state changes. It goes in `included_because` now. Both fields document which facts belong in
+  which: `included_because` for anything that must survive a state change, `note` for the state.
+- A second result for one call is reported as `already has a result` rather than as a missing call.
+  It is what restoring the whole of a truncated output produces.
+- A superseded item's note reads `replaced by item 8` rather than `superseded by item 8`, which
+  composed as `superseded: superseded by item 8`.
 
 ## [0.3.1] - 2026-09-06
 
 ### added
 
-- `Kernel::recalibrate`: the front door for `TokenCounter::recalibrate`, which recounts. A
-  correction changes what is counted *from then on*, exactly as `observe` does, so applying one to
-  a context that is already counted leaves every stored figure on the old scale while everything
-  projected is on the new one - two budgets for the same bytes, which is what a snapshot's
-  calibration exists to avoid. `Kernel::resume` sidesteps it by recalibrating before the items are
-  counted; anything reading a `Snapshot::calibration` into a session that is already running had
-  no such route and had to know the ordering rule. It recounts for the reason `set_counter` does,
-  and does nothing at all for a counter that does not learn or a correction already in force.
-
-- `Kernel::reserve_calls`, and the `Event::ToolCallsReserved` it announces. `Kernel::resume` has
-  always taken `Snapshot::used_calls`, which covers a session picked back up in another process;
-  the other way of reading a snapshot had nothing. A client that merges one *into* a session it is
-  already running keeps the kernel it has, so the turns it pushes arrive carrying identifiers that
-  kernel never issued - and the next response is then free to hand one of them back, with the
-  repair having nothing to compare it against and the request that follows carrying the same
-  `tool_call_id` twice. `kamchatka`'s `/load` is exactly that client, and it could not do anything
-  about it from out there: a downstream crate needing a core change to do an ordinary thing is the
-  sign of a seam that is not finished.
+- `Kernel::recalibrate`, the front door for `TokenCounter::recalibrate`, which recounts. Applying a
+  correction to an already-counted context otherwise leaves stored figures on the old scale while
+  everything projected is on the new one.
+- `Kernel::reserve_calls`, and `Event::ToolCallsReserved`. A client merging a snapshot *into* a
+  running session keeps its kernel, so the turns it pushes carry identifiers that kernel never
+  issued - and the next response is free to hand one back, with the request carrying the same
+  `tool_call_id` twice.
 
 ### fixed
 
-- A compaction pass that moves nothing takes no checkpoint. Every other operation here has
-  followed that rule and been tested for it; `apply_compaction` checkpointed before it knew
-  whether the plan amounted to anything, so a pass whose every candidate was pinned or already
-  elided spent one of the sixteen undos a person has. The sharper half is the redo: `checkpoint`
-  discards the redo stack, so an undone change became unreachable - and since a `Compactor` is
-  asked before *every* request, a compactor in that state took the redo away on every one of them
-  for the rest of the session. The plan is now worked out before anything moves and the checkpoint
-  is taken only if something will.
-
-- `LinearProjector` holds a mid-turn item back under `send_blocks` too. The branch that sends an
-  assistant turn as ordered blocks pushed its message and skipped the bookkeeping at the foot of
-  the loop - which is the only place a turn's outstanding calls are counted and the only place the
-  held items are flushed. So with that flag on, the repair released in 0.3.0 never fired at all,
-  and an item pushed into the context while a turn was still collecting its results went out
-  between the call and its answer: the request every OpenAI-compatible API refuses outright,
-  naming the `tool_call_id` that went unanswered. Both shapes now fall through to the same
-  bookkeeping, and a test drives the fixture through both.
-- Eliding an assistant turn takes its thinking with its words. It did not, so a turn whose content
-  had become a one-line marker went on costing every token the model had thought - eliding it
-  freed nothing, `tokens_withheld` claimed those tokens were being kept from the model while they
-  were still in the request, and a compactor would have watched the total refuse to move and
-  elided it again. Measured on a turn with 4,000 bytes of reasoning, the projected budget did not
-  change by one token. Under `send_blocks` it was worse than an accounting error: a signed
-  thinking block went out beside a marker that is not the words it was signed over, which is the
-  thing binding `Part::extra` to its block exists to prevent.
-- `Calibrating` scales a wrapped counter's `count_message` instead of discarding it. It delegated
-  `count_schema` and `count_item` and not this one, so the default implementation ran on the
-  wrapper and counted the parts - and `count_message` is both the method the budget is counted
-  over and the one a real tokenizer overrides, precisely to charge for the per-message framing an
-  estimate cannot see. A counter charging ten tokens a message reported four for a message it
-  counts as fourteen.
-- `Selector` knows `state:elided`. The state a `Compactor` is told to prefer was the one state a
-  client could not name: `state:elided` was a parse error, and a `Selector::State` holding it
-  printed as a string that would not parse back.
-- `Kernel::turn` cannot swallow an interrupt. Both it and the `step` it called cleared the flag,
-  so one landing between the two checks was spent on a step that transitioned nothing - and the
-  turn, handed back an ordinary resting state, went round and sent the next request anyway, with
-  `turn.interrupted` already on the log saying it had been asked to stop. The step is now the only
-  reader of the flag and reports back whether it acted on it.
+- A compaction pass that moves nothing takes no checkpoint. It checkpointed before knowing whether
+  the plan amounted to anything, so a pass whose every candidate was pinned spent one of sixteen
+  undos - and `checkpoint` discards the redo stack, so a compactor in that state took the redo away
+  on every request for the rest of the session.
+- `LinearProjector` holds a mid-turn item back under `send_blocks` too. The blocks branch skipped
+  the bookkeeping that counts a turn's outstanding calls and flushes held items, so with that flag
+  on the 0.3.0 repair never fired.
+- Eliding an assistant turn takes its thinking with its words. A turn whose content had become a
+  marker went on costing every token the model had thought, so eliding it freed nothing. Under
+  `send_blocks` a signed thinking block went out beside a marker it was not signed over.
+- `Calibrating` scales a wrapped counter's `count_message` instead of discarding it - the method the
+  budget is counted over, and the one a real tokenizer overrides to charge for per-message framing.
+- `Selector` knows `state:elided`. The state a `Compactor` is told to prefer was a parse error, and
+  a `Selector::State` holding it printed as a string that would not parse back.
+- `Kernel::turn` cannot swallow an interrupt. Both it and the `step` it called cleared the flag, so
+  one landing between the two checks was spent on a step that transitioned nothing. The step is the
+  only reader now and reports whether it acted.
 
 ## [0.3.0] - 2026-09-05
 
 ### added
 
 - `ModelInfo::parameters`: the names of the `Params` a model accepts, where the provider publishes
-  them. Empty means "not published", never "takes none" - a provider that says nothing is the
-  common case, and reading its silence as a prohibition would invent a restriction it never
-  stated. What it is for is the opposite mistake: a parameter set for a model that does not take
-  it is accepted, sent and ignored in silence.
+  them. Empty means "not published", never "takes none".
 
 ### fixed
 
-- `LinearProjector` keeps a tool result next to the call it answers. An item pushed into the
-  context while a turn was still collecting its results - a note a tool writes on the model's
-  behalf, mid-turn - was projected in the position it arrived in, between the assistant message
-  and the results. Every OpenAI-compatible API refuses that request outright, naming the
-  `tool_call_id` that went unanswered, and the whole session dies. It is provider-dependent, so it
-  was silent: Google's API accepts the sequence and so does at least one OpenRouter upstream,
-  which is why three published transcripts never showed it. Five of seven live runs died on it,
-  each immediately after the model had written down ten correct findings. Whatever arrives
-  mid-turn is now held until the turn has been answered and listed in `Projection::repairs`.
+- `LinearProjector` keeps a tool result next to the call it answers. An item pushed into the context
+  while a turn was still collecting its results was projected where it arrived, between the
+  assistant message and the results - a request every OpenAI-compatible API refuses outright.
+  Provider-dependent, so it was silent: Google's API accepts the sequence and so does at least one
+  OpenRouter upstream. Whatever arrives mid-turn is held until the turn has been answered, and
+  listed in `Projection::repairs`.
 
 ## [0.2.1] - 2026-09-01
 
 ### added
 
-- `PermissionPolicy::why`, defaulted to `None`: the kernel asks a policy that is about to refuse
-  a call whether it has anything to say, and puts the answer into the tool result the model reads.
-  The reason is emphatically not the kernel's - it is made of a policy's own vocabulary, which
-  capability or which path rule actually did it, and a kernel that invented one would be guessing
-  at somebody else's decision. A downstream policy that knew exactly why had no way to say so, and
-  a policy needing a core change to do an ordinary thing is a seam that is not finished.
+- `PermissionPolicy::why`, defaulted to `None`: the kernel asks a policy about to refuse a call
+  whether it has anything to say, and puts the answer into the tool result. The reason is made of a
+  policy's own vocabulary, and a kernel inventing one would be guessing at somebody else's decision.
 
 ### changed
 
-- The truncation marker no longer names this crate. `[... 943 bytes truncated by nachalnik ...]`
-  was addressed to a reader who has never heard of it; what the model can use is that something
-  was cut, how much is missing, and that a limit rather than the tool did it - all of which say
-  "ask for less next time". It is `[... 943 bytes truncated by an output limit ...]`.
-- A refused call is told which *kind* of refusal it was. `the call was not permitted` is true and
-  leaves open the only question a refused model can act on: a standing rule means the same call
-  will meet the same answer, and an answer to *this* call means a different approach may well be
-  allowed. Which of the two happened is the kernel's own knowledge, since it resolved the grant,
-  so it says so - and a model that cannot tell them apart rephrases at a rule that will never
-  move, or abandons an approach that was refused once.
+- The truncation marker reads `[... 943 bytes truncated by an output limit ...]` rather than naming
+  this crate. What the model can use is that something was cut, how much, and that a limit did it.
+- A refused call is told which *kind* of refusal it was. A standing rule means the same call will
+  meet the same answer; an answer to *this* call means a different approach may be allowed.
 
 ## [0.2.0] - 2026-08-30
 
-An assistant turn can be the ordered sequence the model produced it in, rather than a content
-slot, a reasoning slot and a flat list of calls.
+An assistant turn can be the ordered sequence the model produced it in, rather than a content slot,
+a reasoning slot and a flat list of calls.
 
-**Breaking:** `LinearProjector` has a new public field, so a struct literal that names every field
-no longer compiles; add `..Default::default()`. `Content` and `Block` are `#[non_exhaustive]`, so
-the new variants are additive.
+**Breaking:** `LinearProjector` has a new public field, so a struct literal naming every field no
+longer compiles; add `..Default::default()`. `Content` and `Block` are `#[non_exhaustive]`.
 
 ### added
 
-- `Content::Blocks`, and the `Block` enum it holds: an assistant turn as the *ordered* sequence
-  the model produced it in - thinking, a sentence, a tool call, another sentence after it. Some
-  APIs make that order part of the message, and a turn with one content slot, one reasoning slot
-  and a flat list of calls cannot express it however cleverly it is projected. It is a variant of
-  `Content` rather than a field on `Message` because content is the one thing a `ModelResponse`, a
-  `ContextItem` and a `Message` all carry, so the order survives the whole way from the wire, into
-  the context where it can be counted and pruned, and back out again; a field on `Message` would
-  have been a shape the context could not hold, and a projector cannot recover an order that was
-  never recorded.
+- `Content::Blocks` and the `Block` enum it holds: a turn as the ordered sequence it was produced in
+  - thinking, a sentence, a tool call, another sentence. A variant of `Content` rather than a field
+  on `Message`, because content is the one thing a `ModelResponse`, a `ContextItem` and a `Message`
+  all carry, so the order survives from the wire into the context and back out.
 - `Message::calls`, `ModelResponse::calls` and `ContextItem::calls`: the tool calls a turn asked
-  for, wherever they are recorded. A turn is recorded *either* the conventional way *or* as
-  blocks, never both, so nothing can disagree - and these are what the kernel, the projector and a
-  provider should read. A provider reading the `tool_calls` field directly would send the words of
-  an ordered turn with none of the calls in it, which most APIs reject and which is very hard to
-  see afterwards.
-- `LinearProjector::send_blocks`, off by default: whether an assistant turn is projected as
-  blocks or flattened into the three slots this projector's dialect has. On, every assistant turn
-  goes out as blocks - a conventional one assembled into the conventional order - so a context
-  holding some of each projects to one shape rather than two. Off, a turn recorded as blocks is
-  flattened, and where that loses something (two thinking blocks joined into one, a sentence that
-  came after a call arriving before it, a signature that has nowhere to go) it is reported in
-  `Projection::repairs` instead of being done quietly. That is the honest version of the reassembly a provider used to have to do for
-  itself, and for a signed thinking block it is not good enough, which is why the flag exists.
-- `Part`, which is what the two block variants that are not calls hold: a `Content` and an
-  `extra`. It is `ToolCall::extra` for the rest of a turn, and it exists because some APIs sign
-  each piece of one rather than the whole - Gemini's `thoughtSignature` rides on a text part as
-  readily as on a call, and `generateContent` puts it on the text part of a turn that called
-  nothing. Bound to the block rather than kept beside it, so that whatever removes the block
-  removes the signature of the thing that is no longer there; eliding a turn is the case that
-  makes it matter, since the marker replacing the words must not go out signed as if it were them.
-- `ContextItem::thinking`, the counterpart of `ContextItem::calls`: the model's thinking wherever
-  it is recorded, in order. An ordered turn keeps it in the content, where `ContextItem::reasoning`
-  cannot see it, so a client that only knew about the conventional slot would show a reasoning
-  model as having done no reasoning at all.
-- `Block::name` / `call` / `said` / `thought` / `part` / `extra` / `byte_len`, the `Block::text`
-  and `Block::reasoning` constructors, `Content::blocks` / `as_blocks`, `Message::blocks`,
-  `ModelResponse::blocks`, and `ToolCall::byte_len` - the last one says once what a call costs,
-  which `TokenCounter::count_item` has always added on top of the content.
+  for, wherever recorded. A turn is recorded either the conventional way or as blocks, never both. A
+  provider reading the `tool_calls` field directly would send an ordered turn with no calls in it.
+- `LinearProjector::send_blocks`, off by default. Off, a turn recorded as blocks is flattened, and
+  where that loses something - two thinking blocks joined, a sentence that came after a call
+  arriving before it, a signature with nowhere to go - it is reported in `Projection::repairs`.
+- `Part`, what the two non-call block variants hold: a `Content` and an `extra`. Some APIs sign each
+  piece of a turn rather than the whole; Gemini's `thoughtSignature` rides on a text part as readily
+  as on a call. Bound to the block, so removing the block removes the signature with it.
+- `ContextItem::thinking`, the counterpart of `ContextItem::calls`. An ordered turn keeps the
+  thinking in the content, where `ContextItem::reasoning` cannot see it.
+- `Block::name` / `call` / `said` / `thought` / `part` / `extra` / `byte_len`, the `Block::text` and
+  `Block::reasoning` constructors, `Content::blocks` / `as_blocks`, `Message::blocks`,
+  `ModelResponse::blocks`, and `ToolCall::byte_len`.
 
 ### changed
 
-- `Content::to_text` on blocks is what the turn *said* - the text blocks, joined with a newline -
-  and not what it costs: thinking is not something the model uttered, and a provider putting it in
-  a `content` field would be sending the model its own reasoning back as if it had. `byte_len`
-  counts all of it, calls included, and `truncate_to` measures against that, so a turn whose words
-  fit but whose calls do not is over the limit and the number it reports is everything that went.
+- `Content::to_text` on blocks is what the turn *said* - the text blocks joined - and not what it
+  costs: a provider putting thinking in a `content` field would send the model its own reasoning
+  back as if it had uttered it. `byte_len` counts all of it, and `truncate_to` measures against
+  that.
 - `Kernel::repair_call_ids` repairs a call wherever it lives, rewriting the sequence when one is
-  inside a turn's blocks - and only when something actually needed repairing.
-- The OpenAI-compatible providers in `nachalnik-utils` and `kamchatka` render a message's calls
-  through `Message::calls`, so an ordered turn projected at them still goes out with its calls.
+  inside a turn's blocks, and only when something needed repairing.
 
 ## [0.1.0] - 2026-08-29
 
@@ -749,67 +300,46 @@ and the requests as explicit state.
 ### added
 
 - `Kernel`, the loop: `step` performs exactly one transition and returns the `State` it produced,
-  `turn` repeats until the model ends its turn or somebody has to decide something. `Requesting`
-  and `Executing` are refused rather than duplicated, and a dropped step returns the kernel to
-  `Idle` rather than wedging it.
+  `turn` repeats until the model ends its turn or somebody has to decide something. `Requesting` and
+  `Executing` are refused rather than duplicated, and a dropped step returns to `Idle`.
 - `Context`, a list of identified items. Removal is a state change, so a removed item can still be
-  listed, inspected and restored - and that holds for an output limit too, which archives the
-  whole of what a tool said beside the shortened copy the model is shown.
+  listed, inspected and restored - including for an output limit, which archives the whole of what a
+  tool said beside the shortened copy the model is shown.
 - `undo` / `redo` / `supersede` / `replace` / `annotate` / `push_all`, each one operation.
 - `ContextState::Elided`, the third answer between in and out: the item stays in the request as a
-  short marker - its own note, in brackets - instead of its content. It is what a `Compactor`
-  should reach for, through `CompactionPlan::elide`. Excluding a tool result forces the projector
-  to drop the call that asked for it, since a call with no result is a request most providers
-  reject, so the model ends up reading a history in which it never asked for anything, directly
-  under a summary saying the results were dropped; an elided result still answers its call, and
-  those two accounts stop disagreeing. `ContextState::sends_content` is the predicate the token
-  figures are built on, and an elided item's own size is `tokens_withheld` rather than spent.
+  short marker instead of its content, which is what a `Compactor` should reach for through
+  `CompactionPlan::elide`. Excluding a tool result forces the projector to drop the call that asked
+  for it, so the model reads a history in which it never asked; an elided result still answers its
+  call. `ContextState::sends_content` is the predicate the token figures are built on.
 - `TokenCounter::count_message`, defaulted, and with it a budget counted over the messages the
-  projector produced rather than over the items that went in. The two are not the same figure and
-  never were: a reference is labelled on its way out, so `src/parser.rs:\n` was going on the wire
-  without appearing on the bill. It also means the budget answers with what the counter knows now
-  rather than what it knew when each item was pushed, so a `Calibrating` correction shows up
-  immediately instead of at the next `recount`.
+  projector produced rather than the items that went in. A reference is labelled on its way out, so
+  `src/parser.rs:\n` went on the wire without appearing on the bill. It also means the budget
+  answers with what the counter knows now rather than when each item was pushed.
 - Six seams, all replaceable at runtime: `Provider`, `Tool`, `PermissionPolicy`, `Projector`,
-  `TokenCounter`, `Compactor`. Each of the four that had no other way to identify itself carries a
-  `name()` whose default is the implementing type's own path, so `Kernel::policy`, `projector`,
-  `counter` and `compactor` hand back something a client can actually show somebody.
+  `TokenCounter`, `Compactor`. Each of the four with no other way to identify itself carries a
+  `name()` defaulting to the implementing type's path.
 - `preview_request` and `preview_payload`: the exact request, and the provider's own bytes for it,
   before anything is sent.
 - `Event`, an append-only session log of typed events covering every transition, broadcast live.
-  Replacing any of the seams is an event too - `policy.changed`, `projector.changed`,
-  `counter.changed`, `compactor.changed`, each carrying `from` and `to` as the seams' own `name()`
-  - so a log can answer "what was projecting these requests?" for a session where somebody changed
-  it half way. A compactor removed is `to: None`, "nothing will ever be dropped from now on" being
-  the change that matters most and the one least visible. Context events are recorded while the
-  context lock is still held, so the log's account of an item's states is in the order they were
-  applied rather than the order two threads happened to announce them.
-- `Snapshot` / `resume`, because a log of events that name their items cannot rebuild the items.
-  A snapshot carries `calibration`, so a resumed session does not spend its first requests
-  relearning what it had already been told.
-- `interrupt`, which stops the loop between transitions, and - through
-  `DeltaSink::is_interrupted` and `OutputSink::is_interrupted` - lets a provider or a tool stop
-  what is already in flight without losing what it had. Plus `Config::max_requests_per_turn` and
-  `cancel_pending_calls`.
-- `Calibrating`, a token counter that corrects another against what providers actually charge,
-  via `TokenCounter::observe` - the kernel reports what a request was estimated at and what it
-  cost, and the counter decides what to make of it. It is what `Kernel::new` starts with, wrapped
-  around `BytesPerToken`, correcting by `1.0` until a provider has said something; the bare
-  estimate is `set_counter(Arc::new(BytesPerToken::default()))` for anybody who wants it back.
-  `TokenCounter::calibration` and `recalibrate` are how one counter hands that over to another.
-- `Kernel::with_context` and `with_history`: a question about the context or the log - a count, a
-  search - answered without copying either. `context()` and `history()` say on themselves that
-  they copy the whole thing.
+  Replacing any seam is an event carrying `from` and `to`; a compactor removed is `to: None`.
+  Context events are recorded while the context lock is held, so the log's account of an item's
+  states is in the order they were applied.
+- `Snapshot` / `resume`, because a log of events that name their items cannot rebuild the items. A
+  snapshot carries `calibration`, so a resumed session does not relearn what it had been told.
+- `interrupt`, which stops the loop between transitions, and - through `DeltaSink::is_interrupted`
+  and `OutputSink::is_interrupted` - lets a provider or tool stop what is in flight without losing
+  what it had. Plus `Config::max_requests_per_turn` and `cancel_pending_calls`.
+- `Calibrating`, a token counter that corrects another against what providers charge, via
+  `TokenCounter::observe`. `Kernel::new` starts with it wrapped around `BytesPerToken`, correcting
+  by `1.0` until a provider has said something; the bare estimate is
+  `set_counter(Arc::new(BytesPerToken::default()))`.
+- `Kernel::with_context` and `with_history`, answering a question about the context or the log
+  without copying either. `context()` and `history()` say on themselves that they copy.
 - `Config::parallel_tool_calls`, off by default: the one place the kernel spawns tasks.
-- Features: `selectors` (a small language for naming context items) and `test` (a scripted
-  provider, dummy tools, off-the-shelf policies and a mechanical compactor).
-- Five dependencies, no `unsafe`, no system prompt, no default tools, no HTTP client. The
-  OpenAI-compatible provider the examples and the live suite talk through lives in
-  `nachalnik-utils`, an unpublished `0.0.0` workspace member that is a dev-dependency and nothing
-  else - so none of it reaches anybody who depends on this crate.
+- Features: `selectors` (a small language for naming context items) and `test` (a scripted provider,
+  dummy tools, off-the-shelf policies and a mechanical compactor).
+- Five dependencies, no `unsafe`, no system prompt, no default tools, no HTTP client.
 - The crate documentation says what it does *not* protect you from: there is no sandbox and the
-  kernel executes nothing, so what it enforces is that a refused call never reaches `Tool::invoke`
-  - a decision point with a paper trail rather than a boundary. `Capability`'s own documentation
-  says that `Shell` subsumes every other capability, so a policy that allows it has allowed all of
-  them, and that what closes the gap is `PermissionRequest::args`, which a policy is handed and a
-  capability list cannot see.
+  kernel executes nothing, so what it enforces is that a refused call never reaches `Tool::invoke`.
+  `Capability`'s documentation says `Shell` subsumes every other capability, and that what closes
+  the gap is `PermissionRequest::args`, which a policy is handed and a capability list cannot see.

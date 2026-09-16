@@ -9,263 +9,120 @@ minor bump may break you.
 
 ### added
 
-- **`OpenAiCompatible::thinking_in_content`, which takes thinking a model wrote into its own answer
-  back out of it.** This dialect carries the thinking in `reasoning`, beside the content and not in
-  it - but a model whose chat template ends the prompt *inside* a thinking block never writes the
-  `<think>` that opened it, and an endpoint serving that model with no reasoning parser of its own
-  passes the whole thing through as content. What arrives is an answer with its own thinking on the
-  front and a bare `</think>` in the middle of it.
+- `OpenAiCompatible::thinking_in_content`, on by default: takes thinking a model wrote into its own
+  content back out of it. A model whose chat template ends the prompt inside a thinking block never
+  writes the opening `<think>`, and an endpoint with no reasoning parser passes the lot through as
+  content - so the answer arrives with its thinking on the front, a bare `</think>` in the middle,
+  and `ModelResponse::reasoning` as `None`. The thinking before the first closing tag becomes the
+  reasoning and what follows is the answer.
 
-  Seen against `poolside/laguna-xs-2.1:free` on nine turns of one conversation: the tag went into
-  the context, the transcript and the session log - the file people send each other - and
-  `ModelResponse::reasoning` was `None` on every one of those turns while the reasoning sat in the
-  text. So a `</think>` in the content is read as what it is, the thinking in front of it becomes
-  the reasoning, and what follows is the answer.
+  Guarded twice, since the alternative is emptying the answer of every model that has no thinking at
+  all: only the **first** closing tag is a delimiter, and only where the endpoint reported no
+  reasoning of its own. `thinking_in_content(false)` turns it off, worth doing where a model may
+  write the characters and mean them. The whole response stays on `ModelResponse::raw`.
 
-  Guarded twice, because the alternative to a guard here is emptying the answer of every model that
-  has no thinking at all. Only the **first** closing tag is a delimiter - past it a model is writing
-  *about* the tags, and reading the second would cut an answer apart at a word inside it - and only
-  where the endpoint **reported no reasoning of its own**, since one that fills that field has a
-  parser and its content is content. On by default and `thinking_in_content(false)` turns it off,
-  which is worth doing where a model may write the characters and mean them. The whole response
-  stays on `ModelResponse::raw` either way.
-
-  Both wire paths, from one reader: the streamed one is where it was found and the whole-answer one
-  would have failed the same way. What the streaming path cannot do is split the *live* fragments,
-  because nothing watching them arrive knows a `</think>` is coming until it does - and holding them
-  back on the chance would leave a model that never writes one silent to the end of its turn. So the
-  live view shows what the wire showed, and the turn that is kept is the one taken apart.
+  One reader, both wire paths. The *live* fragments are not split, since nothing watching them
+  arrive knows a `</think>` is coming until it does, and holding them back would leave a model that
+  never writes one silent to the end of its turn.
+- `OpenAiCompatible::filed_under`: `X-OpenRouter-Categories`, a comma-separated list beside the
+  referer, which is what puts an app in the [marketplace](https://openrouter.ai/apps) rather than
+  only in the rankings. An unrecognised category is dropped silently rather than refused, so nothing
+  here checks the spelling and there is no list of category names in this crate. OpenRouter
+  documents two per request and ten in total, merged across requests. Sent only where `on_behalf_of`
+  named an app, and only to the endpoint that reads it, since the page is built against the URL.
+- `OpenAiCompatible::unlisted`: `X-OpenRouter-App-Visibility: hidden`, for attribution that is
+  telemetry rather than a listing. It reaches only the request that *creates* the page, so a URL
+  that already has one keeps its visibility - which is what makes it safe to expose, since a caller
+  of somebody else's app cannot hide it. Public is the default and sends nothing.
 
 ### fixed
 
-- **`with_client` says that a client of the caller's own has to have the cryptography installed
-  first.** reqwest is built here with `rustls-no-provider`, so `ClientBuilder::build` panics until
-  something has installed a process default - and it panics recommending `aws_lc_rs`, which is
-  reqwest's suggestion rather than the provider this crate uses. Every constructor here calls
-  `install_crypto`, which is exactly why a caller who builds their own client is the one who finds
-  out, and why the function is public.
-
-  Found in this crate's own attribution tests, which build a client with a `resolve` on it and had
-  been doing it before reaching any constructor. Three of the four failed *sometimes*: the fourth
-  builds no client of its own, and whether the other three panicked came down to whether its
-  `OpenAiCompatible::new` won the race and installed the provider first. A test suite whose result
-  depends on which of its threads got there first is one that will eventually be believed on a bad
-  day, so the helper installs it and the note on `with_client` says why anybody else would have to.
-
-### added
-
-- **`OpenAiCompatible::filed_under`, which says what kind of program is calling.** The two headers
-  this crate sent named the app and stopped there, so an attributed app reached the rankings and
-  never the [marketplace](https://openrouter.ai/apps) - which is the half organised by what a
-  program *is* rather than by how many tokens it spent. `X-OpenRouter-Categories` is a
-  comma-separated list beside the referer, and it is the only thing that puts an app in a group.
-
-  The reason recorded here for not sending it was wrong, and wrong in the direction that matters:
-  an unrecognised category is not refused, it is **dropped** - no error, no notice, a 200 like any
-  other. So a misspelling costs the request nothing and costs the page everything, and nothing on
-  the wire will ever mention it. What is sent is what the caller gave, in the order it gave them:
-  OpenRouter documents two per request and ten in total, merged across requests rather than
-  replaced, and neither the count nor the spelling is checked here. There is no list of the
-  category names in this crate either, for the same reason there is no list of model names - it is
-  somebody else's, it is on their page, and a copy in here goes stale the day they add one.
-
-  Sent only where `on_behalf_of` named an app, and only to the endpoint that reads it. That
-  pairing is the API's own rule rather than a caution: the page is built against the URL, so a
-  category with no URL beside it describes nothing and is a header that tells a server what the
-  caller is for no return at all. It is a field beside the attribution rather than one inside it
-  so that the order two builder methods are called in cannot decide what goes out.
-
-- **`OpenAiCompatible::unlisted`, for attribution that is telemetry rather than a listing.**
-  `X-OpenRouter-App-Visibility: hidden` keeps the app page out of the rankings, the marketplace
-  and the public pages while the attribution itself goes on working, which is what somebody
-  pointing several internal services at one account wants and could not ask for here.
-
-  It reaches only the request that *creates* the page. A URL that already has one keeps the
-  visibility it has, in either direction - so a program with one fixed URL has a single request,
-  once, in which this means anything, and neither its author nor anybody running it can change it
-  with a header afterwards. That is also what makes it safe to expose: a caller of somebody else's
-  app cannot hide it. Public stays the default and sends nothing, because public has no value of
-  its own - there is `hidden` or there is no header, and there is no third thing to say.
-
-  Nothing else in the workspace sets it. `kamchatka`'s page is the point of `kamchatka`'s
-  attribution.
+- `with_client` documents that a caller's own client needs `install_crypto` first. reqwest is built
+  here with `rustls-no-provider`, so `ClientBuilder::build` panics until something has installed a
+  process default - recommending `aws_lc_rs`, which is reqwest's suggestion and not the provider
+  this crate uses. Found in this crate's own attribution tests, where three of four failed depending
+  on which thread installed the provider first.
 
 ## [0.2.1] - 2026-09-15
 
 ### fixed
 
-- **Two items merged into one Gemini turn ran into each other.** This API takes the parts of a
-  turn and concatenates their text with *nothing* between them, and the provider merges
-  consecutive same-role messages into one turn - which it has to, because the dialect alternates
-  and three tool results are three parts of one turn rather than three turns. What nothing
-  accounted for is that two *text* parts merged that way are read as one run of words.
-
-  Found live, and the model's answer is what named it: a note ending `...the codename is
-  kotelnaya` followed by a question beginning `what is the codename?` reached the model as
-  `kotelnayawhat is the codename?`, and it answered `codename is kotelnayawhat`. This is the
-  commonest shape there is - every reference a client sends is one of these, with the question
-  about it in the message after - and it has been true of `-f`, of an attachment and of a note
-  since the dialect existed. It is milder where the item ends in a newline of its own, which is
-  why a file reads as merely joined and a note reads as a typo.
-
-  The other dialect gets this for free by keeping one message per item; here the parts of a turn
-  *are* the merge, so the separator has to live inside the text, and the merge is the last place
-  that knows there were two of them. Text against text only - a `functionResponse` is a field of
-  its own and a blob is `inline_data`, and neither runs into a neighbour. The boundary is
-  normalised rather than appended to, so an item ending in three blank lines and one ending in
-  none are separated the same way and the same request renders to the same bytes twice.
+- Two text items merged into one Gemini turn no longer run into each other. The API concatenates the
+  parts of a turn with nothing between them, and the provider merges consecutive same-role messages
+  because the dialect alternates - so a note ending `...the codename is kotelnaya` followed by
+  `what is the codename?` reached the model as `kotelnayawhat is the codename?`. Text against text
+  only; the boundary is normalised, so the same request renders to the same bytes twice.
 
 ## [0.2.0] - 2026-09-11
 
 ### changed
 
-- **A stall says an interrupt gives up on it, where it used to say `esc` does.** The same sentence
-  in three places - the wait before the first byte, and a stream that goes quiet in either dialect.
-
-  What this crate is handed is a `DeltaSink`, and what it asks is whether that has been
-  interrupted; how a caller decides to set it is none of its business. Naming a key was true of
-  the one client in this workspace and became advice nobody could take the moment a second arrived
-  - a headless run printed `esc gives up on it` down a pipe, telling whoever was reading to press
-  a key at a program with no keyboard. The three comments and the one test that also said `esc`
-  now say the same thing, so that the next reader of them is not told the caller has a terminal.
-
-  The sentence is written once now, in `waiting`, which is where both dialects already keep the
-  rules they share - `not_answered` for a model that has said nothing at all yet and `gone_quiet`
-  for a stream that stopped halfway, since those are different news. It was three `format!`s, and
-  a wording fix was therefore a three-place edit that nothing would have caught half of.
-
-  It is also the first test of what either sentence says. Measured, and the measurement is the
-  argument: changing the wording in all three places broke no test in the workspace, and putting
-  `esc` back now fails exactly one.
-
-- Requires `nachalnik` 0.5.0. Nothing in this crate's own API moved, and nothing here implements
-  the trait that changed - a provider speaks to an endpoint and has no opinion about who may run a
-  tool - but it names runtime types throughout its public interface, so a caller cannot mix this
-  release with a `nachalnik` from the 0.4 series. The runtime's 0.5.0 re-signed
-  `PermissionPolicy::why` to take the `PermissionRequest` it was asked about rather than a
-  `ToolCallId`.
+- A stall says an interrupt gives up on it, where it used to say `esc` does, in all three places.
+  This crate is handed a `DeltaSink` and asks whether it has been interrupted; how a caller sets it
+  is none of its business, and a headless run was printing `esc gives up on it` down a pipe. The
+  sentence is written once, in `waiting`, which keeps `not_answered` apart from `gone_quiet`.
+- Requires `nachalnik` 0.5.0, whose `PermissionPolicy::why` takes a `PermissionRequest` rather than
+  a `ToolCallId`. Nothing in this crate's API moved, but it names runtime types throughout its
+  public interface, so this release cannot be mixed with a 0.4-series runtime.
 
 ## [0.1.0] - 2026-09-10
 
 ### added
 
-- **A blob that is not a picture goes out as a `file` part.** The OpenAI dialect has two shapes
-  for a payload and the media type is the only thing that picks between them: `image_url` means an
-  image, and a PDF sent that way is a 400 from anything implementing the specification. Every blob
-  went out as `image_url`, which was right for the only thing the workspace could produce at the
-  time and wrong the moment a document could be attached.
+- The crate: the two providers this workspace had, taken out of `kamchatka` and published on their
+  own. `OpenAiCompatible` speaks the OpenAI chat-completions dialect and `Gemini` speaks Google's,
+  both streamed, retried and interruptible, and both answering `Endpoint` as well as
+  `nachalnik::Provider`. The runtime ships no provider by design, and until now the only two
+  complete implementations were locked inside a terminal program.
+- The second OpenAI-compatible implementation folds in - the one `nachalnik`'s examples and live
+  suite talk through. Six things it had that the published one did not:
+  - `streaming(false)` and the whole-answer path behind it, the only way to reach some endpoints'
+    non-streaming code.
+  - `recording(true)` and `requests()`: every request sent, in order, for a caller that wants to
+    assert on what actually went out. Off by default.
+  - `client()`, `client_with()` and `with_client()`: several models on one host share a connection
+    pool, and the timeout is the caller's. Ten minutes by default, because reqwest's covers the
+    whole request and a shorter one fires *during generation*, surfacing as `error decoding response
+    body`.
+  - `attempts()`, separate from the backoff counter every success resets.
+  - `labelled()`, which is what `nachalnik::ModelInfo::provider` reports.
+  - `out_of_quota`, for telling a daily limit from a momentary one - same status code, and the first
+    is not worth waiting out.
 
-  `filename` comes from `Blob::meta["name"]`, which is the caller saying what the file was called -
-  the field's second reader, and the first outside a `TokenCounter`. The part is refused without a
-  name, so one is derived from the media type when nobody supplied it: `application/pdf` becomes
-  `file.pdf`, which is a worse label than the real one and a far better outcome than a refusal.
-
-  There is a third shape in this dialect, `input_audio`, and it is deliberately absent. Nothing in
-  this workspace produces a recording, so it would be a shape written from documentation and
-  pinned by no test; a recording gets the `file` part, which is the best guess available and wrong
-  in a way the endpoint says out loud. Google's dialect needs none of this - `inline_data` takes a
-  mime type and carries whatever it names.
-
-- The crate: the two providers this workspace already had, taken out of `kamchatka` and published
-  on their own. `OpenAiCompatible` speaks the OpenAI chat-completions dialect and `Gemini` speaks
-  Google's, both streamed, both retried, both interruptible, and both answering `Endpoint` as well
-  as `nachalnik::Provider` so that one `Arc` holds either.
-
-  Nothing about the code changed in the move. What changed is that it can now be depended on: the
-  runtime ships no provider by design, and the only two complete implementations were locked
-  inside a terminal program - one of them behind ratatui, crossterm, clap and landlock, the other
-  in a crate marked `publish = false` for ever. An adopter's first task was a thousand lines of
-  streamed HTTP.
-
-- The second OpenAI-compatible implementation folds in. `nachalnik-utils` held one too - the one
-  `nachalnik`'s examples and its live suite talk through - and it could not be merged with
-  `kamchatka`'s while one crate was published and the other never would be. Six things it had and
-  the published one did not:
-
-  - `streaming(false)`, and the whole-answer path behind it. Worth having where nothing is
-    watching an answer arrive, and the only way to reach some endpoints' non-streaming code, which
-    is not always the same code as their streaming code.
-  - `recording(true)` and `requests()`: every request the provider was asked to send, in order,
-    for a caller that wants to assert on what actually went out rather than on what it believes
-    went out. Off by default, because a session that ran all afternoon would otherwise hold every
-    request it ever made.
-  - `client()` and `client_with()`, and `with_client()` to send through one: several models on one
-    host then share a connection pool, and the timeout is the caller's to set. Ten minutes by
-    default, because reqwest's covers the whole request and a shorter one fires *during
-    generation* - which surfaces as `error decoding response body` and looks like a network fault.
-  - `attempts()`, how many HTTP requests this has made in its life. The field existed and was a
-    backoff counter reset by every success; it is two fields now.
-  - `labelled()`, which is what `nachalnik::ModelInfo::provider` reports. A panel comparing four
-    models through three endpoints had three providers all called `openai-compatible`.
-  - `out_of_quota`, for telling a daily limit from a momentary one. They are the same status code
-    and the first is not worth waiting out.
-
-  One thing came the other way. The reasoning figure a turn reports is now inferred from a
-  `total_tokens` residual where the endpoint publishes no `reasoning_tokens` by name - the
-  unpublished copy did that and the published one did not, and it is the case where a turn's cost
-  is otherwise invisible. Both paths read it through one function now, and one `stop_reason`.
-
-- Both dialects carry `nachalnik::Content::Blob`, each where its own API takes one: a `data:` URI
-  inside a typed content part here, an `inline_data` part there. A list of content parts only
-  where there is a blob to carry, because a plain string is what every endpoint speaking the
-  conventional dialect accepts and some of the smaller ones accept nothing else - a turn with no
-  picture in it goes out exactly as it did before.
-
-  A turn that is a sentence *and* a picture - `Content::Blocks` holding both, which is the shape a
-  multimodal client reaches for - goes out as both, in the order it was put in. Reading it as one
-  content slot would have meant `to_text`, which names the picture instead of carrying it: right
-  for a transcript, wrong for a request.
-
-  Neither dialect accepts one in a *tool result*: `tool` content is a string in the first and a
-  `functionResponse` object in the second. A tool that returned a picture therefore sends the
-  sentence naming it, `[image/png, 12.05kB]`, which is the answer `nachalnik-mcp` has always
-  given and beats a 400 by enough to be deliberate about.
-
-- The conformance suite, as `conformance`, off by default. It was written to keep three copies of
-  this code honest and outlives them because what it holds is not agreement between copies but a
-  list of shapes some server really sent, asked through a real socket. It is here for whoever
-  writes a third provider.
-
-- `OpenAiCompatible::with_context_limit` and `Gemini::with_context_limit`, for the two cases
-  `probe` cannot settle: an endpoint that publishes no context length, and one whose published
-  length is not what the model is really being served with. It replaces a `KAMCHATKA_CONTEXT_LIMIT`
-  the providers used to read for themselves - see below.
+  One thing came the other way: the reasoning figure is inferred from a `total_tokens` residual
+  where the endpoint publishes no `reasoning_tokens` by name. Both paths read it through one
+  function now, and one `stop_reason`.
+- A blob that is not a picture goes out as a `file` part. The media type picks between the OpenAI
+  dialect's two payload shapes, and a PDF sent as `image_url` is a 400. `filename` comes from
+  `Blob::meta["name"]`, derived from the media type when nobody supplied one. `input_audio` is
+  deliberately absent: nothing here produces a recording, so it would be a shape written from
+  documentation and pinned by no test.
+- Both dialects carry `nachalnik::Content::Blob`, each where its own API takes one: a `data:` URI in
+  a typed content part, an `inline_data` part. A list of content parts only where there is a blob,
+  since a plain string is what every endpoint accepts and some smaller ones accept nothing else. A
+  turn that is a sentence *and* a picture goes out as both, in order. Neither dialect accepts one in
+  a *tool result*, so a tool returning a picture sends the sentence naming it.
+- The conformance suite, as `conformance`, off by default: a list of shapes some server really sent,
+  asked through a real socket. For whoever writes a third provider.
+- `OpenAiCompatible::with_context_limit` and `Gemini::with_context_limit`, for the two cases `probe`
+  cannot settle: an endpoint publishing no context length, and one whose published length is not
+  what the model is really served with.
 
 ### fixed
 
-- A refusal whose body is a web page is reported as its words, not its markup. `complaint`
-  already strips the envelope off a JSON error - that is what it is for - and then quoted its
-  input verbatim for anything that was not JSON. A base URL pointing at a site rather than an API
-  is a common typo, and `https://example.com/v1` answers 405 with a whole HTML document: the
-  first three hundred characters are a doctype, a `<link rel=icon>` and the opening of a
-  stylesheet, so four lines of CSS went into the conversation, the session log, and the file
-  somebody sends on. Tags come off now, and `<style>` and `<script>` go whole, because their
-  contents are markup wearing the shape of text. A short page keeps its sentence:
-  `<html>gateway timeout</html>` from a proxy that speaks no JSON says the one thing worth
-  knowing, and that is still what it says.
-
-
-- `stream_options` follows whatever the request's parameters settled `stream` on, rather than
-  whichever way the provider was built. It is wrong in both directions otherwise, and one of them
-  is silent: sent to an endpoint that was asked for a whole answer it is a 400 about a field
-  nobody set, and left off a request whose parameters turned streaming *on* - which is how a
-  caller asks one question of a provider built for whole answers - the endpoint reports no usage
-  at all and the turn goes into the record with its cost unknown.
-
-- A rate limit that arrives as an `error` object inside a 200 is waited out like any other. This
-  dialect answers a whole-answer request its upstream refused that way rather than with a status,
-  and reading only the status turned two seconds of waiting into a hard failure. A spent daily
-  quota is still told apart and not waited out, because it will still be spent in a minute.
+- A refusal whose body is a web page is reported as its words. A base URL pointing at a site rather
+  than an API is a common typo, and the first three hundred characters of the resulting 405 are a
+  doctype and the opening of a stylesheet. Tags come off, `<style>` and `<script>` go whole, and a
+  short page keeps its sentence.
+- `stream_options` follows whatever the request's parameters settled `stream` on, rather than how
+  the provider was built. Wrong in both directions otherwise, and one is silent: sent to an endpoint
+  asked for a whole answer it is a 400, and left off a streaming request the endpoint reports no
+  usage and the turn is recorded with its cost unknown.
+- A rate limit arriving as an `error` object inside a 200 is waited out like any other. A spent
+  daily quota is still told apart and not waited out.
 
 ### changed
 
 - Neither provider reads the environment. `KAMCHATKA_API_KEY`, `KAMCHATKA_BASE_URL` and
-  `KAMCHATKA_CONTEXT_LIMIT` were read inside the constructors, which was tolerable while the only
-  caller was the program those variables are named after and is not something a library may do:
-  where the requests go and which key pays for them are the caller's to decide and its business to
-  say out loud. All three are arguments now, and `kamchatka` reads its own variables and passes
-  them in.
-
-- The two notices a provider writes for its caller no longer name a client's commands. `/model to
-  pick one` and `/models lists them` were instructions for one particular terminal, handed to
-  whoever else was reading.
+  `KAMCHATKA_CONTEXT_LIMIT` were read inside the constructors; all three are arguments now.
+- The two notices a provider writes for its caller no longer name a client's commands.
