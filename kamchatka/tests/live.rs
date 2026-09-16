@@ -1108,21 +1108,33 @@ async fn agent(
 }
 
 /// The same, with the introspection tools offered as well.
+///
+/// note: `ask_about_changes` sets the nine that change to `Ask` over an allowed `context`, which
+/// is the claim the merge rests on: reading this session's items and rewriting one are separate
+/// questions whether they arrive under one tool's name or two. It used to say `amend`, which was
+/// a domain when this was written and is not one now - so the stance landed on a domain nothing
+/// declares, `context` stayed allowed for all thirteen, and the one test that asks whether a
+/// change can still be questioned separately was answering about nothing.
 async fn introspecting(
     dir: &std::path::Path,
-    ask_about_amend: bool,
+    ask_about_changes: bool,
 ) -> Option<(
     App,
     Limits,
     tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
 )> {
     let (mut app, limits, finished) = agent(dir).await?;
-    for capability in ["context", "log", "setup", "amend"] {
-        let verdict = match ask_about_amend && capability == "amend" {
-            true => Verdict::Ask,
-            false => Verdict::Allow,
-        };
-        app.policy.set(&Subject::parse(capability), verdict);
+    for domain in ["context", "log", "setup"] {
+        app.policy.set(&Subject::parse(domain), Verdict::Allow);
+    }
+    if ask_about_changes {
+        // the most specific rule with an answer decides, so these stand over the allowed `context`
+        for op in [
+            "elide", "exclude", "archive", "pin", "restore", "revise", "note", "undo", "redo",
+        ] {
+            app.policy
+                .set(&Subject::parse(&format!("context:{op}")), Verdict::Ask);
+        }
     }
     app.introspect = Some(kamchatka::introspect::install(
         &app.kernel,
@@ -1309,7 +1321,7 @@ async fn a_shortened_read_is_reported_and_the_limit_can_be_raised() {
     std::fs::write(dir.join("big.txt"), &big).expect("a file");
 
     let (mut app, limits, mut finished) = agent!(&dir);
-    limits.set("read", 600);
+    limits.set("fs:read", 600).expect("a row for `fs:read`");
 
     send(
         &mut app,
@@ -1345,13 +1357,13 @@ async fn a_shortened_read_is_reported_and_the_limit_can_be_raised() {
     );
 
     // raising it does not recover that result, and does not need to: this is for the next call
-    command(&mut app, "/limit read 64000").await;
+    command(&mut app, "/limit fs:read 64000").await;
     assert!(
-        flat(&mut app).contains("read"),
+        flat(&mut app).contains("fs:read"),
         "the command said something: {}",
         flat(&mut app)
     );
-    assert_eq!(limits.of("read"), Some(64_000));
+    assert_eq!(limits.of("fs:read"), Some(64_000));
 
     send(
         &mut app,
@@ -1398,7 +1410,7 @@ async fn the_whole_of_a_cut_output_put_back_is_shown_as_left_out() {
     .expect("a file");
 
     let (mut app, limits, mut finished) = agent!(&dir);
-    limits.set("read", 600);
+    limits.set("fs:read", 600).expect("a row for `fs:read`");
     send(
         &mut app,
         &mut finished,
@@ -1456,9 +1468,9 @@ async fn the_whole_of_a_cut_output_put_back_is_shown_as_left_out() {
 
 // ----------------------------------------------------------- the question names what it is about
 
-/// The permission question for `amend` says which item it would change.
+/// The permission question for a change to the context says which item it would change.
 #[tokio::test]
-async fn the_question_about_a_real_amend_names_the_item() {
+async fn the_question_about_a_real_change_names_the_item() {
     let _serial = SERIAL.lock().await;
     let dir = workdir("about");
     let (mut app, _limits, mut finished) = introspecting!(&dir, true);
@@ -1474,8 +1486,8 @@ async fn the_question_about_a_real_amend_names_the_item() {
     type_line(
         &mut app,
         "First use the context tool with action `look` to see your context. Then use the \
-         amend tool once to elide the item called secrets.txt, naming it by its number in \
-         `ids`, with any reason you like. Do nothing else.",
+         context tool once with action `elide` on the item called secrets.txt, naming it by its \
+         number in `ids`, with any reason you like. Do nothing else.",
     )
     .await;
     let asked = tokio::time::timeout(Duration::from_secs(180), async {
@@ -1497,7 +1509,7 @@ async fn the_question_about_a_real_amend_names_the_item() {
 
     let Some(request) = asked else {
         panic!(
-            "the model never called amend; it said: {}",
+            "the model never asked to change the context; it said: {}",
             answer(&app).chars().take(400).collect::<String>()
         );
     };

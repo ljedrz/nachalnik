@@ -1219,10 +1219,18 @@ async fn a_calibrating_counter_is_told_what_a_real_request_cost() {
 /// vendor phrases it differently, so `too_long` reads the numbers rather than the wording - and a
 /// phrasing it cannot read is a real failure, which is why this fails rather than skipping when
 /// the refusal arrives as prose.
+///
+/// note: `refuse_oversized_requests` is off here, which is the one setting that makes this test
+/// possible. It is on by default and it would refuse this request from inside - the estimate is
+/// what it acts on, and the estimate is right - so the request would never reach the endpoint and
+/// the endpoint's own wording, which is the only thing under test, would never be read.
 #[tokio::test]
 async fn a_counter_is_told_what_a_refused_request_came_to() {
     let _serial = serialize().await;
-    let (kernel, _) = live!();
+    let (kernel, _) = live_with!(Config {
+        refuse_oversized_requests: false,
+        ..Default::default()
+    });
     let Some(limit) = kernel.model_info().and_then(|info| info.context_limit) else {
         eprintln!("skipped: this endpoint does not say what the model takes");
         return;
@@ -1256,8 +1264,29 @@ async fn a_counter_is_told_what_a_refused_request_came_to() {
         })
         .expect("the refusal is on the stream");
     let (said, overrun) = overrun;
-    let overrun = overrun
-        .unwrap_or_else(|| panic!("a refusal this dialect cannot read the numbers out of: {said}"));
+    // note: a refusal with nothing to read and one with nothing *in* it are different facts and
+    // this is where they part. A parser that has fallen behind a vendor's wording is what this
+    // test is for and it still fails here. An endpoint that names its own limit and never says
+    // what the request came to has not been misread - there is no second figure to read, and
+    // `Overrun.tokens` is what the request came to, so inventing one from the estimate would put
+    // this crate's own guess on the wire under the server's name. Inception's is such a sentence:
+    // `You exceeded the maximum context length for this model of 260000`, and no more.
+    let Some(overrun) = overrun else {
+        // larger than the limit, which is the only thing `Overrun.tokens` can be: a request that
+        // was refused for its length overshot. It is also what keeps the `400` of a status line
+        // out of the count
+        let overshot = said
+            .split(|c: char| !c.is_ascii_digit())
+            .filter_map(|run| run.parse::<u64>().ok())
+            .any(|n| n > limit as u64 && n <= 100_000_000);
+        assert!(
+            !overshot,
+            "this refusal names what the request came to and it was still not read, which is a \
+             parser behind a vendor's wording: {said}"
+        );
+        eprintln!("skipped: this endpoint names its limit and not the request: {said}");
+        return;
+    };
 
     assert!(
         overrun.tokens as usize > limit,
