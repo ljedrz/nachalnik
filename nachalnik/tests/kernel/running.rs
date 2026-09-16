@@ -202,6 +202,8 @@ async fn an_unknown_tool_is_an_error_result_not_a_crash() {
         ModelResponse::tool_calls(vec![call("c1", "teleport", json!({}))]),
         ModelResponse::text("sorry"),
     ]);
+    // one real tool, because half of what this answer is for is naming the ones that are here
+    kernel.add_tool(Arc::new(EchoTool::new("echo", [])));
     kernel.push(ContextItem::user("teleport me"));
 
     let mut events = kernel.subscribe();
@@ -213,7 +215,13 @@ async fn an_unknown_tool_is_an_error_result_not_a_crash() {
 
     let results = tool_results(&kernel);
     assert_eq!(results.len(), 1);
-    assert!(results[0].content.to_text().contains("no tool named"));
+    let said = results[0].content.to_text();
+    assert!(said.contains("no tool named `teleport`"), "{said}");
+    // and what is here, which is the half a live session needed: a model that had misspelled the
+    // one tool it wanted was told four times that its word was wrong and never which word was
+    // right, so it kept guessing and then stopped trying
+    assert!(said.contains("the tools here are"), "{said}");
+    assert!(said.contains("`echo`"), "{said}");
 }
 
 #[tokio::test]
