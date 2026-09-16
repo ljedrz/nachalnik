@@ -29,7 +29,7 @@ use serde_json::json;
 
 use crate::{
     app::text::{thousands, trace_line},
-    tools::{Limits, domains},
+    tools::{Limits, domains, unread},
 };
 
 use super::{Reach, if_offered, unknown};
@@ -218,45 +218,21 @@ struct Query {
     whole: bool,
 }
 
-/// The arguments this tool takes; anything else is a mistake worth reporting.
-const TAKES: [&str; 6] = ["action", "take", "ids", "since", "kinds", "whole"];
+/// What this tool's one operation reads, beside `action`.
+///
+/// note: the same table its two siblings keep, in the same shape, for the same [`unread`] to
+/// read, with one row because there is one operation. This tool is where the rule was written: a live
+/// session called `log {action: "look"}`, got the summary back, read it as the answer to a
+/// question it had not asked, and cited it. That particular call is refused by name now, because
+/// `log` takes an `action` like everything else here; what the table still closes is every other
+/// misspelling - `limit` for `take`, `kind` for `kinds` - which fails the same silent way.
+const TAKES: [(&str, &[&str]); 1] = [("read", &["take", "ids", "since", "kinds", "whole"])];
 
 impl Query {
     /// Reads one, or says what is wrong with the arguments.
     fn read(args: &serde_json::Value) -> Result<Self, String> {
-        // note: an argument nobody reads is the same failure as a filter nobody can parse, one
-        // step earlier: the call comes back looking like a bare call, which is a real answer, so
-        // nothing says it did not do what was asked. A live session called `log {action: "look"}`,
-        // got the summary, and read it as the answer to a question it had not asked - then cited
-        // it.
-        //
-        // note: that particular mistake cannot be made any more, and what closed it was not this
-        // check. `log` takes an `action` now, like every other tool here, so `action: "look"` is
-        // refused by name as an operation this tool does not have. What is left is worth keeping
-        // for every *other* misspelling - `limit` for `take`, `kind` for `kinds` - which fail the
-        // same silent way.
-        if let Some(given) = args.as_object() {
-            let unknown: Vec<&str> = given
-                .keys()
-                .map(String::as_str)
-                .filter(|key| !TAKES.contains(key))
-                .collect();
-            if !unknown.is_empty() {
-                return Err(format!(
-                    "`log` does not take {}. It takes {}, and nothing was read - a call that \
-                     ignored an argument would have come back looking like a bare call.",
-                    unknown
-                        .iter()
-                        .map(|key| format!("`{key}`"))
-                        .collect::<Vec<_>>()
-                        .join(" or "),
-                    TAKES
-                        .iter()
-                        .map(|key| format!("`{key}`"))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                ));
-            }
+        if let Some(refusal) = unread("read", args, &TAKES) {
+            return Err(refusal);
         }
 
         let mut query = Self {

@@ -27,6 +27,7 @@ use crate::{
         Limits,
         files::{Edit, PATH_ARG, Read, Write},
         search::{GLOB_ARG, Glob, Grep, Looking, MATCHES, PATHS, WIDTH},
+        unread,
     },
 };
 
@@ -37,6 +38,31 @@ use crate::{
 /// keys on. They were three lists when there were five tools, and the only thing keeping them in
 /// step was that each tool had one of each.
 pub(super) const OPS: [&str; 5] = ["read", "glob", "grep", "write", "edit"];
+
+/// What each of them reads, beside `action`, which they all take.
+///
+/// note: the list [`unread`] holds a call to, and the reason it is per operation: `old` belongs to
+/// `edit` and a `read` that was given one meant something by it. It is beside [`OPS`] because the
+/// two have to agree, and next to nothing else in this file is allowed to disagree with the schema
+/// below either - every name here appears there, and a name that appears there and not here is an
+/// argument this tool documents and does not read.
+const TAKES: [(&str, &[&str]); 5] = [
+    ("read", &["path"]),
+    ("glob", &["path", "pattern"]),
+    (
+        "grep",
+        &[
+            "path",
+            "pattern",
+            "glob",
+            "ignore_case",
+            "context",
+            "files_only",
+        ],
+    ),
+    ("write", &["path", "content"]),
+    ("edit", &["path", "old", "new"]),
+];
 
 /// Everything a session may do to a file, as one tool.
 pub(super) struct Fs {
@@ -172,6 +198,10 @@ impl Tool for Fs {
                 OPS.join(", ")
             )));
         };
+
+        if let Some(refusal) = unread(action, &call.args, &TAKES) {
+            return Ok(ToolOutput::error(refusal));
+        }
 
         match action {
             "read" => self.read.invoke(call, output).await,

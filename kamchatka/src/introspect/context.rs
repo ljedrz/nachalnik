@@ -31,7 +31,7 @@ use serde_json::json;
 
 use crate::{
     app::{Going, text::thousands},
-    tools::{Limits, domains},
+    tools::{Limits, domains, unread},
 };
 
 use super::{Amend, Pinned, Reach, action, ids, protected, unknown};
@@ -57,6 +57,34 @@ const CHANGES: [&str; 9] = [
 fn operations() -> impl Iterator<Item = &'static str> {
     READS.into_iter().chain(CHANGES)
 }
+
+/// What each of them reads, beside `action`, which they all take.
+///
+/// note: the list [`unread`] holds a call to. Thirteen operations share nine arguments and most of
+/// them read three, so most of what this table says is what an operation does *not* take - which
+/// is the half worth saying. `note` is the one a live run got wrong: it is one of the nine that
+/// change, the `ids` argument says it is for the nine that change, and `note` writes a new item
+/// and has no use for an id. The call went through, a free-standing note was written, and the
+/// session went on believing it had annotated the item it named.
+const TAKES: [(&str, &[&str]); 13] = [
+    ("look", &["ids", "whole"]),
+    ("budget", &[]),
+    ("request", &[]),
+    ("search", &["ids", "text", "take"]),
+    // note: `label` is on the five that move because they read it - not to move anything by, but
+    // to answer a call that named one instead of `ids` with the `select: "label:…"` it meant.
+    // An argument a tool answers about is not one it ignored, which is the only thing this table
+    // is for; taking it off here would replace that answer with a worse one
+    ("elide", &["ids", "select", "label", "reason"]),
+    ("exclude", &["ids", "select", "label", "reason"]),
+    ("archive", &["ids", "select", "label", "reason"]),
+    ("pin", &["ids", "select", "label", "reason"]),
+    ("restore", &["ids", "select", "label", "reason"]),
+    ("revise", &["ids", "content", "reason"]),
+    ("note", &["content", "label", "pin", "reason"]),
+    ("undo", &["steps", "reason"]),
+    ("redo", &["steps", "reason"]),
+];
 
 /// Reads the context and changes it: what is in it, what it costs, and what goes into the next
 /// request.
@@ -223,6 +251,13 @@ impl Tool for Context {
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         let kernel = self.reach.kernel()?;
+
+        // an operation this tool does not have falls through to the arm that names the ones it
+        // does, so there is nothing to hold its arguments to yet; a word it knows is held to them
+        // before anything is done with it
+        if let Some(refusal) = unread(action(&call.args)?, &call.args, &TAKES) {
+            return Ok(ToolOutput::error(refusal));
+        }
 
         match action(&call.args)? {
             "look" => Ok(ToolOutput::new(look(

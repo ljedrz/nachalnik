@@ -58,6 +58,23 @@ minor bump may break you.
 
 ### fixed
 
+- An argument the action a call named does not read is refused, rather than ignored. `log` has
+  held its arguments to this since it was written; `fs` and `context` now do too, per *operation*
+  rather than per tool, because the mistake that is actually made is an argument that belongs to a
+  sibling. Both halves were found live. A session wanting the part of a file around a piece of
+  text called `fs {action: "read", path: …, old: "…"}` - `old` is a real `fs` argument and `edit`
+  is whose - and got the whole of two files, 14,218 tokens in one turn, with nothing in either
+  answer saying the narrowing had not happened. Two models on the same evening called `context
+  {action: "note", ids: […]}` meaning to annotate the item they had named: `note` writes a new
+  item and has no use for an id, the call succeeded, and both went on believing the annotation was
+  on it. An ignored argument comes back as a real answer - the answer to the call without it - so
+  nothing in the reply says that what was asked for did not happen.
+
+  The refusal names the operation the argument belongs to, when exactly one does. `old` is
+  `edit`'s and saying so is the whole answer; `ids` is eleven of `context`'s thirteen, and naming
+  the first of them would be reporting the order of a table as a fact about the argument.
+- `/limit` with a subject and no number said `/limit <tool> <bytes>`, two lines from a table that
+  calls its rows subjects. A limit stopped being a tool's the day one tool did five things.
 - The line after `/model` or `/provider` waits for the switch it asked for. Both hand the round
   trips to a task, because a screen should not stop while a new endpoint is asked what it holds -
   and nothing was waiting for that task, so `/provider URL ID` followed by `/model` answered with

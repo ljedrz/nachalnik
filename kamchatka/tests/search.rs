@@ -613,3 +613,63 @@ async fn lines_that_fit_are_still_the_lines() {
     );
     assert!(!said.contains("here is where they are"), "{said}");
 }
+
+/// An argument that belongs to another of this tool's operations is refused, not ignored.
+///
+/// note: found live, and it was expensive. A session reading this workspace wanted the part of a
+/// file around a piece of text and called `fs {action: "read", path: …, old: "…"}` - `old` is a
+/// real `fs` argument and `edit` is where it belongs. The read ignored it and answered with the
+/// whole file, twice, for 14,218 tokens in one turn, and nothing in either answer said that the
+/// narrowing it had asked for had not happened. That is the failure `log` has refused since it
+/// was written; this is `fs` refusing it too.
+///
+/// note: the operation that owns the argument is named, because that is the whole of what the
+/// session needed to know and it is one lookup away in the same table. Only when exactly one owns
+/// it: `path` here belongs to all five, and a first-row-wins answer would be reporting this
+/// table's order as if it were a fact about the argument. `context` is where that bites - `ids`
+/// is eleven of its thirteen - and the rule is one rule, so it is checked here too.
+#[tokio::test]
+async fn an_argument_belonging_to_another_action_is_refused_by_name() {
+    let dir = tree("fs-stray-arg");
+    let said = ask(
+        &dir,
+        "read",
+        json!({ "path": "notes.md", "old": "nothing to see" }),
+    )
+    .await;
+
+    assert!(said.contains("`read` does not take `old`"), "{said}");
+    assert!(
+        said.contains("that one is `edit`'s"),
+        "and whose it is: {said}"
+    );
+    assert!(
+        said.contains("nothing was done"),
+        "and that the file was not read anyway: {said}"
+    );
+    assert!(!said.contains("nothing to see"), "no file content: {said}");
+
+    // and an argument several of them share is named as nobody's, rather than as the first row's
+    let shared = ask(&dir, "read", json!({ "path": "notes.md", "pattern": "x" })).await;
+    assert!(
+        shared.contains("`read` does not take `pattern`"),
+        "{shared}"
+    );
+    assert!(!shared.contains("that one is"), "{shared}");
+}
+
+/// An argument no operation here has is refused with what this one does take.
+#[tokio::test]
+async fn an_argument_no_action_here_has_is_refused_with_the_ones_that_are() {
+    let dir = tree("fs-unknown-arg");
+    let said = ask(&dir, "grep", json!({ "pattern": "Kernel", "regex": true })).await;
+
+    assert!(said.contains("`grep` does not take `regex`"), "{said}");
+    // nobody's, so nothing is named - and what grep does take is
+    assert!(!said.contains("that one is"), "{said}");
+    assert!(said.contains("`files_only`"), "{said}");
+    assert!(
+        !said.contains("src/kernel.rs:1:"),
+        "and it did not search: {said}"
+    );
+}

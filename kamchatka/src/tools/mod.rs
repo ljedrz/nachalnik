@@ -105,6 +105,62 @@ fn whole(args: &Value, name: &str, default: u64) -> Result<u64, String> {
     ))
 }
 
+/// What is wrong with the arguments a call gave, if anything: an argument the operation it named
+/// does not read.
+///
+/// note: the same failure [`whole`] is about, one step earlier and a good deal more expensive. An
+/// argument that is silently ignored comes back as a *real answer* - the answer to the call
+/// without it - so nothing in the reply says that what was asked for did not happen. Live, a
+/// session called `fs {action: "read", path: …, old: "…"}` meaning to read the part of the file
+/// around `old`, got the whole of two files back, and spent 14,218 tokens on it in one turn. It
+/// had no way to tell.
+///
+/// note: per *operation* rather than per tool, which is what makes it worth having on a tool that
+/// does several things. `old` is a real `fs` argument and belongs to `edit`, so a flat list of
+/// what `fs` takes would have accepted that call; and a message naming the operation it does
+/// belong to says the whole of what went wrong in four words. `ids` and `note` are the same
+/// mistake in `context`, and a live run made that one too.
+///
+/// note: the rule is `log`'s, which has held its arguments to it since it was written and is the
+/// one tool here that never had this bug. What is new is only that the other two do it too, and
+/// that one table says which operation an argument is for.
+pub(crate) fn unread(op: &str, args: &Value, takes: &[(&str, &[&str])]) -> Option<String> {
+    let mine = takes.iter().find(|(name, _)| *name == op)?.1;
+    let given = args.as_object()?;
+    let stray = given
+        .keys()
+        .map(String::as_str)
+        .find(|key| *key != "action" && !mine.contains(key))?;
+
+    // note: named only when one operation has it, because the sentence is a *pointer* and there is
+    // nowhere to point otherwise. `old` is `edit`'s and saying so is the whole answer; `ids` is
+    // eleven of `context`'s thirteen, and "that one is `look`'s" - the first row that has it - is
+    // a fact about this table's order being read as a fact about the argument. A model that has
+    // just been told its call was wrong is in no position to discount what it is told next
+    let others: Vec<&str> = takes
+        .iter()
+        .filter(|(name, theirs)| *name != op && theirs.contains(&stray))
+        .map(|(name, _)| *name)
+        .collect();
+    let whose = match others[..] {
+        [only] => format!(" - that one is `{only}`'s"),
+        _ => String::new(),
+    };
+
+    Some(format!(
+        "`{op}` does not take `{stray}`{whose}. It takes {}, and nothing was done: a call that \
+         ignored an argument would have answered as if you had never given it.",
+        match mine {
+            [] => "no arguments beside `action`".to_owned(),
+            mine => mine
+                .iter()
+                .map(|key| format!("`{key}`"))
+                .collect::<Vec<_>>()
+                .join(", "),
+        }
+    ))
+}
+
 /// A yes-or-no argument, read the same way and refused the same way.
 fn truth(args: &Value, name: &str) -> Result<bool, String> {
     let value = &args[name];

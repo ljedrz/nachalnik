@@ -2588,6 +2588,53 @@ async fn setup_permissions_counts_the_rules_nobody_has_thought_about() {
     assert!(said.contains(".env*"), "{said}");
 }
 
+/// `note` writes a new item and has no use for an id, so a call that gave it one is refused
+/// rather than quietly written anyway.
+///
+/// note: found live, twice in one evening, by two different models. `note` is one of the nine
+/// that change, the `ids` argument says it is for the nine that change, and so `ids` on a `note`
+/// reads as *which item to annotate*. Nothing annotates an item here. The call used to succeed,
+/// write a free-standing note, and answer with its new number - and the session went on believing
+/// the item it had named now carried the words.
+///
+/// note: `revise` is what it wanted, and is named, on the same argument as the clash sentence
+/// below: a refusal that says only what is wrong spends a turn, and one that says what to say
+/// instead spends none.
+#[tokio::test]
+async fn a_note_given_an_id_to_annotate_is_refused_rather_than_written_anyway() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({
+            "action": "note",
+            "ids": [1],
+            "content": "this is the important one",
+            "reason": "mark it",
+        }),
+    )]));
+    kernel.push(ContextItem::user("read the notes"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("`note` does not take `ids`"), "{said}");
+    assert!(
+        said.contains("`content`") && said.contains("`label`"),
+        "and what it does take: {said}"
+    );
+    // `ids` is eleven of the thirteen, so there is no one operation to send it to and none is
+    // named. The first row that takes it would have been `look`, which is a fact about the order
+    // of a table in this file and not about `ids`
+    assert!(!said.contains("that one is"), "{said}");
+    // and no note was written on the way to saying so
+    assert!(
+        !kernel
+            .items()
+            .iter()
+            .any(|item| matches!(item.kind, ContextKind::Reference) && item.source == "agent"),
+        "nothing was written down"
+    );
+}
+
 /// The mistake a live session actually made, five times over: `note` appends, and a second note
 /// under a name already taken is a second item rather than a new value for the first.
 #[tokio::test]
@@ -2836,7 +2883,7 @@ async fn an_argument_log_does_not_take_is_refused_rather_than_ignored() {
     );
     // a real filter beside an unreadable one is still refused, rather than half-honoured
     assert!(said[1].contains("does not take `limit`"), "{}", said[1]);
-    assert!(said[1].contains("nothing was read"), "{}", said[1]);
+    assert!(said[1].contains("nothing was done"), "{}", said[1]);
     assert!(!said[1].contains("match"), "{}", said[1]);
 }
 
