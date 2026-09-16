@@ -60,7 +60,7 @@ fn operations() -> impl Iterator<Item = &'static str> {
 
 /// What each of them reads, beside `action`, which they all take.
 ///
-/// note: the list [`unread`] holds a call to. Thirteen operations share nine arguments and most of
+/// note: the list [`unread`] holds a call to. Thirteen operations share ten arguments and most of
 /// them read three, so most of what this table says is what an operation does *not* take - which
 /// is the half worth saying. `note` is the one a live run got wrong: it is one of the nine that
 /// change, the `ids` argument says it is for the nine that change, and `note` writes a new item
@@ -1047,5 +1047,74 @@ fn glimpse(text: &str) -> String {
     match first.chars().count() > GLIMPSE {
         true => format!("{}…", first.chars().take(GLIMPSE - 1).collect::<String>()),
         false => first.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The schema and [`TAKES`] say the same thing about every argument.
+    ///
+    /// note: the same check `fs` keeps, and it matters more here: thirteen operations share ten
+    /// arguments, so the table is mostly a statement about which of them each one does *not* take,
+    /// and there is no reading the code that makes that obvious. An argument the schema offers and
+    /// no row takes would be refused the moment a model did as it was told.
+    #[test]
+    fn every_argument_the_schema_offers_is_one_some_action_takes() {
+        let tool = Context::new(
+            Reach(std::sync::Weak::new()),
+            Pinned::default(),
+            Limits::default(),
+        );
+
+        let spec = tool.spec();
+        let declared: Vec<&str> = spec.schema["properties"]
+            .as_object()
+            .expect("the schema is an object with properties")
+            .keys()
+            .map(String::as_str)
+            .filter(|key| *key != "action")
+            .collect();
+        let taken: Vec<&str> = TAKES
+            .iter()
+            .flat_map(|(_, args)| args.iter().copied())
+            .collect();
+
+        for argument in &declared {
+            assert!(
+                taken.contains(argument),
+                "the schema offers `{argument}` and no action takes it, so passing it is refused"
+            );
+        }
+        for argument in &taken {
+            assert!(
+                declared.contains(argument),
+                "`{argument}` is taken by an action and the schema never mentions it"
+            );
+        }
+
+        // one list of operations, in one order: the `action` enum, the capabilities and this
+        assert_eq!(
+            TAKES.map(|(action, _)| action).to_vec(),
+            operations().collect::<Vec<_>>(),
+        );
+    }
+
+    /// Everything that changes something takes a `reason`, and nothing that only reads does.
+    ///
+    /// note: `reason` is required by nine of the thirteen and asked for in `invoke` rather than in
+    /// the schema, because `required` in a schema is all or nothing. So the fact that the nine and
+    /// only the nine take one lives in two places, and this is what holds them together: a change
+    /// whose row forgot `reason` would refuse every call anybody made to it.
+    #[test]
+    fn the_nine_that_change_take_a_reason_and_the_four_that_read_do_not() {
+        for (action, takes) in TAKES {
+            assert_eq!(
+                takes.contains(&"reason"),
+                CHANGES.contains(&action),
+                "`{action}` and `reason` disagree"
+            );
+        }
     }
 }

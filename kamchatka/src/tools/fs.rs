@@ -212,3 +212,73 @@ impl Tool for Fs {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The schema and [`TAKES`] say the same thing about every argument.
+    ///
+    /// note: the check that keeps this table from becoming the bug it was written to fix. An
+    /// argument the schema offers and no row takes is refused the moment a model does as it was
+    /// told, which is a worse failure than the silent one - it reads as a tool that has changed
+    /// its mind. An argument a row takes and the schema never mentions is one no model will pass.
+    ///
+    /// note: it goes both ways deliberately. The one that bites is schema-without-row, and the
+    /// other direction is what catches a rename that only got done in one place.
+    #[test]
+    fn every_argument_the_schema_offers_is_one_some_action_takes() {
+        let tool = Fs::new(
+            Arc::new(Reach {
+                workdir: std::env::temp_dir(),
+                extra: Vec::new(),
+                readable: Vec::new(),
+                confined: true,
+            }),
+            Looking {
+                reach: Arc::new(Reach {
+                    workdir: std::env::temp_dir(),
+                    extra: Vec::new(),
+                    readable: Vec::new(),
+                    confined: true,
+                }),
+                policy: Arc::new(crate::tools::Careful::new()),
+                limits: Limits::default(),
+            },
+            Limits::default(),
+        );
+
+        let spec = tool.spec();
+        let declared: Vec<&str> = spec.schema["properties"]
+            .as_object()
+            .expect("the schema is an object with properties")
+            .keys()
+            .map(String::as_str)
+            .filter(|key| *key != "action")
+            .collect();
+        let taken: Vec<&str> = TAKES
+            .iter()
+            .flat_map(|(_, args)| args.iter().copied())
+            .collect();
+
+        for argument in &declared {
+            assert!(
+                taken.contains(argument),
+                "the schema offers `{argument}` and no action takes it, so passing it is refused"
+            );
+        }
+        for argument in &taken {
+            assert!(
+                declared.contains(argument),
+                "`{argument}` is taken by an action and the schema never mentions it"
+            );
+        }
+
+        // and every row is an operation this tool has, in the same order
+        assert_eq!(
+            TAKES.map(|(action, _)| action),
+            OPS,
+            "one list of operations, in one order"
+        );
+    }
+}
