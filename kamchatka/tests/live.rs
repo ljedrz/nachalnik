@@ -464,24 +464,14 @@ async fn the_status_line_reports_a_real_endpoint_and_a_corrected_budget() {
         "and so is the real figure: {status}"
     );
 
-    // and where it does not fit, the address is what gives way rather than the figures
+    // note: what this test does *not* do any more is narrow the terminal and check which parts of
+    // the line gave way. That ladder is drawn from a string and a width, it needs no endpoint and
+    // no token, and `edges.rs` already pins every rung of it at widths it chooses rather than
+    // widths a provider's name happens to decide. Here it was worse than redundant: it made the
+    // suite's result depend on how long the configured host is, and it went red for a hint that
+    // had been taken off the line - a UI change reported by a test that spends API calls, hours
+    // after the offline suite it belongs in had gone green
     //
-    // note: "gave way" rather than "went", because how far it has to give depends on how long
-    // this endpoint's host is. `generativelanguage.googleapis.com` is dropped outright at this
-    // width and `openrouter.ai` is merely shortened, and a test that demanded the first reported
-    // the correct handling of the second as a failure. What must hold either way is the ladder's
-    // whole point: the figures and the key hint are still on the line. `edges.rs` pins the rungs
-    // themselves, at widths it chooses rather than widths a provider's name decides
-    let narrow = status_line(&mut app, 100);
-    assert!(
-        !narrow.contains(&format!("@ {}", host())),
-        "the address gave way: {narrow}"
-    );
-    assert!(
-        narrow.contains("really") && narrow.contains("F1"),
-        "and the figures did not: {narrow}"
-    );
-
     // the provider reported what the request really cost, and the counter has been told
     let budget = app.kernel.budget();
     let reported = budget

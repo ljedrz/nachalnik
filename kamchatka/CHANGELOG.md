@@ -52,6 +52,12 @@ minor bump may break you.
   anywhere else. What the ladder in `shrink_address` is protecting is now only the figures, which
   is what it was always for.
 
+  The live suite stops narrowing the terminal to check which parts of the line give way. That
+  ladder is drawn from a string and a width - it needs no endpoint and no token, and `edges.rs`
+  already pins every rung of it at widths it chooses. There it was worse than redundant: it tied
+  the suite's result to how long the configured host happens to be, and it went red for a hint
+  taken off the line hours after the offline suite it belongs in had gone green.
+
 - **A release archive is the binary and `kamchatka.json`, and nothing else.** The settings file is
   the one thing that is worth more beside the binary than it is on a web page: every setting there
   is, named and at its default, so somebody who is tired of typing the same four arguments runs
