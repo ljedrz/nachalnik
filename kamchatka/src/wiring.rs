@@ -179,10 +179,7 @@ impl Setup {
         // from the same flag, which is how the two came apart in the first place
         kernel.set_projector(Arc::new(provider.projection()));
         if let Some(threshold) = self.compact.filter(|it| *it < 1.0) {
-            kernel.set_compactor(Some(Arc::new(tools::Trim {
-                threshold,
-                target: (threshold - 0.2).max(0.1),
-            })));
+            kernel.set_compactor(Some(Arc::new(tools::Trim::under(threshold))));
         }
 
         // one table, shared by the tools that declare a limit and the `/limit` that changes them

@@ -47,6 +47,27 @@ pub struct Trim {
     pub target: f64,
 }
 
+impl Trim {
+    /// One that starts at this fraction of the limit and aims below it.
+    ///
+    /// note: the pair has to be ordered or the pass is a no-op that keeps being asked for, and
+    /// nothing in the two fields says so - which is what this exists to say. Twenty points under
+    /// where it starts bothering, or half of it, whichever leaves more. A flat floor of ten
+    /// percent was the first spelling and it inverted the pair below a third: `--compact 0.15`
+    /// asked to compact at fifteen percent of the limit and aimed at ten, so a context between
+    /// the two was already under the target, so every pass found nothing and said so, before
+    /// every request, for as long as it stayed in that band. Below a fifth the subtraction goes
+    /// negative and the target becomes no context at all, so something has to catch it; a
+    /// fraction of the threshold catches it without ever rising above it.
+    #[must_use]
+    pub fn under(threshold: f64) -> Self {
+        Self {
+            threshold,
+            target: (threshold - 0.2).max(threshold / 2.0),
+        }
+    }
+}
+
 #[async_trait]
 impl Compactor for Trim {
     /// note: the threshold, *or* anything in the request the counter would not price. The second

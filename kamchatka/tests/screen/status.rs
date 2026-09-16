@@ -1029,3 +1029,24 @@ async fn the_context_tab_says_nothing_about_a_request_that_fits() {
 
     assert!(!harness.packed().contains("overthelimit"));
 }
+
+/// And it counts one item as one item.
+///
+/// note: small, and the reason it is worth a test is that it is small. A status line reading
+/// `1 items` is the corner of a screen quietly saying it is not looking; somebody who notices it
+/// has no way to tell whether the number beside it is approximate too. Every other count on that
+/// line agrees with its noun because they all go through the same place now.
+#[tokio::test]
+async fn the_context_tab_counts_one_item_as_one_item() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("the only thing in here"));
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    let packed = harness.packed();
+    assert!(packed.contains("1item,"), "{packed}");
+    assert!(!packed.contains("1items"), "{packed}");
+}

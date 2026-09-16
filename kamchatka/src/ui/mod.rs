@@ -25,7 +25,10 @@ use ratatui::{
     widgets::{Block, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
-use crate::app::{App, Focus, Going, Overlay, Tab, text::thousands};
+use crate::app::{
+    App, Focus, Going, Overlay, Tab,
+    text::{plural, thousands},
+};
 
 mod markdown;
 mod overlay;
@@ -325,10 +328,11 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> String {
                 .filter(|item| !going.sends_content(item))
                 .count();
             let elided = items.iter().filter(|item| item.state.is_elided()).count();
+            let held = plural(items.len(), "item");
             let counted = match (out, elided) {
-                (0, _) => format!("{} items, all of them going", items.len()),
-                (n, 0) => format!("{} items, {n} not going", items.len()),
-                (n, e) => format!("{} items, {n} not going, {e} elided", items.len()),
+                (0, _) => format!("{held}, all going"),
+                (n, 0) => format!("{held}, {n} not going"),
+                (n, e) => format!("{held}, {n} not going, {e} elided"),
             };
 
             // note: the figure to act on, on the tab where acting on it happens. The corner says

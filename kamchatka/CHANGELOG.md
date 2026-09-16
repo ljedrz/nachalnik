@@ -58,6 +58,16 @@ minor bump may break you.
 
 ### fixed
 
+- `--compact` below a third asked for a compaction and got nothing. The compactor took its target
+  twenty points under its threshold with a flat floor of ten percent, so `--compact 0.15` started
+  at fifteen percent of the limit and aimed at ten - and a context between the two was already
+  under the target. The pass fired before every request, found nothing worth taking, said so, and
+  left the context exactly where it was, for as long as it stayed in that band. The floor is now a
+  fraction of the threshold rather than a constant, which cannot rise above it; `Trim::under` is
+  the pair and the reason it has to be ordered, in one place instead of at the call site.
+- The context tab counts one item as `1 item`. A status line reading `1 items` is the corner of a
+  screen quietly saying it is not looking, and somebody who notices has no way to tell whether the
+  figure beside it is approximate too.
 - `/load` takes every spelling `/save` does. A session is two files, so `/save notes.jsonl` writes
   `notes.json` beside the log it was named after - and `/load notes.jsonl` took its argument at its
   word and went looking for `notes.jsonl.json`, which nothing had ever written. Both go through one

@@ -622,6 +622,19 @@ pub(crate) fn charged(usage: &Usage) -> String {
     }
 }
 
+/// `1 item`, `12 items` - a count and the thing counted, agreeing.
+///
+/// note: the `item(s)` spelling everywhere else in this program is for text a *model* reads,
+/// where the parenthesis costs a token and nothing else. This is for a line a person reads, and
+/// `1 items` in the corner of a screen is the kind of small wrongness that makes somebody wonder
+/// what else is approximate. Only `s` plurals, because every noun on that line is one.
+pub(crate) fn plural(n: usize, thing: &str) -> String {
+    match n {
+        1 => format!("1 {thing}"),
+        n => format!("{} {thing}s", thousands(n)),
+    }
+}
+
 /// Formats a number with `,` as the thousands separator.
 pub(crate) fn thousands(n: usize) -> String {
     let digits = n.to_string();

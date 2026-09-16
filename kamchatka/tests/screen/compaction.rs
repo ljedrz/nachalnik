@@ -807,3 +807,37 @@ async fn compact_without_a_compactor_says_there_is_none() {
     let screen = harness.flat();
     assert!(screen.contains("no compactor is installed"), "{screen}");
 }
+
+/// A compactor aims below the fullness it starts at, whatever fullness that is.
+///
+/// note: the two fields do not say they are ordered, and for two years one spelling of the pair
+/// put them the wrong way round below a third. `--compact 0.15` meant "start at fifteen percent
+/// of the limit" and aimed at ten, so a context between the two was already under the target: the
+/// pass fired before every request, found nothing it could take that would help, said so, and
+/// left the context exactly where it was. Nothing was broken and nothing happened, which is the
+/// worst way for a setting to be wrong.
+#[test]
+fn a_compactor_aims_lower_than_the_point_it_starts_at() {
+    for threshold in [0.99, 0.8, 0.5, 0.3, 0.2, 0.15, 0.05, 0.01] {
+        let trim = Trim::under(threshold);
+        assert!(
+            trim.target < trim.threshold,
+            "aims at {} from {threshold}, which is not down",
+            trim.target,
+        );
+        assert!(
+            trim.target > 0.0,
+            "aims at {} from {threshold}, which is at nothing left",
+            trim.target,
+        );
+    }
+
+    // and where there is room for it, twenty points is still twenty points: the default pass
+    // starts at four fifths of the limit and takes the context to three fifths of it
+    let default = Trim::under(0.8);
+    assert!(
+        (default.target - 0.6).abs() < 0.001,
+        "the default aims at {}",
+        default.target,
+    );
+}
