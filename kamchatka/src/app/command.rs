@@ -785,14 +785,30 @@ impl App {
 
     /// Shows the output limits, or changes one.
     ///
+    /// note: a row is a **subject** - `fs:read`, `context:look` - which is the same string the
+    /// permissions tab is keyed on, so a person who has read one table can read the other and
+    /// `--allow fs:grep` and `/limit fs:grep` name the same thing. It was keyed by tool id, which
+    /// stopped meaning anything the day one tool did five things of five different sizes.
+    ///
     /// note: the table is the `Limits` map rather than the registry, and it holds a row for every
-    /// tool this program ships whether or not this session is offering it. That is right, because
-    /// a limit set before a tool arrives is in force when it does; what was wrong was saying it
-    /// under "how much of each tool's output the model is shown", over a session offering six
-    /// tools and listing eight. A row nobody has is marked, for the reason `introspect::if_offered`
-    /// exists on the other side of the screen: a name in an answer reads as a thing that is there.
+    /// subject this program's tools declare, whether or not this session offers them. That is
+    /// right, because a limit set before a tool arrives is in force when it does; what was wrong
+    /// was saying it under "how much of each tool's output the model is shown", over a session
+    /// offering six tools and listing eight. A row nobody has is marked, for the reason
+    /// `introspect::if_offered` exists on the other side of the screen: a name in an answer reads
+    /// as a thing that is there.
+    ///
+    /// note: what "offered" means is what the registered tools *declare*, rather than a tool id
+    /// read off the front of a row. Those are not the same question, and the difference shows:
+    /// `shell` declares `exec:run`, so splitting that row on its colon and looking for a tool
+    /// called `exec` would mark the one row that is certainly offered.
     fn limit(&mut self, rest: &str) {
-        let offered = self.kernel.tool_ids();
+        let offered: Vec<String> = self
+            .kernel
+            .tool_specs()
+            .iter()
+            .flat_map(|spec| spec.capabilities.iter().map(|it| it.to_string()))
+            .collect();
         let table = |limits: &Limits| {
             let rows = limits.all();
             // as wide as the widest number, so eight tools read `[1]` and a dozen do not jog the
@@ -802,10 +818,10 @@ impl App {
                 .enumerate()
                 .map(|(nth, (tool, bytes))| {
                     format!(
-                        "{:<wide$} {tool:<14}{:>9} bytes{}",
+                        "{:<wide$} {tool:<18}{:>9} bytes{}",
                         format!("[{}]", nth + 1),
                         thousands(bytes),
-                        match offered.iter().any(|id| id == whose(&tool)) {
+                        match offered.contains(&tool) {
                             true => "",
                             false => "   · not offered",
                         }
@@ -825,24 +841,25 @@ impl App {
                 return;
             }
             let body = format!(
-                "{}\n\nhow much of each tool's output the model is shown. `/limit <tool> <bytes>` \
-                 changes one, by name or by the number beside it, from the next call onwards; the \
-                 whole of anything already shortened is archived beside it on the context tab, one \
-                 `space` from being sent instead.{}",
+                "{}\n\nhow much of a call's output the model is shown, keyed by the same subject \
+                 its permission is. `/limit <subject> <bytes>` changes one, by name or by the \
+                 number beside it, from the next call onwards; the whole of anything already \
+                 shortened is archived beside it on the context tab, one `space` from being sent \
+                 instead.{}",
                 table(&self.limits),
                 match self
                     .limits
                     .all()
                     .iter()
-                    .any(|(tool, _)| !offered.iter().any(|id| id == whose(tool)))
+                    .any(|(subject, _)| !offered.contains(subject))
                 {
                     // said once, under the table, rather than argued on every marked row - and
                     // true whichever rows are marked, since which tools a session is missing is
                     // not something this sentence gets to assume
                     true =>
-                        " A row marked `not offered` is a limit held for a tool this session does \
-                         not have; it is what that tool declares the moment something adds it, \
-                         and `/tools toggle` is what offers one that was turned off.",
+                        " A row marked `not offered` is a limit held for something no tool here \
+                         declares; it is in force the moment one does, and `/tools toggle` is \
+                         what offers back a tool that was turned off.",
                     false => "",
                 }
             );
@@ -871,11 +888,8 @@ impl App {
         if bytes == 0 {
             self.say(
                 Speaker::Error,
-                format!(
-                    "0 would send the model nothing but a truncation marker; `/tools toggle {}` \
-                     is how a tool stops being offered",
-                    whose(tool)
-                ),
+                "0 would send the model nothing but a truncation marker; `/tools toggle ID` is \
+                 how a tool stops being offered",
             );
             return;
         }
@@ -888,24 +902,21 @@ impl App {
                      onwards{}",
                     thousands(was),
                     thousands(bytes),
-                    // a limit that took, on a tool nobody is offering - which is a real thing to
-                    // set up ahead of a toggle and a confusing thing to be told nothing about,
-                    // since "from its next call onwards" implies there will be one
-                    match offered.iter().any(|id| id == whose(tool)) {
+                    // a limit that took, on something nothing here declares - which is a real
+                    // thing to set up ahead of a toggle and a confusing thing to be told nothing
+                    // about, since "from its next call onwards" implies there will be one
+                    match offered.iter().any(|it| it == tool) {
                         true => String::new(),
                         false => format!(
-                            ". `{tool}` is not offered in this session, so it has no next call \
-                             until something adds it"
+                            ". nothing in this session declares `{tool}`, so it has no next call \
+                             until something does"
                         ),
                     }
                 ),
             ),
             None => self.say(
                 Speaker::Error,
-                format!(
-                    "nothing here limits `{tool}`'s output; the ones that are limited are:\n{}",
-                    table(&self.limits)
-                ),
+                format!("nothing here limits `{tool}`; `/limit` on its own lists what is limited"),
             ),
         }
     }
@@ -1365,18 +1376,6 @@ impl App {
             Err(e) => self.say(Speaker::Error, e),
         }
     }
-}
-
-/// Which tool a limit row belongs to: the key itself, or the half of it before the action.
-///
-/// note: the rows were tool ids until `fs` became one tool with five actions, and three of them
-/// read `fs:read`, `fs:grep`, `fs:write` now. That is the right key for a *limit* - what a whole
-/// file costs and what a repo-wide search costs are not one number - and the wrong one for asking
-/// whether the tool is offered, which is what every use of it here is doing. Nothing said so: the
-/// listing marked all five `fs` rows `not offered` in a session that was offering `fs`, and told
-/// anybody setting one that it had no next call.
-fn whose(row: &str) -> &str {
-    row.split_once(':').map_or(row, |(tool, _)| tool)
 }
 
 /// A session's path with the extension taken off, whichever of the two it was spelled with.

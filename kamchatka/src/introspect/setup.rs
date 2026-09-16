@@ -54,7 +54,7 @@ impl Setup {
 #[async_trait]
 impl Tool for Setup {
     fn spec(&self) -> ToolSpec {
-        let spec = ToolSpec::new(
+        ToolSpec::new(
             "setup",
             "reads what you are running with, which is not something you can otherwise find out. \
              `model` is which model you are, what parameters it is being sent, how much context it \
@@ -65,8 +65,8 @@ impl Tool for Setup {
              not here, and `log` says when. `permissions` is what the policy allows, refuses, or \
              will stop and ask about - so you can tell a thing that will be refused from a thing \
              that has not come up. `policy` is what the compactor and the projector will do to \
-             your context without being asked. All of it is read-only; `amend` is what changes a \
-             context, and nothing here changes a session.",
+             your context without being asked. All of it is read-only; `context` is what changes \
+             a context, and nothing here changes a session.",
         )
         .with_schema(json!({
             "type": "object",
@@ -78,9 +78,7 @@ impl Tool for Setup {
             },
             "required": ["action"],
         }))
-        .with_capabilities(["model", "tools", "permissions", "policy"].map(domains::setup));
-
-        self.limits.apply(spec)
+        .with_capabilities(["model", "tools", "permissions", "policy"].map(domains::setup))
     }
 
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
@@ -88,6 +86,10 @@ impl Tool for Setup {
             Ok(action) => vec![domains::setup(action)],
             Err(_) => self.spec().capabilities,
         }
+    }
+
+    fn limit(&self, call: &ToolCall) -> Option<usize> {
+        self.limits.for_call(&self.needs(call))
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
@@ -163,12 +165,19 @@ fn model(kernel: &Kernel) -> String {
     out
 }
 
-/// Every tool on offer, what it declares, and how much of it you are shown.
+/// Every tool on offer, what it declares, and how much of any one answer you are shown.
 ///
 /// note: the declared capabilities beside each one, because that is the thing a model cannot see
 /// and the thing that decides whether a call is worth making. A tool it may not use and a tool
 /// that does not exist fail differently and are worth telling apart before the call rather than
 /// after it.
+///
+/// note: the limits are a sentence under the table rather than a column in it, because they are
+/// keyed by *subject* and a tool has several. A column would have had one number standing for
+/// `fs:read` and `fs:grep` alike, which is the thing keying them by subject exists to stop - and
+/// twenty-six rows to give each its own would be most of this answer spent on a figure that is
+/// the same everywhere until somebody changes one. So: the number they share, and then whichever
+/// ones do not share it.
 fn tools(kernel: &Kernel, limits: &Limits) -> String {
     let specs = kernel.tool_specs();
     if specs.is_empty() {
@@ -177,12 +186,11 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
     }
 
     let mut out = format!(
-        "{} tool(s), which is every one that goes into the next request:\n{:<12}  {:<28}  {:>9}  \
-         what it is\n",
+        "{} tool(s), which is every one that goes into the next request:\n{:<12}  {:<28}  what it \
+         is\n",
         specs.len(),
         "tool",
         "needs",
-        "shown",
     );
     for spec in &specs {
         let needs = match spec.capabilities.is_empty() {
@@ -194,27 +202,74 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
                 .collect::<Vec<_>>()
                 .join(", "),
         };
-        let shown = match limits.of(&spec.id).or(spec.output_limit) {
-            Some(bytes) => format!("{} B", thousands(bytes)),
-            None => "all of it".to_owned(),
-        };
         out.push_str(&format!(
-            "{:<12}  {:<28}  {shown:>9}  {}\n",
+            "{:<12}  {:<28}  {}\n",
             spec.id,
             needs,
             first_clause(&spec.description),
         ));
     }
+
+    out.push_str(&format!("\n{}", shown(&specs, limits)));
     out.push_str(
-        "\n`shown` is how much of a result reaches you; the whole of anything cut is archived \
-         beside it and can be restored. A tool that was taken away mid-session is not on this \
-         list.\n",
+        "The whole of anything cut is archived beside what you were shown and can be restored. A \
+         tool that was taken away mid-session is not on this list.\n",
     );
     out.push_str(&if_offered(kernel, "log", || {
         "`log` with `kinds: [\"tools.changed\"]` says when one went.\n".to_owned()
     }));
 
     out
+}
+
+/// How much of an answer reaches the model, by subject: the figure they share, then the rest.
+///
+/// note: only the subjects these tools actually declare, so a session that is not offering `fs`
+/// is not told what `fs:read` would be cut at. It is the rule `if_offered` is named for, one
+/// level down: everything named in an answer reads as a thing that is there.
+fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits) -> String {
+    let mut held: Vec<(String, usize)> = specs
+        .iter()
+        .flat_map(|spec| spec.capabilities.iter())
+        .filter_map(|subject| {
+            let subject = subject.to_string();
+            limits.of(&subject).map(|bytes| (subject, bytes))
+        })
+        .collect();
+    held.sort();
+    held.dedup();
+    if held.is_empty() {
+        return "Nothing here cuts an answer short.\n".to_owned();
+    }
+
+    // the one most of them share, which is what a session nobody has changed anything in has
+    let mut counted: Vec<(usize, usize)> = Vec::new();
+    for (_, bytes) in &held {
+        match counted.iter_mut().find(|(at, _)| at == bytes) {
+            Some((_, seen)) => *seen += 1,
+            None => counted.push((*bytes, 1)),
+        }
+    }
+    let common = counted
+        .iter()
+        .max_by_key(|(_, seen)| *seen)
+        .map(|(bytes, _)| *bytes)
+        .unwrap_or_default();
+
+    let odd: Vec<String> = held
+        .iter()
+        .filter(|(_, bytes)| *bytes != common)
+        .map(|(subject, bytes)| format!("{subject} at {}", thousands(*bytes)))
+        .collect();
+
+    format!(
+        "An answer is cut at {} bytes{}. ",
+        thousands(common),
+        match odd.is_empty() {
+            true => String::new(),
+            false => format!(", except {}", odd.join(", ")),
+        }
+    )
 }
 
 /// What the policy will say, before anything is asked.
@@ -387,7 +442,7 @@ fn rules(kernel: &Kernel) -> String {
         Some(compactor) => format!(
             "\nthe compactor is `{}`. It runs when the context gets too full and moves items out \
              of the request without being asked - it cannot take anything pinned, it says exactly \
-             what it moved, and `amend` with `restore` puts any of it back.{}\n",
+             what it moved, and `context` with `restore` puts any of it back.{}\n",
             short(compactor.name()),
             if_offered(kernel, "log", || {
                 " `log` with `kinds: [\"context.compacted\"]` is every pass it has made.".to_owned()

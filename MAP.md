@@ -35,19 +35,21 @@ a session is assembled in, two of which are not guessable - the subscription has
 the wiring, and `introspect::install` hands back a handle the caller has to keep),
 `headless.rs` (the other loop: a line of stdin where the
 terminal has a key, the session log on stdout and what a person reads on stderr), `help.rs` (the
-key listing and the selector listing, which `/help` and the `amend` tool print), `config.rs`
+key listing and the selector listing, which `/help` and the `context` tool print), `config.rs`
 (`Settings`: the JSON `--config-file` takes, one field per argument it stands in for - the merge
 itself is `Args::under` in `main.rs`, because only clap can say which arguments were typed, and
 the crate's own `kamchatka.json` is a starting point the suite holds to naming every field of it),
 `mcp.rs` (feature `mcp`: somebody else's server spawned and its tools installed), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
 and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that floats over one,
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
-fitting), `tools/` (the six tools - `files.rs` for the three that open one file, `search.rs` for the two that
-walk a directory of them with ripgrep's engine, and `shell.rs` for the one that is a process - with
-`policy.rs` for `Careful` and `trim.rs` for the compactor),
-`introspect/` (the four tools an agent inspects and manages its own session with - one
-per file, named for the noun each is about: `context` reads the context, `log` the record beside
-it, `setup` what the session is running with, `amend` changes any of it - with `mod.rs` holding
+fitting), `tools/` (`fs.rs` for the filesystem tool, dispatching to `files.rs` for the three operations that
+open one file and `search.rs` for the two that walk a directory of them with ripgrep's engine, and
+`shell.rs` for the one tool that is a process - with `policy.rs` for `Careful` and `trim.rs` for
+the compactor),
+`introspect/` (the four tools an agent inspects and manages its own session with, one per file and
+named for the noun each is about: `context` is the context, reading it and changing it, with
+`amend.rs` holding the changing half; `log` is the record beside it; `setup` is what the session is
+running with; `fork` is a copy of the session, asked something - with `mod.rs` holding
 `install` and the handful of things they all use),
 `sandbox.rs` (the Landlock ruleset the `shell` tool is re-executed under, `Reach` for what the
 in-process tools will open, and `Confinement` for every way the first of those can fail to be
@@ -119,7 +121,7 @@ is `with_history`, which is the mirror of `with_context` and is named for what i
 for its argument - so a grep for "session" on the kernel misses it and a design was written calling
 for an accessor that had been there all along. What it adds is the part the
 runtime has no opinion about - which of those a *model* may do. A pinned item, a system
-instruction and the assistant turn carrying the call in flight are refused, `amend` may unpin only
+instruction and the assistant turn carrying the call in flight are refused, it may unpin only
 what it pinned itself, and `undo` walks that tool's own journal rather than `Kernel::undo`, whose
 stack belongs to the person and whose top during a turn is always the model's own question. There
 is a tool per noun rather than one with a mode argument because a `ToolSpec` declares its

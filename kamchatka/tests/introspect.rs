@@ -73,9 +73,9 @@ fn answered(kernel: &Kernel) -> String {
         .expect("the turn recorded no tool result")
 }
 
-/// Every `context` or `amend` result, oldest first; `answers_from` takes the other two.
+/// Every `context` result, oldest first; `answers_from` takes any other tool.
 fn all_answers(kernel: &Kernel) -> Vec<String> {
-    answers_from(kernel, &["context", "amend"])
+    answers_from(kernel, &["context"])
 }
 
 /// Every result one of these tools produced, oldest first.
@@ -128,14 +128,14 @@ async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
-            json!({"action": "prune", "ids": [1], "state": "elide", "reason": "done with it"}),
+            "context",
+            json!({"action": "elide", "ids": [1], "reason": "done with it"}),
         ),
         // not a word the schema lists, and unambiguous: there is one state that is "put it back"
         call(
             "c2",
-            "amend",
-            json!({"action": "prune", "ids": [1], "state": "unelide", "reason": "wanted it after all"}),
+            "context",
+            json!({"action": "restore", "ids": [1], "reason": "wanted it after all"}),
         ),
     ]));
 
@@ -146,7 +146,7 @@ async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
     let said: Vec<String> = kernel
         .items()
         .iter()
-        .filter(|item| item.label == "amend")
+        .filter(|item| item.label == "context")
         .map(|item| item.content.to_text().into_owned())
         .collect();
     assert_eq!(said.len(), 2, "{said:?}");
@@ -177,11 +177,10 @@ async fn eliding_something_small_says_that_it_cost_more_than_it_saved() {
     // added 162 tokens doing it; both numbers were on the screen and it did not notice
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({
-            "action": "prune",
+            "action": "elide",
             "ids": [1],
-            "state": "elide",
             "reason": "a reason long enough to outweigh the four words it is replacing, which is                        the ordinary case for a short item rather than a contrived one",
         }),
     )]));
@@ -202,7 +201,7 @@ async fn eliding_something_small_says_that_it_cost_more_than_it_saved() {
 async fn a_note_that_makes_the_request_bigger_is_not_blamed_on_an_elision() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({
             "action": "note",
             "label": "code word",
@@ -233,12 +232,12 @@ async fn restoring_something_says_the_growth_is_the_content_itself() {
     let (kernel, _provider, _anchor) = agent(vec![
         ModelResponse::tool_calls(vec![call(
             "c1",
-            "amend",
+            "context",
             json!({ "action": "exclude", "ids": [1], "reason": "not needed for now" }),
         )]),
         ModelResponse::tool_calls(vec![call(
             "c2",
-            "amend",
+            "context",
             json!({ "action": "restore", "ids": [1], "reason": "needed after all" }),
         )]),
         ModelResponse::text("done"),
@@ -271,7 +270,7 @@ async fn restoring_something_says_the_growth_is_the_content_itself() {
 async fn pruning_something_says_the_figure_went_down_and_what_it_went_down_from() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({ "action": "exclude", "ids": [1], "reason": "not needed for now" }),
     )]));
 
@@ -310,7 +309,7 @@ async fn pruning_something_says_the_figure_went_down_and_what_it_went_down_from(
 async fn a_change_that_moves_the_figure_not_at_all_says_that_it_did_not() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({ "action": "pin", "ids": [1], "reason": "worth keeping through a compaction" }),
     )]));
 
@@ -342,7 +341,7 @@ async fn a_change_that_moves_the_figure_not_at_all_says_that_it_did_not() {
 async fn a_move_given_a_label_instead_of_ids_is_told_how_to_say_it() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({
             "action": "elide",
             "label": "secrets.txt",
@@ -536,7 +535,7 @@ async fn request_says_which_rule_left_each_item_out() {
 #[tokio::test]
 async fn draft_answers_on_a_fork_and_leaves_the_context_alone() {
     let (kernel, provider, _anchor) = agent([
-        ModelResponse::tool_calls(vec![call("c1", "context", json!({ "action": "draft" }))]),
+        ModelResponse::tool_calls(vec![call("c1", "fork", json!({ "action": "draft" }))]),
         // the fork's answer, taken off the same script
         ModelResponse::text("I would say the parser is fine"),
         ModelResponse::text("done"),
@@ -578,8 +577,8 @@ async fn a_fork_leads_with_the_answer_so_a_limit_cuts_the_thinking_instead() {
     let (kernel, _provider, _anchor) = agent([
         ModelResponse::tool_calls(vec![call(
             "c1",
-            "context",
-            json!({ "action": "fork", "question": "why did you stop?" }),
+            "fork",
+            json!({ "action": "ask", "question": "why did you stop?" }),
         )]),
         ModelResponse {
             reasoning: Some("X".repeat(2_000).into()),
@@ -613,9 +612,9 @@ async fn a_fork_is_asked_a_question_without_the_items_it_was_told_to_leave_out()
     let (kernel, provider, _anchor) = agent([
         ModelResponse::tool_calls(vec![call(
             "c1",
-            "context",
+            "fork",
             json!({
-                "action": "fork",
+                "action": "ask",
                 "question": "does the note change your answer?",
                 "without": [2],
             }),
@@ -656,11 +655,10 @@ async fn a_fork_is_asked_a_question_without_the_items_it_was_told_to_leave_out()
 async fn amend_prunes_what_is_the_models_and_refuses_what_is_not() {
     let (kernel, provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({
-            "action": "prune",
+            "action": "exclude",
             "ids": [1, 2, 3],
-            "state": "exclude",
             "reason": "I am done with this",
         }),
     )]));
@@ -701,13 +699,13 @@ async fn amend_may_unpin_only_what_it_pinned_itself() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
-            json!({ "action": "prune", "ids": [1], "state": "pin", "reason": "I need this" }),
+            "context",
+            json!({ "action": "pin", "ids": [1], "reason": "I need this" }),
         ),
         call(
             "c2",
-            "amend",
-            json!({ "action": "prune", "ids": [1], "state": "restore", "reason": "no I do not" }),
+            "context",
+            json!({ "action": "restore", "ids": [1], "reason": "no I do not" }),
         ),
     ]));
 
@@ -733,8 +731,8 @@ async fn amend_may_unpin_only_what_it_pinned_itself() {
 async fn amend_will_not_touch_the_turn_it_is_speaking_in() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
-        json!({ "action": "prune", "ids": [2], "state": "exclude", "reason": "on reflection" }),
+        "context",
+        json!({ "action": "exclude", "ids": [2], "reason": "on reflection" }),
     )]));
 
     kernel.push(ContextItem::user("go"));
@@ -752,7 +750,7 @@ async fn amend_will_not_touch_the_turn_it_is_speaking_in() {
 async fn revise_rewrites_an_item_and_says_who_did_it() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({
             "action": "revise",
             "ids": [1],
@@ -774,7 +772,7 @@ async fn revise_rewrites_an_item_and_says_who_did_it() {
         item.content.to_text(),
         "the parser is in src/parse.rs, not src/parser.rs"
     );
-    assert_eq!(item.meta["revised"]["by"], "amend");
+    assert_eq!(item.meta["revised"]["by"], "context");
     assert_eq!(
         item.meta["revised"]["reason"],
         "I wrote down the wrong path"
@@ -793,12 +791,12 @@ async fn undo_walks_back_this_tools_own_changes_and_nothing_else() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
-            json!({ "action": "prune", "ids": [1], "state": "exclude", "reason": "too long" }),
+            "context",
+            json!({ "action": "exclude", "ids": [1], "reason": "too long" }),
         ),
         call(
             "c2",
-            "amend",
+            "context",
             json!({
                 "action": "revise",
                 "ids": [2],
@@ -808,7 +806,7 @@ async fn undo_walks_back_this_tools_own_changes_and_nothing_else() {
         ),
         call(
             "c3",
-            "amend",
+            "context",
             json!({ "action": "undo", "steps": 5, "reason": "I was wrong about both" }),
         ),
     ]));
@@ -845,7 +843,7 @@ async fn undo_walks_back_this_tools_own_changes_and_nothing_else() {
 async fn undo_with_nothing_of_its_own_says_whose_undo_it_is_not() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({ "action": "undo", "reason": "let me try" }),
     )]));
 
@@ -865,8 +863,8 @@ async fn undo_with_nothing_of_its_own_says_whose_undo_it_is_not() {
 async fn a_reason_is_required_before_anything_changes() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
-        json!({ "action": "prune", "ids": [1], "state": "exclude" }),
+        "context",
+        json!({ "action": "exclude", "ids": [1] }),
     )]));
 
     kernel.push(ContextItem::file("junk.rs", "..."));
@@ -909,19 +907,19 @@ async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
+            "context",
             json!({ "action": "elide", "ids": [1], "reason": "it is enormous" }),
         ),
         // the way it was spelled before, which is still a way to spell it
         call(
             "c2",
-            "amend",
-            json!({ "action": "prune", "ids": [2], "state": "exclude", "reason": "and this one" }),
+            "context",
+            json!({ "action": "exclude", "ids": [2], "reason": "and this one" }),
         ),
         // and the way back, which is an action like the rest of them
         call(
             "c3",
-            "amend",
+            "context",
             json!({ "action": "restore", "ids": [1], "reason": "I want it after all" }),
         ),
     ]));
@@ -943,7 +941,7 @@ async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
     let offered = kernel
         .tool_specs()
         .into_iter()
-        .find(|spec| spec.id == "amend")
+        .find(|spec| spec.id == "context")
         .expect("it is offered");
     assert!(
         offered.schema["properties"].get("state").is_none(),
@@ -966,7 +964,7 @@ async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
 async fn an_action_that_is_no_part_of_this_tool_gets_the_list_of_the_ones_that_are() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({ "action": "delete", "ids": [1], "reason": "it is enormous" }),
     )]));
 
@@ -990,11 +988,10 @@ async fn what_the_context_says_is_what_the_next_request_carries() {
     // turn, and the request that same turn goes on to send is the changed one
     let (kernel, provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({
-            "action": "prune",
+            "action": "elide",
             "ids": [1],
-            "state": "elide",
             "reason": "400 bytes of nothing",
         }),
     )]));
@@ -1244,21 +1241,19 @@ async fn a_class_of_items_can_be_pruned_without_naming_each_one() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
+            "context",
             json!({
-                "action": "prune",
+                "action": "elide",
                 "select": "all:tool_results",
-                "state": "elide",
                 "reason": "I have what I needed from them",
             }),
         ),
         call(
             "c2",
-            "amend",
+            "context",
             json!({
-                "action": "prune",
+                "action": "elide",
                 "select": "kind:nothing_like_this",
-                "state": "elide",
                 "reason": "trying it on",
             }),
         ),
@@ -1311,24 +1306,36 @@ async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
+            "context",
             json!({ "action": "pin", "ids": [2], "reason": "keeping this" }),
         ),
         // the same state, a new reason: the kernel calls this changed, because the note changed
         call(
             "c2",
-            "amend",
+            "context",
             json!({ "action": "pin", "ids": [2], "reason": "still keeping it" }),
         ),
         // and a call that does both at once, which is the shape that has to stay readable
         call(
             "c3",
-            "amend",
+            "context",
             json!({ "action": "pin", "ids": [1, 2], "reason": "both now" }),
         ),
-        call("c4", "amend", json!({ "action": "undo", "reason": "back" })),
-        call("c5", "amend", json!({ "action": "undo", "reason": "back" })),
-        call("c6", "amend", json!({ "action": "undo", "reason": "back" })),
+        call(
+            "c4",
+            "context",
+            json!({ "action": "undo", "reason": "back" }),
+        ),
+        call(
+            "c5",
+            "context",
+            json!({ "action": "undo", "reason": "back" }),
+        ),
+        call(
+            "c6",
+            "context",
+            json!({ "action": "undo", "reason": "back" }),
+        ),
     ]));
 
     kernel.push(ContextItem::user("where is the parser?"));
@@ -1339,7 +1346,7 @@ async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
 
     kernel.turn().await.expect("the turn failed");
 
-    let said = answers_from(&kernel, &["amend"]);
+    let said = answers_from(&kernel, &["context"]);
     assert!(
         said[0].starts_with("1 item(s) are now pinned: 2"),
         "{}",
@@ -1392,7 +1399,7 @@ async fn pinning_a_note_is_not_a_second_thing_to_undo() {
     let written = |pin: bool| async move {
         let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
             "c1",
-            "amend",
+            "context",
             json!({
                 "action": "note", "label": "the plan", "content": "read the tests first",
                 "pin": pin, "reason": "so it outlives this turn",
@@ -1427,7 +1434,7 @@ async fn pinning_a_note_is_not_a_second_thing_to_undo() {
 async fn a_note_is_written_down_where_compaction_cannot_reach_it() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({
             "action": "note",
             "label": "the plan",
@@ -1462,9 +1469,9 @@ async fn a_note_is_written_down_where_compaction_cannot_reach_it() {
 
     // and it is one of its own changes, so it can walk it back - which archives it rather than
     // destroying it, like everything else here
-    let tool = kernel.tool("amend").expect("installed");
+    let tool = kernel.tool("context").expect("installed");
     tool.invoke(
-        &nachalnik::ToolCall::new("c2", "amend", json!({ "action": "undo", "reason": "no" })),
+        &nachalnik::ToolCall::new("c2", "context", json!({ "action": "undo", "reason": "no" })),
         nachalnik::OutputSink::disconnected(),
     )
     .await
@@ -1482,7 +1489,7 @@ async fn a_fork_that_asks_for_a_tool_says_so_rather_than_answering_blank() {
     // words - and a blank draft gives the caller no way to tell that from a copy that had
     // nothing to say
     let (kernel, _provider, _anchor) = agent([
-        ModelResponse::tool_calls(vec![call("c1", "context", json!({ "action": "draft" }))]),
+        ModelResponse::tool_calls(vec![call("c1", "fork", json!({ "action": "draft" }))]),
         ModelResponse::tool_calls(vec![call("f1", "shell", json!({ "cmd": "ls" }))]),
         ModelResponse::text("done"),
     ]);
@@ -1502,7 +1509,7 @@ async fn a_fork_that_asks_for_a_tool_says_so_rather_than_answering_blank() {
 #[tokio::test]
 async fn a_fork_is_told_it_cannot_act() {
     let (kernel, provider, _anchor) = agent([
-        ModelResponse::tool_calls(vec![call("c1", "context", json!({ "action": "draft" }))]),
+        ModelResponse::tool_calls(vec![call("c1", "fork", json!({ "action": "draft" }))]),
         ModelResponse::text("I would say this"),
         ModelResponse::text("done"),
     ]);
@@ -1533,22 +1540,22 @@ async fn hiding_everything_while_holding_no_notes_says_what_that_costs() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
-            json!({"action": "prune", "select": "all:tool_results", "state": "elide",
+            "context",
+            json!({"action": "elide", "select": "all:tool_results",
                    "reason": "done with these"}),
         ),
         // a note, and then the same wipe again: with something of its own kept, the warning has
         // nothing to warn about
         call(
             "c2",
-            "amend",
+            "context",
             json!({"action": "note", "label": "q1", "content": "Cargo.lock is 3593 lines",
                    "pin": true, "reason": "keeping the finding"}),
         ),
         call(
             "c3",
-            "amend",
-            json!({"action": "prune", "ids": [2], "state": "elide", "reason": "done with it"}),
+            "context",
+            json!({"action": "elide", "ids": [2], "reason": "done with it"}),
         ),
     ]));
 
@@ -1565,7 +1572,7 @@ async fn hiding_everything_while_holding_no_notes_says_what_that_costs() {
     let said: Vec<String> = kernel
         .items()
         .iter()
-        .filter(|item| item.label == "amend")
+        .filter(|item| item.label == "context")
         .map(|item| item.content.to_text().into_owned())
         .collect();
     assert_eq!(said.len(), 3, "{said:?}");
@@ -1624,8 +1631,8 @@ async fn hiding_everything_while_holding_no_notes_says_what_that_costs() {
 #[tokio::test]
 async fn a_bare_log_is_a_summary_and_a_price_rather_than_the_records() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
-        call("c1", "log", json!({})),
-        call("c2", "log", json!({ "since": 0 })),
+        call("c1", "log", json!({ "action": "read" })),
+        call("c2", "log", json!({ "action": "read", "since": 0 })),
     ]));
 
     // enough of them that the answer is mostly records rather than mostly header, which is what
@@ -1694,8 +1701,16 @@ async fn a_bare_log_is_a_summary_and_a_price_rather_than_the_records() {
 #[tokio::test]
 async fn a_filtered_log_opens_with_the_whole_total_and_not_the_filtered_one() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
-        call("c1", "log", json!({ "kinds": ["context.replaced"] })),
-        call("c2", "log", json!({ "kinds": ["model.payload"] })),
+        call(
+            "c1",
+            "log",
+            json!({ "action": "read", "kinds": ["context.replaced"] }),
+        ),
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "kinds": ["model.payload"] }),
+        ),
     ]));
 
     kernel.push(ContextItem::user("carry on"));
@@ -1753,7 +1768,7 @@ async fn a_revised_item_can_be_read_back_out_of_the_log_by_its_number() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
+            "context",
             json!({
                 "action": "revise",
                 "ids": [1],
@@ -1761,8 +1776,12 @@ async fn a_revised_item_can_be_read_back_out_of_the_log_by_its_number() {
                 "reason": "I wrote down the wrong path",
             }),
         ),
-        call("c2", "log", json!({ "ids": [1] })),
-        call("c3", "log", json!({ "ids": [1], "whole": true })),
+        call("c2", "log", json!({ "action": "read", "ids": [1] })),
+        call(
+            "c3",
+            "log",
+            json!({ "action": "read", "ids": [1], "whole": true }),
+        ),
     ]));
 
     kernel.push(ContextItem::memory(
@@ -1804,8 +1823,11 @@ async fn a_revised_item_can_be_read_back_out_of_the_log_by_its_number() {
 /// A shortened answer says how much of it is missing.
 #[tokio::test]
 async fn take_says_how_many_records_are_beyond_what_it_showed() {
-    let (kernel, _provider, _anchor) =
-        agent(one_turn(vec![call("c1", "log", json!({ "take": 2 }))]));
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read", "take": 2 }),
+    )]));
 
     for n in 0..6 {
         kernel.push(ContextItem::memory("scratch", format!("note {n}")));
@@ -1843,11 +1865,15 @@ async fn take_says_how_many_records_are_beyond_what_it_showed() {
 #[tokio::test]
 async fn a_filter_that_is_not_a_number_is_an_error_rather_than_an_empty_log() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
-        call("c1", "log", json!({ "since": "yesterday" })),
-        call("c2", "log", json!({ "take": "lots" })),
+        call(
+            "c1",
+            "log",
+            json!({ "action": "read", "since": "yesterday" }),
+        ),
+        call("c2", "log", json!({ "action": "read", "take": "lots" })),
         // a number written as a word is a mistake; a number written as a string is not, and
         // taking it costs nothing
-        call("c3", "log", json!({ "since": "1" })),
+        call("c3", "log", json!({ "action": "read", "since": "1" })),
     ]));
 
     kernel.push(ContextItem::user("carry on"));
@@ -1880,7 +1906,7 @@ async fn the_records_come_back_in_one_order_however_the_calls_were_run() {
     let provider = Arc::new(ScriptedProvider::new(one_turn(vec![
         call("c1", "context", json!({ "action": "look" })),
         call("c2", "context", json!({ "action": "budget" })),
-        call("c3", "log", json!({ "since": 0 })),
+        call("c3", "log", json!({ "action": "read", "since": 0 })),
     ])));
     kernel.set_provider(provider);
     let policy = Arc::new(Careful::new());
@@ -1917,10 +1943,14 @@ async fn log_declares_its_own_capability_and_no_way_to_write() {
         vec![kamchatka::tools::domains::log("read")],
         "it has to be separately grantable, and separately revocable"
     );
-    assert!(
-        spec.schema["properties"]["action"].is_null(),
-        "there are no actions here: everything it takes is a filter"
+    // it takes an `action` like every other tool here, and `read` is the only one there is:
+    // uniform beats terse, because the tool that is the exception is the one a model gets wrong
+    assert_eq!(
+        spec.schema["properties"]["action"]["enum"],
+        json!(["read"]),
+        "every tool here takes an action, and this one reads"
     );
+    assert_eq!(spec.schema["required"], json!(["action"]));
 }
 
 // ------------------------------------------------------------------------------------ search
@@ -2169,6 +2199,48 @@ async fn a_search_says_which_of_the_ids_it_was_given_name_nothing() {
 
 // ------------------------------------------------------------------------------------- setup
 
+/// `setup tools` says how much of an answer reaches the model, by subject and not by tool.
+///
+/// note: the figure they share and then whichever ones do not, rather than a column. A column
+/// would have had one number standing for `fs:read` and `fs:grep` alike, which is the thing
+/// keying a limit by subject exists to stop - and this is the one place a model can find out what
+/// its own answers are being cut at, so a number that is wrong here is one it cannot check.
+#[tokio::test]
+async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
+    let limits = Limits::new();
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "tools" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    for domain in ["context", "log", "setup", "fork"] {
+        policy.set(&Subject::parse(domain), Verdict::Allow);
+    }
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, limits.clone());
+
+    // one subject held to something else, which is what the sentence has to be able to say
+    limits.set("context:search", 4_000).expect("a row for it");
+
+    kernel.push(ContextItem::user("what are you running with?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("cut at 32,000 bytes"), "{said}");
+    assert!(
+        said.contains("except context:search at 4,000"),
+        "the one that differs is named, or the sentence is wrong about it: {said}"
+    );
+    // and only the subjects this session's tools declare: no `fs` here, so no `fs:read` in the
+    // answer, for the reason `if_offered` exists
+    assert!(
+        !said.contains("fs:read"),
+        "it names a subject nothing here declares: {said}"
+    );
+}
+
 /// A tool taken away mid-session is not on the list, which is the point of there being a list.
 ///
 /// note: the shape this exists for. Nothing anywhere let an agent enumerate its own tools, so a
@@ -2332,12 +2404,12 @@ async fn setup_policy_names_the_seams_that_rewrite_a_context_on_their_own() {
 #[tokio::test]
 async fn a_forks_own_events_are_not_in_this_sessions_log() {
     let (kernel, provider, _anchor) = agent([
-        ModelResponse::tool_calls(vec![call("c1", "context", json!({ "action": "draft" }))]),
+        ModelResponse::tool_calls(vec![call("c1", "fork", json!({ "action": "draft" }))]),
         ModelResponse::text("the copy's answer"),
         ModelResponse::tool_calls(vec![call(
             "c2",
             "log",
-            json!({ "kinds": ["model.requested"] }),
+            json!({ "action": "read", "kinds": ["model.requested"] }),
         )]),
         ModelResponse::text("done"),
     ]);
@@ -2359,26 +2431,26 @@ async fn a_forks_own_events_are_not_in_this_sessions_log() {
     );
     // what the copy said did cross, as the tool's output, the way any tool's output does
     assert!(
-        all_answers(&kernel)
+        answers_from(&kernel, &["fork"])
             .iter()
             .any(|answer| answer.contains("the copy's answer")),
         "the answer is the one thing a fork hands back"
     );
 }
 
-/// `by: "amend"` on an item's metadata means the tool, and nothing else in this program writes it.
+/// `by: "context"` on an item's metadata means the tool, and nothing else in this program writes it.
 ///
 /// note: the other question the design left open - whether a person editing an item would also
-/// record `"amend"`, which would have a model reading its own metadata and finding its own tool
+/// record `"context"`, which would have a model reading its own metadata and finding its own tool
 /// named as the hand that did it. It would not, and there is no such edit: `Kernel::replace` is
-/// reached from `amend`'s `revise` and from `amend`'s `undo`, and from nowhere else in this crate.
+/// reached from `context`'s `revise` and from its `undo`, and from nowhere else in this crate.
 /// The `unwrap_or("something")` that suggested otherwise is guarding against metadata written by
 /// somebody else's code, which is what a free-form field the kernel never reads is for.
 #[tokio::test]
-async fn the_only_hand_that_records_itself_as_amend_is_amend() {
+async fn the_only_hand_that_records_itself_as_the_tool_is_the_tool() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
-        "amend",
+        "context",
         json!({
             "action": "revise",
             "ids": [1],
@@ -2399,13 +2471,13 @@ async fn the_only_hand_that_records_itself_as_amend_is_amend() {
         .expect("the item is there");
     assert!(
         kernel.item(item).expect("still there").meta.is_null(),
-        "nothing outside `amend` attributes an edit to `amend`"
+        "nothing outside the tool attributes an edit to it"
     );
 
     kernel.turn().await.expect("the turn failed");
 
     let after = kernel.item(item).expect("still there");
-    assert_eq!(after.meta["revised"]["by"], "amend");
+    assert_eq!(after.meta["revised"]["by"], "context");
     // and both rewrites are on the record with what each replaced, so the two hands are told
     // apart by the log even though the item carries only the second
     let replaced: Vec<String> = kernel
@@ -2434,11 +2506,11 @@ async fn the_only_hand_that_records_itself_as_amend_is_amend() {
 #[tokio::test]
 async fn take_on_its_own_does_not_claim_to_have_matched_anything() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
-        call("c1", "log", json!({ "take": 2 })),
+        call("c1", "log", json!({ "action": "read", "take": 2 })),
         call(
             "c2",
             "log",
-            json!({ "take": 2, "kinds": ["context.added"] }),
+            json!({ "action": "read", "take": 2, "kinds": ["context.added"] }),
         ),
     ]));
 
@@ -2523,7 +2595,7 @@ async fn a_note_says_when_its_name_is_already_taken_and_what_changes_one() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
+            "context",
             json!({
                 "action": "note",
                 "content": "experiment_status: in_progress",
@@ -2533,7 +2605,7 @@ async fn a_note_says_when_its_name_is_already_taken_and_what_changes_one() {
         ),
         call(
             "c2",
-            "amend",
+            "context",
             json!({
                 "action": "note",
                 "content": "experiment_status: complete",
@@ -2578,12 +2650,12 @@ async fn two_notes_with_no_label_are_not_reported_as_a_clash() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
+            "context",
             json!({ "action": "note", "content": "one", "reason": "why" }),
         ),
         call(
             "c2",
-            "amend",
+            "context",
             json!({ "action": "note", "content": "two", "reason": "why" }),
         ),
     ]));
@@ -2602,17 +2674,17 @@ async fn a_name_freed_by_putting_the_item_away_is_free_again() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
-            "amend",
+            "context",
             json!({ "action": "note", "content": "first", "label": "plan", "reason": "why" }),
         ),
         call(
             "c2",
-            "amend",
+            "context",
             json!({ "action": "archive", "select": "label:plan", "reason": "done with it" }),
         ),
         call(
             "c3",
-            "amend",
+            "context",
             json!({ "action": "note", "content": "second", "label": "plan", "reason": "why" }),
         ),
     ]));
@@ -2635,7 +2707,7 @@ async fn a_name_taken_many_times_over_names_some_and_counts_the_rest() {
         .map(|n| {
             call(
                 &format!("c{n}"),
-                "amend",
+                "context",
                 json!({
                     "action": "note",
                     "content": format!("step {n}"),
@@ -2730,11 +2802,17 @@ async fn setup_permissions_puts_a_domain_rule_in_a_section_of_its_own() {
 
 /// An argument this tool does not take is a mistake to report, not one to ignore.
 ///
-/// note: found live. A session called `log {action: "look"}` - the sibling tools all take an
-/// `action`, so it is the obvious mistake - got the summary back, and read it as the answer to a
-/// question it had not asked. It then cited it. An ignored argument is the same failure as a
-/// filter nobody can parse, one step earlier: the reply is a real answer, so nothing in it says
-/// that what was asked for did not happen.
+/// note: found live. A session called `log {action: "look"}` - the sibling tools all took an
+/// `action` and this one did not, so it was the obvious mistake - got the summary back, and read
+/// it as the answer to a question it had not asked. It then cited it. An ignored argument is the
+/// same failure as a filter nobody can parse, one step earlier: the reply is a real answer, so
+/// nothing in it says that what was asked for did not happen.
+///
+/// note: that particular call cannot go wrong any more, and what closed it was making `log` take
+/// an `action` like everything else here. `action: "look"` is now an operation this tool does not
+/// have and is refused by name, which is the same answer `fs` and `context` give - three tools,
+/// one sentence. What this still checks is the other half, which no amount of uniformity fixes: a
+/// misspelled *filter*, where the tool would otherwise answer a question nobody asked.
 #[tokio::test]
 async fn an_argument_log_does_not_take_is_refused_rather_than_ignored() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
@@ -2742,55 +2820,24 @@ async fn an_argument_log_does_not_take_is_refused_rather_than_ignored() {
         call(
             "c2",
             "log",
-            json!({ "kinds": ["context.added"], "limit": 3 }),
+            json!({ "action": "read", "kinds": ["context.added"], "limit": 3 }),
         ),
     ]));
     kernel.push(ContextItem::user("carry on"));
     kernel.turn().await.expect("the turn failed");
 
     let said = answers_from(&kernel, &["log"]);
-    assert!(said[0].contains("does not take `action`"), "{}", said[0]);
+    // an operation it does not have, refused the way every tool here refuses one
+    assert!(said[0].contains("there is no `look`"), "{}", said[0]);
     assert!(
-        said[0].contains("no actions here"),
-        "the obvious mistake gets the sentence that unmakes it: {}",
-        said[0]
-    );
-    assert!(
-        said[0].contains("nothing was read"),
-        "and says it did nothing, so it cannot be read as an answer: {}",
+        said[0].contains("this tool does read"),
+        "and says what it does instead: {}",
         said[0]
     );
     // a real filter beside an unreadable one is still refused, rather than half-honoured
     assert!(said[1].contains("does not take `limit`"), "{}", said[1]);
+    assert!(said[1].contains("nothing was read"), "{}", said[1]);
     assert!(!said[1].contains("match"), "{}", said[1]);
-    // and the siblings it points at are named, because that is what unmakes the mistake
-    for tool in ["`context`", "`setup`", "`amend`"] {
-        assert!(said[0].contains(tool), "{tool} is not named: {}", said[0]);
-    }
-
-    // the same sentence in a session that no longer has one of them. `if_offered`'s rule: name
-    // only what this session can reach, because everything named in an answer reads as something
-    // to try - and a fixed list of siblings is the one shape that cannot follow it
-    kernel.remove_tool("setup");
-    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
-        "c3",
-        "log",
-        json!({ "action": "look" }),
-    )]))));
-    kernel.push(ContextItem::user("again"));
-    kernel.turn().await.expect("the second turn failed");
-
-    let after = answers_from(&kernel, &["log"]);
-    assert!(
-        !after[2].contains("`setup`"),
-        "an answer that names a tool the session does not have is advice nobody can take: {}",
-        after[2]
-    );
-    // and the rest of the sentence survives losing one of its subjects
-    assert!(after[2].contains("no actions here"), "{}", after[2]);
-    for tool in ["`context`", "`amend`"] {
-        assert!(after[2].contains(tool), "{tool} is not named: {}", after[2]);
-    }
 }
 
 /// An item with no beginning in this log is said to have none, which is what `ids` really asks.
@@ -2809,9 +2856,9 @@ async fn an_inherited_item_is_reported_as_having_no_beginning_here() {
 
     let kernel = Kernel::resume(Config::default(), first.snapshot());
     kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![
-        call("c1", "log", json!({ "ids": [2] })),
-        call("c2", "log", json!({ "ids": [2, 3] })),
-        call("c3", "log", json!({ "ids": [3] })),
+        call("c1", "log", json!({ "action": "read", "ids": [2] })),
+        call("c2", "log", json!({ "action": "read", "ids": [2, 3] })),
+        call("c3", "log", json!({ "action": "read", "ids": [3] })),
     ]))));
     let policy = Arc::new(Careful::new());
     policy.set(
@@ -2861,8 +2908,8 @@ async fn since_one_is_not_since_the_beginning_and_the_schema_says_so() {
     first.push(ContextItem::user("earlier"));
     let kernel = Kernel::resume(Config::default(), first.snapshot());
     kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![
-        call("c1", "log", json!({ "since": 1 })),
-        call("c2", "log", json!({ "since": 0 })),
+        call("c1", "log", json!({ "action": "read", "since": 1 })),
+        call("c2", "log", json!({ "action": "read", "since": 0 })),
     ]))));
     let policy = Arc::new(Careful::new());
     policy.set(
@@ -2910,9 +2957,9 @@ async fn an_empty_filter_list_is_no_filter_rather_than_a_refusal() {
         call(
             "c1",
             "log",
-            json!({ "ids": [], "kinds": [], "since": 0, "take": 2, "whole": false }),
+            json!({ "action": "read", "ids": [], "kinds": [], "since": 0, "take": 2, "whole": false }),
         ),
-        call("c2", "log", json!({ "ids": ["two"] })),
+        call("c2", "log", json!({ "action": "read", "ids": ["two"] })),
     ]));
     kernel.push(ContextItem::user("carry on"));
     kernel.turn().await.expect("the turn failed");
@@ -3123,7 +3170,7 @@ async fn a_compaction_record_says_what_moved_it() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
         "log",
-        json!({ "kinds": ["context.compacted"] }),
+        json!({ "action": "read", "kinds": ["context.compacted"] }),
     )]));
 
     let big = kernel.push(ContextItem::file("big.txt", "a".repeat(4_000)));
@@ -3172,7 +3219,7 @@ async fn a_drained_log_says_so_instead_of_saying_nothing_happened() {
         .tool("log")
         .expect("installed")
         .invoke(
-            &nachalnik::ToolCall::new("c1", "log", json!({})),
+            &nachalnik::ToolCall::new("c1", "log", json!({ "action": "read" })),
             nachalnik::OutputSink::disconnected(),
         )
         .await
@@ -3202,8 +3249,11 @@ async fn a_drained_log_says_so_instead_of_saying_nothing_happened() {
 /// An item with no beginning here names the right reason for it having none.
 #[tokio::test]
 async fn a_drained_log_blames_the_drain_rather_than_a_snapshot() {
-    let (kernel, _provider, _anchor) =
-        agent(one_turn(vec![call("c1", "log", json!({ "ids": [1] }))]));
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read", "ids": [1] }),
+    )]));
     let item = kernel.push(ContextItem::user("carry on"));
     assert_eq!(item, nachalnik::ContextId(1));
     // everything up to and including this item's own `context.added` goes
@@ -3238,9 +3288,17 @@ async fn the_edges_of_a_search_and_a_filter_do_not_panic() {
             "context",
             json!({ "action": "search", "text": "needle", "take": 9 }),
         ),
-        call("c2", "log", json!({ "take": 99_999_999u64 })),
-        call("c3", "log", json!({ "take": -3 })),
-        call("c4", "log", json!({ "since": 99_999_999u64 })),
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "take": 99_999_999u64 }),
+        ),
+        call("c3", "log", json!({ "action": "read", "take": -3 })),
+        call(
+            "c4",
+            "log",
+            json!({ "action": "read", "since": 99_999_999u64 }),
+        ),
         call("c5", "context", json!({ "action": "search", "text": "" })),
     ]));
 
@@ -3313,14 +3371,14 @@ async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
     let (kernel, _provider, _anchor) = agent([
         ModelResponse::tool_calls(vec![call(
             "c1",
-            "context",
-            json!({ "action": "fork", "question": "ignoring item 1, what now?" }),
+            "fork",
+            json!({ "action": "ask", "question": "ignoring item 1, what now?" }),
         )]),
         ModelResponse::text("the copy's answer"),
         ModelResponse::tool_calls(vec![call(
             "c2",
-            "context",
-            json!({ "action": "fork", "question": "what now?", "without": [1] }),
+            "fork",
+            json!({ "action": "ask", "question": "what now?", "without": [1] }),
         )]),
         ModelResponse::text("the second copy's answer"),
         ModelResponse::text("done"),
@@ -3330,7 +3388,7 @@ async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
 
     kernel.turn().await.expect("the turn failed");
 
-    let said = answers_from(&kernel, &["context"]);
+    let said = answers_from(&kernel, &["fork"]);
     let (pretended, ablated) = (&said[0], &said[1]);
 
     assert!(

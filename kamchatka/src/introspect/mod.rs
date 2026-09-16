@@ -1,6 +1,6 @@
-//! The tools an agent inspects and manages its own session with: one that reads its context, one
-//! that reads the record kept beside it, one that reads what the session is running with, and one
-//! that changes the first of them.
+//! The tools an agent inspects and manages its own session with: one for its context, one for the
+//! record kept beside it, one for what the session is running with, and one for asking a copy of
+//! itself.
 //!
 //! note: Everything here is ordinary user code, like the rest of `tools.rs`, and none of it
 //! needed a line added to the runtime. What the runtime has is a context that is a list of public
@@ -10,20 +10,25 @@
 //! surface. What they add is the part the kernel has no opinion about: which of it a *model*
 //! may do.
 //!
-//! note: a tool per noun rather than one with an `action` argument, because a
-//! [`nachalnik::ToolSpec`] declares its capabilities once for every call it will ever receive. One
-//! tool would mean that answering *always* to "may it look at its own context?" also answered "may
-//! it rewrite a tool result?" - a grant that delivers considerably more than it implies, which is
-//! the shape of thing this program exists not to do. So [`Context`] reads the context, [`Log`]
-//! reads the record beside it, [`Setup`] reads what the session is running with and [`Amend`]
-//! changes the context; they declare different capabilities, and the permissions tab has a row
-//! for each.
+//! note: a tool per noun, and the noun is what the tool is *about* rather than what it does to
+//! it. [`Context`] is the context - reading it and changing it, thirteen operations over one
+//! [`Log`] is the record beside it, [`Setup`] is what the session is running with, and [`Fork`]
+//! is a copy of this session standing up to answer something.
+//!
+//! note: reading and changing were two tools, on the argument that a [`nachalnik::ToolSpec`]
+//! declares its capabilities once, so one tool would mean answering *always* to "may it look at
+//! its own items?" also answered "may it rewrite a tool result?" That hazard is real and it is no
+//! longer this file's: a subject is `<domain>:<operation>` and [`nachalnik::Tool::needs`] lets a
+//! call declare which one it is, so `context:look` and `context:revise` are separate rows on the
+//! permissions tab whether they arrive under one tool's name or two. [`Fork`] went the other way
+//! for the same reason - it was two actions of `context` and it is neither a reading nor a change,
+//! it is a second session and a bill.
 //!
 //! note: which also makes each of them separately *revocable*, and that is not a side effect worth
 //! designing away. A session in which the agent's ability to check the record is taken back
 //! half way through is a thing this program can do, and a thing worth watching a model in.
 //!
-//! note: What [`Amend`] will not do is undo a person's decisions. A pinned item, a system
+//! note: What [`Context`] will not do is undo a person's decisions. A pinned item, a system
 //! instruction, and the assistant turn carrying the call being executed are all refused, with the
 //! reason handed back to the model. The agent is not the boss.
 
@@ -40,10 +45,12 @@ use crate::tools::{Careful, Limits};
 
 mod amend;
 mod context;
+mod fork;
 mod log;
 mod setup;
 
-pub use crate::introspect::{amend::Amend, context::Context, log::Log, setup::Setup};
+use crate::introspect::amend::Amend;
+pub use crate::introspect::{context::Context, fork::Fork, log::Log, setup::Setup};
 
 /// Registers the tools, and returns the handle that keeps their reach into the kernel alive.
 ///
@@ -74,12 +81,12 @@ pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits) -> Arc<Ker
 
     kernel.add_tool(Arc::new(Context::new(
         reach.clone(),
-        pinned.clone(),
+        pinned,
         limits.clone(),
     )));
+    kernel.add_tool(Arc::new(Fork::new(reach.clone(), limits.clone())));
     kernel.add_tool(Arc::new(Log::new(reach.clone(), limits.clone())));
-    kernel.add_tool(Arc::new(Setup::new(reach.clone(), policy, limits.clone())));
-    kernel.add_tool(Arc::new(Amend::new(reach, pinned, limits)));
+    kernel.add_tool(Arc::new(Setup::new(reach, policy, limits)));
 
     anchor
 }

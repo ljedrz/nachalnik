@@ -57,7 +57,7 @@ $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 
 ## 🔧 what it comes with
 
-Six tools — `fs`, `shell`, `context`, `log`, `setup`, `amend` — and a policy that asks about all of
+Six tools — `fs`, `shell`, `context`, `fork`, `log`, `setup` — and a policy that asks about all of
 it. Nothing is allowed on your behalf before you have been asked, reading a file included. A tool
 is a *domain* and what it does is an *operation* in it, so `fs:read` is the subject and `fs` is
 every one of them; answering **always** answers for one of those rather than for a tool's name,
@@ -82,7 +82,8 @@ saying so where they cut. The path rules bind them too: a walk cannot ask about 
 not open it and says how many it left alone.
 
 Four of them are about the session itself: `context` reads the context, `log` the record kept
-beside it, `setup` what the session is running with, and `amend` changes the first of them. Every
+beside it, `setup` what the session is running with, and `fork` asks a copy of the session a
+question. Every
 action in them is a public function the screen was already calling, which is the argument for the
 whole workspace rather than a feature of this program — [what each does][guide-introspect].
 

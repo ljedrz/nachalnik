@@ -8,14 +8,11 @@
 
 use std::sync::Arc;
 
-use nachalnik::{
-    BoxError, Capability, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
-};
+use nachalnik::{BoxError, OutputSink, ToolCall, ToolOutput};
 
 use crate::sandbox::{Access, Reach};
-use serde_json::json;
 
-use crate::tools::{Limits, arg};
+use crate::tools::arg;
 
 /// What every tool here says about the path it takes.
 ///
@@ -36,33 +33,14 @@ pub(super) const PATH_ARG: &str = "absolute, or relative to the working director
                         expanded - there is no shell here - and a path starting with one is \
                         refused; a file whose name really is `~` is `./~`";
 
-pub(super) struct Read(pub(super) Arc<Reach>, pub(super) Limits);
+pub(super) struct Read(pub(super) Arc<Reach>);
 
-#[async_trait]
-impl Tool for Read {
-    fn spec(&self) -> ToolSpec {
-        self.1.apply(
-            ToolSpec::new(
-                "read",
-                "reads a whole text file, cut off at the end if it is long. To see one part of \
-                 a big file rather than all of it, `grep` it with a `path` and `context` - which \
-                 answers with up to ten lines either side of each match, and no more.",
-            )
-            .with_schema(json!({
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": PATH_ARG,
-                    },
-                },
-                "required": ["path"],
-            }))
-            .with_capabilities([Capability::fs("read")]),
-        )
-    }
-
-    async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+impl Read {
+    pub(super) async fn invoke(
+        &self,
+        call: &ToolCall,
+        _output: OutputSink,
+    ) -> Result<ToolOutput, BoxError> {
         let path = match self.0.allows(arg(&call.args, "path")?, Access::Reading) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
@@ -78,29 +56,12 @@ impl Tool for Read {
 
 pub(super) struct Write(pub(super) Arc<Reach>);
 
-#[async_trait]
-impl Tool for Write {
-    fn spec(&self) -> ToolSpec {
-        ToolSpec::new(
-            "write",
-            "writes a whole file. An existing one is replaced entirely, so `edit` is the safer \
-             way to change part of one.",
-        )
-        .with_schema(json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": PATH_ARG,
-                },
-                "content": { "type": "string", "description": "the whole of the new file" },
-            },
-            "required": ["path", "content"],
-        }))
-        .with_capabilities([Capability::fs("write")])
-    }
-
-    async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+impl Write {
+    pub(super) async fn invoke(
+        &self,
+        call: &ToolCall,
+        _output: OutputSink,
+    ) -> Result<ToolOutput, BoxError> {
         let (path, content) = (arg(&call.args, "path")?, arg(&call.args, "content")?);
         let path = match self.0.allows(path, Access::Writing) {
             Ok(path) => path,
@@ -120,34 +81,12 @@ impl Tool for Write {
 
 pub(super) struct Edit(pub(super) Arc<Reach>);
 
-#[async_trait]
-impl Tool for Edit {
-    fn spec(&self) -> ToolSpec {
-        ToolSpec::new(
-            "edit",
-            "replaces the first occurrence of `old` with `new` in a file. Nothing is written if \
-             `old` is not there.",
-        )
-        .with_schema(json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": PATH_ARG,
-                },
-                "old": {
-                    "type": "string",
-                    "description": "the exact text to replace, whitespace included; include \
-                                    enough of the surrounding lines to make it the only match",
-                },
-                "new": { "type": "string", "description": "what to put there instead" },
-            },
-            "required": ["path", "old", "new"],
-        }))
-        .with_capabilities([Capability::fs("edit")])
-    }
-
-    async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+impl Edit {
+    pub(super) async fn invoke(
+        &self,
+        call: &ToolCall,
+        _output: OutputSink,
+    ) -> Result<ToolOutput, BoxError> {
         let (old, new) = (arg(&call.args, "old")?, arg(&call.args, "new")?);
         let path = match self.0.allows(arg(&call.args, "path")?, Access::Writing) {
             Ok(path) => path,

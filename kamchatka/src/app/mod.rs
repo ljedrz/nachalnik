@@ -135,9 +135,9 @@ pub struct Stance {
     /// What makes it *that* time, in a clause the pane puts after [`Stance::sometimes`].
     ///
     /// note: a field rather than the one sentence it used to be, because there are two of these
-    /// now and they are sometimes about different things. `shell` is judged against `network`
-    /// when the command reaches for it; `amend` is judged against `amend:exclude` when the call
-    /// names that action. One clause covering both would have to say neither.
+    /// now and they are sometimes about different things. `shell` is judged against `net:reach`
+    /// when the command reaches for it; `context` is judged against `context:exclude` when the
+    /// call names that operation. One clause covering both would have to say neither.
     pub when: &'static str,
 }
 
@@ -2456,7 +2456,7 @@ impl App {
     /// guessing at it would put a confident description of the wrong thing in front of a decision.
     /// Nothing here reaches the policy: it is the same arguments, read out.
     pub fn about(&self, request: &PermissionRequest) -> Vec<String> {
-        if !matches!(request.tool.as_str(), "context" | "log" | "amend") {
+        if !matches!(request.tool.as_str(), "context" | "log") {
             return Vec::new();
         }
 

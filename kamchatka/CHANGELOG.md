@@ -102,10 +102,43 @@ minor bump may break you.
 
 ### changed
 
+- **`context` is one tool over one object**: four operations read the context and nine change it.
+  It was `context` and `amend`, on the argument that a `ToolSpec` declares its capabilities once,
+  so one tool would have meant that answering *always* to "may it look at its own items?" also
+  answered "may it rewrite a tool result?". That hazard is real and it stopped being a reason for
+  two tools the day a subject became `<domain>:<operation>` and `Tool::needs` let a call say which
+  one it is: `context:look` and `context:revise` are separate rows on the permissions tab
+  whichever tool they arrive under, and `--allow context` is how you answer for the lot. What two
+  tools cost was the part nothing was measuring - two descriptions in every request, most of each
+  spent saying which of the two the other one was.
+- **`fork` is its own tool**, with `draft` and `ask`. It was two operations of `context` and it is
+  neither a reading nor a change: it stands up a copy of the session and pays a provider for an
+  answer. Letting something read its own items should not be letting it buy another request, which
+  the subjects had said for a while - `fork:draft` and `fork:ask` were in a domain of their own
+  before the tool was.
+- **Every tool takes an `action`**, `shell` and `log` included, and each has exactly one:
+  `shell` does `run` and `log` does `read`. A word costs nothing beside the rule it completes, and
+  the tool that is the exception is the one a model gets wrong - a live session called
+  `log {action: "look"}`, got the summary back and cited it as the answer to a question it had not
+  asked. That call is now refused by name, and the paragraph of advice written to catch it is gone.
+- **`context` takes thirteen words and no other spellings.** `prune` with a `state` argument, and
+  `unpin`, `unelide`, `unexclude`, `elided`, `excluded`, `active` and `include`, are all gone. They
+  were there on the reasoning that accepting a word somebody reached for costs nothing, which was
+  true of the word and not of the program: the schema advertised thirteen operations, and every
+  place that had to answer "which operation is this call" needed a second table of the words that
+  are not in it. One list, in the schema, is the whole of the vocabulary.
+- **An output limit is keyed by subject**, which is the same string the permissions table is keyed
+  on: `/limit fs:grep 8000` and `--allow fs:grep` name the same thing, and `Tool::limit` is one
+  line in every tool - the limit for a call is the limit for the subject that call needs. It was
+  keyed by tool id, which stopped meaning anything the day one tool did five things of five
+  different sizes, and `/limit` was quietly marking every `fs` row `not offered` in a session that
+  was offering `fs`. `setup tools` reports them as the figure they share and then whichever ones do
+  not, rather than as a column that would have had one number standing for `fs:read` and `fs:grep`
+  alike.
 - **Every tool is offered by default**, the four that read and manage the session among them.
   `--introspect` is gone: it was a flag for those four, answerable only before the session started,
   and what it was really being used for was a fact about a project rather than about an
-  invocation. What that costs is the six schemas in every request - 2,683 tokens where `fs` and
+  invocation. What that costs is the six schemas in every request - 2,738 tokens where `fs` and
   `shell` alone are 810 - and the two settings below are how a session that does not want to pay it
   says so.
 - `/tools toggle ID` replaces `/tools drop ID` and `/introspect`, and works on every tool there is,
@@ -116,8 +149,8 @@ minor bump may break you.
   what it pinned and what it could still walk back. `/tools` marks the ones that are off, since
   their names are exactly what somebody needs to get them back.
 - `tools` in a settings file says which of them a session starts with, by id; left out, all of
-  them. `["fs", "shell", "context", "log", "setup"]` is the whole set minus `amend`, which is how
-  a project says *read this session all you like, do not rewrite it*. An empty list offers none of
+  them. `["fs", "shell", "context", "log", "setup"]` is the whole set minus `fork`, which is how a
+  project says *do not go buying extra requests*. An empty list offers none of
   them. A name that is not a tool stops the program and says which there are, for the reason an
   unknown key does. The ones left out are still built and can be offered with `/tools toggle` - and a
   `shell` offered that way is confined exactly as one offered at startup would have been.

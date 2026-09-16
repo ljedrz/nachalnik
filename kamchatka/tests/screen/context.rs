@@ -1145,22 +1145,22 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     // note: asked of the *call* rather than of the spec, because a tool that does several things
     // has a limit per thing - `fs:read` and `fs:grep` are one tool and two reasonable answer
     // sizes. See `Tool::limit`
-    let declared = |harness: &Harness, subject: &str| {
-        let (tool, action) = subject.split_once(':').unwrap_or((subject, "run"));
+    let declared = |harness: &Harness, tool: &str, action: &str| {
         let call = nachalnik::ToolCall::new("c", tool, json!({ "action": action }));
         harness.app.kernel.tool(tool).and_then(|it| it.limit(&call))
     };
-    assert_eq!(declared(&harness, "fs:read"), Some(32_000));
+    assert_eq!(declared(&harness, "fs", "read"), Some(32_000));
 
     harness.send("/limit fs:read 64000").await;
     assert_eq!(
-        declared(&harness, "fs:read"),
+        declared(&harness, "fs", "read"),
         Some(64_000),
         "the tool has to declare the new one, or the command changed nothing"
     );
     // and the rest of `fs` is untouched: one operation was named, one operation moved
-    assert_eq!(declared(&harness, "fs:grep"), Some(32_000));
-    assert_eq!(declared(&harness, "shell"), Some(32_000));
+    assert_eq!(declared(&harness, "fs", "grep"), Some(32_000));
+    // the one place a tool and its domain are spelled differently: `shell` runs `exec:run`
+    assert_eq!(declared(&harness, "shell", "run"), Some(32_000));
 
     let screen = harness.flat();
     assert!(screen.contains("was cut at 32,000"), "{screen}");
@@ -1169,13 +1169,16 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         "it has to say which call it applies to: {screen}"
     );
 
-    // the number the listing prints is a handle the command takes, or it is decoration: this is
-    // the same instruction as naming the row
-    // `fs:read` is the sixth row of the sorted listing, and naming the number is the same
-    // instruction as naming the subject
-    harness.send("/limit 6 48000").await;
-    assert_eq!(declared(&harness, "fs:read"), Some(48_000));
-    assert_eq!(declared(&harness, "fs:grep"), Some(32_000), "one row moved");
+    // the number the listing prints is a handle the command takes, or it is decoration: naming
+    // the row and naming the subject are the same instruction. `fs:read` is the twentieth of the
+    // sorted subjects
+    harness.send("/limit 20 48000").await;
+    assert_eq!(declared(&harness, "fs", "read"), Some(48_000));
+    assert_eq!(
+        declared(&harness, "fs", "grep"),
+        Some(32_000),
+        "one row moved"
+    );
     assert!(
         harness.flat().contains("`fs:read` was cut at 64,000"),
         "the answer names the tool, not the row: {}",
@@ -1191,30 +1194,37 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     harness.send("/limit 99 1000").await;
     let screen = harness.flat();
     assert!(screen.contains("nothing here limits `99`"), "{screen}");
-    assert!(screen.contains("[10] shell"), "{screen}");
+    // and the listing is where the range is; every subject is in it, `exec:run` among them
+    harness.send("/limit").await;
+    let screen = harness.sized(120, 40).replace('\n', " ");
+    assert!(screen.contains("[14] exec:run"), "{screen}");
+    harness.press(KeyCode::Esc).await;
 
     // and nought is not a limit, it is a tool that answers with a marker
     harness.send("/limit fs:read 0").await;
-    assert_eq!(declared(&harness, "fs:read"), Some(48_000), "unchanged");
+    assert_eq!(declared(&harness, "fs", "read"), Some(48_000), "unchanged");
     assert!(
-        harness.flat().contains("/tools toggle fs"),
+        harness.flat().contains("/tools toggle ID"),
         "{}",
         harness.flat()
     );
 
     // the listing last, because it opens a preview and the next keystroke closes it again
     harness.send("/limit").await;
-    let screen = harness.flat();
+    let screen = harness.sized(120, 40).replace('\n', " ");
     assert!(
         screen.contains("48,000 bytes"),
         "it lists the new one: {screen}"
     );
-    assert!(screen.contains("amend"), "and every other one: {screen}");
+    assert!(
+        screen.contains("context:note"),
+        "and every other subject: {screen}"
+    );
     // numbered, so that the number the command takes is one somebody can read off the screen
-    assert!(screen.contains("[6] fs:read"), "{screen}");
+    assert!(screen.contains("[20] fs:read"), "{screen}");
 }
 
-/// A limit for a tool this session does not offer says so, in the listing and on the change.
+/// A limit nothing in this session declares says so, in the listing and on the change.
 ///
 /// note: found by reading a headless run. `/tools` said "4 offered: edit, read, shell, write" and
 /// `/limit`, two lines later, listed six under "how much of each tool's output the model is
@@ -1239,28 +1249,33 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
     };
 
     harness.send("/limit").await;
-    let marked = row(&mut harness, "context");
+    let marked = row(&mut harness, "context:look");
     assert!(
         marked.contains("not offered"),
-        "a row for a tool nothing installed is marked as one: {marked}"
+        "a row nothing here declares is marked as one: {marked}"
     );
+    // a screen tall enough for the whole table and the sentence under it: there is a row per
+    // subject now, and the default viewport shows the first twenty-five of thirty-three
+    let whole = harness
+        .sized(120, 60)
+        .replace(['│', '┌', '┐', '└', '┘', '─'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     assert!(
-        harness
-            .flat()
-            .contains("a limit held for a tool this session does not have"),
-        "and the marking says what it is: {}",
-        harness.flat()
+        whole.contains("a limit held for something no tool here declares"),
+        "and the marking says what it is: {whole}"
     );
     // the listing is a preview, and the next keystroke closes it - so it is closed deliberately
     // rather than with the first character of the next command
     harness.press(KeyCode::Esc).await;
 
     // setting one still takes, because that is the point of the row being there at all
-    harness.send("/limit context 8000").await;
+    harness.send("/limit context:look 8000").await;
     let screen = harness.flat();
     assert!(screen.contains("is now cut at 8,000"), "{screen}");
     assert!(
-        screen.contains("has no next call until something adds it"),
+        screen.contains("has no next call until something does"),
         "\"from its next call onwards\" is a promise about a tool that is not here: {screen}"
     );
 
@@ -1270,16 +1285,15 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
         harness.app.policy.clone(),
         harness.app.limits.clone(),
     ));
+    let looking = nachalnik::ToolCall::new("c", "context", json!({ "action": "look" }));
     assert_eq!(
         harness
             .app
             .kernel
-            .tool_specs()
-            .into_iter()
-            .find(|spec| spec.id == "context")
-            .and_then(|spec| spec.output_limit),
+            .tool("context")
+            .and_then(|tool| tool.limit(&looking)),
         Some(8_000),
-        "the limit set before the tool existed is the one it declares"
+        "the limit set before the tool existed is the one it reads"
     );
 
     // and its row is no longer marked. This harness installs no builtin tools, so `fs` and
@@ -1287,7 +1301,7 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
     // than of the whole listing, and why the sentence under the table does not claim to account
     // for every mark
     harness.send("/limit").await;
-    let marked = row(&mut harness, "context");
+    let marked = row(&mut harness, "context:look");
     assert!(
         !marked.contains("not offered"),
         "the tool is installed now: {marked}"

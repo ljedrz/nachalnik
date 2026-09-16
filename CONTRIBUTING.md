@@ -232,7 +232,7 @@ for, so there is nothing for it to agree with.
   **truncates**, a compactor **elides**, `/exclude` **excludes**, `Kernel::supersede`
   **supersedes**. A second word for something that already has one is a second thing to learn and
   a thing two parts of the program can disagree about, and it always shows up in the same place:
-  somebody does an operation under one name and reads the result under another. `amend` had a
+  somebody does an operation under one name and reads the result under another. `context` had a
   `prune` action with a `state` argument, which put the word for *one* move over five of them -
   `pin` and `restore` included, so "prune to pin it" was the documented way to protect
   something - and an item you pruned then read back as `archived` on every screen that listed it.

@@ -1,21 +1,31 @@
-//! The tool that reads the context: what is being carried, what it costs, what the next request
-//! holds, and what the answer to it would be.
+//! `context`: what this session is carrying, what it costs, and what is carried into the next
+//! request.
 //!
-//! note: named for what it reads rather than for what it does. `introspect` was a name for the
-//! whole family and this tool is one of them - anything else that reads a session from the inside
-//! is introspection too, and would have had to be called something that did not say so. The id is
-//! the noun now, which leaves the family its word and gives each tool the thing it is about.
+//! note: named for what it is about rather than for what it does to it. `introspect` was a name
+//! for the whole family and this tool is one of them - anything else that reads a session from
+//! the inside is introspection too, and would have had to be called something that did not say
+//! so. The id is the noun now, which leaves the family its word and gives each tool the thing it
+//! is about.
 //!
-//! note: six actions, none of which changes anything, which is why they are one tool and why the
-//! capability they declare is its own. `draft` and `fork` do ask the model, so this is not free -
-//! only harmless. The tool that changes things is next door in `amend`, and the two are separately
-//! grantable on purpose.
+//! note: one tool for reading the context and one for changing it was one tool too many, and the
+//! reason it was two is worth recording as a thing that turned out to be wrong. The argument was
+//! that a tool declares its capabilities once, so `context` and `amend` being one would mean
+//! answering *always* to "may it look at its own items?" also answered "may it rewrite a tool
+//! result?" That is a real hazard and it stopped being this tool's problem the day a subject
+//! became `<domain>:<operation>` and [`Tool::needs`] let a call declare which one it is:
+//! `context:look` and `context:revise` are separate questions with separate rows whether they
+//! arrive under one tool's name or two. What two tools cost was the part nothing was measuring -
+//! two descriptions in every request, most of each spent saying which of the two the other one
+//! was.
+//!
+//! note: the changing half is still in `amend.rs`, which is the file it was written in and the
+//! file its journal and its refusals belong to. What moved is the schema and the dispatch.
 
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{collections::BTreeSet, sync::Arc};
 
 use nachalnik::{
-    Block, BoxError, Capability, Config, ContextId, ContextItem, ContextKind, ContextState, Delta,
-    Event, Kernel, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
+    Block, BoxError, Capability, ContextId, ContextItem, ContextKind, Event, Kernel, OutputSink,
+    Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
 };
 use serde_json::json;
 
@@ -24,29 +34,46 @@ use crate::{
     tools::{Limits, domains},
 };
 
-use super::{Pinned, Reach, action, ids, protected, unknown};
-
-/// How long a fork may think before this looks up to see whether somebody has pressed escape.
-const HEARTBEAT: Duration = Duration::from_millis(120);
+use super::{Amend, Pinned, Reach, action, ids, protected, unknown};
 
 /// How much of an item's text the listing shows on its row.
 const GLIMPSE: usize = 48;
 
-/// Reads the context, the budget, the request about to be sent, and the answer that would follow.
+/// The four that read, in the order the schema lists them.
+const READS: [&str; 4] = ["look", "budget", "request", "search"];
+
+/// The nine that change, each named for what it leaves behind.
 ///
-/// note: none of the six actions changes anything, which is why they are together and why the
-/// capability they declare is its own. `draft` and `fork` do spend tokens - they ask the model -
-/// so this is not free, only harmless.
+/// note: the word for the move is the word the result is reported in - an item you `archive` reads
+/// back as `archived` everywhere it is listed. One level, and the same vocabulary at both ends of
+/// it. They were a `prune` action with a `state` argument once, which put the word for one of them
+/// over all nine.
+const CHANGES: [&str; 9] = [
+    "elide", "exclude", "archive", "pin", "restore", "revise", "note", "undo", "redo",
+];
+
+/// Every operation this tool has, in one list, because three things have to agree about it: the
+/// `action` a model chooses from, the subject each call declares, and what a refusal names.
+fn operations() -> impl Iterator<Item = &'static str> {
+    READS.into_iter().chain(CHANGES)
+}
+
+/// Reads the context and changes it: what is in it, what it costs, and what goes into the next
+/// request.
 pub struct Context {
     reach: Reach,
     pinned: Pinned,
     limits: Limits,
+    /// The half that changes things, which keeps the journal `undo` walks and the set of items
+    /// this tool pinned itself.
+    amend: Amend,
 }
 
 impl Context {
     /// Builds one; see [`super::install`], which is the only caller.
     pub(super) fn new(reach: Reach, pinned: Pinned, limits: Limits) -> Self {
         Self {
+            amend: Amend::new(pinned.clone()),
             reach,
             pinned,
             limits,
@@ -57,40 +84,68 @@ impl Context {
 #[async_trait]
 impl Tool for Context {
     fn spec(&self) -> ToolSpec {
-        let spec = ToolSpec::new(
+        ToolSpec::new(
             "context",
-            "reads your own state, so you can check it before you act on it. `look` lists every \
-             item in your context - what it is, what it costs, whether it is going into the next \
-             request and why not if it is not - and with `ids` reads any of them back, block by \
-             block, including what you were thinking when you produced them. A long one comes \
+            "your own context: what is in it, what it costs, and what you carry into the next \
+             request. Four actions read it and nine change it; `action` says which. \
+             `look` lists every item - what it is, what it costs, whether it is going into the \
+             next request and why not if it is not - and with `ids` reads any of them back, block \
+             by block, including what you were thinking when you produced them. A long one comes \
              back as its start and its end; `whole` if you need all of it anyway. `budget` is \
-             what the next request costs against what there is, what the last one really cost, and \
-             which items are the expensive ones - read it before deciding what to give up. \
+             what the next request costs against what there is, what the last one really cost, \
+             and which items are the expensive ones - read it before deciding what to give up. \
              `request` shows the request you are about to send, message by message, what it \
              repaired, and what was left out and by which rule: a state you set, which you can \
-             undo, or the projector, which you cannot. `draft` answers the conversation on a \
-             throwaway copy and shows you what you would say *before* you say it, so you can \
-             check your answer against your context and fix either. `fork` puts a question to a \
-             copy of yourself on a copy of your context, optionally with some items left out - \
-             for weighing an approach, or asking whether a piece of context is what is leading \
-             you astray. A fork has no tools: it can think, not act. `search` finds text \
-             anywhere in your context - archived items included, which `look` can only read by \
-             copying them in - and says how many lines match and what they would cost before it \
-             shows you one. Those are `action`s of this tool, not tools; `amend` is the tool that \
-             changes any of this.",
+             undo, or the projector, which you cannot. `search` finds text anywhere in your \
+             context - archived items included, which `look` can only read by copying them in - \
+             and says how many lines match and what they would cost before it shows you one. \
+             Each of the nine that change is named for what it leaves behind, which is the same \
+             word you will read back on the item afterwards. `elide` replaces what an item says \
+             with a short marker, which is what to reach for when a tool result has served its \
+             purpose: the call it answers stays answered and stops costing what it holds. \
+             `exclude` takes it out of the request altogether, which also takes down the call \
+             that asked for it. `archive` puts it away for good. `pin` protects it from being \
+             compacted away. `restore` is the way back from any of them. Name the items with \
+             `ids`, or with `select` for a whole class of them at once. `revise` rewrites what \
+             one item says, for when you wrote something down wrong. `note` writes something into \
+             your context - a plan, a conclusion, a thing not to try again - which is not the \
+             same as thinking it: thinking belongs to the turn that produced it and is not \
+             carried into later requests, while a note is an item of its own that goes into every \
+             one and can be pinned. `undo` and `redo` walk back through the changes *you* made \
+             here. Nothing destroys anything: every item keeps its number and can be restored. A \
+             pinned item, a system instruction and the turn you are speaking in are refused - \
+             they are not yours. Anything that changes something needs a `reason`, in your own \
+             words, and the person you work with reads it.",
         )
         .with_schema(json!({
             "type": "object",
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["look", "budget", "request", "draft", "fork", "search"],
+                    "enum": operations().collect::<Vec<_>>(),
                 },
                 "ids": {
                     "type": "array",
                     "items": { "type": "integer" },
                     "description": "look: read these items in full instead of listing all of \
-                                    them; search: look only in these",
+                                    them; search: look only in these; the nine that change: the \
+                                    items to move, and exactly one for revise",
+                },
+                // note: the forms, with the variable part written as a placeholder. It listed
+                // examples - `tool:shell`, `kind:assistant_message` - and a model reading them as
+                // literals rather than as instances asked to prune `tool:shell` in a session with
+                // no shell. The closed sets are not spelled out here because `look` prints them
+                // in its own columns, which is a shorter way to learn them than a schema is
+                "select": {
+                    "type": "string",
+                    "description": "a class of items instead of `ids`. One of: an item \
+                                    number; `all`; `all:tool_results` (or files, diagnostics, \
+                                    selections, memories, instructions, system, user, model, \
+                                    compaction); `kind:<kind>` or `state:<state>`, taking the \
+                                    words `look` prints in those columns; `tool:<name>`, \
+                                    optionally `:first` or `:latest`; `source:<name>`; \
+                                    `file:<path>`; `label:<text>`. Anything else is read as a \
+                                    label.",
                 },
                 "text": {
                     "type": "string",
@@ -112,45 +167,60 @@ impl Tool for Context {
                     "description": "look: read the named items entire, rather than as a start and \
                                     an end. It costs what carrying them costs",
                 },
-                "question": {
+                "content": {
                     "type": "string",
-                    "description": "fork: what to ask the copy",
+                    "description": "revise: what the item should say instead. note: what to write down",
                 },
-                "without": {
-                    "type": "array",
-                    "items": { "type": "integer" },
-                    "description": "fork: item ids the copy does not get to see",
+                // note: what it is *not* is half of this line, and it is the half a live run
+                // needed. `label` reads as a key, five notes went in under one name meaning to
+                // replace each other, and the tool appended every time - which the result now
+                // also says when it happens. This is the same sentence one step earlier, where
+                // the name is being chosen rather than regretted.
+                "label": {
+                    "type": "string",
+                    "description": "note: a short name for it, so you can find it again. Not a \
+                                    key: a second note under a name is a second item, and \
+                                    `revise` is what changes one you already wrote",
+                },
+                "pin": {
+                    "type": "boolean",
+                    "description": "note: protect it from compaction, for a finding that \
+                                    has to outlast the context it was found in",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "required by the nine that change: why, in your own words; the \
+                                    person you work with reads this",
+                },
+                "steps": {
+                    "type": "integer",
+                    "description": "undo, redo: how many of your own changes to walk; 1 by default",
                 },
             },
             "required": ["action"],
         }))
-        .with_capabilities(
-            ["look", "budget", "request", "search"]
-                .map(domains::context)
-                .into_iter()
-                .chain(["draft", "ask"].map(domains::fork)),
-        );
-
-        self.limits.apply(spec)
+        .with_capabilities(operations().map(domains::context))
     }
 
-    /// note: `draft` and `fork` are not operations on this context - they stand up a copy and
-    /// pay a provider for an answer - so they are judged in a domain of their own. Letting
-    /// something read its own items is not letting it buy another request.
+    /// note: `action` and nothing else, so a rule about `context:look` is about looking whichever
+    /// way a call asked for it - and so that the reading half and the changing half are still
+    /// separately grantable now that they are one tool. A call naming no operation this tool has
+    /// declares all thirteen, which is the strictest reading of a call nobody can place, and
+    /// `invoke` then refuses it by name.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match action(&call.args) {
-            Ok(action @ ("draft" | "fork")) => vec![domains::fork(match action {
-                "draft" => "draft",
-                _ => "ask",
-            })],
-            Ok(action) => vec![domains::context(action)],
-            // an action this tool does not have is refused by `invoke` with a list of the ones it
+            Ok(op) if operations().any(|it| it == op) => vec![domains::context(op)],
+            // a word this tool does not have is refused by `invoke` with a list of the ones it
             // does; what it must not be is a call that needed nothing and was therefore allowed
-            Err(_) => self.spec().capabilities,
+            _ => self.spec().capabilities,
         }
     }
 
-    async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
+    fn limit(&self, call: &ToolCall) -> Option<usize> {
+        self.limits.for_call(&self.needs(call))
+    }
+
+    async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         let kernel = self.reach.kernel()?;
 
         match action(&call.args)? {
@@ -161,22 +231,6 @@ impl Tool for Context {
             ))),
             "budget" => Ok(ToolOutput::new(budget(&kernel, &self.pinned.lock()))),
             "request" => Ok(ToolOutput::new(request(&kernel))),
-            "draft" => branch(&kernel, None, &[], &output).await,
-            "fork" => {
-                let Some(question) = call.args["question"].as_str() else {
-                    return Ok(ToolOutput::error(
-                        "`fork` needs a `question` to put to the copy; `draft` is the one that \
-                         just carries on the conversation",
-                    ));
-                };
-                branch(
-                    &kernel,
-                    Some(question),
-                    &ids(&call.args, "without"),
-                    &output,
-                )
-                .await
-            }
             "search" => {
                 let Some(text) = call.args["text"].as_str().filter(|t| !t.is_empty()) else {
                     return Ok(ToolOutput::error(
@@ -195,9 +249,26 @@ impl Tool for Context {
                     take,
                 )))
             }
+            // note: the `reason` is asked for here rather than in the schema, because it is
+            // required by nine of the thirteen and `required` in a schema is all or nothing.
+            // `look` and `budget` change nothing and have nothing to justify
+            op if CHANGES.contains(&op) => {
+                let Some(reason) = call.args["reason"]
+                    .as_str()
+                    .filter(|it| !it.trim().is_empty())
+                else {
+                    return Ok(ToolOutput::error(
+                        "`reason` is required by everything that changes something: it becomes \
+                         the item's note, and it is what the person at the terminal reads when \
+                         they ask why something is not in the request",
+                    ));
+                };
+
+                Ok(self.amend.change(&kernel, call, op, reason))
+            }
             other => Ok(ToolOutput::error(unknown(
                 other,
-                &["look", "budget", "request", "draft", "fork", "search"],
+                &operations().collect::<Vec<_>>(),
             ))),
         }
     }
@@ -271,8 +342,8 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
         "{} items · {} of them go into the next request\n\
          ~{} tokens going{}, ~{} held back - what the request does not carry, whether because \
          you set a state or because the endpoint will not take it\n\
-         {} change(s) in the person's own undo stack, which is theirs; `amend undo` walks back \
-         what you did\n\n\
+         {} change(s) in the person's own undo stack, which is theirs; `undo` walks back what \
+         you did\n\n\
          {:>4}  {:<10}  {:<18}  {:>8}  {:>8}  what it is\n",
         items.len(),
         items.iter().filter(|item| item.is_projected()).count(),
@@ -743,7 +814,7 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
     let mut out = format!(
         "the next request is ~{} tokens{room}\n  {} in the context, {} in the tool definitions\n\
          ~{} tokens are being held back: excluded, archived or elided to a marker - three states \
-         you set, and `amend` takes any of them off again - or thinking this endpoint will not \
+         you set, and `restore` takes any of them off again - or thinking this endpoint will not \
          take back, which is not yours to change\n",
         thousands(budget.used()),
         thousands(budget.context_tokens),
@@ -836,7 +907,8 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
         "\nthe fifth column is what eliding everything down to that row would save, give or take \
          what the markers cost. Eliding leaves a marker in place, so a tool result still answers \
          the call that asked for it; excluding one takes that call down with it, and the model \
-         then reads a conversation in which it never asked. `amend` does either. A row that says \
+         then reads a conversation in which it never asked. `elide` and `exclude` are the two. A \
+         row that says \
          it is holding something is holding it out of the request already - giving that row up \
          frees the fourth column and not the rest.\n",
     );
@@ -888,8 +960,8 @@ fn request(kernel: &Kernel) -> String {
     }
 
     // note: split by *what* dropped it, because the two halves are answered differently and one
-    // list could not say which was which. An item left out by its own state is one `amend` with
-    // `restore` puts straight back. An item the projector dropped is a consequence of something
+    // list could not say which was which. An item left out by its own state is one `restore`
+    // puts straight back. An item the projector dropped is a consequence of something
     // else in the context, and restoring it does nothing whatever - the thing to move is the
     // cause. A model reading one undifferentiated list has to guess which it is looking at, and
     // the cheap guess is `restore`, which is the one that changes nothing and costs a call.
@@ -904,7 +976,7 @@ fn request(kernel: &Kernel) -> String {
             });
 
     if !by_state.is_empty() {
-        out.push_str("\nleft out by its own state, which `amend` with `restore` puts back:\n");
+        out.push_str("\nleft out by its own state, which `restore` puts back:\n");
         for left_out in &by_state {
             out.push_str(&format!("  [{}] {}\n", left_out.id, left_out.reason));
         }
@@ -928,187 +1000,6 @@ fn request(kernel: &Kernel) -> String {
     }
 
     out
-}
-
-/// Answers on a copy of the context, and hands back only what was said.
-///
-/// note: the copy is a whole second [`Kernel`] resumed from a [`Snapshot`](nachalnik::Snapshot) of
-/// this one, which is why this needed nothing added to the runtime: forking a session is what
-/// `snapshot` and `resume` already are, and the documentation for `resume` says as much. It gets
-/// this session's provider and projector so that it is answering the same model in the same
-/// dialect, and it gets **no tools**, no compactor and a limit of one request. A fork can think;
-/// it cannot act, and it cannot go on thinking after it has answered once.
-///
-/// note: nothing the fork does reaches this session's context, and nothing it does reaches this
-/// session's event log either - it has a log of its own that goes when it does. What it *is*
-/// visible as is the text it streams, relayed into this tool's own [`OutputSink`], so a person
-/// watching the terminal sees a fork thinking rather than a tool that has gone quiet.
-async fn branch(
-    kernel: &Kernel,
-    question: Option<&str>,
-    without: &[ContextId],
-    output: &OutputSink,
-) -> Result<ToolOutput, BoxError> {
-    let Some(provider) = kernel.provider() else {
-        return Ok(ToolOutput::error("there is no provider to ask"));
-    };
-
-    let mut snapshot = kernel.snapshot();
-    let mut left_out = Vec::new();
-    for item in &mut snapshot.items {
-        if without.contains(&item.id) {
-            // excluded rather than deleted, so the fork's own account of itself can still name
-            // the item by the number this session knows it by
-            item.state = ContextState::Excluded;
-            item.note = Some("left out of this fork".into());
-            left_out.push(item.id);
-        }
-    }
-    let fork = Kernel::resume(
-        Config {
-            session_name: Some(format!("{}#fork", kernel.session_name())),
-            // it answers once and is thrown away: there is nothing for an undo stack to be for,
-            // and nothing after the first request for a second one to build on
-            context_undo_depth: 0,
-            max_requests_per_turn: Some(1),
-            ..Config::default()
-        },
-        snapshot,
-    );
-    fork.set_provider(provider);
-    fork.set_projector(kernel.projector());
-    // note: said out loud, because the copy cannot work it out. It inherits a conversation full of
-    // tool calls and their results and no tool definitions at all, and a model reading that asks
-    // for a tool - which nothing here can run, so the answer comes back as a call and no words.
-    // Measured against a real model that is not a corner case, it is what happens every time
-    fork.push(
-        ContextItem::system(
-            "You are a copy of this session, made to think and not to act. You have no tools \
-             here, and nothing you ask for can be run: answer in words, from what is already in \
-             front of you.",
-        )
-        .pinned(),
-    );
-    if let Some(question) = question {
-        fork.push(ContextItem::user(question).because("put to a fork of this context"));
-    }
-    // what the fork will actually read, rather than what it was handed: the projector still has
-    // to repair the call this very tool is answering out of the copy, and a count taken before it
-    // did would be one the fork never saw
-    let items = fork.project().included.len();
-
-    let mut events = fork.subscribe();
-    let sink = output.clone();
-    let relay = tokio::spawn(async move {
-        while let Ok(event) = events.recv().await {
-            if let Event::ModelDelta {
-                delta: Delta::Text(text),
-            } = event
-            {
-                sink.push(text);
-            }
-        }
-    });
-
-    // the same heartbeat the `shell` tool runs on, and for the same reason: the fork is a whole
-    // request that could take a minute, and escape has to reach it
-    let outcome = {
-        let turn = fork.turn();
-        tokio::pin!(turn);
-        loop {
-            tokio::select! {
-                outcome = &mut turn => break outcome,
-                _ = tokio::time::sleep(HEARTBEAT) => {
-                    if output.is_interrupted() {
-                        fork.interrupt();
-                    }
-                }
-            }
-        }
-    };
-    relay.abort();
-
-    if let Err(e) = outcome {
-        return Ok(ToolOutput::error(format!("the fork got no answer: {e}")));
-    }
-    let Some(response) = fork.last_response() else {
-        return Ok(ToolOutput::error("the fork got no answer at all"));
-    };
-
-    let mut out = match question {
-        Some(question) => format!("a copy of you, asked `{question}`, on {items} of your items"),
-        None => format!("what you would say if you answered now, drafted on {items} of your items"),
-    };
-    // note: said either way, because "on 9 of your items" cannot be read as "on all of them" and a
-    // fork's whole worth is which items the copy did not get. A live session asked a copy what it
-    // would conclude "without knowing my earlier statement", passed no `without` at all, and
-    // reported the matching answer as an ablation - it had asked the copy to pretend rather than
-    // taken the item away, and nothing in the reply distinguished the two. The copy really did see
-    // everything, so the reply says so.
-    match left_out.is_empty() {
-        true => out.push_str(
-            ". The copy saw all of them: nothing was left out, so this is the same context \
-             answering again rather than a test of what any of it was doing. `without` takes items \
-             away from the copy, and a question that asks it to disregard something is not the \
-             same thing - it is still reading it.",
-        ),
-        false => {
-            let numbers: Vec<String> = left_out.iter().map(|id| id.to_string()).collect();
-            out.push_str(&format!(
-                ", without {}, which the copy could not read at all.",
-                numbers.join(", ")
-            ));
-        }
-    }
-    out.push_str(
-        " None of this is in your context and nobody has read it; it is yours to use or drop.\n",
-    );
-    if let Some(usage) = response.usage {
-        out.push_str(&format!(
-            "it cost {} in / {}.\n",
-            thousands(usage.input_tokens.unwrap_or_default() as usize),
-            crate::app::text::charged(&usage),
-        ));
-    }
-    let said = response
-        .content
-        .as_ref()
-        .map(|content| content.to_text())
-        .unwrap_or_default();
-    match said.trim().is_empty() {
-        // it asked for a tool instead of answering, and there is nothing in a fork to run one.
-        // Saying so beats handing back a blank: a caller reading an empty draft has no way to
-        // tell a copy that had nothing to say from one that tried to do something
-        true => out.push_str(&format!(
-            "\n--- it said nothing ({:?}) ---\nit asked for {} instead of answering, and a fork \
-             has no tools; ask it something it can answer from what it already has.\n",
-            response.stop,
-            match response.calls().next() {
-                Some(call) => format!("`{}`", call.tool),
-                None => "nothing at all".to_owned(),
-            },
-        )),
-        false => out.push_str(&format!(
-            "\n--- what it said ({:?}) ---\n{said}\n",
-            response.stop
-        )),
-    }
-
-    // note: the answer before the thinking, which is the opposite of the order it was produced
-    // in and the right way round for the one thing that happens to this output: an output limit
-    // cuts from the end. On a reasoning model the thinking is the bulk of a fork - measured on one
-    // real fork, 68% of 34,287 bytes against the answer's 30% - so with the thinking first the
-    // limit ate the answer and left the deliberation about how to answer. That session lost
-    // exactly the three paragraphs it had asked for. Nothing about this order is a claim about
-    // what the copy did; the two sections are labelled and the reasoning says it is reasoning
-    if let Some(reasoning) = &response.reasoning {
-        out.push_str(&format!(
-            "\n--- its reasoning, which it produced before the answer above ---\n{}\n",
-            reasoning.to_text()
-        ));
-    }
-
-    Ok(ToolOutput::new(out))
 }
 
 /// The first line of something, shortened to fit a column.

@@ -12,7 +12,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use nachalnik::{BoxError, Tool, ToolSpec};
+use nachalnik::{BoxError, Capability, Tool};
 use parking_lot::Mutex;
 
 use crate::sandbox::Reach;
@@ -126,13 +126,25 @@ fn truth(args: &Value, name: &str) -> Result<bool, String> {
     ))
 }
 
-/// How much of each tool's output the model is shown, which a person can change mid-session.
+/// How much of a call's output the model is shown, by subject, which a person can change
+/// mid-session.
+///
+/// note: **one row per subject**, the same `<domain>:<operation>` string the permissions table is
+/// keyed on. A call's limit is looked up by the very subject its permission was decided by, so
+/// there is one vocabulary in this program and not two: `--allow fs:grep` and `/limit fs:grep`
+/// name the same thing, and a person who has read either table can read the other.
+///
+/// note: it was keyed by tool id, which stopped working the day a tool did several things. `fs`
+/// is one tool over five operations whose answers are nothing like the same size - a whole file
+/// and a repo-wide search - and `context` is one over thirteen, from a listing of forty items to
+/// a line confirming a pin. A number per tool is a number for whichever of those somebody thought
+/// of first.
 ///
 /// note: a shared handle rather than a number beside each `spec`, because the thing that changes
 /// them (`/limit`) is in another file from the tools that declare them - and because `/limit`
-/// lists the table, and a person raising one wants to see the others. [`Tool::spec`] is called
-/// afresh for every request, so a change here lands on the next call rather than needing a
-/// restart: the same property `/tools toggle` leans on.
+/// lists the table, and a person raising one wants to see the others. It is read afresh for every
+/// call, so a change here lands on the next one rather than needing a restart: the same property
+/// `/tools toggle` leans on.
 ///
 /// note: raising a limit does not recover a result that has already been shortened, and does not
 /// need to. The whole of that one is archived beside the copy the model was shown, and one
@@ -148,70 +160,79 @@ impl Default for Limits {
 }
 
 impl Limits {
-    /// The limits the tools here start with.
+    /// The limits this program's tools start with: every subject they declare, at 32,000 bytes.
     ///
-    /// note: 32,000 bytes is about a screenful of a large file or the tail of a long build, and
-    /// it is what `read`, `shell` and `context` are worth being cut at. `amend` is 8,000
-    /// because everything it says is a confirmation of something the caller just asked for, and a
-    /// confirmation that long has gone wrong somewhere else.
+    /// note: 32,000 bytes is about a screenful of a large file or the tail of a long build, and it
+    /// is what every one of these is worth being cut at. They are one number rather than a
+    /// considered number each because a *default* that differed per row would be a set of opinions
+    /// nobody asked for; the table exists so that somebody can hold the one that matters to them
+    /// to something else.
     ///
-    /// note: `grep` and `glob` are in here for `/limit` to list and to raise, and neither is
+    /// note: `fs:grep` and `fs:glob` are in here for `/limit` to list and to raise, and neither is
     /// normally what shapes their answer: both cut themselves at a number of *matches* or *paths*
     /// and say so, which a byte limit cannot do - it takes the tail of the last file searched and
     /// leaves nothing saying there was more. These are the backstop for the one line that is a
     /// megabyte wide.
     ///
-    /// note: `context` is the one that chafes, because one number covers six actions of very
-    /// different shapes - a context listing and a whole copy of this model's answer. `fork_result`
-    /// leads with the answer for that reason, so what a limit takes there is the thinking.
+    /// note: `exec:run` rather than `shell`, which is the tool's name. A limit row is a subject,
+    /// and the subject a `shell` call is judged by is `exec:run` - so that is the row. The tool
+    /// being named for the thing it runs and the domain for what running is are the one place
+    /// those two words come apart in this program.
     pub fn new() -> Self {
-        Self(Arc::new(Mutex::new(BTreeMap::from([
-            ("fs:read".to_owned(), 32_000),
-            ("fs:grep".to_owned(), 32_000),
-            ("fs:glob".to_owned(), 32_000),
-            ("fs:write".to_owned(), 32_000),
-            ("fs:edit".to_owned(), 32_000),
-            ("shell".to_owned(), 32_000),
-            ("context".to_owned(), 32_000),
-            ("log".to_owned(), 32_000),
-            ("setup".to_owned(), 32_000),
-            ("amend".to_owned(), 8_000),
-        ]))))
+        let rows = ["read", "glob", "grep", "write", "edit"]
+            .map(Capability::fs)
+            .into_iter()
+            .chain([Capability::exec("run")])
+            .chain(
+                [
+                    "look", "budget", "request", "search", "elide", "exclude", "archive", "pin",
+                    "restore", "revise", "note", "undo", "redo",
+                ]
+                .map(domains::context),
+            )
+            .chain(["draft", "ask"].map(domains::fork))
+            .chain([domains::log("read")])
+            .chain(["model", "tools", "permissions", "policy"].map(domains::setup))
+            .map(|subject| (subject.to_string(), 32_000));
+
+        Self(Arc::new(Mutex::new(rows.collect())))
     }
 
-    /// The limit in force for a tool, if this holds one for it.
-    pub fn of(&self, tool: &str) -> Option<usize> {
-        self.0.lock().get(tool).copied()
+    /// The limit in force for a subject, if this holds one for it.
+    pub fn of(&self, subject: &str) -> Option<usize> {
+        self.0.lock().get(subject).copied()
     }
 
-    /// Sets one, returning what it was; `None` if this holds no limit for that tool.
-    pub fn set(&self, tool: &str, bytes: usize) -> Option<usize> {
-        self.0.lock().get_mut(tool).map(|at| {
+    /// The limit for a call, found by the subject that call needs.
+    ///
+    /// note: every tool's [`Tool::limit`] is this and nothing else, which is the whole of the
+    /// rule: what a call may return is decided by the same subject that decided whether it could
+    /// run. A call that needs more than one subject - which is what a tool says about a call it
+    /// cannot place - gets no limit from here, because there is no one row it is about; it is
+    /// about to be refused by name anyway.
+    pub fn for_call(&self, needs: &[Capability]) -> Option<usize> {
+        match needs {
+            [subject] => self.of(&subject.to_string()),
+            _ => None,
+        }
+    }
+
+    /// Sets one, returning what it was; `None` if this holds no limit for that subject.
+    pub fn set(&self, subject: &str, bytes: usize) -> Option<usize> {
+        self.0.lock().get_mut(subject).map(|at| {
             let was = *at;
             *at = bytes;
             was
         })
     }
 
-    /// Every limit this holds, by tool.
+    /// Every limit this holds, by subject.
     pub fn all(&self) -> Vec<(String, usize)> {
         self.0
             .lock()
             .iter()
-            .map(|(tool, bytes)| (tool.clone(), *bytes))
+            .map(|(subject, bytes)| (subject.clone(), *bytes))
             .collect()
-    }
-
-    /// Puts whatever limit is in force onto a spec, found by the spec's own id.
-    ///
-    /// note: by the id rather than by a name passed in, so a tool cannot declare itself one thing
-    /// and read another's limit. A tool this holds nothing for is handed back untouched, which is
-    /// every MCP tool and every tool somebody else wrote.
-    pub fn apply(&self, spec: ToolSpec) -> ToolSpec {
-        match self.of(&spec.id) {
-            Some(bytes) => spec.with_output_limit(bytes),
-            None => spec,
-        }
     }
 }
 

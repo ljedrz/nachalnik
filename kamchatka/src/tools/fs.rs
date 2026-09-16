@@ -1,10 +1,10 @@
 //! `fs`: one tool for the filesystem, and the five things it does to one.
 //!
 //! note: one tool per *object* rather than per verb. Reading a file, listing files, searching
-//! them, writing one and changing part of one are five acts on one thing, and a model choosing
+//! them, writing one and changing part of one are five operations on one thing, and a model choosing
 //! between five tools has to know which of them is the filesystem before it can choose at all.
 //! The permission subjects come out of the same decision - `fs:read` and `fs:write` are what this
-//! declares, so a rule is about the filesystem and an act on it rather than about whichever tool
+//! declares, so a rule is about the filesystem and an operation on it rather than about whichever
 //! happened to serve it.
 //!
 //! note: it dispatches to the five implementations rather than reimplementing them. Each of them
@@ -30,13 +30,13 @@ use crate::{
     },
 };
 
-/// The acts this tool offers, in the order a schema lists them.
+/// The operations this tool offers, in the order a schema lists them.
 ///
 /// note: the whole of the vocabulary, in one place, because three things have to agree about it -
 /// the `action` enum a model chooses from, the subject each call declares, and the row `/limit`
 /// keys on. They were three lists when there were five tools, and the only thing keeping them in
 /// step was that each tool had one of each.
-pub(super) const ACTS: [&str; 5] = ["read", "glob", "grep", "write", "edit"];
+pub(super) const OPS: [&str; 5] = ["read", "glob", "grep", "write", "edit"];
 
 /// Everything a session may do to a file, as one tool.
 pub(super) struct Fs {
@@ -51,7 +51,7 @@ pub(super) struct Fs {
 impl Fs {
     pub(super) fn new(reach: Arc<Reach>, looking: Looking, limits: Limits) -> Self {
         Self {
-            read: Read(reach.clone(), limits.clone()),
+            read: Read(reach.clone()),
             glob: Glob(looking.clone()),
             grep: Grep(looking),
             write: Write(reach.clone()),
@@ -60,11 +60,11 @@ impl Fs {
         }
     }
 
-    /// The act a call names, if it names one this tool has.
-    fn act<'a>(&self, call: &'a ToolCall) -> Option<&'a str> {
+    /// The operation a call names, if it names one this tool has.
+    fn op<'a>(&self, call: &'a ToolCall) -> Option<&'a str> {
         call.args["action"]
             .as_str()
-            .filter(|action| ACTS.contains(action))
+            .filter(|action| OPS.contains(action))
     }
 }
 
@@ -88,7 +88,7 @@ impl Tool for Fs {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ACTS,
+                    "enum": OPS,
                     "description": "`read` needs `path`. `glob` and `grep` need `pattern` and \
                                     take `path` for where to look. `write` needs `path` and \
                                     `content`. `edit` needs `path`, `old` and `new`.",
@@ -142,37 +142,32 @@ impl Tool for Fs {
             },
             "required": ["action"],
         }))
-        .with_capabilities(ACTS.map(Capability::fs))
+        .with_capabilities(OPS.map(Capability::fs))
     }
 
     /// note: `action` and nothing else, so a rule about `fs:read` is about reading whichever way
-    /// a call asked for it. A call naming no act it has declares all five, which is the strictest
-    /// reading of a call nobody can place - and `invoke` then refuses it by name.
+    /// a call asked for it. A call naming no operation it has declares all five, which is the
+    /// strictest reading of a call nobody can place - and `invoke` then refuses it by name.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
-        match self.act(call) {
+        match self.op(call) {
             Some(action) => vec![Capability::fs(action)],
             None => self.spec().capabilities,
         }
     }
 
-    /// note: per act, because `/limit` is about how much of an answer is worth reading and the
-    /// answers here are not the same size. A whole file and a repo-wide search were two rows
-    /// while they were two tools, and collapsing them into one number would have been the merge
-    /// quietly taking something away.
     fn limit(&self, call: &ToolCall) -> Option<usize> {
-        self.limits
-            .of(&format!("fs:{}", self.act(call).unwrap_or("read")))
+        self.limits.for_call(&self.needs(call))
     }
 
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
-        // note: the act is checked here as well as in `needs`, because a refusal a model can act
-        // on is one that names what was wrong. The alternative - dispatching on a default - runs
+        // note: the operation is checked here as well as in `needs`, because a refusal a model
+        // can act on is one that names what was wrong. The alternative - dispatching on a default - runs
         // something nobody asked for
-        let Some(action) = self.act(call) else {
+        let Some(action) = self.op(call) else {
             return Ok(ToolOutput::error(format!(
                 "`{}` is not something `fs` does; it does {}",
                 call.args["action"].as_str().unwrap_or("nothing"),
-                ACTS.join(", ")
+                OPS.join(", ")
             )));
         };
 

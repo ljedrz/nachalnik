@@ -193,19 +193,17 @@ fn glob(pattern: &str, name: &str) -> bool {
 /// permissions tab is drawing. A policy whose decisions can only be observed by triggering them
 /// is not much of a demonstration of a replaceable policy.
 ///
-/// note: a capability is not fine enough on its own. `read: allow` is a reasonable thing to want
-/// and `read .env: allow` is not, so there is a second kind of [`Subject`]: a pattern the *path* a
-/// tool was handed is matched against. The same argument one tool along gives a third kind of
-/// rule, the action rule: `amend:note` is a thing somebody may want to allow without allowing
-/// `amend:revise`.
+/// note: a domain is not fine enough on its own. `fs:read: allow` is a reasonable thing to want
+/// and `fs:read .env: allow` is not, so there is a kind of [`Subject`] finer than either: a
+/// pattern the *path* a tool was handed is matched against.
 ///
-/// note: a capability is the whole of its tool, and a rule finer than one is about the part it
-/// names. `amend` allows every action `amend` has; `amend:note` allows a note and says nothing
-/// about the rest. Against that, the strictest of everything consulted wins - so `read` stays
-/// `allow` while `.env` is a question, and a refused tool stays refused however finely an action
-/// of it is named. See [`Careful::judges`].
+/// note: a domain is the whole of what is done in it, and a rule finer than one is about the
+/// operation it names. `context` allows every operation in that domain; `context:note` allows a
+/// note and says nothing about the rest. Against that, the strictest of everything consulted
+/// wins: `fs:read` stays `allow` while `.env` is a question, and a refused domain stays refused
+/// however finely an operation in it is named. See [`Careful::judges`].
 ///
-/// note: those rules bind `read`, `write` and `edit`, and deliberately not `shell`. A command
+/// note: those rules bind `fs`, and deliberately not `shell`. A command
 /// names its files inside a string, and `cat .env`, `sed -n 1p .env`, `python -c "open('.env')"`
 /// and `base64 <.env` are the same act written four ways: a check over that string would refuse
 /// the first and wave the rest through while looking like a rule. What binds a command is the
@@ -268,11 +266,11 @@ impl Careful {
             // Both were decisions taken for the user about things they may perfectly well want,
             // and the sandbox is what makes either answer mean something once they have given it.
             //
-            // note: and no action rules either. Four of `amend`'s were seeded here at `ask`, so
-            // that allowing the tool still left an `exclude` a question - which made `--allow
+            // note: and no operation rules either. Four of `amend`'s were seeded here at `ask`,
+            // so that allowing the tool still left an `exclude` a question - which made `--allow
             // amend` mean something other than `amend`, and there is no way to guess from the
-            // words which four. A capability is the whole of a tool; somebody who wants less than
-            // that writes the action they want.
+            // words which four. A domain is the whole of what is done in it; somebody who wants
+            // less than that writes the operation they want.
             stances: Mutex::new(BTreeMap::new()),
             servers: Mutex::new(BTreeMap::new()),
             paths: Mutex::new(

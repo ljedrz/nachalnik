@@ -249,7 +249,7 @@ fn the_file_says_which_tools_a_session_starts_with() {
 
     let (ok, said) = run(
         &["--config-file", &path],
-        "/tools\n/tools toggle amend\n/tools\n",
+        "/tools\n/tools toggle fork\n/tools\n",
     );
 
     assert!(ok, "{said}");
@@ -258,12 +258,12 @@ fn the_file_says_which_tools_a_session_starts_with() {
     assert!(said.contains("▸ context"), "{said}");
     // and the ones that were not are still there to be had, rather than gone
     let off = said
-        .find("· amend")
-        .unwrap_or_else(|| panic!("no `amend` row: {said}"));
+        .find("· fork")
+        .unwrap_or_else(|| panic!("no `fork` row: {said}"));
     assert!(said.contains("· shell"), "{said}");
     let on = said
-        .find("▸ amend")
-        .unwrap_or_else(|| panic!("`/tools toggle amend` offered nothing: {said}"));
+        .find("▸ fork")
+        .unwrap_or_else(|| panic!("`/tools toggle fork` offered nothing: {said}"));
     assert!(off < on, "it was offered before it was turned on: {said}");
 }
 

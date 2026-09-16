@@ -315,7 +315,7 @@ tool's is the model asking to do something nobody vouched for, and this one is a
 typed.
 
 It is also the way out of a session too big to send. The tools that prune a context are the
-*model's* — `context` and `amend` — and reaching them costs a request, which is the thing that is
+*model's* — `context` — and reaching it costs a request, which is the thing that is
 failing. A context nothing will accept had, until this, only one way out, and it went through the
 request that no longer works.
 
@@ -416,8 +416,8 @@ everywhere, rather than one that works until somebody opens it on a terminal.
 { "tools": ["fs", "shell", "context", "log", "setup"] }
 ```
 
-Left out, or `null`, every tool is offered — that list is the whole set minus `amend`, which is
-how a project says *read this session all you like, do not rewrite it*. An empty list offers none
+Left out, or `null`, every tool is offered — that list is the whole set minus `fork`, which is how
+a project says *do not go buying extra requests*. An empty list offers none
 of them, which is a session with whatever an MCP server brought and nothing else. A name that is
 not a tool stops the program and says which ones there are, for the same reason an unknown key
 does: a file asking for `contxt` and quietly getting a session with no context tool is worse than

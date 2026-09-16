@@ -250,7 +250,7 @@ async fn the_help_lists_the_keys_that_exist() {
     assert_eq!(seen.len(), commands.len(), "listed twice: {commands:?}");
     assert!(commands.contains(&"/seams"), "{commands:?}");
 
-    // and every form `amend`'s schema names to a model is one the selector language really takes.
+    // and every form `context`'s schema names to a model is one the selector language really takes.
     // A schema that offered a form the parser refuses would be teaching a model to make a call
     // that comes back as an error, which is the one thing a description is there to prevent
     let offered = kamchatka::introspect::install(
@@ -258,8 +258,8 @@ async fn the_help_lists_the_keys_that_exist() {
         harness.app.policy.clone(),
         Limits::default(),
     );
-    let amend = harness.app.kernel.tool("amend").expect("installed");
-    let select = amend.spec().schema["properties"]["select"]["description"]
+    let context = harness.app.kernel.tool("context").expect("installed");
+    let select = context.spec().schema["properties"]["select"]["description"]
         .as_str()
         .expect("it says what it takes")
         .to_owned();

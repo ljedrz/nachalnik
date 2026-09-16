@@ -183,14 +183,14 @@ async fn the_tools_that_read_this_session_go_off_and_on_like_any_other() {
         harness.app.limits.clone(),
     ));
     let offered = harness.app.kernel.tool_ids();
-    assert_eq!(offered, ["amend", "context", "log", "setup"]);
+    assert_eq!(offered, ["context", "fork", "log", "setup"]);
     // the policy has one more subject to ask about per *operation* these tools offer, because
     // the tab reads what the registered tools declare and what they declare is what they do.
     // Reading your own items, reading the record beside them and rewriting one are different
     // questions, and each is answerable on its own row - which is the whole point of a subject
     // being `context:look` rather than the name of whichever tool happened to serve it
-    // context's four reads, the two that fork, amend's nine, setup's four, and log's one
-    let operations = 4 + 2 + 9 + 4 + 1;
+    // context's thirteen, fork's two, setup's four and log's one
+    let operations = 13 + 2 + 4 + 1;
     harness.tab(Tab::Permissions);
     assert_eq!(harness.app.undecided(), before + operations);
     let screen = harness.screen();
@@ -482,11 +482,13 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             "{} says nothing",
             spec.id
         );
-        // long enough to be useful, short enough to be read: the ones that read and manage a
-        // context are six and nine actions and earn their length; a file tool that needed this
-        // much would be describing something it should not be doing
+        // long enough to be useful, short enough to be read. `context` is thirteen operations
+        // over one object and earns its length - it is shorter than the two descriptions it
+        // replaced, which came to 2,700 characters between them and spent a good deal of that
+        // saying which of the two the other one was. A file tool that needed this much would be
+        // describing something it should not be doing
         assert!(
-            spec.description.len() < 1_500,
+            spec.description.len() < 2_500,
             "{} is {} chars",
             spec.id,
             spec.description.len()

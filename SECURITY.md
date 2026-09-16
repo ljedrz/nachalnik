@@ -18,7 +18,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   restriction that does not exist - which is why `kamchatka`'s permissions tab says so.
 - **A capability is not always fine enough to answer with.** `Careful::judges` is the one place a
   call's *arguments* become subjects, and there are two kinds that come from there: a path rule
-  (`read: allow` is reasonable, `read .env: allow` is not) and an action rule (`amend: allow` is
+  (`fs:read: allow` is reasonable, `fs:read .env: allow` is not) and an operation rule
+  (`context: allow` is
   reasonable for a `note` and not for an `exclude`). Both only ever tighten - the strictest of
   everything consulted wins - so neither can reopen what a capability refused, and that is the
   property that makes adding one safe. An action rule is consulted only where one exists, so a

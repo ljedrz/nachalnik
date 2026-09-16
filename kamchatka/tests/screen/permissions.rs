@@ -1052,11 +1052,11 @@ async fn a_message_sent_into_a_turn_that_stops_to_ask_waits_for_the_answer_too()
 #[tokio::test]
 async fn a_waiting_question_can_be_left_and_come_back_to() {
     let mut harness = Harness::new([
-        ModelResponse::tool_calls(vec![call("c1", "amend", json!({ "ids": [1] }))]),
+        ModelResponse::tool_calls(vec![call("c1", "context", json!({ "ids": [1] }))]),
         ModelResponse::text("done"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("amend", "elided")
+        ConstTool::new("context", "elided")
             .with_capabilities([kamchatka::tools::domains::context("elide")]),
     ));
     harness
@@ -1135,13 +1135,13 @@ async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
     let mut harness = Harness::new([
         ModelResponse::tool_calls(vec![call(
             "c1",
-            "amend",
+            "context",
             json!({ "action": "revise", "content": long }),
         )]),
         ModelResponse::text("done"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("amend", "revised")
+        ConstTool::new("context", "revised")
             .with_capabilities([kamchatka::tools::domains::context("revise")]),
     ));
 
@@ -1150,7 +1150,7 @@ async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
 
     // the question, and every way of answering it, on a screen the arguments cannot fit on
     let screen = harness.screen();
-    assert!(screen.contains("amend wants: context:revise"), "{screen}");
+    assert!(screen.contains("context wants: context:revise"), "{screen}");
     assert!(screen.contains("[y] once"), "{screen}");
     assert!(screen.contains("[i] the exact JSON"), "{screen}");
     // and it says how to see the part that did not fit
@@ -1286,11 +1286,11 @@ async fn a_call_refused_once_at_the_prompt_says_so_rather_than_naming_a_rule() {
 /// refer to, and the answer is one key - so somebody asked whether item 2 may be elided had to
 /// already know what item 2 was, from a screen they could no longer see.
 #[tokio::test]
-async fn the_question_about_an_amend_says_which_items_it_would_change() {
+async fn the_question_about_a_change_says_which_items_it_would_change() {
     let mut harness = Harness::configured(
         [ModelResponse::tool_calls(vec![call(
             "c1",
-            "amend",
+            "context",
             json!({ "action": "elide", "ids": [2], "reason": "it has served its purpose" }),
         )])],
         Config::default(),
@@ -1335,7 +1335,7 @@ async fn the_question_expands_a_selector_into_the_items_it_matches() {
     let mut harness = Harness::configured(
         [ModelResponse::tool_calls(vec![call(
             "c1",
-            "amend",
+            "context",
             json!({
                 "action": "elide",
                 "select": "all:files",

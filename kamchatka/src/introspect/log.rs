@@ -32,7 +32,7 @@ use crate::{
     tools::{Limits, domains},
 };
 
-use super::{Reach, if_offered};
+use super::{Reach, if_offered, unknown};
 
 /// How wide the event-name column is, which is the longest name plus a space.
 const NAMES: usize = 20;
@@ -53,7 +53,7 @@ impl Log {
 #[async_trait]
 impl Tool for Log {
     fn spec(&self) -> ToolSpec {
-        let spec = ToolSpec::new(
+        ToolSpec::new(
             "log",
             "reads the session's own record: an append-only log of what happened, kept beside \
              your context and not part of it. Every item added, replaced, elided, undone or \
@@ -68,6 +68,13 @@ impl Tool for Log {
         .with_schema(json!({
             "type": "object",
             "properties": {
+                // note: one operation, and asked for by name anyway, so that every tool this
+                // program offers takes an `action` and none of them is the exception a model has
+                // to remember. `shell` is written the same way and for the same reason
+                "action": {
+                    "type": "string",
+                    "enum": ["read"],
+                },
                 "take": {
                     "type": "integer",
                     "description": "the most recent N of whatever matched; the header still says \
@@ -102,16 +109,25 @@ impl Tool for Log {
                                     line. It costs what that text costs",
                 },
             },
+            "required": ["action"],
         }))
-        .with_capabilities([domains::log("read")]);
+        .with_capabilities([domains::log("read")])
+    }
 
-        self.limits.apply(spec)
+    fn limit(&self, call: &ToolCall) -> Option<usize> {
+        self.limits.for_call(&self.needs(call))
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+        // note: a word this tool does not have is refused by name rather than read as `read`,
+        // which is what an absent `action` still is: a model that asked to `clear` the log should
+        // be told there is no such thing, not handed the log
+        if let Some(named) = call.args["action"].as_str().filter(|it| *it != "read") {
+            return Ok(ToolOutput::error(unknown(named, &["read"])));
+        }
         let kernel = self.reach.kernel()?;
 
-        let query = match Query::read(&kernel, &call.args) {
+        let query = match Query::read(&call.args) {
             Ok(query) => query,
             Err(e) => return Ok(ToolOutput::error(e)),
         };
@@ -204,17 +220,22 @@ struct Query {
 }
 
 /// The arguments this tool takes; anything else is a mistake worth reporting.
-const TAKES: [&str; 5] = ["take", "ids", "since", "kinds", "whole"];
+const TAKES: [&str; 6] = ["action", "take", "ids", "since", "kinds", "whole"];
 
 impl Query {
     /// Reads one, or says what is wrong with the arguments.
-    fn read(kernel: &Kernel, args: &serde_json::Value) -> Result<Self, String> {
+    fn read(args: &serde_json::Value) -> Result<Self, String> {
         // note: an argument nobody reads is the same failure as a filter nobody can parse, one
         // step earlier: the call comes back looking like a bare call, which is a real answer, so
         // nothing says it did not do what was asked. A live session called `log {action: "look"}`,
         // got the summary, and read it as the answer to a question it had not asked - then cited
-        // it. The sibling tools all take an `action`, so reaching for one here is the obvious
-        // mistake to make and gets a sentence of its own.
+        // it.
+        //
+        // note: that particular mistake cannot be made any more, and what closed it was not this
+        // check. `log` takes an `action` now, like every other tool here, so `action: "look"` is
+        // refused by name as an operation this tool does not have. What is left is worth keeping
+        // for every *other* misspelling - `limit` for `take`, `kind` for `kinds` - which fail the
+        // same silent way.
         if let Some(given) = args.as_object() {
             let unknown: Vec<&str> = given
                 .keys()
@@ -222,7 +243,7 @@ impl Query {
                 .filter(|key| !TAKES.contains(key))
                 .collect();
             if !unknown.is_empty() {
-                let mut why = format!(
+                return Err(format!(
                     "`log` does not take {}. It takes {}, and nothing was read - a call that \
                      ignored an argument would have come back looking like a bare call.",
                     unknown
@@ -235,34 +256,7 @@ impl Query {
                         .map(|key| format!("`{key}`"))
                         .collect::<Vec<_>>()
                         .join(", "),
-                );
-                if unknown.contains(&"action") {
-                    // the siblings by name only where the session still has them, for the reason
-                    // `if_offered` exists: a sentence that says `setup` has actions, in a run
-                    // where `/tools toggle setup` has already happened, is naming something to try
-                    // that is not there
-                    let siblings: Vec<&str> = ["context", "setup", "amend"]
-                        .into_iter()
-                        .filter(|tool| kernel.tool(tool).is_some())
-                        .collect();
-                    why.push_str(&match siblings.as_slice() {
-                        [] => " There are no actions here; a bare call is the summary.".to_owned(),
-                        [one] => format!(
-                            " There are no actions here: `{one}` has them and this does not. A \
-                             bare call is the summary."
-                        ),
-                        [rest @ .., last] => format!(
-                            " There are no actions here: {} and `{last}` have them and this does \
-                             not. A bare call is the summary.",
-                            rest.iter()
-                                .map(|tool| format!("`{tool}`"))
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                        ),
-                    });
-                }
-
-                return Err(why);
+                ));
             }
         }
 

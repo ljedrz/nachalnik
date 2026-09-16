@@ -105,13 +105,14 @@ server, tools arriving and leaving are `add_tool` and `remove_tool`, a structure
 untrusted server, so the bridge believes none of them by default. Its tests include a server
 offering a tool called `delete_everything` that claims to be read-only.
 
-**[`kamchatka`](kamchatka)** hands the model four tools about its own session, and every action in them is
-a public function a user interface was already calling. `context` reads the context - `look`,
-`budget`, `request`, `search`, and `draft` and `fork`, which answer on a throwaway copy. `log`
-reads the append-only record kept beside it. `setup` says what the session is running with: which
-model, which tools, what the policy will refuse, and whether this context was resumed from somebody
-else's. `amend` changes any of it - `elide`, `exclude`, `revise`, `note`, `undo` - and touches
-nothing a person pinned. Given a 10,000-token limit and a mundane question, one model's first move
+**[`kamchatka`](kamchatka)** hands the model four tools about its own session, and every operation
+in them is a public function a user interface was already calling. `context` is the context:
+`look`, `budget`, `request` and `search` read it, and nine more - `elide`, `exclude`, `revise`,
+`note`, `undo` - change it, touching nothing a person pinned. `fork` answers on a throwaway copy,
+either carrying the conversation on or putting a question with some items taken away. `log` reads
+the append-only record kept beside the context. `setup` says what the session is running with:
+which model, which tools, what the policy will refuse, and whether this context was resumed from
+somebody else's. Given a 10,000-token limit and a mundane question, one model's first move
 was `budget`; eight requests later it elided eight tool results in one call and got two thousand
 tokens back, with nothing destroyed.
 

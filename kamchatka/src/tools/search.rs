@@ -25,14 +25,11 @@ use globset::GlobBuilder;
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use ignore::WalkBuilder;
-use nachalnik::{
-    BoxError, Capability, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, Verdict, async_trait,
-};
-use serde_json::json;
+use nachalnik::{BoxError, OutputSink, ToolCall, ToolOutput, Verdict};
 
 use crate::{
     sandbox::{Access, Reach},
-    tools::{Careful, Limits, arg, files::PATH_ARG, path_matches, truth, whole},
+    tools::{Careful, Limits, arg, path_matches, truth, whole},
 };
 
 /// How many matching lines one `grep` answers with.
@@ -340,70 +337,12 @@ struct Found {
 /// Searches the text of files for a regular expression.
 pub(super) struct Grep(pub(super) Looking);
 
-#[async_trait]
-impl Tool for Grep {
-    fn spec(&self) -> ToolSpec {
-        self.0.limits.apply(
-            ToolSpec::new(
-                "grep",
-                format!(
-                    "searches the text of files for a regular expression and answers \
-                     `path:line:the line`, like `grep -rn`. It walks a directory itself, with no \
-                     shell: it obeys `.gitignore`, it does search hidden files, and whatever \
-                     else it passed over it counts on the line under the first. At most \
-                     {MATCHES} matches come back \
-                     ({PATHS} files with `files_only`), a line wider than {WIDTH} characters is \
-                     cut with a `…`, and an answer that stopped early says so and says what to \
-                     do about it. Lines that would not fit are answered as the files they were \
-                     in, rather than as the first few thousand bytes of them."
-                ),
-            )
-            .with_schema(json!({
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "a regular expression, in Rust's regex syntax - \
-                                        `\\bKernel\\b`, `impl .* for`. It has no look-around. \
-                                        Escape anything you mean literally: `Vec<u8>\\(`",
-                    },
-                    "path": {
-                        "type": "string",
-                        "description": format!(
-                            "where to look: one file, or a directory and everything under it. \
-                             {PATH_ARG}. Left out, it is the working directory"
-                        ),
-                    },
-                    "glob": {
-                        "type": "string",
-                        "description": GLOB_ARG,
-                    },
-                    "ignore_case": {
-                        "type": "boolean",
-                        "description": "match without regard to case; false by default",
-                    },
-                    "context": {
-                        "type": "integer",
-                        "description": "lines to show either side of each match, up to 10; none \
-                                        by default. They are marked with a `-` where a match is \
-                                        marked with a `:`",
-                    },
-                    "files_only": {
-                        "type": "boolean",
-                        "description": "answer with the files that match and how many each has - \
-                                        `path: 12`, most first - instead of the lines, which is \
-                                        `grep -l`. For a common word, or when you do not know \
-                                        where something lives: a fraction of the tokens, and it \
-                                        names the file to search properly next",
-                    },
-                },
-                "required": ["pattern"],
-            }))
-            .with_capabilities([Capability::fs("read")]),
-        )
-    }
-
-    async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
+impl Grep {
+    pub(super) async fn invoke(
+        &self,
+        call: &ToolCall,
+        output: OutputSink,
+    ) -> Result<ToolOutput, BoxError> {
         let pattern = arg(&call.args, "pattern")?.to_owned();
         let asked = call.args["path"].as_str().unwrap_or(".").to_owned();
         let root = match self.0.reach.allows(&asked, Access::Reading) {
@@ -716,41 +655,12 @@ fn said<const N: usize>(head: String, notes: [Option<String>; N], lines: &[Strin
 /// Lists the files whose path matches a glob.
 pub(super) struct Glob(pub(super) Looking);
 
-#[async_trait]
-impl Tool for Glob {
-    fn spec(&self) -> ToolSpec {
-        self.0.limits.apply(
-            ToolSpec::new(
-                "glob",
-                format!(
-                    "lists the files whose path matches a glob, in alphabetical order. It walks a \
-                     directory itself, with no shell, and walks it the way `grep` does: it \
-                     obeys `.gitignore` and it does list hidden files. At most {PATHS} paths \
-                     come back, and the answer says how many there were."
-                ),
-            )
-            .with_schema(json!({
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": GLOB_ARG,
-                    },
-                    "path": {
-                        "type": "string",
-                        "description": format!(
-                            "the directory to list under. {PATH_ARG}. Left out, it is the working \
-                             directory"
-                        ),
-                    },
-                },
-                "required": ["pattern"],
-            }))
-            .with_capabilities([Capability::fs("read")]),
-        )
-    }
-
-    async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
+impl Glob {
+    pub(super) async fn invoke(
+        &self,
+        call: &ToolCall,
+        output: OutputSink,
+    ) -> Result<ToolOutput, BoxError> {
         let pattern = arg(&call.args, "pattern")?.to_owned();
         let asked = call.args["path"].as_str().unwrap_or(".").to_owned();
         let root = match self.0.reach.allows(&asked, Access::Reading) {

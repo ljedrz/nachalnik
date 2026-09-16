@@ -1,27 +1,30 @@
-//! The tool that changes: prune, rewrite, write something down, and walk any of it back.
+//! The half of `context` that changes it: prune, rewrite, write something down, and walk any of
+//! it back.
+//!
+//! note: a file of its own and not a tool of its own. It was both until the two were merged, and
+//! what stayed behind is everything that is really about *changing* a context - the journal
+//! `undo` walks, the refusals, and the accounting that says what a change cost. The schema and
+//! the dispatch are in `context.rs` with the reading half, because that is what a model sees.
 //!
 //! note: what it will not do is undo a person's decisions - a pinned item, a system instruction
-//! and the assistant turn carrying the call in flight are refused, and `undo` walks this tool's
-//! own journal rather than the kernel's stack, which belongs to the person. Both rules are in the
+//! and the assistant turn carrying the call in flight are refused, and `undo` walks its own
+//! journal rather than the kernel's stack, which belongs to the person. Both rules are in the
 //! doc comments below, where the code that enforces them is.
 
 use std::cmp::Ordering;
 
 use nachalnik::{
-    BoxError, Capability, Content, ContextId, ContextItem, ContextKind, ContextState, Kernel,
-    OutputSink, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, async_trait, selectors::Selector,
+    Content, ContextId, ContextItem, ContextKind, ContextState, Kernel, ToolCall, ToolCallId,
+    ToolOutput, selectors::Selector,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::{
-    app::text::thousands,
-    tools::{Limits, domains},
-};
+use crate::app::text::thousands;
 
-use super::{Pinned, Reach, action, ids, if_offered, protected, unknown};
+use super::{Pinned, ids, protected};
 
-/// Manages the context: prunes it, rewrites an item, writes something down, walks its own
+/// Changes the context: prunes it, rewrites an item, writes something down, walks its own
 /// changes back.
 ///
 /// note: it keeps the set of items it pinned itself, which is the whole of the mechanism that
@@ -36,25 +39,25 @@ use super::{Pinned, Reach, action, ids, if_offered, protected, unknown};
 /// question, orphan the answer it is waiting for, and leave the loop rebuilding a request from
 /// before it asked. A journal of this tool's own amendments has neither problem, and it is the
 /// honest scope of "undo my mistakes" - the mistakes being the ones it made.
-pub struct Amend {
-    reach: Reach,
+pub(super) struct Amend {
     pinned: Pinned,
     journal: Mutex<Journal>,
-    limits: Limits,
 }
 
 impl Amend {
-    /// Builds one; see [`super::install`], which is the only caller.
+    /// Builds one; [`Context`](super::Context) is the only caller.
     ///
-    /// note: the journal is this tool's own and starts empty, which is why it is made here rather
-    /// than handed in - what `undo` walks is what *this* tool did, and a journal from anywhere
-    /// else would be somebody else's work to walk back.
-    pub(super) fn new(reach: Reach, pinned: Pinned, limits: Limits) -> Self {
+    /// note: the journal starts empty and is made here rather than handed in - what `undo` walks
+    /// is what this session's model did, and a journal from anywhere else would be somebody
+    /// else's work to walk back.
+    ///
+    /// note: the pinned set *is* handed in, because it is shared with the half that reports it:
+    /// what was pinned here is what `budget` says the model may unpin, and a second set would
+    /// have the two disagreeing about a promise.
+    pub(super) fn new(pinned: Pinned) -> Self {
         Self {
-            reach,
             pinned,
             journal: Mutex::new(Journal::default()),
-            limits,
         }
     }
 }
@@ -121,150 +124,34 @@ impl Undoing {
     }
 }
 
-#[async_trait]
-impl Tool for Amend {
-    fn spec(&self) -> ToolSpec {
-        let spec = ToolSpec::new(
-            "amend",
-            "manages your own context, so that what you carry into the next request is what you \
-             decided to carry. Five actions move an item, and each is named for what it leaves \
-             behind - the same word you will read back on it afterwards. `elide` replaces what it \
-             says with a short marker, which is what to reach for when a tool result has served \
-             its purpose: the call it answers stays answered and stops costing what it holds. \
-             `exclude` takes it out of the request altogether, which also takes down the call that \
-             asked for it. `archive` puts it away for good. `pin` protects it from being compacted \
-             away. `restore` is the way back from any of them. Name the items with `ids`, or with \
-             `select` for a whole class of them at once. `revise` rewrites what one item says, for \
-             when you wrote something down wrong. `note` writes something into your own context - \
-             a plan, a conclusion, a thing not to try again - which is not the same as thinking \
-             it: thinking belongs to the turn that produced it and is not carried into later \
-             requests, while a note is an item of its own that goes into every one and can be \
-             pinned. `undo` and `redo` walk back through the changes *you* made here. Nothing \
-             destroys anything: every item keeps its number and can be restored. A pinned item, a \
-             system instruction and the turn you are speaking in are refused - they are not \
-             yours. A reason is required, and the person you work with reads it. Use `context` to \
-             look first, `budget` especially.",
-        )
-        .with_schema(json!({
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    // note: the five moves are here rather than under a `state` argument of their
-                    // own, because the word for the move is the word the result is reported in -
-                    // an item you `archive` reads back as `archived` everywhere it is listed. One
-                    // level, and the same vocabulary at both ends of it
-                    "enum": [
-                        "elide", "exclude", "archive", "pin", "restore",
-                        "revise", "note", "undo", "redo",
-                    ],
-                },
-                "ids": {
-                    "type": "array",
-                    "items": { "type": "integer" },
-                    "description": "the items to move; revise: exactly one item",
-                },
-                // note: the forms, with the variable part written as a placeholder. It listed
-                // examples - `tool:shell`, `kind:assistant_message` - and a model reading them as
-                // literals rather than as instances asked to prune `tool:shell` in a session with
-                // no shell. The closed sets are not spelled out here because `look` prints them
-                // in its own columns, which is a shorter way to learn them than a schema is
-                "select": {
-                    "type": "string",
-                    "description": "a class of items instead of `ids`. One of: an item \
-                                    number; `all`; `all:tool_results` (or files, diagnostics, \
-                                    selections, memories, instructions, system, user, model, \
-                                    compaction); `kind:<kind>` or `state:<state>`, taking the \
-                                    words `look` prints in those columns; `tool:<name>`, \
-                                    optionally `:first` or `:latest`; `source:<name>`; \
-                                    `file:<path>`; `label:<text>`. Anything else is read as a \
-                                    label.",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "revise: what the item should say instead. note: what to write down",
-                },
-                // note: what it is *not* is half of this line, and it is the half a live run
-                // needed. `label` reads as a key, five notes went in under one name meaning to
-                // replace each other, and the tool appended every time - which the result now
-                // also says when it happens. This is the same sentence one step earlier, where
-                // the name is being chosen rather than regretted.
-                "label": {
-                    "type": "string",
-                    "description": "note: a short name for it, so you can find it again. Not a \
-                                    key: a second note under a name is a second item, and \
-                                    `revise` is what changes one you already wrote",
-                },
-                "pin": {
-                    "type": "boolean",
-                    "description": "note: protect it from compaction, for a finding that \
-                                    has to outlast the context it was found in",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "why, in your own words; the person you work with reads this",
-                },
-                "steps": {
-                    "type": "integer",
-                    "description": "undo, redo: how many of your own changes to walk; 1 by default",
-                },
-            },
-            "required": ["action", "reason"],
-        }))
-        .with_capabilities(
-            ["elide", "exclude", "archive", "pin", "restore", "revise", "note", "undo", "redo"]
-                .map(domains::context),
-        );
-
-        self.limits.apply(spec)
-    }
-
-    fn needs(&self, call: &ToolCall) -> Vec<Capability> {
-        match action(&call.args) {
-            Ok(action) => vec![domains::context(action)],
-            Err(_) => self.spec().capabilities,
-        }
-    }
-
-    async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
-        let kernel = self.reach.kernel()?;
-
-        let Some(reason) = call.args["reason"]
-            .as_str()
-            .filter(|r| !r.trim().is_empty())
-        else {
-            return Ok(ToolOutput::error(
-                "`reason` is required: it becomes the item's note, and it is what the person at \
-                 the terminal reads when they ask why something is not in the request",
-            ));
-        };
-
-        match action(&call.args)? {
-            "revise" => Ok(self.revise(&kernel, call, reason)),
-            "note" => Ok(self.note(&kernel, call, reason)),
-            "undo" => Ok(self.walk(&kernel, call, reason, true)),
-            "redo" => Ok(self.walk(&kernel, call, reason, false)),
-            // note: the five moves are actions of their own, named for what they do. They used to
-            // be one `prune` action with a `state` argument, which put the word for *one* of them
-            // over all five - including `pin` and `restore`, which are its opposite, so "prune to
-            // pin it" was the documented spelling of protecting something. It also disagreed with
-            // every place the result is read back, all of which name the state. Two models in a
-            // row spent a call each asking for `restore` and being told it was a state and not an
-            // action; the answer was that they were right and the levels were wrong.
-            //
-            // note: `prune` with a `state` still works, for the reason `unelide` does - accepting
-            // a word somebody reached for costs nothing, and refusing it costs a turn. What
-            // changed is the word this program *says*.
-            other if state_of(other).is_some() || other == "prune" => {
-                Ok(self.moved(&kernel, call, reason, other))
-            }
-            other => Ok(ToolOutput::error(unknown(
-                other,
-                &[
-                    "elide", "exclude", "archive", "pin", "restore", "revise", "note", "undo",
-                    "redo",
-                ],
-            ))),
+impl Amend {
+    /// Runs one of the nine operations that change something.
+    ///
+    /// note: it is handed the operation and the reason rather than reading either, because both
+    /// are the vocabulary's and the vocabulary is `context`'s: it is the tool a model called, it
+    /// holds the list of thirteen, and it is what says so when a call names none of them. What is
+    /// in here is what changing a context *is*.
+    pub(super) fn change(
+        &self,
+        kernel: &Kernel,
+        call: &ToolCall,
+        op: &str,
+        reason: &str,
+    ) -> ToolOutput {
+        match op {
+            "revise" => self.revise(kernel, call, reason),
+            "note" => self.note(kernel, call, reason),
+            "undo" => self.walk(kernel, call, reason, true),
+            "redo" => self.walk(kernel, call, reason, false),
+            // note: the five moves are operations of their own, named for what they do. They were
+            // one `prune` action with a `state` argument once, which put the word for *one* of
+            // them over all five - including `pin` and `restore`, which are its opposite, so
+            // "prune to pin it" was the documented spelling of protecting something. It also
+            // disagreed with every place the result is read back, all of which name the state.
+            // Two models in a row spent a call each asking for `restore` and being told it was a
+            // state and not an action; the answer was that they were right and the levels were
+            // wrong.
+            other => self.moved(kernel, call, reason, other),
         }
     }
 }
@@ -368,12 +255,7 @@ impl Amend {
                 },
             });
         }
-        // the action names the move; `prune` is the old spelling and carries it in `state`
-        let named = match action {
-            "prune" => call.args["state"].as_str().unwrap_or_default(),
-            other => other,
-        };
-        let Some(state) = state_of(named) else {
+        let Some(state) = state_of(action) else {
             // what each one does rather than only what it is called: the choice between `elide`
             // and `exclude` is the one that decides whether a tool call keeps its answer, and a
             // list of five words does not help anybody make it
@@ -492,12 +374,14 @@ impl Amend {
                 out.push_str(
                     "you have no notes: nothing you are carrying says what those items said.\n",
                 );
-                out.push_str(&if_offered(kernel, "context", || {
+                // note: said outright rather than through `if_offered`, which is what this was
+                // while `search` belonged to a tool next door that a session might not have.
+                // The tool naming it is the tool that has it now
+                out.push_str(
                     "The text is still in them - `search` reads a line of one without putting it \
                      back, and `restore` returns the whole - but a finding you have to go and look \
-                     for again is not one you have.\n"
-                        .to_owned()
-                }));
+                     for again is not one you have.\n",
+                );
                 out.push_str("`note` writes a finding down where pruning cannot reach it.\n");
             }
         }
@@ -553,7 +437,7 @@ impl Amend {
         // its own tool as the editor of a sentence a person rewrote, and the person is never told
         // they did something `amend` did. The `unwrap_or` on the pane that draws this guards
         // somebody else's metadata, not either of those
-        meta["revised"] = json!({ "by": "amend", "reason": reason, "call": call.id.to_string() });
+        meta["revised"] = json!({ "by": "context", "reason": reason, "call": call.id.to_string() });
         let _ = kernel.annotate(id, meta);
         self.record(Undoing::Said(id, item.content.clone(), item.meta.clone()));
 
@@ -758,20 +642,22 @@ impl Amend {
     }
 }
 
-/// The state a word names.
+/// The state each of the five moves leaves an item in.
+///
+/// note: five words for five states, and no second spelling of any of them. It took `excluded`,
+/// `unpin`, `unelide`, `active` and `include` too, on the reasoning that accepting a word
+/// somebody reached for costs nothing - which was true of the word and not of the program. The
+/// schema advertises thirteen operations; every place that had to answer "which operation is
+/// this call" then needed a table of the words that are not in it, and `needs` was reduced to
+/// declaring all thirteen for a call it could not place. One list, in the schema, is the whole
+/// of the vocabulary now.
 fn state_of(word: &str) -> Option<ContextState> {
     Some(match word {
-        "exclude" | "excluded" => ContextState::Excluded,
-        "elide" | "elided" => ContextState::Elided,
-        "archive" | "archived" => ContextState::Archived,
-        "pin" | "pinned" => ContextState::Pinned,
-        // there is one way back and a great many words for it. Four states hide an item or hold
-        // it, and undoing any of them is the same move - so `unpin` and `unelide` are not
-        // separate operations to be refused for not existing, they are this one spelled the way
-        // somebody thought of it
-        "restore" | "active" | "include" | "unelide" | "unexclude" | "unarchive" | "unpin" => {
-            ContextState::Active
-        }
+        "exclude" => ContextState::Excluded,
+        "elide" => ContextState::Elided,
+        "archive" => ContextState::Archived,
+        "pin" => ContextState::Pinned,
+        "restore" => ContextState::Active,
         _ => return None,
     })
 }

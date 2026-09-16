@@ -132,7 +132,7 @@ impl Tool for Shell {
             )
             .collect();
 
-        let spec = ToolSpec::new(
+        ToolSpec::new(
             "shell",
             format!(
                 "runs one command with `sh -c` in the working directory and returns its exit \
@@ -155,19 +155,38 @@ impl Tool for Shell {
         .with_schema(json!({
             "type": "object",
             "properties": {
+                // note: one operation, and asked for by name anyway, because every tool this
+                // program offers takes an `action` and a model should not have to remember which
+                // of them is the exception. It costs a word in the call and buys a rule with no
+                // holes in it - the same reasoning `log` is written to
+                "action": {
+                    "type": "string",
+                    "enum": ["run"],
+                },
                 "cmd": {
                     "type": "string",
                     "description": "the command line, as a shell would read it",
                 },
             },
-            "required": ["cmd"],
+            "required": ["action", "cmd"],
         }))
-        .with_capabilities([Capability::exec("run")]);
+        .with_capabilities([Capability::exec("run")])
+    }
 
-        self.limits.apply(spec)
+    fn limit(&self, call: &ToolCall) -> Option<usize> {
+        self.limits.for_call(&self.needs(call))
     }
 
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
+        // note: named rather than assumed, for the reason `fs` refuses one it does not have: a
+        // call that meant something else and was answered as `run` is a command nobody asked for.
+        // The tool is `shell` and the operation is `run` - the domain it declares is `exec`,
+        // which is what a permission rule is written against
+        if let Some(named) = call.args["action"].as_str().filter(|it| *it != "run") {
+            return Ok(ToolOutput::error(format!(
+                "`{named}` is not something `shell` does; it does run"
+            )));
+        }
         let cmd = arg(&call.args, "cmd")?;
 
         // what the command may reach, which is a different question from whether it may run: the

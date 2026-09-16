@@ -146,12 +146,12 @@ excluded one is not the same thing at all; that gap is the reason the pages exis
 an item the model does not read in full opens on the first page instead of the second.
 
 **`v1`**, **`v2`** and so on are what it said before somebody rewrote it, newest first. Both hands
-that rewrite an item — <kbd>e</kbd> here and `amend`'s `revise` — **replace it in place**, which
+that rewrite an item — <kbd>e</kbd> here and `context`'s `revise` — **replace it in place**, which
 keeps the number the item is referred to by and leaves the old text nowhere except the
 `context.replaced` event. This reads it back off there, up to eight versions deep — including
 after a `-r`, since `/save` writes that event stream to the `.jsonl` beside the snapshot and a
 resumed session goes looking for it. The `as stored` page says whose hand it was:
-`` rewritten by `user` `` for an edit at the terminal, and `` rewritten by `amend` `` with the
+`` rewritten by `user` `` for an edit at the terminal, and `` rewritten by `context` `` with the
 model's own reason for the tool.
 
 <kbd>e</kbd> is the verb the others were missing. `space` and `p` decide whether the model reads an
@@ -515,7 +515,7 @@ into it from *off* the screen. A session waiting on an answer nobody can give it
 pressing a key nothing mentions.
 
 **A question you cannot investigate is a question you cannot answer.** It used to be a box over the
-middle of the screen, and while it was up nothing else worked — so being asked whether `amend` may
+middle of the screen, and while it was up nothing else worked — so being asked whether `context` may
 elide item 22 meant deciding about item 22 with the list saying what item 22 *is* underneath the
 box asking. Here it takes none of that away: <kbd>ctrl+t</kbd> to the context tab, read the item,
 come back, answer. The **chat** tab goes red on the strip while one is waiting, so the other three
@@ -538,7 +538,7 @@ go back on itself one keystroke later. <kbd>y</kbd> is this call only — a `cur
 with the network open for that command and no other.
 
 Arguments longer than the box get their own scrolling region between the header and the answers,
-with <kbd>pgup</kbd> and <kbd>pgdn</kbd> moving them; the answers stay where they are. An `amend`
+with <kbd>pgup</kbd> and <kbd>pgdn</kbd> moving them; the answers stay where they are. A `revise`
 carrying a rewritten tool result is as long as the result was, and a question whose answers had
 been pushed off the bottom of the screen is one nobody can answer.
 
@@ -692,12 +692,13 @@ counted by a counter that has no formula and says so.
 
 ## 🔎 letting the agent read and manage its own context
 
-Four of the tools are for reading and managing the session itself, and they are offered like the
-rest of them. `/tools toggle amend` takes one away and `/tools toggle amend` again gives it back, and the
-`tools` key in a settings file says which of them a session starts with — which is where a
-project that does not want a model rewriting its own context says so. There are
-[write-ups](https://ljedrz.github.io/nachalnik/) of three sessions driven from the two that
-existed when they were recorded, `context` (called `introspect` then) and `amend`:
+Four of the tools are about the session itself, and they are offered like the rest of them.
+`/tools toggle context` takes one away and `/tools toggle context` again gives it back, and the
+`tools` key in a settings file says which of them a session starts with — which is where a project
+that does not want its agent buying extra requests leaves `fork` out. There are
+[write-ups](https://ljedrz.github.io/nachalnik/) of three sessions driven from the two tools that
+existed when they were recorded — `context` (called `introspect` then) for reading and `amend` for
+changing, which are one tool now:
 one where an agent found a false note in its own context and corrected it, one where it took back
 a hallucination of its own by rewriting the two turns it had made things up in, and one where it
 answered *why do you think that* by forking itself and running the ablation rather than by
@@ -726,7 +727,7 @@ that says what the rule is.
 the next request is ~48,120 tokens of 128,000 (38% full, ~79,880 left)
   47,343 in the context, 777 in the tool definitions
 ~34,512 tokens are being held back: excluded, archived or elided to a marker - three states you
-set, and `amend` takes any of them off again - or thinking this endpoint will not take back,
+set, and `context` takes any of them off again - or thinking this endpoint will not take back,
 which is not yours to change
 the last request really cost 52,905 in / 214 out, as the provider counted it
 the estimate is corrected by x1.09, learned from 6 request(s)
@@ -866,9 +867,10 @@ itself:
   request; it has never said what decided that, and a model that can read the verdict but not the
   rule cannot argue with either.
 
-**`amend`** changes things. `elide`, `exclude`, `archive`, `pin` and `restore` move items between
-the same states the <kbd>space</kbd> key does, and each action is named for the state it leaves —
-which is the word you will read back on the item afterwards:
+The other nine operations of **`context`** change it. `elide`, `exclude`, `archive`, `pin` and
+`restore` move items between
+the same states the <kbd>space</kbd> key does, and each is named for the state it leaves — which
+is the word you will read back on the item afterwards:
 
 * `elide` — for a tool result that has served its purpose. The call stays answered, and the result
   stops costing what it holds.
@@ -886,20 +888,30 @@ loud in a turn is not a promise about anything; a pin is.
 `undo` walks back — deliberately *not* the kernel's undo stack. That stack is yours, bound to
 <kbd>u</kbd>, and the top of it while a tool is running is always the assistant turn that asked
 for the call: one step would erase the model's own question and orphan the answer it is waiting
-for. So `amend` keeps a journal of what *it* did, and that is what it walks. A reason is required
-on every change, and it is what you read in the context pane.
+for. So the tool keeps a journal of what *it* did, and that is what it walks. A `reason` is
+required by every one of the nine that change something, and it is what you read in the context
+pane.
 
 Three things are refused outright, with the refusal handed back to the model: a **pinned** item
 (a pin is a promise, and it was not made to the model), a **system instruction**, and the
 assistant turn it is currently speaking in. It may unpin what it pinned itself, and nothing else.
 
-They are a tool per noun rather than one with a mode argument, because a tool declares its
-capabilities once for every call it will ever receive. One tool would mean that answering
-**always** to "may it read its own context?" also answered "may it rewrite a tool result?" — a
-grant that delivers more than it implies, which is the shape of thing this program exists not to
-do. So the permissions tab has a row for `context`, one for `log`, one for `setup` and one for
-`amend`, and you can answer them differently.
+Reading the context and changing it were two tools once, on the argument that a tool declares its
+capabilities for every call it will ever receive — so one tool would mean answering **always** to
+"may it read its own context?" also answered "may it rewrite a tool result?", a grant that
+delivers more than it implies. The hazard is real and it is no longer a reason for two tools: a
+subject is `<domain>:<operation>`, a call declares which operation it is, and `context:look` and
+`context:revise` are separate rows on the permissions tab whichever tool they arrive under. You
+can answer them differently, and `--allow context` is how you answer for the lot.
 
-Which also means each of them can be taken *away* separately, mid-session, and that is deliberate
+**`fork`** went the other way and is its own tool, because it is neither a reading nor a change:
+it stands up a copy of the session and pays a provider for an answer. `draft` carries the
+conversation on; `ask` puts a question, optionally with items left out, which is what makes it an
+experiment rather than the same context answering twice. A fork has no tools — it can think, not
+act — and nothing it does reaches this context or this log. Letting something read its own items
+should not be letting it buy another request, which is why it is `fork:draft` and `fork:ask`
+rather than two more operations on the context.
+
+Any tool can also be taken *away* mid-session with `/tools toggle ID`, and that is deliberate
 rather than incidental. An agent whose ability to check the record is revoked half way through a
 run is a thing this program can set up, and a thing worth watching a model in.
