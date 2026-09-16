@@ -60,27 +60,21 @@ minor bump may break you.
 
 - An argument the action a call named does not read is refused, rather than ignored. `log` has
   held its arguments to this since it was written; `fs` and `context` now do too, per *operation*
-  rather than per tool, because the mistake that is actually made is an argument that belongs to a
-  sibling. Both halves were found live. A session wanting the part of a file around a piece of
-  text called `fs {action: "read", path: …, old: "…"}` - `old` is a real `fs` argument and `edit`
-  is whose - and got the whole of two files, 14,218 tokens in one turn, with nothing in either
-  answer saying the narrowing had not happened. Two models on the same evening called `context
-  {action: "note", ids: […]}` meaning to annotate the item they had named: `note` writes a new
-  item and has no use for an id, the call succeeded, and both went on believing the annotation was
-  on it. An ignored argument comes back as a real answer - the answer to the call without it - so
-  nothing in the reply says that what was asked for did not happen.
-
-  The refusal names the operation the argument belongs to, when exactly one does. `old` is
-  `edit`'s and saying so is the whole answer; `ids` is eleven of `context`'s thirteen, and naming
-  the first of them would be reporting the order of a table as a fact about the argument.
+  rather than per tool, because the mistake actually made is an argument that belongs to a sibling:
+  `old` on a `read` is `edit`'s, and `ids` on a `note` reads as the item to annotate when `note`
+  writes a new one. An ignored argument comes back as a real answer — the answer to the call
+  without it — so a read meant to be narrowed arrives as the whole file with nothing saying so.
+  The refusal names the operation the argument belongs to when exactly one does; `ids` is eleven of
+  `context`'s thirteen, and naming the first would report the order of a table as a fact about the
+  argument.
 - `glob` and `grep` obey a `.gitignore` outside a git repository, which is what `fs` has been
-  telling models they do. The walker honours one only inside a repository by default, so in a
-  directory nobody had run `git init` in a session was handed build output while its tool
-  definition said it had been spared it. The test that covered this passed for a reason of its own:
-  `CARGO_TARGET_TMPDIR` is `target/tmp` *inside this repository*, so the walker found a `.git` two
-  directories up and behaved. There is a second test now, under `/tmp`, that asserts it is not.
-- `/limit` with a subject and no number said `/limit <tool> <bytes>`, two lines from a table that
-  calls its rows subjects. A limit stopped being a tool's the day one tool did five things.
+  telling models they do. The walker honours one only inside a repository by default, so outside
+  one a session was handed build output while its tool definition said it had been spared it. The
+  test that covered this was inside this repository, where the walker finds a `.git` two
+  directories up; the second one is under `/tmp` and asserts that nothing above it is a repo.
+- `/limit` is keyed by subject and now says so wherever it is spelled out: the error for a subject
+  with no number asked for a `<tool>`, and `/help` offered `/limit ID BYTES` under a line about
+  each tool's output. A limit stopped being a tool's the day one tool did five things.
 - The line after `/model` or `/provider` waits for the switch it asked for. Both hand the round
   trips to a task, because a screen should not stop while a new endpoint is asked what it holds -
   and nothing was waiting for that task, so `/provider URL ID` followed by `/model` answered with

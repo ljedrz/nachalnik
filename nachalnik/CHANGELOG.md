@@ -34,13 +34,10 @@ minor bump may break you.
 
 ### changed
 
-- A call to a tool nobody registered is told which tools there are. `there is no tool named
-  `fs.glob`` leaves a model with nowhere to go, and a model with nowhere to go guesses again: one
-  live session spelled every call as `<tool>.<operation>`, was told three times that its word was
-  wrong and never which word was right, said in as many words "I notice I have access to context,
-  fork, fs, log, setup, shell", tried a fourth spelling and gave up the turn. It could read the
-  definitions the whole time; what it could not see was which part of what it had written was the
-  wrong part. The registered ids are named rather than the nearest one, because a suggestion is a
+- A call to a tool nobody registered is told which tools there are. A model told only that its word
+  was wrong does not stop, it guesses again — one that spells every call `<tool>.<operation>` can
+  read the definitions throughout without seeing which part of what it wrote is the wrong part. The
+  registered ids are named rather than the nearest one to what was asked, because a suggestion is a
   guess about what was meant and this crate does not know.
 - The counter learns from a refusal for length, not only from an answered request. `TokenCounter::observe`
   is now told what the model said the request came to, on the same condition as a reported usage:
