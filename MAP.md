@@ -44,8 +44,9 @@ and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that flo
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
 fitting), `tools/` (`fs.rs` for the filesystem tool, dispatching to `files.rs` for the three operations that
 open one file and `search.rs` for the two that walk a directory of them with ripgrep's engine, and
-`shell.rs` for the one tool that is a process - with `policy.rs` for `Careful` and `trim.rs` for
-the compactor),
+`shell.rs` for the one tool that is a process - with `policy.rs` for `Careful`, `trim.rs` for
+the compactor, and `mod.rs` for `Limits`, the domains this program's own tools act in, and the
+argument readers every tool here shares, `unread` among them, which `introspect/` reaches for too),
 `introspect/` (the four tools an agent inspects and manages its own session with, one per file and
 named for the noun each is about: `context` is the context, reading it and changing it, with
 `amend.rs` holding the changing half; `log` is the record beside it; `setup` is what the session is

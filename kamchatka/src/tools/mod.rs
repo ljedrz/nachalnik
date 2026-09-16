@@ -108,22 +108,15 @@ fn whole(args: &Value, name: &str, default: u64) -> Result<u64, String> {
 /// What is wrong with the arguments a call gave, if anything: an argument the operation it named
 /// does not read.
 ///
-/// note: the same failure [`whole`] is about, one step earlier and a good deal more expensive. An
-/// argument that is silently ignored comes back as a *real answer* - the answer to the call
-/// without it - so nothing in the reply says that what was asked for did not happen. Live, a
-/// session called `fs {action: "read", path: …, old: "…"}` meaning to read the part of the file
-/// around `old`, got the whole of two files back, and spent 14,218 tokens on it in one turn. It
-/// had no way to tell.
+/// note: the same failure [`whole`] is about, one step earlier. An argument that is silently
+/// ignored comes back as a *real answer* - the answer to the call without it - so nothing in the
+/// reply says that what was asked for did not happen, and a read that was meant to be narrowed
+/// arrives as the whole file looking like the thing that was asked for.
 ///
 /// note: per *operation* rather than per tool, which is what makes it worth having on a tool that
-/// does several things. `old` is a real `fs` argument and belongs to `edit`, so a flat list of
-/// what `fs` takes would have accepted that call; and a message naming the operation it does
-/// belong to says the whole of what went wrong in four words. `ids` and `note` are the same
-/// mistake in `context`, and a live run made that one too.
-///
-/// note: the rule is `log`'s, which has held its arguments to it since it was written and is the
-/// one tool here that never had this bug. What is new is only that the other two do it too, and
-/// that one table says which operation an argument is for.
+/// does several things. `old` is a real `fs` argument that belongs to `edit`, so a flat list of
+/// what `fs` takes would pass a `read` that gave one; and naming the operation it belongs to is
+/// the whole of what a caller in that position needs.
 pub(crate) fn unread(op: &str, args: &Value, takes: &[(&str, &[&str])]) -> Option<String> {
     let mine = takes.iter().find(|(name, _)| *name == op)?.1;
     let given = args.as_object()?;

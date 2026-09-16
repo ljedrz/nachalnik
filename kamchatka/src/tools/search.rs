@@ -155,11 +155,11 @@ impl Skipped {
 /// one at a time, which is where a link is a question about the *reach* rather than about walking.
 ///
 /// note: `require_git(false)` is the fourth, and it is what makes the tool's own description true.
-/// The walker honours a `.gitignore` only inside a git repository by default, and this tool tells
-/// the model it obeys one full stop - so in a directory nobody had run `git init` in, a session was
-/// being handed build output and told it had been spared it. What a `.gitignore` says is what it
-/// says wherever it is found; whether the directory around it has been committed to anything is a
-/// fact about the person's workflow, not about which files they meant.
+/// The walker honours a `.gitignore` only inside a git repository by default, and `fs` tells the
+/// model it obeys one with no condition attached - so outside a repository a session was handed
+/// build output while its own definition said it had been spared it. What a `.gitignore` says is
+/// what it says wherever it is found; whether the directory around it has been committed to
+/// anything is a fact about a workflow, not about which files somebody meant.
 fn walk(root: &Path) -> ignore::Walk {
     WalkBuilder::new(root)
         .hidden(false)

@@ -62,10 +62,9 @@ fn operations() -> impl Iterator<Item = &'static str> {
 ///
 /// note: the list [`unread`] holds a call to. Thirteen operations share ten arguments and most of
 /// them read three, so most of what this table says is what an operation does *not* take - which
-/// is the half worth saying. `note` is the one a live run got wrong: it is one of the nine that
-/// change, the `ids` argument says it is for the nine that change, and `note` writes a new item
-/// and has no use for an id. The call went through, a free-standing note was written, and the
-/// session went on believing it had annotated the item it named.
+/// is the half worth saying, and the half no reading of the dispatch below makes obvious. `note`
+/// is the sharp case: it is one of the nine that change, the `ids` argument says it is for the
+/// nine that change, and it writes a new item and has no use for an id.
 const TAKES: [(&str, &[&str]); 13] = [
     ("look", &["ids", "whole"]),
     ("budget", &[]),
@@ -85,10 +84,9 @@ const TAKES: [(&str, &[&str]); 13] = [
 /// What the five that move an item take, which is one list because they are one function.
 ///
 /// note: named rather than written out five times, and the difference is not brevity. Five
-/// identical rows are five chances to disagree about one fact, and a mutation run found exactly
-/// that: `label` taken off `restore` alone changed a real answer - a `restore` that named a label
-/// instead of `ids` would stop being told the `select: "label:…"` it meant - and nothing in the
-/// workspace noticed, because the test for that answer asks `elide`. One list cannot drift.
+/// identical rows are five chances to disagree about one fact: `label` off `restore` alone would
+/// change a real answer - a `restore` naming a label instead of `ids` would stop being told the
+/// `select: "label:…"` it meant - and the test for that answer asks `elide`. One list cannot drift.
 ///
 /// note: `label` is in here because [`Amend::moved`] reads it. Not to move anything by: to answer
 /// a call that gave one instead of `ids` with the spelling it wanted. An argument a tool answers

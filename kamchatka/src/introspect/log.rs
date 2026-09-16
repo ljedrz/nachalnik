@@ -220,12 +220,11 @@ struct Query {
 
 /// What this tool's one operation reads, beside `action`.
 ///
-/// note: the same table its two siblings keep, in the same shape, for the same [`unread`] to
-/// read, with one row because there is one operation. This tool is where the rule was written: a live
-/// session called `log {action: "look"}`, got the summary back, read it as the answer to a
-/// question it had not asked, and cited it. That particular call is refused by name now, because
-/// `log` takes an `action` like everything else here; what the table still closes is every other
-/// misspelling - `limit` for `take`, `kind` for `kinds` - which fails the same silent way.
+/// note: the same table its two siblings keep, in the same shape, for the same [`unread`] to read,
+/// with one row because there is one operation. What it closes is a misspelled *filter* - `limit`
+/// for `take`, `kind` for `kinds` - which would otherwise answer a question nobody asked. That
+/// matters more here than in either sibling: the one wrong answer a log can give is
+/// *nothing happened*, and a filter nobody read produces exactly that.
 const TAKES: [(&str, &[&str]); 1] = [("read", &["take", "ids", "since", "kinds", "whole"])];
 
 impl Query {
@@ -603,5 +602,50 @@ fn names(event: &Event, id: ContextId) -> bool {
                 || report.summary.as_ref().is_some_and(|one| one.id == id)
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The schema and [`TAKES`] say the same thing about every argument.
+    ///
+    /// note: the same check its two siblings keep. One operation makes it a shorter statement and
+    /// not a weaker one: this is the tool whose whole point is that an argument it cannot read is
+    /// refused rather than dropped, and an argument its own schema offers that no row takes would
+    /// be refused for doing as it was told.
+    #[test]
+    fn every_argument_the_schema_offers_is_one_some_action_takes() {
+        let tool = Log::new(Reach(std::sync::Weak::new()), Limits::default());
+
+        let spec = tool.spec();
+        let declared: Vec<&str> = spec.schema["properties"]
+            .as_object()
+            .expect("the schema is an object with properties")
+            .keys()
+            .map(String::as_str)
+            .filter(|key| *key != "action")
+            .collect();
+        let taken: Vec<&str> = TAKES
+            .iter()
+            .flat_map(|(_, args)| args.iter().copied())
+            .collect();
+
+        for argument in &declared {
+            assert!(
+                taken.contains(argument),
+                "the schema offers `{argument}` and no action takes it, so passing it is refused"
+            );
+        }
+        for argument in &taken {
+            assert!(
+                declared.contains(argument),
+                "`{argument}` is taken by an action and the schema never mentions it"
+            );
+        }
+
+        // and the one row is the one operation this tool has
+        assert_eq!(TAKES.map(|(action, _)| action), ["read"]);
     }
 }

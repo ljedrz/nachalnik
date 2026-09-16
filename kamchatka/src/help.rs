@@ -247,9 +247,12 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /tools toggle ID    stop offering one of them, or offer it again. The one
                         that reads this session's context and the one that
                         changes it are tools like any other
-    /limit              how much of each tool's output the model is shown,
-                        numbered, and the number is one the next line takes
-    /limit ID BYTES     change one, from its next call onwards
+    /limit              how much of a call's output the model is shown, by
+                        subject, numbered, and the number is one the next
+                        line takes
+    /limit SUBJECT BYTES
+                        change one, from its next call onwards. A subject is
+                        what a permission is: fs:read, exec:run
     /policy             open the permissions tab; also /permissions
     /model [ID]         show or switch the model, and say where it is
     /models [FILTER]    what this endpoint serves, which is what /model takes

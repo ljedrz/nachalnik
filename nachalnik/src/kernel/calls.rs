@@ -310,18 +310,14 @@ fn refusal(source: GrantSource, why: Option<String>) -> String {
 
 /// What a call to a tool nobody registered is told, which is what it asked for and what is here.
 ///
-/// note: the tools *are* named, because `there is no tool named `fs.glob`` leaves a model with
-/// nowhere to go and it will not go nowhere - it will guess again. Live, one spelled every call
-/// as `<tool>.<operation>`, was told three times that there was no such tool, said in as many
-/// words "I notice I have access to context, fork, fs, log, setup, shell", tried a fourth
-/// spelling, and gave the turn up. It could see the definitions the whole time; what it could not
-/// see was which part of what it had written was the wrong part. A list it can compare its own
-/// word against is the shortest thing that says so.
+/// note: the tools *are* named, because a model told only that its word was wrong does not stop -
+/// it guesses again, and a model that spells every call `<tool>.<operation>` can read the
+/// definitions the whole time without seeing which part of what it wrote is the wrong part. A list
+/// to compare its own word against is the shortest thing that says so.
 ///
 /// note: the ones registered rather than the ones a spelling is close to, because a suggestion is
-/// a guess about what was meant and this runtime does not know. The list is short by
-/// construction - these are the tools of one session - and a model that can read a definition can
-/// read six words.
+/// a guess about what was meant and this runtime does not know. The list is short by construction:
+/// these are the tools of one session.
 fn unknown_tool(asked: &str, here: &[String]) -> String {
     let named = match here.is_empty() {
         true => "there are no tools in this session at all".to_owned(),

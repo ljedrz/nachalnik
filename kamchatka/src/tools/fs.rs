@@ -41,11 +41,10 @@ pub(super) const OPS: [&str; 5] = ["read", "glob", "grep", "write", "edit"];
 
 /// What each of them reads, beside `action`, which they all take.
 ///
-/// note: the list [`unread`] holds a call to, and the reason it is per operation: `old` belongs to
-/// `edit` and a `read` that was given one meant something by it. It is beside [`OPS`] because the
-/// two have to agree, and next to nothing else in this file is allowed to disagree with the schema
-/// below either - every name here appears there, and a name that appears there and not here is an
-/// argument this tool documents and does not read.
+/// note: the list [`unread`] holds a call to. It is beside [`OPS`] because the two have to agree,
+/// and it has to agree with the schema below as well: a name the schema offers and no row here
+/// takes is refused the moment a model does as it was told, which is the worse half of the failure
+/// this closes. The unit test at the foot of this file is what holds the three together.
 const TAKES: [(&str, &[&str]); 5] = [
     ("read", &["path"]),
     ("glob", &["path", "pattern"]),

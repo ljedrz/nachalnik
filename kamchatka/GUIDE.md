@@ -705,6 +705,15 @@ answered *why do you think that* by forking itself and running the ablation rath
 introspecting. Two more transcripts are up there in which I do the editing instead, through the
 keys rather than through these.
 
+One rule runs through all of them and through `fs`, and it is worth stating once. **An argument the
+action a call named does not read is refused, not ignored.** `fs {action: "read", …, old: "…"}` is
+a session asking for the part of a file around some text; `old` is a real `fs` argument and `edit`
+is whose, so before this the read ignored it and answered with the whole file — a real answer, to a
+call nobody made, with nothing in it saying so. The refusal names the action the argument belongs
+to when exactly one does, because that is the whole of what a session in that position needs to
+know. The same is true of `context {action: "note", ids: […]}`, which two different models tried in
+one evening: `note` writes a new item and has nothing to do with an id.
+
 **`context`** reads. `look` lists every item it is carrying — what each one is, what it puts into
 the next request and what it is holding out of one, and why it is out if it is out — and reads any of them back,
 block by block, including what it was thinking when it produced them. A long one comes back as its
