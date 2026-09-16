@@ -18,6 +18,13 @@ use nachalnik_mcp::{Server, Trust};
 use serde_json::json;
 use tokio::process::Command;
 
+/// The model the one live test asks when the environment names none.
+///
+/// note: the same free model the runtime's own live suite defaults to, and for the same two
+/// reasons: it is served at the endpoint `nachalnik_utils` defaults to, and it calls tools, which
+/// is the whole of what the test is about.
+const DEFAULT_MODEL: &str = "liquid/lfm-2.5-2.6b:free";
+
 /// Starts the Python server as a child process, or gives up quietly.
 async fn foreign(name: &str) -> Option<Server> {
     if std::process::Command::new("python3")
@@ -171,13 +178,17 @@ async fn the_session_ends_when_it_is_told_to() {
 /// correctly, and whether the description is enough to pick the right tool from three.
 ///
 /// note: skipped without a key, and without `python3`, for the reason every test in this file is.
+/// It also skips when the turn fails, because the free pool this runs against answers `429` often
+/// enough that a rate limit is not news - which is why the default below has to be a model that
+/// address really serves. `mercury-2.5` was Inception's spelling of one, and against the default
+/// endpoint it was a 404 that arrived as a skip: the suite passed, and the one claim it is here to
+/// make went untested with nothing saying so.
 #[tokio::test]
 async fn a_real_model_uses_a_tool_from_a_foreign_server() {
-    let Some(provider) = nachalnik_utils::provider(
-        &std::env::var("NACHALNIK_TEST_MODEL").unwrap_or_else(|_| "mercury-2.5".to_owned()),
-    )
-    .ok()
-    .map(Arc::new) else {
+    let Some(provider) = nachalnik_utils::provider(&nachalnik_utils::test_model(DEFAULT_MODEL))
+        .ok()
+        .map(Arc::new)
+    else {
         eprintln!("skipped: no key in the environment");
         return;
     };

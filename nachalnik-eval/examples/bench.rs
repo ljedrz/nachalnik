@@ -75,7 +75,7 @@ const MAX_TOKENS: u32 = 32_768;
 
 #[tokio::main]
 async fn main() -> Result<(), nachalnik::BoxError> {
-    let mut model = env::var("NACHALNIK_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
+    let mut model = nachalnik_utils::test_model(DEFAULT_MODEL);
     let mut replicates = 1usize;
     let mut ladders = suite::LADDERS;
     let mut at_once = 1usize;

@@ -6,10 +6,10 @@
 //! as well - and what is left here is the part that was never a provider's to do: which endpoint
 //! to talk to, which key pays for it, and which models to ask.
 //!
-//! note: it stays a crate rather than a module in either place because both places need it -
-//! `nachalnik`'s examples and live suite, and `nachalnik-eval`'s - and a second copy of these
-//! forty lines is how the first duplication started. It is a dev-dependency of both and of
-//! nothing else, which is what lets it stay at `0.0.0` and unpublished: cargo strips
+//! note: it stays a crate rather than a module in either place because four places need it -
+//! `nachalnik`'s examples and live suite, `nachalnik-eval`'s, and `nachalnik-mcp`'s one live test -
+//! and a second copy of it is how the first duplication started. It is a dev-dependency of those
+//! and of nothing else, which is what lets it stay at `0.0.0` and unpublished: cargo strips
 //! dev-dependencies from a published manifest, so a crate that is only ever dev-depended on never
 //! has to exist on the registry.
 
@@ -57,6 +57,22 @@ pub fn attribution() -> Option<(String, String)> {
     let title = env::var("NACHALNIK_APP_TITLE").ok()?;
 
     Some((url, title))
+}
+
+/// The one model a live suite asks, named by `NACHALNIK_TEST_MODEL` or by whatever the caller
+/// falls back to.
+///
+/// note: here rather than in each suite because the *name of the variable* is the shared fact, and
+/// spelling it by hand is a mistake that costs a run without failing one. `NACHALNIK_MODEL` is not
+/// it - nothing reads that - and a suite that asked for it would quietly ask the default model
+/// instead, which the endpoint then refuses or answers as somebody else, so the failures are about
+/// whatever the tests assert rather than about the variable.
+///
+/// note: the default stays the caller's. What each suite is known to pass against is a fact about
+/// that suite - a small free model with tool support here, a larger one where the questions are
+/// about introspection - and one shared default would be wrong for at least one of them.
+pub fn test_model(default: &str) -> String {
+    env::var("NACHALNIK_TEST_MODEL").unwrap_or_else(|_| default.to_owned())
 }
 
 /// The models to use, from repeated flags or from `NACHALNIK_MODELS`.

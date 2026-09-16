@@ -150,7 +150,7 @@ async fn live() -> Option<(Kernel, Arc<OpenAiCompatible>)> {
 
 /// The same, for a test that needs the kernel configured differently.
 async fn live_with(config: Config) -> Option<(Kernel, Arc<OpenAiCompatible>)> {
-    let model = env::var("NACHALNIK_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
+    let model = nachalnik_utils::test_model(DEFAULT_MODEL);
     // no key means no live tests, which is how this suite skips itself. `streaming(false)` because
     // most of these are about what goes out rather than how it comes back; the one that is about
     // streaming turns it on through `params`, the same way a user would
@@ -948,8 +948,7 @@ async fn the_model_can_be_swapped_mid_session() {
 
     // a second model if one was named, otherwise a second provider for the same one
     let model = env::var("NACHALNIK_TEST_MODEL_B")
-        .or_else(|_| env::var("NACHALNIK_TEST_MODEL"))
-        .unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
+        .unwrap_or_else(|_| nachalnik_utils::test_model(DEFAULT_MODEL));
     let second = Arc::new(
         nachalnik_utils::provider(&model)
             .expect("the key that got us this far")

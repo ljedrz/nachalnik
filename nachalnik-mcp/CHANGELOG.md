@@ -20,6 +20,11 @@ minor bump may break you.
   server in `tests/bridge.rs` has named it that since the 3.4 bump, so `3.1` was a requirement the
   tests could not be built under. The library's own floor stays at 3.1, because every name in
   `src/` is there.
+- `foreign.rs`'s live test defaults to a model the default endpoint serves. It was `mercury-2.5`,
+  which is Inception's spelling, and against OpenRouter that is a 404 - swallowed by the same skip
+  that exists for a rate-limited free tier, so the suite passed and the one claim the test makes
+  went untested with nothing saying so. The variable itself is `nachalnik_utils::test_model` now,
+  in one place rather than five.
 - The readme's tests section described one of the two suites. The second stands up a server written
   in Python, over the child-process transport most servers actually arrive on, and hands its tools
   to a real model.

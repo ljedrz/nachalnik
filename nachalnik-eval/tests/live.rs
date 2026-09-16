@@ -24,7 +24,7 @@
 //! suite is the `bench` example's job; a test suite that spent sixty requests of somebody's free
 //! tier every time `cargo test` ran would be a bad neighbour.
 
-use std::{env, sync::Arc};
+use std::sync::Arc;
 
 use nachalnik::{Config, Kernel, Params, Provider};
 use nachalnik_eval::{
@@ -47,7 +47,7 @@ fn provider() -> Option<Arc<dyn Provider>> {
         println!("skipped: {why}");
         return None;
     }
-    let model = env::var("NACHALNIK_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
+    let model = nachalnik_utils::test_model(DEFAULT_MODEL);
     let provider = nachalnik_utils::provider(&model)
         .expect("the key is there")
         .streaming(false);
