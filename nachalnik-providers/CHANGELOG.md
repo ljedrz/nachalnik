@@ -39,6 +39,12 @@ minor bump may break you.
 
 - One fewer direct dependency: `async-trait` is the runtime's, and every `#[async_trait]` here is
   already written against `nachalnik`'s re-export. Depending on it twice let the two drift.
+- reqwest is built without `charset`, which drops `encoding_rs`, `mime` and the six SIMD crates
+  `encoding_rs` pulls - eight in all, for a crate that reads nothing but JSON and SSE, both of
+  which are required to be UTF-8. What changes is that `text()` reads lossy UTF-8 instead of
+  decoding by the `Content-Type`, so a non-conforming endpoint's *error* body may come back with
+  replacement characters; nothing that gets parsed is affected. The feature is additive, so a
+  caller who wants the decode enables it from their own manifest.
 
 ### fixed
 

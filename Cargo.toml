@@ -77,7 +77,14 @@ proptest = { version = "1", default-features = false, features = ["std"] }
 # `rustls-no-provider` rather than `default-tls`: in reqwest 0.13 that name resolves to rustls
 # with `aws-lc-rs`, which is 1,659 C files and, on some platforms, cmake and NASM to build them.
 # The provider is named below instead, which is what `no-provider` means.
-reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "json", "rustls-no-provider"] }
+#
+# note: no `charset`, which makes `text()` a lossy UTF-8 read rather than a decode honouring the
+# `Content-Type`. Nothing here notices: the three bodies it reads are two error payloads and one
+# whole answer, all JSON, and JSON and SSE are both required to be UTF-8 - the streaming path
+# takes chunks and never calls `text()`. The feature is additive, so a caller who wants the
+# decode turns it on from their own manifest; leaving it off here spares the ones who do not
+# `encoding_rs` and the SIMD crates behind it.
+reqwest = { version = "0.13", default-features = false, features = ["http2", "json", "rustls-no-provider"] }
 # the cryptography under the TLS, chosen here because reqwest was told to bring none. `ring` is
 # 17 C and assembly files, wants no cmake and no NASM, and is what rustls shipped with for years.
 # No production Rust TLS stack is free of C altogether - the pure-Rust providers are unaudited,
