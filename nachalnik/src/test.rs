@@ -15,7 +15,9 @@ use crate::{
     context::{ContextItem, ContextKind, ContextState},
     error::BoxError,
     event::{DeltaSink, OutputSink},
-    model::{Content, ModelInfo, ModelRequest, ModelResponse, Provider, ToolCall},
+    model::{
+        Content, ModelInfo, ModelRequest, ModelResponse, Overrun, Provider, TooLong, ToolCall,
+    },
     permissions::{Capability, PermissionPolicy, PermissionRequest, Verdict},
     tool::{Tool, ToolOutput, ToolSpec},
 };
@@ -82,6 +84,58 @@ impl Provider for ScriptedProvider {
             }
             None => Err("the script ran out of responses".into()),
         }
+    }
+}
+
+/// A [`Provider`] that refuses everything, the way a model refuses a request longer than it
+/// will read.
+///
+/// note: it fails with a [`TooLong`] rather than with a sentence, because reading a vendor's
+/// wording is a dialect's job and what a kernel does with the numbers is not. The two are worth
+/// keeping apart in a test for the same reason they are in the crates.
+pub struct TooLongProvider {
+    info: ModelInfo,
+    tokens: u64,
+    limit: u64,
+}
+
+impl TooLongProvider {
+    /// Creates a provider that refuses every request as `tokens` long against a limit of `limit`.
+    pub fn new(tokens: u64, limit: u64) -> Self {
+        Self {
+            info: ModelInfo {
+                context_limit: Some(limit as usize),
+                tool_calling: true,
+                ..ModelInfo::new("scripted", "scripted")
+            },
+            tokens,
+            limit,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Provider for TooLongProvider {
+    fn info(&self) -> ModelInfo {
+        self.info.clone()
+    }
+
+    async fn respond(
+        &self,
+        _request: ModelRequest,
+        _deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        Err(TooLong {
+            overrun: Overrun {
+                tokens: self.tokens,
+                limit: Some(self.limit),
+            },
+            said: format!(
+                "the request is {} tokens long and the model takes {}",
+                self.tokens, self.limit
+            ),
+        }
+        .into())
     }
 }
 

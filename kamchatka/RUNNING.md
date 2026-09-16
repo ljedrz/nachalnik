@@ -252,6 +252,13 @@ That correction on the last line is the runtime's `Calibrating` counter: every r
 what the request it just estimated really cost, and it adjusts. Over a real session against Gemini
 it went from 13% low to within 0.3%. A budget nobody can check is a decoration.
 
+So does every request the model refuses for being too long, and that one is worth more than a
+response. What an endpoint charges for is a bill, and an aggregator in front of a model may quote
+it in some other tokenizer's units; the number in a refusal is the model's own count of the same
+bytes, in the units the limit is actually enforced in. Where the two disagree, the corner ends up
+comfortably under a limit the model is already over — so a refusal corrects the counter, and says
+on screen what the request really came to and how much has to go before the next one is sent.
+
 Before any response, on an endpoint that reports no usage, and after a change of model until the
 next answer, the corner falls back to the plain estimate. And where something in the context has
 no number on it at all, `/budget` says how many pieces — a figure that is a floor is never shown

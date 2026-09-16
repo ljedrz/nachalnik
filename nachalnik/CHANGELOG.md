@@ -7,7 +7,29 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- `TooLong` and `Overrun`: a request refused for being longer than the model takes, as the two
+  numbers rather than as a sentence. A `Provider` returns it in place of a plain error where it
+  recognises the refusal - reading a vendor's wording is a dialect's job, and there is none in this
+  crate - and the kernel looks for it in whatever it was handed, `TooLong::of` walking the source
+  chain. `Event::ModelFailed` gained an `overrun` field carrying it, so a client can say how much
+  has to go rather than only that something went wrong.
+- `Usage::settled`, which reads `cached_input_tokens > input_tokens` as an endpoint reporting the
+  cache miss under the name of the whole prompt and adds the two. The one repair that is certain;
+  what it must not become is a guess from the estimate at which convention an endpoint speaks,
+  which is circular and resolves in favour of the error the counter already has.
+- `test::TooLongProvider`, which refuses every request the way a model out of room does.
+
 ### changed
+
+- The counter learns from a refusal for length, not only from an answered request. `TokenCounter::observe`
+  is now told what the model said the request came to, on the same condition as a reported usage:
+  a request carrying anything the counter disowned still teaches it nothing. A usage figure is a
+  bill, and an aggregator in front of a model may quote it in some other tokenizer's units; the
+  number in a refusal is the model's own count of the same bytes, and the only one taken in the
+  units the limit is enforced in. Without it a session that had run out of room corrected nothing,
+  because every request from then on failed and no failure was a lesson.
 
 - `Event::ContextRecounted` and `Event::SessionResumed` no longer call their figures the projected
   total. Both carry `Context::tokens()` - the sum over the items sending their content - and *the

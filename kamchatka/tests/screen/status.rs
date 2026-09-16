@@ -722,10 +722,15 @@ async fn a_failed_request_does_not_leave_an_anchor_behind() {
     });
     harness.app.on_event(Event::ModelFailed {
         error: "502 from somewhere".to_owned(),
+        overrun: None,
     });
     assert!(
         harness.app.anchor.is_none(),
         "a request that failed reported no cost, so there is nothing to anchor on"
+    );
+    assert!(
+        !harness.flat().contains("the model read that request as"),
+        "and a failure carrying no measurement says nothing about one"
     );
 
     // a second request, naming a different item, which succeeds
@@ -771,6 +776,36 @@ async fn a_failed_request_does_not_leave_an_anchor_behind() {
         "the 500 covers what the *second* request carried, not the failed one's"
     );
     let _: ContextId = asked;
+}
+
+/// A request the model refused for its length says what that length was, and how much of it has
+/// to go.
+///
+/// note: the sentence the server sent is the server's, and every vendor writes those two numbers
+/// in a different order - so the screen says what they mean here rather than leaving somebody to
+/// work it out. It matters because the only *other* figure in front of them is the corner, which
+/// is the estimate that has just turned out to be wrong.
+#[tokio::test]
+async fn a_request_refused_for_its_length_says_how_much_of_it_has_to_go() {
+    use nachalnik::{Event, Overrun};
+
+    let mut harness = Harness::new([]);
+    harness.app.on_event(Event::ModelFailed {
+        error: "400 Bad Request: The request is 286315 tokens long and exceeds this model's \
+                context length of 262144 tokens."
+            .to_owned(),
+        overrun: Some(Overrun {
+            tokens: 286_315,
+            limit: Some(262_144),
+        }),
+    });
+
+    let packed = harness.packed();
+    assert!(packed.contains("286,315"), "what it was: {packed}");
+    assert!(
+        packed.contains("24,171"),
+        "and what it is over by, which is the number to act on: {packed}"
+    );
 }
 
 /// An item elided *before* a request does not come back out of what that request cost.

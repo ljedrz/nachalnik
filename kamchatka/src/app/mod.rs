@@ -1643,7 +1643,38 @@ impl App {
                 // gets drawn either way
                 self.caught_up(item);
             }
-            Event::ModelFailed { error } | Event::StepFailed { error } => {
+            Event::ModelFailed { error, overrun } => {
+                self.close();
+                self.say_error(error);
+                // note: the sentence above is the server's, and every one of them says the same
+                // two numbers in a different order. This says what they mean *here*: how much
+                // has to go before the next request is one the model will read. Without it the
+                // only figure on the screen is the corner - which is the estimate that just
+                // turned out to be wrong, and which is now being corrected by this very event
+                if let Some(overrun) = overrun {
+                    let over = overrun
+                        .limit
+                        .map(|limit| overrun.tokens.saturating_sub(limit));
+                    self.say(
+                        Speaker::Error,
+                        match over {
+                            Some(over) => format!(
+                                "the model read that request as {} tokens: ~{} more than it \
+                                 takes. Nothing is sent until that much goes - `/prune` what \
+                                 you can spare, or pick it off in the context tab",
+                                thousands(overrun.tokens as usize),
+                                thousands(over as usize),
+                            ),
+                            None => format!(
+                                "the model read that request as {} tokens, which is more than \
+                                 it takes",
+                                thousands(overrun.tokens as usize),
+                            ),
+                        },
+                    );
+                }
+            }
+            Event::StepFailed { error } => {
                 self.close();
                 self.say_error(error);
             }

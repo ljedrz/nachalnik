@@ -912,8 +912,102 @@ pub struct Usage {
     /// provider did not say, which is not the same as zero and must not be shown as it.
     pub reasoning_tokens: Option<u64>,
     /// Request tokens that were served from the provider's cache.
+    ///
+    /// note: a part of [`Self::input_tokens`] rather than a second number beside it, which is
+    /// the dialect OpenAI defines and every endpoint speaking it is read as speaking.
+    /// [`Usage::settled`] is what happens when one does not.
     pub cached_input_tokens: Option<u64>,
 }
+
+impl Usage {
+    /// Reads the counts as the dialect defines them, where an endpoint plainly did not.
+    ///
+    /// note: one repair, and only the one that is *certain*. A cached prefix is inside the prompt
+    /// figure, so `cached_input_tokens > input_tokens` cannot be true of the dialect this crate
+    /// reads, and an endpoint reporting it is reporting the cache miss under the name of the
+    /// whole. The two are added, since that is what the field is going to be read as either way.
+    ///
+    /// note: what this must not become is a guess from the kernel's estimate at which convention
+    /// an endpoint is speaking - taking whichever of `input` and `input + cached` is nearer what
+    /// was estimated. The estimate is what the reported figure calibrates, so that reasoning is
+    /// circular, and it resolves in favour of whichever error the counter has already been
+    /// dragged towards. A usage figure disagreeing with an estimate is not settled here; it is
+    /// settled by [`Overrun`], which is the only measurement in the units the limit uses.
+    #[must_use]
+    pub fn settled(self) -> Self {
+        let Some((input, cached)) = self.input_tokens.zip(self.cached_input_tokens) else {
+            return self;
+        };
+
+        match cached > input {
+            true => Self {
+                input_tokens: Some(input + cached),
+                ..self
+            },
+            false => self,
+        }
+    }
+}
+
+/// How long a request was, against the length the model would take.
+///
+/// note: the only figure in a session that is measured in the units the *limit* is enforced in.
+/// [`Usage::input_tokens`] is what the endpoint charged for, and an aggregator in front of a
+/// model is free to normalise that to some other tokenizer's idea of the same bytes - it is a
+/// bill, and bills are quoted in one currency. The number in here comes from the model refusing
+/// to read the request, so it is the model's own count of it, and where the two disagree this is
+/// the one a budget has to be kept in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Overrun {
+    /// How long the provider said the request was.
+    pub tokens: u64,
+    /// What the model holds, where the provider knows it.
+    ///
+    /// note: [`ModelInfo::context_limit`] rather than a number out of the refusal, which is a
+    /// sentence and names more numbers than it looks like it does. The difference between the two
+    /// is what somebody is told to prune, so it is worth taking from the side that measured it.
+    pub limit: Option<u64>,
+}
+
+/// A request the model refused to read, because it was longer than the model can take.
+///
+/// note: a [`Provider`] returns this in place of a plain message where it recognises the refusal,
+/// which is a dialect's job and not this crate's: the sentence is a vendor's wording and nothing
+/// here reads one. The kernel does not parse an error either - [`BoxError`] is carried
+/// uninterpreted, which is the point of it - but it will look for *this type* in what it was
+/// handed, because the number inside is the one thing a session that has run out of room cannot
+/// find out any other way.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TooLong {
+    /// The two numbers.
+    pub overrun: Overrun,
+    /// What the provider said, in full, which is what a user is shown.
+    pub said: String,
+}
+
+impl TooLong {
+    /// Finds one of these in whatever a provider failed with, however deeply it is wrapped.
+    #[must_use]
+    pub fn of<'a>(error: &'a (dyn std::error::Error + 'static)) -> Option<&'a Self> {
+        let mut looking = Some(error);
+        while let Some(error) = looking {
+            if let Some(found) = error.downcast_ref::<Self>() {
+                return Some(found);
+            }
+            looking = error.source();
+        }
+
+        None
+    }
+}
+
+impl fmt::Display for TooLong {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.said)
+    }
+}
+
+impl std::error::Error for TooLong {}
 
 /// A model's answer to a [`ModelRequest`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1137,6 +1231,34 @@ pub trait Provider: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A prompt figure smaller than its own cache is the one shape that says out loud which
+    /// convention an endpoint is speaking.
+    #[test]
+    fn a_prompt_smaller_than_its_own_cache_is_the_miss_and_is_read_as_one() {
+        let exclusive = Usage {
+            input_tokens: Some(1_000),
+            cached_input_tokens: Some(9_000),
+            ..Usage::default()
+        };
+        assert_eq!(exclusive.settled().input_tokens, Some(10_000));
+
+        // and the dialect's own arrangement is left exactly as it is, cache and all
+        let inclusive = Usage {
+            input_tokens: Some(143_389),
+            cached_input_tokens: Some(75_776),
+            ..Usage::default()
+        };
+        assert_eq!(inclusive.settled(), inclusive);
+
+        // including when there is nothing to settle it against
+        let alone = Usage {
+            input_tokens: Some(1_000),
+            ..Usage::default()
+        };
+        assert_eq!(alone.settled(), alone);
+        assert_eq!(Usage::default().settled(), Usage::default());
+    }
 
     #[test]
     fn truncation_stays_inside_the_limit() {

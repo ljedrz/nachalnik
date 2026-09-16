@@ -11,7 +11,7 @@ use crate::{
     context::ContextItem,
     error::{Error, Result},
     event::{DeltaSink, Event},
-    model::{Block, Content, ModelRequest, ModelResponse, ToolCall, ToolCallId},
+    model::{Block, Content, ModelRequest, ModelResponse, TooLong, ToolCall, ToolCallId, Usage},
     projection::Projection,
     tokens::TokenCounter,
     tool::ToolSpec,
@@ -68,12 +68,33 @@ impl Kernel {
         {
             Ok(response) => response,
             Err(e) => {
+                // a refusal for being too long is the one failure carrying a measurement, and
+                // the only one taken in the units the *limit* is enforced in. A counter that
+                // learns only from answered requests learns nothing from the point where every
+                // request fails, which is the point it most needs correcting at: the figure on
+                // screen stays under a limit the model is already over, and the same request
+                // goes out again. It goes through the same door a reported usage does, with the
+                // same condition on it - a counter that disowned part of what went out is not
+                // being told about the same bytes
+                let overrun = TooLong::of(&*e).map(|too_long| too_long.overrun);
+                if let Some(overrun) = overrun
+                    && cost.uncounted == 0
+                {
+                    self.counter().observe(cost.tokens, overrun.tokens as usize);
+                }
+
                 self.emit(Event::ModelFailed {
                     error: e.to_string(),
+                    overrun,
                 });
                 return Err(Error::Provider(e));
             }
         };
+
+        // the dialect says a cached prefix is part of the prompt figure; an endpoint that
+        // disagrees is read the way the dialect meant before either the counter or a client
+        // sees it, so that both are looking at the same repaired number
+        response.usage = response.usage.map(Usage::settled);
         // the provider has just said what the request it was handed actually cost, beside the
         // estimate that was made of it; the counter is told, and decides for itself whether that
         // is worth anything to it.

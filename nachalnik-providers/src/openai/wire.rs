@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 
 use crate::{
     openai::OpenAiCompatible,
-    out_of_quota,
+    out_of_quota, refused,
     waiting::{
         HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, WHOLE_ANSWER, gone_quiet,
         interrupted, watched,
@@ -391,11 +391,13 @@ impl Provider for OpenAiCompatible {
                     let wait = Duration::from_secs(1 << attempt);
                     if !transient || attempt >= RETRIES {
                         self.backoff.store(0, Ordering::SeqCst);
-                        return Err(match said(error) {
-                            Some(said) => said,
-                            None => format!("{error}").chars().take(300).collect(),
-                        }
-                        .into());
+                        return Err(refused(
+                            match said(error) {
+                                Some(said) => said,
+                                None => format!("{error}").chars().take(300).collect(),
+                            },
+                            self.info().context_limit,
+                        ));
                     }
 
                     *self.notice.lock() = Some(format!(
@@ -435,7 +437,7 @@ impl Provider for OpenAiCompatible {
                         wait.as_secs()
                     ));
                 }
-                return Err(said.into());
+                return Err(refused(said, self.info().context_limit));
             }
 
             *self.notice.lock() = Some(format!(
@@ -1113,6 +1115,52 @@ mod tests {
 
         // and so does nothing at all
         assert!(complaint(status, "").contains("429"));
+    }
+
+    /// A refusal for length comes back as the numbers in it, not only as the sentence.
+    ///
+    /// note: the whole seam, because the reading has to survive what this crate does to a body
+    /// on the way - and what it does is put the status in front of it, which is a number in the
+    /// message that is not a token count. Both fixtures are what `openrouter.ai` answered within
+    /// a minute of each other: the same complaint as a status and as an error object inside a
+    /// perfectly good 200.
+    #[test]
+    fn a_refusal_for_length_keeps_the_numbers_that_say_what_to_do_about_it() {
+        let refused_as = |said: String| {
+            let error = crate::refused(said, Some(262_144));
+            nachalnik::TooLong::of(&*error).map(|too_long| too_long.overrun)
+        };
+
+        let body = concat!(
+            r#"{"error":{"message":"The request is 286315 tokens long and exceeds this model's "#,
+            r#"context length of 262144 tokens.","type":"invalid_request_error","param":"","#,
+            r#""code":"context_length_exceeded"}}"#,
+        );
+        assert!(
+            serde_json::from_str::<Value>(body).is_ok(),
+            "the fixture has to be the shape the server actually sends"
+        );
+
+        let overrun = refused_as(complaint(reqwest::StatusCode::BAD_REQUEST, body))
+            .expect("a refusal for length");
+        assert_eq!(overrun.tokens, 286_315);
+        assert_eq!(overrun.limit, Some(262_144));
+
+        // the same complaint arriving as an error object rather than as a status, which is the
+        // other seam and the other reader
+        let object: Value = serde_json::from_str(body).unwrap();
+        let overrun = refused_as(said(&object["error"]).expect("a sentence"))
+            .expect("a refusal for length, wherever the server put it");
+        assert_eq!(overrun.tokens, 286_315);
+
+        // and everything else is still a sentence
+        assert_eq!(
+            refused_as(complaint(
+                reqwest::StatusCode::TOO_MANY_REQUESTS,
+                r#"{"error":{"message":"rate-limited upstream"}}"#
+            )),
+            None
+        );
     }
 
     /// note: the two wordings pydantic gives the same kind of failure, which is why `loc` is read.

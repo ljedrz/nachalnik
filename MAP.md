@@ -13,7 +13,7 @@ obvious from the file names. [AGENTS.md](AGENTS.md) has the one-line version.
 | `kernel/request.rs` | private: building a request, sending it, and repairing the call identifiers it came back with. |
 | `kernel/calls.rs` | private: asking the policy about a model's tool calls, running them, recording what they produced. |
 | `context.rs` | `Context`, `ContextItem`, `ContextId`, `ContextKind`, `ContextState`, undo/redo. |
-| `model.rs` | `Provider`, `Content`, `Blob`, `Message`, `ModelRequest`/`Response`, `ToolCall`, `Usage`, `Params`. |
+| `model.rs` | `Provider`, `Content`, `Blob`, `Message`, `ModelRequest`/`Response`, `ToolCall`, `Usage`, `TooLong`/`Overrun`, `Params`. |
 | `projection.rs` | `Projector`, `LinearProjector`, `Projection`, `Skipped` - context to wire messages. |
 | `tool.rs` | `Tool`, `ToolSpec`, `ToolOutput`. |
 | `permissions.rs` | `PermissionPolicy`, `Capability`, `Verdict`, `Grant`, `AskAlways`. |
@@ -23,7 +23,7 @@ obvious from the file names. [AGENTS.md](AGENTS.md) has the one-line version.
 | `session.rs` | `Session`, `Record`, `Snapshot`. |
 | `config.rs`, `error.rs` | `Config` (with the reasoning for each default in the docs), `Error`. |
 | `selectors.rs` | feature `selectors`: `17`, `tool:grep:latest`, `all:tool_results`, `file:src/foo.rs`. |
-| `test.rs` | feature `test`: `ScriptedProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |
+| `test.rs` | feature `test`: `ScriptedProvider`/`TooLongProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |
 
 `kamchatka/src`: `app/` (the state - `mod.rs` is what a caller may ask of it and what a kernel
 event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands, `text.rs`

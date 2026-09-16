@@ -81,7 +81,7 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
                 false => format!(": {}", one_line(&report.reason)),
             },
         ),
-        Event::ModelFailed { error } | Event::StepFailed { error } => one_line(error),
+        Event::ModelFailed { error, .. } | Event::StepFailed { error } => one_line(error),
         // note: everything below here used to fall through to the catch-all and print its own
         // name against an empty line. Each of them carries something worth reading, and a log
         // that names an event and then says nothing about it is the shape of a log nobody opens

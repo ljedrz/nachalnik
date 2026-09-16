@@ -16,7 +16,7 @@ use crate::{
     compaction::CompactionReport,
     context::{ContextId, ContextState},
     kernel::{Kernel, State},
-    model::{Content, ModelInfo, Params, StopReason, ToolCallId, Usage},
+    model::{Content, ModelInfo, Overrun, Params, StopReason, ToolCallId, Usage},
     permissions::{Grant, GrantSource, PermissionId, PermissionRequest},
     projection::Skipped,
 };
@@ -273,6 +273,14 @@ pub enum Event {
     ModelFailed {
         /// What it said.
         error: String,
+        /// How long the request was, where the failure was the model refusing to read it.
+        ///
+        /// note: the numbers as well as the sentence, because this is the one failure a session
+        /// can act on rather than only report - and the one measurement of a request in the
+        /// units its limit is enforced in. The counter is told before this is emitted, so a
+        /// client redrawing on this event draws the corrected figure.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        overrun: Option<Overrun>,
     },
     /// A [`Kernel::step`] could not get as far as a request, and gave up.
     ///

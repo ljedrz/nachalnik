@@ -1212,6 +1212,76 @@ async fn a_calibrating_counter_is_told_what_a_real_request_cost() {
     );
 }
 
+/// And what a request the model refused to read would have cost, which is the other half of the
+/// same lesson and the half a session that has run out of room depends on.
+///
+/// note: the part no scripted provider can check is that a real refusal is *readable*. Every
+/// vendor phrases it differently, so `too_long` reads the numbers rather than the wording - and a
+/// phrasing it cannot read is a real failure, which is why this fails rather than skipping when
+/// the refusal arrives as prose.
+#[tokio::test]
+async fn a_counter_is_told_what_a_refused_request_came_to() {
+    let _serial = serialize().await;
+    let (kernel, _) = live!();
+    let Some(limit) = kernel.model_info().and_then(|info| info.context_limit) else {
+        eprintln!("skipped: this endpoint does not say what the model takes");
+        return;
+    };
+    let counter = Arc::new(Calibrating::new(BytesPerToken::default()));
+    kernel.set_counter(counter.clone());
+    let mut events = kernel.subscribe();
+
+    // over the limit by enough that no tokenizer's opinion of the same bytes is under it
+    kernel.push(ContextItem::file(
+        "haystack.txt",
+        "the quick brown fox jumps over the lazy dog. ".repeat(limit / 8),
+    ));
+    kernel.push(ContextItem::user("Reply with the single word: pong"));
+
+    let guessed = kernel.budget().used();
+    match kernel.step().await {
+        Ok(state) => panic!("a model that takes {limit} read {guessed}: {state:?}"),
+        Err(e) if out_of_quota(&e.to_string()) => {
+            eprintln!("skipped: {e}");
+            return;
+        }
+        Err(_) => {}
+    }
+
+    let overrun = drain(&mut events)
+        .into_iter()
+        .find_map(|event| match event {
+            Event::ModelFailed { error, overrun } => Some((error, overrun)),
+            _ => None,
+        })
+        .expect("the refusal is on the stream");
+    let (said, overrun) = overrun;
+    let overrun = overrun
+        .unwrap_or_else(|| panic!("a refusal this dialect cannot read the numbers out of: {said}"));
+
+    assert!(
+        overrun.tokens as usize > limit,
+        "a refusal names a request bigger than the model: {overrun:?}"
+    );
+    assert_eq!(
+        overrun.limit,
+        Some(limit as u64),
+        "and what it is measured against is the model's own limit rather than a number out of \
+         the prose - which is the figure somebody is told to prune down to: {said}"
+    );
+
+    let learned = counter.calibration();
+    assert_eq!(learned.observations, 1, "the refusal, and it counted");
+    assert_eq!(
+        learned.estimated, guessed as u64,
+        "the estimate it hears about is the one it made"
+    );
+    assert_eq!(
+        learned.reported, overrun.tokens,
+        "and the number beside it is the model's own count of the same bytes"
+    );
+}
+
 #[tokio::test]
 async fn an_interrupt_stops_a_stream_that_is_watching() {
     let _serial = serialize().await;

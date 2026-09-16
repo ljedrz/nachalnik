@@ -35,7 +35,7 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Endpoint, install_crypto, same_model,
+    Endpoint, install_crypto, refused, same_model,
     waiting::{PATIENCE, RETRIES, Silence, Unsent, Vigil, gone_quiet, interrupted, watched},
 };
 
@@ -534,7 +534,10 @@ impl Provider for Gemini {
             if !transient || attempt >= RETRIES {
                 self.backoff.store(0, Ordering::SeqCst);
                 let body = response.text().await.unwrap_or_default();
-                return Err(format!("{status}: {body}").into());
+                return Err(refused(
+                    format!("{status}: {body}"),
+                    self.info().context_limit,
+                ));
             }
 
             let wait = Duration::from_secs(1 << attempt);

@@ -7,6 +7,14 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- A request the model refused for its length says what that length was and how much of it has to
+  go. The sentence above it is the server's, and every vendor writes those two numbers in a
+  different order; this says what they mean here. It matters because the only other figure in
+  front of somebody at that point is the corner, which is the estimate that has just turned out to
+  be wrong - and which the same refusal is correcting.
+
 ### fixed
 
 - `/load` takes every spelling `/save` does. A session is two files, so `/save notes.jsonl` writes

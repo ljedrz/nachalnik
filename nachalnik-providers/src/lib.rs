@@ -43,6 +43,12 @@
 #![deny(unsafe_code)]
 #![deny(missing_docs)]
 
+use std::ops::RangeInclusive;
+
+#[cfg(any(feature = "gemini", feature = "openai"))]
+use nachalnik::BoxError;
+use nachalnik::{Overrun, TooLong};
+
 mod endpoint;
 
 #[cfg(feature = "conformance")]
@@ -73,6 +79,78 @@ pub fn out_of_quota(error: &str) -> bool {
     error.contains("per-day") || error.contains("daily")
 }
 
+/// Reads a server's complaint that a request was longer than the model takes, where it is one,
+/// against what the caller already knows the model takes.
+///
+/// note: the wordings differ per vendor and the arithmetic does not, so this reads the numbers
+/// rather than the sentence, and it reads exactly one of them: the request, which is the largest
+/// token count a complaint of this kind can name. The limit is *not* taken from the prose, and a
+/// sentence that reads `you requested about 92674 tokens (92174 of text input, 500 in the output)`
+/// against a model that takes 65536 is why - the second-largest number there is neither of the
+/// two, and the difference is what somebody would be told to prune.
+///
+/// note: `limit` is what says the reading is a sane one, since a refusal for length names a
+/// request larger than the model and nothing else in the sentence is. Without one, a message
+/// naming a single number is left alone: which number it is - the request, or what the model
+/// takes - is the whole of what this is for, and reading it the wrong way round calibrates a
+/// counter *down* on its way to a refusal.
+pub fn too_long(said: &str, limit: Option<u64>) -> Option<TooLong> {
+    /// What names this kind of refusal, whoever phrased it.
+    const COMPLAINTS: [&str; 5] = [
+        "context length",
+        "context_length",
+        "too long",
+        "token count",
+        "tokens allowed",
+    ];
+    /// What a token count can be, either side of it. The upper bound is what keeps an identifier
+    /// out of the reading.
+    const PLAUSIBLE: RangeInclusive<u64> = 256..=100_000_000;
+    /// Beyond which a number is something other than a request that overshot.
+    const OVERSHOT_BY: u64 = 1_000;
+
+    let lowered = said.to_lowercase();
+    if !COMPLAINTS.iter().any(|which| lowered.contains(which)) {
+        return None;
+    }
+
+    let mut numbers: Vec<u64> = said
+        .split(|c: char| !c.is_ascii_digit())
+        .filter_map(|run| run.parse().ok())
+        .filter(|number| PLAUSIBLE.contains(number))
+        .collect();
+
+    numbers.sort_unstable();
+    numbers.dedup();
+
+    let tokens = numbers.pop()?;
+    let read = match limit {
+        Some(limit) => tokens > limit && tokens < limit.saturating_mul(OVERSHOT_BY),
+        // nothing to check it against, so the sentence has to name a second figure for the
+        // largest to be the request rather than the only number in it
+        None => !numbers.is_empty(),
+    };
+
+    read.then(|| TooLong {
+        overrun: Overrun { tokens, limit },
+        said: said.to_owned(),
+    })
+}
+
+/// The error a refused request becomes, reading a complaint about its length as one.
+///
+/// note: every dialect here ends at the same line - a sentence from a server, boxed and returned -
+/// and this is that line, so that the one refusal a session can *act* on arrives as [`TooLong`]
+/// rather than as prose somebody has to read twice. The sentence survives either way: `TooLong`
+/// prints what the server said and nothing else.
+#[cfg(any(feature = "gemini", feature = "openai"))]
+pub(crate) fn refused(said: String, limit: Option<usize>) -> BoxError {
+    match too_long(&said, limit.map(|limit| limit as u64)) {
+        Some(too_long) => too_long.into(),
+        None => said.into(),
+    }
+}
+
 /// Whether a listed identifier names the model being asked about, allowing for the decorations
 /// listings put on them: Google's `models/` prefix, ollama's implicit `:latest` tag.
 pub fn same_model(listed: &str, model: &str) -> bool {
@@ -91,4 +169,104 @@ pub fn same_model(listed: &str, model: &str) -> bool {
 /// a program that installs a different provider wants to do so before any of this runs.
 pub fn install_crypto() {
     let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every vendor writes the same complaint differently, and the arithmetic is the same in all
+    /// of them.
+    ///
+    /// note: each of these is a sentence an endpoint sent. The first carries a status code, which
+    /// is a number in the message and not a token count; the second carries three of them, of
+    /// which the second-largest is neither the request nor the limit - which is why what is read
+    /// out of the prose is the request alone.
+    #[test]
+    fn a_refusal_for_length_is_read_whoever_phrased_it() {
+        let shapes = [
+            (
+                "400 Bad Request: Provider returned error - {\"error\":{\"message\":\"The \
+                 request is 286315 tokens long and exceeds this model's context length of \
+                 262144 tokens.\",\"code\":\"context_length_exceeded\"}}",
+                262_144,
+                286_315,
+            ),
+            (
+                "400 Bad Request: This endpoint's maximum context length is 65536 tokens. \
+                 However, you requested about 92674 tokens (92174 of text input, 500 in the \
+                 output). Please reduce the length of either one.",
+                65_536,
+                92_674,
+            ),
+            (
+                "This model's maximum context length is 8192 tokens. However, your messages \
+                 resulted in 10000 tokens. Please reduce the length of the messages.",
+                8_192,
+                10_000,
+            ),
+            (
+                "prompt is too long: 250000 tokens > 200000 maximum",
+                200_000,
+                250_000,
+            ),
+            (
+                "The input token count (1050000) exceeds the maximum number of tokens allowed \
+                 (1048576).",
+                1_048_576,
+                1_050_000,
+            ),
+        ];
+
+        for (said, limit, tokens) in shapes {
+            let read = too_long(said, Some(limit)).unwrap_or_else(|| panic!("not read: {said}"));
+            assert_eq!(
+                read.overrun,
+                Overrun {
+                    tokens,
+                    limit: Some(limit)
+                },
+                "read wrongly: {said}"
+            );
+            assert_eq!(read.to_string(), said, "the sentence survives the reading");
+
+            // and the same sentence from an endpoint that never said what the model takes: the
+            // request is still there to be read, and there is nothing to check it against
+            assert_eq!(
+                too_long(said, None).map(|read| read.overrun.tokens),
+                Some(tokens),
+                "not read without a limit: {said}"
+            );
+        }
+    }
+
+    /// What is not a refusal for length, and what is one but says too little to act on.
+    #[test]
+    fn a_refusal_that_cannot_be_read_is_left_as_a_sentence() {
+        let nothing = [
+            // not about length at all, and the second one has two numbers in it
+            ("429 Too Many Requests: rate limit exceeded", Some(8_192)),
+            (
+                "401 Unauthorized: key 12345678 is not valid for model 4096",
+                Some(8_192),
+            ),
+            // about length, and naming only what the model takes. With a limit to check it
+            // against it fails the check; without one, a lone number could be either of the two
+            // and reading it as the wrong one is worse than not reading it
+            ("This model's maximum context length is 8192 tokens.", None),
+            (
+                "This model's maximum context length is 8192 tokens.",
+                Some(8_192),
+            ),
+            // about length, and the only number in it that could be a count is an identifier
+            (
+                "context length exceeded on request 987654321 (limit 8192)",
+                Some(8_192),
+            ),
+        ];
+
+        for (said, limit) in nothing {
+            assert_eq!(too_long(said, limit), None, "read anyway: {said}");
+        }
+    }
 }

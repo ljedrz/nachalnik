@@ -4,11 +4,15 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    BytesPerToken, Calibrating, Calibration, Config, Content, ContextItem, ContextKind, Kernel,
-    ModelResponse, State, TokenCounter, Usage,
-    test::{AllowAll, ConstTool, ScriptedProvider, call},
+    BytesPerToken, Calibrating, Calibration, Config, Content, ContextItem, ContextKind, Event,
+    Kernel, ModelResponse, Overrun, State, TokenCounter, Usage,
+    test::{AllowAll, ConstTool, ScriptedProvider, TooLongProvider, call},
 };
 use serde_json::json;
+
+mod common;
+
+use common::drain;
 
 fn kernel() -> Kernel {
     Kernel::new(Config::default())
@@ -650,4 +654,83 @@ async fn a_request_carrying_something_unpriced_teaches_the_counter_nothing() {
         "the text-only request, and only it"
     );
     assert_eq!(learned.reported, 900);
+}
+
+/// A request refused for being too long is the one measurement a session that has run out of
+/// room can still be given, and it is taken.
+///
+/// note: what makes it worth more than a reported usage rather than less: it is the model's own
+/// count of the bytes, in the units its limit is enforced in, where a usage figure is a bill and
+/// may be quoted in whatever the endpoint in front of the model bills in. A counter that learns
+/// only from answered requests learns nothing from the point where every request fails, which is
+/// the point it most needs correcting at.
+#[tokio::test]
+async fn a_request_refused_for_its_length_is_a_lesson_like_any_other() {
+    let kernel = kernel();
+    let counter = Arc::new(Calibrating::new(BytesPerToken::default()));
+    kernel.set_counter(counter.clone());
+    kernel.set_provider(Arc::new(TooLongProvider::new(286_315, 262_144)));
+
+    let item = kernel.push(ContextItem::user("a".repeat(400)));
+    let before = kernel.item(item).unwrap().tokens;
+    let mut events = kernel.subscribe();
+
+    assert!(kernel.step().await.is_err(), "the request is refused");
+
+    let learned = counter.calibration();
+    assert_eq!(learned.observations, 1);
+    assert_eq!(
+        learned.reported, 286_315,
+        "the number the model put on the request it would not read"
+    );
+    assert!(
+        learned.scale > 1.0,
+        "and the counter is told it is estimating low: {}",
+        learned.scale
+    );
+
+    kernel.recount();
+    assert!(
+        kernel.item(item).unwrap().tokens > before,
+        "so the same bytes read higher from here on: {} vs {before}",
+        kernel.item(item).unwrap().tokens
+    );
+
+    let overrun = drain(&mut events)
+        .into_iter()
+        .find_map(|event| match event {
+            Event::ModelFailed { overrun, .. } => overrun,
+            _ => None,
+        });
+    assert_eq!(
+        overrun,
+        Some(Overrun {
+            tokens: 286_315,
+            limit: Some(262_144)
+        }),
+        "and the numbers are on the stream, not only inside a sentence"
+    );
+}
+
+/// The same condition as a reported usage: a request the counter could not fully price is not a
+/// request it can attribute the difference on.
+#[tokio::test]
+async fn a_refusal_of_something_unpriced_teaches_the_counter_nothing() {
+    let kernel = kernel();
+    let counter = Arc::new(Calibrating::new(BytesPerToken::default()));
+    kernel.set_counter(counter.clone());
+    kernel.set_provider(Arc::new(TooLongProvider::new(286_315, 262_144)));
+
+    kernel.push(ContextItem::user("a".repeat(400)));
+    kernel.push(ContextItem::user(Content::blob(
+        "image/png",
+        "A".repeat(400_000),
+    )));
+
+    assert!(kernel.step().await.is_err());
+    assert_eq!(
+        counter.calibration(),
+        Calibration::default(),
+        "the picture is most of what was refused and none of what was counted"
+    );
 }

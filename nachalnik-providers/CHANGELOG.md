@@ -7,6 +7,19 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- `too_long`, and both dialects return a `nachalnik::TooLong` where a refusal is one. The wordings
+  differ per vendor and the arithmetic does not, so it reads one number out of the prose - the
+  request, which is the largest token count such a complaint can name - and takes the limit from
+  what the provider already knows the model to hold. Reading that out of the sentence too is what
+  the second number in `you requested about 92674 tokens (92174 of text input, 500 in the output)`
+  would have cost: an overshoot of 500 reported where it was 27,138, which is the figure somebody
+  prunes against. The known limit is also what says the reading is sane, since a refusal of this
+  kind names a request larger than the model; without one, a message naming a single number is
+  left as prose, because reading it as the wrong one of the two calibrates a counter down on its
+  way to a refusal.
+
 ### fixed
 
 - `Gemini::set_endpoint` says when the new address does not serve the model, which it did only when
