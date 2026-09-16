@@ -21,12 +21,11 @@ use crate::{error::BoxError, event::DeltaSink, tool::ToolSpec};
 /// around, and hands it to a [`Provider`], which decides how a [`Content::Json`] payload is
 /// rendered for its wire format.
 ///
-/// note: Every variant is behind an [`Arc`], so cloning content is a refcount bump rather than
-/// a copy. This is not an optimisation detail so much as what makes the rest of the design
-/// affordable: a context item is copied on every state change (the undo snapshot holding the old
-/// one is the point of undo) and again into a message on every request, and a 4 MiB tool output
-/// that were copied each time would make pruning - the thing this crate is *for* - cost more the
-/// more there was to prune.
+/// note: Every variant is behind an [`Arc`], so cloning content is a refcount bump rather than a
+/// copy. That is what makes the rest of the design affordable: an item is copied on every state
+/// change (the undo snapshot holding the old one is the point of undo) and again into a message on
+/// every request, so copying a 4 MiB tool output each time would make pruning cost more the more
+/// there was to prune.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -52,11 +51,11 @@ pub enum Content {
     /// whichever one is in use, and are what the kernel, the projector and a provider should
     /// reach for.
     ///
-    /// note: a [`Block`] holds a [`Content`], so this nests, and nothing here stops it. Nothing
-    /// produces a nested one either - a turn is a flat sequence in every dialect there is - and
-    /// treating it as flat is what everything in this crate does. It is written down because a
-    /// sequence deep enough to matter would be recursing through [`Content::to_text`] and through
-    /// `Drop`, and somebody hand-writing a snapshot should know that is on them.
+    /// note: a [`Block`] holds a [`Content`], so this nests and nothing here stops it. Nothing
+    /// produces a nested one - a turn is a flat sequence in every dialect there is - and everything
+    /// in this crate treats it as flat. Written down because a sequence deep enough to matter would
+    /// recurse through [`Content::to_text`] and through `Drop`, which is on whoever hand-wrote the
+    /// snapshot.
     Blocks(Arc<[Block]>),
     /// Bytes that are not text: an image, a document, a recording.
     ///
@@ -102,15 +101,11 @@ pub struct Blob {
     /// [`TokenCounter::count_item`](crate::TokenCounter::count_item) and never reaches the figure
     /// a [`Compactor`](crate::Compactor) acts on.
     ///
-    /// note: whoever produced the base64 had the payload decoded a moment earlier, which is why
-    /// this costs a caller nothing to fill in and is the only place that knows.
-    ///
     /// note: a counter is the reason this exists and not the only thing entitled to read it. A
     /// [`Provider`] may too, and one does: the conventional dialect's attachment part will not go
     /// out without a filename, so `nachalnik-providers` reads `name` here and derives one from the
     /// media type when nobody set it. That is a convention between a caller and a provider rather
-    /// than anything this crate enforces - there is no key here the kernel knows the meaning of,
-    /// which is the entire point of the field.
+    /// than anything this crate enforces - there is no key here the kernel knows the meaning of.
     #[serde(default = "null", skip_serializing_if = "is_null")]
     pub meta: Arc<Value>,
 }
@@ -238,10 +233,9 @@ impl Content {
     /// that was never in the output.
     ///
     /// note: for [`Content::Blob`] there is no faithful answer, so this names it rather than
-    /// giving one - `[image/png, 12.05kB]`. The alternatives were an empty string, which
-    /// makes a picture vanish from a transcript with nothing to say it was ever there, and the
-    /// base64 itself, which is six hundred thousand characters of noise wherever anything expects
-    /// prose. Anything that wants the payload asks [`Content::as_blob`] for it.
+    /// giving one - `[image/png, 12.05kB]`. An empty string would make a picture vanish from a
+    /// transcript with nothing to say it was there. Anything that wants the payload asks
+    /// [`Content::as_blob`] for it.
     pub fn to_text(&self) -> Cow<'_, str> {
         match self {
             Self::Text(s) => Cow::Borrowed(s),
@@ -281,18 +275,14 @@ impl Content {
     /// Collects every [`Blob`] in the content, including any nested in a [`Content::Blocks`]
     /// turn.
     ///
-    /// note: this is the seam a [`TokenCounter`](crate::TokenCounter) needs and could not build
-    /// for itself, and the nesting is the whole reason. A turn that is a sentence and a
-    /// screenshot is a `Blocks` holding a `Blob` one level down, which is the shape both dialects
-    /// send - so a counter matching only on `Content::Blob` sees a plain picture and misses every
-    /// picture a model was actually shown. `BytesPerToken` made exactly that mistake: a bare blob
-    /// counted `0` and the same blob inside a turn counted its base64 at four bytes a token, so a
-    /// 400 KB screenshot went from free to a hundred thousand tokens depending on which shape it
-    /// arrived in.
+    /// note: this is the seam a [`TokenCounter`](crate::TokenCounter) needs and could not build for
+    /// itself, and the nesting is the whole reason. A turn that is a sentence and a screenshot is a
+    /// `Blocks` holding a `Blob` one level down, which is the shape both dialects send - so a
+    /// counter matching only on `Content::Blob` sees a plain picture and misses every picture a
+    /// model was actually shown.
     ///
-    /// note: it allocates only when there is something to put in the vector, which is what makes
-    /// it affordable on a path that runs for every item on every recount: text and JSON return an
-    /// empty `Vec` without touching the allocator.
+    /// note: it allocates only when there is something to put in the vector, which is what makes it
+    /// affordable on a path that runs for every item on every recount.
     pub fn blobs(&self) -> Vec<&Blob> {
         let mut found = Vec::new();
         self.collect_blobs(&mut found);
@@ -613,12 +603,10 @@ impl fmt::Display for Role {
 /// [`Message::reasoning`] and [`Message::tool_calls`] empty, so that there is never a second
 /// account of it to disagree with the first, and [`Message::calls`] is what reads either.
 ///
-/// note: which of the two a request carries is [`LinearProjector::send_blocks`], and that really
-/// is a decision a [`Projector`] gets to make now - a dialect that puts tool results inside a
-/// user turn, or keeps thinking-only turns, or flattens everything into one string, or wants the
-/// order, is a projector away. What a projector still cannot do is invent an order that was never
-/// recorded: a turn that arrived through a provider speaking the three-slot dialect has no order
-/// to carry, and flattening one that does is lossy and says so in [`Projection::repairs`].
+/// note: which of the two a request carries is [`LinearProjector::send_blocks`], and it is a
+/// [`Projector`]'s decision. What a projector cannot do is invent an order that was never
+/// recorded: a turn that arrived through a provider speaking the three-slot dialect has none to
+/// carry, and flattening one that does is lossy and says so in [`Projection::repairs`].
 ///
 /// [`LinearProjector::send_blocks`]: crate::LinearProjector::send_blocks
 /// [`Projection::repairs`]: crate::Projection::repairs
@@ -1029,9 +1017,7 @@ impl ModelResponse {
     /// context item reads both; a `ModelResponse` in hand was the one place left where asking what
     /// the model thought meant reading a field and being right on one dialect only.
     ///
-    /// note: an iterator of [`Content`], because that is what the two accessors beside it are.
-    /// One shape per question: a provider writing a conformance case, a client showing somebody a
-    /// turn, and a kernel recording one should not each need a different call.
+    /// note: an iterator of [`Content`], which is the shape of the two accessors beside it.
     pub fn thinking(&self) -> impl Iterator<Item = &Content> {
         let blocks = self.content.as_ref().and_then(Content::as_blocks);
         let flat = match blocks {
@@ -1129,13 +1115,12 @@ pub trait Provider: Send + Sync {
     ///
     /// note: Return `Err` for anything that is not an answer, and be suspicious of what counts.
     /// Real services report a rate limit or a dead upstream as an `error` object inside an
-    /// otherwise successful `200`; a provider that only checks the status code will hand the
-    /// kernel an empty response, which it will faithfully record as the model having said
-    /// nothing. Both of this crate's example providers had to learn that the hard way.
+    /// otherwise successful `200`; a provider that only checks the status code hands the kernel an
+    /// empty response, which it records as the model having said nothing.
     ///
     /// note: The kernel imposes no timeout, because it has no idea what a reasonable one is for
-    /// your model - a reasoning model can take minutes. Give the transport its own timeout. A
-    /// caller can also simply drop the future driving [`Kernel::step`]: the kernel returns to
+    /// your model - a reasoning model can take minutes. Give the transport its own. A caller can
+    /// also drop the future driving [`Kernel::step`]: the kernel returns to
     /// [`State::Idle`](crate::State::Idle) and says so on the event stream.
     async fn respond(
         &self,
