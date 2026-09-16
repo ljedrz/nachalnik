@@ -7,7 +7,7 @@
 
 #![cfg(feature = "openai")]
 
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use nachalnik::{Config, ContextItem, Kernel};
 use nachalnik_providers::OpenAiCompatible;
@@ -16,8 +16,9 @@ use tokio::{
     net::TcpListener,
 };
 
-/// Answers one request as `server` does, and hands back the request line and headers it was sent.
-async fn overheard(provider: impl Fn(String) -> OpenAiCompatible) -> String {
+/// Answers one request as `server` does, and hands back the request line and headers it was sent,
+/// lowercased - which is how they arrive, and how the assertions read.
+async fn overheard(provider: impl FnOnce(SocketAddr) -> OpenAiCompatible) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address = listener.local_addr().expect("its own address");
     let (heard, mut listening) = tokio::sync::mpsc::channel(1);
@@ -52,30 +53,107 @@ async fn overheard(provider: impl Fn(String) -> OpenAiCompatible) -> String {
     });
 
     let kernel = Kernel::new(Config::default());
-    kernel.set_provider(Arc::new(provider(format!("http://{address}"))));
+    kernel.set_provider(Arc::new(provider(address)));
     kernel.push(ContextItem::user("go"));
     let _ = kernel.step().await;
 
-    listening.recv().await.expect("the request was overheard")
+    listening
+        .recv()
+        .await
+        .expect("the request was overheard")
+        .to_lowercase()
+}
+
+/// A provider that believes it is talking to OpenRouter and is in fact talking to `address`.
+///
+/// note: the name in the URL is what decides whether the headers go out, and the resolver is what
+/// decides where the socket goes, so the two can disagree - which is the only way to see the
+/// headers that are sent *only* to OpenRouter without sending anything to OpenRouter.
+fn as_if_openrouter(address: SocketAddr) -> OpenAiCompatible {
+    let client = reqwest::Client::builder()
+        .resolve("openrouter.ai", address)
+        .build()
+        .expect("a client that resolves one name itself");
+    OpenAiCompatible::new(
+        "m",
+        format!("http://openrouter.ai:{}/api/v1", address.port()),
+        "k",
+    )
+    .with_client(client)
+}
+
+#[tokio::test]
+async fn openrouter_is_told_the_app_the_name_and_what_kind_of_program_it_is() {
+    let seen = overheard(|address| {
+        as_if_openrouter(address)
+            .on_behalf_of("https://example.invalid/app", "kamchatka")
+            .filed_under(["cli-agent", "programming-app"])
+    })
+    .await;
+
+    assert!(
+        seen.contains("referer: https://example.invalid/app"),
+        "{seen}"
+    );
+    assert!(seen.contains("x-openrouter-title: kamchatka"), "{seen}");
+    // comma-separated and in the order they were given, which is the documented shape
+    assert!(
+        seen.contains("x-openrouter-categories: cli-agent,programming-app"),
+        "{seen}"
+    );
+    // public is the absence of the header rather than a value, so an app that said nothing about
+    // visibility must send nothing about it
+    assert!(!seen.contains("visibility"), "{seen}");
+}
+
+#[tokio::test]
+async fn an_app_that_asked_to_stay_off_the_listings_says_so() {
+    let seen = overheard(|address| {
+        as_if_openrouter(address)
+            .on_behalf_of("https://internal.invalid", "telemetry")
+            .unlisted(true)
+    })
+    .await;
+
+    assert!(
+        seen.contains("x-openrouter-app-visibility: hidden"),
+        "{seen}"
+    );
+}
+
+#[tokio::test]
+async fn a_category_with_no_app_to_put_it_on_is_not_sent() {
+    // OpenRouter builds the page against the referer, so a category on its own describes nothing:
+    // it is a header that says what the caller is and buys them not one thing
+    let seen = overheard(|address| {
+        as_if_openrouter(address)
+            .filed_under(["cli-agent"])
+            .unlisted(true)
+    })
+    .await;
+
+    assert!(!seen.contains("x-openrouter-"), "{seen}");
+    assert!(!seen.contains("referer"), "{seen}");
 }
 
 #[tokio::test]
 async fn the_app_headers_go_to_openrouter_and_nowhere_else() {
     // an endpoint that is not OpenRouter is whatever `KAMCHATKA_BASE_URL` was pointed at, and a
     // `HTTP-Referer` volunteered to it is something nobody asked to send
-    let elsewhere = overheard(|url| {
-        OpenAiCompatible::new("m", url, "k").on_behalf_of("https://example.invalid", "kamchatka")
+    let elsewhere = overheard(|address| {
+        OpenAiCompatible::new("m", format!("http://{address}"), "k")
+            .on_behalf_of("https://example.invalid", "kamchatka")
+            .filed_under(["cli-agent"])
+            .unlisted(true)
     })
-    .await
-    .to_lowercase();
+    .await;
     assert!(
-        !elsewhere.contains("referer") && !elsewhere.contains("x-openrouter-title"),
+        !elsewhere.contains("referer") && !elsewhere.contains("x-openrouter-"),
         "a local endpoint is told nothing about the app: {elsewhere}"
     );
 
     // and one with no attribution at all sends none wherever it is pointed
-    let silent = overheard(|url| OpenAiCompatible::new("m", url, "k"))
-        .await
-        .to_lowercase();
+    let silent =
+        overheard(|address| OpenAiCompatible::new("m", format!("http://{address}"), "k")).await;
     assert!(!silent.contains("referer"), "{silent}");
 }

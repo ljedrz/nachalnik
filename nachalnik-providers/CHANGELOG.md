@@ -5,6 +5,46 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- **`OpenAiCompatible::filed_under`, which says what kind of program is calling.** The two headers
+  this crate sent named the app and stopped there, so an attributed app reached the rankings and
+  never the [marketplace](https://openrouter.ai/apps) - which is the half organised by what a
+  program *is* rather than by how many tokens it spent. `X-OpenRouter-Categories` is a
+  comma-separated list beside the referer, and it is the only thing that puts an app in a group.
+
+  The reason recorded here for not sending it was wrong, and wrong in the direction that matters:
+  an unrecognised category is not refused, it is **dropped** - no error, no notice, a 200 like any
+  other. So a misspelling costs the request nothing and costs the page everything, and nothing on
+  the wire will ever mention it. What is sent is what the caller gave, in the order it gave them:
+  OpenRouter documents two per request and ten in total, merged across requests rather than
+  replaced, and neither the count nor the spelling is checked here. There is no list of the
+  category names in this crate either, for the same reason there is no list of model names - it is
+  somebody else's, it is on their page, and a copy in here goes stale the day they add one.
+
+  Sent only where `on_behalf_of` named an app, and only to the endpoint that reads it. That
+  pairing is the API's own rule rather than a caution: the page is built against the URL, so a
+  category with no URL beside it describes nothing and is a header that tells a server what the
+  caller is for no return at all. It is a field beside the attribution rather than one inside it
+  so that the order two builder methods are called in cannot decide what goes out.
+
+- **`OpenAiCompatible::unlisted`, for attribution that is telemetry rather than a listing.**
+  `X-OpenRouter-App-Visibility: hidden` keeps the app page out of the rankings, the marketplace
+  and the public pages while the attribution itself goes on working, which is what somebody
+  pointing several internal services at one account wants and could not ask for here.
+
+  It reaches only the request that *creates* the page. A URL that already has one keeps the
+  visibility it has, in either direction - so a program with one fixed URL has a single request,
+  once, in which this means anything, and neither its author nor anybody running it can change it
+  with a header afterwards. That is also what makes it safe to expose: a caller of somebody else's
+  app cannot hide it. Public stays the default and sends nothing, because public has no value of
+  its own - there is `hidden` or there is no header, and there is no third thing to say.
+
+  Nothing else in the workspace sets it. `kamchatka`'s page is the point of `kamchatka`'s
+  attribution.
+
 ## [0.2.1] - 2026-09-15
 
 ### fixed

@@ -80,6 +80,16 @@ pub struct OpenAiCompatible {
     /// Who to say these requests are on behalf of, where the endpoint asks. Set once, at
     /// construction: it is a property of the program making the request, not of the session.
     attribution: Option<Attribution>,
+    /// What kind of program it is, in the endpoint's own vocabulary; see [`Self::filed_under`].
+    ///
+    /// note: beside [`Self::attribution`] rather than inside it, because the order two builder
+    /// methods are called in should not decide what goes out. It is sent only where there is an
+    /// attribution to send it with, which is the API's own rule: the page is built against the
+    /// URL, so a category with no URL beside it describes nothing.
+    categories: Vec<String>,
+    /// Whether the app page these requests would create should be left off the public listings;
+    /// see [`Self::unlisted`].
+    unlisted: bool,
     /// What this endpoint is called, as [`nachalnik::ModelInfo::provider`] reports it.
     ///
     /// note: worth setting when there are several. A panel comparing four models through three
@@ -141,6 +151,8 @@ impl OpenAiCompatible {
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
             attribution: None,
+            categories: Vec::new(),
+            unlisted: false,
             label: "openai-compatible".to_owned(),
             stream: true,
             requests: Mutex::new(Vec::new()),
@@ -232,6 +244,41 @@ impl OpenAiCompatible {
         self
     }
 
+    /// Says what kind of program it is, in the categories the endpoint files apps under.
+    ///
+    /// note: does nothing on its own. It is sent beside [`Self::on_behalf_of`] or not at all, and
+    /// to the same one endpoint - the page is built against the URL, so a category with no URL
+    /// beside it describes nothing and is a header that buys the caller nothing.
+    ///
+    /// note: what it is given, verbatim. OpenRouter documents two per request, ten in total, and
+    /// its own list of names - and an unrecognised one is *dropped*, not refused: no error, no
+    /// notice, a 200 like any other, so `cli_agent` for `cli-agent` is a typo that fails nothing
+    /// and shows up only as an app filed under nothing. Neither the count nor the spelling is
+    /// checked here, because a crate that guessed at somebody else's list would go stale the day
+    /// it grew: [the attribution page](https://openrouter.ai/docs/app-attribution) has the names.
+    ///
+    /// note: they accumulate on the app rather than replace what it has, so this is not a way to
+    /// correct one. Changing what an app is already filed under is a conversation with OpenRouter.
+    #[must_use]
+    pub fn filed_under<C: Into<String>>(mut self, categories: impl IntoIterator<Item = C>) -> Self {
+        self.categories = categories.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Keeps the app page off the public rankings and out of the marketplace, for attribution kept
+    /// as somebody's own telemetry rather than as a listing.
+    ///
+    /// note: this only ever reaches the request that *creates* the page. A URL that already has
+    /// one keeps whatever visibility it has, in either direction - so a program with one fixed URL
+    /// has a single request, once, in which this means anything, and nobody running it later can
+    /// change that with a header. Which is also what makes it safe: a caller of somebody else's
+    /// app cannot hide it.
+    #[must_use]
+    pub fn unlisted(mut self, unlisted: bool) -> Self {
+        self.unlisted = unlisted;
+        self
+    }
+
     /// Measures against this limit rather than against whatever the endpoint advertises.
     ///
     /// note: for the two cases [`probe`](Self::probe) cannot settle - an endpoint that publishes
@@ -258,11 +305,20 @@ impl OpenAiCompatible {
             return request;
         };
         // `X-OpenRouter-Title` is the current name; `X-Title` is the one it replaced and is still
-        // accepted. Neither the categories nor the visibility header is sent: an unrecognised
-        // category is refused, and the default visibility is the point of attribution
-        request
+        // accepted
+        let request = request
             .header(reqwest::header::REFERER, &app.url)
-            .header("X-OpenRouter-Title", &app.title)
+            .header("X-OpenRouter-Title", &app.title);
+        let request = match self.categories.is_empty() {
+            true => request,
+            false => request.header("X-OpenRouter-Categories", self.categories.join(",")),
+        };
+        // and nothing at all for the public case, which is the default and has no value of its
+        // own: `hidden` or the absence of the header, there is no third thing to say
+        match self.unlisted {
+            true => request.header("X-OpenRouter-App-Visibility", "hidden"),
+            false => request,
+        }
     }
 
     /// Where the requests are going.
