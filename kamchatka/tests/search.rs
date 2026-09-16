@@ -43,14 +43,17 @@ fn tools(dir: &Path) -> Vec<Arc<dyn Tool>> {
 }
 
 /// Calls one of them and hands back what the model would read.
-async fn ask(dir: &Path, tool: &str, args: Value) -> String {
+async fn ask(dir: &Path, action: &str, mut args: Value) -> String {
     let tools = tools(dir);
     let found = tools
         .iter()
-        .find(|it| it.spec().id == tool)
-        .unwrap_or_else(|| panic!("`{tool}` should be one of the built-in tools"));
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
 
-    let call: ToolCall = call("c1", tool, args);
+    // note: the action goes in beside the rest, because searching is one of the things `fs` does
+    // rather than a tool of its own. Every test below still names the act it is about
+    args["action"] = Value::String(action.to_owned());
+    let call: ToolCall = call("c1", "fs", args);
     found
         .invoke(&call, OutputSink::disconnected())
         .await

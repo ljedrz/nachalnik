@@ -1142,24 +1142,24 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         harness.app.kernel.add_tool(tool);
     }
 
-    let declared = |harness: &Harness, tool: &str| {
-        harness
-            .app
-            .kernel
-            .tool_specs()
-            .into_iter()
-            .find(|spec| spec.id == tool)
-            .and_then(|spec| spec.output_limit)
+    // note: asked of the *call* rather than of the spec, because a tool that does several things
+    // has a limit per thing - `fs:read` and `fs:grep` are one tool and two reasonable answer
+    // sizes. See `Tool::limit`
+    let declared = |harness: &Harness, subject: &str| {
+        let (tool, action) = subject.split_once(':').unwrap_or((subject, "run"));
+        let call = nachalnik::ToolCall::new("c", tool, json!({ "action": action }));
+        harness.app.kernel.tool(tool).and_then(|it| it.limit(&call))
     };
-    assert_eq!(declared(&harness, "read"), Some(32_000));
+    assert_eq!(declared(&harness, "fs:read"), Some(32_000));
 
-    harness.send("/limit read 64000").await;
+    harness.send("/limit fs:read 64000").await;
     assert_eq!(
-        declared(&harness, "read"),
+        declared(&harness, "fs:read"),
         Some(64_000),
         "the tool has to declare the new one, or the command changed nothing"
     );
-    // and shell is untouched: one tool was named, one tool moved
+    // and the rest of `fs` is untouched: one operation was named, one operation moved
+    assert_eq!(declared(&harness, "fs:grep"), Some(32_000));
     assert_eq!(declared(&harness, "shell"), Some(32_000));
 
     let screen = harness.flat();
@@ -1169,13 +1169,15 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         "it has to say which call it applies to: {screen}"
     );
 
-    // the number the listing prints is a handle the command takes, or it is decoration: `read` is
-    // the sixth of the eight rows, sorted, and this is the same instruction as naming it
+    // the number the listing prints is a handle the command takes, or it is decoration: this is
+    // the same instruction as naming the row
+    // `fs:read` is the sixth row of the sorted listing, and naming the number is the same
+    // instruction as naming the subject
     harness.send("/limit 6 48000").await;
-    assert_eq!(declared(&harness, "read"), Some(48_000));
-    assert_eq!(declared(&harness, "shell"), Some(32_000), "one row moved");
+    assert_eq!(declared(&harness, "fs:read"), Some(48_000));
+    assert_eq!(declared(&harness, "fs:grep"), Some(32_000), "one row moved");
     assert!(
-        harness.flat().contains("`read` was cut at 64,000"),
+        harness.flat().contains("`fs:read` was cut at 64,000"),
         "the answer names the tool, not the row: {}",
         harness.flat()
     );
@@ -1186,16 +1188,16 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     assert!(screen.contains("nothing here limits `write`"), "{screen}");
 
     // a row out of range is answered the same way, by a listing that says what the range is
-    harness.send("/limit 11 1000").await;
+    harness.send("/limit 99 1000").await;
     let screen = harness.flat();
-    assert!(screen.contains("nothing here limits `11`"), "{screen}");
-    assert!(screen.contains("[8] shell"), "{screen}");
+    assert!(screen.contains("nothing here limits `99`"), "{screen}");
+    assert!(screen.contains("[10] shell"), "{screen}");
 
     // and nought is not a limit, it is a tool that answers with a marker
-    harness.send("/limit read 0").await;
-    assert_eq!(declared(&harness, "read"), Some(48_000), "unchanged");
+    harness.send("/limit fs:read 0").await;
+    assert_eq!(declared(&harness, "fs:read"), Some(48_000), "unchanged");
     assert!(
-        harness.flat().contains("tools drop read"),
+        harness.flat().contains("tools drop fs:read"),
         "{}",
         harness.flat()
     );
@@ -1209,7 +1211,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     );
     assert!(screen.contains("amend"), "and every other one: {screen}");
     // numbered, so that the number the command takes is one somebody can read off the screen
-    assert!(screen.contains("[6] read"), "{screen}");
+    assert!(screen.contains("[6] fs:read"), "{screen}");
 }
 
 /// A limit for a tool this session does not offer says so, in the listing and on the change.

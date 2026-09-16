@@ -184,7 +184,6 @@ impl StateChange {
 struct PreparedCall {
     call: ToolCall,
     tool: Arc<dyn Tool>,
-    spec: ToolSpec,
     request: PermissionRequest,
     grant: Option<(Grant, GrantSource)>,
 }

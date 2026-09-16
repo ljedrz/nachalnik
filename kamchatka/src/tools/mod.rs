@@ -19,6 +19,7 @@ use crate::sandbox::Reach;
 use serde_json::Value;
 
 mod files;
+mod fs;
 mod policy;
 mod search;
 mod shell;
@@ -65,10 +66,7 @@ pub mod domains {
     }
 }
 
-use crate::tools::{
-    files::{Edit, Read, Write},
-    search::{Glob, Grep, Looking},
-};
+use crate::tools::search::Looking;
 
 /// Reads the named argument, or explains which one is missing.
 fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, BoxError> {
@@ -168,9 +166,11 @@ impl Limits {
     /// leads with the answer for that reason, so what a limit takes there is the thinking.
     pub fn new() -> Self {
         Self(Arc::new(Mutex::new(BTreeMap::from([
-            ("read".to_owned(), 32_000),
-            ("grep".to_owned(), 32_000),
-            ("glob".to_owned(), 32_000),
+            ("fs:read".to_owned(), 32_000),
+            ("fs:grep".to_owned(), 32_000),
+            ("fs:glob".to_owned(), 32_000),
+            ("fs:write".to_owned(), 32_000),
+            ("fs:edit".to_owned(), 32_000),
             ("shell".to_owned(), 32_000),
             ("context".to_owned(), 32_000),
             ("log".to_owned(), 32_000),
@@ -231,11 +231,7 @@ pub fn builtin(shell: Shell, reach: Reach, limits: Limits) -> Vec<Arc<dyn Tool>>
     };
 
     vec![
-        Arc::new(Read(reach.clone(), limits)),
-        Arc::new(Write(reach.clone())),
-        Arc::new(Edit(reach)),
-        Arc::new(Grep(looking.clone())),
-        Arc::new(Glob(looking)),
+        Arc::new(fs::Fs::new(reach, looking, limits)),
         Arc::new(shell),
     ]
 }

@@ -51,7 +51,6 @@ impl Kernel {
                 continue;
             };
 
-            let spec = tool.spec();
             let id = PermissionId(self.0.next_permission.fetch_add(1, SeqCst));
             // what the call needs rather than what the tool might: see `Tool::needs`
             let request = PermissionRequest::new(id, call, tool.needs(call));
@@ -78,7 +77,6 @@ impl Kernel {
             prepared.push(PreparedCall {
                 call: call.clone(),
                 tool,
-                spec,
                 request,
                 grant,
             });
@@ -203,8 +201,8 @@ impl Kernel {
         // rest away, so unless the user has said otherwise the whole of it goes into the context
         // too - archived, listed, inspectable, and restorable like anything else
         let limit = prepared
-            .spec
-            .output_limit
+            .tool
+            .limit(&prepared.call)
             .or(self.0.config.default_tool_output_limit);
         let over = limit.is_some_and(|limit| output.content.byte_len() > limit);
 

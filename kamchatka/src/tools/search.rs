@@ -42,10 +42,10 @@ use crate::{
 /// stops the search and says it stopped, which is a thing the model can act on - narrow the
 /// pattern, or name a directory. The byte limit is still in force underneath, as a backstop for
 /// the pathological line rather than as the thing that shapes the answer.
-const MATCHES: usize = 100;
+pub(super) const MATCHES: usize = 100;
 
 /// How many paths one `glob` answers with.
-const PATHS: usize = 200;
+pub(super) const PATHS: usize = 200;
 
 /// How many lines either side of a match `context` will go to.
 ///
@@ -61,7 +61,7 @@ const CONTEXT: u64 = 10;
 /// note: enough for any line somebody wrote and not enough for a minified one, which is the whole
 /// job. `MATCHES * WIDTH` is deliberately under the byte limit these start with, so the two cuts
 /// do not both fire on an ordinary answer.
-const WIDTH: usize = 200;
+pub(super) const WIDTH: usize = 200;
 
 /// What both tools say about a glob.
 ///
@@ -70,7 +70,7 @@ const WIDTH: usize = 200;
 /// model to learn two different rules. The clause that earns its keep is the last one - a model
 /// that reads `*` as "not across a separator", which is what a shell taught it, writes `**/*.rs`
 /// where `*.rs` would have done and `src/*.rs` where it wanted everything under `src`.
-const GLOB_ARG: &str = "a glob over the whole path, not just the name: `**/*.rs`, `src/**/mod.rs`, \
+pub(super) const GLOB_ARG: &str = "a glob over the whole path, not just the name: `**/*.rs`, `src/**/mod.rs`, \
                         `Cargo.*`. `*` crosses `/`, so `*.rs` finds every Rust file at any depth";
 
 /// What both tools need: where they may look, what they may not open, and how much they may say.
@@ -602,7 +602,7 @@ impl Tool for Grep {
         let over = self
             .0
             .limits
-            .of("grep")
+            .of("fs:grep")
             .is_some_and(|limit| answer.len() > limit);
         let answer = match over && !files_only && !found.by_file.is_empty() {
             true => instead(&found, &pattern, &asked, answer.len()),
