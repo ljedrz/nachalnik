@@ -66,6 +66,10 @@ pub struct Settings {
     pub allow: Option<Vec<String>>,
     /// The same, refused.
     pub deny: Option<Vec<String>>,
+    /// MCP servers whose tools may run, by the name each was given.
+    pub allow_server: Option<Vec<String>>,
+    /// The same, refused.
+    pub deny_server: Option<Vec<String>>,
     /// What a question nobody is there to answer gets: `deny` or `allow`.
     pub on_ask: Option<String>,
     /// Seconds after which a headless run stops, however far it has got.

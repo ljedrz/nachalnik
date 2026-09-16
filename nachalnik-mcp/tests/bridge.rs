@@ -297,7 +297,7 @@ async fn by_default_a_tool_says_only_where_it_came_from() {
     let spec = kernel.tool("files__delete_everything").unwrap().spec();
     assert_eq!(
         spec.capabilities,
-        vec![Capability::Custom("mcp:files".to_owned())]
+        vec![Capability::parse("mcp:call").expect("a subject")]
     );
 
     // which leaves a policy one thing to decide, once, about the server as a whole
@@ -317,19 +317,19 @@ async fn trusting_the_annotations_is_something_you_have_to_say() {
 
     // now the hints are believed - which is the point, and the risk
     let claimed = kernel.tool("files__delete_everything").unwrap().spec();
-    assert!(claimed.capabilities.contains(&Capability::Read));
-    assert!(!claimed.capabilities.contains(&Capability::Write));
+    assert!(claimed.capabilities.contains(&Capability::fs("read")));
+    assert!(!claimed.capabilities.contains(&Capability::fs("write")));
 
     // a tool that said nothing about itself is not thereby harmless
     let unannotated = kernel.tool("files__counts").unwrap().spec();
-    assert!(unannotated.capabilities.contains(&Capability::Write));
-    assert!(unannotated.capabilities.contains(&Capability::Edit));
+    assert!(unannotated.capabilities.contains(&Capability::fs("write")));
+    assert!(unannotated.capabilities.contains(&Capability::fs("edit")));
 
     // and where it came from is recorded either way, because that part is a fact
     assert!(
         claimed
             .capabilities
-            .contains(&Capability::Custom("mcp:files".to_owned()))
+            .contains(&Capability::parse("mcp:call").expect("a subject"))
     );
 }
 
@@ -338,14 +338,14 @@ async fn a_fixed_set_of_capabilities_ignores_what_the_server_claims() {
     let (server, _) = bench("files").await;
     let kernel = kernel();
     server
-        .trusting(Trust::Fixed(vec![Capability::Shell]))
+        .trusting(Trust::Fixed(vec![Capability::exec("run")]))
         .install(&kernel)
         .await
         .unwrap();
 
     for id in kernel.tool_ids() {
         let spec = kernel.tool(&id).unwrap().spec();
-        assert!(spec.capabilities.contains(&Capability::Shell), "{id}");
+        assert!(spec.capabilities.contains(&Capability::exec("run")), "{id}");
     }
 }
 
@@ -511,7 +511,7 @@ async fn a_denied_call_can_still_be_allowed_by_the_person_watching() {
     for request in kernel.pending_permissions() {
         assert_eq!(
             request.capabilities,
-            vec![Capability::Custom("mcp:files".to_owned())],
+            vec![Capability::parse("mcp:call").expect("a subject")],
             "which is all the policy is told, and all it needs"
         );
         kernel.decide(request.id, Grant::Allow).unwrap();
@@ -577,7 +577,7 @@ async fn the_tools_can_be_looked_at_before_anything_is_registered() {
     assert!(
         one.spec()
             .capabilities
-            .contains(&Capability::Custom("mcp:files".into())),
+            .contains(&Capability::parse("mcp:call").expect("a subject")),
         "{:?}",
         one.spec().capabilities
     );

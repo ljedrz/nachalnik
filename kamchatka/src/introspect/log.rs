@@ -22,14 +22,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use nachalnik::{
-    BoxError, Capability, Content, ContextId, Event, Kernel, OutputSink, Record, Tool, ToolCall,
-    ToolOutput, ToolSpec, async_trait,
+    BoxError, Content, ContextId, Event, Kernel, OutputSink, Record, Tool, ToolCall, ToolOutput,
+    ToolSpec, async_trait,
 };
 use serde_json::json;
 
 use crate::{
     app::text::{thousands, trace_line},
-    tools::Limits,
+    tools::{Limits, domains},
 };
 
 use super::{Reach, if_offered};
@@ -103,7 +103,7 @@ impl Tool for Log {
                 },
             },
         }))
-        .with_capabilities([Capability::Custom("log".into())]);
+        .with_capabilities([domains::log("read")]);
 
         self.limits.apply(spec)
     }

@@ -161,6 +161,15 @@ struct Args {
     #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
     deny: Vec<String>,
 
+    /// Allow every tool an MCP server offers, by the name it was given. Its own argument because
+    /// a server name and a domain are both bare words and nothing in either says which it is.
+    #[arg(long, value_name = "NAME", value_delimiter = ',')]
+    allow_server: Vec<String>,
+
+    /// Refuse one, the same way.
+    #[arg(long, value_name = "NAME", value_delimiter = ',')]
+    deny_server: Vec<String>,
+
     /// What to do with a question nobody is there to answer, in a headless run.
     #[arg(long, value_name = "ANSWER", default_value = "deny")]
     on_ask: OnAsk,
@@ -227,6 +236,8 @@ impl Args {
             sandbox_read,
             allow,
             deny,
+            allow_server,
+            deny_server,
             deadline,
             spend,
             forget_truncated,
@@ -437,8 +448,18 @@ async fn session() -> Result<()> {
         confine: !args.no_sandbox,
         reachable: args.sandbox_allow.clone(),
         readable: args.sandbox_read.clone(),
-        allow: args.allow.iter().map(|it| Subject::parse(it)).collect(),
-        deny: args.deny.iter().map(|it| Subject::parse(it)).collect(),
+        allow: args
+            .allow
+            .iter()
+            .map(|it| Subject::parse(it))
+            .chain(args.allow_server.iter().cloned().map(Subject::Server))
+            .collect(),
+        deny: args
+            .deny
+            .iter()
+            .map(|it| Subject::parse(it))
+            .chain(args.deny_server.iter().cloned().map(Subject::Server))
+            .collect(),
         introspect: args.introspect,
         system: args.system.clone(),
         files: args.file.clone(),
@@ -466,7 +487,7 @@ async fn session() -> Result<()> {
     // the servers have to outlive this scope: dropping one takes its child process, and its
     // tools, with it
     #[cfg(feature = "mcp")]
-    let _servers = kamchatka::mcp::attach(&app.kernel, &args.mcp)
+    let _servers = kamchatka::mcp::attach(&app.kernel, &app.policy, &args.mcp)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 

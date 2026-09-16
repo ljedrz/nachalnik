@@ -21,7 +21,7 @@ use serde_json::json;
 
 use crate::{
     app::{Going, text::thousands},
-    tools::Limits,
+    tools::{Limits, domains},
 };
 
 use super::{Pinned, Reach, action, ids, protected, unknown};
@@ -124,9 +124,30 @@ impl Tool for Context {
             },
             "required": ["action"],
         }))
-        .with_capabilities([Capability::Custom("context".into())]);
+        .with_capabilities(
+            ["look", "budget", "request", "search"]
+                .map(domains::context)
+                .into_iter()
+                .chain(["draft", "ask"].map(domains::fork)),
+        );
 
         self.limits.apply(spec)
+    }
+
+    /// note: `draft` and `fork` are not operations on this context - they stand up a copy and
+    /// pay a provider for an answer - so they are judged in a domain of their own. Letting
+    /// something read its own items is not letting it buy another request.
+    fn needs(&self, call: &ToolCall) -> Vec<Capability> {
+        match action(&call.args) {
+            Ok(action @ ("draft" | "fork")) => vec![domains::fork(match action {
+                "draft" => "draft",
+                _ => "ask",
+            })],
+            Ok(action) => vec![domains::context(action)],
+            // an action this tool does not have is refused by `invoke` with a list of the ones it
+            // does; what it must not be is a call that needed nothing and was therefore allowed
+            Err(_) => self.spec().capabilities,
+        }
     }
 
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {

@@ -8,16 +8,27 @@
 use nachalnik::Kernel;
 use nachalnik_mcp::Server;
 
+use crate::tools::Careful;
+
 /// Starts the servers that were asked for, and puts their tools in the same list as the rest.
 ///
 /// note: the name matters more than it looks. It prefixes every tool the server offers and it is
-/// what "always, for `mcp:<name>`" grants permission to - so `files=npx -y ...` is one server and
+/// what `--allow-server <name>` grants permission to - so `files=npx -y ...` is one server and
 /// not the next one. Taken from the program instead it would be `npx` or `python3` for most of
 /// the servers people actually run, which is why `name=command` is accepted and worth giving.
 ///
+/// note: the policy is told which tools came from which server, rather than working it out from
+/// their names. A prefix is optional and is dropped when a name would not otherwise fit, so the
+/// only thing that reliably knows where a tool came from is whatever installed it - which is
+/// here.
+///
 /// note: the servers have to outlive the session. Dropping one takes its child process, and its
 /// tools, with it.
-pub async fn attach(kernel: &Kernel, specs: &[String]) -> Result<Vec<Server>, String> {
+pub async fn attach(
+    kernel: &Kernel,
+    policy: &Careful,
+    specs: &[String],
+) -> Result<Vec<Server>, String> {
     let mut servers = Vec::new();
 
     for spec in specs {
@@ -50,10 +61,13 @@ pub async fn attach(kernel: &Kernel, specs: &[String]) -> Result<Vec<Server>, St
         let server = Server::spawn(name, command)
             .await
             .map_err(|e| format!("`{line}` did not answer the handshake: {e}"))?;
-        server
+        let installed = server
             .install(kernel)
             .await
             .map_err(|e| format!("`{line}` would not list its tools: {e}"))?;
+        for tool in &installed.added {
+            policy.came_from(tool, server.name());
+        }
         servers.push(server);
     }
 

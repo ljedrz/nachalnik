@@ -92,9 +92,9 @@ impl Sandbox {
             // a refusal of `write` reaches the shell too; anything short of a refusal leaves the
             // working directory writable, because a shell that cannot write in it is not one
             // anybody can work with
-            writable: policy.stance(&Subject::Capability(Capability::Write)) != Verdict::Deny,
+            writable: policy.stance(&Subject::Capability(Capability::fs("write"))) != Verdict::Deny,
             network: granted
-                || policy.stance(&Subject::Capability(Capability::Network)) == Verdict::Allow,
+                || policy.stance(&Subject::Capability(Capability::net("reach"))) == Verdict::Allow,
         }
     }
 

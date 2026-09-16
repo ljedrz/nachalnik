@@ -58,7 +58,7 @@ impl Tool for Read {
                 },
                 "required": ["path"],
             }))
-            .with_capabilities([Capability::Read]),
+            .with_capabilities([Capability::fs("read")]),
         )
     }
 
@@ -97,7 +97,7 @@ impl Tool for Write {
             },
             "required": ["path", "content"],
         }))
-        .with_capabilities([Capability::Write])
+        .with_capabilities([Capability::fs("write")])
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
@@ -144,7 +144,7 @@ impl Tool for Edit {
             },
             "required": ["path", "old", "new"],
         }))
-        .with_capabilities([Capability::Edit])
+        .with_capabilities([Capability::fs("edit")])
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {

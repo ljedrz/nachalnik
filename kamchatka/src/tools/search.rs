@@ -11,7 +11,7 @@
 //! note: the point of the pair is which capability they ride. Finding a symbol used to mean
 //! `shell`, which subsumes every other capability - so a session that only wanted to be asked
 //! about the repository had to hand over the one permission that answers for everything. These
-//! declare [`Capability::Read`], and the path rules that bind `read` bind them too: see
+//! declare [`Capability::fs("read")`], and the path rules that bind `read` bind them too: see
 //! [`Looking::barred`], which is the part that had to be built rather than linked.
 
 use std::{
@@ -399,7 +399,7 @@ impl Tool for Grep {
                 },
                 "required": ["pattern"],
             }))
-            .with_capabilities([Capability::Read]),
+            .with_capabilities([Capability::fs("read")]),
         )
     }
 
@@ -746,7 +746,7 @@ impl Tool for Glob {
                 },
                 "required": ["pattern"],
             }))
-            .with_capabilities([Capability::Read]),
+            .with_capabilities([Capability::fs("read")]),
         )
     }
 

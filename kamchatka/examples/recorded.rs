@@ -107,12 +107,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // this bounds what the time can be spent on, which is the other half
         spend: Some(200_000),
         allow: [
-            Capability::Read,
-            Capability::Shell,
-            Capability::Custom("context".into()),
-            Capability::Custom("log".into()),
-            Capability::Custom("setup".into()),
-            Capability::Custom("amend".into()),
+            Capability::fs("read"),
+            Capability::exec("run"),
+            kamchatka::tools::domains::context("look"),
+            kamchatka::tools::domains::log("read"),
+            kamchatka::tools::domains::setup("permissions"),
+            kamchatka::tools::domains::context("elide"),
         ]
         .into_iter()
         .map(Subject::Capability)
@@ -120,7 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // refused outright rather than left to be asked about, and it reaches the shell:
         // `Sandbox::of` leaves the working directory writable for anything short of a refusal, and
         // a recorded demo is no reason to let a model edit the repository it is reading
-        deny: [Capability::Write, Capability::Edit]
+        deny: [Capability::fs("write"), Capability::fs("edit")]
             .into_iter()
             .map(Subject::Capability)
             .collect(),

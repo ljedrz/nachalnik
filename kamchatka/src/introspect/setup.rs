@@ -28,7 +28,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     app::text::{short, thousands},
-    tools::{Careful, Limits, Subject, acts_on},
+    tools::{Careful, Limits, Subject, domains},
 };
 
 use super::{Reach, action, if_offered, unknown};
@@ -78,9 +78,16 @@ impl Tool for Setup {
             },
             "required": ["action"],
         }))
-        .with_capabilities([Capability::Custom("setup".into())]);
+        .with_capabilities(["model", "tools", "permissions", "policy"].map(domains::setup));
 
         self.limits.apply(spec)
+    }
+
+    fn needs(&self, call: &ToolCall) -> Vec<Capability> {
+        match action(&call.args) {
+            Ok(action) => vec![domains::setup(action)],
+            Err(_) => self.spec().capabilities,
+        }
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
@@ -234,22 +241,27 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
             binds.entry(capability).or_default().push(spec.id.clone());
         }
     }
-    // note: an action rule is a stance too, and it is deliberately not a row in this table. It
-    // is not declared by anything - `amend` declares `amend`, not `amend:exclude` - so it would
-    // read `nothing you have declares it` beside a verdict that is about a tool sitting two rows
-    // above it. It gets a section of its own below, the way a path rule does.
-    let registered: Vec<String> = kernel
-        .tool_specs()
-        .iter()
-        .map(|spec| spec.id.clone())
-        .collect();
+    // note: a rule about a whole domain is a stance too, and it is deliberately not a row in
+    // this table of operations: it is not declared by anything - a tool declares `context:revise`,
+    // never `context` - so it would read `nothing you have declares it` beside a verdict that
+    // governs three rows above it. It gets a section of its own below, the way a path rule does.
     let mut actions: Vec<(String, String, Verdict)> = Vec::new();
-    for (capability, verdict) in policy.stances() {
-        match acts_on(&capability, &registered) {
-            Some(tool) => actions.push((capability.to_string(), tool, verdict)),
-            None => {
+    for (subject, verdict) in policy.stances() {
+        match subject {
+            Subject::Capability(capability) => {
                 binds.entry(capability).or_default();
             }
+            Subject::Domain(domain) => {
+                actions.push((
+                    domain.to_string(),
+                    "every operation in it".to_owned(),
+                    verdict,
+                ));
+            }
+            Subject::Server(name) => {
+                actions.push((format!("server {name}"), "its tools".to_owned(), verdict));
+            }
+            Subject::Path(_) => {}
         }
     }
 

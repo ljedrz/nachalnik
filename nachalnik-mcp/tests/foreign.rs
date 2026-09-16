@@ -115,12 +115,12 @@ async fn annotations_from_a_foreign_server_are_read_the_same_way() {
 
     // `add` says it is read-only, and `shout` says nothing
     let read_only = kernel.tool("py__add").unwrap().spec();
-    assert!(read_only.capabilities.contains(&Capability::Read));
+    assert!(read_only.capabilities.contains(&Capability::fs("read")));
 
     let silent = kernel.tool("py__shout").unwrap().spec();
-    assert!(silent.capabilities.contains(&Capability::Write));
+    assert!(silent.capabilities.contains(&Capability::fs("write")));
     assert!(
-        !silent.capabilities.contains(&Capability::Read),
+        !silent.capabilities.contains(&Capability::fs("read")),
         "an absent hint is not a claim of harmlessness"
     );
 }

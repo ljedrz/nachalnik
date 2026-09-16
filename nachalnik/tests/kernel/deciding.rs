@@ -45,7 +45,7 @@ async fn a_policy_that_knows_why_it_refused_can_tell_the_model() {
     ]);
     kernel.set_policy(Arc::new(Fussy));
     kernel.add_tool(Arc::new(
-        ConstTool::new("shell", "it ran!").with_capabilities([Capability::Shell]),
+        ConstTool::new("shell", "it ran!").with_capabilities([Capability::exec("run")]),
     ));
     kernel.push(ContextItem::user("do it"));
     kernel.turn().await.unwrap();
@@ -71,7 +71,7 @@ async fn a_call_refused_by_whoever_was_asked_says_it_was_about_this_call() {
     ]);
     kernel.set_policy(Arc::new(Fussy2));
     kernel.add_tool(Arc::new(
-        ConstTool::new("shell", "it ran!").with_capabilities([Capability::Shell]),
+        ConstTool::new("shell", "it ran!").with_capabilities([Capability::exec("run")]),
     ));
     kernel.push(ContextItem::user("do it"));
 
@@ -115,7 +115,7 @@ async fn a_refused_call_does_not_run_but_the_model_is_told() {
     ]);
     kernel.set_policy(Arc::new(DenyAll));
     kernel.add_tool(Arc::new(
-        ConstTool::new("shell", "it ran!").with_capabilities([Capability::Shell]),
+        ConstTool::new("shell", "it ran!").with_capabilities([Capability::exec("run")]),
     ));
     kernel.push(ContextItem::user("do it"));
 
@@ -164,13 +164,13 @@ async fn a_partly_permitted_batch_waits_for_the_whole_answer() {
         ModelResponse::text("ok"),
     ]);
     kernel.set_policy(Arc::new(
-        Table::new(Verdict::Ask).rule(Capability::Read, Verdict::Allow),
+        Table::new(Verdict::Ask).rule(Capability::fs("read"), Verdict::Allow),
     ));
     kernel.add_tool(Arc::new(
-        ConstTool::new("read", "fn main() {}").with_capabilities([Capability::Read]),
+        ConstTool::new("read", "fn main() {}").with_capabilities([Capability::fs("read")]),
     ));
     kernel.add_tool(Arc::new(
-        ConstTool::new("shell", "it ran!").with_capabilities([Capability::Shell]),
+        ConstTool::new("shell", "it ran!").with_capabilities([Capability::exec("run")]),
     ));
     kernel.push(ContextItem::user("look around"));
 
@@ -234,7 +234,7 @@ async fn a_reason_can_be_made_of_the_arguments_rather_than_remembered() {
     ]);
     kernel.set_policy(Arc::new(ByPath));
     kernel.add_tool(Arc::new(
-        ConstTool::new("read", "fn main() {}").with_capabilities([Capability::Read]),
+        ConstTool::new("read", "fn main() {}").with_capabilities([Capability::fs("read")]),
     ));
     kernel.push(ContextItem::user("read both of them"));
     kernel.turn().await.unwrap();

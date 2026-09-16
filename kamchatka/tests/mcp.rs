@@ -49,7 +49,7 @@ fn spec() -> Option<String> {
     }
 
     // the name is given rather than derived: taken from the program it would be `python3`, and
-    // `mcp:python3` is not what anybody would write on a command line
+    // `python3` is not what anybody would write on a command line
     Some(format!("py=python3 {script}"))
 }
 
@@ -83,7 +83,10 @@ async fn session(
     let wired = Setup {
         builtin_tools: false,
         compact: None,
-        allow: allow.iter().map(|it| Subject::parse(it)).collect(),
+        allow: allow
+            .iter()
+            .map(|it| Subject::Server((*it).to_owned()))
+            .collect(),
         ..Default::default()
     }
     .wire(Arc::new(OpenAiCompatible::new(
@@ -97,7 +100,7 @@ async fn session(
         .kernel
         .set_provider(Arc::new(ScriptedProvider::new(script)));
 
-    let servers = kamchatka::mcp::attach(&wired.app.kernel, &[spec])
+    let servers = kamchatka::mcp::attach(&wired.app.kernel, &wired.app.policy, &[spec])
         .await
         .expect("the server did not start");
 
@@ -143,7 +146,7 @@ async fn an_answer_given_in_advance_covers_a_tool_that_did_not_exist_yet() {
         ModelResponse::tool_calls(vec![call("c1", "py__add", json!({ "a": 2, "b": 40 }))]),
         ModelResponse::text("forty-two"),
     ];
-    let (wired, _servers) = session(spec, &["mcp:py"], script).await;
+    let (wired, _servers) = session(spec, &["py"], script).await;
     let run = driven(wired, "add two and forty\n").await;
 
     assert!(run.names.contains(&"tool.finished".to_owned()));
@@ -156,7 +159,7 @@ async fn an_answer_given_in_advance_covers_a_tool_that_did_not_exist_yet() {
         .iter()
         .any(|item| item.content.to_text() == "42");
     assert!(answered, "the tool's output is not in the context");
-    // and it was never a question: the verdict was recorded against `mcp:py` while the session was
+    // and it was never a question: the verdict was recorded against the `py` server while the session was
     // being wired, and the tool that carries that capability arrived afterwards
     assert!(
         !run.prose.contains("nobody is here to be asked"),
@@ -169,7 +172,7 @@ async fn an_answer_given_in_advance_covers_a_tool_that_did_not_exist_yet() {
 ///
 /// note: this is what gives the test above its teeth. A run in which the tool is allowed and a run
 /// in which nothing ever asks look the same from the outside, and the difference is whether
-/// `mcp:py` is a subject at all - so the counterfactual is the assertion. It is also the
+/// the `py` server is a subject at all - so the counterfactual is the assertion. It is also the
 /// behaviour: a server named on a command line is not thereby trusted to run.
 #[tokio::test]
 async fn a_servers_tool_is_refused_when_nobody_has_answered_for_it() {
@@ -208,7 +211,7 @@ async fn a_dropped_server_fails_its_calls_instead_of_hanging() {
         ModelResponse::tool_calls(vec![call("c1", "py__add", json!({ "a": 2, "b": 40 }))]),
         ModelResponse::text("it did not answer"),
     ];
-    let (wired, servers) = session(spec, &["mcp:py"], script).await;
+    let (wired, servers) = session(spec, &["py"], script).await;
     assert!(wired.app.kernel.tool("py__add").is_some());
     drop(servers);
 

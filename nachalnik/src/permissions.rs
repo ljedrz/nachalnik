@@ -15,59 +15,153 @@ use crate::model::{ToolCall, ToolCallId};
 #[cfg(doc)]
 use crate::{Config, Kernel, Tool};
 
-/// A class of side effect a [`Tool`] declares it needs.
+/// The family of side effect an operation belongs to: what a rule is written about.
 ///
-/// note: These are labels the kernel compares and reports; it cannot verify them. A tool that
-/// declares `Read` and then opens a socket is lying, and the only defense is that the user
+/// note: three the runtime can name and everything else by its own name, which is exactly the
+/// split there was before. `nachalnik` ships no tools, so it can vouch for the domains any agent
+/// has - a filesystem, a process, a socket - and cannot know that a client calls one of its own
+/// `context`. Those arrive as [`Domain::Other`], and the client that invented them is the one
+/// with names for them.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum Domain {
+    /// Files: reading them, listing them, searching them, writing them, changing them.
+    Fs,
+    /// Running a process.
+    Exec,
+    /// Talking to the network.
+    Net,
+    /// Anything else, named by whoever brought it.
+    Other(String),
+}
+
+impl fmt::Display for Domain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Fs => f.write_str("fs"),
+            Self::Exec => f.write_str("exec"),
+            Self::Net => f.write_str("net"),
+            Self::Other(name) => f.write_str(name),
+        }
+    }
+}
+
+impl From<&str> for Domain {
+    fn from(name: &str) -> Self {
+        match name {
+            "fs" => Self::Fs,
+            "exec" => Self::Exec,
+            "net" => Self::Net,
+            other => Self::Other(other.to_owned()),
+        }
+    }
+}
+
+/// What a [`Tool`] does, as one operation in one domain: `fs:read`, `context:revise`.
+///
+/// note: two levels and no more, because the whole of what a permission rule has to be is
+/// obvious. A domain is a thing that can be acted on and an operation is an act on it, so a rule
+/// is either about the thing (`fs`) or about one act (`fs:read`) and there is no third question
+/// to ask. It was a flat list of tool-shaped names before - `read` the capability, declared by
+/// `read` the tool - which read as a tautology on the screen and left the granularity a tool
+/// happened to offer as the granularity a rule could have.
+///
+/// note: these are labels the kernel compares and reports; it cannot verify them. A tool that
+/// declares `fs:read` and then opens a socket is lying, and the only defense is that the user
 /// chose to register it.
 ///
-/// note: [`Capability::Shell`] subsumes every other one, and it is worth saying so out loud
-/// because a list of capabilities invites being read as a list of boundaries. A command can read,
-/// write, and reach the network; a policy that allows `Shell` has allowed all of it, whatever it
-/// answers about the rest. That is not a flaw in the labels - it is what a shell *is* - but a
-/// client that showed `shell: allow` beside `network: deny` without saying so would be reporting
-/// a restriction that does not exist. What closes the gap is the arguments: a
-/// [`PermissionPolicy`] is handed the call the model actually made
-/// ([`PermissionRequest::args`]), so it can judge `curl https://…` against whatever it thinks of
-/// the network. See `kamchatka`'s `Careful` for one that does, and for an honest account of what
-/// a heuristic over a command line is and is not worth.
+/// note: `exec:run` subsumes every other one, and it is worth saying so out loud because a list
+/// of capabilities invites being read as a list of boundaries. A command can read, write, and
+/// reach the network; a policy that allows `exec` has allowed all of it, whatever it answers
+/// about the rest. That is not a flaw in the labels - it is what a shell *is* - but a client that
+/// showed `exec: allow` beside `net: deny` without saying so would be reporting a restriction
+/// that does not exist. What closes the gap is the arguments: a [`PermissionPolicy`] is handed
+/// the call the model actually made ([`PermissionRequest::args`]), so it can judge `curl https://…`
+/// against whatever it thinks of the network. See `kamchatka`'s `Careful` for one that does, and
+/// for an honest account of what a heuristic over a command line is and is not worth.
+///
+/// note: `net` attracts the question of whether it earns its place, since a session that also has
+/// a shell can reach the network through it whatever this says. The answer is that the objection
+/// is not about that domain: `fs:read` is exactly as unverifiable, and every one of these is a
+/// label rather than a boundary. Where there is no shell - an agent whose tools all come from MCP
+/// servers, an editor integration that reads, writes and fetches - refusing it refuses the whole
+/// of what the registered tools can do, which is a complete answer rather than a partial one.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(into = "String", try_from = "String")]
 #[non_exhaustive]
-pub enum Capability {
-    /// Reading data that is not already in the context.
-    Read,
-    /// Creating or replacing data.
-    Write,
-    /// Modifying existing data in place.
-    Edit,
-    /// Executing commands.
-    Shell,
-    /// Talking to the network.
+pub struct Capability {
+    /// The thing being acted on.
+    pub domain: Domain,
+    /// The act, in that domain's own vocabulary.
+    pub op: String,
+}
+
+impl Capability {
+    /// One, from a domain and an operation in it.
+    pub fn of(domain: Domain, op: impl Into<String>) -> Self {
+        Self {
+            domain,
+            op: op.into(),
+        }
+    }
+
+    /// One in [`Domain::Fs`]: `read`, `glob`, `grep`, `write`, `edit`.
     ///
-    /// note: this one attracts the question of whether it earns its place, since a session that
-    /// also has a shell can reach the network through it whatever this says. The answer is that
-    /// the objection is not about this variant: [`Capability::Read`] is exactly as unverifiable,
-    /// and every one of these is a label rather than a boundary. Where there is no shell - an
-    /// agent whose tools all come from MCP servers, an editor integration with `read`, `write`
-    /// and `fetch` - refusing this refuses the whole of what the registered tools can do, which
-    /// is a complete answer rather than a partial one. It is kept for that case, and the case
-    /// where it is not complete is [`Capability::Shell`]'s note, above.
-    Network,
-    /// Anything else, named by the tool.
-    Custom(String),
+    /// note: three of these for the three domains this crate can name, because they are what
+    /// every agent has and writing `Capability::of(Domain::Fs, "read")` at each of them buys
+    /// nothing. The operation is still a string, which is the point: what the acts on a
+    /// filesystem *are* is the client's vocabulary, not this crate's.
+    pub fn fs(op: impl Into<String>) -> Self {
+        Self::of(Domain::Fs, op)
+    }
+
+    /// One in [`Domain::Exec`], which in practice is `run`.
+    pub fn exec(op: impl Into<String>) -> Self {
+        Self::of(Domain::Exec, op)
+    }
+
+    /// One in [`Domain::Net`], which in practice is `reach`.
+    pub fn net(op: impl Into<String>) -> Self {
+        Self::of(Domain::Net, op)
+    }
+
+    /// Reads one back from `domain:op`, or says what is wrong with the text.
+    ///
+    /// note: the inverse of [`fmt::Display`], which is what makes a rule spelled on a command
+    /// line or read off a screen the same rule. Exactly one colon, and neither half empty: the
+    /// two ways to write a subject that names no operation are `fs` (a domain, and a different
+    /// kind of rule) and `fs:`, which is a typo.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let Some((domain, op)) = text.split_once(':') else {
+            return Err(format!(
+                "`{text}` names no operation; it should be `domain:op`"
+            ));
+        };
+        if domain.is_empty() || op.is_empty() || op.contains(':') {
+            return Err(format!("`{text}` is not `domain:op`"));
+        }
+
+        Ok(Self::of(Domain::from(domain), op))
+    }
 }
 
 impl fmt::Display for Capability {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Read => f.write_str("read"),
-            Self::Write => f.write_str("write"),
-            Self::Edit => f.write_str("edit"),
-            Self::Shell => f.write_str("shell"),
-            Self::Network => f.write_str("network"),
-            Self::Custom(name) => f.write_str(name),
-        }
+        write!(f, "{}:{}", self.domain, self.op)
+    }
+}
+
+impl From<Capability> for String {
+    fn from(capability: Capability) -> Self {
+        capability.to_string()
+    }
+}
+
+impl TryFrom<String> for Capability {
+    type Error = String;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        Self::parse(&text)
     }
 }
 

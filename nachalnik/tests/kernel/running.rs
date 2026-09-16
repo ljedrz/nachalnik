@@ -27,7 +27,7 @@ async fn tool_calls_are_executed_and_handed_back_to_the_model() {
         ModelResponse::tool_calls(vec![call("c1", "echo", json!({ "value": "x" }))]),
         ModelResponse::text("done"),
     ]);
-    kernel.add_tool(Arc::new(EchoTool::new("echo", [Capability::Read])));
+    kernel.add_tool(Arc::new(EchoTool::new("echo", [Capability::fs("read")])));
     kernel.push(ContextItem::user("echo x"));
 
     assert!(matches!(
@@ -38,7 +38,10 @@ async fn tool_calls_are_executed_and_handed_back_to_the_model() {
     let requests = provider.requests();
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[0].tools.len(), 1, "the tool was offered");
-    assert_eq!(requests[0].tools[0].capabilities, vec![Capability::Read]);
+    assert_eq!(
+        requests[0].tools[0].capabilities,
+        vec![Capability::fs("read")]
+    );
 
     let second = &requests[1];
     assert_eq!(second.messages.len(), 3);

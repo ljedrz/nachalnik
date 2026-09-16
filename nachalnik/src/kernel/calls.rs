@@ -53,7 +53,8 @@ impl Kernel {
 
             let spec = tool.spec();
             let id = PermissionId(self.0.next_permission.fetch_add(1, SeqCst));
-            let request = PermissionRequest::new(id, call, spec.capabilities.clone());
+            // what the call needs rather than what the tool might: see `Tool::needs`
+            let request = PermissionRequest::new(id, call, tool.needs(call));
 
             let grant = match self.policy().evaluate(&request).await {
                 Verdict::Allow => Some((Grant::Allow, GrantSource::Policy)),

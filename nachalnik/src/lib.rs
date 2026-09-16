@@ -58,7 +58,7 @@
 //!
 //! - A [`Capability`] is a tool's own declaration, not a verified property; the kernel has nothing
 //!   to check it against.
-//! - [`Capability::Shell`] subsumes every other one, so a policy that allows it has allowed all of
+//! - `exec:run` subsumes every other one, so a policy that allows it has allowed all of
 //!   them whatever it answers about the rest.
 //! - A policy that reads a command's text is a heuristic: it can make a refusal real for what was
 //!   written, not for a program that reaches the network some other way. Confinement that *can*
@@ -249,7 +249,7 @@ pub use crate::{
         Part, Provider, Role, StopReason, TooLong, ToolCall, ToolCallId, Usage,
     },
     permissions::{
-        AskAlways, Capability, Grant, GrantSource, PermissionId, PermissionPolicy,
+        AskAlways, Capability, Domain, Grant, GrantSource, PermissionId, PermissionPolicy,
         PermissionRequest, Verdict,
     },
     projection::{LinearProjector, Projection, Projector, Skipped},

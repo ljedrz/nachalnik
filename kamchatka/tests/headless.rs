@@ -294,7 +294,7 @@ async fn an_unanswerable_question_is_denied_by_default() {
     ];
     let run = run("look around\n", script, |app| {
         app.kernel.add_tool(Arc::new(
-            ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
         ));
     })
     .await;
@@ -325,7 +325,7 @@ async fn the_other_answer_lets_it_run() {
     ];
     let run = run_with("look around\n", script, Grant::Allow, |app| {
         app.kernel.add_tool(Arc::new(
-            ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
         ));
     })
     .await;
@@ -353,10 +353,10 @@ async fn a_pre_answered_capability_is_not_a_question() {
     ];
     let run = run("look around\n", script, |app| {
         app.kernel.add_tool(Arc::new(
-            ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
         ));
         app.policy
-            .set(&Subject::Capability(Capability::Read), Verdict::Allow);
+            .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     })
     .await;
 
@@ -382,7 +382,7 @@ async fn the_end_of_the_input_waits_for_the_turn() {
     ];
     let run = run_with("go\n", script, Grant::Allow, |app| {
         app.kernel.add_tool(Arc::new(
-            ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
         ));
     })
     .await;
@@ -440,7 +440,7 @@ async fn a_question_left_by_a_step_does_not_hang_the_session() {
         std::time::Duration::from_secs(5),
         run("/step look around\n", script, |app| {
             app.kernel.add_tool(Arc::new(
-                ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
+                ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
             ));
         }),
     )
@@ -619,7 +619,7 @@ async fn a_ceiling_interrupts_the_turn_it_is_crossed_in() {
     ];
     let run = run_capped("go\n", script, 1000, |app| {
         app.kernel.add_tool(Arc::new(
-            ConstTool::new("peek", "the answer").with_capabilities([Capability::Read]),
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
         ));
     })
     .await;
@@ -1280,7 +1280,7 @@ async fn a_second_press_leaves_a_tool_that_will_not_stop() {
     );
     let mut child = std::process::Command::new(program())
         .args(["--headless", "--no-record", "-m", "nothing"])
-        .args(["--mcp", &server, "--allow", "mcp:py", "go"])
+        .args(["--mcp", &server, "--allow-server", "py", "go"])
         .env("KAMCHATKA_BASE_URL", &base)
         .env("KAMCHATKA_API_KEY", "not-a-key")
         .stdin(std::process::Stdio::piped())

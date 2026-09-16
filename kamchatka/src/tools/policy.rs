@@ -13,62 +13,67 @@ use std::{
 };
 
 use nachalnik::{
-    Capability, PermissionPolicy, PermissionRequest, ToolCallId, Verdict, async_trait,
+    Capability, Domain, PermissionPolicy, PermissionRequest, ToolCallId, Verdict, async_trait,
 };
 use parking_lot::Mutex;
 
 /// Something [`Careful`] holds an opinion about.
 ///
-/// note: two kinds, because a capability is not fine enough on its own. `read: allow` is a
-/// reasonable thing to want and `read .env: allow` is not, and the difference is a property of the
-/// *file* rather than of the tool that opened it - which is why a path rule is one subject rather
-/// than three, and binds `read`, `write` and `edit` alike.
+/// note: four kinds, and they are four different questions about one call. *What* is being done
+/// is the operation (`fs:read`) and the domain it is in (`fs`); *to what* is the path; *whose
+/// tool* is the server. Only the first two are a hierarchy, and the resolution rule in
+/// [`Careful::stance`] is about those two alone - a path and a server are facts the arguments and
+/// the registry carry, and they fold in with the strictest-wins rule like anything else.
 ///
-/// note: two *kinds*, and three kinds of rule. An action rule - `amend:note` without the rest of
-/// `amend` - is spelled as a `Capability::Custom` of the form
-/// `<tool>:<action>` rather than as a variant of its own, because a custom capability is spelled
-/// the same way (`mcp:<server>`) and nothing in the text would say which a variant was meant to
-/// be. [`acts_on`] answers that against the registry instead. See [`Careful::judges`].
+/// note: a capability is not fine enough on its own. `fs:read: allow` is a reasonable thing to
+/// want and `fs:read .env: allow` is not, and the difference is a property of the *file* rather
+/// than of the tool that opened it - which is why a path rule is one subject rather than one per
+/// tool, and binds every tool that is handed a path.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Subject {
-    /// A class of side effect a tool declares.
+    /// One operation in one domain: `fs:read`.
     Capability(Capability),
+    /// A whole domain, which is every operation in it: `fs`.
+    Domain(Domain),
     /// A pattern the path a tool was handed is matched against.
     Path(String),
+    /// The MCP server a tool came from, which is where it came from rather than what it does.
+    Server(String),
 }
 
 impl fmt::Display for Subject {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Capability(capability) => write!(f, "{capability}"),
+            Self::Domain(domain) => write!(f, "{domain}"),
             Self::Path(pattern) => write!(f, "{pattern}"),
+            Self::Server(name) => write!(f, "server {name}"),
         }
     }
 }
 
 impl Subject {
-    /// Reads one back: `read`, `mcp:files`, `.env*`, `secrets/`.
+    /// Reads one back: `fs`, `fs:read`, `.env*`, `secrets/`.
     ///
-    /// note: the exact rule is that anything holding a `/`, a `*` or a leading `.` is a path
-    /// pattern and everything else is a capability. It has to be a rule rather than a guess
-    /// because both kinds are spelled as bare words - a tool declares `Capability::Custom("mcp:
-    /// files")` and a rule matches `.env*`, and there is nothing in either string that says which
-    /// it is. The five the runtime names are matched first, so `read` cannot become a custom
-    /// capability by a typo somewhere else.
+    /// note: anything holding a `/`, a `*` or a leading `.` is a path pattern; anything holding a
+    /// `:` is one operation; anything else is a whole domain. It has to be a rule rather than a
+    /// guess because all three are spelled as bare text, and this one is readable in a sentence:
+    /// a colon means an operation, and the characters a path has and a name does not mean a path.
     ///
-    /// note: it is the inverse of [`fmt::Display`] above for everything it can produce, which is
+    /// note: a server is not in here, and cannot be: `files` is a server name and `fs` is a
+    /// domain, and nothing in either string says which. It is named on its own argument instead -
+    /// see `--allow-server` - which is the honest answer to a spelling that cannot be told apart.
+    ///
+    /// note: it is the inverse of [`fmt::Display`] above for the three it can produce, which is
     /// what makes `--deny "$(read a row off the permissions tab)"` mean what it says.
     pub fn parse(text: &str) -> Self {
-        match text {
-            "read" => Self::Capability(Capability::Read),
-            "write" => Self::Capability(Capability::Write),
-            "edit" => Self::Capability(Capability::Edit),
-            "shell" => Self::Capability(Capability::Shell),
-            "network" => Self::Capability(Capability::Network),
-            _ if text.contains('/') || text.contains('*') || text.starts_with('.') => {
-                Self::Path(text.to_owned())
-            }
-            _ => Self::Capability(Capability::Custom(text.to_owned())),
+        if text.contains('/') || text.contains('*') || text.starts_with('.') {
+            return Self::Path(text.to_owned());
+        }
+
+        match Capability::parse(text) {
+            Ok(capability) => Self::Capability(capability),
+            Err(_) => Self::Domain(Domain::from(text)),
         }
     }
 }
@@ -93,26 +98,6 @@ const SUSPECT: &[&str] = &[
     ".aws/",
     ".gnupg/",
 ];
-
-/// The tool an action rule binds, if this capability is one and that tool is registered.
-///
-/// note: an action rule is spelled `<tool>:<action>`, which is also how a custom capability is
-/// spelled - an MCP server's tools all carry `mcp:<server>`. Nothing in the string says which of
-/// the two it is, so the question is answered against the registry rather than off the shape:
-/// `amend:exclude` is an action rule because `amend` is a tool here, and `mcp:files` is a plain
-/// capability because nothing is called `mcp`. The alternative was a third [`Subject`], which
-/// would have needed [`Subject::parse`] to tell them apart from the text alone - and it cannot.
-pub fn acts_on(capability: &Capability, registered: &[String]) -> Option<String> {
-    let Capability::Custom(name) = capability else {
-        return None;
-    };
-    let (tool, _) = name.split_once(':')?;
-
-    registered
-        .iter()
-        .any(|id| id == tool)
-        .then(|| tool.to_owned())
-}
 
 /// Whether a path is one this pattern is about.
 ///
@@ -227,7 +212,13 @@ fn glob(pattern: &str, name: &str) -> bool {
 /// kernel, and what the kernel can express is a directory - see [`crate::sandbox`]. So `cat .env`
 /// works where `read .env` asks, and that is the honest shape of it rather than an oversight.
 pub struct Careful {
-    stances: Mutex<BTreeMap<Capability, Verdict>>,
+    stances: Mutex<BTreeMap<Subject, Verdict>>,
+    /// Which MCP server each tool came from, for the tools that came from one.
+    ///
+    /// note: held here rather than read off a tool's name, because a name is the server's to
+    /// choose and a prefix is optional and can be dropped when it will not fit. This program
+    /// spawned the server, so it is the thing that knows; `Careful::came_from` is how it says so.
+    servers: Mutex<BTreeMap<String, String>>,
     /// What it answers about paths matching a pattern, in the order they are consulted.
     ///
     /// note: ordered rather than a map, because these are read out on a screen and somebody
@@ -283,6 +274,7 @@ impl Careful {
             // words which four. A capability is the whole of a tool; somebody who wants less than
             // that writes the action they want.
             stances: Mutex::new(BTreeMap::new()),
+            servers: Mutex::new(BTreeMap::new()),
             paths: Mutex::new(
                 SUSPECT
                     .iter()
@@ -311,10 +303,10 @@ impl Careful {
             .map(Subject::Capability)
             .collect();
 
-        if request.capabilities.contains(&Capability::Shell)
+        if request.capabilities.contains(&Capability::exec("run"))
             && command(&request.args).is_some_and(reaches_the_network)
         {
-            judged.push(Subject::Capability(Capability::Network));
+            judged.push(Subject::Capability(Capability::net("reach")));
         }
         // note: the path a *tool* was handed, which is not the same as a path named inside a shell
         // command; see the note on `Careful` for why the second is not attempted
@@ -328,28 +320,22 @@ impl Careful {
             );
         }
 
-        // note: the action the call names, which is the third thing only the arguments can say.
-        // A rule about one action answers for its tool: `--allow amend:note` allows a note and
-        // says nothing about the rest, and it has to stand in for `amend` to say even that, since
-        // an unanswered capability is a question and the strictest of the two would be the
-        // question. What it cannot do is overrule an answer - a tool somebody refused stays
-        // refused however finely an action of it is named.
-        if let Some(action) = request
-            .args
-            .get("action")
-            .and_then(|action| action.as_str())
-        {
-            let finer = Capability::Custom(format!("{}:{action}", request.tool));
-            let tool = Capability::Custom(request.tool.clone());
-            let stances = self.stances.lock();
-            if stances.get(&finer) == Some(&Verdict::Allow) && !stances.contains_key(&tool) {
-                let tool = Subject::Capability(tool);
-                judged.retain(|subject| *subject != tool);
-            }
-            if stances.contains_key(&finer) {
-                drop(stances);
-                judged.push(Subject::Capability(finer));
-            }
+        // note: where the tool came from, which is the one thing about a call that is neither an
+        // act nor an argument. A tool from an MCP server is answerable as that server whatever it
+        // claims to do, and it is a fact this program holds because it spawned the server - not
+        // one read off a name, which a server can choose.
+        //
+        // note: and it answers for `mcp:call`, which is the subject every tool from a server
+        // declares and means "somebody else's tool, and nobody has vouched for what it does".
+        // Naming the server is the same statement made precisely, so consulting both would make
+        // `--allow-server files` grant nothing until `mcp:call` had been answered too - two flags
+        // for one decision. Whatever the server's *annotations* claimed is untouched: a tool that
+        // says it writes is still judged against `fs:write`.
+        if let Some(server) = self.servers.lock().get(&request.tool) {
+            let unvouched =
+                Subject::Capability(Capability::of(Domain::Other("mcp".into()), "call"));
+            judged.retain(|subject| *subject != unvouched);
+            judged.push(Subject::Server(server.clone()));
         }
 
         judged
@@ -371,20 +357,37 @@ impl Careful {
     }
 
     /// What it answers about one subject; asking is what it does about anything unmentioned.
+    ///
+    /// note: the whole of the hierarchy is here, in one sentence: **the most specific rule that
+    /// has an answer decides, and a `deny` above it overrules.** `--allow fs` covers `fs:read`
+    /// because nothing finer was said; `--allow fs --deny fs:edit` refuses the edit and allows the
+    /// rest; `--allow fs:read` allows reading while `fs` is still a question, which is what naming
+    /// one operation plainly means. What it cannot do is talk its way past a refusal - a domain
+    /// somebody denied stays denied however finely an operation of it is named - so `--deny` is
+    /// still the last word and the strictest of everything consulted still wins.
     pub fn stance(&self, subject: &Subject) -> Verdict {
         match subject {
-            Subject::Capability(capability) => self
-                .stances
-                .lock()
-                .get(capability)
-                .copied()
-                .unwrap_or(Self::untold()),
+            Subject::Capability(capability) => {
+                let stances = self.stances.lock();
+                let domain = stances.get(&Subject::Domain(capability.domain.clone()));
+                let exact = stances.get(subject);
+                match (domain, exact) {
+                    (Some(Verdict::Deny), _) | (_, Some(Verdict::Deny)) => Verdict::Deny,
+                    _ => exact.or(domain).copied().unwrap_or(Self::untold()),
+                }
+            }
             Subject::Path(pattern) => self
                 .paths
                 .lock()
                 .iter()
                 .find(|(known, _)| known == pattern)
                 .map(|(_, verdict)| *verdict)
+                .unwrap_or(Self::untold()),
+            Subject::Domain(_) | Subject::Server(_) => self
+                .stances
+                .lock()
+                .get(subject)
+                .copied()
                 .unwrap_or(Self::untold()),
         }
     }
@@ -404,8 +407,8 @@ impl Careful {
     /// Decides what to answer about one subject from now on.
     pub fn set(&self, subject: &Subject, verdict: Verdict) {
         match subject {
-            Subject::Capability(capability) => {
-                self.stances.lock().insert(capability.clone(), verdict);
+            Subject::Capability(_) | Subject::Domain(_) | Subject::Server(_) => {
+                self.stances.lock().insert(subject.clone(), verdict);
             }
             Subject::Path(pattern) => {
                 let mut paths = self.paths.lock();
@@ -474,11 +477,36 @@ impl Careful {
     }
 
     /// Every capability this has been told about, and what it will answer, in a stable order.
-    pub fn stances(&self) -> Vec<(Capability, Verdict)> {
+    pub fn stances(&self) -> Vec<(Subject, Verdict)> {
         self.stances
             .lock()
             .iter()
-            .map(|(capability, verdict)| (capability.clone(), *verdict))
+            .map(|(subject, verdict)| (subject.clone(), *verdict))
+            .collect()
+    }
+
+    /// Records that a tool came from an MCP server, so that calls to it are answerable as that
+    /// server as well as by what they do.
+    ///
+    /// note: told rather than worked out. A server chooses the names its tools carry and the
+    /// prefix is optional, so the only thing that reliably knows where a tool came from is
+    /// whatever installed it.
+    pub fn came_from(&self, tool: impl Into<String>, server: impl Into<String>) {
+        self.servers.lock().insert(tool.into(), server.into());
+    }
+
+    /// Every MCP server whose tools are installed, and what this answers about each.
+    pub fn servers(&self) -> Vec<(String, Verdict)> {
+        let mut names: Vec<String> = self.servers.lock().values().cloned().collect();
+        names.sort_unstable();
+        names.dedup();
+
+        names
+            .into_iter()
+            .map(|name| {
+                let verdict = self.stance(&Subject::Server(name.clone()));
+                (name, verdict)
+            })
             .collect()
     }
 }
@@ -506,10 +534,11 @@ impl PermissionPolicy for Careful {
                 .iter()
                 .filter(|subject| self.stance(subject) == Verdict::Deny)
                 .map(|subject| match subject {
-                    Subject::Capability(Capability::Network) => {
-                        "`network`, which this command reaches for".to_owned()
+                    Subject::Capability(capability) if *capability == Capability::net("reach") => {
+                        "`net:reach`, which this command reaches for".to_owned()
                     }
                     Subject::Path(pattern) => format!("the rule for `{pattern}`"),
+                    Subject::Server(name) => format!("the rule for the `{name}` server"),
                     subject => format!("`{subject}`"),
                 })
                 .collect();
@@ -607,7 +636,7 @@ const NETWORKED: &[&str] = &[
 /// that is worth. It catches `curl https://…`, `pip install x` and `git push`, which is what a
 /// model writes when it wants the network, and it does not catch a script that curls, a binary
 /// that opens a socket of its own, or `$(echo cur)l`. It is not a sandbox and this program does
-/// not pretend it is one - `Capability::Shell` subsumes every other capability, and the runtime's
+/// not pretend it is one - `Capability::exec("run")` subsumes every other capability, and the runtime's
 /// own documentation says so.
 ///
 /// note: that is not hypothetical. Asked for a URL against a live model with `network` refused,

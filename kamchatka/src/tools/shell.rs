@@ -162,7 +162,7 @@ impl Tool for Shell {
             },
             "required": ["cmd"],
         }))
-        .with_capabilities([Capability::Shell]);
+        .with_capabilities([Capability::exec("run")]);
 
         self.limits.apply(spec)
     }

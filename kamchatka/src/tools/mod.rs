@@ -25,10 +25,45 @@ mod shell;
 mod trim;
 
 pub use crate::tools::{
-    policy::{Careful, Subject, acts_on, path_matches, reaches_the_network},
+    policy::{Careful, Subject, path_matches, reaches_the_network},
     shell::{Exit, Shell},
     trim::Trim,
 };
+
+/// The domains this program's own tools act in, beside the three the runtime names.
+///
+/// note: one function per domain rather than a constant per operation, because the operations are
+/// each tool's own vocabulary and the domain is the part that has to agree across them. `context`
+/// is the one worth pointing at: two tools act in it - one that reads this session's items and one
+/// that changes them - and a rule about `context` is about the object, not about either tool.
+/// Naming it here is what keeps those two from drifting into two domains.
+pub mod domains {
+    use nachalnik::{Capability, Domain};
+
+    /// An operation on this session's own context: `look`, `revise`, `elide`.
+    pub fn context(op: impl Into<String>) -> Capability {
+        Capability::of(Domain::Other("context".into()), op)
+    }
+
+    /// An operation on what the session is running with: `model`, `tools`, `permissions`, `policy`.
+    pub fn setup(op: impl Into<String>) -> Capability {
+        Capability::of(Domain::Other("setup".into()), op)
+    }
+
+    /// An operation on the session's own record: `read`.
+    pub fn log(op: impl Into<String>) -> Capability {
+        Capability::of(Domain::Other("log".into()), op)
+    }
+
+    /// Standing up a copy of this session and asking it something: `draft`, `ask`.
+    ///
+    /// note: a domain of its own rather than an operation on the context, because it neither
+    /// reads nor changes this context - it makes a second session and spends what that costs.
+    /// Allowing something to read its own items should not be allowing it to buy another request.
+    pub fn fork(op: impl Into<String>) -> Capability {
+        Capability::of(Domain::Other("fork".into()), op)
+    }
+}
 
 use crate::tools::{
     files::{Edit, Read, Write},

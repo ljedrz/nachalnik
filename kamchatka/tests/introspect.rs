@@ -17,8 +17,8 @@ use kamchatka::{
     tools::{Careful, Limits, Subject},
 };
 use nachalnik::{
-    Capability, Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, Role,
-    ToolCallId, Verdict,
+    Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, Role, ToolCallId,
+    Verdict,
     test::{ScriptedProvider, call},
 };
 use serde_json::json;
@@ -37,24 +37,11 @@ fn agent(
     let provider = Arc::new(ScriptedProvider::new(script));
     kernel.set_provider(provider.clone());
     let policy = Arc::new(Careful::new());
-    // note: `amend: allow` covers every action of it, so the four spelled out below are not
-    // needed to make these calls run. They are here so that a policy under test has action rules
-    // in it at all - `setup permissions` draws them in a section of their own, and a table with
-    // an empty section is not the thing that test is about. The gating is `tests/policy.rs`'s.
-    for capability in [
-        "context",
-        "log",
-        "setup",
-        "amend",
-        "amend:elide",
-        "amend:exclude",
-        "amend:archive",
-        "amend:revise",
-    ] {
-        policy.set(
-            &Subject::Capability(Capability::Custom(capability.into())),
-            Verdict::Allow,
-        );
+    // note: the domains rather than the operations in them, which is what a rule about a whole
+    // object is for: `context` covers reading this session's items and changing them alike. The
+    // gating itself is `tests/policy.rs`'s to check, and it does.
+    for domain in ["context", "log", "setup", "fork"] {
+        policy.set(&Subject::parse(domain), Verdict::Allow);
     }
     kernel.set_policy(policy.clone());
     let anchor = introspect::install(&kernel, policy, Limits::default());
@@ -1897,11 +1884,8 @@ async fn the_records_come_back_in_one_order_however_the_calls_were_run() {
     ])));
     kernel.set_provider(provider);
     let policy = Arc::new(Careful::new());
-    for capability in ["context", "log", "setup", "amend"] {
-        policy.set(
-            &Subject::Capability(Capability::Custom(capability.into())),
-            Verdict::Allow,
-        );
+    for domain in ["context", "log", "setup", "fork"] {
+        policy.set(&Subject::parse(domain), Verdict::Allow);
     }
     kernel.set_policy(policy.clone());
     let _anchor = introspect::install(&kernel, policy, Limits::default());
@@ -1930,7 +1914,7 @@ async fn log_declares_its_own_capability_and_no_way_to_write() {
     let spec = kernel.tool("log").expect("it is installed").spec();
     assert_eq!(
         spec.capabilities,
-        vec![nachalnik::Capability::Custom("log".into())],
+        vec![kamchatka::tools::domains::log("read")],
         "it has to be separately grantable, and separately revocable"
     );
     assert!(
@@ -2256,10 +2240,7 @@ async fn setup_model_says_whether_this_conversation_was_inherited() {
         json!({ "action": "model" }),
     )]))));
     let policy = Arc::new(Careful::new());
-    policy.set(
-        &Subject::Capability(Capability::Custom("setup".into())),
-        Verdict::Allow,
-    );
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
     second.set_policy(policy.clone());
     let _anchor = introspect::install(&second, policy, Limits::default());
     second.push(ContextItem::user("who are you?"));
@@ -2678,12 +2659,15 @@ async fn a_name_taken_many_times_over_names_some_and_counts_the_rest() {
     assert!(last.contains("`label:status` now names 6"), "{last}");
 }
 
-/// An action rule is a row of its own rather than a capability nothing declares, because that is
-/// what it is: `amend` declares `amend`, and `amend:exclude` is a rule about the calls that name
-/// that action. A table that listed it beside the capabilities would have it reading `nothing you
-/// have declares it` next to a verdict about a tool two rows above.
+/// Every row is one operation in one domain, and the tools that declare it are named beside it.
+///
+/// note: the table used to have a row per *capability*, and seven of the ten tools declared one
+/// named after themselves - `read` the capability, declared by `read` the tool. The column that
+/// was meant to say what a rule covers read as a tautology on those rows and said something only
+/// on the one where two tools shared a capability. An operation is what a tool actually does, so
+/// the column says something on every row.
 #[tokio::test]
-async fn setup_permissions_puts_the_action_rules_in_a_section_of_their_own() {
+async fn setup_permissions_lists_one_row_per_operation() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
         "c1",
         "setup",
@@ -2693,23 +2677,33 @@ async fn setup_permissions_puts_the_action_rules_in_a_section_of_their_own() {
     kernel.turn().await.expect("the turn failed");
 
     let said = answered(&kernel);
-    assert!(said.contains("rules about single actions"), "{said}");
-    // the tool it binds, which is the thing a capability row could not say about it
-    assert!(
-        said.contains("amend:exclude") && said.contains("amend:revise"),
-        "{said}"
-    );
+    // two tools act on one object, and the rows say so rather than naming the tools
+    assert!(said.contains("context:look"), "{said}");
+    assert!(said.contains("context:revise"), "{said}");
     assert!(
         !said.contains("nothing you have declares it"),
-        "an action rule is not a capability nothing declares: {said}"
+        "every operation here is declared by something: {said}"
     );
+    // and every row is an operation rather than a tool's own name, which is what the old table
+    // had on seven of its ten rows
+    let rows = said
+        .lines()
+        .skip_while(|line| !line.starts_with("capability"))
+        .skip(1)
+        .take_while(|line| !line.trim().is_empty());
+    for row in rows {
+        let subject = row.split_whitespace().next().expect("a row names one");
+        assert!(
+            subject.contains(':'),
+            "`{subject}` is a tool's name, not an operation: {said}"
+        );
+    }
 }
 
-/// And where nobody has answered about them they are counted and named in one line, the way the
-/// undecided path rules are - four rows of `ask` is not information, and standing silently for
-/// four answers is worse.
+/// A rule about a whole domain gets a section of its own, because it is not a row in a table of
+/// operations: nothing declares `context`, and it governs every row that starts with it.
 #[tokio::test]
-async fn setup_permissions_counts_the_action_rules_nobody_has_answered_about() {
+async fn setup_permissions_puts_a_domain_rule_in_a_section_of_its_own() {
     let kernel = Kernel::new(Config::default());
     let provider = Arc::new(ScriptedProvider::new(one_turn(vec![call(
         "c1",
@@ -2717,25 +2711,9 @@ async fn setup_permissions_counts_the_action_rules_nobody_has_answered_about() {
         json!({ "action": "permissions" }),
     )])));
     kernel.set_provider(provider);
-    // four action rules written and none of them answered, which is the state this reports on.
-    // Nothing is seeded any more - a capability is the whole of its tool - so a policy only has
-    // these once somebody has written them
     let policy = Arc::new(Careful::new());
-    policy.set(
-        &Subject::Capability(Capability::Custom("setup".into())),
-        Verdict::Allow,
-    );
-    for action in [
-        "amend:elide",
-        "amend:exclude",
-        "amend:archive",
-        "amend:revise",
-    ] {
-        policy.set(
-            &Subject::Capability(Capability::Custom(action.into())),
-            Verdict::Ask,
-        );
-    }
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    policy.set(&Subject::parse("context"), Verdict::Deny);
     kernel.set_policy(policy.clone());
     let _anchor = introspect::install(&kernel, policy, Limits::default());
 
@@ -2743,14 +2721,10 @@ async fn setup_permissions_counts_the_action_rules_nobody_has_answered_about() {
     kernel.turn().await.expect("the turn failed");
 
     let said = answered(&kernel);
+    assert!(said.contains("every operation in it"), "{said}");
     assert!(
-        said.contains("4 action rule(s) are undecided"),
-        "a count, not four rows of the same verdict: {said}"
-    );
-    assert!(said.contains("amend:elide"), "still named: {said}");
-    assert!(
-        said.contains("whatever the tool's own verdict is"),
-        "the thing worth knowing about them: {said}"
+        said.contains("context") && said.contains("deny"),
+        "the rule and what it answers: {said}"
     );
 }
 
@@ -2841,7 +2815,7 @@ async fn an_inherited_item_is_reported_as_having_no_beginning_here() {
     ]))));
     let policy = Arc::new(Careful::new());
     policy.set(
-        &Subject::Capability(Capability::Custom("log".into())),
+        &Subject::Capability(kamchatka::tools::domains::log("read")),
         Verdict::Allow,
     );
     kernel.set_policy(policy.clone());
@@ -2892,7 +2866,7 @@ async fn since_one_is_not_since_the_beginning_and_the_schema_says_so() {
     ]))));
     let policy = Arc::new(Careful::new());
     policy.set(
-        &Subject::Capability(Capability::Custom("log".into())),
+        &Subject::Capability(kamchatka::tools::domains::log("read")),
         Verdict::Allow,
     );
     kernel.set_policy(policy.clone());
@@ -2976,7 +2950,7 @@ async fn look_says_which_items_this_session_did_not_produce() {
     )]))));
     let policy = Arc::new(Careful::new());
     policy.set(
-        &Subject::Capability(Capability::Custom("context".into())),
+        &Subject::Capability(kamchatka::tools::domains::context("look")),
         Verdict::Allow,
     );
     kernel.set_policy(policy.clone());

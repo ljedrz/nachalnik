@@ -10,10 +10,11 @@ use std::path::PathBuf;
 
 use kamchatka::{
     sandbox::{Access, Reach},
-    tools::{Careful, Subject, acts_on, path_matches},
+    tools::{Careful, Subject, domains, path_matches},
 };
 use nachalnik::{
-    Capability, PermissionId, PermissionPolicy, PermissionRequest, ToolCall, ToolCallId, Verdict,
+    Capability, Domain, PermissionId, PermissionPolicy, PermissionRequest, ToolCall, ToolCallId,
+    Verdict,
 };
 use serde_json::json;
 
@@ -26,7 +27,7 @@ fn asking_about(policy: &Careful, path: &str) -> Verdict {
         id: PermissionId(1),
         call: call.id.clone(),
         tool: "read".to_owned(),
-        capabilities: vec![Capability::Read],
+        capabilities: vec![Capability::fs("read")],
         args: call.args.clone(),
     };
 
@@ -58,7 +59,7 @@ fn a_credential_rule_is_about_the_file_that_gets_opened() {
     // the moment the credential list exists for: somebody has answered `always` to an ordinary
     // read, so the capability no longer asks and the rule is the only thing left standing
     let policy = Careful::new();
-    policy.set(&Subject::Capability(Capability::Read), Verdict::Allow);
+    policy.set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
 
     for spelling in [".env", "./.env", ".env/", ".env//", "sub/../.env", ".env/."] {
         assert_eq!(
@@ -231,7 +232,10 @@ fn a_full_policy_forgets_the_oldest_answer_rather_than_every_answer() {
 #[tokio::test]
 async fn a_refusal_is_still_accounted_for_after_a_great_many_of_them() {
     let policy = Careful::new();
-    policy.set(&Subject::Capability(Capability::Network), Verdict::Deny);
+    policy.set(
+        &Subject::Capability(Capability::net("reach")),
+        Verdict::Deny,
+    );
 
     for n in 0..200 {
         let call = ToolCall::new(
@@ -243,7 +247,7 @@ async fn a_refusal_is_still_accounted_for_after_a_great_many_of_them() {
             id: PermissionId(n),
             call: call.id.clone(),
             tool: "shell".to_owned(),
-            capabilities: vec![Capability::Shell],
+            capabilities: vec![Capability::exec("run")],
             args: call.args.clone(),
         };
         assert_eq!(policy.evaluate(&request).await, Verdict::Deny);
@@ -252,25 +256,32 @@ async fn a_refusal_is_still_accounted_for_after_a_great_many_of_them() {
     let latest = policy
         .why(&ToolCallId::from("call_199"))
         .expect("the refusal just made is the one the model is about to read");
-    assert!(latest.contains("network"), "{latest}");
+    assert!(latest.contains("net:reach"), "{latest}");
     assert_eq!(policy.why(&ToolCallId::from("call_0")), None);
 }
 
-/// What the policy would answer about an `amend` call naming this action.
+/// What the policy would answer about a call doing this to the context.
+///
+/// note: one operation, which is what a tool reports through `Tool::needs`. The policy no longer
+/// reads the `action` argument itself - it is handed what the call needs and answers about that.
 fn asking_about_action(policy: &Careful, action: &str) -> Verdict {
-    let call = ToolCall::new("c1", "amend", json!({ "action": action, "reason": "why" }));
+    let call = ToolCall::new(
+        "c1",
+        "context",
+        json!({ "action": action, "reason": "why" }),
+    );
     let request = PermissionRequest {
         id: PermissionId(1),
         call: call.id.clone(),
-        tool: "amend".to_owned(),
-        capabilities: vec![Capability::Custom("amend".to_owned())],
+        tool: "context".to_owned(),
+        capabilities: vec![domains::context(action)],
         args: call.args.clone(),
     };
 
     policy.verdict(&request)
 }
 
-/// `amend` allows amend: every action it has, with nothing else to say about it.
+/// `context` allows the context: every action it has, with nothing else to say about it.
 ///
 /// note: four of them were seeded as questions, so allowing the tool left an `exclude` still
 /// asking - which made `--allow amend` mean something other than `amend`, with no way to tell
@@ -278,7 +289,7 @@ fn asking_about_action(policy: &Careful, action: &str) -> Verdict {
 #[test]
 fn allowing_a_tool_allows_every_action_of_it() {
     let policy = Careful::new();
-    policy.set(&Subject::parse("amend"), Verdict::Allow);
+    policy.set(&Subject::parse("context"), Verdict::Allow);
 
     for action in [
         "note", "pin", "restore", "undo", "elide", "exclude", "revise",
@@ -286,7 +297,7 @@ fn allowing_a_tool_allows_every_action_of_it() {
         assert_eq!(
             asking_about_action(&policy, action),
             Verdict::Allow,
-            "`amend` is allowed, so `{action}` is"
+            "`context` is allowed, so `{action}` is"
         );
     }
 }
@@ -295,7 +306,7 @@ fn allowing_a_tool_allows_every_action_of_it() {
 #[test]
 fn allowing_one_action_allows_only_that_action() {
     let policy = Careful::new();
-    policy.set(&Subject::parse("amend:note"), Verdict::Allow);
+    policy.set(&Subject::parse("context:note"), Verdict::Allow);
 
     assert_eq!(asking_about_action(&policy, "note"), Verdict::Allow);
     for action in ["elide", "exclude", "revise"] {
@@ -306,7 +317,7 @@ fn allowing_one_action_allows_only_that_action() {
         );
     }
     assert_eq!(
-        policy.stance(&Subject::parse("amend")),
+        policy.stance(&Subject::parse("context")),
         Verdict::Ask,
         "and the tool itself was never answered about"
     );
@@ -316,8 +327,8 @@ fn allowing_one_action_allows_only_that_action() {
 #[test]
 fn refusing_one_action_refuses_only_that_action() {
     let policy = Careful::new();
-    policy.set(&Subject::parse("amend"), Verdict::Allow);
-    policy.set(&Subject::parse("amend:revise"), Verdict::Deny);
+    policy.set(&Subject::parse("context"), Verdict::Allow);
+    policy.set(&Subject::parse("context:revise"), Verdict::Deny);
 
     assert_eq!(asking_about_action(&policy, "revise"), Verdict::Deny);
     assert_eq!(asking_about_action(&policy, "note"), Verdict::Allow);
@@ -331,11 +342,8 @@ fn refusing_one_action_refuses_only_that_action() {
 #[test]
 fn an_action_rule_cannot_loosen_a_tool_that_was_refused() {
     let policy = Careful::new();
-    policy.set(
-        &Subject::Capability(Capability::Custom("amend".to_owned())),
-        Verdict::Deny,
-    );
-    policy.set(&Subject::parse("amend:elide"), Verdict::Allow);
+    policy.set(&Subject::parse("context"), Verdict::Deny);
+    policy.set(&Subject::parse("context:elide"), Verdict::Allow);
 
     assert_eq!(asking_about_action(&policy, "elide"), Verdict::Deny);
 }
@@ -343,37 +351,53 @@ fn an_action_rule_cannot_loosen_a_tool_that_was_refused() {
 /// A rule is spelled the way it is read out, so `--deny "$(a row off the permissions tab)"` means
 /// what it says - which is the property `Subject::parse` exists to keep.
 #[test]
-fn an_action_rule_survives_the_trip_through_text() {
-    let subject = Subject::parse("amend:exclude");
-    assert_eq!(
-        subject,
-        Subject::Capability(Capability::Custom("amend:exclude".to_owned()))
-    );
-    assert_eq!(subject.to_string(), "amend:exclude");
-    assert_eq!(Subject::parse(&subject.to_string()), subject);
+fn every_kind_of_rule_survives_the_trip_through_text() {
+    for (text, expected) in [
+        (
+            "context:revise",
+            Subject::Capability(domains::context("revise")),
+        ),
+        ("fs:read", Subject::Capability(Capability::fs("read"))),
+        ("exec:run", Subject::Capability(Capability::exec("run"))),
+        ("fs", Subject::Domain(Domain::Fs)),
+        (
+            "context",
+            Subject::Domain(Domain::Other("context".to_owned())),
+        ),
+        (".env*", Subject::Path(".env*".to_owned())),
+    ] {
+        let subject = Subject::parse(text);
+        assert_eq!(subject, expected, "`{text}` read wrongly");
+        assert_eq!(subject.to_string(), text, "`{text}` wrote back differently");
+        assert_eq!(Subject::parse(&subject.to_string()), subject);
+    }
 }
 
-/// An action rule is only consulted where there is one, so a tool whose actions nobody has an
-/// opinion about is judged exactly as it was. This is what keeps `--allow context` from quietly
-/// coming to mean less than it did the day a rule about some other tool was added.
+/// The policy is handed what a call needs and answers about that, without reading the arguments
+/// for anything but a path.
+///
+/// note: it used to build a second subject out of the `action` argument and the tool's name,
+/// which meant deciding from a string's shape whether `<name>:<name>` was an operation or a tool
+/// with a colon in its name. What a call needs is the tool's to say - see `Tool::needs` - so
+/// there is one subject here and the policy never guesses.
 #[test]
-fn a_tool_with_no_rules_about_its_actions_is_judged_by_its_capability_alone() {
+fn the_policy_is_told_what_a_call_needs_rather_than_reading_it() {
     let policy = Careful::new();
-    policy.set(
-        &Subject::Capability(Capability::Custom("context".to_owned())),
-        Verdict::Allow,
-    );
+    policy.set(&Subject::parse("context"), Verdict::Allow);
 
     let call = ToolCall::new("c1", "context", json!({ "action": "look" }));
     let request = PermissionRequest {
         id: PermissionId(1),
         call: call.id.clone(),
         tool: "context".to_owned(),
-        capabilities: vec![Capability::Custom("context".to_owned())],
+        capabilities: vec![domains::context("look")],
         args: call.args.clone(),
     };
 
-    assert_eq!(policy.judges(&request).len(), 1);
+    assert_eq!(
+        policy.judges(&request),
+        vec![Subject::Capability(domains::context("look"))]
+    );
     assert_eq!(policy.verdict(&request), Verdict::Allow);
 }
 
@@ -382,27 +406,32 @@ fn a_tool_with_no_rules_about_its_actions_is_judged_by_its_capability_alone() {
 #[test]
 fn always_answers_at_the_grain_the_rules_are_written_at() {
     let asked_about = |action: &str| {
-        let call = ToolCall::new("c1", "amend", json!({ "action": action, "reason": "why" }));
+        let call = ToolCall::new(
+            "c1",
+            "context",
+            json!({ "action": action, "reason": "why" }),
+        );
         PermissionRequest {
             id: PermissionId(1),
             call: call.id.clone(),
-            tool: "amend".to_owned(),
-            capabilities: vec![Capability::Custom("amend".to_owned())],
+            tool: "context".to_owned(),
+            capabilities: vec![domains::context(action)],
             args: call.args.clone(),
         }
     };
 
-    // nothing finer has been written, so the question was about `amend` and so is the answer
+    // the question was about one operation, so that is what the answer is about, and the rest of
+    // the domain is untouched by it
     let policy = Careful::new();
     let request = asked_about("exclude");
     policy.always(&policy.judges(&request));
     assert_eq!(policy.verdict(&request), Verdict::Allow);
-    assert_eq!(asking_about_action(&policy, "revise"), Verdict::Allow);
+    assert_eq!(asking_about_action(&policy, "revise"), Verdict::Ask);
 
     // and a rule about an action it was not asked about is not answered by it, the way a
     // credential path survives an `always` for `read`
     let policy = Careful::new();
-    policy.set(&Subject::parse("amend:revise"), Verdict::Deny);
+    policy.set(&Subject::parse("context:revise"), Verdict::Deny);
     let request = asked_about("exclude");
     policy.always(&policy.judges(&request));
     assert_eq!(policy.verdict(&request), Verdict::Allow);
@@ -411,27 +440,4 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
         Verdict::Deny,
         "`revise` was never consulted, so nothing here answered it"
     );
-}
-
-/// Which tool a rule binds is answered against the registry rather than off the shape of the
-/// name, because both are spelled the same: an MCP server's capability is `mcp:<server>` and an
-/// action rule is `<tool>:<action>`, and nothing in either string says which it is.
-#[test]
-fn an_action_rule_is_told_from_a_custom_capability_by_what_is_registered() {
-    let registered = vec!["amend".to_owned(), "context".to_owned()];
-
-    assert_eq!(
-        acts_on(&Capability::Custom("amend:exclude".to_owned()), &registered),
-        Some("amend".to_owned())
-    );
-    assert_eq!(
-        acts_on(&Capability::Custom("mcp:files".to_owned()), &registered),
-        None,
-        "nothing is called `mcp`, so this is a capability and not a rule about an action"
-    );
-    assert_eq!(
-        acts_on(&Capability::Custom("amend".to_owned()), &registered),
-        None
-    );
-    assert_eq!(acts_on(&Capability::Read, &registered), None);
 }

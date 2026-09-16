@@ -27,9 +27,9 @@ use std::sync::{
 };
 
 use nachalnik::{
-    BoxError, Capability, Content, ContextId, ContextItem, ContextKind, ContextState, Kernel,
-    OutputSink, PermissionPolicy, PermissionRequest, Tool, ToolCall, ToolOutput, ToolSpec, Verdict,
-    async_trait,
+    BoxError, Capability, Content, ContextId, ContextItem, ContextKind, ContextState, Domain,
+    Kernel, OutputSink, PermissionPolicy, PermissionRequest, Tool, ToolCall, ToolOutput, ToolSpec,
+    Verdict, async_trait,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -75,7 +75,7 @@ pub struct Granted;
 #[async_trait]
 impl PermissionPolicy for Granted {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
-        let mine = |capability: &Capability| matches!(capability, Capability::Custom(name) if name == "introspect" || name == "amend");
+        let mine = |capability: &Capability| matches!(&capability.domain, Domain::Other(name) if name == "introspect" || name == "context");
 
         // note: the emptiness is checked as well as the contents, because `all` over an empty
         // list is `true`. A tool that declares nothing - which is what `ToolSpec::new` leaves
@@ -155,7 +155,7 @@ impl Tool for Inspect {
                 },
                 "required": ["action"],
             }))
-            .with_capabilities([Capability::Custom("introspect".into())])
+            .with_capabilities([Capability::of(Domain::Other("introspect".into()), "read")])
             .with_output_limit(16_000)
     }
 
@@ -290,7 +290,7 @@ impl Tool for Amend {
                 },
                 "required": ["action", "reason"],
             }))
-            .with_capabilities([Capability::Custom("amend".into())])
+            .with_capabilities([Capability::of(Domain::Other("context".into()), "revise")])
             .with_output_limit(4_000)
     }
 

@@ -85,7 +85,7 @@ impl Tool for Charge {
             id: "charge".to_owned(),
             description: "charge the account".to_owned(),
             schema: Arc::new(json!({ "type": "object" })),
-            capabilities: vec![Capability::Network],
+            capabilities: vec![Capability::net("reach")],
             output_limit: None,
         }
     }

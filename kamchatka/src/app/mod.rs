@@ -19,7 +19,7 @@ use std::{
 #[cfg(feature = "tui")]
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    Budget, Capability, Content, ContextId, ContextItem, ContextKind, Delta, Event, Grant,
+    Budget, Capability, Content, ContextId, ContextItem, ContextKind, Delta, Domain, Event, Grant,
     GrantSource, Kernel, Overrun, PermissionRequest, Record, State, Usage, Verdict,
     selectors::Selector,
 };
@@ -31,7 +31,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     sandbox::Confinement,
-    tools::{Careful, Limits, Subject, acts_on},
+    tools::{Careful, Limits, Subject},
 };
 
 mod command;
@@ -2598,35 +2598,29 @@ impl App {
 
     /// Every subject this policy holds an opinion about, decided or not.
     fn all_stances(&self) -> Vec<Stance> {
-        let mut rows: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
-        let mut sometimes: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
-        // an action rule names the tool it binds in its own first half, and that tool is the
-        // honest answer to "what is judged against this" - it is judged against it on the calls
-        // that name the action and on no others, which is what `sometimes` is for
-        let registered: Vec<String> = self
-            .kernel
-            .tool_specs()
-            .iter()
-            .map(|spec| spec.id.clone())
-            .collect();
-        for (capability, _) in self.policy.stances() {
-            if let Some(tool) = acts_on(&capability, &registered) {
-                sometimes.entry(capability.clone()).or_default().push(tool);
-            }
-            rows.entry(capability).or_default();
+        let mut rows: BTreeMap<Subject, Vec<String>> = BTreeMap::new();
+        let mut sometimes: BTreeMap<Subject, Vec<String>> = BTreeMap::new();
+        // every rule somebody has written, whether or not a registered tool declares it: a rule
+        // about a whole domain, or about an operation no tool here offers, is still an answer
+        // this policy would give and still a row somebody can change
+        for (subject, _) in self.policy.stances() {
+            rows.entry(subject).or_default();
         }
+        let reaching = Subject::Capability(Capability::net("reach"));
         for spec in self.kernel.tool_specs() {
-            // a shell is judged against `network` too, when the command it was handed reaches for
-            // it; the policy is the one that knows, and this is the row that has to say so
-            if spec.capabilities.contains(&Capability::Shell) {
+            // a shell is judged against `net:reach` too, when the command it was handed reaches
+            // for it; the policy is the one that knows, and this is the row that has to say so
+            if spec.capabilities.contains(&Capability::exec("run")) {
                 sometimes
-                    .entry(Capability::Network)
+                    .entry(reaching.clone())
                     .or_default()
                     .push(spec.id.clone());
-                rows.entry(Capability::Network).or_default();
+                rows.entry(reaching.clone()).or_default();
             }
             for capability in spec.capabilities {
-                rows.entry(capability).or_default().push(spec.id.clone());
+                rows.entry(Subject::Capability(capability))
+                    .or_default()
+                    .push(spec.id.clone());
             }
         }
 
@@ -2641,26 +2635,20 @@ impl App {
             .tool_specs()
             .iter()
             .filter(|spec| {
-                spec.capabilities.iter().any(|capability| {
-                    matches!(
-                        capability,
-                        Capability::Read | Capability::Write | Capability::Edit
-                    )
-                })
+                spec.capabilities
+                    .iter()
+                    .any(|capability| capability.domain == Domain::Fs)
             })
             .map(|spec| spec.id.clone())
             .collect();
 
         let listed = rows
             .into_iter()
-            .map(|(capability, tools)| Stance {
-                verdict: self.policy.stance(&Subject::Capability(capability.clone())),
-                sometimes: sometimes.remove(&capability).unwrap_or_default(),
-                when: match acts_on(&capability, &registered) {
-                    Some(_) => "when the call names that action",
-                    None => "when the command reaches for it",
-                },
-                subject: Subject::Capability(capability),
+            .map(|(subject, tools)| Stance {
+                verdict: self.policy.stance(&subject),
+                sometimes: sometimes.remove(&subject).unwrap_or_default(),
+                when: "when the command reaches for it",
+                subject,
                 tools,
             })
             .chain(
@@ -2709,17 +2697,19 @@ impl App {
 
     /// Whether a registered tool can run commands, and the policy has not refused it outright.
     ///
-    /// note: the question the permissions tab has to answer honestly. `Capability::Shell` subsumes
+    /// note: the question the permissions tab has to answer honestly. `Capability::exec("run")` subsumes
     /// every other capability - a command reads, writes and reaches the network - so while one is
     /// on the list and not denied, every other row is what a *tool* declares rather than what can
     /// happen, unless something is actually confining it.
     pub fn shell_is_live(&self) -> bool {
-        self.policy.stance(&Subject::Capability(Capability::Shell)) != Verdict::Deny
+        self.policy
+            .stance(&Subject::Capability(Capability::exec("run")))
+            != Verdict::Deny
             && self
                 .kernel
                 .tool_specs()
                 .iter()
-                .any(|spec| spec.capabilities.contains(&Capability::Shell))
+                .any(|spec| spec.capabilities.contains(&Capability::exec("run")))
     }
 
     // ---------------------------------------------------------------- the session, written out

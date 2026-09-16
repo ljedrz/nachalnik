@@ -95,7 +95,7 @@ impl Tool for Secret {
             id: "secret".to_owned(),
             description: "Returns today's code word.".to_owned(),
             schema: Arc::new(json!({"type": "object", "properties": {}})),
-            capabilities: vec![Capability::Read],
+            capabilities: vec![Capability::fs("read")],
             output_limit: None,
         }
     }
@@ -165,7 +165,7 @@ fn with(
     // the tool is allowed outright: what is under test is the shape of the request, and a
     // permission prompt in the middle of it would only be testing the prompt
     let policy = Arc::new(Careful::new());
-    policy.set(&Subject::Capability(Capability::Read), Verdict::Allow);
+    policy.set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     kernel.set_policy(policy.clone());
     kernel.add_tool(Arc::new(Secret));
 
@@ -692,16 +692,13 @@ fn gemini() -> Option<(
     }));
 
     let policy = Arc::new(Careful::new());
-    policy.set(&Subject::Capability(Capability::Read), Verdict::Allow);
+    policy.set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     // all of them: `install` offers four, and a model that takes an offer nobody has decided
     // about used to stop the turn to ask. The turn then sat in `Deciding` with the prompt open,
     // the next message was swallowed the way the app swallows anything typed at one, and the
     // wire format this file exists to check never got its second request
     for capability in ["context", "log", "setup", "amend"] {
-        policy.set(
-            &Subject::Capability(Capability::Custom(capability.into())),
-            Verdict::Allow,
-        );
+        policy.set(&Subject::parse(capability), Verdict::Allow);
     }
     kernel.set_policy(policy.clone());
     kernel.add_tool(Arc::new(Secret));
@@ -1066,10 +1063,10 @@ async fn agent(
 
     let policy = Arc::new(Careful::new());
     for capability in [
-        Capability::Read,
-        Capability::Write,
-        Capability::Edit,
-        Capability::Shell,
+        Capability::fs("read"),
+        Capability::fs("write"),
+        Capability::fs("edit"),
+        Capability::exec("run"),
     ] {
         policy.set(&Subject::Capability(capability), Verdict::Allow);
     }
@@ -1125,10 +1122,7 @@ async fn introspecting(
             true => Verdict::Ask,
             false => Verdict::Allow,
         };
-        app.policy.set(
-            &Subject::Capability(Capability::Custom(capability.into())),
-            verdict,
-        );
+        app.policy.set(&Subject::parse(capability), verdict);
     }
     app.introspect = Some(kamchatka::introspect::install(
         &app.kernel,
@@ -1861,7 +1855,7 @@ async fn a_resumed_session_carries_on_and_the_endpoint_accepts_it() {
     let provider = endpoint().await.expect("the same endpoint");
     carried.set_provider(provider.clone());
     let policy = Arc::new(Careful::new());
-    policy.set(&Subject::Capability(Capability::Read), Verdict::Allow);
+    policy.set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     carried.set_policy(policy.clone());
     carried.add_tool(Arc::new(Secret));
     let (outcomes, mut finished) = tokio::sync::mpsc::unbounded_channel();

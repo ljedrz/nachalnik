@@ -329,7 +329,7 @@ async fn a_loaded_session_hands_over_the_identifiers_it_already_used() {
     second
         .app
         .policy
-        .set(&Subject::Capability(Capability::Read), Verdict::Allow);
+        .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     second.send(&format!("/load {}", saved.display())).await;
 
     // the loaded turn's identifier is now this kernel's own, and saying so is on the trace

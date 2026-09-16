@@ -63,7 +63,7 @@ impl PermissionPolicy for AskAboutSideEffects {
         if request
             .capabilities
             .iter()
-            .all(|capability| *capability == Capability::Read)
+            .all(|capability| *capability == Capability::fs("read"))
         {
             Verdict::Allow
         } else {
@@ -84,7 +84,7 @@ impl Tool for ReadFile {
                 "properties": { "path": { "type": "string" } },
                 "required": ["path"],
             }))
-            .with_capabilities([Capability::Read])
+            .with_capabilities([Capability::fs("read")])
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
@@ -108,7 +108,7 @@ impl Tool for CargoTest {
                 "properties": { "cmd": { "type": "string" } },
                 "required": ["cmd"],
             }))
-            .with_capabilities([Capability::Shell])
+            .with_capabilities([Capability::exec("run")])
     }
 
     async fn invoke(&self, _call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {

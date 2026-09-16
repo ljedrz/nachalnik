@@ -1757,11 +1757,17 @@ async fn the_policy_that_grants_two_handles_grants_only_those_two() {
 
     // the two the handles declare
     assert_eq!(
-        verdict(vec![Capability::Custom("introspect".to_owned())]).await,
+        verdict(vec![
+            Capability::parse("introspect:read").expect("a subject")
+        ])
+        .await,
         Verdict::Allow
     );
     assert_eq!(
-        verdict(vec![Capability::Custom("amend".to_owned())]).await,
+        verdict(vec![
+            Capability::parse("context:revise").expect("a subject")
+        ])
+        .await,
         Verdict::Allow
     );
 
@@ -1770,11 +1776,11 @@ async fn the_policy_that_grants_two_handles_grants_only_those_two() {
     // forgot to declare itself used to be granted by the policy whose whole point is that it
     // grants exactly two things
     assert_eq!(verdict(Vec::new()).await, Verdict::Deny);
-    assert_eq!(verdict(vec![Capability::Shell]).await, Verdict::Deny);
+    assert_eq!(verdict(vec![Capability::exec("run")]).await, Verdict::Deny);
     assert_eq!(
         verdict(vec![
-            Capability::Custom("introspect".to_owned()),
-            Capability::Shell,
+            Capability::parse("introspect:read").expect("a subject"),
+            Capability::exec("run"),
         ])
         .await,
         Verdict::Deny,

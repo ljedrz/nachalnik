@@ -29,7 +29,7 @@ async fn a_tool_that_needs_permission_stops_the_turn_and_puts_the_question_on_th
         ModelResponse::text("I could not, so I did not"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("dig somewhere").await;
@@ -38,7 +38,7 @@ async fn a_tool_that_needs_permission_stops_the_turn_and_puts_the_question_on_th
     // the question, with the arguments it would run with
     let screen = harness.screen();
     assert!(screen.contains("a tool wants to run"), "{screen}");
-    assert!(screen.contains("dig wants: shell"), "{screen}");
+    assert!(screen.contains("dig wants: exec:run"), "{screen}");
     assert!(screen.contains("\"where\""), "{screen}");
 
     // looking closer, and then coming back: the tool is still waiting, so the question has to
@@ -53,7 +53,7 @@ async fn a_tool_that_needs_permission_stops_the_turn_and_puts_the_question_on_th
 
     harness.press(KeyCode::Esc).await;
     let back = harness.screen();
-    assert!(back.contains("dig wants: shell"), "{back}");
+    assert!(back.contains("dig wants: exec:run"), "{back}");
     assert!(back.contains("[y] once"), "{back}");
 
     // saying no answers the call rather than abandoning it: the model is told
@@ -82,7 +82,7 @@ async fn saying_always_stops_the_question_being_asked_again() {
         ModelResponse::text("twice"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("dig twice").await;
@@ -99,7 +99,7 @@ async fn saying_always_stops_the_question_being_asked_again() {
         harness
             .app
             .policy
-            .stance(&Subject::Capability(Capability::Shell)),
+            .stance(&Subject::Capability(Capability::exec("run"))),
         nachalnik::Verdict::Allow
     );
     let results = harness
@@ -122,7 +122,7 @@ async fn dropping_the_pending_calls_tells_the_model_rather_than_losing_them() {
         Config::default(),
     );
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("danger", "ran").with_capabilities([Capability::Shell]),
+        ConstTool::new("danger", "ran").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("do something rash").await;
@@ -148,10 +148,10 @@ async fn dropping_the_pending_calls_tells_the_model_rather_than_losing_them() {
 async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
     let mut harness = Harness::new([]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("grep", "found it").with_capabilities([Capability::Read]),
+        ConstTool::new("grep", "found it").with_capabilities([Capability::fs("read")]),
     ));
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("rm", "gone").with_capabilities([Capability::Shell]),
+        ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
     ));
     harness.tab(Tab::Permissions);
 
@@ -171,11 +171,11 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
     harness
         .app
         .policy
-        .set(&Subject::Capability(Capability::Shell), Verdict::Deny);
+        .set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
     let screen = harness.sized(110, 30);
     let shell = screen
         .lines()
-        .find(|line| line.contains("shell"))
+        .find(|line| line.contains("exec:run"))
         .expect("a decided capability is listed");
     assert!(shell.contains("deny"), "{shell}");
     assert!(
@@ -186,14 +186,14 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
     // no tool declares `network` - but the shell is judged against it anyway, on what the command
     // says, so its row names the tool the answer actually reaches rather than claiming that
     // nothing needs it
-    harness
-        .app
-        .policy
-        .set(&Subject::Capability(Capability::Network), Verdict::Deny);
+    harness.app.policy.set(
+        &Subject::Capability(Capability::net("reach")),
+        Verdict::Deny,
+    );
     let screen = harness.sized(110, 30);
     let network = screen
         .lines()
-        .find(|line| line.contains("network"))
+        .find(|line| line.contains("net:reach"))
         .expect("the decision is listed");
     assert!(network.contains("deny"), "{network}");
     assert!(
@@ -205,7 +205,7 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
     harness
         .app
         .policy
-        .set(&Subject::Capability(Capability::Write), Verdict::Deny);
+        .set(&Subject::Capability(Capability::fs("write")), Verdict::Deny);
     let screen = harness.sized(110, 30);
     let write = screen
         .lines()
@@ -248,7 +248,7 @@ async fn a_denied_network_reaches_the_shell_that_would_have_used_it() {
     // a stand-in for the shell: what is under test is the policy reading the command, not the
     // program that would run it
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("shell", "output").with_capabilities([Capability::Shell]),
+        ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
     ));
     // the default is a question, not a refusal: reaching the network is a thing somebody may
     // perfectly well want, and the sandbox is what makes either answer mean something
@@ -256,13 +256,13 @@ async fn a_denied_network_reaches_the_shell_that_would_have_used_it() {
         harness
             .app
             .policy
-            .stance(&Subject::Capability(Capability::Network)),
+            .stance(&Subject::Capability(Capability::net("reach"))),
         Verdict::Ask
     );
-    harness
-        .app
-        .policy
-        .set(&Subject::Capability(Capability::Network), Verdict::Deny);
+    harness.app.policy.set(
+        &Subject::Capability(Capability::net("reach")),
+        Verdict::Deny,
+    );
 
     harness.send("fetch it").await;
     harness.settle().await;
@@ -283,7 +283,7 @@ async fn a_denied_network_reaches_the_shell_that_would_have_used_it() {
     // and the screen says which stance did it. Without this the tab reads `shell: ask` beside a
     // refused shell call and nothing anywhere accounts for the refusal
     assert!(
-        screen.contains("network"),
+        screen.contains("net:reach"),
         "a refusal nobody can account for is the thing this program is not for: {screen}"
     );
 }
@@ -292,7 +292,7 @@ async fn a_denied_network_reaches_the_shell_that_would_have_used_it() {
 async fn the_permissions_tab_admits_what_a_shell_can_do() {
     let mut harness = Harness::new([]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("grep", "found it").with_capabilities([Capability::Read]),
+        ConstTool::new("grep", "found it").with_capabilities([Capability::fs("read")]),
     ));
     harness.tab(Tab::Permissions);
 
@@ -303,7 +303,7 @@ async fn the_permissions_tab_admits_what_a_shell_can_do() {
     // ... and once something does, the tab has to account for it: `shell` subsumes every other
     // row unless something is confining it, and nothing is here
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("sh", "output").with_capabilities([Capability::Shell]),
+        ConstTool::new("sh", "output").with_capabilities([Capability::exec("run")]),
     ));
     let screen = harness.sized(120, 30);
     assert!(
@@ -324,7 +324,7 @@ async fn the_permissions_tab_admits_what_a_shell_can_do() {
     harness
         .app
         .policy
-        .set(&Subject::Capability(Capability::Shell), Verdict::Deny);
+        .set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
     let screen = harness.sized(120, 30);
     assert!(!screen.contains("shell:"), "{screen}");
 }
@@ -337,7 +337,7 @@ async fn a_path_rule_is_finer_than_the_capability_above_it() {
         ModelResponse::text("as you wish"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
+        ConstTool::new("read", "contents").with_capabilities([Capability::fs("read")]),
     ));
 
     // answered for the capability and nothing else, which is what `always` on an ordinary read
@@ -347,7 +347,7 @@ async fn a_path_rule_is_finer_than_the_capability_above_it() {
     harness
         .app
         .policy
-        .set(&Subject::Capability(Capability::Read), Verdict::Allow);
+        .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     harness.send("read both").await;
     harness.settle().await;
 
@@ -361,7 +361,10 @@ async fn a_path_rule_is_finer_than_the_capability_above_it() {
         .find(|line| line.contains("wants:"))
         .expect("this one is a question");
     assert!(asked.contains(".env*"), "the rule is named: {asked}");
-    assert!(asked.contains("read"), "and so is the capability: {asked}");
+    assert!(
+        asked.contains("fs:read"),
+        "and so is the operation: {asked}"
+    );
 }
 
 #[tokio::test]
@@ -371,7 +374,7 @@ async fn saying_always_answers_for_everything_the_question_named() {
         ModelResponse::text("done"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
+        ConstTool::new("read", "contents").with_capabilities([Capability::fs("read")]),
     ));
     harness.send("read it").await;
     harness.settle().await;
@@ -403,7 +406,7 @@ async fn saying_always_answers_for_everything_the_question_named() {
 async fn the_permissions_tab_says_which_policy_is_deciding() {
     let mut harness = Harness::new([]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
+        ConstTool::new("read", "contents").with_capabilities([Capability::fs("read")]),
     ));
     harness.tab(Tab::Permissions);
 
@@ -424,7 +427,7 @@ async fn the_permissions_tab_says_which_policy_is_deciding() {
     harness
         .app
         .policy
-        .set(&Subject::Capability(Capability::Read), Verdict::Allow);
+        .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     let filled = harness.flat();
     assert!(filled.contains("Careful"), "{filled}");
     assert!(filled.contains("read allow read"), "{filled}");
@@ -449,7 +452,7 @@ async fn the_permissions_tab_says_which_policy_is_deciding() {
 async fn the_permissions_tab_draws_the_path_rules_too() {
     let mut harness = Harness::new([]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
+        ConstTool::new("read", "contents").with_capabilities([Capability::fs("read")]),
     ));
     harness.tab(Tab::Permissions);
 
@@ -494,13 +497,13 @@ async fn a_refusal_says_which_stance_made_it() {
         ModelResponse::text("no, then"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("shell", "output").with_capabilities([Capability::Shell]),
+        ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
     ));
     // this time it is the tool's own capability that is refused, not something the command reached
     harness
         .app
         .policy
-        .set(&Subject::Capability(Capability::Shell), Verdict::Deny);
+        .set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
 
     harness.send("clean up").await;
     harness.settle().await;
@@ -510,9 +513,9 @@ async fn a_refusal_says_which_stance_made_it() {
         .lines()
         .find(|line| line.contains("refused by"))
         .expect("the refusal is accounted for");
-    assert!(note.contains("shell"), "{note}");
+    assert!(note.contains("exec:run"), "{note}");
     assert!(
-        !note.contains("network"),
+        !note.contains("net:reach"),
         "the command never reached for it: {note}"
     );
 }
@@ -550,7 +553,7 @@ async fn changing_a_permission_changes_what_happens_next() {
         Config::default(),
     );
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("rm", "gone").with_capabilities([Capability::Shell]),
+        ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
     ));
 
     // shell is a question by default, so this turn stops and asks
@@ -568,17 +571,17 @@ async fn changing_a_permission_changes_what_happens_next() {
             .app
             .permissions()
             .iter()
-            .any(|row| row.subject == Subject::Capability(Capability::Shell)),
+            .any(|row| row.subject == Subject::Capability(Capability::exec("run"))),
         "a refusal of one call is not a decision about the capability"
     );
 
     // deciding it *is* what puts it there, and changes what the same call does next time
     harness.app.policy.set(
-        &Subject::Capability(Capability::Shell),
+        &Subject::Capability(Capability::exec("run")),
         nachalnik::Verdict::Deny,
     );
     harness.tab(Tab::Permissions);
-    pick(&mut harness, &Subject::Capability(Capability::Shell)).await;
+    pick(&mut harness, &Subject::Capability(Capability::exec("run"))).await;
     harness.press(KeyCode::Char('a')).await;
 
     assert_eq!(
@@ -609,17 +612,17 @@ async fn a_capability_can_be_refused_outright_rather_than_asked_about() {
         Config::default(),
     );
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("rm", "gone").with_capabilities([Capability::Shell]),
+        ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
     ));
 
     // the tab lists decisions, so there is one to make first: `a` at a question is what puts a
     // subject on it, and `n` there is what changes its mind
     harness.app.policy.set(
-        &Subject::Capability(Capability::Shell),
+        &Subject::Capability(Capability::exec("run")),
         nachalnik::Verdict::Allow,
     );
     harness.tab(Tab::Permissions);
-    pick(&mut harness, &Subject::Capability(Capability::Shell)).await;
+    pick(&mut harness, &Subject::Capability(Capability::exec("run"))).await;
     harness.press(KeyCode::Char('n')).await;
 
     harness.tab(Tab::Chat);
@@ -638,17 +641,17 @@ async fn a_capability_can_be_refused_outright_rather_than_asked_about() {
 async fn cycling_a_permission_goes_round_rather_than_getting_stuck() {
     let mut harness = Harness::new([]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("rm", "gone").with_capabilities([Capability::Shell]),
+        ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
     ));
     harness.app.policy.set(
-        &Subject::Capability(Capability::Shell),
+        &Subject::Capability(Capability::exec("run")),
         nachalnik::Verdict::Allow,
     );
     harness.tab(Tab::Permissions);
-    pick(&mut harness, &Subject::Capability(Capability::Shell)).await;
+    pick(&mut harness, &Subject::Capability(Capability::exec("run"))).await;
 
     use nachalnik::Verdict::{Allow, Ask, Deny};
-    let shell = Subject::Capability(Capability::Shell);
+    let shell = Subject::Capability(Capability::exec("run"));
     let mut seen = vec![harness.app.policy.stance(&shell)];
     for _ in 0..2 {
         harness.press(KeyCode::Char(' ')).await;
@@ -689,7 +692,7 @@ async fn ctrl_d_leaves_even_when_a_tool_is_waiting_to_run() {
         Config::default(),
     );
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("danger", "ran").with_capabilities([Capability::Shell]),
+        ConstTool::new("danger", "ran").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("do something rash").await;
@@ -724,7 +727,7 @@ async fn dropping_the_calls_hands_the_turn_back_to_the_model() {
         Config::default(),
     );
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("danger", "ran").with_capabilities([Capability::Shell]),
+        ConstTool::new("danger", "ran").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("do something rash").await;
@@ -754,7 +757,7 @@ async fn saying_always_answers_for_the_calls_already_waiting() {
         ModelResponse::text("all three"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("dig three times").await;
@@ -795,7 +798,7 @@ async fn saying_always_leaves_a_waiting_call_that_needs_something_else_a_questio
         ModelResponse::text("both"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("dig twice").await;
@@ -819,7 +822,7 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
         ModelResponse::text("done"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("dig").await;
@@ -846,7 +849,7 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
         harness
             .app
             .policy
-            .stance(&Subject::Capability(Capability::Shell)),
+            .stance(&Subject::Capability(Capability::exec("run"))),
         Verdict::Ask,
         "nothing was granted by somebody typing a sentence"
     );
@@ -903,7 +906,7 @@ async fn a_question_separates_its_answers_from_what_it_is_about() {
         json!({ "path": "/etc/hosts" }),
     )])]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("read", "contents").with_capabilities([Capability::Read]),
+        ConstTool::new("read", "contents").with_capabilities([Capability::fs("read")]),
     ));
     harness.send("go").await;
     harness.settle().await;
@@ -949,7 +952,7 @@ async fn the_question_gives_the_prompt_its_place_back_with_what_was_in_it() {
         ModelResponse::text("done"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
     ));
 
     // a draft typed while the turn runs, before there is any question to interrupt it
@@ -995,7 +998,7 @@ async fn a_message_sent_into_a_turn_that_stops_to_ask_waits_for_the_answer_too()
         ModelResponse::text("Lima"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("dig").await;
@@ -1053,7 +1056,8 @@ async fn a_waiting_question_can_be_left_and_come_back_to() {
         ModelResponse::text("done"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("amend", "elided").with_capabilities([Capability::Custom("amend".into())]),
+        ConstTool::new("amend", "elided")
+            .with_capabilities([kamchatka::tools::domains::context("elide")]),
     ));
     harness
         .app
@@ -1137,7 +1141,8 @@ async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
         ModelResponse::text("done"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("amend", "revised").with_capabilities([Capability::Custom("amend".into())]),
+        ConstTool::new("amend", "revised")
+            .with_capabilities([kamchatka::tools::domains::context("revise")]),
     ));
 
     harness.send("fix it").await;
@@ -1145,7 +1150,7 @@ async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
 
     // the question, and every way of answering it, on a screen the arguments cannot fit on
     let screen = harness.screen();
-    assert!(screen.contains("amend wants: amend"), "{screen}");
+    assert!(screen.contains("amend wants: context:revise"), "{screen}");
     assert!(screen.contains("[y] once"), "{screen}");
     assert!(screen.contains("[i] the exact JSON"), "{screen}");
     // and it says how to see the part that did not fit
@@ -1207,13 +1212,13 @@ async fn a_refused_model_is_told_which_kind_of_refusal_it_was() {
         ModelResponse::text("understood"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("shell", "it ran!").with_capabilities([Capability::Shell]),
+        ConstTool::new("shell", "it ran!").with_capabilities([Capability::exec("run")]),
     ));
     // a standing rule rather than a moment's hesitation
     harness
         .app
         .policy
-        .set(&Subject::Capability(Capability::Shell), Verdict::Deny);
+        .set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
 
     harness.send("read the shadow file").await;
     harness.settle().await;
@@ -1229,7 +1234,10 @@ async fn a_refused_model_is_told_which_kind_of_refusal_it_was() {
         .find(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
         .expect("a refusal is a result like any other");
     let said = result.content.to_text().into_owned();
-    assert!(said.contains("`shell`"), "it names what refused it: {said}");
+    assert!(
+        said.contains("`exec:run`"),
+        "it names what refused it: {said}"
+    );
     assert!(
         said.contains("a standing rule rather than an answer to this one call"),
         "{said}"
@@ -1247,7 +1255,7 @@ async fn a_call_refused_once_at_the_prompt_says_so_rather_than_naming_a_rule() {
         ModelResponse::text("understood"),
     ]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("dig").await;
@@ -1378,7 +1386,7 @@ async fn a_call_waiting_on_a_decision_is_not_drawn_as_withheld() {
         json!({ "where": "here" }),
     )])]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("dig", "a bone").with_capabilities([Capability::Shell]),
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
     ));
 
     harness.send("what is here?").await;

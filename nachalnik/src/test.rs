@@ -277,8 +277,8 @@ impl PermissionPolicy for DenyAll {
 /// use nachalnik::{Capability, Verdict, test::Table};
 ///
 /// let policy = Table::new(Verdict::Ask)
-///     .rule(Capability::Read, Verdict::Allow)
-///     .rule(Capability::Network, Verdict::Deny);
+///     .rule(Capability::fs("read"), Verdict::Allow)
+///     .rule(Capability::net("reach"), Verdict::Deny);
 /// ```
 #[derive(Debug, Clone)]
 pub struct Table {

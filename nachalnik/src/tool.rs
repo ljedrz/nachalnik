@@ -127,6 +127,23 @@ pub trait Tool: Send + Sync {
     /// `id` is expected to be stable.
     fn spec(&self) -> ToolSpec;
 
+    /// What *this* call needs, which is at most what the spec declares.
+    ///
+    /// note: a tool that does one thing declares it once and never implements this. A tool that
+    /// does several - `fs`, whose `action` picks between reading a file and writing one - is the
+    /// only thing that can say which of them a given call is, because it is the only thing that
+    /// knows its own arguments. Before this the policy read the `action` argument itself, which
+    /// meant it had to guess from a string's shape whether `<name>:<name>` was an operation or a
+    /// tool that happened to have a colon in its name.
+    ///
+    /// note: the default is the whole of [`ToolSpec::capabilities`], which is right for a tool
+    /// with one operation and safe for any other: the strictest of everything consulted wins, so
+    /// a tool that declines to narrow is judged against all of it.
+    fn needs(&self, call: &ToolCall) -> Vec<Capability> {
+        let _ = call;
+        self.spec().capabilities
+    }
+
     /// Executes the call.
     ///
     /// note: Returning `Err` is not a kernel failure; the error is turned into an error tool

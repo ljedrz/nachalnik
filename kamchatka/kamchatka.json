@@ -17,6 +17,8 @@
 
   "allow": [],
   "deny": [],
+  "allow-server": [],
+  "deny-server": [],
   "on-ask": "deny",
 
   "deadline": null,

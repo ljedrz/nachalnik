@@ -125,7 +125,7 @@ impl Secret {
 impl Tool for Secret {
     fn spec(&self) -> ToolSpec {
         let spec = ToolSpec::new("secret", "returns today's secret code word")
-            .with_capabilities([Capability::Read]);
+            .with_capabilities([Capability::fs("read")]);
 
         match self.limit {
             Some(limit) => spec.with_output_limit(limit),
@@ -485,7 +485,7 @@ async fn asking_pauses_the_loop_and_the_answer_resumes_it() {
 
     let request = &kernel.pending_permissions()[0];
     assert_eq!(request.tool, "secret");
-    assert_eq!(request.capabilities, vec![Capability::Read]);
+    assert_eq!(request.capabilities, vec![Capability::fs("read")]);
 
     assert!(matches!(
         kernel.decide(request.id, Grant::Allow).unwrap(),

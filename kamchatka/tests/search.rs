@@ -353,7 +353,7 @@ async fn finding_things_costs_read_and_not_shell() {
         }
         assert_eq!(
             spec.capabilities,
-            vec![nachalnik::Capability::Read],
+            vec![nachalnik::Capability::fs("read")],
             "`{}` should need reading and nothing else",
             spec.id
         );

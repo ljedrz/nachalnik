@@ -3,11 +3,14 @@
 //!
 //! note: [`Trust`] is the decision this crate exists to get right, and the reasoning is on the
 //! type. The short of it: annotations are hints from the thing being gated, so the default takes
-//! nobody's word for anything, and the one capability that is a fact rather than a claim -
-//! `mcp:<server>` - is declared whatever the trust setting.
+//! nobody's word for anything, and the one subject that is a fact rather than a claim -
+//! `mcp:call`, which says only that this is somebody else's tool - is declared whatever the trust
+//! setting. Which server it came from is handed back by [`Server::install`](crate::Server::install)
+//! instead, because where a tool came from is not something it does.
 
 use nachalnik::{
-    BoxError, Capability, Content, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
+    BoxError, Capability, Content, Domain, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec,
+    async_trait,
 };
 use rmcp::{
     RoleClient,
@@ -28,15 +31,16 @@ use serde_json::Value;
 /// be taking the word of the thing it is meant to be gating. So the default here takes nobody's
 /// word for anything.
 ///
-/// note: Whichever of these is in use, every tool from a server also declares
-/// `Capability::Custom("mcp:<server>")`. That is a fact rather than a claim - it is where the tool
-/// came from - and it makes "ask me once about this server" something a policy can express in one
-/// line.
+/// note: Whichever of these is in use, every tool from a server also declares `mcp:call` - the
+/// operation of calling somebody else's tool, which is true of all of them and is the subject a
+/// policy that knows nothing else about them can answer. Which *server* it came from is provenance
+/// rather than an act, so it is not spelled as one: [`Server::install`](crate::Server::install)
+/// returns the ids it installed, and a client that wants per-server rules holds that mapping.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum Trust {
-    /// Believe nothing. Tools declare only which server they came from, and what may be done with
-    /// that server is a decision your policy makes once, knowingly.
+    /// Believe nothing. Tools declare only that they are somebody else's, and what may be done
+    /// with them is a decision your policy makes once, knowingly.
     ///
     /// note: The default, because it is the only option here that cannot be talked out of anything
     /// by the server it is describing.
@@ -49,10 +53,9 @@ pub enum Trust {
     Fixed(Vec<Capability>),
     /// Believe the server's annotations.
     ///
-    /// A tool claiming `readOnlyHint` gets [`Capability::Read`]; anything else gets
-    /// [`Capability::Write`] and [`Capability::Edit`], because the specification's default for
-    /// that hint is `false` and an absent hint is not a reassurance. `openWorldHint` adds
-    /// [`Capability::Network`].
+    /// A tool claiming `readOnlyHint` gets `fs:read`; anything else gets `fs:write` and
+    /// `fs:edit`, because the specification's default for that hint is `false` and an absent hint
+    /// is not a reassurance. `openWorldHint` adds `net:reach`.
     ///
     /// note: Reasonable for a server you run yourself, and a mistake for one you do not.
     Annotations,
@@ -65,8 +68,16 @@ impl Trust {
         server: &str,
         annotations: Option<&ToolAnnotations>,
     ) -> Vec<Capability> {
-        // where it came from is a fact, so it is always recorded
-        let mut capabilities = vec![Capability::Custom(format!("mcp:{server}"))];
+        // note: calling somebody else's tool server is itself the operation, and every tool from
+        // one declares it whatever else is believed about them. `Trust::Nothing` believes nothing,
+        // which used to mean a list holding only where the tool came from; with provenance out of
+        // this list it would mean an *empty* one, and an empty list of capabilities is a call that
+        // needs nothing and is allowed by the strictest policy there is. Which server it came from
+        // is a fact rather than an act, so it is not spelled as one: see `Server::install`, which
+        // hands back the ids it installed so a client can hold that fact the way it holds any
+        // other thing it knows about a tool it registered.
+        let _ = server;
+        let mut capabilities = vec![Capability::of(Domain::Other("mcp".into()), "call")];
 
         match self {
             Self::Nothing => {}
@@ -74,11 +85,13 @@ impl Trust {
             Self::Annotations => {
                 let read_only = annotations.and_then(|a| a.read_only_hint).unwrap_or(false);
                 match read_only {
-                    true => capabilities.push(Capability::Read),
-                    false => capabilities.extend([Capability::Write, Capability::Edit]),
+                    true => capabilities.push(Capability::fs("read")),
+                    false => {
+                        capabilities.extend([Capability::fs("write"), Capability::fs("edit")]);
+                    }
                 }
                 if annotations.and_then(|a| a.open_world_hint).unwrap_or(false) {
-                    capabilities.push(Capability::Network);
+                    capabilities.push(Capability::net("reach"));
                 }
             }
         }

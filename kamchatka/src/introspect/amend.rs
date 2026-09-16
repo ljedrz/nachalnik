@@ -14,7 +14,10 @@ use nachalnik::{
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::{app::text::thousands, tools::Limits};
+use crate::{
+    app::text::thousands,
+    tools::{Limits, domains},
+};
 
 use super::{Pinned, Reach, action, ids, if_offered, protected, unknown};
 
@@ -208,9 +211,19 @@ impl Tool for Amend {
             },
             "required": ["action", "reason"],
         }))
-        .with_capabilities([Capability::Custom("amend".into())]);
+        .with_capabilities(
+            ["elide", "exclude", "archive", "pin", "restore", "revise", "note", "undo", "redo"]
+                .map(domains::context),
+        );
 
         self.limits.apply(spec)
+    }
+
+    fn needs(&self, call: &ToolCall) -> Vec<Capability> {
+        match action(&call.args) {
+            Ok(action) => vec![domains::context(action)],
+            Err(_) => self.spec().capabilities,
+        }
     }
 
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {

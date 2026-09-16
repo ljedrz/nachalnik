@@ -698,7 +698,7 @@ impl App {
         // and the sandbox has to hear about it. Without this the call runs with the network cut
         // and fails, one keystroke after somebody was told it would run
         if grant == Grant::Allow
-            && request.capabilities.contains(&Capability::Shell)
+            && request.capabilities.contains(&Capability::exec("run"))
             && request
                 .args
                 .get("cmd")

@@ -26,7 +26,7 @@ async fn what_a_tool_wants_to_write_is_shown_as_the_lines_it_would_write() {
         json!({ "path": "greet.py", "content": "def main():\n    print(\"hi\")\n" }),
     )])]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("scribble", "done").with_capabilities([Capability::Write]),
+        ConstTool::new("scribble", "done").with_capabilities([Capability::fs("write")]),
     ));
 
     harness.send("write something").await;
@@ -184,16 +184,18 @@ async fn introspect_offers_the_tools_and_takes_them_away_again() {
             "the announcement does not name `{tool}`: {screen}"
         );
     }
-    // the policy has four more subjects to ask about without being told anything, because the tab
-    // reads what the registered tools declare. Four, not one: reading your own context, reading
-    // the record kept beside it, reading what the session is running with and rewriting any of it
-    // are different questions, which is the whole reason there is a tool per noun rather than one
-    // with a mode argument
+    // the policy has one more subject to ask about per *operation* these tools offer, because
+    // the tab reads what the registered tools declare and what they declare is what they do.
+    // Reading your own items, reading the record beside them and rewriting one are different
+    // questions, and each is answerable on its own row - which is the whole point of a subject
+    // being `context:look` rather than the name of whichever tool happened to serve it
+    // context's four reads, the two that fork, amend's nine, setup's four, and log's one
+    let operations = 4 + 2 + 9 + 4 + 1;
     harness.tab(Tab::Permissions);
-    assert_eq!(harness.app.undecided(), before + 4);
+    assert_eq!(harness.app.undecided(), before + operations);
     let screen = harness.screen();
     assert!(
-        screen.contains(&format!("{} more it will ask about", before + 4)),
+        screen.contains(&format!("{} more it will ask about", before + operations)),
         "{screen}"
     );
 
@@ -561,7 +563,7 @@ async fn what_an_edit_takes_out_and_what_it_puts_in_are_a_diff_s_two_colours() {
         }),
     )])]);
     harness.app.kernel.add_tool(Arc::new(
-        ConstTool::new("edit", "done").with_capabilities([Capability::Edit]),
+        ConstTool::new("edit", "done").with_capabilities([Capability::fs("edit")]),
     ));
 
     harness.send("change it").await;
