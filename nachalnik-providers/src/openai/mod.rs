@@ -187,6 +187,12 @@ impl OpenAiCompatible {
 
     /// Sends through a client of the caller's own, so that several models on one host share a
     /// connection pool - and so that the timeout is the caller's to set.
+    ///
+    /// note: a client built here is built before any constructor in this crate has run, so call
+    /// [`crate::install_crypto`] before building it or `reqwest::ClientBuilder::build` panics -
+    /// and it panics recommending `aws_lc_rs`, which is reqwest's suggestion and not the provider
+    /// this crate uses. [`Self::client_with`] is the way round it where the only thing wanted is a
+    /// different timeout, because it installs the cryptography itself.
     #[must_use]
     pub fn with_client(mut self, client: reqwest::Client) -> Self {
         self.client = client;

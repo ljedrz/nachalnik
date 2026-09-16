@@ -10,7 +10,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use nachalnik::{Config, ContextItem, Kernel};
-use nachalnik_providers::OpenAiCompatible;
+use nachalnik_providers::{OpenAiCompatible, install_crypto};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -69,7 +69,17 @@ async fn overheard(provider: impl FnOnce(SocketAddr) -> OpenAiCompatible) -> Str
 /// note: the name in the URL is what decides whether the headers go out, and the resolver is what
 /// decides where the socket goes, so the two can disagree - which is the only way to see the
 /// headers that are sent *only* to OpenRouter without sending anything to OpenRouter.
+///
+/// note: [`install_crypto`] first, because this builds a [`reqwest::Client`] of its own and reqwest
+/// is built here with `rustls-no-provider` - so `build()` panics unless the process default is
+/// already in. Every constructor in the crate installs it, and this helper reaches `build()` before
+/// it reaches one of them. That made three of the four tests in this file fail *sometimes*: the
+/// fourth builds no client of its own, and whether the other three panicked came down to whether
+/// its `OpenAiCompatible::new` happened to win the race and install the provider first. Which is
+/// why the fix belongs here rather than in a test-ordering flag - a caller building its own client
+/// is exactly the case the function is public for.
 fn as_if_openrouter(address: SocketAddr) -> OpenAiCompatible {
+    install_crypto();
     let client = reqwest::Client::builder()
         .resolve("openrouter.ai", address)
         .build()

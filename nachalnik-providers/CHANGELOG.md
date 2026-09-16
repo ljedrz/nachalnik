@@ -7,6 +7,22 @@ minor bump may break you.
 
 ## [unreleased]
 
+### fixed
+
+- **`with_client` says that a client of the caller's own has to have the cryptography installed
+  first.** reqwest is built here with `rustls-no-provider`, so `ClientBuilder::build` panics until
+  something has installed a process default - and it panics recommending `aws_lc_rs`, which is
+  reqwest's suggestion rather than the provider this crate uses. Every constructor here calls
+  `install_crypto`, which is exactly why a caller who builds their own client is the one who finds
+  out, and why the function is public.
+
+  Found in this crate's own attribution tests, which build a client with a `resolve` on it and had
+  been doing it before reaching any constructor. Three of the four failed *sometimes*: the fourth
+  builds no client of its own, and whether the other three panicked came down to whether its
+  `OpenAiCompatible::new` won the race and installed the provider first. A test suite whose result
+  depends on which of its threads got there first is one that will eventually be believed on a bad
+  day, so the helper installs it and the note on `with_client` says why anybody else would have to.
+
 ### added
 
 - **`OpenAiCompatible::filed_under`, which says what kind of program is calling.** The two headers
