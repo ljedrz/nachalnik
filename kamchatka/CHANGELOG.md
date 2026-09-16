@@ -37,6 +37,13 @@ minor bump may break you.
   where the figure it is measured against comes from: what the request cost when the change found
   it, which is not what an earlier `budget` said it would.
 
+- **The status line ends at the figures.** `F1 for the keys` is off it. The same key is offered on
+  the first screen anybody sees, by `GREETING`, and again by every `there is no /x` - three places
+  for one key, and the one that gave way is on the line whose right-hand end a narrow terminal
+  loses first. `esc stops it` stays, because what a running turn can be stopped with is not said
+  anywhere else. What the ladder in `shrink_address` is protecting is now only the figures, which
+  is what it was always for.
+
 - **A release archive is the binary and `kamchatka.json`, and nothing else.** The settings file is
   the one thing that is worth more beside the binary than it is on a web page: every setting there
   is, named and at its default, so somebody who is tired of typing the same four arguments runs

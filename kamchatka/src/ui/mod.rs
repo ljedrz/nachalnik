@@ -542,19 +542,20 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, area: Rect) {
     if withheld != 0 {
         add(format!("{} held back", thousands(withheld)), dim);
     }
-    add(
-        match app.busy {
-            true => "esc stops it".to_owned(),
-            false => "F1 for the keys".to_owned(),
-        },
-        dim,
-    );
+    // note: `esc stops it` and nothing in its place when idle. The idle half used to read `F1 for
+    // the keys`, which is said on the first screen by `GREETING` and again by every `there is no
+    // /x` - three places for one key, on a line whose right-hand end is the first thing a narrow
+    // terminal loses. What a running turn can be stopped with is not said anywhere else, so that
+    // half stays
+    if app.busy {
+        add("esc stops it".to_owned(), dim);
+    }
 
     // the line is drawn without wrapping, so anything past the right edge is simply gone - and
-    // what sits at that end is the provider's own figure and the key that opens the help, which
-    // are worth more than the address. The address is what gives way: `openrouter.ai` costs 16
-    // columns and `generativelanguage.googleapis.com` costs 36, which is the difference between
-    // a line that fits at 100 columns and one that loses its last two facts
+    // what sits at that end is the figures, which are worth more than the address. The address is
+    // what gives way: `openrouter.ai` costs 16 columns and `generativelanguage.googleapis.com`
+    // costs 36, which is the difference between a line that fits at 100 columns and one that
+    // loses its last two facts
     let line = Line::from(spans);
     let over = line.width().saturating_sub(area.width as usize);
     let line = match over {
@@ -577,10 +578,10 @@ const MODEL_FLOOR: usize = 12;
 ///
 /// note: a ladder, because there is more than one thing here that can give way and they are not
 /// worth the same. The host goes first, then the model's vendor prefix, then the model itself from
-/// the left - and the figures and the key at the right end, which is what all of this is protecting,
-/// never do. It used to stop after the host: `dots-studio/dots-3-note-preview:free` is 36 columns
-/// on OpenRouter, which is this program's default endpoint, and a line carrying one lost `F1 for
-/// the keys` off the right edge at 100 columns with the address already gone.
+/// the left - and the figures at the right end, which is what all of this is protecting, never do.
+/// It used to stop after the host: `dots-studio/dots-3-note-preview:free` is 36 columns on
+/// OpenRouter, which is this program's default endpoint, and a line carrying one lost its last
+/// figure off the right edge at 100 columns with the address already gone.
 fn shrink_address(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> {
     spans
         .into_iter()

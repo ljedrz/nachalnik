@@ -36,7 +36,7 @@ $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 ┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ ask for something, or /help                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- done · gpt-4o-mini @ openrouter.ai · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back · F1 for the keys
+ done · gpt-4o-mini @ openrouter.ai · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back
 ```
 
 > **The permissions are enforced, and it is still a demonstration rather than a hardened agent.**

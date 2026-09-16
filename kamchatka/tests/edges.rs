@@ -531,12 +531,16 @@ fn the_row_count_agrees_with_what_the_widget_actually_draws() {
 }
 
 /// The status line is drawn without wrapping, so whatever runs past the right edge is gone. What
-/// sits at that end is the provider's own token figure and the key that opens the help, and they
-/// are worth more than the address - so the address is what gives way, in two steps.
+/// sits at that end is the figures - what the next request costs, what the last one really cost,
+/// what is held back - and they are worth more than the address, so the address is what gives way,
+/// in two steps.
 ///
 /// note: found by pointing the live suite at Google AI Studio, whose host is
 /// `generativelanguage.googleapis.com`: twenty columns longer than `openrouter.ai`, and enough to
-/// push `really` and `F1 for the keys` off a 100-column terminal.
+/// push `really` off a 100-column terminal.
+///
+/// note: the widths here are eighteen columns narrower than they were, because the line no longer
+/// ends in `· F1 for the keys` and every rung of the ladder is reached that much later.
 #[test]
 fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
     let status_at = |width: u16| {
@@ -570,34 +574,34 @@ fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
         whole.contains("@ generativelanguage.googleapis.com"),
         "{whole}"
     );
-    assert!(whole.contains("F1 for the keys"), "{whole}");
+    assert!(whole.contains("~0 tokens, 0.0% (128k)"), "{whole}");
 
     // a little short: the address is shortened rather than dropped, and says that it was
-    let cut = status_at(90);
+    let cut = status_at(72);
     assert!(cut.contains("@ generativelanguage.goog"), "{cut}");
     assert!(!cut.contains("googleapis.com"), "it really was cut: {cut}");
     assert!(cut.contains('\u{2026}'), "and says so: {cut}");
-    assert!(cut.contains("F1 for the keys"), "{cut}");
+    assert!(cut.contains("~0 tokens, 0.0% (128k)"), "{cut}");
 
     // too short for any of it to mean anything: it goes, and the figures stay
-    let gone = status_at(70);
+    let gone = status_at(52);
     assert!(!gone.contains('@'), "the address gave way: {gone}");
     assert!(
         !gone.contains('\u{2026}'),
         "with no stub left behind: {gone}"
     );
     assert!(
-        gone.contains("F1 for the keys"),
-        "and the key hint did not: {gone}"
+        gone.contains("~0 tokens, 0.0% (128k)"),
+        "and the figure did not: {gone}"
     );
 }
 
 /// And when the address has already gone and the line is still too long, the *name* gives way -
-/// vendor prefix first, then from the left. The figures and the key hint never do.
+/// vendor prefix first, then from the left. The figures never do.
 ///
 /// note: found by pointing the live suite at OpenRouter, which is this program's default endpoint
 /// and where a name like `dots-studio/dots-3-note-preview:free` is ordinary. 36 columns of model
-/// is enough on its own to push `F1 for the keys` off a 100-column terminal, with `openrouter.ai`
+/// is enough on its own to push the last figure off a 100-column terminal, with `openrouter.ai`
 /// already dropped and nothing else left to give.
 #[test]
 fn a_long_model_name_gives_way_after_the_address_and_before_the_figures() {
@@ -634,12 +638,12 @@ fn a_long_model_name_gives_way_after_the_address_and_before_the_figures() {
         whole.contains("dots-studio/dots-3-note-preview:free @ openrouter.ai"),
         "{whole}"
     );
-    assert!(whole.contains("F1 for the keys"), "{whole}");
+    assert!(whole.contains("~0 tokens"), "{whole}");
 
     // the address is gone, the vendor with it, and the model is still the one this session is
     // talking to. A few columns narrower than the terminal it was found on, because the line
     // there also carried the provider's own figure, and what is under test is the ladder
-    let short = status_at(88);
+    let short = status_at(70);
     assert!(!short.contains('@'), "the address gave way first: {short}");
     assert!(
         !short.contains("dots-studio/"),
@@ -650,18 +654,18 @@ fn a_long_model_name_gives_way_after_the_address_and_before_the_figures() {
         "the name itself is still readable: {short}"
     );
     assert!(
-        short.contains("F1 for the keys"),
-        "and the key hint stayed: {short}"
+        short.contains("~0 tokens"),
+        "and the figure stayed: {short}"
     );
 
     // narrower still: the name is cut from the left, because the right-hand end is the part that
     // names the model rather than the house it came from
-    let cut = status_at(78);
+    let cut = status_at(60);
     assert!(cut.contains('\u{2026}'), "it says it was cut: {cut}");
     assert!(cut.contains(":free"), "keeping the far end: {cut}");
     assert!(
-        cut.contains("F1 for the keys"),
-        "and the key hint still stayed: {cut}"
+        cut.contains("~0 tokens"),
+        "and the figure still stayed: {cut}"
     );
 }
 
