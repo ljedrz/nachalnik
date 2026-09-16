@@ -7,6 +7,35 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`OpenAiCompatible::thinking_in_content`, which takes thinking a model wrote into its own answer
+  back out of it.** This dialect carries the thinking in `reasoning`, beside the content and not in
+  it - but a model whose chat template ends the prompt *inside* a thinking block never writes the
+  `<think>` that opened it, and an endpoint serving that model with no reasoning parser of its own
+  passes the whole thing through as content. What arrives is an answer with its own thinking on the
+  front and a bare `</think>` in the middle of it.
+
+  Seen against `poolside/laguna-xs-2.1:free` on nine turns of one conversation: the tag went into
+  the context, the transcript and the session log - the file people send each other - and
+  `ModelResponse::reasoning` was `None` on every one of those turns while the reasoning sat in the
+  text. So a `</think>` in the content is read as what it is, the thinking in front of it becomes
+  the reasoning, and what follows is the answer.
+
+  Guarded twice, because the alternative to a guard here is emptying the answer of every model that
+  has no thinking at all. Only the **first** closing tag is a delimiter - past it a model is writing
+  *about* the tags, and reading the second would cut an answer apart at a word inside it - and only
+  where the endpoint **reported no reasoning of its own**, since one that fills that field has a
+  parser and its content is content. On by default and `thinking_in_content(false)` turns it off,
+  which is worth doing where a model may write the characters and mean them. The whole response
+  stays on `ModelResponse::raw` either way.
+
+  Both wire paths, from one reader: the streamed one is where it was found and the whole-answer one
+  would have failed the same way. What the streaming path cannot do is split the *live* fragments,
+  because nothing watching them arrive knows a `</think>` is coming until it does - and holding them
+  back on the chance would leave a model that never writes one silent to the end of its turn. So the
+  live view shows what the wire showed, and the turn that is kept is the one taken apart.
+
 ### fixed
 
 - **`with_client` says that a client of the caller's own has to have the cryptography installed

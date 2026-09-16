@@ -98,6 +98,9 @@ pub struct OpenAiCompatible {
     label: String,
     /// Whether to ask for a streamed answer at all; see [`Self::streaming`].
     stream: bool,
+    /// Whether to read thinking a model wrote into its own content back out of it; see
+    /// [`Self::thinking_in_content`].
+    thinking_in_content: bool,
     /// Every request this was asked to send, in order, when [`Self::recording`] is on.
     requests: Mutex<Vec<ModelRequest>>,
     /// Whether to keep them.
@@ -155,6 +158,7 @@ impl OpenAiCompatible {
             unlisted: false,
             label: "openai-compatible".to_owned(),
             stream: true,
+            thinking_in_content: true,
             requests: Mutex::new(Vec::new()),
             recording: false,
         }
@@ -216,6 +220,33 @@ impl OpenAiCompatible {
     #[must_use]
     pub fn streaming(mut self, stream: bool) -> Self {
         self.stream = stream;
+        self
+    }
+
+    /// Whether to take thinking a model wrote into its own content back out of it. On unless
+    /// turned off.
+    ///
+    /// note: this dialect carries the thinking in `reasoning`, beside the content and not in it -
+    /// but a model whose chat template ends the prompt *inside* a thinking block never writes the
+    /// `<think>` that opened it, and an endpoint serving that model with no reasoning parser of
+    /// its own passes the whole thing through as content. What arrives is an answer with its own
+    /// thinking on the front and a bare `</think>` in the middle of it. A live session against
+    /// `poolside/laguna-xs-2.1:free` did this on nine turns of one conversation: the tag went into
+    /// the context, the transcript and the log, and `reasoning` was `None` on every one of them
+    /// while the reasoning sat in the text.
+    ///
+    /// So a `</think>` in the content is read as what it is, the thinking in front of it becomes
+    /// [`nachalnik::ModelResponse::reasoning`], and what follows is the answer. Only where the
+    /// endpoint reported no reasoning of its own: one that fills the field properly is one whose
+    /// content is content, and is not touched. The whole response is on
+    /// [`nachalnik::ModelResponse::raw`] either way, so nothing here is destroyed.
+    ///
+    /// note: worth turning off where a model may write `</think>` as text and mean it - a
+    /// conversation about these tags is the obvious one, and it would lose whatever came before
+    /// the first of them to the reasoning channel.
+    #[must_use]
+    pub fn thinking_in_content(mut self, on: bool) -> Self {
+        self.thinking_in_content = on;
         self
     }
 

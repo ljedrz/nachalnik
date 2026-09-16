@@ -379,7 +379,7 @@ impl Provider for OpenAiCompatible {
                         .map_err(|e| format!("the answer was not JSON ({e}): {text}"))?;
                     let Some(error) = payload.get("error").filter(|e| !e.is_null()) else {
                         self.backoff.store(0, Ordering::SeqCst);
-                        return Ok(whole(&payload));
+                        return Ok(whole(&payload, self.thinking_in_content));
                     };
 
                     let code = error["code"].as_u64().unwrap_or_default();
@@ -667,9 +667,20 @@ impl Provider for OpenAiCompatible {
             };
         }
 
+        // note: the fragments have already gone out as `Delta::Text`, thinking and all, because
+        // nothing streaming them knows a `</think>` is coming until it arrives - and holding them
+        // back on the chance that one might would leave a model that never writes one silent to the
+        // end of its turn. So the live view shows what the wire showed and the *turn* is what gets
+        // taken apart, which is the copy that is kept, sent back and read again
+        let (content, reasoning) = said_and_thought(
+            &text,
+            (!reasoning.is_empty()).then_some(reasoning.as_str()),
+            self.thinking_in_content,
+        );
+
         Ok(ModelResponse {
-            content: (!text.is_empty()).then_some(Content::text(text)),
-            reasoning: (!reasoning.is_empty()).then_some(Content::text(reasoning)),
+            content,
+            reasoning,
             tool_calls: calls
                 .into_iter()
                 .map(|call| {
@@ -689,31 +700,94 @@ impl Provider for OpenAiCompatible {
     }
 }
 
+/// What opens a block of thinking a model wrote into its own content, where it writes one at all.
+const OPENS_THINKING: &str = "<think>";
+
+/// What closes it, which is the half that actually arrives. See
+/// [`OpenAiCompatible::thinking_in_content`].
+const CLOSES_THINKING: &str = "</think>";
+
+/// The thinking and the answer, out of content the two were written into together, or `None` where
+/// there is no `</think>` in it and so nothing to take apart.
+///
+/// note: the first one only. A model that has closed its thinking and gone on to write about the
+/// tags is writing about them, and re-reading the second as a delimiter would take the answer apart
+/// at a word in it.
+///
+/// note: the opener is *stripped where it is there and not required to be*. The case this exists
+/// for is a chat template that ends the prompt inside the block, so the model's first token is
+/// already thinking and the only delimiter it ever emits is the closing one - which is why the
+/// thinking is taken to start at the start of the content rather than at a tag.
+fn thinking_of(content: &str) -> Option<(&str, &str)> {
+    let at = content.find(CLOSES_THINKING)?;
+    let (thought, rest) = content.split_at(at);
+    let thought = thought.trim();
+
+    Some((
+        thought
+            .strip_prefix(OPENS_THINKING)
+            .unwrap_or(thought)
+            .trim(),
+        rest[CLOSES_THINKING.len()..].trim_start(),
+    ))
+}
+
+/// What a turn said and what it was thinking, given the two fields this dialect has for them and
+/// whether thinking found in the wrong one is to be moved.
+///
+/// note: only where `reasoning` came back empty. An endpoint that fills it has a reasoning parser
+/// of its own, and its content is content - `</think>` in that content is a model writing the
+/// characters. Between them these two cover it: the field is either the endpoint's answer or
+/// nobody's.
+fn said_and_thought(
+    content: &str,
+    reasoning: Option<&str>,
+    inline: bool,
+) -> (Option<Content>, Option<Content>) {
+    let split = match reasoning {
+        None if inline => thinking_of(content),
+        _ => None,
+    };
+    let (said, thought) = match split {
+        Some((thought, said)) => (said, Some(thought)),
+        None => (content, reasoning),
+    };
+
+    (
+        (!said.is_empty()).then(|| Content::text(said)),
+        thought
+            .filter(|thought| !thought.is_empty())
+            .map(Content::text),
+    )
+}
+
 /// Reads a whole answer - one JSON body, no fragments - into a turn.
 ///
 /// note: the streamed path assembles the same thing from `delta` objects a piece at a time; this
 /// one is handed `message` finished. What they must agree about is what they make of it, which is
 /// why the two readers below are shared rather than written twice: a model whose arguments will
-/// not parse, and a usage report whose reasoning has to be inferred, were each handled one way
-/// here and another there.
-fn whole(body: &Value) -> ModelResponse {
+/// not parse, a usage report whose reasoning has to be inferred, and thinking written into the
+/// content were each handled one way here and another there.
+fn whole(body: &Value, inline: bool) -> ModelResponse {
     let choice = &body["choices"][0];
     let message = &choice["message"];
 
-    ModelResponse {
-        content: message["content"]
-            .as_str()
-            .filter(|text| !text.is_empty())
-            .map(Content::text),
-        // note: the summary is on the body rather than on the message, and is read here for the
-        // reason `summarised` reads it off a chunk: an endpoint that reports the thinking only as
-        // a finished summary is an endpoint whose thinking is otherwise dropped. Not streamed,
-        // this one is already the several summaries joined, so there is nothing to append
-        reasoning: message["reasoning"]
+    // note: the summary is on the body rather than on the message, and is read here for the
+    // reason `summarised` reads it off a chunk: an endpoint that reports the thinking only as
+    // a finished summary is an endpoint whose thinking is otherwise dropped. Not streamed,
+    // this one is already the several summaries joined, so there is nothing to append
+    let (content, reasoning) = said_and_thought(
+        message["content"].as_str().unwrap_or_default(),
+        message["reasoning"]
             .as_str()
             .or_else(|| body["reasoning_summary"]["content"].as_str())
-            .filter(|text| !text.is_empty())
-            .map(Content::text),
+            .filter(|text| !text.is_empty()),
+        inline,
+    );
+
+    ModelResponse {
+        content,
+        reasoning,
         tool_calls: message["tool_calls"]
             .as_array()
             .into_iter()
@@ -1123,5 +1197,91 @@ mod tests {
         // something with no sentence in it at all has nothing to hand back
         let empty: Value = serde_json::from_str(r#"{"code":502}"#).unwrap();
         assert_eq!(said(&empty), None);
+    }
+
+    /// The shape that is actually seen: no opener, because the template supplied it, and the
+    /// answer following the one tag the model wrote.
+    #[test]
+    fn thinking_with_no_opener_ends_where_the_closing_tag_is() {
+        let (thought, said) =
+            thinking_of("I should check the budget first.</think>Let me check the budget:")
+                .expect("there is a tag in it");
+
+        assert_eq!(thought, "I should check the budget first.");
+        assert_eq!(said, "Let me check the budget:");
+    }
+
+    /// A model that writes both tags is read the same way, and neither of them survives.
+    #[test]
+    fn a_matched_pair_leaves_no_tag_in_either_half() {
+        let (thought, said) =
+            thinking_of("<think>\nweighing it up\n</think>\n\nthe answer").expect("a tag");
+
+        assert_eq!(thought, "weighing it up");
+        assert_eq!(said, "the answer");
+        assert!(!thought.contains("think"), "{thought}");
+    }
+
+    /// Only the first one is a delimiter. Past it a model is writing about the tags, and taking
+    /// the second for a delimiter would cut the answer apart at a word inside it.
+    #[test]
+    fn a_second_closing_tag_is_a_word_in_the_answer_and_not_a_delimiter() {
+        let (thought, said) =
+            thinking_of("deciding</think>a `</think>` closes the block").expect("a tag");
+
+        assert_eq!(thought, "deciding");
+        assert_eq!(said, "a `</think>` closes the block");
+    }
+
+    /// Thinking that finished with nothing after it is thinking, and the turn said nothing. The
+    /// alternative - reading the whole of it as the answer - is how this behaved before.
+    #[test]
+    fn thinking_with_nothing_after_it_leaves_the_answer_empty() {
+        let (thought, said) = thinking_of("still working on it</think>").expect("a tag");
+
+        assert_eq!(thought, "still working on it");
+        assert_eq!(said, "");
+    }
+
+    /// And the whole point of the guards: content with no tag in it is content. A model that never
+    /// writes one must keep every word of its answer, which is what the `None` here protects.
+    #[test]
+    fn content_that_closes_no_thinking_is_left_exactly_as_it_was() {
+        assert_eq!(thinking_of("just an ordinary answer"), None);
+
+        let (said, thought) = said_and_thought("just an ordinary answer", None, true);
+        assert_eq!(
+            said.map(|c| c.to_text().into_owned()).as_deref(),
+            Some("just an ordinary answer")
+        );
+        assert_eq!(thought, None);
+    }
+
+    /// An endpoint that filled `reasoning` itself has a parser of its own, so a `</think>` in its
+    /// content is a model writing the characters and the content is left whole.
+    #[test]
+    fn content_is_left_alone_where_the_endpoint_reported_its_own_reasoning() {
+        let (said, thought) = said_and_thought("a `</think>` tag", Some("weighed it"), true);
+
+        assert_eq!(
+            said.map(|c| c.to_text().into_owned()).as_deref(),
+            Some("a `</think>` tag")
+        );
+        assert_eq!(
+            thought.map(|c| c.to_text().into_owned()).as_deref(),
+            Some("weighed it")
+        );
+    }
+
+    /// And turned off, nothing is moved at all.
+    #[test]
+    fn nothing_is_taken_out_of_the_content_when_it_is_turned_off() {
+        let (said, thought) = said_and_thought("thinking</think>answer", None, false);
+
+        assert_eq!(
+            said.map(|c| c.to_text().into_owned()).as_deref(),
+            Some("thinking</think>answer")
+        );
+        assert_eq!(thought, None);
     }
 }
