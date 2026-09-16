@@ -306,10 +306,9 @@ impl Kernel {
     ///
     /// note: The counter is wrapped rather than bare because [`Calibrating`] costs nothing until
     /// it is told something: it corrects by `1.0` until a provider has reported what a request
-    /// actually cost, so it *is* [`BytesPerToken`] right up to the moment there is something
-    /// better to be. Leaving it off by default meant the low estimate was what everybody who did
-    /// not read the documentation got. Unwrap it with [`Kernel::set_counter`] if a counter that
-    /// never changes its mind is what a measurement needs.
+    /// actually cost, so it *is* [`BytesPerToken`] until there is something better to be. Unwrap
+    /// it with [`Kernel::set_counter`] where a measurement needs a counter that never changes its
+    /// mind.
     ///
     /// [`Calibrating<BytesPerToken>`]: Calibrating
     pub fn new(config: Config) -> Self {
@@ -334,14 +333,12 @@ impl Kernel {
     /// note: The items are recounted with this kernel's [`TokenCounter`], so a snapshot taken
     /// under a different one reports honest numbers rather than inherited ones.
     ///
-    /// note: What the previous counter had *learned* does come back, when both counters deal in
-    /// [`Calibration`](crate::Calibration)s, and it is offered *before* the items are counted. So
-    /// a resumed session does not spend its first few requests relearning what it had already been
-    /// told - and, since resuming recounts, the figures it comes back with are the corrected ones
-    /// rather than the stale ones it was saved with. That is a visible change in the numbers, and
-    /// the right one: it is what [`Kernel::recount`] before saving would have produced, and it is
-    /// nearer to what the provider had been charging. A counter that learns nothing ignores all of
-    /// this.
+    /// note: What the previous counter had *learned* comes back too, where both counters deal in
+    /// [`Calibration`](crate::Calibration)s, and it is offered *before* the items are counted - so
+    /// a resumed session does not spend its first requests relearning what it had been told, and
+    /// the figures it comes back with are corrected rather than the stale ones it was saved with.
+    /// That is a visible change in the numbers, and is what [`Kernel::recount`] before saving
+    /// would have produced.
     pub fn resume(mut config: Config, snapshot: Snapshot) -> Self {
         config
             .session_name
@@ -539,7 +536,6 @@ impl Kernel {
     /// not own the task making it - drop the future driving [`Kernel::step`] for that. What it
     /// does is stop `turn` from starting anything else: the step in progress runs to the end,
     /// its result is recorded like any other, and `turn` returns instead of going round again.
-    /// Nothing is lost, which is the difference between stopping and pulling the plug.
     ///
     /// note: It stops the loop in three places, in increasing order of how much has to
     /// cooperate. Before a transition, [`Kernel::step`] and [`Kernel::turn`] spend one attempt
@@ -558,10 +554,8 @@ impl Kernel {
     ///
     /// note: The flag is cleared by the transition attempt that acts on it - [`Kernel::step`],
     /// including the one [`Kernel::turn`] is in the middle of making - so it can never outlive the
-    /// thing it was meant to stop, and there is only ever one reader of it. What it never does is
-    /// discard work: a partial answer and a half-finished tool result are recorded like any other,
-    /// because the whole point of a context you can see is that you get to decide what to do with
-    /// them.
+    /// thing it was meant to stop, and there is only ever one reader of it. It discards no work: a
+    /// partial answer and a half-finished tool result are recorded like any other.
     pub fn interrupt(&self) -> bool {
         let already = self.0.interrupted.swap(true, SeqCst);
         if !already {

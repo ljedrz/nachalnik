@@ -323,23 +323,19 @@ impl Default for Calibration {
 /// ```
 ///
 /// note: The correction is a single multiplier, so it spreads what is really a per-message
-/// overhead across the bytes. That is an approximation - but it is one calibrated against the
-/// truth, rather than a constant picked in advance. Measured against a real API over a growing
-/// conversation, the underlying estimate ran a steady 7% low once the context was a few thousand
-/// tokens, and this brought it to within 1%.
+/// overhead across the bytes - an approximation, but one calibrated against the truth rather than
+/// a constant picked in advance.
 ///
-/// note: It learns only from requests big enough to have a systematic error in them. On a
-/// request of a few dozen tokens the percentage error is noise - a token either way - and a
-/// counter that chased it would arrive at a scale that is wrong for every request that matters.
+/// note: It learns only from requests big enough to have a systematic error in them. On a request
+/// of a few dozen tokens the percentage error is noise, and a counter that chased it would arrive
+/// at a scale that is wrong for every request that matters.
 ///
-/// note: It corrects what is counted *from then on*. The figures already stored on context items
-/// do not change by themselves, because silently rewriting recorded numbers is exactly the sort
-/// of thing this crate does not do; [`Kernel::recount`] rewrites them when you ask, and says so
-/// on the event stream. [`Budget::reported`] remains the provider's own last word either way.
+/// note: It corrects what is counted *from then on*; figures already stored on context items do
+/// not change by themselves. [`Kernel::recount`] rewrites them when you ask, and says so on the
+/// event stream. [`Budget::reported`] remains the provider's own last word either way.
 ///
 /// note: The ratio is cumulative over every observation, so it settles rather than chasing the
-/// last request. Swapping the model invalidates it - the new one tokenizes differently - which is
-/// what [`Calibrating::reset`] is for.
+/// last request. Swapping the model invalidates it, which is what [`Calibrating::reset`] is for.
 #[derive(Debug)]
 pub struct Calibrating<C> {
     inner: C,

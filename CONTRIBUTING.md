@@ -296,8 +296,12 @@ for, so there is nothing for it to agree with.
 - **A version moves as soon as something above it needs API the registry does not have.**
   `cargo package --workspace` builds each member from its own tarball, and a tarball carries
   version requirements rather than path dependencies - so `kamchatka` is resolved against whatever
-  `nachalnik` the registry has, unless the requirement names one it does not. Bumping to a version
-  that is not published yet is what makes cargo reach for the crate next door, and the `package`
+  `nachalnik` the registry has, unless the requirement names one it does not. What that costs when
+  it goes unnoticed is two incompatible copies of the runtime in one build: `kamchatka` depends on
+  the bridge as well as on the runtime, so a bridge left at a version already on the registry brings
+  the `nachalnik` *it* was published against down beside the one the workspace is building. Bumping
+  to a version that is not published yet is what makes cargo reach for the crate next door, and the
+  `package`
   job is the only thing in CI that notices: everything else builds the workspace, where the path
   dependency always wins. Every time this has happened it is the one that has said so, and it has
   happened on every runtime bump so far. Bump in a commit of its own that names what made it
@@ -358,6 +362,21 @@ for, so there is nothing for it to agree with.
   merely lists what a thing has is not finished. Spelling leans British (`behaviour`, `defence`,
   `optimisation`, `honouring`) with `-ize` endings for `summarize`. Rust source uses hyphens; the
   `README.md`s use em dashes.
+- **And it argues plainly.** Every document here - readmes, guides, changelogs, doc comments,
+  `note:` paragraphs - is written for somebody deciding what to do next, and the test is whether a
+  sentence changes that decision. What does not: the story of how a bug was found, the measurement
+  from the one run that found it, the alternatives weighed and dropped, a verdict on how good a
+  test was, and a closing line that restates the opening one for effect. Keep the fact, the
+  consequence, and the one clause that stops somebody undoing it by mistake.
+
+  Say a number where the number is the fact - a default, a limit, a size a reader will meet - and
+  not where it is a souvenir of one afternoon. Name a model or an endpoint where the behaviour is
+  that endpoint's, and not to date the anecdote. A rule this file states is worth one line
+  wherever it is restated, not a second copy of the argument.
+
+  This applies hardest to the things that are read most and edited least: a `note:` on a hot
+  function, a tool description a model pays for on every request, the first screen of a readme.
+  Length there is not thoroughness, it is a toll.
 
 ---
 

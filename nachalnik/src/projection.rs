@@ -43,9 +43,9 @@ pub struct Projection {
 
 /// Turns context items into the messages of a request.
 ///
-/// note: This is where the shape of a request lives, and it is replaceable. The kernel has no
-/// opinion about whether a file belongs in a user message, a system message or a preamble; it
-/// asks the projector, and shows you the result.
+/// note: This is where the shape of a request lives. The kernel has no opinion about whether a
+/// file belongs in a user message, a system message or a preamble; it asks the projector, and
+/// shows you the result.
 ///
 /// [`LinearProjector`] speaks the dialect in which a tool result is a message of its own. Not
 /// every API agrees - some want tool results as blocks inside a user turn, some keep
@@ -84,13 +84,11 @@ pub struct Projection {
 /// }
 /// ```
 ///
-/// note: What a projector decides is which items become which messages - and, for an assistant
-/// turn, which of the two shapes it goes out in. A turn can be a content slot, a reasoning slot
-/// and a flat list of calls, or it can be an ordered sequence of [`Block`]s where thinking, text
-/// and calls interleave and the order is part of the message;
-/// [`LinearProjector::send_blocks`] picks. What no projector can do is recover an order that was
-/// never recorded, which is why this is a property of [`Content`] rather than of the projection:
-/// a turn keeps its order from the wire, through the context, to the next request.
+/// note: A projector also decides which of two shapes an assistant turn goes out in: a content
+/// slot, a reasoning slot and a flat list of calls, or an ordered sequence of [`Block`]s where
+/// the order is part of the message. [`LinearProjector::send_blocks`] picks. What no projector
+/// can do is recover an order that was never recorded, which is why the order is a property of
+/// [`Content`] rather than of the projection.
 pub trait Projector: Send + Sync {
     /// Projects the items - all of them, in insertion order, whatever their state - into the
     /// messages of a request.

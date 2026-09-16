@@ -59,11 +59,6 @@ minor bump may break you.
 
 Nothing changed in this crate. It tracks `nachalnik` 0.3.0, whose `ModelInfo` grew a field.
 
-note: it has to move rather than merely being allowed to. `kamchatka` depends on both, and a bridge
-left at a version already on the registry would be resolved from there when the workspace is
-packaged, putting two incompatible copies of the runtime into one build. `cargo package --workspace`
-catches that.
-
 ## [0.2.0] - 2026-08-30
 
 Nothing changed in this crate. It tracks `nachalnik` 0.2.0, whose `LinearProjector` grew a field.

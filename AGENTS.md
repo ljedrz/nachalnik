@@ -180,6 +180,12 @@ the mistake it came from - which is the half that makes them stick.
   outlive them.
 - **The prose argues.** Lowercase headings, sentences that are sentences, and a paragraph that
   earns its place rather than restating the signature above it.
+- **And it argues plainly.** In every document here, including doc comments and `note:`
+  paragraphs: keep the fact, the consequence, and the clause that stops somebody undoing it by
+  mistake. Cut the story of how a bug was found, the measurement from the run that found it, the
+  alternatives weighed and dropped, and a closing line that restates the opening one. A number
+  earns its place when it is a default or a limit a reader will meet, not when it is a souvenir.
+  Length is not thoroughness; on a tool description a model pays for every request, it is a toll.
 
 ---
 

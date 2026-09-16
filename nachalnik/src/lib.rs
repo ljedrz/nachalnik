@@ -20,8 +20,9 @@
 //! [`Kernel::step`] performs exactly one of those transitions and returns the [`State`] it
 //! produced; [`Kernel::turn`] repeats until the model ends its turn or somebody has to decide
 //! something. `Finished` carries the model's own [`StopReason`], because a turn that ran out of
-//! output tokens is not the same thing as one that ended. [`State::Requesting`] and [`State::Executing`] mean the loop is already being
-//! driven, and a second [`Kernel::step`] is [`Error::Busy`] rather than a second request.
+//! output tokens is not the same thing as one that ended. [`State::Requesting`] and
+//! [`State::Executing`] mean the loop is already being driven, and a second [`Kernel::step`] is
+//! [`Error::Busy`] rather than a second request.
 //!
 //! Every other state is a resting state, and whatever you change while the kernel rests is what
 //! the next request will contain. [`State::Ready`] exists for exactly that reason: the model has
@@ -31,7 +32,7 @@
 //! transition. Stopping something already in flight is cooperative, because the kernel owns
 //! neither the socket nor the future: a [`Provider`] that checks [`DeltaSink::is_interrupted`]
 //! and a [`Tool`] that checks [`OutputSink::is_interrupted`] can hand back what they have, and
-//! whatever they hand back is recorded like any other turn.
+//! that is recorded like any other turn.
 //!
 //! # What it does not do
 //!
@@ -43,8 +44,7 @@
 //!
 //! # What it does not protect you from
 //!
-//! There is no sandbox here, and there is not going to be one in this crate. It is worth saying so
-//! plainly in a library that uses the word *permissions*.
+//! There is no sandbox here, and there is not going to be one in this crate.
 //!
 //! The kernel executes nothing: no filesystem code, no network code, no process spawning. Every
 //! side effect in a session happens inside a [`Tool`] you wrote and registered, so there is
@@ -60,10 +60,10 @@
 //!   to check it against.
 //! - [`Capability::Shell`] subsumes every other one, so a policy that allows it has allowed all of
 //!   them whatever it answers about the rest.
-//! - A policy that reads a command's text is a heuristic. It can make a refusal real for what was
-//!   written; it cannot stop a program that reaches the network some other way. Confinement that
-//!   *can* belongs where the process is spawned - see `kamchatka`, which puts its `shell` tool
-//!   under Landlock and so turns `network: deny` into a refused `connect` syscall.
+//! - A policy that reads a command's text is a heuristic: it can make a refusal real for what was
+//!   written, not for a program that reaches the network some other way. Confinement that *can*
+//!   belongs where the process is spawned - `kamchatka` puts its `shell` tool under Landlock, which
+//!   turns `network: deny` into a refused `connect` syscall.
 //! - Anything in the context is something the model reads, and it can carry instructions. What
 //!   this runtime offers against that is the policy - which nothing in a model's output reaches
 //!   except as a tool name and arguments - and a context you can see before the request goes.
@@ -174,10 +174,9 @@
 //!   itself from the first response. Where a counter cannot reach something at all it says so
 //!   rather than returning `0` - [`TokenCounter::uncounted`] rides up to [`Budget::uncounted`]
 //!   and [`ContextItem::uncounted`], so a figure that is a *floor* is never mistaken for a
-//!   figure that is complete. A [`Content::Blob`] is the case that forced it: what a picture
-//!   costs is a formula over its dimensions, every vendor publishes a different one, and none of
-//!   them is reachable from a byte length. [`Blob::meta`] is where a counter gets the inputs, and
-//!   `examples/pricing_a_picture.rs` is one written out.
+//!   complete one. A [`Content::Blob`] is the case that forced it: what a picture costs is a
+//!   formula over its dimensions, and every vendor publishes a different one. [`Blob::meta`] is
+//!   where a counter gets the inputs; `examples/pricing_a_picture.rs` is one written out.
 //! - [`Snapshot`] is where it all ended up, which is a different question: [`Kernel::snapshot`]
 //!   and [`Kernel::resume`] carry a session across processes, because a log of events that name
 //!   their items cannot rebuild the items.
@@ -190,28 +189,23 @@
 //! this is the seam:
 //!
 //! - A [`ToolCallId`] is durable. It survives a [`Snapshot`], and [`Snapshot::used_calls`] means a
-//!   resumed session refuses to issue it again. So the call already *has* a name that outlives the
+//!   resumed session refuses to issue it again - so the call already *has* a name that outlives the
 //!   process, and an external operation keyed on it is one an application can go back and ask
 //!   about. A tool that mints an identifier inside `invoke` has minted one that dies with the
-//!   process that minted it; passing the call's own through is the whole trick, and no new
-//!   execution id from the runtime is needed for it.
-//! - A call with no result is *findable*: the assistant item holds the call, no
-//!   [`ContextKind::ToolResult`] answers it, and reading that off a resumed [`Context`] is a few
-//!   lines. Which of the two possible worlds it is - the effect committed, or it never happened -
-//!   only the external system can say, and only if it was asked in a way it can answer.
+//!   process.
+//! - A call with no result is *findable*: the assistant item holds the call and no
+//!   [`ContextKind::ToolResult`] answers it. Which of the two worlds it is - the effect committed,
+//!   or it never happened - only the external system can say.
 //! - Returning [`ToolOutput::error`] is **not** the crash case. That is an answer: the failure is
 //!   recorded and the model reads it. The unanswered case is a process that died with the call in
-//!   flight, where nothing was recorded at all.
+//!   flight.
 //!
-//! Checkpointing is two writes, and the order of them decides what a crash can cost. **Copy, write,
-//! drop, then snapshot**: [`Kernel::history_since`] hands back clones and leaves the kernel holding
-//! them, [`Kernel::drain_history`] hands back the only copy there is. Draining before writing opens
-//! a window in which the records are nowhere at all, and a crash inside it loses them with nothing
-//! to say so. The snapshot goes last for the same reason turned round: a snapshot ahead of the log
-//! is a state nothing accounts for, while a snapshot behind it is a state the log can explain.
-//!
-//! `tests/crash.rs` is this written out and checked - a tool that moves money and loses the
-//! process, resumed and reconciled against a ledger that is idempotent on the call id.
+//! Checkpointing is two writes, and their order decides what a crash can cost. **Copy, write, drop,
+//! then snapshot**: [`Kernel::history_since`] hands back clones and leaves the kernel holding them,
+//! [`Kernel::drain_history`] hands back the only copy there is. Draining before writing opens a
+//! window in which the records are nowhere at all. The snapshot goes last for the same reason
+//! turned round: a snapshot ahead of the log is a state nothing accounts for, while a snapshot
+//! behind it is a state the log can explain. `tests/crash.rs` is this written out and checked.
 //!
 //! # Features
 //!
