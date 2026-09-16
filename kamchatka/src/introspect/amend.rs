@@ -853,7 +853,17 @@ fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
                  landed since is in the figure too.",
                 thousands(before - now)
             ),
-            Ordering::Equal => String::new(),
+            // note: said rather than left as two figures that happen to match. A live session
+            // pinned an item, was told `now ~6,097 tokens, from ~6,097`, and answered "huh, pinning
+            // increased the cost slightly?" - the same misreading as the one above, off two numbers
+            // that were not even different. It says nothing about *why* it did not move, because
+            // that differs by action and this arm serves all of them - a pin changes what
+            // compaction may take rather than what the request carries, and a prune on something
+            // already held back has nothing left to take out. What it does rule out is the other
+            // reading of an unmoved figure, which is a change that never took
+            Ordering::Equal => " That is the same figure as before, to the token, rather than a \
+                                change that did not take."
+                .to_owned(),
         },
     )
 }

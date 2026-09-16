@@ -37,6 +37,14 @@ minor bump may break you.
   where the figure it is measured against comes from: what the request cost when the change found
   it, which is not what an earlier `budget` said it would.
 
+- **And `amend` says when a change moves the figure not at all.** The third arm of the same thing.
+  A pin changes what compaction may take rather than what the request carries, so the two figures
+  come out identical - and a live session read `now ~6,097 tokens, from ~6,097` as *"huh, pinning
+  increased the cost slightly?"*. Two numbers that were not even different were still read as a
+  rise, which says the arithmetic was never what was being done. It is said in words now, and the
+  sentence also rules out the other reading of an unmoved figure: a change that quietly did not
+  take.
+
 - **The status line ends at the figures.** `F1 for the keys` is off it. The same key is offered on
   the first screen anybody sees, by `GREETING`, and again by every `there is no /x` - three places
   for one key, and the one that gave way is on the line whose right-hand end a narrow terminal

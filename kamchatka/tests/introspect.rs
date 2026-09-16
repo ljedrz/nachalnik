@@ -310,6 +310,44 @@ async fn pruning_something_says_the_figure_went_down_and_what_it_went_down_from(
     );
 }
 
+/// And a change that moves the figure not at all says *that*, rather than printing one number
+/// twice and leaving it to be noticed.
+///
+/// note: the third arm of the same failure. A pin changes what compaction may take and not what
+/// the request carries, so the two figures are identical - and a live session read `now ~6,097
+/// tokens, from ~6,097` as "huh, pinning increased the cost slightly?". Two numbers that are not
+/// even different were still read as a rise, which says the arithmetic was never what was being
+/// done. The sentence also rules out the other reading of an unmoved figure, which is a change
+/// that silently did not take.
+#[tokio::test]
+async fn a_change_that_moves_the_figure_not_at_all_says_that_it_did_not() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "amend",
+        json!({ "action": "pin", "ids": [1], "reason": "worth keeping through a compaction" }),
+    )]));
+
+    kernel.push(ContextItem::user(
+        "a message that pinning does not move in or out of anything",
+    ));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("the same figure as before"),
+        "an unmoved figure is said in words: {said}"
+    );
+    assert!(
+        said.contains("rather than a change that did not take"),
+        "and it is not read as a pin that failed: {said}"
+    );
+    assert!(
+        !said.contains("more than before") && !said.contains("less than before"),
+        "it went neither way: {said}"
+    );
+}
+
 /// A move needs to know which items, and `label` is not how it is said - but it is a way somebody
 /// could reasonably think it was, because `label` is in the same schema. So the refusal is the
 /// spelling of what they meant rather than a restatement of the arguments.
