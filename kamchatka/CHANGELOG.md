@@ -73,6 +73,12 @@ minor bump may break you.
   The refusal names the operation the argument belongs to, when exactly one does. `old` is
   `edit`'s and saying so is the whole answer; `ids` is eleven of `context`'s thirteen, and naming
   the first of them would be reporting the order of a table as a fact about the argument.
+- `glob` and `grep` obey a `.gitignore` outside a git repository, which is what `fs` has been
+  telling models they do. The walker honours one only inside a repository by default, so in a
+  directory nobody had run `git init` in a session was handed build output while its tool
+  definition said it had been spared it. The test that covered this passed for a reason of its own:
+  `CARGO_TARGET_TMPDIR` is `target/tmp` *inside this repository*, so the walker found a `.git` two
+  directories up and behaved. There is a second test now, under `/tmp`, that asserts it is not.
 - `/limit` with a subject and no number said `/limit <tool> <bytes>`, two lines from a table that
   calls its rows subjects. A limit stopped being a tool's the day one tool did five things.
 - The line after `/model` or `/provider` waits for the switch it asked for. Both hand the round

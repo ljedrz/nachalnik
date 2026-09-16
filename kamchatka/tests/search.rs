@@ -168,6 +168,45 @@ async fn the_walk_knows_what_a_gitignore_means() {
     );
 }
 
+/// And it means it where nobody has run `git init`, which is where this test has to live to ask.
+///
+/// note: found live, and the test above is why it went unfound. `CARGO_TARGET_TMPDIR` is
+/// `target/tmp` *inside this repository*, so the walker above finds a `.git` two directories up,
+/// decides it is in a repo, and honours the `.gitignore` - which is the answer the assertion wants
+/// and not the reason it wanted it. Outside a repository the default `require_git(true)` reads no
+/// `.gitignore` at all, and the tool's description says it obeys one with no conditions attached:
+/// a live session in a scratch directory was handed a file its `.gitignore` names and told, by the
+/// definition it had been given, that it had not been.
+///
+/// note: so the tree is under `std::env::temp_dir()`, and the one thing that must stay true of it
+/// is that nothing above it is a git repository. `/tmp` is that; `target/` is not, which is the
+/// whole point.
+#[tokio::test]
+async fn a_gitignore_is_obeyed_outside_a_repository_too() {
+    let dir = std::env::temp_dir().join("kamchatka-gitignore-no-repo");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a directory to work in");
+    assert!(
+        !dir.ancestors().any(|up| up.join(".git").exists()),
+        "this test asks its question only outside a repository, and {} is inside one",
+        dir.display()
+    );
+
+    put(&dir, ".gitignore", "build/\n");
+    put(&dir, "build/generated.rs", "pub struct Kernel;\n");
+    put(&dir, "src/kernel.rs", "pub struct Kernel;\n");
+
+    let said = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
+
+    assert!(said.contains("src/kernel.rs:1:"), "{said}");
+    assert!(
+        !said.contains("build/generated.rs"),
+        "a `.gitignore` is a `.gitignore` wherever it is: {said}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A path rule bars a file from a walk, and the answer says how many it barred.
 ///
 /// note: the hole this closes is that `Careful` matches path rules against the path *in the call*,
