@@ -1092,9 +1092,9 @@ mod tests {
             "and without the markup round it: {plain}"
         );
 
-        // a whole web page, which is what a base URL pointing at a site answers with. Its
-        // words are the useful part and its stylesheet is not: 405 from  used to
-        // put four lines of CSS in the conversation and the session log
+        // a whole web page, which is what a base URL pointing at a site answers with. Its words
+        // are the useful part and its stylesheet is not: the 405 from `https://example.com/v1`
+        // used to put four lines of CSS in the conversation and the session log
         let page = concat!(
             r#"<!doctype html><html lang="en"><head><title>Example Domain</title>"#,
             r#"<link rel="icon" href="data:,"><style>body{background:#eee;width:60vw;"#,

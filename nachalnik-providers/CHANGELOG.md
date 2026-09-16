@@ -7,6 +7,23 @@ minor bump may break you.
 
 ## [unreleased]
 
+### fixed
+
+- `Gemini::set_endpoint` says when the new address does not serve the model, which it did only when
+  a model was named beside the address. Given none, the old name is kept - and a name that was
+  right at the last address is exactly the one worth asking about at this one, which is what the
+  other dialect has always done. Without it the first word on the subject was a 404 on the next
+  request. `tests/switching.rs` holds both dialects to it, along with the other half of the
+  promise: an endpoint that lists nothing has not said the model is absent, and neither dialect may
+  read its silence as a denial.
+
+### changed
+
+- `OpenAiCompatible::client` no longer describes its timeout as longer than reqwest's default.
+  reqwest has no default request timeout, so the client `OpenAiCompatible::new` builds for itself
+  has none at all - which is usable rather than a trap, because what ends a request that has said
+  nothing is the silence watch this crate counts for itself. Documentation only.
+
 ### added
 
 - `OpenAiCompatible::thinking_in_content`, on by default: takes thinking a model wrote into its own

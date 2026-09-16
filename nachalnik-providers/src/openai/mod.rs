@@ -164,7 +164,9 @@ impl OpenAiCompatible {
         }
     }
 
-    /// A client with the timeout a slow endpoint wants, which is longer than reqwest's default.
+    /// A client with the timeout a slow endpoint wants, which reqwest's own default is not:
+    /// [`reqwest::ClientBuilder::timeout`] is unset unless somebody sets it, so the client
+    /// [`OpenAiCompatible::new`] builds for itself has none at all.
     ///
     /// note: also where the cryptography `rustls` will use is installed, for a caller that builds
     /// its own client and would otherwise find out at the first `https://`. See
@@ -174,8 +176,12 @@ impl OpenAiCompatible {
     /// connect, generate and body - so it is an upper bound on how long a model may think and not
     /// only on how long a dead socket may hang. Set it below what the work takes and every long
     /// answer arrives as `error decoding response body`, which looks like a network fault and is
-    /// not one. The default here is ten minutes for that reason; what catches a socket with
-    /// nobody on the other end is the silence watch, which is counted rather than told.
+    /// not one. The default here is ten minutes for that reason.
+    ///
+    /// note: a provider with no timeout is not a provider with no patience, which is why the
+    /// default client is usable rather than a trap. What catches a socket with nobody on the other
+    /// end is the silence watch - counted here rather than told by the transport - and it ends a
+    /// request that has said nothing whether or not anything else would have.
     pub fn client() -> reqwest::Client {
         Self::client_with(WHOLE_ANSWER)
     }

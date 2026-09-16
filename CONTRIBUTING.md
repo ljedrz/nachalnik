@@ -175,7 +175,10 @@ back out (`gemini`), checks what is volunteered to an endpoint about the calling
 which one (`attribution`), answers two sockets that go silent, one before the first byte and one
 mid-stream (`stalled`), holds each dialect's projection against what its own `to_wire` carries
 (`projection`), pins where each puts a `Content::Blob` and that neither is handed one in a place
-it would refuse (`blobs`), and reads the answer that arrives in one piece (`whole_answers`). `nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one
+it would refuse (`blobs`), reads the answer that arrives in one piece (`whole_answers`), takes
+thinking back out of the content a model wrote it into (`thinking`), and moves a session to a second
+address to be told the model does not live there (`switching`).
+`nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one
 (`bridge`), and `foreign` runs one written in another language.
 
 The shapes a *stream* arrives in are not tested per provider, because the questions would be the

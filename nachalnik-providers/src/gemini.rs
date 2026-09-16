@@ -149,6 +149,27 @@ impl Gemini {
         }
     }
 
+    /// Puts a notice up if the model is not one the endpoint lists.
+    ///
+    /// note: the alternative is finding out on the next request, as a 404 with a paragraph of
+    /// somebody's API prose in it. Switching address and model are two commands and it is easy to
+    /// do one of them - which is why this is asked after an address changes as well as after a
+    /// name does, the same as the other dialect.
+    ///
+    /// note: an empty listing is "it did not say" rather than "it has none", so it buys silence.
+    async fn say_if_the_model_is_not_there(&self) {
+        let model = self.model.lock().clone();
+        let listed = self.models().await;
+        if listed.is_empty() || listed.iter().any(|name| same_model(name, &model)) {
+            return;
+        }
+
+        *self.notice.lock() = Some(format!(
+            "{model} is not one of the {} models this address lists",
+            listed.len()
+        ));
+    }
+
     /// Everything in a part except the fields this provider understands.
     ///
     /// note: not just `thoughtSignature`, though that is the one that matters today. Whatever
@@ -773,23 +794,21 @@ impl Endpoint for Gemini {
         *self.model.lock() = model;
         *self.context_limit.lock() = self.configured;
         self.probe().await;
-
-        let model = self.model.lock().clone();
-        let listed = self.models().await;
-        if !listed.is_empty() && !listed.iter().any(|name| same_model(name, &model)) {
-            *self.notice.lock() = Some(format!(
-                "{model} is not one of the {} models this address lists",
-                listed.len()
-            ));
-        }
+        self.say_if_the_model_is_not_there().await;
     }
 
+    /// note: the check happens whether or not a model was named. Given none the old name is kept,
+    /// and a name that was right at the last address is exactly the one worth asking about at this
+    /// one - which is the case this used to skip, leaving the 404 on the next request to say so.
     async fn set_endpoint(&self, url: String, model: Option<String>) {
         *self.base_url.lock() = url;
         *self.context_limit.lock() = self.configured;
         match model {
             Some(model) => self.set_model(model).await,
-            None => self.probe().await,
+            None => {
+                self.probe().await;
+                self.say_if_the_model_is_not_there().await;
+            }
         }
     }
 
