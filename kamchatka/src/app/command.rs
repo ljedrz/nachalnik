@@ -30,6 +30,12 @@ impl App {
     /// was reduced to watching the two of them change to find out. The copy is cheap and the
     /// alternative was a watermark kept by every caller.
     pub async fn submit(&mut self, line: &str) -> Reply {
+        // a switch still in flight is finished before this line is read, so that nothing acts on
+        // a session part-way through changing model. See `App::settling`
+        if let Some(settling) = self.settling.take() {
+            let _ = settling.await;
+        }
+
         let (from, pages) = (self.loose.len(), self.previews);
         // whatever this line turns into, the time before it was somebody deciding what to type.
         // The next line the trace draws is the one that gap belongs to
@@ -201,8 +207,9 @@ impl App {
                     // this is the line that makes that true
                     self.anchor = None;
                     // the new model has a context limit of its own, and finding it out is a round
-                    // trip; the screen should not stop for it
-                    tokio::spawn(async move { provider.set_model(model).await });
+                    // trip; the screen should not stop for it, and the next line does
+                    self.settling =
+                        Some(tokio::spawn(async move { provider.set_model(model).await }));
 
                     return;
                 }
@@ -314,8 +321,10 @@ impl App {
                 // address is a different model, and this is the command that says so
                 self.anchor = None;
                 // the new endpoint has a context limit of its own, and a list of what it serves;
-                // both are round trips and the screen should not stop for them
-                tokio::spawn(async move { provider.set_endpoint(url, model).await });
+                // both are round trips, the screen should not stop for them, and the next line does
+                self.settling = Some(tokio::spawn(async move {
+                    provider.set_endpoint(url, model).await
+                }));
             }
             "params" => {
                 if let Some((key, value)) = rest.split_once(' ') {

@@ -151,8 +151,9 @@ struct Args {
     headless: bool,
 
     /// Allow a capability, a path or one tool action outright, as `read`, `shell`, `mcp:files`,
-    /// `.env*`, `amend:note`. May be repeated, and takes a comma-separated list. Answering at the
-    /// prompt writes the same table.
+    /// `.env*`, `amend,amend:elide`. May be repeated, and takes a comma-separated list. An action
+    /// rule can only narrow its tool, so an action wants both. Answering at the prompt writes the
+    /// same table.
     #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
     allow: Vec<String>,
 

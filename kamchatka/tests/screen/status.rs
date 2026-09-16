@@ -982,6 +982,33 @@ async fn a_change_of_model_drops_the_anchor() {
     );
 }
 
+/// The line after a switch is read by the session the switch produced, not the one it replaced.
+///
+/// note: `/model` and `/provider` hand the switch to a task, because finding out what the new
+/// model holds and whether the new address serves it is two round trips and a screen should not
+/// stop for them. Nothing was waiting for that task, so `/provider URL ID` followed by `/model`
+/// answered with the old model - watched live, twice, against two different endpoints - and a
+/// *message* on the next line could be asked of whichever of the two won the race. At a keyboard
+/// it is a race that usually resolves in the gap before somebody types; down a pipe there is no
+/// gap at all, so the ordinary case in a script is the one that loses.
+#[tokio::test]
+async fn a_line_after_a_switch_waits_for_the_switch() {
+    let mut harness = Harness::new([]);
+
+    harness.send("/model something-else").await;
+    harness.send("/model").await;
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("something-else"),
+        "the model the last line asked for: {screen}"
+    );
+    assert!(
+        harness.app.settling.is_none(),
+        "and nothing is still settling once the line that waited for it has run"
+    );
+}
+
 /// The context tab says how much has to go, because that is the tab somebody goes to in order to
 /// make it go.
 ///

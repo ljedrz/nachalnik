@@ -58,6 +58,17 @@ minor bump may break you.
 
 ### fixed
 
+- The line after `/model` or `/provider` waits for the switch it asked for. Both hand the round
+  trips to a task, because a screen should not stop while a new endpoint is asked what it holds -
+  and nothing was waiting for that task, so `/provider URL ID` followed by `/model` answered with
+  the *old* model, and a message on the next line could be asked of whichever of the two won the
+  race. At a keyboard it usually resolved in the gap before somebody typed; down a pipe there is
+  no gap, so a script got the losing side as a matter of course. The wait is in `App::submit`, the
+  one door every typed line goes through, so a frame drawn mid-switch is still a frame.
+- `--allow` says that an action rule can only narrow its tool, so an action wants both:
+  `--allow amend,amend:elide`. The one-line description had `amend:note` on its own, which is a
+  grant that grants nothing - the four altering actions are seeded as questions, and the strictest
+  answer wins.
 - `--compact` below a third asked for a compaction and got nothing. The compactor took its target
   twenty points under its threshold with a flat floor of ten percent, so `--compact 0.15` started
   at fifteen percent of the limit and aimed at ten - and a context between the two was already

@@ -628,6 +628,11 @@ pub(crate) fn charged(usage: &Usage) -> String {
 /// where the parenthesis costs a token and nothing else. This is for a line a person reads, and
 /// `1 items` in the corner of a screen is the kind of small wrongness that makes somebody wonder
 /// what else is approximate. Only `s` plurals, because every noun on that line is one.
+///
+/// note: gated with the screen, because the screen is what it is for - a build with no `tui` has
+/// nowhere to put a line whose whole job is to read well, and every count it does print is one a
+/// model is reading.
+#[cfg(feature = "tui")]
 pub(crate) fn plural(n: usize, thing: &str) -> String {
     match n {
         1 => format!("1 {thing}"),

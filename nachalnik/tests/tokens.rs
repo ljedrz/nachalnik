@@ -806,6 +806,33 @@ async fn a_kernel_told_not_to_refuse_sends_it_anyway() {
     assert_eq!(provider.requests().len(), 1);
 }
 
+/// A request that comes to exactly the limit fits it, and is sent.
+///
+/// note: the boundary, and it is the whole difference between a check and a margin. A model that
+/// holds a thousand tokens holds a request of a thousand tokens - the endpoint refuses *over* the
+/// limit, so a kernel refusing *at* it would be inventing a policy about how full a context may
+/// be and enforcing it against an estimate. Nothing else in this suite pins the comparison: both
+/// of the tests above it are thousands of tokens either side of the line, so the one character
+/// that decides it can be changed without a single failure.
+#[tokio::test]
+async fn a_request_that_comes_to_exactly_the_limit_is_sent() {
+    let kernel = kernel();
+    kernel.push(ContextItem::user("a".repeat(8_000)));
+    // the limit is read off the request rather than chosen, because what the counter makes of
+    // those bytes is the counter's business and this test is about the comparison
+    let exactly = kernel.budget().used();
+    let provider = Arc::new(
+        ScriptedProvider::new([ModelResponse::text("answered")]).with_info(nachalnik::ModelInfo {
+            context_limit: Some(exactly),
+            ..nachalnik::ModelInfo::new("scripted", "scripted")
+        }),
+    );
+    kernel.set_provider(provider.clone());
+
+    kernel.step().await.expect("a request that fits is sent");
+    assert_eq!(provider.requests().len(), 1);
+}
+
 /// And a provider that does not say what the model holds has nothing to be measured against.
 #[tokio::test]
 async fn nothing_is_refused_against_a_limit_nobody_stated() {

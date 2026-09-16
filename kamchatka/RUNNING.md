@@ -34,7 +34,7 @@ Nothing can be asked at a prompt that is not there, so the answers are given in 
 
 | flag | what it does |
 | --- | --- |
-| `--allow read,shell` | answer `allow` for a capability, a path rule (`--allow 'src/**'`) or one action (`--allow amend:note`) |
+| `--allow read,shell` | answer `allow` for a capability, a path rule (`--allow 'src/**'`) or one action — which can only narrow its tool, so it wants both (`--allow amend,amend:elide`) |
 | `--deny write,.env*` | the same, refused; the strictest of everything consulted still wins |
 | `--on-ask deny` | what happens to a question nobody answered in advance. The default |
 
@@ -463,7 +463,8 @@ kamchatka [OPTIONS] [MESSAGE]...
                             stdout, one JSON record a line, and what the model says to
                             stderr. Implied when stdout is not a terminal
       --allow <SUBJECT>     answer `allow` in advance for a capability, a path or one
-                            tool action, as read, shell, mcp:files, .env*, amend:note ;
+                            tool action, as read, shell, mcp:files, .env*, amend,amend:elide ;
+                            an action rule only narrows its tool, so an action wants both;
                             comma-separated, may be repeated
       --deny <SUBJECT>      the same, refused
       --on-ask <ANSWER>     what a question nobody is there to answer gets, in a

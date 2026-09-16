@@ -602,6 +602,21 @@ pub struct App {
     pub policy: Arc<Careful>,
     /// The provider, for switching models - whichever dialect it speaks.
     pub provider: Arc<dyn Endpoint>,
+    /// A `/model` or `/provider` still settling, which the next line waits for.
+    ///
+    /// note: both commands hand the switch to a task rather than standing there while it happens,
+    /// because finding out what the new model holds and whether the new address serves it is two
+    /// round trips and a screen should not stop for them. What the *next line* may not do is read
+    /// a session that has not finished changing: `/provider URL ID` followed by `/model` reported
+    /// the old model, and a message on the line after a switch could be asked of whichever of the
+    /// two won the race. Down a pipe there is no gap between the lines at all, so what is a race
+    /// at a keyboard is the ordinary case in a script.
+    ///
+    /// note: awaited in [`App::submit`] rather than anywhere the provider is read, which is the
+    /// narrower door and the right one: a frame drawn mid-switch showing the old name for a
+    /// moment is a frame, and the next one corrects it. A *line* acting on the old name is an
+    /// answer. The provider's client carries its own timeout, so this cannot wait forever.
+    pub settling: Option<tokio::task::JoinHandle<()>>,
     /// How much of each tool's output the model is shown, which `/limit` changes.
     ///
     /// note: the same handle the tools were built with, so `/limit` changes the number they will
@@ -903,6 +918,7 @@ impl App {
             reported_repairs: Vec::new(),
             since: Instant::now(),
             question_scroll: 0,
+            settling: None,
             proposed: None,
             typed_ahead: None,
             last_sent: None,
