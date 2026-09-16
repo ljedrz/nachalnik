@@ -444,14 +444,15 @@ tools this program has never heard of — including an MCP server's, which all c
 that opened it. It binds every tool that is handed a path — the three that open one, and the two
 that walk a directory of them. A walk cannot *ask*, so what `grep` and `glob` do about a rule that
 is not `allow` is not open the file, and say how many they left alone. An **action rule** is the
-same idea one tool along, spelled `<tool>:<action>`: a
-capability is the whole of a tool and `amend` is not one decision, since `note` adds an item to
-your context and `exclude` takes one out. So the four that change or remove what is already there
-— `amend:elide`, `amend:exclude`, `amend:archive`, `amend:revise` — are subjects of their own and
-stay questions whatever `amend` itself says, until somebody answers about them. The strictest of
-everything consulted wins, so a rule can only tighten what a capability allows: `--allow
-amend,amend:note` lets notes through and leaves an `exclude` a question, and there is deliberately
-no way to spell the other way round. `network` is the odd one: no tool declares it, because a model
+same idea one tool along, spelled `<tool>:<action>`, for when a tool is worth splitting up: `note`
+adds an item to your context and `revise` rewrites one, and those are not the same decision.
+
+A capability is the whole of its tool, and a rule finer than one is about the part it names.
+`--allow amend` allows amend; `--allow amend:note` allows a note and says nothing about the rest;
+`--allow amend --deny amend:revise` is everything but that one. The only thing a finer rule cannot
+do is overrule a refusal — a tool you have *denied* stays denied however finely an action of it is
+named, because the strictest of everything consulted wins and `--deny` is the last word.
+`network` is the odd one: no tool declares it, because a model
 that wants the network writes `curl` — so the row says which shell it reaches, and when.
 
 <kbd>space</kbd> cycles a row through **ask → allow → deny**, or <kbd>a</kbd>/<kbd>n</kbd>/<kbd>r</kbd>

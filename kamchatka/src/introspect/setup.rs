@@ -301,9 +301,9 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         ));
     }
 
-    // the same split the path rules get, and for the same reason its note gives: four `ask` rows
-    // nobody has thought about are not information, and a report that listed none of them and
-    // said nothing would be standing silently for four answers
+    // the same split the path rules get, and for the same reason its note gives: a row of `ask`
+    // nobody has thought about is not information, and a report that listed none of them and
+    // said nothing would be standing silently for every one of those answers
     let (decided, undecided): (Vec<_>, Vec<_>) = actions
         .into_iter()
         .partition(|(_, _, verdict)| *verdict != Verdict::Ask);
@@ -316,7 +316,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     if !undecided.is_empty() {
         out.push_str(&format!(
             "\n{} action rule(s) are undecided and will stop and ask, whatever the tool's own \
-             verdict is - the ones that change or remove what is already in your context: {}.\n",
+             verdict is: {}.\n",
             undecided.len(),
             undecided
                 .iter()

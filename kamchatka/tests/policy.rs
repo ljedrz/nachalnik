@@ -270,57 +270,66 @@ fn asking_about_action(policy: &Careful, action: &str) -> Verdict {
     policy.verdict(&request)
 }
 
-/// The point of the whole thing: a tool is not one decision. `amend: allow` is a reasonable thing
-/// to want for a note and not for an `exclude`, so the four actions that change or remove what is
-/// already there are subjects of their own, and stay questions until somebody says otherwise.
+/// `amend` allows amend: every action it has, with nothing else to say about it.
+///
+/// note: four of them were seeded as questions, so allowing the tool left an `exclude` still
+/// asking - which made `--allow amend` mean something other than `amend`, with no way to tell
+/// from the words which four were the exceptions.
 #[test]
-fn allowing_a_tool_does_not_allow_the_actions_that_take_something_away() {
+fn allowing_a_tool_allows_every_action_of_it() {
     let policy = Careful::new();
-    policy.set(
-        &Subject::Capability(Capability::Custom("amend".to_owned())),
-        Verdict::Allow,
-    );
+    policy.set(&Subject::parse("amend"), Verdict::Allow);
 
-    // the additive ones go through on the tool's own verdict, because nothing finer is consulted
-    for action in ["note", "pin", "restore", "undo"] {
+    for action in [
+        "note", "pin", "restore", "undo", "elide", "exclude", "revise",
+    ] {
         assert_eq!(
             asking_about_action(&policy, action),
             Verdict::Allow,
-            "`{action}` has no rule of its own and should ride on `amend`"
+            "`amend` is allowed, so `{action}` is"
         );
     }
+}
 
-    // ... and the four that do not
-    for action in ["elide", "exclude", "archive", "revise"] {
+/// And naming one action allows that one, with nothing else said about the tool.
+#[test]
+fn allowing_one_action_allows_only_that_action() {
+    let policy = Careful::new();
+    policy.set(&Subject::parse("amend:note"), Verdict::Allow);
+
+    assert_eq!(asking_about_action(&policy, "note"), Verdict::Allow);
+    for action in ["elide", "exclude", "revise"] {
         assert_eq!(
             asking_about_action(&policy, action),
             Verdict::Ask,
-            "`{action}` is a rule of its own and nobody has answered about it"
+            "only `note` was allowed, so `{action}` is still a question"
         );
     }
+    assert_eq!(
+        policy.stance(&Subject::parse("amend")),
+        Verdict::Ask,
+        "and the tool itself was never answered about"
+    );
 }
 
-/// And it is answerable, which is the other half: the rule is a subject like any other, so saying
-/// yes to it is the same act as saying yes to a capability.
+/// An action rule narrows an allowed tool, which is the other half of naming one.
 #[test]
-fn answering_about_one_action_answers_about_that_action_and_no_other() {
+fn refusing_one_action_refuses_only_that_action() {
     let policy = Careful::new();
-    for subject in ["amend", "amend:elide"] {
-        policy.set(&Subject::parse(subject), Verdict::Allow);
-    }
+    policy.set(&Subject::parse("amend"), Verdict::Allow);
+    policy.set(&Subject::parse("amend:revise"), Verdict::Deny);
 
-    assert_eq!(asking_about_action(&policy, "elide"), Verdict::Allow);
-    assert_eq!(asking_about_action(&policy, "exclude"), Verdict::Ask);
-
-    // a refusal is a standing answer, and the strictest wins, so it beats the tool being open
-    policy.set(&Subject::parse("amend:exclude"), Verdict::Deny);
-    assert_eq!(asking_about_action(&policy, "exclude"), Verdict::Deny);
+    assert_eq!(asking_about_action(&policy, "revise"), Verdict::Deny);
+    assert_eq!(asking_about_action(&policy, "note"), Verdict::Allow);
 }
 
-/// The rules can only tighten, which is what makes a finer subject safe to add: there is no way to
-/// spell "the tool is refused, but this one action is fine".
+/// A tool somebody refused stays refused, however finely an action of it is named.
+///
+/// note: the half that keeps `--deny` worth writing. There is deliberately no way to spell "the
+/// tool is refused, but this one action is fine": the strictest of everything consulted wins, and
+/// `--deny` is the last word.
 #[test]
-fn an_action_rule_cannot_loosen_the_tool_it_belongs_to() {
+fn an_action_rule_cannot_loosen_a_tool_that_was_refused() {
     let policy = Careful::new();
     policy.set(
         &Subject::Capability(Capability::Custom("amend".to_owned())),
@@ -368,30 +377,40 @@ fn a_tool_with_no_rules_about_its_actions_is_judged_by_its_capability_alone() {
     assert_eq!(policy.verdict(&request), Verdict::Allow);
 }
 
-/// `always` answers for everything the policy consulted, which is why it is safe for this to be
-/// the finer subject: the sweep sets the action rule as well as the tool, so the same call does
-/// not ask twice - and the *other* actions are untouched, because each has a rule of its own.
+/// `always` answers for everything the policy consulted, and what it consulted is the grain of
+/// the answer: the tool, unless somebody has written a rule finer than one.
 #[test]
-fn always_answers_for_the_action_it_was_asked_about_and_leaves_the_rest() {
-    let policy = Careful::new();
-    let call = ToolCall::new(
-        "c1",
-        "amend",
-        json!({ "action": "exclude", "reason": "why" }),
-    );
-    let request = PermissionRequest {
-        id: PermissionId(1),
-        call: call.id.clone(),
-        tool: "amend".to_owned(),
-        capabilities: vec![Capability::Custom("amend".to_owned())],
-        args: call.args.clone(),
+fn always_answers_at_the_grain_the_rules_are_written_at() {
+    let asked_about = |action: &str| {
+        let call = ToolCall::new("c1", "amend", json!({ "action": action, "reason": "why" }));
+        PermissionRequest {
+            id: PermissionId(1),
+            call: call.id.clone(),
+            tool: "amend".to_owned(),
+            capabilities: vec![Capability::Custom("amend".to_owned())],
+            args: call.args.clone(),
+        }
     };
 
+    // nothing finer has been written, so the question was about `amend` and so is the answer
+    let policy = Careful::new();
+    let request = asked_about("exclude");
     policy.always(&policy.judges(&request));
-
     assert_eq!(policy.verdict(&request), Verdict::Allow);
-    assert_eq!(asking_about_action(&policy, "archive"), Verdict::Ask);
-    assert_eq!(asking_about_action(&policy, "revise"), Verdict::Ask);
+    assert_eq!(asking_about_action(&policy, "revise"), Verdict::Allow);
+
+    // and a rule about an action it was not asked about is not answered by it, the way a
+    // credential path survives an `always` for `read`
+    let policy = Careful::new();
+    policy.set(&Subject::parse("amend:revise"), Verdict::Deny);
+    let request = asked_about("exclude");
+    policy.always(&policy.judges(&request));
+    assert_eq!(policy.verdict(&request), Verdict::Allow);
+    assert_eq!(
+        asking_about_action(&policy, "revise"),
+        Verdict::Deny,
+        "`revise` was never consulted, so nothing here answered it"
+    );
 }
 
 /// Which tool a rule binds is answered against the registry rather than off the shape of the

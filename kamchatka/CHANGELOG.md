@@ -65,10 +65,17 @@ minor bump may break you.
   race. At a keyboard it usually resolved in the gap before somebody typed; down a pipe there is
   no gap, so a script got the losing side as a matter of course. The wait is in `App::submit`, the
   one door every typed line goes through, so a frame drawn mid-switch is still a frame.
-- `--allow` says that an action rule can only narrow its tool, so an action wants both:
-  `--allow amend,amend:elide`. The one-line description had `amend:note` on its own, which is a
-  grant that grants nothing - the four altering actions are seeded as questions, and the strictest
-  answer wins.
+- A capability is the whole of its tool, and a rule finer than one is about the part it names.
+  `--allow amend` allows amend; `--allow amend:note` allows a note and says nothing about the
+  rest; `--allow amend --deny amend:revise` is everything but that one. Both halves were wrong
+  before. Four of `amend`'s actions shipped pre-seeded as questions, so allowing the tool left an
+  `exclude` still asking - `--allow amend` meant something other than `amend`, with nothing in
+  the words to say which four were the exceptions. And naming one action put the rule beside the
+  tool's capability rather than in front of it, so `--allow amend:note` was read against an
+  `amend` nobody had answered about and granted nothing at all, which is the worst way for a
+  permission rule to be wrong: it reads as given. The one thing a finer rule still cannot do is
+  overrule a refusal, because the strictest of everything consulted wins and `--deny` is the last
+  word.
 - `--compact` below a third asked for a compaction and got nothing. The compactor took its target
   twenty points under its threshold with a flat floor of ten percent, so `--compact 0.15` started
   at fifteen percent of the limit and aimed at ten - and a context between the two was already

@@ -24,8 +24,8 @@ use parking_lot::Mutex;
 /// *file* rather than of the tool that opened it - which is why a path rule is one subject rather
 /// than three, and binds `read`, `write` and `edit` alike.
 ///
-/// note: two *kinds*, and three kinds of rule. An action rule - `amend: allow` is reasonable for a
-/// `note` and not for an `exclude` - is spelled as a `Capability::Custom` of the form
+/// note: two *kinds*, and three kinds of rule. An action rule - `amend:note` without the rest of
+/// `amend` - is spelled as a `Capability::Custom` of the form
 /// `<tool>:<action>` rather than as a variant of its own, because a custom capability is spelled
 /// the same way (`mcp:<server>`) and nothing in the text would say which a variant was meant to
 /// be. [`acts_on`] answers that against the registry instead. See [`Careful::judges`].
@@ -92,26 +92,6 @@ const SUSPECT: &[&str] = &[
     ".ssh/",
     ".aws/",
     ".gnupg/",
-];
-
-/// The tool actions a fresh policy has something to say about, as `<tool>:<action>`.
-///
-/// note: the same idea as [`SUSPECT`] one tool along. A capability is the whole of a tool, and
-/// `amend` is not one thing: `note` adds an item and `exclude` takes one out, `revise` rewrites
-/// what one says - a user message included - and answering `always` to the first is not a thing
-/// anybody meant to say about the last. So the four that change or remove what is already there
-/// are subjects of their own, and every one of them is `ask`, like everything else here.
-///
-/// note: seeded rather than derived, and a closed list on purpose. `judges` consults an action
-/// rule only where there is one, so a tool whose actions nobody has thought about is judged by
-/// its capability exactly as before - which is what keeps `--allow amend` from silently coming
-/// to mean less than it did. Naming one on the command line makes it live: `--deny amend:undo`
-/// is a rule about an action this list does not carry.
-const ALTERS: &[&str] = &[
-    "amend:elide",
-    "amend:exclude",
-    "amend:archive",
-    "amend:revise",
 ];
 
 /// The tool an action rule binds, if this capability is one and that tool is registered.
@@ -231,10 +211,14 @@ fn glob(pattern: &str, name: &str) -> bool {
 /// note: a capability is not fine enough on its own. `read: allow` is a reasonable thing to want
 /// and `read .env: allow` is not, so there is a second kind of [`Subject`]: a pattern the *path* a
 /// tool was handed is matched against. The same argument one tool along gives a third kind of
-/// rule, the action rule seeded in `ALTERS`: `amend: allow` is reasonable for a `note` and not
-/// for an `exclude`. The strictest of everything consulted wins, so a rule can only tighten what a
-/// capability allows - `read` stays `allow` and `.env` becomes a question, and `amend` stays
-/// `allow` while an `exclude` becomes one.
+/// rule, the action rule: `amend:note` is a thing somebody may want to allow without allowing
+/// `amend:revise`.
+///
+/// note: a capability is the whole of its tool, and a rule finer than one is about the part it
+/// names. `amend` allows every action `amend` has; `amend:note` allows a note and says nothing
+/// about the rest. Against that, the strictest of everything consulted wins - so `read` stays
+/// `allow` while `.env` is a question, and a refused tool stays refused however finely an action
+/// of it is named. See [`Careful::judges`].
 ///
 /// note: those rules bind `read`, `write` and `edit`, and deliberately not `shell`. A command
 /// names its files inside a string, and `cat .env`, `sed -n 1p .env`, `python -c "open('.env')"`
@@ -293,16 +277,12 @@ impl Careful {
             // Both were decisions taken for the user about things they may perfectly well want,
             // and the sandbox is what makes either answer mean something once they have given it.
             //
-            // note: what is in here is `ALTERS`, at `ask`, which is what `stance` already answers
-            // for anything it does not find. So the entries decide nothing either; what they do
-            // is make the rule *exist*, and `judges` consults an action rule only where one does.
-            // It is the same reason `SUSPECT` is a list of `ask` rules rather than an empty one.
-            stances: Mutex::new(
-                ALTERS
-                    .iter()
-                    .map(|action| (Capability::Custom((*action).to_owned()), Verdict::Ask))
-                    .collect(),
-            ),
+            // note: and no action rules either. Four of `amend`'s were seeded here at `ask`, so
+            // that allowing the tool still left an `exclude` a question - which made `--allow
+            // amend` mean something other than `amend`, and there is no way to guess from the
+            // words which four. A capability is the whole of a tool; somebody who wants less than
+            // that writes the action they want.
+            stances: Mutex::new(BTreeMap::new()),
             paths: Mutex::new(
                 SUSPECT
                     .iter()
@@ -349,18 +329,25 @@ impl Careful {
         }
 
         // note: the action the call names, which is the third thing only the arguments can say.
-        // Consulted only where there is a rule about it, so that a tool whose actions nobody has
-        // an opinion about is judged exactly as it was - see `ALTERS`. The strictest wins, so an
-        // action rule can only tighten what the capability allows: `--allow amend,amend:note`
-        // lets notes through and leaves an `exclude` a question, and there is deliberately no
-        // way to spell the other direction.
+        // A rule about one action answers for its tool: `--allow amend:note` allows a note and
+        // says nothing about the rest, and it has to stand in for `amend` to say even that, since
+        // an unanswered capability is a question and the strictest of the two would be the
+        // question. What it cannot do is overrule an answer - a tool somebody refused stays
+        // refused however finely an action of it is named.
         if let Some(action) = request
             .args
             .get("action")
             .and_then(|action| action.as_str())
         {
             let finer = Capability::Custom(format!("{}:{action}", request.tool));
-            if self.stances.lock().contains_key(&finer) {
+            let tool = Capability::Custom(request.tool.clone());
+            let stances = self.stances.lock();
+            if stances.get(&finer) == Some(&Verdict::Allow) && !stances.contains_key(&tool) {
+                let tool = Subject::Capability(tool);
+                judged.retain(|subject| *subject != tool);
+            }
+            if stances.contains_key(&finer) {
+                drop(stances);
                 judged.push(Subject::Capability(finer));
             }
         }

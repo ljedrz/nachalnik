@@ -37,10 +37,10 @@ fn agent(
     let provider = Arc::new(ScriptedProvider::new(script));
     kernel.set_provider(provider.clone());
     let policy = Arc::new(Careful::new());
-    // note: the four `amend` actions that are permission subjects of their own go in too. These
-    // tests are about what the tools do, and `amend: allow` deliberately no longer covers an
-    // `exclude` - a question nobody is here to answer would stop the call before it did anything.
-    // The gating itself is `tests/policy.rs`'s to check, and it does.
+    // note: `amend: allow` covers every action of it, so the four spelled out below are not
+    // needed to make these calls run. They are here so that a policy under test has action rules
+    // in it at all - `setup permissions` draws them in a section of their own, and a table with
+    // an empty section is not the thing that test is about. The gating is `tests/policy.rs`'s.
     for capability in [
         "context",
         "log",
@@ -2717,12 +2717,25 @@ async fn setup_permissions_counts_the_action_rules_nobody_has_answered_about() {
         json!({ "action": "permissions" }),
     )])));
     kernel.set_provider(provider);
-    // `setup` alone: the `amend` action rules are left exactly as they ship
+    // four action rules written and none of them answered, which is the state this reports on.
+    // Nothing is seeded any more - a capability is the whole of its tool - so a policy only has
+    // these once somebody has written them
     let policy = Arc::new(Careful::new());
     policy.set(
         &Subject::Capability(Capability::Custom("setup".into())),
         Verdict::Allow,
     );
+    for action in [
+        "amend:elide",
+        "amend:exclude",
+        "amend:archive",
+        "amend:revise",
+    ] {
+        policy.set(
+            &Subject::Capability(Capability::Custom(action.into())),
+            Verdict::Ask,
+        );
+    }
     kernel.set_policy(policy.clone());
     let _anchor = introspect::install(&kernel, policy, Limits::default());
 
