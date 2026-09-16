@@ -14,7 +14,12 @@ minor bump may break you.
   recognises the refusal - reading a vendor's wording is a dialect's job, and there is none in this
   crate - and the kernel looks for it in whatever it was handed, `TooLong::of` walking the source
   chain. `Event::ModelFailed` gained an `overrun` field carrying it, so a client can say how much
-  has to go rather than only that something went wrong.
+  has to go rather than only that something went wrong. It needs both figures in the sentence, and
+  not every endpoint gives both: one answers `You exceeded the maximum context length for this
+  model of 260000` and never says what the request came to, which arrives as the prose it is.
+  Filling the missing half from this crate's own estimate would put a guess on the wire under the
+  server's name, and the estimate is what `refuse_oversized_requests` already acts on one step
+  earlier.
 - `Usage::settled`, which reads `cached_input_tokens > input_tokens` as an endpoint reporting the
   cache miss under the name of the whole prompt and adds the two. The one repair that is certain;
   what it must not become is a guess from the estimate at which convention an endpoint speaks,
