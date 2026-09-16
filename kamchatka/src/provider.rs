@@ -24,12 +24,25 @@ use nachalnik_providers::{Gemini, OpenAiCompatible, gemini::DEFAULT_BASE_URL};
 /// what the old one had. `tree/master/...` would have been that change waiting to happen the day
 /// the default branch is renamed.
 ///
-/// note: what goes out is the name of the program and nothing else - not the key, not the model,
-/// not a word of what was asked - and it goes only to OpenRouter. `KAMCHATKA_NO_ATTRIBUTION`
-/// turns it off, because a program that names its user's tooling to a third party should say so
-/// and let them stop it.
+/// note: what goes out is the name of the program and what kind of program it is - not the key,
+/// not the model, not a word of what was asked - and it goes only to OpenRouter.
+/// `KAMCHATKA_NO_ATTRIBUTION` turns it off, because a program that names its user's tooling to a
+/// third party should say so and let them stop it.
 const APP_URL: &str = "https://github.com/ljedrz/nachalnik/tree/HEAD/kamchatka";
 const APP_TITLE: &str = "kamchatka";
+
+/// Which of OpenRouter's categories the app page is filed under, which is what puts it in the
+/// marketplace rather than only in the rankings.
+///
+/// note: two, because two per request is the documented limit, and these are the two that are
+/// simply true - `cli-agent` is "terminal-based coding assistants" in their own words, and
+/// `programming-app` is the wider one it also is. The rest of the coding group is somebody else:
+/// this is not an editor plugin, it does not run in anybody's cloud, and it builds no apps.
+///
+/// note: nothing checks the spelling, here or in the provider, because OpenRouter drops a category
+/// it does not recognise without an error. What catches a typo is opening the page the attribution
+/// built and seeing what it says.
+const APP_CATEGORIES: [&str; 2] = ["cli-agent", "programming-app"];
 
 /// The context limit somebody set by hand, if they set one.
 pub fn configured_limit() -> Option<usize> {
@@ -56,7 +69,9 @@ pub async fn connect(model: impl Into<String>) -> Result<Arc<OpenAiCompatible>, 
     let mut provider =
         OpenAiCompatible::new(model, base_url(), api_key()?).with_context_limit(configured_limit());
     if env::var_os("KAMCHATKA_NO_ATTRIBUTION").is_none() {
-        provider = provider.on_behalf_of(APP_URL, APP_TITLE);
+        provider = provider
+            .on_behalf_of(APP_URL, APP_TITLE)
+            .filed_under(APP_CATEGORIES);
     }
 
     let provider = Arc::new(provider);

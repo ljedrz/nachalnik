@@ -5,6 +5,32 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- **The requests say what kind of program is making them, not only which one.** `cli-agent` and
+  `programming-app`, in `X-OpenRouter-Categories` beside the referer and the title that were
+  already going out. Attribution without them reaches the rankings, which are a list of who spent
+  the most tokens; the [marketplace](https://openrouter.ai/apps) is the half organised by what a
+  program is, and an app filed under nothing is not in it.
+
+  Two because two per request is the limit, and these two because they are simply true:
+  `cli-agent` is "terminal-based coding assistants" in OpenRouter's own words, which is the whole
+  of what this is, and `programming-app` is the wider group it also belongs to. The rest of that
+  group is somebody else - this is not an editor plugin, it does not run in anybody's cloud, and
+  it builds no apps.
+
+  Everything that was already true of attribution is still true of this: it goes **only** to
+  OpenRouter, because `KAMCHATKA_BASE_URL` points this at anything and two words volunteered to
+  somebody's own machine are still two words nobody asked to send, and `KAMCHATKA_NO_ATTRIBUTION`
+  turns the whole of it off. What goes out is the name of the program and what kind of program it
+  is - not the key, not the model, not a syllable of what anybody asked.
+
+  Nothing checks the spelling, here or in the provider, because there is nothing to check it
+  against: OpenRouter drops a category it does not recognise without an error, so a typo would
+  fail no request and no test and show up only as a page filed under nothing.
+
 ## [0.11.0] - 2026-09-15
 
 ### added
