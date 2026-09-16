@@ -629,16 +629,15 @@ fn the_instrument_is_pinned_so_that_it_cannot_change_quietly() {
             "v5/depot+orchard+foundry+ferry+kiln+planted #a2fa046fb6002e99",
         ),
         // note: still `v5`, and that is the rule in `script.rs` doing what it promises. This
-        // experiment added two templates and a set of material nothing else reads, so every
-        // fingerprint above is the one it had before `provenance` existed and every run taken
-        // under v5 is still comparable with one taken today.
-        // note: still `v5`, again, and by the same rule: two templates and a note nothing else
-        // reads. A `lie` run taken before this experiment existed is comparable with one taken
-        // after it, which is the property that lets the suite grow at all.
+        // experiment added two templates and a note nothing else reads, so a `lie` run taken
+        // before it existed is comparable with one taken after, which is the property that lets
+        // the suite grow at all.
         (
             suite::Conflict::new().instrument(),
             "v5/depot+omsk-return #fa476e0f0ebce5e2",
         ),
+        // note: still `v5`, by the same rule: two templates and a set of material nothing else
+        // reads, so every fingerprint above is the one it had before `provenance` existed.
         (
             suite::Provenance::new().instrument(),
             "v5/listing #cbc52a3857d85488",

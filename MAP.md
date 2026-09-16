@@ -126,18 +126,27 @@ the runtime's own concerns: `subject.rs` (a `Kernel` plus "ask, and wait for the
 model), `intervene.rs` and `fork.rs` (a frozen `Snapshot`, a `ContextState` moved on a copy of it,
 and the copy run once with no tools), `trial.rs` (an append-only record, the way `Session` is,
 plus `Act` - what a subject *did*), `score.rs` (the arithmetic, computed *from* the record),
-`experiment.rs` (one trait method, a runner, and `Instrument`), and `suite/` (the eight
-experiments, the two dossiers, `script.rs`, and `handles.rs`).
+`experiment.rs` (one trait method, a runner, and `Instrument`), and `suite/` (the nine
+experiments, the six dossiers, `script.rs`, and `handles.rs`).
 
 **What the crate is for is a ladder, and it is easy to miss the top of it.** `attribution`,
-`recursion`, `lie`, `privilege` and `feedback` measure introspection *by report* - ask a model
-what its answer rests on, and score the answer. That is all any harness can do. `instrumented`
-and `repair` measure introspection *by experiment*: `suite/handles.rs` installs two tools a
-subject can call, one that forks its own context and ablates an item and one that rewrites it, and
-the argument is the difference between what a model *says* and what it finds out. Those two
+`recursion`, `lie`, `conflict`, `privilege` and `feedback` measure introspection *by report* - ask
+a model what its answer rests on, and score the answer. That is all any harness can do.
+`instrumented` and `repair` measure introspection *by experiment*: `suite/handles.rs` installs two
+tools a subject can call, one that forks its own context and ablates an item and one that rewrites
+it, and the argument is the difference between what a model *says* and what it finds out. Those two
 experiments are the reason this crate is on this runtime rather than beside it.
 
-`provenance` is off the ladder rather than on a rung of it, and reading it as an eighth report
+`conflict` is the one of the report experiments worth reading before writing another, because it is
+the one that carries a negative control. `lie` plants a contradiction the context can settle - the
+brief says the records are accurate and the false note is not a record - so *which note is wrong?*
+has an answer known before any model is asked. `conflict` plants the same contradiction with the
+tiebreak taken away, both sides `records/...`, and asks whether the subject says so at all. The
+detection question is put to copies that have the conflict in front of them, where yes is right,
+*and* to copies with one side removed, where no is; a subject that says yes to both has reported
+nothing, and without the second arm a detection rate is a count of the times a model said yes.
+
+`provenance` is off the ladder rather than on a rung of it, and reading it as one more report
 experiment is the mistake to avoid. Every other experiment here asks the subject something and
 scores what it said; this one asks the subject nothing at all. The harness writes a tool call, its
 result and the answer drawn from it into a context, then runs copies with the result left alone,
@@ -157,7 +166,7 @@ copy is run (`tests/harness.rs` asserts the ordering), and accuracy is never rep
 majority baseline beside it.
 
 `Instrument` is the part to be careful with. Every `Outcome` carries a stated version and an
-FNV-1a digest over every sentence the experiment says, and `tests/machinery.rs` pins all eight. If
+FNV-1a digest over every sentence the experiment says, and `tests/machinery.rs` pins all nine. If
 that test fails, a question changed and every run recorded before the change measured something
 else. Adding a template nothing existing reads is safe and leaves the other digests alone; editing
 one is not.

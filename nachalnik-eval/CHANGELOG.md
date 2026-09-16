@@ -5,6 +5,18 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- `abreast.rs` no longer says this crate depends on five things and nothing else. It depends on
+  `tokio` too, which the third note in the same module explains and which the first one was
+  written before. What is actually true, and is the claim worth keeping, is that every crate in
+  its tree is one the runtime already pulled in. Documentation only.
+- The note above the pinned `Conflict` fingerprint in `tests/machinery.rs` was `provenance`'s: the
+  two experiments were added in that order and the entry went in above the comment rather than
+  below it, so each of the two paragraphs annotated the other one's digest.
+
 ## [0.3.1] - 2026-09-12
 
 ### added

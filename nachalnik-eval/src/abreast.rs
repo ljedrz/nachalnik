@@ -1,12 +1,12 @@
 //! Running independent work at the same time, and capping how much of it is in flight.
 //!
 //! note: written here rather than taken from `futures-util`, which is where a combinator like
-//! [`together`] normally comes from. This crate depends on `nachalnik`, `async-trait`, `parking_lot`,
-//! `serde` and `serde_json`, and on nothing else; a suite that measures models has no business
-//! growing a dependency tree to poll two futures at once. What `futures-util` would buy over the
-//! eighty lines below is an intrusive linked list so that waking one future costs O(1) instead of
-//! re-polling all of them. At the sizes here - a few dozen requests in flight, each of them a
-//! round trip over a network - that is an optimisation of the cheapest thing in the run.
+//! [`together`] normally comes from. Every crate this one depends on is one `nachalnik` already
+//! pulled in, and a suite that measures models has no business breaking that to poll two futures
+//! at once. What `futures-util` would buy over what is below is an intrusive linked list, so that
+//! waking one future costs O(1) instead of re-polling all of them. At the sizes here - a few dozen
+//! requests in flight, each of them a round trip over a network - that is an optimisation of the
+//! cheapest thing in the run.
 //!
 //! note: nothing in here spawns. [`together`] is a future like any other - it makes progress when
 //! the caller polls it, and the concurrency comes from the child futures having their I/O
