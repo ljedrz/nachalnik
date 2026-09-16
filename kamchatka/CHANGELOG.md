@@ -38,6 +38,19 @@ minor bump may break you.
   different order; this says what they mean here. It matters because the only other figure in
   front of somebody at that point is the corner, which is the estimate that has just turned out to
   be wrong - and which the same refusal is correcting.
+
+  A request refused *here* gets its own sentence, because it is a different fact. The endpoint's
+  is the model's own tokenizer reporting on a request it read; this one is an estimate of a
+  request nobody has seen, made by the counter whose being wrong is the reason any of this exists,
+  and it says so. "The model read that request as" a number the model was never shown is the kind
+  of confident wrong sentence this corner of the program exists to stop.
+- `--send-oversized`, and `send-oversized` in a settings file: send a request that looks too long
+  for the model anyway, and let the endpoint be the one that says no. Both halves of that check
+  can be wrong - the figure is an estimate and the limit is whatever the endpoint advertised.
+  `liquid/lfm-2.5-2.6b` is quoted at 65,536 tokens on OpenRouter and routes to a provider whose
+  own window is twice that, so a session holding itself to the smaller number refuses requests
+  that would have been answered. The flag costs a round trip and buys the endpoint's own count of
+  the request, which is worth more than any guess made here.
 - `X-OpenRouter-Categories: cli-agent,programming-app` beside the referer and title, which is what
   puts an app in the [marketplace](https://openrouter.ai/apps) rather than only in the rankings.
   Sent only to OpenRouter; `KAMCHATKA_NO_ATTRIBUTION` turns all attribution off. An unrecognised

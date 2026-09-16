@@ -74,6 +74,8 @@ pub struct Settings {
     pub spend: Option<u64>,
     /// Whether to drop the whole of a tool's output once it has been shortened.
     pub forget_truncated: Option<bool>,
+    /// Whether to send a request that looks too long for the model rather than refusing it here.
+    pub send_oversized: Option<bool>,
     /// Whether to leave the session unwritten when it ends.
     pub no_record: Option<bool>,
     /// The colour the window's frame is drawn in, as `#rrggbb`.

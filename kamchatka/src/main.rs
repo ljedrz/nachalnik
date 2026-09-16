@@ -139,6 +139,11 @@ struct Args {
     #[arg(long)]
     forget_truncated: bool,
 
+    /// Send a request the counter puts over the model's context anyway, and let the endpoint be
+    /// the one that says no. For a limit that is advertised wrongly, or a counter that is.
+    #[arg(long)]
+    send_oversized: bool,
+
     /// Drive the session from lines on stdin instead of from a screen: the session log goes to
     /// stdout, one JSON record per line, and what the model says goes to stderr. Implied when
     /// stdout is not a terminal.
@@ -225,6 +230,7 @@ impl Args {
             deadline,
             spend,
             forget_truncated,
+            send_oversized,
             no_record,
         );
         // the four that are not a plain assignment: two are already `Option`, one is a list this
@@ -425,6 +431,7 @@ async fn session() -> Result<()> {
         // whole. One `grep` that wandered into `./target/` is 11MB of build noise nobody will
         // read, and it is in every save of that session from then on
         keep_truncated: !args.forget_truncated,
+        refuse_oversized: !args.send_oversized,
         compact: Some(args.compact),
         spend: args.spend,
         confine: !args.no_sandbox,

@@ -53,6 +53,16 @@ pub struct Setup {
     pub parallel: bool,
     /// Whether the whole of a shortened tool output is kept beside the copy the model was shown.
     pub keep_truncated: bool,
+    /// Whether a request the counter puts over the model's context is refused rather than sent.
+    ///
+    /// note: reachable because the figure it acts on is an estimate and the limit it is checked
+    /// against is whatever the endpoint chose to advertise, and either can be wrong. An
+    /// aggregator that quotes one model's window while routing to a provider with another is not
+    /// hypothetical - it is what `liquid/lfm-2.5-2.6b` does - and a session held to a limit
+    /// smaller than the real one refuses requests that would have been answered. Turning this off
+    /// costs a round trip and gets the endpoint's own count of the request, which is worth more
+    /// than any guess made here.
+    pub refuse_oversized: bool,
     /// How full the context may get before the oldest tool results are elided; `None` never
     /// compacts.
     pub compact: Option<f64>,
@@ -105,6 +115,7 @@ impl Default for Setup {
             requests: Some(8),
             parallel: false,
             keep_truncated: true,
+            refuse_oversized: true,
             compact: Some(0.8),
             spend: None,
             builtin_tools: true,
@@ -138,6 +149,7 @@ impl Setup {
             max_requests_per_turn: self.requests,
             parallel_tool_calls: self.parallel,
             keep_truncated_output: self.keep_truncated,
+            refuse_oversized_requests: self.refuse_oversized,
             ..Default::default()
         };
         let kernel = match self.resume {

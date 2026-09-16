@@ -94,6 +94,18 @@ pub fn out_of_quota(error: &str) -> bool {
 /// naming a single number is left alone: which number it is - the request, or what the model
 /// takes - is the whole of what this is for, and reading it the wrong way round calibrates a
 /// counter *down* on its way to a refusal.
+///
+/// note: and the sentence has to *name* that limit, which is the one thing that says it is
+/// counting in the same units as the session reading it. An aggregator normalises token counts
+/// into its own tokenizer and enforces its own window, but the model behind it refuses in its
+/// native one - and both refusals arrive from the same address, for the same model id, in the
+/// same afternoon. One said `maximum context length is 65536 tokens ... you requested about
+/// 71311` against a request this counter had put at 71231, which is a correction worth having;
+/// the other named neither that limit nor anything near that request, because it was the
+/// upstream's own count of the same bytes. Reading the second would tell somebody to prune tens
+/// of thousands of tokens that were never there, and would teach the counter a scale belonging
+/// to a tokenizer this session is not held to. An unread refusal is still the server's own
+/// sentence, which names the problem in words.
 pub fn too_long(said: &str, limit: Option<u64>) -> Option<TooLong> {
     /// What names this kind of refusal, whoever phrased it.
     const COMPLAINTS: [&str; 5] = [
@@ -125,7 +137,9 @@ pub fn too_long(said: &str, limit: Option<u64>) -> Option<TooLong> {
 
     let tokens = numbers.pop()?;
     let read = match limit {
-        Some(limit) => tokens > limit && tokens < limit.saturating_mul(OVERSHOT_BY),
+        Some(limit) => {
+            numbers.contains(&limit) && tokens > limit && tokens < limit.saturating_mul(OVERSHOT_BY)
+        }
         // nothing to check it against, so the sentence has to name a second figure for the
         // largest to be the request rather than the only number in it
         None => !numbers.is_empty(),
@@ -216,6 +230,16 @@ mod tests {
                 1_048_576,
                 1_050_000,
             ),
+            // the aggregator refusing in its own units, and the reading this is for: the counter
+            // had put the same request at 71231, which is the correction arriving
+            (
+                "400 Bad Request: This endpoint's maximum context length is 65536 tokens. \
+                 However, you requested about 71311 tokens (70014 of text input, 1297 of tool \
+                 input). Please reduce the length of either one, or use the context-compression \
+                 plugin to compress your prompt automatically.",
+                65_536,
+                71_311,
+            ),
         ];
 
         for (said, limit, tokens) in shapes {
@@ -262,6 +286,17 @@ mod tests {
             (
                 "context length exceeded on request 987654321 (limit 8192)",
                 Some(8_192),
+            ),
+            // about length, and counted by somebody else: the same model id at the same address
+            // as the fixture above, refused by the model behind the aggregator rather than by the
+            // aggregator, in the model's own tokenizer. Every number here is true and none of
+            // them is in the units this session is held to
+            (
+                "400 Bad Request: Provider returned error - {\"error\":{\"message\":\"This \
+                 model's maximum context length is 131072 tokens. However, you requested 8192 \
+                 output tokens and your prompt contains at least 122881 input tokens, for a \
+                 total of at least 131073 tokens.\"}}",
+                Some(65_536),
             ),
         ];
 

@@ -20,7 +20,8 @@ use std::{
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
     Budget, Capability, Content, ContextId, ContextItem, ContextKind, Delta, Event, Grant,
-    GrantSource, Kernel, PermissionRequest, Record, State, Usage, Verdict, selectors::Selector,
+    GrantSource, Kernel, Overrun, PermissionRequest, Record, State, Usage, Verdict,
+    selectors::Selector,
 };
 use nachalnik_providers::Endpoint;
 #[cfg(feature = "tui")]
@@ -985,6 +986,54 @@ impl App {
         self.say(Speaker::Error, error);
     }
 
+    /// Says what a refusal for length means here: how much has to go before the next request is
+    /// one that gets sent, and who counted.
+    ///
+    /// note: the sentence above this one is the server's or the kernel's, and both of them say the
+    /// same two numbers in a different order. This says what they mean *here*. Without it the only
+    /// figure on the screen is the corner - which is the estimate that just turned out to be
+    /// wrong, and which is now being corrected by this very event.
+    ///
+    /// note: `counted` is the difference between a measurement and a guess, and it is worth a
+    /// different sentence rather than a different word. A refusal from the endpoint is the model's
+    /// own tokenizer reporting on the request it read, and there is nothing to argue with; a
+    /// refusal from here is this counter's estimate of a request nobody has read yet, which can be
+    /// wrong in either direction and is wrong by enough to matter on anything that is not prose.
+    /// Telling somebody "the model read that request as" a figure the model never saw is the kind
+    /// of confident wrong sentence this whole corner of the program exists to stop.
+    fn overran(&mut self, overrun: Option<Overrun>, counted: bool) {
+        let Some(overrun) = overrun else {
+            return;
+        };
+
+        let tokens = thousands(overrun.tokens as usize);
+        let over = overrun
+            .limit
+            .map(|limit| thousands(overrun.tokens.saturating_sub(limit) as usize));
+        let said = match (counted, over) {
+            (true, Some(over)) => format!(
+                "the model read that request as {tokens} tokens: ~{over} more than it takes. \
+                 Nothing is sent until that much goes - `/compact` says what a pass would take \
+                 before it takes it, and `/exclude` is the same decision made by hand",
+            ),
+            (true, None) => format!(
+                "the model read that request as {tokens} tokens, which is more than it takes",
+            ),
+            (false, Some(over)) => format!(
+                "~{over} tokens have to go before it is sent - `/compact` says what a pass would \
+                 take before it takes it, and `/exclude` is the same decision made by hand. \
+                 Nothing has read that request: {tokens} is this counter's own estimate of it, \
+                 and `/budget` says how far it has been corrected",
+            ),
+            (false, None) => format!(
+                "nothing has read that request: {tokens} is this counter's own estimate of it, \
+                 and `/budget` says how far it has been corrected",
+            ),
+        };
+
+        self.say(Speaker::Error, said);
+    }
+
     /// Whether something is part-way through arriving.
     fn arriving(&self) -> bool {
         self.loose.last().is_some_and(|entry| entry.open)
@@ -1668,40 +1717,17 @@ impl App {
                 // gets drawn either way
                 self.caught_up(item);
             }
-            // one arm, because they are one fact: a request too long to send, said by the
-            // kernel's own arithmetic or by the endpoint that read it. Which of the two it was is
-            // in the sentence above the line
-            Event::ModelFailed { error, overrun } | Event::StepFailed { error, overrun } => {
+            // the same fact from the two places that can know it, and the difference between them
+            // is the whole of what the second line says: one is a count and the other is a guess
+            Event::ModelFailed { error, overrun } => {
                 self.close();
                 self.say_error(error);
-                // note: the sentence above is the server's, and every one of them says the same
-                // two numbers in a different order. This says what they mean *here*: how much
-                // has to go before the next request is one the model will read. Without it the
-                // only figure on the screen is the corner - which is the estimate that just
-                // turned out to be wrong, and which is now being corrected by this very event
-                if let Some(overrun) = overrun {
-                    let over = overrun
-                        .limit
-                        .map(|limit| overrun.tokens.saturating_sub(limit));
-                    self.say(
-                        Speaker::Error,
-                        match over {
-                            Some(over) => format!(
-                                "the model read that request as {} tokens: ~{} more than it \
-                                 takes. Nothing is sent until that much goes - `/compact` says \
-                                 what a pass would take before it takes it, and `/exclude` is \
-                                 the same decision made by hand",
-                                thousands(overrun.tokens as usize),
-                                thousands(over as usize),
-                            ),
-                            None => format!(
-                                "the model read that request as {} tokens, which is more than \
-                                 it takes",
-                                thousands(overrun.tokens as usize),
-                            ),
-                        },
-                    );
-                }
+                self.overran(overrun, true);
+            }
+            Event::StepFailed { error, overrun } => {
+                self.close();
+                self.say_error(error);
+                self.overran(overrun, false);
             }
             // note: a refusal the policy made on its own, which nobody was asked about and which
             // the tool result records only as `the call was not permitted`. When the tool's own

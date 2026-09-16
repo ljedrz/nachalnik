@@ -290,6 +290,44 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
     assert!(said.contains("of 200,000"), "{said}");
 }
 
+/// `--send-oversized` reaches the kernel, from the command line and from a file.
+///
+/// note: the whole of what the flag is, since the behaviour either side of it belongs to the
+/// runtime and is tested there. What is only true here is the wiring - a setting that reads
+/// correctly, merges correctly and then arrives nowhere is the failure a settings file has, and
+/// the one nothing else in this suite would notice. The limit comes from the environment because
+/// no endpoint is going to be asked what it is: the address is a closed port, so a request that
+/// *is* sent fails at the socket, which is how the two outcomes are told apart.
+#[test]
+fn a_request_that_looks_too_long_is_sent_when_it_is_asked_to_be() {
+    let over = [("KAMCHATKA_CONTEXT_LIMIT", "10")];
+
+    let (_, refused) = run_with(&[], "hello\n", &over);
+    assert!(
+        refused.contains("was not sent"),
+        "the default refuses it here: {refused}"
+    );
+
+    for args in [
+        vec!["--send-oversized".to_owned()],
+        vec![
+            "--config-file".to_owned(),
+            settings("sending", r#"{"send-oversized": true}"#),
+        ],
+    ] {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let (_, sent) = run_with(&args, "hello\n", &over);
+        assert!(
+            !sent.contains("was not sent"),
+            "asked to send it and it did not: {sent}"
+        );
+        assert!(
+            sent.contains("127.0.0.1:1"),
+            "and it went as far as the socket: {sent}"
+        );
+    }
+}
+
 /// A build with no MCP refuses a server it cannot run, and says nothing about a key asking for
 /// none.
 ///

@@ -809,6 +809,43 @@ async fn a_request_refused_for_its_length_says_how_much_of_it_has_to_go() {
     );
 }
 
+/// A request refused here says the figure is this counter's, because nothing has read it.
+///
+/// note: the two refusals carry the same field and mean different things, and the sentence is
+/// where the difference has to live. An endpoint's is the model's own tokenizer reporting on a
+/// request it read; this one is an estimate of a request nobody has seen, made by the counter
+/// whose being wrong is the reason any of this exists. Saying "the model read that request as"
+/// a number the model was never shown is a confident wrong sentence, and the alternative costs
+/// one word.
+#[tokio::test]
+async fn a_request_refused_here_does_not_claim_the_model_read_it() {
+    use nachalnik::{Event, Overrun};
+
+    let mut harness = Harness::new([]);
+    harness.app.on_event(Event::StepFailed {
+        error: "the request is about 71231 tokens and the model takes 65536, so it was not sent"
+            .to_owned(),
+        overrun: Some(Overrun {
+            tokens: 71_231,
+            limit: Some(65_536),
+        }),
+    });
+
+    let packed = harness.packed();
+    assert!(
+        packed.contains("5,695"),
+        "how much has to go, which is the number to act on: {packed}"
+    );
+    assert!(
+        !packed.contains("the model read"),
+        "and nothing read it: {packed}"
+    );
+    assert!(
+        packed.contains("estimate"),
+        "so the sentence says whose figure it is: {packed}"
+    );
+}
+
 /// An item elided *before* a request does not come back out of what that request cost.
 ///
 /// note: reported from a real session, and the figure was not slightly wrong. Attach a

@@ -20,6 +20,15 @@ minor bump may break you.
   left as prose, because reading it as the wrong one of the two calibrates a counter down on its
   way to a refusal.
 
+  The sentence also has to *name* that limit, which is the one thing that says it is counting in
+  the same units. The same model id at the same address refuses in two voices: the aggregator's
+  own, which quoted a 65,536-token window against a request it put at 71,311 where the counter had
+  said 71,231 - and the model behind it, which quoted a 131,072-token window in its native
+  tokenizer against bytes the aggregator had counted as fitting. Both are true and only one is in
+  the units this session is held to. Reading the second would name tens of thousands of tokens
+  that were never there and teach a counter a scale belonging to somebody else's tokenizer; it is
+  left as the sentence it arrived as, which says the problem in words.
+
 ### fixed
 
 - `Gemini::set_endpoint` says when the new address does not serve the model, which it did only when

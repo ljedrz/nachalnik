@@ -9,6 +9,7 @@
   "parallel": false,
   "introspect": false,
   "forget-truncated": false,
+  "send-oversized": false,
 
   "no-sandbox": false,
   "sandbox-allow": [],

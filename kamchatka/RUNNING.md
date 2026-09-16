@@ -254,10 +254,18 @@ it went from 13% low to within 0.3%. A budget nobody can check is a decoration.
 
 So does every request the model refuses for being too long, and that one is worth more than a
 response. What an endpoint charges for is a bill, and an aggregator in front of a model may quote
-it in some other tokenizer's units; the number in a refusal is the model's own count of the same
-bytes, in the units the limit is actually enforced in. Where the two disagree, the corner ends up
-comfortably under a limit the model is already over — so a refusal corrects the counter, and says
-on screen what the request really came to and how much has to go before the next one is sent.
+it in some other tokenizer's units; the number in a refusal is a count of the same bytes in the
+units the limit is actually enforced in. Where the two disagree, the corner ends up comfortably
+under a limit the model is already over — so a refusal corrects the counter, and says on screen
+what the request really came to and how much has to go before the next one is sent.
+
+A refusal is only read when it names the limit this session already knows, which is the one thing
+that says it is counting in the same units. The same model id at the same address refuses in two
+voices: the aggregator's own, which quoted a 65,536-token window against a request it put at
+71,311 where the counter had said 71,231, and the model behind it, which quoted a 131,072-token
+window in its native tokenizer against bytes the aggregator had counted as fitting. Reading the
+second would have named tens of thousands of tokens that were never there. It is left as the
+sentence it arrived as, which says the problem in words.
 
 Before any response, on an endpoint that reports no usage, and after a change of model until the
 next answer, the corner falls back to the plain estimate. And where something in the context has
@@ -287,11 +295,18 @@ answer to "not that one". Saying yes works the pass out again, so a pin made whi
 list is honoured rather than refused after the fact.
 
 Past the limit the request is not sent at all: the runtime refuses it rather than paying a round
-trip for an endpoint to say what the corner already says, and the line it prints is the same one a
-real refusal gets — what the request came to, and how much of it has to go. The context tab says
-the same figure while you are deciding which rows answer for it. `nachalnik`'s
-`refuse_oversized_requests` turns that off for a session that would rather let the endpoint have
-the last word.
+trip for an endpoint to say what the corner already says, and it prints how much of it has to go.
+The context tab says the same figure while you are deciding which rows answer for it. What it does
+*not* say is that the model read the request, because the model never saw it — a refusal from here
+names the counter's own estimate as an estimate, and a refusal from the endpoint is the only one
+that quotes a count.
+
+`--send-oversized` sends it anyway. Both halves of that check can be wrong: the figure is an
+estimate, and the limit is whatever the endpoint advertised. `liquid/lfm-2.5-2.6b` is quoted at
+65,536 tokens on OpenRouter and routes to a provider whose own window is twice that, so a session
+holding itself to the smaller number refuses requests that would have been answered. The flag
+costs a round trip and buys the endpoint's own count, which is worth more than any guess made
+here.
 
 Down a pipe there are no keys, so `--headless` prints the same list to stderr and takes it. That is
 the opposite of what `--on-ask` does with a tool's question, and they are different questions: a
@@ -465,6 +480,8 @@ kamchatka [OPTIONS] [MESSAGE]...
                             tools that are not a process stop holding themselves to the workdir
       --forget-truncated    drop the whole of a shortened tool output instead of
                             keeping it as an archived item you can still read
+      --send-oversized      send a request that looks too long for the model anyway,
+                            and let the endpoint be the one that says no
       --config-file <PATH>  a JSON file of settings, for the ones you would otherwise
                             type every time; anything given here wins over it
       --no-record           do not write the session out when it ends; it goes to a
