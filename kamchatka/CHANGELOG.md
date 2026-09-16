@@ -23,6 +23,20 @@ minor bump may break you.
   tool whose output is a numbered table has two readings, and it costs whatever the wrong one
   costs.
 
+- **`amend` says which way the figure went when a change makes the request *smaller*, too.** Growth
+  has been accounted for since a note was blamed on an elision it had not performed; a drop was
+  left as two numbers to subtract, on the reasoning that a drop is what the caller asked for and
+  needs no explaining.
+
+  It needs explaining. A live session pruned three times running, was told `~9,679, from ~10,273`,
+  then `~9,810, from ~9,840`, then `~10,521, from ~11,137` - three drops, each one stated with the
+  figure it dropped from - and called all three of them growth, because it was measuring against a
+  number it remembered from a `budget` several turns earlier rather than the one in the sentence it
+  had just been handed. It concluded that pruning *adds* cost, acted on the conclusion with `undo
+  steps: 6`, and bought itself 8,619 tokens. The sentence now says the direction in words, and says
+  where the figure it is measured against comes from: what the request cost when the change found
+  it, which is not what an earlier `budget` said it would.
+
 - **A release archive is the binary and `kamchatka.json`, and nothing else.** The settings file is
   the one thing that is worth more beside the binary than it is on a web page: every setting there
   is, named and at its default, so somebody who is tired of typing the same four arguments runs

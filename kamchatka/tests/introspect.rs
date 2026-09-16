@@ -270,6 +270,46 @@ async fn restoring_something_says_the_growth_is_the_content_itself() {
     assert!(!said.contains("marker"), "nothing was elided: {said}");
 }
 
+/// And a change that makes the request *smaller* says so in words, rather than leaving two numbers
+/// to be subtracted. Growth was accounted for and a drop was not, on the reasoning that a drop is
+/// what the caller asked for.
+///
+/// note: a live session pruned three times running, was told `~9,679, from ~10,273`, then `~9,810,
+/// from ~9,840`, then `~10,521, from ~11,137` - three drops - and called all three of them growth,
+/// because it was measuring each against a figure it remembered from a `budget` several turns back
+/// rather than against the `from ~` in front of it. It concluded that pruning adds cost and acted
+/// on the conclusion with `undo steps: 6`, which cost it 8,619 tokens. Hence the second half of the
+/// sentence as well as the first: where the number it is measured against comes from.
+#[tokio::test]
+async fn pruning_something_says_the_figure_went_down_and_what_it_went_down_from() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "amend",
+        json!({ "action": "exclude", "ids": [1], "reason": "not needed for now" }),
+    )]));
+
+    kernel.push(ContextItem::user(
+        "a message long enough that leaving it out moves the figure by more than nothing at all, \
+         which is the whole of what this is checking",
+    ));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("less than before"),
+        "which way it went is said rather than left to be worked out: {said}"
+    );
+    assert!(
+        said.contains("not what an earlier `budget` said"),
+        "and what `before` is measured from, which is the trap: {said}"
+    );
+    assert!(
+        !said.contains("more than before"),
+        "and it did not go up: {said}"
+    );
+}
+
 /// A move needs to know which items, and `label` is not how it is said - but it is a way somebody
 /// could reasonably think it was, because `label` is in the same schema. So the refusal is the
 /// spelling of what they meant rather than a restatement of the arguments.

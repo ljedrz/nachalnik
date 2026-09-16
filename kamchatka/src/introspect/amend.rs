@@ -5,6 +5,8 @@
 //! own journal rather than the kernel's stack, which belongs to the person. Both rules are in the
 //! doc comments below, where the code that enforces them is.
 
+use std::cmp::Ordering;
+
 use nachalnik::{
     BoxError, Capability, Content, ContextId, ContextItem, ContextKind, ContextState, Kernel,
     OutputSink, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, async_trait, selectors::Selector,
@@ -822,6 +824,16 @@ impl Grew {
 }
 
 /// What the next request costs now, beside what it cost before the change.
+///
+/// note: it says which way the figures went in *both* directions, which it did not used to. Growth
+/// was accounted for and a drop was left as two numbers to subtract, on the reasoning that a drop
+/// is what the caller asked for and needs no explaining. It does. A live session pruned three times
+/// running, was told `~9,679, from ~10,273`, then `~9,810, from ~9,840`, then `~10,521, from
+/// ~11,137` - three drops - and read all three as growth, because it was comparing each one against
+/// a figure it remembered from a `budget` call several turns earlier rather than against the
+/// `from ~` in the sentence it had just been handed. It concluded that pruning *adds* cost, acted
+/// on the conclusion with `undo steps: 6`, and bought itself 8,619 tokens. Hence both halves of
+/// what follows: the direction in words, and where the number it is measured against comes from.
 fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
     let budget = kernel.budget();
     let now = budget.used();
@@ -833,9 +845,15 @@ fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
             .map(|limit| format!(" of {}", thousands(limit)))
             .unwrap_or_default(),
         thousands(before),
-        match now > before {
-            true => grew.by(now - before),
-            false => String::new(),
+        match now.cmp(&before) {
+            Ordering::Greater => grew.by(now - before),
+            Ordering::Less => format!(
+                " That is {} less than before - and before is what the request cost when this \
+                 change found it, not what an earlier `budget` said it would: everything that has \
+                 landed since is in the figure too.",
+                thousands(before - now)
+            ),
+            Ordering::Equal => String::new(),
         },
     )
 }
