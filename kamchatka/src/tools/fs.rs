@@ -71,7 +71,8 @@ fn ops() -> Vec<Op> {
                 Arg::text("path", WHERE),
                 Arg::text(
                     "glob",
-                    format!("search only the files whose path matches this: {GLOB_ARG}"),
+                    "search only the files whose path matches this, written the way `glob`'s own \
+                     `pattern` is",
                 ),
                 Arg::truth(
                     "ignore_case",
@@ -162,11 +163,11 @@ impl Tool for Fs {
         ToolSpec::new(
             "fs",
             format!(
-                "the filesystem, five operations on it. A `path` is absolute or relative to the \
-                 working directory; {PATH_ARG}. `glob` and `grep` walk a directory here with no \
-                 shell: they obey `.gitignore`, they do look at hidden files, and they count what \
-                 they passed over. At most {MATCHES} matches or {PATHS} paths come back, and a \
-                 line wider than {WIDTH} characters is cut."
+                "the filesystem, five operations on it. Every `path` is {PATH_ARG}. `glob` \
+                 and `grep` walk a directory with no shell in front of them: they obey \
+                 `.gitignore`, they do look at hidden files, and they count what they passed over. \
+                 At most {MATCHES} matches or {PATHS} paths come back, and a line wider than \
+                 {WIDTH} characters is cut."
             ),
         )
         .with_schema(self.schema.clone())

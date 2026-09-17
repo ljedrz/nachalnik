@@ -44,14 +44,12 @@ use super::{Reach, action, if_offered, unknown};
 fn ops() -> Vec<Op> {
     vec![Op::these(
         &["model", "tools", "permissions", "policy"],
-        "`model` is which model you are, what parameters it is being sent, how much context it \
-         has, and whether this conversation was resumed from a snapshot - which matters, because \
-         a resumed context can be somebody else's earlier turns and nothing in them says so. \
-         `tools` is every tool you are offered, what each declares it needs, and how much of its \
-         output you are shown; one that went away mid-session is simply not here. `permissions` \
-         is what the policy allows, refuses, or will stop and ask about, so you can tell a thing \
-         that will be refused from a thing nobody has decided. `policy` is what the compactor and \
-         the projector will do to your context unasked.",
+        // note: what each one does is in the tool's own description rather than here. With one
+        // shape there is no choice for a branch description to inform - the four differ in what
+        // they answer, not in what they take - so it is a fact about `setup`, and putting it on
+        // the branch would leave `call` meaning something different here than in every tool that
+        // has several
+        "",
         vec![],
     )]
 }
@@ -84,8 +82,16 @@ impl Tool for Setup {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "setup",
-            "reads what you are running with, which you cannot otherwise find out. All of it is \
-             read-only; `context` is what changes one.",
+            "reads what you are running with, which you cannot otherwise find out, and changes \
+             nothing: `context` is the tool that changes a context. `model` is which model you \
+             are, what parameters it is being sent, how much context it has, and whether this \
+             conversation was resumed from a snapshot - which matters, because a resumed context \
+             can be somebody else's earlier turns and nothing in them says so. `tools` is every \
+             tool you are offered, what each declares it needs, and how much of its output you \
+             are shown; one that went away mid-session is simply not here. `permissions` is what \
+             the policy allows, refuses, or will stop and ask about, so you can tell a thing that \
+             will be refused from a thing nobody has decided. `policy` is what the compactor and \
+             the projector will do to your context unasked.",
         )
         .with_schema(self.schema.clone())
         .with_capabilities(

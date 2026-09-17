@@ -43,15 +43,16 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "ask",
-            "puts a question of your own to the copy - for weighing an approach, or for finding \
-             out whether a piece of your context is what is leading you astray",
+            "puts a question of your own to the copy, rather than letting it answer the \
+             conversation - for weighing an approach, or, with `without`, for finding out whether \
+             a piece of your context is what is leading you astray",
             vec![
                 Arg::text("question", "what to put to the copy").needed(),
                 Arg::list(
                     "without",
                     "integer",
-                    "item ids the copy does not get to see. Taking one away is what makes this an \
-                     experiment rather than the same context answering twice",
+                    "items the copy does not get to see, by number. Taking one away is what makes \
+                     this an experiment rather than the same context answering twice",
                 ),
             ],
         ),

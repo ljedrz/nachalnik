@@ -117,7 +117,7 @@ impl Tool for Log {
              your context and not part of it. Every item added, replaced, elided, undone or \
              compacted; every permission asked for and answered; every tool that appeared or went \
              away. On its own it says how many records there are, of what kinds, and what they \
-             would cost you; the arguments below narrow that down and hand them over. Every \
+             would cost you, and the arguments narrow that down and hand them over. Every \
              answer opens with the true total, so a short one is never absence. You cannot write \
              to it. A replacement keeps what the item said before, which once it leaves the undo \
              window is nowhere else at all.",

@@ -56,19 +56,22 @@ const CHANGES: [&str; 9] = [
 const WHY: &str = "why, in your own words; the person you work with reads this, and it becomes \
                    the item's note";
 
-/// Which items to act on, for the five that move one.
-const WHICH: &str = "the items to move. A selector may be given as `select` instead";
+/// What a `select` is, said where the five that take one can read it.
+const SELECT: &str = "a class of items instead of `ids`, written in the selector grammar this \
+                      tool's description sets out";
 
 /// The thirteen operations, what each is for, and what each reads.
 ///
-/// note: `reason` is `needed()` on the nine that change, which is a thing the schema could not say
-/// before. It was asked for in `invoke` instead, under a note reading "`required` in a schema is
-/// all or nothing" - true of one flat property bag, and the whole reason this is thirteen branches
-/// now. Nine of them require it and four of them do not offer it at all.
+/// note: `reason` is `needed()` wherever a call changes something, which is a thing the schema
+/// could not say before. It was asked for in `invoke` instead, under a note reading "`required` in
+/// a schema is all or nothing" - true of one flat property bag, and the whole reason this is
+/// branches now. Nine operations require it and four do not offer it at all.
 ///
-/// note: the five that move an item are built by [`moving`] rather than written out, for the
-/// reason the `MOVES` list it replaces gave: five identical rows are five chances to disagree
-/// about one fact, and `label` dropping off `restore` alone would change a real answer.
+/// note: thirteen operations, eight shapes. The five that move an item read one argument list,
+/// which the `MOVES` constant they replace said outright ("one list because they are one
+/// function"), and so do `undo` and `redo`; each group is therefore one branch under an `action`
+/// of several words. Written out per operation they came to nine copies of `reason` and five of
+/// `select`, 1,200 bytes a request to say a thing that was already true once.
 fn ops() -> Vec<Op> {
     let mut ops = vec![
         Op::new(
@@ -79,8 +82,8 @@ fn ops() -> Vec<Op> {
                 Arg::list(
                     "ids",
                     "integer",
-                    "read these items in full, block by block, including what you were thinking \
-                     when you produced them, instead of listing all of them",
+                    "read these items in full - block by block, including what you were \
+                     thinking when you produced them - instead of listing all of them",
                 ),
                 Arg::truth(
                     "whole",
@@ -109,7 +112,7 @@ fn ops() -> Vec<Op> {
              before showing you one",
             vec![
                 Arg::text("text", "what to look for, case ignored").needed(),
-                Arg::list("ids", "integer", "look only in these items"),
+                Arg::list("ids", "integer", "look only in these items, by number"),
                 Arg::whole("take", "show this many of the matching lines"),
             ],
         ),
@@ -117,26 +120,27 @@ fn ops() -> Vec<Op> {
 
     ops.push(Op::these(
         &["elide", "exclude", "archive", "pin", "restore"],
-        "the five that move an item, each named for the state it leaves, which is the word you \
-         will read back on it. `elide` replaces what an item says with a short marker: the call \
-         it answers stays answered and stops costing what it holds, which is what to reach for \
-         once a tool result has served its purpose. `exclude` takes it out of the request \
-         altogether, and takes down the call that asked for it. `archive` says the same and \
-         means you are done with it. `pin` protects it from being compacted away. `restore` is \
-         the way back from any of the other four.",
+        "moves items, and each of the five is named for the state it leaves - which is the word \
+         you will read back on the item afterwards. Name them with `ids`, or a class of them with \
+         `select`. `elide` replaces what an item says with a short marker: the call it answers \
+         stays answered and stops costing what it holds, which is what to reach for once a tool \
+         result has served its purpose. `exclude` takes it out of the request altogether, and \
+         takes down the call that asked for it. `archive` says the same and means you are done \
+         with it. `pin` protects it from being compacted away. `restore` is the way back from any \
+         of the other four.",
         vec![
-            Arg::list("ids", "integer", WHICH),
-            Arg::text(
-                "select",
-                "a class of items instead of `ids`; the forms are above",
+            Arg::list(
+                "ids",
+                "integer",
+                "the items to move, by the numbers `look` prints",
             ),
-            // note: `label` is here because `Amend::moved` reads it. Not to move anything by: to
-            // answer a call that gave one instead of `ids` with the spelling it wanted. An
-            // argument a tool answers about is not one it ignored
-            Arg::text(
-                "label",
-                "a label instead of `ids`, which is `select: \"label:<text>\"`",
-            ),
+            Arg::text("select", SELECT),
+            // note: read but not offered, because it is neither a way to move anything nor an
+            // argument to refuse. A live run reached for `label` to say *which item*, and
+            // `Amend::moved` answers that with the spelling it meant - which it cannot do if
+            // `unread` has already refused the call, and should not have to do if the schema has
+            // just advertised `label` as the way to name one
+            Arg::tolerated("label"),
             Arg::text("reason", WHY).needed(),
         ],
     ));
@@ -146,7 +150,7 @@ fn ops() -> Vec<Op> {
             "revise",
             "rewrites what one item says, for when you wrote something down wrong",
             vec![
-                Arg::list("ids", "integer", "the one item to rewrite").needed(),
+                Arg::one_of("ids", "integer", "the one item to rewrite").needed(),
                 Arg::text("content", "what the item should say instead").needed(),
                 Arg::text("reason", WHY).needed(),
             ],
@@ -179,7 +183,8 @@ fn ops() -> Vec<Op> {
         ),
         Op::these(
             &["undo", "redo"],
-            "walk back through the changes *you* made here, and forward again",
+            "`undo` walks back through the changes *you* made here, and `redo` walks forward \
+             again through what `undo` took back. Neither touches anything you did not do.",
             vec![
                 Arg::whole(
                     "steps",
@@ -227,10 +232,10 @@ impl Tool for Context {
         ToolSpec::new(
             "context",
             "your own context: what is in it, what it costs, and what you carry into the next \
-             request. Four operations read it and nine change it, and each says below what it \
-             does. Nothing destroys anything: every item keeps its number and can be restored. A \
-             pinned item, a system instruction and the turn you are speaking in are refused - \
-             they are not yours.\n\
+             request. Four operations read it and nine change it, and each says what it does. \
+             Nothing destroys anything: every item keeps its number and can be restored, and \
+             anything that would change a pinned item, a system instruction or the turn you are \
+             speaking in is refused - those are not yours.\n\
              Where an operation takes a `select`, it is a class of items instead of `ids`: an \
              item number; `all`; `all:tool_results` (or files, diagnostics, selections, memories, \
              instructions, system, user, model, compaction); `kind:<kind>` or `state:<state>`, \
