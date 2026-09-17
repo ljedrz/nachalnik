@@ -343,7 +343,10 @@ minor bump may break you.
   and what it was really being used for was a fact about a project rather than about an
   invocation. What that costs is the six schemas in every request - 2,738 tokens where `fs` and
   `shell` alone are 810 - and the two settings below are how a session that does not want to pay it
-  says so.
+  says so. The settings key went with the flag, and a file is read with `deny_unknown_fields`, so
+  a `kamchatka.json` carrying `"introspect"` is refused rather than quietly ignored: it names the
+  key and lists the ones there are. `tools` is what it becomes - `[]` for none of them, or the ids
+  of the ones to start with.
 - `/tools toggle ID` replaces `/tools drop ID` and `/introspect`, and works on every tool there is,
   including the ones an MCP server brought. It goes both ways, which is the half that was missing:
   a dropped tool used to be dropped, and `/introspect` could only put back the one group of four -
@@ -415,6 +418,21 @@ minor bump may break you.
   reported and the turn carries on.
 - A permission question draws an `edit` as a diff: `old` red, `new` green. By argument name rather
   than by tool, so an MCP tool using those names reads the same way.
+
+### breaking
+
+- Four of this crate's own items moved with the permission rework, which matters to whoever is
+  embedding it rather than running it. `tools::acts_on` is gone: it asked the tool registry at run
+  time which tool a subject belonged to, and a subject is declared now rather than inferred from a
+  string's shape. `tools::Limits::apply` is gone with it - a limit is answered per call through
+  `Tool::limit` instead of written onto a `ToolSpec` once. `tools::Careful::stances` answers in
+  `Subject` rather than in `nachalnik::Capability`, because a rule here is one of four kinds and
+  only one of them is a capability. And `mcp::attach` takes the policy as its second argument, so
+  it can say which tools came from which server - that is what `--allow-server <name>` answers
+  for, a prefix is optional and is dropped when a name would not otherwise fit, and the only thing
+  that reliably knows where a tool came from is whatever installed it.
+- `introspect::Amend` is no longer a tool, or public. It and `Context` are one tool over one
+  object; see the entry below for why the two were ever separate.
 
 ### changed
 

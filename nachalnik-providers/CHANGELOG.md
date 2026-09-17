@@ -29,25 +29,6 @@ minor bump may break you.
   that were never there and teach a counter a scale belonging to somebody else's tokenizer; it is
   left as the sentence it arrived as, which says the problem in words.
 
-### fixed
-
-- `Gemini::set_endpoint` says when the new address does not serve the model, which it did only when
-  a model was named beside the address. Given none, the old name is kept - and a name that was
-  right at the last address is exactly the one worth asking about at this one, which is what the
-  other dialect has always done. Without it the first word on the subject was a 404 on the next
-  request. `tests/switching.rs` holds both dialects to it, along with the other half of the
-  promise: an endpoint that lists nothing has not said the model is absent, and neither dialect may
-  read its silence as a denial.
-
-### changed
-
-- `OpenAiCompatible::client` no longer describes its timeout as longer than reqwest's default.
-  reqwest has no default request timeout, so the client `OpenAiCompatible::new` builds for itself
-  has none at all - which is usable rather than a trap, because what ends a request that has said
-  nothing is the silence watch this crate counts for itself. Documentation only.
-
-### added
-
 - `OpenAiCompatible::thinking_in_content`, on by default: takes thinking a model wrote into its own
   content back out of it. A model whose chat template ends the prompt inside a thinking block never
   writes the opening `<think>`, and an endpoint with no reasoning parser passes the lot through as
@@ -76,6 +57,10 @@ minor bump may break you.
 
 ### changed
 
+- `OpenAiCompatible::client` no longer describes its timeout as longer than reqwest's default.
+  reqwest has no default request timeout, so the client `OpenAiCompatible::new` builds for itself
+  has none at all - which is usable rather than a trap, because what ends a request that has said
+  nothing is the silence watch this crate counts for itself. Documentation only.
 - One fewer direct dependency: `async-trait` is the runtime's, and every `#[async_trait]` here is
   already written against `nachalnik`'s re-export. Depending on it twice let the two drift.
 - reqwest is built without `charset`, which drops `encoding_rs`, `mime` and the six SIMD crates
@@ -87,6 +72,13 @@ minor bump may break you.
 
 ### fixed
 
+- `Gemini::set_endpoint` says when the new address does not serve the model, which it did only when
+  a model was named beside the address. Given none, the old name is kept - and a name that was
+  right at the last address is exactly the one worth asking about at this one, which is what the
+  other dialect has always done. Without it the first word on the subject was a 404 on the next
+  request. `tests/switching.rs` holds both dialects to it, along with the other half of the
+  promise: an endpoint that lists nothing has not said the model is absent, and neither dialect may
+  read its silence as a denial.
 - `with_client` documents that a caller's own client needs `install_crypto` first. reqwest is built
   here with `rustls-no-provider`, so `ClientBuilder::build` panics until something has installed a
   process default - recommending `aws_lc_rs`, which is reqwest's suggestion and not the provider
