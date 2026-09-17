@@ -228,12 +228,17 @@ pub enum Event {
         /// for, and a log that recorded only what *was* sent could not answer it afterwards.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         skipped: Vec<Skipped>,
-        /// The adjustments the projector made to keep the request valid.
+        /// What the projector had to take out to keep the request valid.
         ///
         /// note: Dropping a tool call whose result has been pruned is the kernel changing what
         /// the model is told. It is the right thing to do and it is still an alteration, so it
         /// goes on the record rather than only into a [`Projection`](crate::Projection) that
         /// nobody kept.
+        ///
+        /// note: [`Projection::reordered`](crate::Projection::reordered) is deliberately not here.
+        /// A move takes nothing out, and a client's honest use of this field is to say so where
+        /// somebody will see it - so carrying the moves as well would put the one thing nobody has
+        /// to act on in front of the person on every request that holds a note.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         repairs: Vec<String>,
     },

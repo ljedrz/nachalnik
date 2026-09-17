@@ -75,6 +75,24 @@ minor bump may break you.
   and `pricing_a_picture` is the third keyless example CI runs now, so the blob path has a run
   behind it rather than only a unit test.
 
+### breaking
+
+- `Projection` has a `reordered` list beside `repairs`, and a move is in the new one. They were one
+  list and they are two pieces of news: a repair is content the model would have had and will not -
+  a call whose result is gone, a result whose call is, an ordered turn a flat shape cannot carry -
+  and a move takes nothing out at all. A tool result has to reach the wire immediately after the
+  call it answers, so an item pushed between the two sends it down the list and the projector puts
+  it back, which is the layout rule working. `context: note` does that on every single call, the
+  item being written while the call that writes it is still in flight - so a client honestly
+  reporting `repairs` told the person the request had been repaired every time a model wrote
+  anything down, and it stood for the rest of the session and every session resumed from it.
+
+  `Event::ModelRequested` deliberately carries only `repairs`: a client's use of that field is to
+  put it where somebody will see it, and the moves are the one thing nobody has to act on.
+
+  A projector written outside this crate will not compile until it fills the new field; that is
+  what `Projection` not being `#[non_exhaustive]` is for.
+
 ### fixed
 
 - What an endpoint charges for its own framing is no longer read as a bias to correct for.

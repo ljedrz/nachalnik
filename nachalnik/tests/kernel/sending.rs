@@ -241,6 +241,7 @@ impl Projector for OneMessage {
             included,
             skipped,
             repairs: Vec::new(),
+            reordered: Vec::new(),
         }
     }
 }

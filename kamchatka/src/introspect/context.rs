@@ -100,9 +100,10 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "request",
-            "the request you are about to send, message by message, what it repaired, and what \
-             was left out and by which rule - a state you set, which you can undo, or the \
-             projector, which you cannot",
+            "the request you are about to send, message by message; what was left out and by \
+             which rule - a state you set, which you can undo, or the projector, which you cannot \
+             - and what the projector had to take out or put in a different order to make it a \
+             request an endpoint will read",
             vec![],
         ),
         Op::new(
@@ -1066,6 +1067,19 @@ fn request(kernel: &Kernel) -> String {
         out.push_str("\nand what that same projector rewrote, to keep the request valid:\n");
         for repair in &projection.repairs {
             out.push_str(&format!("  {repair}\n"));
+        }
+    }
+    // note: under a heading of its own, and one that says nothing was lost. This tool is read by a
+    // model deciding what to do next, and "rewrote, to keep the request valid" over a line about a
+    // tool result changing places is an invitation to go and fix something that is not broken -
+    // which is what a `note` produces, every single time it is written
+    if !projection.reordered.is_empty() {
+        out.push_str(
+            "\nand what it put in a different order than your context holds it, which costs \
+             nothing and is nothing to act on:\n",
+        );
+        for moved in &projection.reordered {
+            out.push_str(&format!("  {moved}\n"));
         }
     }
 

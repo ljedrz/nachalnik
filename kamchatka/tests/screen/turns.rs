@@ -147,6 +147,63 @@ async fn a_repair_that_stands_is_said_once_rather_than_every_turn() {
     );
 }
 
+/// A tool result put back behind the call it answers is not news, and the request preview is where
+/// it is said.
+///
+/// note: `context: note` writes its item while the call that writes it is still in flight, so the
+/// item lands between the assistant turn and that call's result and the projector moves the result
+/// back up. Nothing is lost by it - the request carries every byte it would have - and it stands
+/// for as long as the note does, so every note a model took put `the request is repaired` in the
+/// conversation for the rest of the session and every session resumed from it. Watched live, on
+/// every one of them. The move is `Projection::reordered` now, and only the losses reach here.
+#[tokio::test]
+async fn a_result_put_back_behind_its_call_is_not_something_to_tell_anybody() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user("write it down"));
+    harness.app.kernel.push(ContextItem::assistant(
+        "noting it",
+        vec![call("c1", "context", json!({ "action": "note" }))],
+    ));
+    // the note itself, pushed by the tool before the tool's own result exists
+    harness
+        .app
+        .kernel
+        .push(ContextItem::memory("q1", "the scale factor is 7"));
+    harness.app.kernel.push(ContextItem::tool_result(
+        "c1".into(),
+        "context",
+        "written down",
+        false,
+    ));
+
+    let projection = harness.app.kernel.project();
+    assert_eq!(projection.reordered.len(), 1, "{projection:?}");
+    assert!(
+        projection.repairs.is_empty(),
+        "a move takes nothing out: {:?}",
+        projection.repairs
+    );
+
+    harness.send("and now?").await;
+    harness.settle().await;
+    assert!(
+        !harness.flat().contains("repaired"),
+        "nothing went wrong, so nothing is said: {}",
+        harness.flat()
+    );
+
+    // and the page that answers "why is the order not my context's order?" says exactly that
+    harness
+        .app
+        .on_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL))
+        .await;
+    let screen = harness.sized(120, 40);
+    assert!(
+        screen.contains("reordered: moved item 4"),
+        "the preview is where it belongs: {screen}"
+    );
+}
+
 #[tokio::test]
 async fn what_the_screen_shows_of_the_next_request_is_the_next_request() {
     let mut harness = Harness::new([]);

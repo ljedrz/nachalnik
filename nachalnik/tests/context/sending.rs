@@ -212,7 +212,10 @@ fn a_result_follows_the_call_it_answers_whatever_lands_between_them() {
         "the results have to reach the wire before anything else the turn produced"
     );
 
-    // and it is a repair like any other: moving somebody's item is not something to do quietly
+    // moving somebody's item is not something to do quietly, and it is not a repair either: the
+    // request carries every byte it would have. `reordered` is the list a client can show on a
+    // page about the request; `repairs` is the one it puts in front of somebody, and this belongs
+    // in neither's other half
     let projection = kernel.project();
     assert_eq!(
         projection.included.len(),
@@ -221,10 +224,15 @@ fn a_result_follows_the_call_it_answers_whatever_lands_between_them() {
     );
     assert!(
         projection
-            .repairs
+            .reordered
             .iter()
             .any(|said| said.contains("moved item")),
         "the move is on the record: {:?}",
+        projection.reordered
+    );
+    assert!(
+        projection.repairs.is_empty(),
+        "and nothing was taken out to achieve it: {:?}",
         projection.repairs
     );
 }

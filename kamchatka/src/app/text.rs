@@ -202,6 +202,13 @@ pub(super) fn request_preview(kernel: &Kernel) -> String {
     for repair in &projection.repairs {
         header.push_str(&format!("  repaired: {repair}\n"));
     }
+    // note: and the moves, under their own word. This is the page the conversation *stops* naming
+    // them on - nothing is lost by one, so a line about it in the chat reads like an alarm about
+    // the layout rule working - and it is the page where "why is the order not the context's
+    // order?" is the question being asked, so it is the one place they are worth the room
+    for moved in &projection.reordered {
+        header.push_str(&format!("  reordered: {moved}\n"));
+    }
 
     let request = match kernel.preview_request() {
         // through `pretty`, so that a picture in the context is named here rather than printed:
@@ -388,18 +395,22 @@ pub(super) fn projected(projection: &Projection, id: ContextId) -> String {
     }
 
     // what the projector had to change about this item to keep the request valid: a dropped call,
-    // an ordered turn flattened into slots. It is the answer to "why does this not look like what
-    // I am reading on the other page?", and it is only ever visible on ctrl+p otherwise
-    let mine: Vec<&str> = projection
-        .repairs
-        .iter()
-        .filter(|repair| repair.contains(&format!("item {id}")))
-        .map(String::as_str)
+    // an ordered turn flattened into slots, a result put back behind the call it answers. It is
+    // the answer to "why does this not look like what I am reading on the other page?", and it is
+    // only ever visible on ctrl+p otherwise
+    //
+    // note: both lists, kept under their own words. A move is not a repair - nothing is lost by
+    // one - and that is exactly why the conversation no longer mentions them; this page is the
+    // other half of that, where the question is about this item and the honest answer includes
+    // where it ended up
+    let named = |line: &&String| line.contains(&format!("item {id}"));
+    let header: String = (projection.repairs.iter().filter(named))
+        .map(|repair| format!("repaired: {repair}\n\n"))
+        .chain(
+            (projection.reordered.iter().filter(named))
+                .map(|moved| format!("reordered: {moved}\n\n")),
+        )
         .collect();
-    let header = match mine.is_empty() {
-        true => String::new(),
-        false => format!("repaired: {}\n\n", mine.join("\nrepaired: ")),
-    };
 
     format!("{header}{}", as_sent(&projection.messages[at]))
 }

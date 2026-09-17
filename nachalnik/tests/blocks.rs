@@ -595,10 +595,18 @@ fn an_ordered_turn_keeps_a_result_next_to_the_call_it_answers() {
         assert_eq!(projection.included.len(), 4, "and nothing was dropped");
         assert!(
             projection
-                .repairs
+                .reordered
                 .iter()
                 .any(|said| said.contains("moved item")),
             "send_blocks: {send_blocks} - moving somebody's item is on the record: {:?}",
+            projection.reordered
+        );
+        // and it is on *that* record rather than the other one, because nothing was lost by it:
+        // `repairs` is what the model would have had and will not, and a client puts that in front
+        // of somebody. This item is a note a tool wrote, which every note a model takes produces
+        assert!(
+            projection.repairs.is_empty(),
+            "send_blocks: {send_blocks} - a move takes nothing out: {:?}",
             projection.repairs
         );
     }

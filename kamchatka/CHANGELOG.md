@@ -151,6 +151,14 @@ minor bump may break you.
   down a pipe was told to press a key it does not have about a list it could not otherwise see.
   A line that is not a command said `F1 lists what there is`. `/request` and `/help` open the same
   two pages and work in both.
+- A tool result put back behind the call it answers is no longer announced as a repair. Nothing is
+  lost by one - the request carries every byte it would have - and it stands for as long as the
+  item that displaced it does, so `the request is repaired, and will be while this stands` sat in
+  the conversation after every note a model wrote, and after every session resumed from one.
+  `context: note` writes its item while the call that writes it is still in flight, so it produces
+  exactly this shape every time. `/request` and the `enter` view on the context tab say `reordered:`
+  where they said `repaired:`, and `context: request` gives it a heading of its own that says it
+  costs nothing and is nothing to act on.
 - A call whose arguments were not JSON is told that, rather than told an argument is missing.
   `nachalnik-providers` hands the unparsed text over under `_unparsed` so "a model that produces
   invalid JSON gets to see that it did", and nothing here read it: the tool went looking for

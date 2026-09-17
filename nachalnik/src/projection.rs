@@ -37,8 +37,26 @@ pub struct Projection {
     pub included: Vec<ContextId>,
     /// The items that did not, and why.
     pub skipped: Vec<Skipped>,
-    /// Adjustments the projector made to keep the request valid, in plain words.
+    /// What the projector had to **take out** to keep the request valid, in plain words: a call
+    /// whose result is not here, a result whose call is not, an ordered turn a flat shape cannot
+    /// carry.
+    ///
+    /// note: every one of these is content the model would have had and will not, which is why
+    /// they are worth putting in front of somebody rather than leaving on a page they have to go
+    /// and open. See [`Projection::reordered`] for the adjustments that are not.
     pub repairs: Vec<String>,
+    /// What it had to **move**, in plain words. Nothing is lost by one of these.
+    ///
+    /// note: a separate list because it is a different piece of news, and the two were one until a
+    /// live run made the difference plain. A tool result has to reach the wire immediately after
+    /// the call it answers, so an item pushed between the two sends it down the list and the
+    /// projector puts it back - which is the layout rule working, not a fault. `context: note`
+    /// does exactly that on every call, the item being written while the call that writes it is
+    /// still in flight, so every note a model took produced "the request is repaired" in the
+    /// conversation, and it stood there for the rest of the session and every session resumed from
+    /// it. The order really is not the context's order, and saying so belongs in a request preview;
+    /// what it does not belong in is a line that reads like something went wrong.
+    pub reordered: Vec<String>,
 }
 
 /// Turns context items into the messages of a request.
@@ -79,6 +97,7 @@ pub struct Projection {
 ///             included,
 ///             skipped,
 ///             repairs: Vec::new(),
+///             reordered: Vec::new(),
 ///         }
 ///     }
 /// }
@@ -235,6 +254,7 @@ impl Projector for LinearProjector {
             included: Vec::with_capacity(items.len()),
             skipped: Vec::new(),
             repairs: Vec::new(),
+            reordered: Vec::new(),
         };
 
         // how many results are available to answer each call, and how many calls are available
@@ -537,7 +557,7 @@ impl Projector for LinearProjector {
                         continue;
                     }
                     if *answer != adjacent {
-                        projection.repairs.push(format!(
+                        projection.reordered.push(format!(
                             "moved item {} up behind the call `{}` it answers: a tool result has \
                              to reach the wire immediately after the call it answers",
                             built[*answer].0, call.id

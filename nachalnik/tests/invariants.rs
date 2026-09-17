@@ -270,7 +270,7 @@ fn holds(world: &mut World) -> Result<(), TestCaseError> {
 
     // the context's order is not the request's, and the difference is never silent. A tool result
     // has to follow the call it answers, so an item that landed between the two is held back -
-    // which is a reordering, and one this projector names in `repairs`. What must hold is that
+    // which is a reordering, and one this projector names in `reordered`. What must hold is that
     // nothing is moved *quietly*: if the request is not in the order the context is, something
     // says why.
     let order: Vec<ContextId> = ids
@@ -280,7 +280,7 @@ fn holds(world: &mut World) -> Result<(), TestCaseError> {
         .collect();
     if projection.included != order {
         prop_assert!(
-            !projection.repairs.is_empty(),
+            !projection.reordered.is_empty(),
             "the projection reordered the context and said nothing: {:?} against {:?}",
             projection.included,
             order
@@ -622,10 +622,12 @@ fn the_generators_reach_what_the_properties_are_about() {
             if world.kernel.budget().uncounted > 0 {
                 reached.something_unpriced += 1;
             }
-            for repair in &projection.repairs {
-                if repair.contains("moved item") {
+            for moved in &projection.reordered {
+                if moved.contains("moved item") {
                     reached.a_result_moved += 1;
                 }
+            }
+            for repair in &projection.repairs {
                 if repair.contains("dropped the call") {
                     reached.an_orphan_dropped += 1;
                 }

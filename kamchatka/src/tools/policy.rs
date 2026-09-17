@@ -55,7 +55,8 @@ impl fmt::Display for Subject {
 impl Subject {
     /// Reads one back: `fs`, `fs:read`, `.env*`, `secrets/`.
     ///
-    /// note: see [`unvouched`] for the one subject a tool declares and is not always judged by.
+    /// note: `mcp:call` is the one subject a tool declares and is not always judged by; see
+    /// [`Careful::decides`], which is what a table asks about it.
     ///
     /// note: anything holding a `/`, a `*` or a leading `.` is a path pattern; anything holding a
     /// `:` is one operation; anything else is a whole domain. It has to be a rule rather than a
