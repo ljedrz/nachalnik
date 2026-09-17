@@ -151,6 +151,13 @@ minor bump may break you.
   down a pipe was told to press a key it does not have about a list it could not otherwise see.
   A line that is not a command said `F1 lists what there is`. `/request` and `/help` open the same
   two pages and work in both.
+- A call whose arguments were not JSON is told that, rather than told an argument is missing.
+  `nachalnik-providers` hands the unparsed text over under `_unparsed` so "a model that produces
+  invalid JSON gets to see that it did", and nothing here read it: the tool went looking for
+  `action`, did not find one, and answered `the \`action\` argument is required` - about a call
+  whose text held an `action` and a brace that was never closed. Watched live, on a call that came
+  back with an XML tag inside the JSON string. The refusal quotes what arrived, which is the part
+  to look at, and it is in `ops::inner` so all six tools give it.
 - `context`'s `search` says that its `text` is text. `fs`'s `grep` is offered in the same request
   and states outright that its `pattern` is a regular expression in Rust's syntax, so a model
   reaching for one in the other search is being consistent - and a live run did, searching a

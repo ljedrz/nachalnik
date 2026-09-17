@@ -239,15 +239,34 @@ fn branch(op: &Op) -> Value {
     branch
 }
 
+/// The key a provider puts a call's arguments under when they would not parse as JSON.
+///
+/// note: `nachalnik-providers` plants it so that "a model that produces invalid JSON gets to see
+/// that it did", and until now nothing read it: the tool went looking for `action`, did not find
+/// one, and answered `the \`action\` argument is required` - about a call whose text held an
+/// `action` and a brace that was never closed. Watched live, on a call whose arguments came back
+/// with an XML tag inside the JSON. The model is sent to fix the wrong thing, and the one fact it
+/// needs is the one thing the provider already knew and nobody passed on.
+const UNPARSED: &str = "_unparsed";
+
 /// The object a call's arguments are really in, or what is wrong with where they are.
 ///
-/// note: three readings, and the third is the only one refused. Arguments under [`WRAPPER`] is
-/// what the schema asks for. Arguments flat is what the schema used to ask for, and it is
-/// unambiguous, so it is taken - a model that has learnt the old shape loses nothing. Arguments in
-/// both places is the one that cannot be read charitably: picking either would drop the other
-/// half, and a call that ignored an argument answers as though it had never been given one, which
-/// is the failure [`unread`] exists for one step further in.
+/// note: four readings, and two of them are refused. Arguments under [`WRAPPER`] is what the
+/// schema asks for. Arguments flat is what the schema used to ask for, and it is unambiguous, so
+/// it is taken - a model that has learnt the old shape loses nothing. Arguments in both places is
+/// the one that cannot be read charitably: picking either would drop the other half, and a call
+/// that ignored an argument answers as though it had never been given one, which is the failure
+/// [`unread`] exists for one step further in. And arguments that never parsed are not arguments;
+/// see [`UNPARSED`].
 pub(crate) fn inner(args: &Value) -> Result<&Value, String> {
+    if let Some(written) = args.get(UNPARSED).and_then(Value::as_str) {
+        return Err(format!(
+            "the arguments were not JSON, so nothing was read and nothing was done. What arrived \
+             was `{}`. Send the call again, as one JSON object.",
+            written.chars().take(200).collect::<String>()
+        ));
+    }
+
     let Some(inside) = args.get(WRAPPER).filter(|it| it.is_object()) else {
         return Ok(args);
     };
@@ -506,6 +525,27 @@ mod tests {
         let refusal = inner(&both).expect_err("arguments in two places is not a call");
         assert!(refusal.contains("`path`"), "{refusal}");
         assert!(refusal.contains("nothing was done"), "{refusal}");
+    }
+
+    /// Arguments that never parsed are answered as that, not as an argument nobody gave.
+    ///
+    /// note: the text is what a live call actually arrived as - a model closed a JSON string with
+    /// an XML tag. The provider hands it over under `_unparsed` precisely so it can be reported,
+    /// and the report was `the \`action\` argument is required`, about a call whose text says
+    /// `"action": "note"` in the first twenty characters.
+    #[test]
+    fn arguments_that_never_parsed_are_not_a_missing_argument() {
+        let broken = json!({
+            UNPARSED: "{\"call\": {\"action\": \"note\", \"content</arg_key>\nthe project is",
+        });
+
+        let refusal = inner(&broken).expect_err("this is not a call");
+        assert!(refusal.contains("not JSON"), "{refusal}");
+        assert!(refusal.contains("nothing was done"), "{refusal}");
+        assert!(
+            refusal.contains("</arg_key>"),
+            "and it says what arrived, because that is the part to look at: {refusal}"
+        );
     }
 
     /// A stray argument is refused by name, and told whose it is where exactly one owns it.
