@@ -202,10 +202,30 @@ impl App {
         // items are gone and moving by one row has to mean the next row somebody can see
         let items = self.listed();
         if items.is_empty() {
-            // there is nothing to pick, but the key that puts the rows back must still work
-            if matches!(key.code, KeyCode::Char('f')) {
-                self.sending_only = false;
+            // there is nothing to pick, and the keys that are not about a row still have to work.
+            // `f` puts the rows back; `u` and `U` are the way back from whatever emptied the pane,
+            // which with `f` on is one keystroke away - hide the last row being sent and the row
+            // goes, taking the key that would undo it. The way out was to press `f` first, which
+            // nothing says anywhere
+            match key.code {
+                KeyCode::Char('f') => self.sending_only = false,
+                KeyCode::Char('u') => {
+                    let note = match self.kernel.undo() {
+                        true => "undone",
+                        false => "there is nothing to undo",
+                    };
+                    self.say(Speaker::Note, note);
+                }
+                KeyCode::Char('U') => {
+                    let note = match self.kernel.redo() {
+                        true => "redone",
+                        false => "there is nothing to redo",
+                    };
+                    self.say(Speaker::Note, note);
+                }
+                _ => {}
             }
+
             return;
         }
         self.selected = self.selected.min(items.len() - 1);
@@ -515,8 +535,14 @@ impl App {
                 true
             }
             // a modifier means it is somebody reaching past the box for one of the keys that work
-            // everywhere, not a character
-            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+            // everywhere, not a character - `alt` as well as `ctrl`, which this said and did not
+            // do: with a search open, `alt+2` typed a `2` into the query instead of going to the
+            // context tab, and `/help` promises those four everywhere
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
                 search.push(c);
                 true
             }

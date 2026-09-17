@@ -34,9 +34,14 @@ Nothing can be asked at a prompt that is not there, so the answers are given in 
 
 | flag | what it does |
 | --- | --- |
-| `--allow fs,exec:run` | answer `allow` for a whole domain, one operation in one (`--allow context:note`) or a path rule (`--allow 'src/**'`) |
+| `--allow fs,exec:run` | answer `allow` for a whole domain, one operation in one (`--allow context:note`) or a path rule (`--allow '*.rs'`, `--allow 'vendor/'`) |
 | `--deny fs:write,.env*` | the same, refused; the strictest of everything consulted still wins |
 | `--on-ask deny` | what happens to a question nobody answered in advance. The default |
+
+A path rule is a file name in which `*` stands for any run of characters, or one directory name
+with a slash after it, which is about that directory wherever it sits in a path. It is not the
+glob language `fs`'s own `glob` argument takes, and a pattern that reads like one — `src/**` —
+stops the session rather than going onto the permissions tab as a rule no path can match.
 
 `--on-ask deny` rather than `allow` is the one default worth arguing about, and it is deliberate:
 a run nobody is watching should not be able to do a thing nobody has allowed. The model is told,
@@ -84,7 +89,10 @@ takes it away, which is the way back for whoever set it too low.
 
 An endpoint that reports no usage at all says so, once, rather than holding a ceiling that nothing
 will ever reach — a limit quietly never met is worse than no limit, because whoever set it is
-reading the run as bounded. `--deadline` is the one that needs nobody's cooperation.
+reading the run as bounded. `--deadline` is the one that needs nobody's cooperation - of the
+model, at least. What it cannot cut short is a command of your own that is waiting on the endpoint:
+`/models` fetches a list, and `/model` and `/provider` finish their switch before the next line is
+read, so a deadline that falls during one of those is served when it returns.
 
 A line is read only while the runtime is resting, which is the one place this differs from a
 person at a prompt and is what makes a piped script mean what it says: the lines of a script

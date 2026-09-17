@@ -121,7 +121,11 @@ impl Tool for Setup {
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
 
-        match action(args)? {
+        let action = action(args)?;
+        if let Some(refusal) = crate::tools::ops::unread(action, args, &self.ops) {
+            return Ok(ToolOutput::error(refusal));
+        }
+        match action {
             "model" => Ok(ToolOutput::new(model(&kernel))),
             "tools" => Ok(ToolOutput::new(tools(&kernel, &self.limits))),
             "permissions" => Ok(ToolOutput::new(permissions(&kernel, &self.policy))),
@@ -233,11 +237,25 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
         ));
     }
 
-    out.push_str(&format!("\n{}", shown(&specs, limits)));
-    out.push_str(
-        "The whole of anything cut is archived beside what you were shown and can be restored. A \
-         tool that was taken away mid-session is not on this list.\n",
-    );
+    let config = kernel.config();
+    out.push_str(&format!(
+        "\n{}",
+        shown(&specs, limits, config.default_tool_output_limit)
+    ));
+    // note: read off the configuration rather than stated, which `rules` has always done and this
+    // did not - so a session run `--forget-truncated` was told here that the whole of anything cut
+    // is still available and told the opposite two actions away. What it costs is a model going
+    // looking for content this session was told to drop
+    out.push_str(match config.keep_truncated_output {
+        true => {
+            "The whole of anything cut is archived beside what you were shown and can be \
+             restored. A tool that was taken away mid-session is not on this list.\n"
+        }
+        false => {
+            "What is cut is not kept: this session was told to forget it. A tool that was taken \
+             away mid-session is not on this list.\n"
+        }
+    });
     out.push_str(&if_offered(kernel, "log", || {
         "`log` with `kinds: [\"tools.changed\"]` says when one went.\n".to_owned()
     }));
@@ -250,7 +268,7 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
 /// note: only the subjects these tools actually declare, so a session that is not offering `fs`
 /// is not told what `fs:read` would be cut at. It is the rule `if_offered` is named for, one
 /// level down: everything named in an answer reads as a thing that is there.
-fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits) -> String {
+fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -> String {
     let mut held: Vec<(String, usize)> = specs
         .iter()
         .flat_map(|spec| spec.capabilities.iter())
@@ -261,8 +279,29 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits) -> String {
         .collect();
     held.sort();
     held.dedup();
+
+    // note: the kernel's own ceiling, which is what cuts a tool with no row in that table - every
+    // tool from an MCP server. Without it a session offering nothing but those read `Nothing here
+    // cuts an answer short` while the kernel was cutting all of them at 32,000 bytes, and a model
+    // reading that has no reason to ask for less
+    let elsewhere = specs.iter().any(|spec| {
+        spec.output_limit.is_none()
+            && !spec
+                .capabilities
+                .iter()
+                .any(|subject| limits.of(&subject.to_string()).is_some())
+    });
+    let floor = floor.filter(|_| elsewhere).map(|bytes| {
+        format!(
+            "A tool with no row of its own - one from a server - is cut at {}. ",
+            thousands(bytes)
+        )
+    });
     if held.is_empty() {
-        return "Nothing here cuts an answer short.\n".to_owned();
+        return match floor {
+            Some(said) => format!("{said}\n"),
+            None => "Nothing here cuts an answer short.\n".to_owned(),
+        };
     }
 
     // the one most of them share, which is what a session nobody has changed anything in has
@@ -295,12 +334,13 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits) -> String {
         .collect();
 
     format!(
-        "An answer is cut at {} bytes{}. ",
+        "An answer is cut at {} bytes{}. {}",
         thousands(common),
         match odd.is_empty() {
             true => String::new(),
             false => format!(", except {}", odd.join(", ")),
-        }
+        },
+        floor.unwrap_or_default()
     )
 }
 
@@ -343,7 +383,13 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     // this table of operations: it is not declared by anything - a tool declares `context:revise`,
     // never `context` - so it would read `nothing here is judged by it` beside a verdict that
     // governs three rows above it. It gets a section of its own below, the way a path rule does.
-    let mut broader: Vec<(String, String, Verdict)> = Vec::new();
+    //
+    // note: the flag says which of the two kinds a row is, because an undecided one means
+    // different things for each and the sentence below used to make one statement about both. A
+    // domain is answered by a row above it that names the same operation - `Careful::stance`
+    // reads the exact stance in front of the domain's - and a server is consulted *beside* those
+    // rows, so an undecided server stops every call from it whatever its tools' rows say.
+    let mut broader: Vec<(String, String, Verdict, bool)> = Vec::new();
     for (subject, verdict) in policy.stances() {
         match subject {
             Subject::Capability(capability) => {
@@ -354,10 +400,16 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
                     domain.to_string(),
                     "every operation in it".to_owned(),
                     verdict,
+                    false,
                 ));
             }
             Subject::Server(name) => {
-                broader.push((format!("server {name}"), "its tools".to_owned(), verdict));
+                broader.push((
+                    format!("server {name}"),
+                    "its tools".to_owned(),
+                    verdict,
+                    true,
+                ));
             }
             Subject::Path(_) => {}
         }
@@ -420,7 +472,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     // said nothing would be standing silently for every one of those answers
     let (decided, undecided): (Vec<_>, Vec<_>) = broader
         .into_iter()
-        .partition(|(_, _, verdict)| *verdict != Verdict::Ask);
+        .partition(|(_, _, verdict, _)| *verdict != Verdict::Ask);
     if !decided.is_empty() {
         // note: what these cover is the third column, because the two kinds do not cover the same
         // sort of thing: a domain is a set of operations and a server is a set of tools. The
@@ -428,20 +480,32 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         // is the opposite of a domain and not true of either - `--allow log` is every operation in
         // `log`, and `server big` names no tool at all
         out.push_str("\nand the broader rules, which have no row of their own above:\n");
-        for (rule, covers, verdict) in &decided {
+        for (rule, covers, verdict, _) in &decided {
             out.push_str(&format!("{rule:<28}  {:<8}  {covers}\n", said(*verdict)));
         }
     }
-    if !undecided.is_empty() {
+    let (servers, domains): (Vec<_>, Vec<_>) = undecided.iter().partition(|(.., server)| *server);
+    let named = |rules: &[&(String, String, Verdict, bool)]| {
+        rules
+            .iter()
+            .map(|(rule, ..)| rule.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    if !domains.is_empty() {
         out.push_str(&format!(
-            "\n{} broader rule(s) are undecided and will stop and ask, whatever the rows above \
-             say: {}.\n",
-            undecided.len(),
-            undecided
-                .iter()
-                .map(|(rule, _, _)| rule.as_str())
-                .collect::<Vec<_>>()
-                .join(", "),
+            "\n{} domain rule(s) are undecided, so anything done in them stops and asks unless a \
+             row above names that operation: {}.\n",
+            domains.len(),
+            named(&domains),
+        ));
+    }
+    if !servers.is_empty() {
+        out.push_str(&format!(
+            "\n{} server rule(s) are undecided, and a server is consulted beside the rows above - \
+             so a call from one stops and asks whatever its own rows say: {}.\n",
+            servers.len(),
+            named(&servers),
         ));
     }
 

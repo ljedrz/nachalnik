@@ -20,10 +20,10 @@ use std::{
 
 use kamchatka::{
     sandbox::{Confinement, Sandbox, available},
-    tools::{Careful, Limits, Shell},
+    tools::{Careful, Limits, Shell, Subject},
 };
 use nachalnik::{
-    Config, ContextItem, ContextKind, Kernel, ModelResponse,
+    Capability, Config, ContextItem, ContextKind, Kernel, ModelResponse, Tool, Verdict,
     test::{AllowAll, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -91,6 +91,85 @@ fn enforced() -> bool {
             false
         }
     }
+}
+
+/// A session that refused `fs:write` says so in `shell`'s own description.
+///
+/// note: the point of failure cannot. `Sandbox::note_for` says nothing about a refusal naming a
+/// path this session reaches, because such a refusal is normally the file's own permissions - and
+/// with the working directory read-only it is the boundary instead, with the same wording and
+/// nothing to tell them apart. Standard error does not say whether a refusal was a read or a
+/// write, so the sentence that can be certain is the one written before anything runs.
+#[test]
+fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
+    let dir = workdir("sandbox-read-only-said");
+    let policy = Arc::new(Careful::new());
+
+    let said = |policy: &Arc<Careful>| {
+        Shell {
+            workdir: dir.clone(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            policy: policy.clone(),
+            confiner: Some(program()),
+            limits: Limits::default(),
+        }
+        .spec()
+        .description
+    };
+
+    assert!(
+        !said(&policy).contains("read-only in this session"),
+        "nothing was refused, so nothing is said"
+    );
+
+    policy.set(&Subject::Capability(Capability::fs("write")), Verdict::Deny);
+    let refused = said(&policy);
+    assert!(
+        refused.contains("The working directory is read-only in this session"),
+        "a refused `fs:write` is a read-only working directory: {refused}"
+    );
+}
+
+/// A path the ruleset cannot open is left out of it, and the confinement still holds.
+///
+/// note: the premise the code above `confine` rests on, and it belongs to `landlock` rather than
+/// to this program: `path_beneath_rules` drops a path it cannot open rather than failing, so a
+/// `--sandbox-allow` directory that has gone away costs its own rule and nothing else. The note
+/// there used to say such a path made `add_rules` fail and the command run unconfined - which
+/// would make this test the one that catches a version where it becomes true.
+#[test]
+fn a_path_the_ruleset_cannot_open_costs_its_own_rule_and_no_more() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    if !enforced() {
+        return;
+    }
+
+    let dir = workdir("sandbox-unopenable");
+    let shut = dir.join("shut");
+    std::fs::create_dir_all(&shut).expect("a directory");
+    std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).expect("shut it");
+    let outside = common::scratch("sandbox-unopenable-outside");
+
+    let mut asked = sandbox(dir.clone(), true, false);
+    asked.extra = vec![shut.clone(), dir.join("gone")];
+
+    let (ok, said) = run(&asked, "echo ran > ran.txt");
+    assert!(
+        ok,
+        "the confinement was dropped over a path it could not open: {said}"
+    );
+    assert!(dir.join("ran.txt").exists(), "and the command ran: {said}");
+
+    let (ok, said) = run(&asked, &format!("echo out > {}/out.txt", outside.display()));
+    assert!(!ok, "the sandbox was not in force: {said}");
+    assert!(
+        !outside.join("out.txt").exists(),
+        "a command wrote outside the working directory: {said}"
+    );
+
+    let _ = std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o700));
 }
 
 #[test]

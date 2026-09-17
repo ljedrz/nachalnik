@@ -5,6 +5,153 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- `u` and `U` work on a context pane a filter has emptied, which is where they are most needed.
+  The keys that pick a row need one, so the handler returned early with nothing listed and took
+  those two with it: with `f` on, hiding the last row on the screen removed the row and the key
+  that would put it back, and the way out - press `f` first - is written nowhere.
+- The four tab shortcuts reach past an open search box. The box takes the keys while it is open
+  and read every character without `ctrl` as one of its own, `alt` included - so `alt+2` typed a
+  `2` into the query instead of going to the context tab, which `/help` promises it does
+  everywhere. The handler's own note said a modifier means somebody reaching past the box.
+- The context header counts what `f` is holding back rather than what a search is also hiding. The
+  figure was every row the list dropped, which with a query running is the two filters together,
+  under a label naming `f` as the reason - so items going into the request were reported as not
+  being sent. The empty pane has a note about not making that claim; this was the same claim one
+  branch further on.
+- A pipe inside a table cell stays inside it. Every pipe was read as a column boundary and every
+  pipe was trimmed off both ends, so `\|` moved each value after it one column left and the row
+  was then cut to the header's width, dropping whatever fell off - and a row opening with an empty
+  cell lost it. A table drawn from an answer has to say what the answer said.
+- A long trace detail wraps instead of running off the right edge. It was wrapped against the whole
+  pane and then had the clock and the name column put in front of it, which is the one pane whose
+  promise is that a detail wraps rather than being cut.
+- `setup tools` says whether what is cut is kept, rather than promising it always is. `policy`
+  reads that setting and this stated the opposite, so a session run `--forget-truncated` got two
+  answers from one tool two actions apart - and the one it was likelier to read sends a model
+  looking for content the session was told to drop.
+- `setup tools` says what cuts a tool that has no row in the limits table. Those are keyed by
+  subject and a tool from a server declares none of them, so a session offering nothing else read
+  `Nothing here cuts an answer short` while the kernel cut every one of them at its own ceiling.
+- A settings file is answered before an endpoint is reached. `Setup::check` is what `wire` asks
+  first and what `main` asks before it builds a provider, so a file naming `contxt`, or a path rule
+  nothing can match, stops the program by name rather than after a round trip - or, with no API key
+  anywhere, rather than being reported as a missing key.
+- A second message sent into one running turn says that it replaces the first. The slot holds one
+  and the newest wins, which is a decision - being silent about it is not, since the waiting
+  message is drawn at the end of the conversation, so the second took that row away and put its
+  own there with nothing said. `up` reaches what is waiting, never what it replaced.
+- `/step` with a message, typed into a running turn, puts nothing into the context. The text was
+  pushed before anything had said whether it could step, so it landed in a turn already running -
+  the shape a plain message is held back from, because an item between a call and its result is
+  one most of these APIs refuse - and the step was then declined in silence.
+- `log`'s `take` counts records, which is what it says it counts. It counted rendered lines, and
+  `whole` prints a replaced item's old text entire - so `take: 1` against a record holding three
+  lines of it handed back the last of those lines, with no sequence number and no event name in
+  front of it, under a header calling that one record.
+- `fork` and `setup` refuse an argument the action they name does not read, which the other tools
+  have done since the last release. `without` belongs to `ask`, so a `draft` carrying one bought a
+  request whose answer read as the experiment the caller asked for and was not one - an ablation
+  nobody performed is read as evidence. `shell` asks the same question now, from the same table its
+  schema is built from.
+- A fork counts the caller's items rather than its own. The count was taken after this tool pushes
+  the copy's system instruction, and after `ask` pushes the question, so the figure moved with
+  which operation asked for it - and it is there to be compared between runs.
+- `setup permissions` says what an undecided rule means, which is not the same for the two kinds.
+  One sentence said both stop and ask "whatever the rows above say": true of a server, which is
+  consulted beside the rows, and false of a domain, which an exact rule answers for. A model told
+  that a read it is allowed will stop does not try it.
+- A fork that was given no `without` says nothing of the caller's was taken away, rather than that
+  the copy saw everything. The projector repairs the unfinished call out of the copy, so the
+  stronger sentence was not true; what the line is for is telling an ablation from a question that
+  merely asks the copy to disregard something.
+- An `undo` does not walk back over a decision the person has made since. Every other move in
+  `context` asks whether an item is theirs to move - a system instruction, a pin they put on - and
+  this one went straight to the kernel, so a pin made after the model elided an item came off again
+  on the model's next `undo`. Silently, and against the one thing the word promises. What it leaves
+  alone is named in the answer.
+- Walking a move back is one undo for the person, however many items the move named. It set each
+  item's state in a call of its own, so undoing what this tool reported as one change left three
+  checkpoints on their stack; the items are grouped by the state they return to. The report names
+  each of those states rather than the first one for all of them.
+- `ids` refuses a number that is not an item number, and reads the same number twice as one item.
+  It dropped whatever it could not read, so `[-1]` arrived as no items at all - which is how a call
+  naming none arrives - and `search` with one bad number searched the whole context. The refusal
+  for naming items twice reads `ids` and `select` as *given* now, rather than as what they came to:
+  a call with both, one of which parsed to nothing, was going through as the other one.
+- `steps` outside what a walk takes is refused rather than rounded into range. It was clamped, so
+  `steps: 0` walked one change back, a word walked one back, and a hundred walked sixty-four - and
+  the schema advertised none of it. It says `from 1 to 64` now.
+- The way back from an elision is spelled the way it is sent. The line said `state: "restore"`, from
+  when the four moves were one argument with a `state`; they are four actions, and an argument
+  nothing reads is refused by name - so a model following the instruction spent the call the
+  instruction exists to save.
+- An `edit` whose `old` names two places changes neither and says how many it named. The argument
+  asks for enough of the surrounding lines to make it the only match and nothing checked, so the
+  first was replaced, the second stayed, and the answer read `replaced one occurrence` - which is
+  true of the file and reads as the edit being done. That is the half nobody goes back for: a model
+  told its change landed does not read the file again. An empty `old` is refused with them, having
+  named position zero and put `new` at the front of the file.
+- `glob` looks at the file the call named, the way `grep` and `read` do. The policy is asked about
+  the path in the call - `.env*` matched it, somebody answered - and the walk then skipped that
+  same file and reported it as one a path rule says to ask about. An answer contradicting the
+  permission just given is worse than either half of it.
+- The two numbers in a search's answer add up. `N file(s) searched` counted a file before the
+  search rather than after, so one that would not open or turned out to be binary was reported as
+  read through *and* as skipped, and a model adding up a null result got a walk that does not
+  reconcile.
+- A walk stopped after the two hundredth path says it handed over the first two hundred. It said
+  how many it had found and listed the cap's worth, with nothing accounting for the difference.
+
+- Every answer in a batch stands until its call has run. A one-off `yes` to a command that reaches
+  the network is permission for that call, and the grants were held sixty-four at a time with the
+  oldest dropped - on the reasoning that one turn cannot produce more, which is an assumption about
+  a model rather than something this program holds to. Every call in a batch is decided before any
+  of them runs, so the sixty-fifth `yes` in one response threw away the first, and that command ran
+  with the network cut after somebody had allowed it. They are kept for the batch and emptied at
+  the next request, which is the one moment nothing can still be waiting for one.
+- A path rule that cannot match is refused where it is entered, rather than drawn on the
+  permissions tab as a rule. A rule is a file name in which `*` stands for any run of characters,
+  or one directory name with a slash after it; `--allow 'src/**'` reads like the glob `fs` takes,
+  is not one, and was compared with file names, which hold no `/`. RUNNING.md offered that as the
+  example of a path rule. The refusal names the rule and the grammar, and a `*` before the slash
+  goes with it - `secrets*/` is somebody expecting `secrets-old/` to be covered.
+
+- A confined command that could not be confined is not run. The child process is asked to hold
+  itself down and then run the command, and it ran it whatever came of the first half - unconfined,
+  with the whole filesystem and the network, and with nothing saying so. What the permissions tab
+  draws is the startup probe, which is a different call in a different process: `main` only hands
+  `shell` a confiner where that probe held, and `Setup` is public, so this is the half that makes
+  the guarantee the child's rather than the caller's. It says what happened and leaves with 126.
+- `shell` says when the working directory is read-only, which is what a refused `fs:write` makes
+  it. `Sandbox::note_for` deliberately says nothing about a refusal naming a path the session
+  reaches - such a refusal is the file's own permissions - and that is wrong exactly when the
+  session may not write: every write inside the working directory is then the boundary, worded the
+  same way. Standard error does not say whether a refusal was a read or a write, so the sentence
+  that can be certain is the one in the description, before anything runs.
+
+### changed
+
+- `--deadline` says what it cannot cut short: a command of the operator's own that is waiting on
+  the endpoint. `/models` fetches a list, and `/model` and `/provider` finish their switch, inside
+  the branch that read the line - so the deadline and `ctrl+c` branches are unreachable until it
+  answers. RUNNING.md said it was the one that needs nobody's cooperation; POSTPONED.md says what
+  closing it would take and why a `timeout_at` around `App::submit` is not it.
+- The note on `confine` no longer says a path that cannot be opened makes `add_rules` fail.
+  `landlock`'s `path_beneath_rules` drops such a path and builds the rest, so a `--sandbox-allow`
+  directory that has gone away costs its own rule and nothing else; `tests/sandbox.rs` holds the
+  dependency to it, that being a fact about somebody else's crate.
+- `fs` says the walks obey `.gitignore` and stay out of `.git` without counting either. It said
+  they "count what they passed over", and those two are passed over silently - a model told that
+  sentence and handed an answer with no skip line concludes nothing was left out.
+- The note on `Careful::judges` says what it does about somebody else's tool: a `call` object is
+  read through whoever's tool it belongs to, so a foreign argument of that name has its `path` read
+  as a path. It can only add a subject, which asks a question nobody needed, where passing it over
+  would be a rule that stops being one. Documentation only.
+
 ## [0.12.0] - 2026-09-17
 
 ### added

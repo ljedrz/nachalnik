@@ -40,13 +40,48 @@ pub(super) enum Align {
 /// does and what keeps the box rectangular.
 pub(super) fn table(block: &str) -> Option<Table> {
     /// The cells of one row, without the pipes that are only there to hold them.
+    ///
+    /// note: one delimiter off each end rather than every pipe there, and a split that knows what
+    /// `\|` is. Trimming them all took the empty first cell of `|| a |` away with the delimiter,
+    /// and splitting on every pipe read an escaped one as a column - so a row with a pipe in a
+    /// cell moved every value after it one column left, and `resize` dropped whatever fell off
+    /// the end. A table drawn from the model's own answer has to say what the answer said.
+    ///
+    /// note: a trailing `\|` is a pipe in the last cell rather than the delimiter, so the end is
+    /// only stripped where the pipe is not escaped.
     fn cells(line: &str) -> Vec<String> {
-        line.trim()
-            .trim_start_matches('|')
-            .trim_end_matches('|')
-            .split('|')
-            .map(|cell| cell.trim().to_owned())
-            .collect()
+        let line = line.trim();
+        let line = line.strip_prefix('|').unwrap_or(line);
+        let line = match line.ends_with("\\|") {
+            true => line,
+            false => line.strip_suffix('|').unwrap_or(line),
+        };
+
+        let mut cells = Vec::new();
+        let mut cell = String::new();
+        let mut escaped = false;
+        for c in line.chars() {
+            match (escaped, c) {
+                (true, '|') => cell.push('|'),
+                (true, other) => {
+                    cell.push('\\');
+                    cell.push(other);
+                }
+                (false, '\\') => {
+                    escaped = true;
+                    continue;
+                }
+                (false, '|') => cells.push(std::mem::take(&mut cell).trim().to_owned()),
+                (false, other) => cell.push(other),
+            }
+            escaped = false;
+        }
+        if escaped {
+            cell.push('\\');
+        }
+        cells.push(cell.trim().to_owned());
+
+        cells
     }
 
     let mut lines = block.lines().filter(|line| !line.trim().is_empty());

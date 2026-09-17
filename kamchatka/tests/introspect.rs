@@ -179,16 +179,18 @@ async fn look_lists_every_item_with_its_state_and_why() {
 
 #[tokio::test]
 async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
-    // the failure this closes: a session elided twenty-two items, then spent two calls asking for
-    // an `action` called `restore`, was told no such thing existed, and gave up. The reversal is
-    // a `state`, and the moment worth saying so is the one where something has just been hidden
+    // the failure this closes: a session elided twenty-two items, then spent two calls guessing
+    // at how to put them back and gave up. The moment worth saying so is the one where something
+    // has just been hidden - and the sentence has to name the spelling that works: it said
+    // `state: "restore"` from when the four moves were one argument, and an argument nothing
+    // reads is refused by name, so following the instruction cost the call it was there to save
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
             "context",
             json!({"action": "elide", "ids": [1], "reason": "done with it"}),
         ),
-        // not a word the schema lists, and unambiguous: there is one state that is "put it back"
+        // the instruction the first answer gives, followed to the letter
         call(
             "c2",
             "context",
@@ -205,8 +207,8 @@ async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
 
     assert!(said[0].contains("now elided"), "{}", said[0]);
     assert!(
-        said[0].contains("restore"),
-        "the way back is on the line: {}",
+        said[0].contains("`action: \"restore\"`"),
+        "the way back is on the line, spelled the way it is sent: {}",
         said[0]
     );
     assert!(
@@ -215,8 +217,13 @@ async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
         said[0]
     );
 
-    // `unelide` is not in the enum and means exactly one thing
+    // and the call that followed it did what the sentence said it would
     assert_eq!(kernel.items()[0].state, ContextState::Active, "{}", said[1]);
+    assert!(
+        !said[1].contains("is not an argument") && !said[1].contains("there is no"),
+        "the instruction was refused: {}",
+        said[1]
+    );
 
     // and putting something back does not then advertise a way back from that
     assert!(!said[1].contains("back:"), "{}", said[1]);
@@ -885,6 +892,234 @@ async fn undo_walks_back_this_tools_own_changes_and_nothing_else() {
     let notes = kernel.item(nachalnik::ContextId(2)).unwrap();
     assert_eq!(notes.content.to_text(), "a long note");
     assert!(notes.meta["revised"].is_null());
+}
+
+/// A pin the person puts on afterwards survives the model's undo, and the answer says it was left.
+///
+/// note: the half the test above does not cover. That one makes the person's decision *before* the
+/// model's change, where the journal never held the item; this one makes it in between, where the
+/// journal holds `[1] was active` and walking back used to write that over a pin made since -
+/// silently, and against the one promise the word makes. Every other move in this tool asks
+/// `protected` first; `undo` went straight to `set_state`.
+#[tokio::test]
+async fn an_undo_does_not_walk_back_over_a_decision_made_since() {
+    let (kernel, _provider, _anchor) = agent(vec![
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({ "action": "elide", "ids": [1, 2], "reason": "read them both" }),
+        )]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "reason": "I want them back" }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+
+    let theirs = kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    let mine = kernel.push(ContextItem::file("other.rs", "1".repeat(400)));
+    kernel.push(ContextItem::user("tidy up"));
+    kernel.turn().await.expect("the first turn failed");
+
+    // between the two turns, the person pins one of the items the model elided
+    kernel.set_state([theirs], ContextState::Pinned, Some("I need this".into()));
+    kernel.turn().await.expect("the second turn failed");
+
+    let said = all_answers(&kernel);
+    let walked = said.last().unwrap();
+    assert_eq!(
+        kernel.item(theirs).unwrap().state,
+        ContextState::Pinned,
+        "a pin the person made was walked back over: {walked}"
+    );
+    assert!(
+        walked.contains("left alone") && walked.contains("a pin is a promise"),
+        "and it says what it did not touch: {walked}"
+    );
+    assert_eq!(
+        kernel.item(mine).unwrap().state,
+        ContextState::Active,
+        "the rest of the change still walked back: {walked}"
+    );
+}
+
+/// Walking back a move of several items is one undo for the person, not one for each item.
+///
+/// note: `Undoing::apply` called `set_state` an item at a time, so undoing what this tool reported
+/// as one change left three checkpoints on the person's stack - and one operation is one undo.
+/// They are grouped by the state they land in now, which is also what the report names: it used to
+/// say every item was in the state of the first of them.
+///
+/// note: counted against the same session moving one item rather than against a number, because
+/// what is being claimed is that the size of a move does not reach the person's stack - and a
+/// number here would be counting the pushes either session happens to make.
+#[tokio::test]
+async fn walking_back_one_move_is_one_undo_for_the_person() {
+    async fn walked(moved: Vec<u64>) -> usize {
+        let (kernel, _provider, _anchor) = agent(vec![
+            ModelResponse::tool_calls(vec![call(
+                "c1",
+                "context",
+                json!({ "action": "exclude", "ids": moved, "reason": "these" }),
+            )]),
+            ModelResponse::text("done"),
+            ModelResponse::tool_calls(vec![call(
+                "c2",
+                "context",
+                json!({ "action": "undo", "reason": "put them back" }),
+            )]),
+            ModelResponse::text("done"),
+        ]);
+
+        for name in ["a.rs", "b.rs", "c.rs"] {
+            kernel.push(ContextItem::file(name, "0".repeat(400)));
+        }
+        kernel.push(ContextItem::user("tidy up"));
+        kernel.turn().await.expect("the first turn failed");
+        kernel.turn().await.expect("the second turn failed");
+
+        let mut depth = 0;
+        while kernel.undo() {
+            depth += 1;
+        }
+
+        depth
+    }
+
+    assert_eq!(
+        walked(vec![1, 2, 3]).await,
+        walked(vec![1]).await,
+        "undoing a move of three items cost the person more than undoing a move of one"
+    );
+}
+
+/// And the report says which state each item went to, rather than the first one's for all of them.
+#[tokio::test]
+async fn walking_back_says_where_each_item_ended_up() {
+    let (kernel, _provider, _anchor) = agent(vec![
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({ "action": "elide", "ids": [1, 2], "reason": "both" }),
+        )]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "reason": "back" }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+
+    let excluded = kernel.push(ContextItem::file("a.rs", "0".repeat(400)));
+    kernel.push(ContextItem::file("b.rs", "1".repeat(400)));
+    kernel.push(ContextItem::user("tidy up"));
+    // one of the two was already out of the request when the move found it, so the way back is
+    // two states and the report has two things to say
+    kernel.set_state([excluded], ContextState::Excluded, Some("mine".into()));
+    kernel.turn().await.expect("the first turn failed");
+    kernel.turn().await.expect("the second turn failed");
+
+    let walked = all_answers(&kernel).last().unwrap().clone();
+    assert!(walked.contains("1 now excluded"), "{walked}");
+    assert!(walked.contains("2 now active"), "{walked}");
+}
+
+/// A number that is not an item number is refused, and the same number twice is one item.
+///
+/// note: `ids` dropped whatever it could not read, so `[-1]` arrived as no items at all - which is
+/// how a call that named none arrives too. `search` then searched the whole context, and a call
+/// giving `ids` *and* `select` went through as a `select`, the refusal for naming items twice
+/// having found no numbers to object to. A duplicate was counted twice in what a move reported.
+#[tokio::test]
+async fn an_id_that_is_not_one_is_refused_rather_than_dropped() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "elide", "ids": [-1], "reason": "the first one" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "elide", "ids": [1, 1], "reason": "twice over" }),
+        ),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "look", "ids": [], "select": "all:files" }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    assert!(said[0].contains("not an item number"), "{}", said[0]);
+    assert!(said[0].contains("nothing was done"), "{}", said[0]);
+
+    assert!(
+        said[1].contains("1 item(s)") || said[1].contains("[1]"),
+        "the same id twice is one item: {}",
+        said[1]
+    );
+    assert!(!said[1].contains("2 item(s)"), "{}", said[1]);
+
+    assert!(
+        said[2].contains("`ids` and `select` in one call"),
+        "an empty `ids` is still `ids`: {}",
+        said[2]
+    );
+}
+
+/// A `steps` outside what a walk takes is refused, rather than walking some other number.
+///
+/// note: it was `as_u64().unwrap_or(1).clamp(1, 64)`, so nought walked one change back, a word
+/// walked one back, and a hundred walked sixty-four - each of them a call that did something other
+/// than what it said, and the schema advertised none of it.
+#[tokio::test]
+async fn a_walk_of_no_steps_walks_nothing() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "elide", "ids": [1], "reason": "done with it" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "steps": 0, "reason": "none of it" }),
+        ),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "undo", "steps": "two", "reason": "a word" }),
+        ),
+        call(
+            "c4",
+            "context",
+            json!({ "action": "undo", "steps": 100, "reason": "all of it" }),
+        ),
+    ]));
+
+    let big = kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    for refusal in &said[1..4] {
+        assert!(refusal.contains("`steps` is"), "{refusal}");
+        assert!(refusal.contains("from 1 to 64"), "{refusal}");
+        assert!(!refusal.contains("walked"), "{refusal}");
+    }
+    assert_eq!(
+        kernel.item(big).unwrap().state,
+        ContextState::Elided,
+        "a refused `steps` walked something back anyway"
+    );
 }
 
 #[tokio::test]
@@ -1981,6 +2216,56 @@ async fn a_filtered_log_opens_with_the_whole_total_and_not_the_filtered_one() {
 /// was would have been a false sense of a well-watched seam. What nothing else catches is the
 /// pair of things this tool adds: finding the record by the *item* number rather than by kind,
 /// and `whole` - drop either and only this fails.
+/// `take` counts records, which is what it says it counts, and a whole one is not one line.
+///
+/// note: it counted rendered *lines*, and `whole` prints a replaced item's old text entire - so
+/// `take: 1` against a record holding three lines of old text handed over the last of those lines
+/// with no sequence number and no event name in front of it, and the header called that one
+/// record. The two arguments are tested apart from each other everywhere else.
+#[tokio::test]
+async fn take_counts_records_even_where_one_of_them_is_many_lines() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({
+                "action": "revise",
+                "ids": [1],
+                "content": "one line now",
+                "reason": "it was three",
+            }),
+        ),
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "kinds": ["context.replaced"], "whole": true, "take": 1 }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::memory(
+        "scratch",
+        "the parser is in src/parser.rs\nthe lexer is in src/lex.rs\nthe kernel is next door",
+    ));
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let whole = said.last().unwrap();
+
+    assert!(
+        whole.contains("context.replaced"),
+        "the one record asked for arrived without its name: {whole}"
+    );
+    assert!(
+        whole.contains("src/parser.rs") && whole.contains("the kernel is next door"),
+        "a whole record is the whole of it: {whole}"
+    );
+    assert!(
+        whole.contains("Showing 1.") && !whole.contains("not here"),
+        "one record matched and one was asked for: {whole}"
+    );
+}
+
 #[tokio::test]
 async fn a_revised_item_can_be_read_back_out_of_the_log_by_its_number() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
@@ -2472,6 +2757,45 @@ async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
     );
 }
 
+/// What a session was told to forget, `tools` says it has forgotten - the way `policy` does.
+///
+/// note: `rules` reads the configuration for this sentence and `tools` stated the opposite
+/// outright, so one tool gave two answers about the same setting two actions apart. What it costs
+/// is a model going looking for content this session was told to drop.
+#[tokio::test]
+async fn setup_tools_says_whether_what_is_cut_is_kept() {
+    for keep in [true, false] {
+        let kernel = Kernel::new(Config {
+            keep_truncated_output: keep,
+            ..Config::default()
+        });
+        kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+            "c1",
+            "setup",
+            json!({ "action": "tools" }),
+        )]))));
+        let policy = Arc::new(Careful::new());
+        policy.set(&Subject::parse("setup"), Verdict::Allow);
+        kernel.set_policy(policy.clone());
+        let _anchor = introspect::install(&kernel, policy, Limits::default());
+
+        kernel.push(ContextItem::user("what are you offered?"));
+        kernel.turn().await.expect("the turn failed");
+
+        let said = answered(&kernel);
+        match keep {
+            true => assert!(
+                said.contains("archived beside what you were shown"),
+                "{said}"
+            ),
+            false => assert!(
+                said.contains("not kept: this session was told to forget it"),
+                "`--forget-truncated` was set and this says it can be restored: {said}"
+            ),
+        }
+    }
+}
+
 /// A tool taken away mid-session is not on the list, which is the point of there being a list.
 ///
 /// note: the shape this exists for. Nothing anywhere let an agent enumerate its own tools, so a
@@ -2565,6 +2889,49 @@ async fn setup_model_says_whether_this_conversation_was_inherited() {
     assert!(
         now.contains("may not be you"),
         "and says the turns in it are not necessarily its own: {now}"
+    );
+}
+
+/// An undecided domain is not the last word, and an undecided server is; the report says which.
+///
+/// note: one sentence used to cover both - "will stop and ask, whatever the rows above say" -
+/// which is true of a server and false of a domain. `Careful::stance` reads the exact stance in
+/// front of the domain's, so `fs` undecided beside `fs:read` allowed is a read that does not stop,
+/// and the table said it did. A model that believes it will be stopped does not try.
+#[tokio::test]
+async fn an_undecided_domain_says_that_a_row_above_it_can_answer_for_one_operation() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "permissions" }),
+    )])));
+    kernel.set_provider(provider);
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    // somebody has looked at `fs` and left it, and answered for one operation in it
+    policy.set(&Subject::parse("fs"), Verdict::Ask);
+    policy.set(&Subject::parse("fs:read"), Verdict::Allow);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy.clone(), Limits::default());
+
+    kernel.push(ContextItem::user("what may you do?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("unless a row above names that operation"),
+        "an undecided domain is answerable by an exact rule: {said}"
+    );
+    assert!(
+        !said.contains("whatever the rows above say"),
+        "which is what the old sentence claimed for it: {said}"
+    );
+    // and the policy agrees with the sentence
+    assert_eq!(
+        policy.stance(&Subject::parse("fs:read")),
+        Verdict::Allow,
+        "the report and the policy disagree about the same call"
     );
 }
 
@@ -3697,6 +4064,40 @@ async fn a_search_finds_a_blob_by_what_names_it() {
 /// "on 9 of your items", which cannot be read as "on all of them", so nothing in it contradicted
 /// the story. The difference between taking an item away and asking a model to disregard it is the
 /// whole of what `fork` is for.
+/// A `draft` carrying `without` is refused, rather than answered without the items it names.
+///
+/// note: `fork` and `setup` were the two tools that never asked `unread`, and this is the one
+/// where it costs something: `without` belongs to `ask`, `draft` takes no arguments at all, and a
+/// `draft` that carried one bought a request whose answer looked like the experiment the caller
+/// had asked for. An ablation nobody performed is worse than a refusal - it is read as evidence.
+#[tokio::test]
+async fn a_draft_that_names_items_to_leave_out_is_refused_rather_than_answered() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "fork",
+            json!({ "action": "draft", "without": [1] }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("quicksort is fastest"));
+    kernel.push(ContextItem::user("go on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["fork"]);
+    let refusal = said.last().expect("the tool answered");
+    assert!(refusal.contains("`without`"), "{refusal}");
+    assert!(
+        refusal.contains("`ask`"),
+        "it says whose argument it is: {refusal}"
+    );
+    assert!(
+        !refusal.contains("what you would say if you answered now"),
+        "the draft was answered anyway: {refusal}"
+    );
+}
+
 #[tokio::test]
 async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
     let (kernel, _provider, _anchor) = agent([
@@ -3722,9 +4123,17 @@ async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
     let said = answers_from(&kernel, &["fork"]);
     let (pretended, ablated) = (&said[0], &said[1]);
 
+    // note: what it can say, which is that nothing was withheld. It used to say the copy saw all
+    // of the caller's items, and the projector had already repaired the unfinished call out of it
     assert!(
-        pretended.contains("The copy saw all of them"),
+        pretended.contains("Nothing of yours was taken away"),
         "{pretended}"
+    );
+    // and the count is the caller's items, not the two this tool adds: the copy's own system
+    // instruction and the question put to it
+    assert!(
+        pretended.contains("on 2 of your items"),
+        "the count is of the caller's items: {pretended}"
     );
     assert!(
         pretended.contains("is still reading it"),

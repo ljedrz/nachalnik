@@ -16,7 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::tools::{
     Careful, Limits, arg,
-    ops::{Arg, Op, inner, schema},
+    ops::{self, Arg, Op, inner, schema},
 };
 
 /// How long a running command may say nothing before the tool looks up to check whether it has
@@ -113,6 +113,19 @@ pub struct Shell {
     pub limits: Limits,
 }
 
+/// The one thing it does, and the one argument that does it.
+///
+/// note: a function rather than written into the schema, because the refusal for an argument
+/// `run` does not read reads the same table the schema is built from - which is what stops the
+/// two from disagreeing about what `shell` takes.
+fn ops() -> Vec<Op> {
+    vec![Op::new(
+        "run",
+        "",
+        vec![Arg::text("cmd", "the command line, as a shell would read it").needed()],
+    )]
+}
+
 #[async_trait]
 impl Tool for Shell {
     fn spec(&self) -> ToolSpec {
@@ -145,6 +158,27 @@ impl Tool for Shell {
             None => String::new(),
         };
 
+        // note: the working directory being read-only is said here rather than at the point of
+        // failure, where the rest of the confinement is accounted for. `Sandbox::note_for` says
+        // nothing about a refusal naming a path this session reaches, on the grounds that such a
+        // refusal is the file's own permissions - which is right until `fs:write` is refused, and
+        // then every write inside the working directory is the boundary and reads the same way.
+        // Standard error does not say whether a refusal was a read or a write, so the sentence
+        // that can be certain is this one, before anything is run
+        let read_only = self
+            .confiner
+            .is_some()
+            .then(|| {
+                Sandbox::of(
+                    &self.policy,
+                    self.workdir.clone(),
+                    self.extra.clone(),
+                    self.readable.clone(),
+                    false,
+                )
+            })
+            .is_some_and(|sandbox| !sandbox.writable);
+
         ToolSpec::new(
             "shell",
             format!(
@@ -155,10 +189,16 @@ impl Tool for Shell {
                     true => format!(
                         " It runs confined: outside the working directory it can read this \
                          machine's system paths{} and no more, and TCP may be closed - so a \
-                         permission error there is the confinement rather than the command.",
+                         permission error there is the confinement rather than the command.{}",
                         match opened.is_empty() {
                             true => String::new(),
                             false => format!(", and {},", opened.join(" and ")),
+                        },
+                        match read_only {
+                            true =>
+                                " The working directory is read-only in this session, so a \
+                                     refusal to write in it is that boundary too.",
+                            false => "",
                         }
                     ),
                     false => String::new(),
@@ -169,11 +209,7 @@ impl Tool for Shell {
         // offers takes an `action` and a model should not have to remember which of them is the
         // exception. It costs a word in the call and buys a rule with no holes in it - the same
         // reasoning `log` is written to
-        .with_schema(schema(&[Op::new(
-            "run",
-            "",
-            vec![Arg::text("cmd", "the command line, as a shell would read it").needed()],
-        )]))
+        .with_schema(schema(&ops()))
         .with_capabilities([Capability::exec("run")])
     }
 
@@ -194,6 +230,13 @@ impl Tool for Shell {
             return Ok(ToolOutput::error(format!(
                 "`{named}` is not something `shell` does; it does run"
             )));
+        }
+        // the rule the other tools hold to, and there is no reason for the one with a single
+        // operation to be the exception: an ignored argument comes back as a real answer - the
+        // answer to the call without it - and `cmd` beside a stray `path` is a command somebody
+        // meant to point somewhere
+        if let Some(refusal) = ops::unread("run", args, &ops()) {
+            return Ok(ToolOutput::error(refusal));
         }
         let cmd = arg(args, "cmd")?;
 

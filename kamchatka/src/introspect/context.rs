@@ -220,7 +220,7 @@ fn ops() -> Vec<Op> {
             vec![
                 Arg::whole(
                     "steps",
-                    "how many of your own changes to walk; 1 by default",
+                    "how many of your own changes to walk, from 1 to 64; 1 by default",
                 ),
                 Arg::text("reason", WHY).needed(),
             ],
@@ -351,12 +351,11 @@ impl Tool for Context {
                     Ok(take) => take,
                     Err(why) => return Ok(ToolOutput::error(why)),
                 };
-                Ok(ToolOutput::new(search(
-                    &kernel,
-                    text,
-                    &ids(args, "ids"),
-                    take,
-                )))
+                let only = match ids(args, "ids") {
+                    Ok(ids) => ids,
+                    Err(why) => return Ok(ToolOutput::error(why)),
+                };
+                Ok(ToolOutput::new(search(&kernel, text, &only, take)))
             }
             // note: asked for here *as well as* in the schema, which now says it: a branch per
             // operation means eight of the twelve can require it and four can not offer it at

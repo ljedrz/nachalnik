@@ -390,6 +390,38 @@ async fn a_message_that_has_to_wait_says_that_it_is_waiting() {
     );
 }
 
+/// A second message into the same turn says that it replaces the first.
+///
+/// note: the slot holds one and the newest wins, which is a decision; being silent about it is
+/// not. The waiting message is drawn at the end of the conversation, so a second one took that
+/// row away and put its own there with nothing said - and `up` reaches what is waiting now, never
+/// the one it replaced. A row that vanishes with no account of why is the thing this program does
+/// not do, which is what its own note on `put_back` says.
+#[tokio::test]
+async fn a_second_message_into_one_turn_says_which_of_them_is_going_in() {
+    let mut harness = Harness::new([ModelResponse::text("the first answer")]);
+
+    harness.send("the first question").await;
+    harness.app.busy = true;
+    harness.send("the second question").await;
+    let screen = harness.screen();
+    assert!(
+        !screen.contains("replaces it"),
+        "nothing was replaced by the first of them: {screen}"
+    );
+
+    harness.send("the third question").await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("the message that was waiting is not going in; this one replaces it"),
+        "the row that went away is accounted for: {screen}"
+    );
+    assert!(
+        screen.contains("the third question"),
+        "and the one that is waiting is drawn: {screen}"
+    );
+}
+
 /// And <kbd>up</kbd> takes it back, which is the whole of what the key is for.
 ///
 /// note: a message typed into a running turn used to be unreachable: `typed_ahead` holds one, the
@@ -734,6 +766,39 @@ async fn a_table_too_wide_for_the_window_keeps_its_shape() {
     // and nothing was lost to make it fit
     assert!(narrow.contains("verbatim"), "{narrow}");
     assert!(narrow.contains("gating"), "{narrow}");
+}
+
+/// A pipe inside a cell stays inside it, and an empty cell keeps its column.
+///
+/// note: the splitter took every pipe as a column boundary and trimmed every pipe off both ends,
+/// so `\|` moved each value after it one column left - and the row was then cut to the header's
+/// width, which dropped whatever fell off the end. A table drawn from the model's answer that
+/// shows a different answer is worse than no table.
+#[tokio::test]
+async fn a_pipe_inside_a_cell_does_not_make_a_column() {
+    let mut harness = Harness::new([]);
+    harness.app.say(
+        Speaker::Model,
+        "| pattern | means |\n\
+         | --- | --- |\n\
+         | a \\| b | either of them |\n\
+         |  | the empty one |\n",
+    );
+    harness.tab(Tab::Chat);
+
+    let screen = harness.sized(90, 20);
+    assert!(
+        screen.contains("a | b"),
+        "an escaped pipe is a pipe in the cell: {screen}"
+    );
+    assert!(
+        screen.contains("either of them"),
+        "and what followed it is still in its own column: {screen}"
+    );
+    assert!(
+        screen.contains("the empty one"),
+        "a row that opens with an empty cell keeps the rest of them: {screen}"
+    );
 }
 
 #[tokio::test]

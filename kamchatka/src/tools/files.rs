@@ -98,11 +98,31 @@ impl Edit {
             Ok(before) => before,
             Err(e) => return Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         };
-        let Some(at) = before.find(old) else {
+        // note: the argument asks for enough of the surrounding lines to name one place, and
+        // nothing checked that it did. `find` takes the first of however many there are, so an
+        // `old` occurring twice edited one of them and answered `replaced one occurrence`, which
+        // is true of the file and reads as the edit being done. What it costs is the half nobody
+        // goes back for: a model that has been told its change landed does not read the file
+        // again. An empty `old` is the same failure at the other end - it names position zero and
+        // puts `new` at the front of the file.
+        if old.is_empty() {
             return Ok(ToolOutput::error(format!(
-                "`old` does not occur in {}",
+                "`old` is empty, so it names no text in {}; give the text to replace, or use \
+                 `write` for the whole file",
                 path.display()
             )));
+        }
+        let occurrences = before.matches(old).count();
+        let Some(at) = before.find(old).filter(|_| occurrences == 1) else {
+            return Ok(ToolOutput::error(match occurrences {
+                0 => format!("`old` does not occur in {}", path.display()),
+                n => format!(
+                    "`old` occurs {n} times in {} and nothing was changed; include enough of \
+                     the lines around the one you mean to name it, or use `write` for the \
+                     whole file",
+                    path.display()
+                ),
+            }));
         };
 
         let after = format!("{}{new}{}", &before[..at], &before[at + old.len()..]);

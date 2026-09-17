@@ -825,10 +825,11 @@ pub struct App {
     pub proposed: Option<Proposed>,
     /// A message somebody sent into a turn that was already running, waiting for it to end.
     ///
-    /// note: one, and the newest wins - which used to mean a second message typed into the same
-    /// turn replaced the first with nothing said about it. [`App::put_back`] is the way back to it
-    /// now: `up` takes it out of here and into the prompt, where it can be changed, sent again or
-    /// simply dropped.
+    /// note: one, and the newest wins. [`App::put_back`] is the way back to *this* one - `up`
+    /// takes it out of here and into the prompt, where it can be changed, sent again or simply
+    /// dropped - and there is no way back to one it replaced, so the replacement is said out loud
+    /// where it happens. The row is drawn at the end of the conversation, and a row that vanishes
+    /// with no account of why is the thing this program does not do.
     typed_ahead: Option<String>,
     /// The last line submitted at the prompt, message or command, for [`App::put_back`].
     last_sent: Option<String>,
@@ -1686,6 +1687,9 @@ impl App {
                 items,
                 ..
             } => {
+                // the last batch's one-off answers, which nothing can still be waiting for: a
+                // request is only built from `Idle`, so every call they were given for has run
+                self.policy.forget_network_grants();
                 self.close();
                 // note: split here rather than when the response lands, because *here* is the
                 // one moment the two are the same thing: the context has just been projected

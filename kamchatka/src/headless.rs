@@ -72,6 +72,14 @@ impl<'a> Headless<'a> {
     /// finished and the last records - the turn it was interrupted in among them - were written
     /// nowhere. A deadline reached here interrupts the turn, lets what arrived be recorded, and
     /// leaves by the ordinary door.
+    ///
+    /// note: what it does not interrupt is a *command* of the operator's own that is waiting on an
+    /// endpoint - `/models` fetches a list and `/model` and `/provider` finish a switch before the
+    /// next line is read. Those are awaited inside the branch that read the line, so this branch
+    /// and `ctrl+c` cannot be reached until they answer. It is a real hole and a narrow one: the
+    /// model's own turns are interruptible, which is where a run spends its time. Closing it means
+    /// running a command as a task the loop can outlive, and a half-applied `/provider` is a worse
+    /// thing to leave behind than a late deadline - see POSTPONED.md.
     pub fn deadline(mut self, after: Duration) -> Self {
         self.deadline = Some(after);
         self

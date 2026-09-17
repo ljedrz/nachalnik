@@ -881,6 +881,79 @@ async fn f_lists_only_what_the_next_request_carries_and_keeps_the_item_it_was_on
     );
 }
 
+/// Undo works when the pane is empty, which is the moment it is most needed.
+///
+/// note: the keys that pick a row need one, so the handler returns early when the list is empty -
+/// and `u` went out with them. With `f` on, hiding the last row on the screen takes the row away
+/// and the key that would put it back with it: the way out was `f` first, which nothing says. The
+/// keys that are not about a row are answered before the pick.
+#[tokio::test]
+async fn the_undo_key_works_when_the_filter_has_emptied_the_pane() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user("the only one"));
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    // `f` lists what is being sent; hiding the one item then empties the pane
+    harness.press(KeyCode::Char('f')).await;
+    harness.press(KeyCode::Char(' ')).await;
+    assert!(
+        harness.app.listed().is_empty(),
+        "the one row should be hidden now"
+    );
+
+    harness.press(KeyCode::Char('u')).await;
+    assert_eq!(
+        harness.app.kernel.items()[0].state,
+        ContextState::Active,
+        "`u` is the way back and the empty pane swallowed it"
+    );
+}
+
+/// The header counts what `f` is holding back, not what a search is also hiding.
+///
+/// note: the figure was every row `listed` dropped, which with a search running is the two filters
+/// added together - so items going into the request were reported as not being sent, under a label
+/// naming `f` as the reason. The empty pane already has a note about not making that claim; this
+/// is the same claim one branch further on.
+#[tokio::test]
+async fn the_header_does_not_blame_f_for_rows_a_search_hid() {
+    let mut harness = Harness::new([]);
+    for text in ["first question", "second question", "third question"] {
+        harness.app.kernel.push(ContextItem::user(text));
+    }
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("dropped.rs", "fn gone() {}\n"));
+    let items = harness.app.kernel.items();
+    harness.app.kernel.set_state(
+        [items[3].id],
+        ContextState::Elided,
+        Some("compacted to make room".into()),
+    );
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    harness.press(KeyCode::Char('f')).await;
+    assert!(
+        harness.screen().contains("1 not being sent"),
+        "one item is held back: {}",
+        harness.screen()
+    );
+
+    // and with a query narrowing the rows as well, the figure is still about `f` alone
+    harness.press(KeyCode::Char('/')).await;
+    for c in "second".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+    let searched = harness.screen();
+    assert!(
+        searched.contains("1 not being sent"),
+        "the query hid rows that are being sent, and the header blamed `f`: {searched}"
+    );
+}
+
 #[tokio::test]
 async fn a_figure_too_wide_for_its_column_does_not_run_into_the_one_beside_it() {
     // `keep_truncated_output` archives the whole of what a tool produced, and what a tool can
