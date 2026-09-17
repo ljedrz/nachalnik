@@ -127,7 +127,8 @@ fn ops() -> Vec<Op> {
          result has served its purpose. `exclude` takes it out of the request altogether, and \
          takes down the call that asked for it. `archive` says the same and means you are done \
          with it. `pin` protects it from being compacted away. `restore` is the way back from any \
-         of the other four.",
+         of the other four, a `pin` of your own included - it puts an item back to plain active, \
+         so restoring something you pinned unpins it.",
         vec![
             Arg::list(
                 "ids",
@@ -233,9 +234,10 @@ impl Tool for Context {
             "context",
             "your own context: what is in it, what it costs, and what you carry into the next \
              request. Four operations read it and nine change it, and each says what it does. \
-             Nothing destroys anything: every item keeps its number and can be restored, and \
-             anything that would change a pinned item, a system instruction or the turn you are \
-             speaking in is refused - those are not yours.\n\
+             Nothing destroys anything: every item keeps its number and can be restored. What \
+             is refused is changing a system instruction, the turn you are speaking in, or an \
+             item the person you work with pinned - those are not yours. A pin of your own is, \
+             and `restore` undoes it.\n\
              Where an operation takes a `select`, it is a class of items instead of `ids`: an \
              item number; `all`; `all:tool_results` (or files, diagnostics, selections, memories, \
              instructions, system, user, model, compaction); `kind:<kind>` or `state:<state>`, \
