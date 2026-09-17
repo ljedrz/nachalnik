@@ -128,6 +128,14 @@ fn truth(args: &Value, name: &str) -> Result<bool, String> {
     ))
 }
 
+/// What a call's output is cut at when nothing more specific is said, in bytes.
+///
+/// note: named because two places need the same number and one of them is not a row in this table.
+/// Every tool this program ships has a row; a tool from an MCP server has none and holds no handle
+/// to this, so what stops one of those filling a context is
+/// [`Config::default_tool_output_limit`](nachalnik::Config), set to this in `wiring`.
+pub(crate) const CEILING: usize = 32_000;
+
 /// How much of a call's output the model is shown, by subject, which a person can change
 /// mid-session.
 ///
@@ -195,7 +203,7 @@ impl Limits {
             .chain(["draft", "ask"].map(domains::fork))
             .chain([domains::log("read")])
             .chain(["model", "tools", "permissions", "policy"].map(domains::setup))
-            .map(|subject| (subject.to_string(), 32_000));
+            .map(|subject| (subject.to_string(), CEILING));
 
         Self(Arc::new(Mutex::new(rows.collect())))
     }

@@ -162,6 +162,16 @@ impl Setup {
             parallel_tool_calls: self.parallel,
             keep_truncated_output: self.keep_truncated,
             refuse_oversized_requests: self.refuse_oversized,
+            // note: the floor under everything without a row in `Limits`, which is every tool
+            // from an MCP server: those hold no handle to that table, so before this a session
+            // started with `--mcp` had no ceiling at all on what somebody else's server could put
+            // in its context. The runtime's own default is `None`, which is right for a runtime
+            // and wrong for a program that offers to run other people's tools.
+            //
+            // note: it does not give those tools a `/limit` row. A row that listed a number
+            // nothing consults would be worse than no row, and what would earn one is the tools
+            // consulting this table rather than the table naming them.
+            default_tool_output_limit: Some(tools::CEILING),
             ..Default::default()
         };
         let kernel = match self.resume {

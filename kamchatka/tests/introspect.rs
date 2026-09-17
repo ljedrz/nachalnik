@@ -10,7 +10,7 @@
 //! That is not a limitation being worked around - it is what lets a test say exactly what the
 //! fork was sent and exactly what it heard back.
 
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use kamchatka::{
     introspect,
@@ -3571,4 +3571,62 @@ async fn a_call_needs_the_one_subject_it_names_through_the_wrapper() {
             );
         }
     }
+}
+
+/// Every subject a registered tool declares has a row in the limits table, and nothing else does.
+///
+/// note: the vocabulary is written out a fourth time in `Limits::new`, and it is the copy nothing
+/// held to the others. A tool that grew an operation would declare a subject the table had no row
+/// for, and the consequence is quiet in both directions: `for_call` finds nothing and falls back
+/// to the kernel's ceiling, and `/limit` cannot list a row it does not have, so the number a
+/// person reads is not the number in force.
+///
+/// note: the table cannot be derived from the tools, because it is handed *to* them - they take it
+/// at construction and read it afresh on every call, which is what lets `/limit` land on the next
+/// one. So the two lists stay two, and this is what keeps them the same list.
+#[tokio::test]
+async fn the_limits_table_has_a_row_for_every_subject_a_tool_declares() {
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+    for tool in kamchatka::tools::builtin(
+        kamchatka::tools::Shell {
+            workdir: std::path::PathBuf::from("/w"),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            policy: Arc::new(Careful::new()),
+            confiner: None,
+            limits: Limits::default(),
+        },
+        kamchatka::sandbox::Reach {
+            workdir: std::path::PathBuf::from("/w"),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            confined: false,
+        },
+        Limits::default(),
+    ) {
+        kernel.add_tool(tool);
+    }
+
+    let declared: BTreeSet<String> = kernel
+        .tool_specs()
+        .iter()
+        .flat_map(|spec| spec.capabilities.iter().map(ToString::to_string))
+        .collect();
+    let rows: BTreeSet<String> = Limits::new()
+        .all()
+        .into_iter()
+        .map(|(subject, _)| subject)
+        .collect();
+
+    let missing: Vec<&String> = declared.difference(&rows).collect();
+    assert!(
+        missing.is_empty(),
+        "these are declared and have no limit row, so `/limit` cannot see them: {missing:?}"
+    );
+    let extra: Vec<&String> = rows.difference(&declared).collect();
+    assert!(
+        extra.is_empty(),
+        "these have a limit row and nothing declares them, so `/limit` lists a number that is \
+         never consulted: {extra:?}"
+    );
 }
