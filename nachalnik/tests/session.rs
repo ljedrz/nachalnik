@@ -302,12 +302,14 @@ async fn what_the_counter_learned_survives_a_restart() {
     let kernel = Kernel::new(Config::default());
     kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse {
         usage: Some(nachalnik::Usage {
-            input_tokens: Some(900),
+            input_tokens: Some(1_300),
             ..nachalnik::Usage::default()
         }),
         ..ModelResponse::text("hello")
     }])));
-    kernel.push(ContextItem::user("a".repeat(400)));
+    // a thousand tokens of it, because a request smaller than that is one the counter is right to
+    // learn nothing from; see `WORTH_LEARNING_FROM`
+    kernel.push(ContextItem::user("a".repeat(4_000)));
     kernel.turn().await.unwrap();
 
     let learned = kernel.counter().calibration().expect("the default learns");

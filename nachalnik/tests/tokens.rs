@@ -271,7 +271,7 @@ fn the_correction_settles_rather_than_chasing_the_last_request() {
 fn a_nonsensical_report_cannot_turn_a_budget_into_a_fiction() {
     let counter = calibrating();
 
-    counter.observe(1, 100_000_000);
+    counter.observe(1_000, 100_000_000);
     assert_eq!(counter.calibration().scale, 10.0, "clamped, not believed");
 
     counter.reset();
@@ -306,6 +306,22 @@ fn a_request_too_small_to_have_a_bias_in_it_teaches_nothing() {
 }
 
 #[test]
+fn what_an_endpoint_charges_for_its_own_framing_is_not_a_bias_to_learn() {
+    let counter = calibrating();
+
+    // `mercury-2.5`, live: a first request estimated at 31 tokens, reported as 933. Nearly all of
+    // that is the endpoint's own preamble and the scaffolding round a tool call - a fixed cost,
+    // and on a request this small it is the whole of the difference. Read as a ratio it is 30,
+    // and a counter that believed a tenth of it would report ten times the truth for the rest of
+    // the session. The report being large enough is not the same claim as the request being large
+    // enough, and this is the pair that told the two apart
+    counter.observe(31, 933);
+
+    assert_eq!(counter.calibration().observations, 0);
+    assert_eq!(counter.calibration().scale, 1.0);
+}
+
+#[test]
 fn forgetting_is_one_call_because_another_model_tokenizes_differently() {
     let counter = calibrating();
     counter.observe(3_000, 4_000);
@@ -326,13 +342,15 @@ async fn the_kernel_tells_the_counter_what_the_request_actually_cost() {
     kernel.set_counter(counter.clone());
     kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse {
         usage: Some(Usage {
-            input_tokens: Some(900),
+            input_tokens: Some(1_300),
             output_tokens: Some(12),
             ..Usage::default()
         }),
         ..ModelResponse::text("hello")
     }])));
-    kernel.push(ContextItem::user("a".repeat(400)));
+    // note: a thousand tokens of it, because a smaller request is one the counter is right to
+    // ignore - see `WORTH_LEARNING_FROM`, and the live pair that put the estimate on that gate
+    kernel.push(ContextItem::user("a".repeat(4_000)));
 
     let estimated = kernel.budget().used();
     kernel.turn().await.unwrap();
@@ -343,7 +361,7 @@ async fn the_kernel_tells_the_counter_what_the_request_actually_cost() {
         learned.estimated, estimated as u64,
         "the estimate it is told about is the one it made"
     );
-    assert_eq!(learned.reported, 900);
+    assert_eq!(learned.reported, 1_300);
     assert!(
         learned.scale > 1.0,
         "this counter was low, as it usually is"
@@ -387,14 +405,14 @@ async fn the_counter_a_kernel_starts_with_corrects_itself() {
     kernel.set_provider(Arc::new(ScriptedProvider::new([
         ModelResponse {
             usage: Some(Usage {
-                input_tokens: Some(900),
+                input_tokens: Some(1_300),
                 ..Usage::default()
             }),
             ..ModelResponse::text("hello")
         },
         ModelResponse::text("again"),
     ])));
-    let item = kernel.push(ContextItem::user("a".repeat(400)));
+    let item = kernel.push(ContextItem::user("a".repeat(4_000)));
     let estimated = kernel.budget().used();
 
     kernel.turn().await.unwrap();
@@ -406,7 +424,7 @@ async fn the_counter_a_kernel_starts_with_corrects_itself() {
     );
 
     // ... but what is counted from now on carries the correction the provider's own number implies
-    let after = kernel.push(ContextItem::user("a".repeat(400)));
+    let after = kernel.push(ContextItem::user("a".repeat(4_000)));
     assert!(
         kernel.item(after).unwrap().tokens > kernel.item(item).unwrap().tokens,
         "the same bytes, counted after the lesson: {} vs {}",
@@ -422,13 +440,13 @@ async fn corrected_figures_reach_the_context_only_when_asked_for() {
     kernel.set_counter(counter.clone());
     kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse {
         usage: Some(Usage {
-            input_tokens: Some(900),
+            input_tokens: Some(1_300),
             ..Usage::default()
         }),
         ..ModelResponse::text("hello")
     }])));
 
-    let item = kernel.push(ContextItem::user("a".repeat(400)));
+    let item = kernel.push(ContextItem::user("a".repeat(4_000)));
     let before = kernel.item(item).unwrap().tokens;
     kernel.turn().await.unwrap();
 
@@ -623,7 +641,7 @@ async fn a_request_carrying_something_unpriced_teaches_the_counter_nothing() {
         },
         ModelResponse {
             usage: Some(Usage {
-                input_tokens: Some(900),
+                input_tokens: Some(1_300),
                 output_tokens: Some(12),
                 ..Usage::default()
             }),
@@ -631,7 +649,7 @@ async fn a_request_carrying_something_unpriced_teaches_the_counter_nothing() {
         },
     ])));
 
-    kernel.push(ContextItem::user("a".repeat(400)));
+    kernel.push(ContextItem::user("a".repeat(4_000)));
     let shot = kernel.push(ContextItem::user(Content::blob(
         "image/png",
         "A".repeat(400_000),
@@ -653,7 +671,7 @@ async fn a_request_carrying_something_unpriced_teaches_the_counter_nothing() {
         learned.observations, 1,
         "the text-only request, and only it"
     );
-    assert_eq!(learned.reported, 900);
+    assert_eq!(learned.reported, 1_300);
 }
 
 /// A request refused for being too long is the one measurement a session that has run out of
@@ -671,7 +689,10 @@ async fn a_request_refused_for_its_length_is_a_lesson_like_any_other() {
     kernel.set_counter(counter.clone());
     kernel.set_provider(Arc::new(TooLongProvider::new(286_315, 262_144)));
 
-    let item = kernel.push(ContextItem::user("a".repeat(400)));
+    // note: a quarter of a million tokens of it, so that the refusal is about a request this size
+    // rather than about a sentence. The pair has to be one the counter will learn from, and it is
+    // not one unless both halves of the ratio are a real request; see `WORTH_LEARNING_FROM`
+    let item = kernel.push(ContextItem::user("a".repeat(1_000_000)));
     let before = kernel.item(item).unwrap().tokens;
     let mut events = kernel.subscribe();
 

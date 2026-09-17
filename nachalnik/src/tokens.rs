@@ -346,13 +346,22 @@ pub struct Calibrating<C> {
 /// numbers cannot turn a budget into a fiction.
 const BOUNDS: (f64, f64) = (0.1, 10.0);
 
-/// How large a request has to be before it is worth learning anything from.
+/// How large a request has to be, on **both** sides of the ratio, before it is worth learning
+/// anything from.
 ///
 /// note: Measured against a real API, the underlying estimate is out by about 7% on a request of
 /// a few thousand tokens - a systematic error worth correcting - and by anything between -20% and
 /// +17% on requests of a few dozen, where the absolute error is a handful of tokens and the
 /// percentage is noise. Learning from the second kind makes the first kind worse, so it is
 /// ignored.
+///
+/// note: both sides, and the estimate is the side this was missing. An endpoint charges for
+/// framing nobody counted - its own preamble, the scaffolding round a tool call - and that is a
+/// fixed cost, so on a small request it is the whole of the difference. `mercury-2.5` reported
+/// **933** tokens for a request estimated at 31: a ratio of 30, held at [`BOUNDS`] to 10, and
+/// from then on every figure in the session read ten times what it was. A request the *provider*
+/// says is large enough is not the same claim as a request with enough content in it for the
+/// framing to be a percentage rather than the answer.
 const WORTH_LEARNING_FROM: usize = 256;
 
 impl<C> Calibrating<C> {
@@ -434,17 +443,23 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
     }
 
     fn observe(&self, estimated: usize, reported: usize) {
-        // a request too small to have a systematic error in it says nothing about the ratio, and
-        // one estimated at nothing says less than that
-        if estimated == 0 || reported < WORTH_LEARNING_FROM {
+        // one estimated at nothing says nothing about the ratio
+        if estimated == 0 {
             return;
         }
 
         let mut learned = self.learned.write();
-        learned.observations += 1;
         // what was estimated is what this counter had *already* corrected, so the totals are kept
         // in the underlying counter's own units to keep the ratio from compounding
-        learned.estimated += (estimated as f64 / learned.scale).round() as u64;
+        let own = (estimated as f64 / learned.scale).round() as u64;
+        // a request too small to have a systematic error in it says nothing about the ratio, and
+        // it is too small when *either* side is: see `WORTH_LEARNING_FROM`
+        if own < WORTH_LEARNING_FROM as u64 || reported < WORTH_LEARNING_FROM {
+            return;
+        }
+
+        learned.observations += 1;
+        learned.estimated += own;
         learned.reported += reported as u64;
         learned.scale =
             (learned.reported as f64 / learned.estimated.max(1) as f64).clamp(BOUNDS.0, BOUNDS.1);
