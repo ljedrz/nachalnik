@@ -43,8 +43,8 @@ recursion
   depth 3:        1/1 right (100%)
 ```
 
-That last block is the shape of the thing: it named the note its answer was made of and could not
-say where the note was, which is the opposite way round from what anybody expects.
+In that last block it named the note its answer was made of and could not say where the note was,
+which is the opposite way round from what anybody expects.
 
 ---
 
@@ -226,8 +226,8 @@ the shape of the curve rather than any point on it.
 ### 🏃 running it
 
 Pointing it at your own model, the rate limiting, reading a sweep back and how the harness is
-itself checked are in [RUNNING.md][running] — they are operating instructions rather than part of
-the argument, and the argument is what this page is for.
+itself checked are in [RUNNING.md][running] — operating instructions rather than part of the
+argument.
 
 ### 🙈 what it does not measure
 

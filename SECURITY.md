@@ -62,8 +62,7 @@ Referenced from [AGENTS.md](AGENTS.md).
   pressure to try something else - a parenthesis offering `./~` for the rare file genuinely called
   that had two models reading `./~`, a file neither of them wanted. Rare spellings belong in the
   argument's description, which is read while choosing; the refusal gets the one instruction that
-  applies. This is the counterpart to the rule above: it says how to word what that one says to
-  say. Two suites test it, and only one can - `tests/sandbox.rs` pins the sentence, and the last
+  applies. Two suites test it, and only one can - `tests/sandbox.rs` pins the sentence, and the last
   section of `tests/live.rs` watches a real model read it, because a scripted provider agrees with
   every refusal it is handed.
 - **Nothing expands `~` for the file tools, and that is deliberate.** They run in process with no

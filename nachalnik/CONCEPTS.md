@@ -120,8 +120,8 @@ a growing conversation, it took that steady 7% error to within 1%. What it learn
 can look at (`calibration()`), not a fudge factor buried in the kernel. It ignores requests too
 small to have a systematic error in them, because a percentage drawn from a handful of tokens is
 noise. And it corrects what is counted *from then on*: figures already recorded on items do not
-silently rewrite themselves, because that is exactly the sort of thing this crate does not do -
-`Kernel::recount` rewrites them when you ask, and says so on the event stream.
+silently rewrite themselves. `Kernel::recount` rewrites them when you ask, and says so on the
+event stream.
 
 The hook is `TokenCounter::observe`, whose default does nothing. As everywhere else, the kernel
 supplies the facts and your code supplies the judgement.
@@ -147,9 +147,8 @@ $ cargo run --example pricing_a_picture
 ```
 
 That counts one context three ways — the default counter, one applying a vendor's tiling formula
-from `meta`, and that same formula handed a blob nobody measured — and the third is the one worth
-reading: knowing a formula does not help if the payload has no dimensions on it, so it abstains
-exactly as the default one does.
+from `meta`, and that same formula handed a blob nobody measured. Knowing a formula does not help
+if the payload has no dimensions on it, so the third abstains exactly as the default one does.
 
 One rule follows and it is load-bearing: a request carrying anything unpriced never reaches
 `observe`. `Calibrating` corrects with a single multiplier, so a gap it cannot see would be spread

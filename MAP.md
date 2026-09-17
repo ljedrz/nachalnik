@@ -115,11 +115,11 @@ of this one. `--gemini` picks the second, and turns on `LinearProjector::send_bl
 because that dialect's turn *is* an order and projecting three slots at it would flatten every
 turn on the way out one request after recording the order on the way in.
 
-`introspect/` is the second `nachalnik-mcp`: **written with no change to the runtime at all**, and
-worth reading for that reason. Forking a context is `Kernel::snapshot` and `Kernel::resume`;
-previewing a request is `preview_request`; pruning is `set_state`; reading the session's own record
-is `with_history`, which is the mirror of `with_context` and is named for what it holds rather than
-for its argument - so a grep for "session" on the kernel misses it and a design was written calling
+`introspect/` is the second `nachalnik-mcp`: **written with no change to the runtime at all**.
+Forking a context is `Kernel::snapshot` and `Kernel::resume`; previewing a request is
+`preview_request`; pruning is `set_state`; reading the session's own record is `with_history`,
+which is the mirror of `with_context` and is named for what it holds rather than for its
+argument - so a grep for "session" on the kernel misses it and a design was written calling
 for an accessor that had been there all along. What it adds is the part the
 runtime has no opinion about - which of those a *model* may do. A pinned item, a system
 instruction and the assistant turn carrying the call in flight are refused, it may unpin only
@@ -128,8 +128,7 @@ stack belongs to the person and whose top during a turn is always the model's ow
 is a tool per noun rather than one with a mode argument because a `ToolSpec` declares its
 capabilities once: reading a context, reading the record beside it, reading what the session is
 running with and rewriting the context have to be separately grantable or the grant delivers more
-than it implies. It is also what makes each of
-them separately *revocable*, which is a session worth recording in its own right.
+than it implies. It is also what makes each of them separately *revocable*.
 
 `nachalnik-eval/src` is the third instance of the same test, and the one that is furthest from
 the runtime's own concerns: `subject.rs` (a `Kernel` plus "ask, and wait for the turn to end"),
@@ -157,16 +156,15 @@ detection question is put to copies that have the conflict in front of them, whe
 *and* to copies with one side removed, where no is; a subject that says yes to both has reported
 nothing, and without the second arm a detection rate is a count of the times a model said yes.
 
-`provenance` is off the ladder rather than on a rung of it, and reading it as one more report
-experiment is the mistake to avoid. Every other experiment here asks the subject something and
-scores what it said; this one asks the subject nothing at all. The harness writes a tool call, its
-result and the answer drawn from it into a context, then runs copies with the result left alone,
-elided and excluded, and asks each of them whether anything was run and whether that is the whole
-of the conversation. Both answers have a ground truth because the harness wrote the record, so
-nothing here is scored against a fork, and the `standing` arm is a base rate rather than a
-control: a model that suspects tampering in an untouched context has not detected anything. Six
-requests, the cheapest thing in the suite. The runbook and the methods document belong to a study
-rather than to the instrument, and live in whichever repository ran it.
+`provenance` is off the ladder rather than on a rung of it. Every other experiment here asks the
+subject something and scores what it said; this one asks it nothing at all. The harness writes a
+tool call, its result and the answer drawn from it into a context, then runs copies with the
+result left alone, elided and excluded, and asks each of them whether anything was run and
+whether that is the whole of the conversation. Both answers have a ground truth because the
+harness wrote the record, so nothing here is scored against a fork, and the `standing` arm is a
+base rate rather than a control: a model that suspects tampering in an untouched context has not
+detected anything. Six requests, the cheapest thing in the suite. The runbook and the methods
+document belong to a study rather than to the instrument, and live in whichever repository ran it.
 
 The one place it departs from the runtime's rules is prompt text, and the departure is contained:
 everything above `suite/` does not know what a question is about, and the two tool descriptions

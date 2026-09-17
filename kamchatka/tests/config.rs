@@ -284,11 +284,11 @@ fn a_tool_the_file_names_that_does_not_exist_is_refused() {
 
 /// The one this crate ships works, names every setting there is, and grants nothing.
 ///
-/// note: three claims, and the third is the one worth stating out loud. A starting point somebody
-/// adopts wholesale must not quietly widen anything - `allow` is empty, the sandbox lists are
-/// empty and `on-ask` is `deny`, so the file changes nothing about what may run. The only setting
-/// in it that is not the program's own default is the spend ceiling, which is a tightening: a
-/// session that cannot run up an unbounded bill is the one thing a default file can safely offer.
+/// note: a starting point somebody adopts wholesale must not quietly widen anything - `allow` is
+/// empty, the sandbox lists are empty and `on-ask` is `deny`, so the file changes nothing about
+/// what may run. The only setting in it that is not the program's own default is the spend
+/// ceiling, which is a tightening: a session that cannot run up an unbounded bill is the one
+/// thing a default file can safely offer.
 ///
 /// note: the completeness check is a key-set comparison against `Settings` written out, rather
 /// than a list of names here that would go stale the day a field is added. A file missing the

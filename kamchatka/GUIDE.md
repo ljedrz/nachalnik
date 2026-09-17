@@ -214,9 +214,8 @@ that none of them is a name with an empty line beside it.
 
 **Two clocks, because neither answers the other's question.** The second column is the gap since
 the line above, blank under a tenth of a second. Nearly everything in a session happens between one
-frame and the next, so what is left with a number beside it is the interesting part: the model
-thinking, and a command running. That is the question people bring to a log — *which step was
-slow* — and here it is answered without subtracting a column of timestamps.
+frame and the next, so what is left with a number beside it is the model thinking, and a command
+running — *which step was slow*, answered without subtracting a column of timestamps.
 
 **What it never shows is how long you took.** A session spends most of its wall time in two places
 where nothing is stepping at all: a permission question nobody has answered yet, and the wait
@@ -508,9 +507,9 @@ the screen:
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-The prompt is not underneath it, and that is the point: the box holding the keys is the box on the
-screen. Stacked, the two disagreed on any window shorter than about fifteen rows — the question
-needs the room, so the prompt gave way, and went on holding the keys and whatever had been typed
+The prompt is not underneath it: the box holding the keys is the box on the screen. Stacked, the
+two disagreed on any window shorter than about fifteen rows — the question needs the room, so the
+prompt gave way, and went on holding the keys and whatever had been typed
 into it from *off* the screen. A session waiting on an answer nobody can give it without first
 pressing a key nothing mentions.
 
@@ -705,10 +704,10 @@ answered *why do you think that* by forking itself and running the ablation rath
 introspecting. Two more transcripts are up there in which I do the editing instead, through the
 keys rather than through these.
 
-One rule runs through all of them and through `fs`, and it is worth stating once. **An argument the
-action a call named does not read is refused, not ignored.** `fs {action: "read", …, old: "…"}` is
-a session asking for the part of a file around some text; `old` is a real `fs` argument and `edit`
-is whose, so before this the read ignored it and answered with the whole file — a real answer, to a
+One rule runs through all of them and through `fs`. **An argument the action a call named does not
+read is refused, not ignored.** `fs {action: "read", …, old: "…"}` is a session asking for the
+part of a file around some text; `old` is a real `fs` argument and `edit` is whose, so before this
+the read ignored it and answered with the whole file — a real answer, to a
 call nobody made, with nothing in it saying so. The refusal names the action the argument belongs
 to when exactly one does, because that is the whole of what a session in that position needs to
 know. The same is true of `context {action: "note", ids: […]}`, which two different models tried in

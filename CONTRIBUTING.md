@@ -87,10 +87,10 @@ Free OpenRouter models are enough for both live suites and cost nothing - measur
 `KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1` and `KAMCHATKA_CONTEXT_LIMIT=12288`.
 `kamchatka`'s 23 passed against both `nex-agi/nex-n2.5-mini:free` and
 `nvidia/nemotron-3-super-120b-a12b:free`; `nachalnik`'s 27 passed against the second. Against the
-first, `nachalnik` fails four or five of them and *not the same four or five twice* - which is the
-next paragraph in one sentence. Two things to know before reading a result. The `:free` pool is rate-limited upstream and a model that
-answered an hour ago can return `429` or an idle timeout now, which the runtime reports honestly as
-a provider failure rather than as a test failure. And `nachalnik`'s suite asks a model to *do*
+first, `nachalnik` fails four or five of them and *not the same four or five twice*. Two things to
+know before reading a result. The `:free` pool is rate-limited upstream and a model that answered
+an hour ago can return `429` or an idle timeout now, which the runtime reports honestly as a
+provider failure rather than as a test failure. And `nachalnik`'s suite asks a model to *do*
 things - use a tool, keep a secret, be interrupted mid-stream - so a small model fails some of them
 for being small: five failed on one free model and four of those five passed on another, with one
 case failing and then passing on the same model. The list moves between runs of the same model,

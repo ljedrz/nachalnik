@@ -13,7 +13,7 @@ let installed = files.install(&kernel).await?;
 ```
 
 That is the whole integration. An MCP tool is a `Tool` that forwards to a server, so nothing in
-the runtime had to change to make this possible - which was the point of the exercise.
+the runtime had to change to make this possible.
 
 ---
 

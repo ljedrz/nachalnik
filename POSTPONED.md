@@ -85,10 +85,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   contradiction the model can see is what `conflict` in `nachalnik-eval` measures models on, and
   hiding it picks a side on the model's behalf.
 
-  **Where that label goes is the part with a trap in it**, and it is the reason this entry is
-  worth its length. `note` is replaced whenever an item's state changes, so provenance cannot live
-  there - the first `pin` would take it. `included_because` is already carrying the model's own
-  reason for writing the note, and overwriting it would be rewriting the model's words. And `meta`
+  **Where that label goes is the part with a trap in it.** `note` is replaced whenever an item's
+  state changes, so provenance cannot live there - the first `pin` would take it.
+  `included_because` is already carrying the model's own reason for writing the note, and
+  overwriting it would be rewriting the model's words. And `meta`
   never reaches the request at all: a `Reference` projects as `{label}:\n{text}`, so the label is
   the only field of an item a model reads without calling `context: look`. Prefixing the label
   (`a/plan`) buys visibility and breaks addressing - `label:plan` then names neither. So leave the
@@ -109,11 +109,11 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **Reading a picture back out of a blob, anywhere.** `kamchatka` can now send one and still
   draws none, and that split is deliberate rather than unfinished: a terminal cell is not a
-  pixel. What follows from it is worth stating, because it looks like a gap - an attached image
-  is the one item in the context whose *content* nobody at this end can inspect. The context tab
-  names it, `enter` on it names it, and the person's own knowledge of the file is the only
-  account of what was sent. A client that renders is a different client, and the runtime already
-  supports it; see `Blob::meta` and `pricing_a_picture.rs` for the half that is not rendering.
+  pixel. It looks like a gap: an attached image is the one item in the context whose *content*
+  nobody at this end can inspect. The context tab names it, `enter` on it names it, and the
+  person's own knowledge of the file is the only account of what was sent. A client that renders
+  is a different client, and the runtime already supports it; see `Blob::meta` and
+  `pricing_a_picture.rs` for the half that is not rendering.
 
 - **Confining the shell on macOS, and the Mac binary that would go with it.** Away from Linux
   `confine` answers `Unsupported` and the shell runs unconfined, which the readme says and

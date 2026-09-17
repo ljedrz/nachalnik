@@ -63,11 +63,11 @@ stopped it.
 ## ⏱️ how fast it is allowed to go
 
 A whole suite against one model is seven hundred-odd requests and used to be three hours and eight
-minutes of waiting for each one before starting the next. Most of that is avoidable, and the part
-that is not is the interesting distinction: the probes inside a battery — solve, then introspect,
-then predict — are a *conversation*, each question written out of the last answer, so they cannot
-overlap. An ablation sweep is not. Every copy in one is resumed from the `Origin` frozen before a
-single claim was made, so no copy can see another's, and the whole sweep can go at once.
+minutes of waiting for each one before starting the next. Most of that is avoidable. The probes
+inside a battery — solve, then introspect, then predict — are a *conversation*, each question
+written out of the last answer, so they cannot overlap. An ablation sweep is not. Every copy in
+one is resumed from the `Origin` frozen before a single claim was made, so no copy can see
+another's, and the whole sweep can go at once.
 
 `evaluate` is unchanged and still runs everything one at a time. `evaluate_with` is the opt-in:
 
@@ -85,9 +85,9 @@ The two are not interchangeable, and the reason is not the scores — nothing a 
 from depends on what else was in flight, so those are the same either way. It is that concurrency
 can make a run *fail* where a sequential one would have trickled through: a burst collects 429s,
 the retries behind them eat the budget, probes come back `Unreadable`, and a report quietly becomes
-a page of untested claims. Measured, not hypothetically — a run at eight in flight against a small
-free endpoint took it down inside a minute, and single requests to it recovered ninety seconds
-after the run was stopped.
+a page of untested claims. A run at eight in flight against a small free endpoint took that
+endpoint down inside a minute, and single requests to it recovered ninety seconds after the run
+was stopped.
 
 So `Pace` carries two limits, because endpoints publish two kinds and neither implies the other.
 `at_once` caps how many requests are **in flight**; `per_minute` caps how many are **started** in a

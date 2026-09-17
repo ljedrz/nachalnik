@@ -25,7 +25,7 @@ to show that it can be.
 | **[`nachalnik-mcp`](nachalnik-mcp)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`](nachalnik-eval)** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared - so *"why do you think that?"* stops being unfalsifiable. |
 | **[`nachalnik-providers`](nachalnik-providers)** | the two dialects - OpenAI chat-completions and Google's own - streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
-| `nachalnik-utils` | never published, permanently `0.0.0`. One file saying which endpoint the workspace's examples and live tests talk to, which key pays for it and which models to ask - so that scaffolding is written once rather than four times. A *dev*-dependency with no version, which is the whole trick: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
+| `nachalnik-utils` | never published, permanently `0.0.0`. One file saying which endpoint the workspace's examples and live tests talk to, which key pays for it and which models to ask - so that scaffolding is written once rather than four times. A *dev*-dependency with no version: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
 
 ### 📖 the docs
 
@@ -100,7 +100,7 @@ change to the runtime to exist.
 processes, opening sockets and reading notifications in the background, and the runtime promises to
 do none of those. Writing it needed nothing added - an MCP tool is a `Tool` that forwards to a
 server, tools arriving and leaving are `add_tool` and `remove_tool`, a structured result is
-`Content::Json`. It pushed back on exactly one thing worth knowing: MCP tool annotations are
+`Content::Json`. It pushed back on exactly one thing: MCP tool annotations are
 *hints*, and the specification says a client should never make tool-use decisions on hints from an
 untrusted server, so the bridge believes none of them by default. Its tests include a server
 offering a tool called `delete_everything` that claims to be read-only.
@@ -191,7 +191,7 @@ answer than a page: `cargo test --workspace`, and the tree.
 Early, but complete for what the runtime claims to cover: the state machine, the context model,
 permissions, the event stream, sessions, and projection. Deliberately **not** included, and not
 planned for the core: MCP, subagents, an editor protocol, a daemon, a CLI, or a prompt library.
-Those belong on top of it - which is the point, and which is what the rest of the workspace is for.
+Those belong on top of it, and that is what the rest of the workspace is for.
 
 The crates follow [semver](https://semver.org/), and API breakage is to be expected before `1.0`.
 
