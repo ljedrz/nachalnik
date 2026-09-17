@@ -282,6 +282,32 @@ fn a_tool_the_file_names_that_does_not_exist_is_refused() {
     assert!(said.contains("context"), "and it says which are: {said}");
 }
 
+/// A path rule nothing can match stops the program, whichever door it came in by.
+///
+/// note: `src/**` reads like the glob `fs` takes and is not one: a path rule is a file name or one
+/// directory, so that pattern was compared with file names and never matched. It was still drawn
+/// on the permissions tab, and a `--deny` that refuses nothing is worse than no rule at all.
+#[test]
+fn a_path_rule_that_cannot_match_is_refused_at_the_door() {
+    let (ok, said) = run(&["--deny", "src/**"], "");
+    assert!(!ok, "a rule that refuses nothing is not a success: {said}");
+    assert!(said.contains("`src/**`"), "it names the rule: {said}");
+    assert!(
+        said.contains("`secrets/`"),
+        "and says what there is: {said}"
+    );
+
+    let path = settings("rule-bad", r#"{ "allow": ["fs:read", "vendor/*.go"] }"#);
+    let (ok, said) = run(&["--config-file", &path], "");
+    assert!(!ok, "the file's rule is the program's rule: {said}");
+    assert!(said.contains("`vendor/*.go`"), "{said}");
+
+    // and the ones it can match are taken from either door
+    let path = settings("rule-good", r#"{ "allow": ["vendor/", "*.lock"] }"#);
+    let (ok, said) = run(&["--config-file", &path, "--deny", ".env*"], "/quit\n");
+    assert!(ok, "a rule it can match was refused: {said}");
+}
+
 /// The one this crate ships works, names every setting there is, and grants nothing.
 ///
 /// note: a starting point somebody adopts wholesale must not quietly widen anything - `allow` is

@@ -7,7 +7,7 @@
 //! boundaries, which is why the path rules exist and why the tab says as much.
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fmt,
     path::Path,
 };
@@ -147,6 +147,53 @@ pub fn path_matches(pattern: &str, path: &str) -> bool {
     }
 }
 
+/// What a path rule may be, in the words an error has to say it in.
+const GRAMMAR: &str = "a path rule is a file name in which `*` stands for any run of characters - \
+                       `*.pem`, `.env*` - or one directory name with a slash after it - \
+                       `secrets/` - which is about that directory wherever it sits in a path";
+
+/// What is wrong with a path rule, where something is.
+///
+/// note: the grammar [`path_matches`] reads is small, and a pattern outside it was taken all the
+/// same: `--allow 'src/**'` went onto the permissions tab and was consulted about every call, and
+/// no path has ever matched it. RUNNING.md offered that as the example of a path rule. A rule that
+/// cannot match is the worst way for one to be wrong, because a `--deny` that refuses nothing
+/// reads as given - so it is refused where it is entered, and the refusal says what there is.
+///
+/// note: refused rather than taught to the matcher. Whole-path patterns bring anchoring, absolute
+/// against relative, `**`, and a separator that means something on one platform - and a pattern
+/// language on a permissions screen is worth more small than complete.
+///
+/// note: a `*` before the slash is refused too, and that one is legal rather than impossible: a
+/// directory really can be called `sec*`, and the directory branch compares the name as it is
+/// written. `secrets*/` is somebody expecting `secrets-old/` to be covered, which is the same
+/// silence by another route.
+pub fn objection_to(pattern: &str) -> Option<String> {
+    let objection = |why: &str| Some(format!("`{pattern}` {why}; {GRAMMAR}"));
+
+    if pattern.is_empty() {
+        return objection("is not a rule at all");
+    }
+    if pattern.contains('\\') {
+        return objection(
+            "cannot match: a path is read with `/` between its names, whatever was typed",
+        );
+    }
+    match pattern.strip_suffix('/') {
+        Some(directory) if directory.is_empty() || directory.contains('/') => {
+            objection("cannot match: a directory rule is one name, and this is a path")
+        }
+        Some(directory) if directory.contains('*') => objection(
+            "is read as the name it is written as: a directory rule is a name, not a pattern",
+        ),
+        Some(_) => None,
+        None if pattern.contains('/') => {
+            objection("cannot match: a rule about a directory is that directory's name and a slash")
+        }
+        None => None,
+    }
+}
+
 /// Whether a name matches a pattern in which `*` stands for any run of characters.
 ///
 /// note: it backtracks, which the first version did not: it walked the pattern's literals with
@@ -243,7 +290,13 @@ pub struct Careful {
     /// sandbox has to know or the command runs with the network cut and fails in a way that
     /// contradicts what the person was just told. A stance is what the tab draws; this is the
     /// answer to a question, which the tab never sees.
-    networked: Mutex<VecDeque<ToolCallId>>,
+    ///
+    /// note: it holds one batch's answers and is emptied when the next request goes out - see
+    /// [`Careful::forget_network_grants`] - rather than being bounded the way the refusals below
+    /// are. A bound here throws away the entry most likely to be wanted: every call in a batch is
+    /// decided before any of them runs, so the sixty-fifth `yes` in one response dropped the
+    /// first, and that command ran with the network cut after somebody had allowed it.
+    networked: Mutex<BTreeSet<ToolCallId>>,
     /// Why the last few refusals were refused, by the call they refused.
     ///
     /// note: the policy is the only thing that knows this, and nothing carries it out: the
@@ -255,13 +308,14 @@ pub struct Careful {
     refusals: Mutex<VecDeque<(ToolCallId, String)>>,
 }
 
-/// How many of each of the two per-call notes above are kept.
+/// How many refusals are kept for whoever asks why.
 ///
-/// note: a queue rather than a map, and the oldest goes rather than all of them. Both of these
-/// used to be cleared outright when they got past thirty-two, which is a bound that throws away
-/// the entry it is most likely to need: an answer is written down when the person gives it and
-/// read when the call runs, so the live one is among the newest. Sixty-four is past what one turn
-/// can produce, and the linear scan over that is nothing beside spawning a process.
+/// note: a queue rather than a map, and the oldest goes rather than all of them. It used to be
+/// emptied outright once it got past thirty-two, which is a bound that throws away the entry it
+/// is most likely to need: a refusal is written down when the policy answers and read when the
+/// kernel builds the tool result, so the live one is among the newest. What makes a bound the
+/// right shape here is that nobody is obliged to read one at all - which is exactly what is not
+/// true of the grants above, every one of which is read by the call it was given for.
 const REMEMBERED: usize = 64;
 
 impl Default for Careful {
@@ -293,7 +347,7 @@ impl Careful {
                     .map(|pattern| ((*pattern).to_owned(), Verdict::Ask))
                     .collect(),
             ),
-            networked: Mutex::new(VecDeque::new()),
+            networked: Mutex::new(BTreeSet::new()),
             refusals: Mutex::new(VecDeque::new()),
         }
     }
@@ -312,7 +366,14 @@ impl Careful {
         // inside a `call` object, and reading the outside of that finds neither the `cmd` a
         // network rule is about nor the `path` a path rule is about - so both would quietly stop
         // being consulted, which is the one failure a permission policy does not get to have.
-        // Somebody else's tool has no wrapper and `inner` hands its arguments back unchanged
+        //
+        // note: a `call` object is read through whoever's tool it belongs to, which is not what
+        // this said when only this program's tools had one. Somebody else's tool may take an
+        // argument called `call` and mean something else by it, and its `path` is then read as a
+        // path. That is the direction to be wrong in: a rule consulted about a string that is not
+        // a path asks a question nobody needed, where skipping it is a rule that stops being one.
+        // `inner` only reads through a `call` that is the whole of the arguments, so nothing on
+        // the outside of one is passed over for it
         let args = super::ops::inner(&request.args).unwrap_or(&request.args);
 
         let mut judged: Vec<Subject> = request
@@ -484,19 +545,22 @@ impl Careful {
 
     /// Records that a person, asked about this call, allowed it - and that it reaches the network.
     pub fn grant_the_network(&self, call: &ToolCallId) {
-        let mut networked = self.networked.lock();
-        if networked.iter().any(|known| known == call) {
-            return;
-        }
-        if networked.len() == REMEMBERED {
-            networked.pop_front();
-        }
-        networked.push_back(call.clone());
+        self.networked.lock().insert(call.clone());
     }
 
     /// Whether [`Careful::grant_the_network`] was told about this call.
     pub fn was_granted_the_network(&self, call: &ToolCallId) -> bool {
-        self.networked.lock().iter().any(|known| known == call)
+        self.networked.lock().contains(call)
+    }
+
+    /// Forgets those answers, the batch they were given for being over.
+    ///
+    /// note: a one-off `yes` is permission for one call, and the moment nothing can still be
+    /// waiting for one is the next request: the kernel decides a batch, runs it, and is back at
+    /// `Idle` before it asks for anything again. Emptying this when a call finishes would take
+    /// the batch's other answers with it, and bounding it drops a live one - which it did.
+    pub fn forget_network_grants(&self) {
+        self.networked.lock().clear();
     }
 
     /// Why the given call was refused, if this is what refused it.

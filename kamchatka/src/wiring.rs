@@ -185,6 +185,17 @@ impl Setup {
         // facts are only in the log
         let events = kernel.subscribe();
 
+        // note: a path rule that cannot match stops the session rather than being drawn on the
+        // permissions tab like any other, for the reason a tool nobody offers does below: a
+        // `--deny` that refuses nothing is worse than no rule, because it reads as given
+        for subject in self.allow.iter().chain(self.deny.iter()) {
+            if let tools::Subject::Path(pattern) = subject
+                && let Some(objection) = tools::objection_to(pattern)
+            {
+                return Err(objection);
+            }
+        }
+
         let policy = Arc::new(Careful::new());
         for (subjects, verdict) in [
             (self.allow, nachalnik::Verdict::Allow),

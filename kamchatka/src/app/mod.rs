@@ -1686,6 +1686,9 @@ impl App {
                 items,
                 ..
             } => {
+                // the last batch's one-off answers, which nothing can still be waiting for: a
+                // request is only built from `Idle`, so every call they were given for has run
+                self.policy.forget_network_grants();
                 self.close();
                 // note: split here rather than when the response lands, because *here* is the
                 // one moment the two are the same thing: the context has just been projected

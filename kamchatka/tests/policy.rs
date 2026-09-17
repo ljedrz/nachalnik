@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use kamchatka::{
     sandbox::{Access, Reach},
-    tools::{Careful, Subject, domains, path_matches},
+    tools::{Careful, Subject, domains, objection_to, path_matches},
 };
 use nachalnik::{
     Capability, Domain, PermissionId, PermissionPolicy, PermissionRequest, ToolCall, ToolCallId,
@@ -129,6 +129,67 @@ fn a_directory_rule_is_about_a_component() {
     }
 }
 
+/// Every rule this takes is one the matcher can match, and the ones it cannot are refused by name.
+///
+/// note: `--allow 'src/**'` was taken, drawn on the permissions tab and consulted about every
+/// call, and no path has ever matched it - it has no trailing slash, so it was compared with file
+/// names, which hold no `/`. RUNNING.md offered it as the example of a path rule. The pair that
+/// matters is the two halves agreeing: what is accepted is what `path_matches` can answer yes to.
+#[test]
+fn a_rule_that_could_never_match_is_refused_rather_than_kept() {
+    for (pattern, matching) in [
+        ("*.pem", "/home/x/key.pem"),
+        (".env*", "/srv/app/.env.local"),
+        ("id_rsa*", "/home/x/.ssh/id_rsa"),
+        ("secrets/", "/srv/secrets/token"),
+        (".ssh/", "/home/x/.ssh/config"),
+    ] {
+        assert_eq!(
+            objection_to(pattern),
+            None,
+            "`{pattern}` is a rule and was refused"
+        );
+        assert!(
+            path_matches(pattern, matching),
+            "`{pattern}` was taken and does not match `{matching}`"
+        );
+    }
+
+    for pattern in [
+        "src/**",
+        "src/*.rs",
+        "secrets/*.key",
+        "a\\b",
+        "/",
+        "",
+        "secrets*/",
+    ] {
+        let objection = objection_to(pattern)
+            .unwrap_or_else(|| panic!("`{pattern}` was taken and nothing can match it"));
+        assert!(
+            objection.contains(pattern),
+            "the objection names it: {objection}"
+        );
+        assert!(
+            objection.contains("`*.pem`") && objection.contains("`secrets/`"),
+            "and says what there is: {objection}"
+        );
+    }
+}
+
+/// Every one of this program's own rules is one it would accept from somebody else.
+#[test]
+fn the_rules_it_ships_with_are_rules_it_would_take() {
+    let policy = Careful::new();
+    for (pattern, _) in policy.paths() {
+        assert_eq!(
+            objection_to(&pattern),
+            None,
+            "`{pattern}` is shipped and would be refused"
+        );
+    }
+}
+
 /// The sandbox is the boundary that does not care about names; these rules do, and say so.
 #[test]
 fn the_rules_are_about_names_and_a_symlink_is_not_one() {
@@ -199,32 +260,44 @@ fn the_reach_refuses_what_is_outside_it() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// The two per-call notes the policy keeps are bounded, and the bound drops the oldest rather than
-/// all of them. Both used to be emptied outright once they got past thirty-two, which throws away
-/// the entry most likely to be wanted: an answer is written down when the person gives it and read
-/// when the call runs, so the live one is among the newest.
+/// A batch's answers all stand until the batch is over, and then they go together.
+///
+/// note: they were bounded at sixty-four and the oldest went, which throws away the entry most
+/// likely to be wanted: every call in a batch is decided before any of them runs, so the
+/// sixty-fifth `yes` in one response dropped the first, and that command ran with the network cut
+/// after somebody had allowed it. The bound is gone and the lifetime is the batch; `App` empties
+/// it at the next request, which is the one moment nothing can still be waiting for one.
 #[test]
-fn a_full_policy_forgets_the_oldest_answer_rather_than_every_answer() {
+fn every_answer_in_a_batch_stands_until_the_batch_is_over() {
     let policy = Careful::new();
+    policy.set(&Subject::parse("exec:run"), Verdict::Allow);
 
-    // more granted calls than it will hold, oldest first
+    // more granted calls than any bound this used to have, oldest first
     for n in 0..200 {
         policy.grant_the_network(&ToolCallId::from(format!("call_{n}").as_str()));
     }
     assert!(
-        policy.was_granted_the_network(&ToolCallId::from("call_199")),
-        "the newest grant is the one about to be used"
+        policy.was_granted_the_network(&ToolCallId::from("call_0")),
+        "the first answer of a batch is the one a bound dropped"
     );
-    assert!(
-        !policy.was_granted_the_network(&ToolCallId::from("call_0")),
-        "and it is still bounded"
-    );
+    assert!(policy.was_granted_the_network(&ToolCallId::from("call_199")));
 
     // saying the same one twice is not two of them
     for _ in 0..200 {
         policy.grant_the_network(&ToolCallId::from("call_199"));
     }
     assert!(policy.was_granted_the_network(&ToolCallId::from("call_198")));
+
+    policy.forget_network_grants();
+    assert!(
+        !policy.was_granted_the_network(&ToolCallId::from("call_199")),
+        "a one-off answer outlived the batch it was given in"
+    );
+    assert_eq!(
+        policy.stance(&Subject::parse("exec:run")),
+        Verdict::Allow,
+        "and a rule somebody wrote is not a one-off answer"
+    );
 }
 
 /// The same for the refusals, which is where it bites: a refusal the model reads is written down

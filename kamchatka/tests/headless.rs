@@ -15,7 +15,7 @@ use std::sync::Arc;
 use kamchatka::{
     app::{App, Did, Overlay, Speaker},
     headless::Headless,
-    tools::Subject,
+    tools::{Careful, Subject},
     wiring::{Setup, Wired},
 };
 use nachalnik::{
@@ -1605,6 +1605,34 @@ async fn compact_down_a_pipe_is_taken_and_said() {
     );
 }
 
+/// A `shell` that runs nothing and writes down what the policy said about its call as it ran.
+///
+/// note: read here rather than off the policy after the session, because here is where it is
+/// read for real: `Shell::invoke` asks this to build the sandbox, and a grant that has gone by
+/// then is a command running with the network cut after somebody allowed it.
+struct Watchful {
+    policy: Arc<Careful>,
+    seen: Arc<std::sync::Mutex<Vec<(String, bool)>>>,
+}
+
+#[async_trait]
+impl Tool for Watchful {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec::new("shell", "runs it").with_capabilities([Capability::exec("run")])
+    }
+
+    async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+        self.seen
+            .lock()
+            .expect("nothing panics holding this")
+            .push((
+                call.id.0.clone(),
+                self.policy.was_granted_the_network(&call.id),
+            ));
+        Ok(ToolOutput::new("ran it"))
+    }
+}
+
 /// Allowing a networked command here grants it the network, the way answering `y` does.
 ///
 /// note: the regression this is here for. Everything answering a question means beyond
@@ -1629,6 +1657,8 @@ async fn a_networked_command_allowed_here_is_granted_the_network() {
         json!({ "call": { "action": "run", "cmd": "ls" } }),
     );
 
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let watching = seen.clone();
     let run = run_with(
         "go\n",
         vec![
@@ -1636,21 +1666,80 @@ async fn a_networked_command_allowed_here_is_granted_the_network() {
             ModelResponse::text("done"),
         ],
         Grant::Allow,
-        |app| {
-            app.kernel.add_tool(Arc::new(
-                ConstTool::new("shell", "ran it").with_capabilities([Capability::exec("run")]),
-            ));
+        move |app| {
+            app.kernel.add_tool(Arc::new(Watchful {
+                policy: app.policy.clone(),
+                seen: watching,
+            }));
         },
     )
     .await;
 
+    let seen = seen.lock().expect("nothing panics holding this").clone();
     assert!(
-        run.app.policy.was_granted_the_network(&reaching.id),
-        "a `curl` was allowed and the sandbox was never told: {}",
+        seen.contains(&(reaching.id.0.clone(), true)),
+        "a `curl` was allowed and the sandbox was never told: {} {seen:?}",
         run.prose
     );
     assert!(
-        !run.app.policy.was_granted_the_network(&homely.id),
-        "an `ls` reaches for nothing and should be granted nothing"
+        seen.contains(&(homely.id.0.clone(), false)),
+        "an `ls` reaches for nothing and should be granted nothing: {seen:?}"
+    );
+
+    // and the answers went with the batch they were given for, at the request after it
+    assert!(
+        !run.app.policy.was_granted_the_network(&reaching.id),
+        "a one-off `yes` outlived the call it was about"
+    );
+}
+
+/// Every call in a batch keeps the answer it was given, however many of them there are.
+///
+/// note: the grants were bounded at sixty-four and the oldest went, on the reasoning that one
+/// turn could not produce more - an assumption about a model rather than something this program
+/// holds to. Every call in a batch is decided before any of them runs, so the sixty-fifth `yes`
+/// threw away the first, and that command ran with the network cut after somebody allowed it.
+#[tokio::test]
+async fn a_batch_of_answers_is_not_forgotten_before_its_calls_run() {
+    let calls: Vec<ToolCall> = (0..80)
+        .map(|n| {
+            ToolCall::new(
+                format!("c{n}").as_str(),
+                "shell",
+                json!({ "call": { "action": "run", "cmd": "curl https://example.com" } }),
+            )
+        })
+        .collect();
+
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let watching = seen.clone();
+    let run = run_with(
+        "go\n",
+        vec![
+            ModelResponse::tool_calls(calls.clone()),
+            ModelResponse::text("done"),
+        ],
+        Grant::Allow,
+        move |app| {
+            app.kernel.add_tool(Arc::new(Watchful {
+                policy: app.policy.clone(),
+                seen: watching,
+            }));
+        },
+    )
+    .await;
+
+    let seen = seen.lock().expect("nothing panics holding this").clone();
+    assert_eq!(seen.len(), calls.len(), "{}", run.prose);
+    let cut: Vec<&String> = seen
+        .iter()
+        .filter(|(_, granted)| !granted)
+        .map(|(id, _)| id)
+        .collect();
+    assert!(
+        cut.is_empty(),
+        "{} of {} commands ran with the network cut after being allowed: {cut:?}",
+        cut.len(),
+        calls.len()
     );
 }

@@ -5,6 +5,31 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- Every answer in a batch stands until its call has run. A one-off `yes` to a command that reaches
+  the network is permission for that call, and the grants were held sixty-four at a time with the
+  oldest dropped - on the reasoning that one turn cannot produce more, which is an assumption about
+  a model rather than something this program holds to. Every call in a batch is decided before any
+  of them runs, so the sixty-fifth `yes` in one response threw away the first, and that command ran
+  with the network cut after somebody had allowed it. They are kept for the batch and emptied at
+  the next request, which is the one moment nothing can still be waiting for one.
+- A path rule that cannot match is refused where it is entered, rather than drawn on the
+  permissions tab as a rule. A rule is a file name in which `*` stands for any run of characters,
+  or one directory name with a slash after it; `--allow 'src/**'` reads like the glob `fs` takes,
+  is not one, and was compared with file names, which hold no `/`. RUNNING.md offered that as the
+  example of a path rule. The refusal names the rule and the grammar, and a `*` before the slash
+  goes with it - `secrets*/` is somebody expecting `secrets-old/` to be covered.
+
+### changed
+
+- The note on `Careful::judges` says what it does about somebody else's tool: a `call` object is
+  read through whoever's tool it belongs to, so a foreign argument of that name has its `path` read
+  as a path. It can only add a subject, which asks a question nobody needed, where passing it over
+  would be a rule that stops being one. Documentation only.
+
 ## [0.12.0] - 2026-09-17
 
 ### added
