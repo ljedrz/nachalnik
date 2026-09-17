@@ -93,10 +93,18 @@ impl ContextKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
+/// note: three of these - [`ContextState::Excluded`], [`ContextState::Archived`] and
+/// [`ContextState::Superseded`] - are one behaviour under three words. Nothing in this crate
+/// branches on which of them an item is in: [`ContextState::is_projected`] groups them, they are
+/// equally absent from the request, they take a tool call down with them alike, and every one of
+/// them is restorable by [`Kernel::set_state`]. What differs is what a reader is told, which is
+/// worth having and is not worth mistaking for a rule - a client that lists a context shows the
+/// word, and a selector picks on it. [`ContextState::Elided`] is the one
+/// distinction here that the projector actually makes; its note says how.
 pub enum ContextState {
     /// Included in the projection.
     Active,
-    /// Not included; removed by the user or by a [`Compactor`], and restorable.
+    /// Not included; taken out by the user or by a [`Compactor`].
     Excluded,
     /// Included in the projection, and protected: the kernel refuses to let a [`Compactor`]
     /// remove it.
@@ -119,7 +127,12 @@ pub enum ContextState {
     /// [`LinearProjector::send_reasoning`](crate::LinearProjector::send_reasoning). What stays is
     /// the shape: the turn is still there, and its calls still answer their results.
     Elided,
-    /// Not included; kept for the record, and not expected to come back.
+    /// Not included; kept for the record, and not expected to be wanted again.
+    ///
+    /// note: [`ContextState::Excluded`] with a different thing to say, and the kernel sets it in
+    /// one place: the whole of a tool output an output limit shortened, which is kept so that the
+    /// short copy is not the only one left. "Not expected" is a remark about intent and not a
+    /// restriction - restoring it is the same call as restoring any other.
     Archived,
     /// Not included; replaced by a newer item.
     ///
