@@ -1604,3 +1604,53 @@ async fn compact_down_a_pipe_is_taken_and_said() {
         "and it was taken"
     );
 }
+
+/// Allowing a networked command here grants it the network, the way answering `y` does.
+///
+/// note: the regression this is here for. Everything answering a question means beyond
+/// `Kernel::decide` lived in the key handler, and this loop has no keys - so it decided and
+/// granted nothing, and a `curl` it had just said it would allow then ran with TCP cut. The
+/// failure is invisible from here: the record says allowed, the model gets a connection error, and
+/// nothing anywhere names the confinement as the reason.
+///
+/// note: asserted on the policy rather than on a command's output, because what the sandbox
+/// actually does needs a sandbox and this needs to run anywhere. `Sandbox::of` reads exactly this
+/// and `tests/sandbox.rs` covers the other half.
+#[tokio::test]
+async fn a_networked_command_allowed_here_is_granted_the_network() {
+    let reaching = ToolCall::new(
+        "c1",
+        "shell",
+        json!({ "call": { "action": "run", "cmd": "curl https://example.com" } }),
+    );
+    let homely = ToolCall::new(
+        "c2",
+        "shell",
+        json!({ "call": { "action": "run", "cmd": "ls" } }),
+    );
+
+    let run = run_with(
+        "go\n",
+        vec![
+            ModelResponse::tool_calls(vec![reaching.clone(), homely.clone()]),
+            ModelResponse::text("done"),
+        ],
+        Grant::Allow,
+        |app| {
+            app.kernel.add_tool(Arc::new(
+                ConstTool::new("shell", "ran it").with_capabilities([Capability::exec("run")]),
+            ));
+        },
+    )
+    .await;
+
+    assert!(
+        run.app.policy.was_granted_the_network(&reaching.id),
+        "a `curl` was allowed and the sandbox was never told: {}",
+        run.prose
+    );
+    assert!(
+        !run.app.policy.was_granted_the_network(&homely.id),
+        "an `ls` reaches for nothing and should be granted nothing"
+    );
+}

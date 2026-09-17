@@ -377,8 +377,10 @@ impl<'a> Headless<'a> {
     fn answer(&mut self, app: &mut App) -> Result<(), String> {
         for pending in app.kernel.pending_permissions() {
             let tool = pending.tool.clone();
-            app.kernel
-                .decide(pending.id, self.on_ask)
+            // note: `App::answer` rather than `Kernel::decide`, because answering is more than
+            // deciding: a `curl` allowed here has to have the network granted with it, or it runs
+            // with TCP cut one line after this said it would run
+            app.answer(&pending, self.on_ask)
                 .map_err(|e| format!("could not answer for `{tool}`: {e}"))?;
             self.fresh_line()?;
             writeln!(

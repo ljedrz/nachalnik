@@ -6,7 +6,7 @@
 //! the public surface.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use nachalnik::{Capability, ContextItem, ContextState, Grant, Verdict};
+use nachalnik::{ContextItem, ContextState, Grant, Verdict};
 use ratatui_textarea::CursorMove;
 use serde_json::json;
 
@@ -694,25 +694,12 @@ impl App {
             _ => return,
         };
 
-        // saying yes to a command that reaches for the network is permission for *that* command,
-        // and the sandbox has to hear about it. Without this the call runs with the network cut
-        // and fails, one keystroke after somebody was told it would run
-        if grant == Grant::Allow
-            && request.capabilities.contains(&Capability::exec("run"))
-            && request
-                .args
-                .get("cmd")
-                .and_then(|cmd| cmd.as_str())
-                .is_some_and(crate::tools::reaches_the_network)
-        {
-            self.policy.grant_the_network(&request.call);
-        }
-
-        // the same, for the other thing a session waits on somebody for. Whatever the question
-        // cost in wall time was spent reading it, and `permission.decided` is the line it lands on
+        // whatever the question cost in wall time was spent reading it, and `permission.decided`
+        // is the line it lands on. It is set here rather than in `App::answer` because it is the
+        // one part of answering that is about a person being present; see the note there
         self.acted = true;
-        if let Err(e) = self.kernel.decide(request.id, grant) {
-            self.say(Speaker::Error, e.to_string());
+        if let Err(e) = self.answer(&request, grant) {
+            self.say(Speaker::Error, e);
         }
         // note: `always` is a promise about what happens next, and what happens next is often
         // already in the queue. A model that asks for three commands in one answer produces three
