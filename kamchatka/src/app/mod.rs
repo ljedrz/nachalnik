@@ -8,7 +8,7 @@
 
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fs::File,
     io::{BufRead as _, BufReader},
     path::Path,
@@ -2443,6 +2443,42 @@ impl App {
             .fold((0, 0), |(tokens, count), held| (tokens + held, count + 1))
     }
 
+    /// Answers one waiting question, and does the rest of what answering it entails.
+    ///
+    /// note: here rather than beside the keys, because there are two drivers and only one of them
+    /// has any. Everything answering means beyond `Kernel::decide` lived in the key handler, so a
+    /// headless run answering `allow` to a `curl` decided it and granted nothing - and the command
+    /// then ran with the network cut, which is the exact failure the grant below exists to
+    /// prevent. A driver should not be able to answer a question halfway by forgetting a step it
+    /// never knew about.
+    ///
+    /// note: `acted` is not set here, and that is the one thing the key handler still does for
+    /// itself. It marks the gap before a line as somebody's thinking rather than the program's
+    /// working, and in a headless run nobody thought: the answer was decided on the command line
+    /// before the session started.
+    pub fn answer(&mut self, request: &PermissionRequest, grant: Grant) -> Result<(), String> {
+        // saying yes to a command that reaches for the network is permission for *that* command,
+        // and the sandbox has to hear about it. Read through the wrapper, because `shell` takes
+        // its arguments inside a `call` object and there is no `cmd` on the outside of one
+        if grant == Grant::Allow
+            && request.capabilities.contains(&Capability::exec("run"))
+            && crate::tools::ops::inner(&request.args)
+                .unwrap_or(&request.args)
+                .get("cmd")
+                .and_then(|cmd| cmd.as_str())
+                .is_some_and(crate::tools::reaches_the_network)
+        {
+            self.policy.grant_the_network(&request.call);
+        }
+
+        // the state the kernel lands in is the caller's to read off the events like any other;
+        // neither driver wants it back from here
+        self.kernel
+            .decide(request.id, grant)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     /// The context items a pending call names, described the way a row on the context tab is.
     ///
     /// note: `ids: [22]` is a true account of the arguments and a useless one to be asked about.
@@ -2644,74 +2680,90 @@ impl App {
     }
 
     /// Every subject this policy holds an opinion about, decided or not.
+    ///
+    /// note: the subjects first and what each one covers second, rather than filling the lists
+    /// while walking the tools. Walking filled a row only where a tool declared that exact
+    /// capability, so a rule about a whole domain - which is what `--allow fs` writes - got a row
+    /// saying "nothing registered needs it" while the five `fs:*` rows beside it each named `fs`.
+    /// A domain rule covers every tool with a capability in it; a server rule covers every tool
+    /// that came from it; a path rule covers every tool that is handed a path. Asking one question
+    /// per subject is how all four get answered instead of one.
     fn all_stances(&self) -> Vec<Stance> {
-        let mut rows: BTreeMap<Subject, Vec<String>> = BTreeMap::new();
-        let mut sometimes: BTreeMap<Subject, Vec<String>> = BTreeMap::new();
-        // every rule somebody has written, whether or not a registered tool declares it: a rule
-        // about a whole domain, or about an operation no tool here offers, is still an answer
-        // this policy would give and still a row somebody can change
-        for (subject, _) in self.policy.stances() {
-            rows.entry(subject).or_default();
-        }
+        let specs = self.kernel.tool_specs();
         let reaching = Subject::Capability(Capability::net("reach"));
-        for spec in self.kernel.tool_specs() {
+
+        // every subject worth a row: a rule somebody has written, whether or not a registered tool
+        // declares it; every capability the registered tools do declare; and every server their
+        // tools came from
+        let mut subjects: BTreeSet<Subject> = self
+            .policy
+            .stances()
+            .into_iter()
+            .map(|(subject, _)| subject)
+            .collect();
+        for spec in &specs {
+            subjects.extend(spec.capabilities.iter().cloned().map(Subject::Capability));
+            if let Some(server) = self.policy.server_of(&spec.id) {
+                subjects.insert(Subject::Server(server));
+            }
             // a shell is judged against `net:reach` too, when the command it was handed reaches
             // for it; the policy is the one that knows, and this is the row that has to say so
             if spec.capabilities.contains(&Capability::exec("run")) {
-                sometimes
-                    .entry(reaching.clone())
-                    .or_default()
-                    .push(spec.id.clone());
-                rows.entry(reaching.clone()).or_default();
-            }
-            for capability in spec.capabilities {
-                rows.entry(Subject::Capability(capability))
-                    .or_default()
-                    .push(spec.id.clone());
+                subjects.insert(reaching.clone());
             }
         }
 
-        // the capabilities first, then the rules that are finer than any of them. note: a path
-        // rule binds every tool that is handed a path - the three that open one, and the two that
-        // walk a directory of them - and no others: a `shell` command names its files inside a
-        // string this program does not parse, and pretending otherwise would be exactly the sort
-        // of check that implies more than it delivers. What `grep` and `glob` do about a rule is
-        // not to open what it names; see `tools::search`
-        let bound: Vec<String> = self
-            .kernel
-            .tool_specs()
-            .iter()
-            .filter(|spec| {
-                spec.capabilities
-                    .iter()
-                    .any(|capability| capability.domain == Domain::Fs)
-            })
-            .map(|spec| spec.id.clone())
-            .collect();
+        // note: a path rule binds every tool that is handed a path - the three that open one, and
+        // the two that walk a directory of them - and no others: a `shell` command names its files
+        // inside a string this program does not parse, and pretending otherwise would be exactly
+        // the sort of check that implies more than it delivers. What `grep` and `glob` do about a
+        // rule is not to open what it names; see `tools::search`
+        let covers = |subject: &Subject| -> Vec<String> {
+            specs
+                .iter()
+                .filter(|spec| match subject {
+                    Subject::Capability(capability) => spec.capabilities.contains(capability),
+                    Subject::Domain(domain) => {
+                        spec.capabilities.iter().any(|it| it.domain == *domain)
+                    }
+                    Subject::Server(name) => {
+                        self.policy.server_of(&spec.id).as_deref() == Some(name.as_str())
+                    }
+                    Subject::Path(_) => spec.capabilities.iter().any(|it| it.domain == Domain::Fs),
+                })
+                .map(|spec| spec.id.clone())
+                .collect()
+        };
 
-        let listed = rows
+        // the ones a shell is judged against only sometimes, which is a different sentence from
+        // the ones it always needs and is why they are a column of their own
+        let sometimes = |subject: &Subject| -> Vec<String> {
+            match *subject == reaching {
+                true => specs
+                    .iter()
+                    .filter(|spec| spec.capabilities.contains(&Capability::exec("run")))
+                    .map(|spec| spec.id.clone())
+                    .collect(),
+                false => Vec::new(),
+            }
+        };
+
+        subjects
             .into_iter()
-            .map(|(subject, tools)| Stance {
-                verdict: self.policy.stance(&subject),
-                sometimes: sometimes.remove(&subject).unwrap_or_default(),
-                when: "when the command reaches for it",
-                subject,
-                tools,
-            })
             .chain(
                 self.policy
                     .paths()
                     .into_iter()
-                    .map(|(pattern, verdict)| Stance {
-                        subject: Subject::Path(pattern),
-                        verdict,
-                        tools: bound.clone(),
-                        sometimes: Vec::new(),
-                        when: "when the command reaches for it",
-                    }),
-            );
-
-        listed.collect()
+                    .map(|(pattern, _)| Subject::Path(pattern)),
+            )
+            .map(|subject| Stance {
+                verdict: self.policy.stance(&subject),
+                tools: covers(&subject),
+                sometimes: sometimes(&subject),
+                when: "when the command reaches for it",
+                subject,
+            })
+            .collect()
     }
 
     /// What the shell can reach, in one line, or `None` if nothing here runs commands.

@@ -500,6 +500,15 @@ impl Careful {
         self.servers.lock().insert(tool.into(), server.into());
     }
 
+    /// Which MCP server a tool came from, if it came from one.
+    ///
+    /// note: the inverse of what [`Careful::servers`] answers, and the half the permissions tab
+    /// needs: a row about a server has to say which tools it covers, and a server's name is not
+    /// something a tool's id can be asked for.
+    pub fn server_of(&self, tool: &str) -> Option<String> {
+        self.servers.lock().get(tool).cloned()
+    }
+
     /// Every MCP server whose tools are installed, and what this answers about each.
     pub fn servers(&self) -> Vec<(String, Verdict)> {
         let mut names: Vec<String> = self.servers.lock().values().cloned().collect();

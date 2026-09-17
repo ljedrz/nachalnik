@@ -14,7 +14,7 @@ use kamchatka::{
     tools::{Limits, Subject},
 };
 use nachalnik::{
-    Capability, Config, ContextItem, ModelResponse, Verdict,
+    Capability, Config, ContextItem, Domain, ModelResponse, Verdict,
     test::{ConstTool, call},
 };
 use ratatui::style::Color;
@@ -212,6 +212,64 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         .find(|line| line.contains("write"))
         .expect("what the policy has been told about is listed");
     assert!(write.contains("nothing registered needs it"), "{write}");
+
+    // a rule about a whole domain covers every tool with a capability in it, which is the answer
+    // `--allow fs` is actually giving. It read "nothing registered needs it" while the `fs:read`
+    // row directly above it named `grep`, because a row was only filled where a tool declared
+    // that exact capability and no tool declares a bare domain
+    harness
+        .app
+        .policy
+        .set(&Subject::Domain(Domain::Fs), Verdict::Allow);
+    let screen = harness.sized(110, 30);
+    let domain = screen
+        .lines()
+        .find(|line| {
+            line.replace('\u{2502}', " ")
+                .trim_start()
+                .starts_with("fs ")
+        })
+        .unwrap_or_else(|| panic!("the domain rule is listed: {screen}"));
+    assert!(
+        domain.contains("grep"),
+        "a rule about `fs` covers the tool that reads files: {domain}"
+    );
+    assert!(!domain.contains("nothing registered needs it"), "{domain}");
+}
+
+/// A rule about an MCP server names the tools that came from it.
+///
+/// note: the same fault as the domain row, on the subject that had it worse - `Careful::servers`
+/// existed to answer this and had no caller at all, so `--allow-server files` listed a row saying
+/// nothing registered needed it while every tool it covered sat above it.
+#[tokio::test]
+async fn a_rule_about_a_server_names_the_tools_that_came_from_it() {
+    let mut harness = Harness::new(Vec::new());
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("files__read", "read it").with_capabilities([Capability::fs("read")]),
+    ));
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("grep", "found it").with_capabilities([Capability::fs("read")]),
+    ));
+    harness.app.policy.came_from("files__read", "files");
+    harness.tab(Tab::Permissions);
+
+    harness
+        .app
+        .policy
+        .set(&Subject::Server("files".to_owned()), Verdict::Allow);
+    let screen = harness.sized(110, 30);
+    let row = screen
+        .lines()
+        .find(|line| line.contains("server files"))
+        .unwrap_or_else(|| panic!("the server rule is listed: {screen}"));
+
+    assert!(row.contains("files__read"), "{row}");
+    assert!(
+        !row.contains("grep"),
+        "`grep` did not come from that server: {row}"
+    );
+    assert!(!row.contains("nothing registered needs it"), "{row}");
 }
 
 #[tokio::test]
