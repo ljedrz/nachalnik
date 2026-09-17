@@ -58,6 +58,13 @@ minor bump may break you.
 
 ### fixed
 
+- A call asked permission for the one thing it does again, rather than for everything its tool can
+  do. `context` reading its own items declared all thirteen of its subjects, so `look` at three
+  items asked to be allowed `revise` and `elide` too, and `--allow context:look` on its own could
+  not look. The same reading fault had the policy miss the two arguments it consults: a `curl` was
+  no longer judged against `net:reach`, and a path rule no longer matched the path a call named.
+  Both failed towards allowing more, and neither is visible from anywhere but a live session.
+
 - An argument the action a call named does not read is refused, rather than ignored. `log` has
   held its arguments to this since it was written; `fs` and `context` now do too, per *operation*
   rather than per tool, because the mistake actually made is an argument that belongs to a sibling:
