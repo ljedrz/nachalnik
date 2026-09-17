@@ -111,7 +111,18 @@ fn ops() -> Vec<Op> {
              read by copying them in; it says how many lines match and what they would cost \
              before showing you one",
             vec![
-                Arg::text("text", "what to look for, case ignored").needed(),
+                // note: what it is *not* is the load-bearing half. `fs`'s `grep` is offered in the
+                // same request and says outright that its `pattern` is a regular expression, so a
+                // model reaching for one here is being consistent - and a live run did, searching
+                // for `pub (fn|const)` in a context holding `pub fn add`. A pattern read as text
+                // matches nothing and the answer is a plain "no matches", which is the one shape
+                // of wrong answer the note on `search` says this must not have
+                Arg::text(
+                    "text",
+                    "what to look for: the words themselves, not a pattern - `fs`'s `grep` is the \
+                     one that takes a regular expression. Case is ignored",
+                )
+                .needed(),
                 Arg::list("ids", "integer", "look only in these items, by number"),
                 Arg::whole("take", "show this many of the matching lines"),
             ],

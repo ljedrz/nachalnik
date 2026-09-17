@@ -151,6 +151,12 @@ minor bump may break you.
   down a pipe was told to press a key it does not have about a list it could not otherwise see.
   A line that is not a command said `F1 lists what there is`. `/request` and `/help` open the same
   two pages and work in both.
+- `context`'s `search` says that its `text` is text. `fs`'s `grep` is offered in the same request
+  and states outright that its `pattern` is a regular expression in Rust's syntax, so a model
+  reaching for one in the other search is being consistent - and a live run did, searching a
+  context holding `pub fn add` for `pub (fn|const)`. A pattern read as text matches nothing and
+  comes back as a plain "no matches", which is the one shape of wrong answer the note on `search`
+  says it must not have.
 - `/model` and `/provider` drop what the counter learnt, as well as the anchor. Both already drop
   the anchor, on the grounds that it is one model's tokenizer counting one model's request - and
   the correction is the same claim one word further in, cumulative over every observation, so a
