@@ -450,14 +450,20 @@ are standing is one that surprises you, so it is named or it is not read.
 
 **A starting point ships with the crate**, as `kamchatka.json` beside this readme, and in the
 archive a release attaches, beside the binary: every setting there is, so you edit rather than
-remember, and every one of them at the program's own default.
-Copying it wholesale changes exactly one thing — it sets a spend ceiling of 200,000 tokens, which
-is the only thing a file adopted sight-unseen can safely offer. It grants nothing: `allow` is
-empty, both sandbox lists are empty, `on-ask` is `deny`, and none of that is an oversight. A
+remember, and every one of them at the program's own default. Copying it wholesale changes
+nothing at all: it is the program you already have, written down. It grants nothing — `allow` is
+empty, both sandbox lists are empty, `on-ask` is `deny` — and none of that is an oversight. A
 default that pre-granted `read`, or opened up `~/.cargo` so that `cargo` works, would be this
 program deciding on your behalf the one kind of thing it exists not to decide on your behalf —
-and `~/.cargo` holds a registry token. The suite holds the file to naming every key, so a setting
-added later cannot quietly go missing from it.
+and `~/.cargo` holds a registry token.
+
+It narrows nothing either, which took a second pass to get right: the file used to set a spend
+ceiling of 200,000 tokens, on the reasoning that a tightening is the one thing a file adopted
+sight-unseen can safely offer. What that actually buys is a session that stops for a reason
+nobody chose, out of a file whose whole claim is that it is the defaults. `spend` is here at
+`null` with the rest, and `--spend`, `/spend` or one edit is how it stops being. The suite holds
+the file to naming every key and to leaving the two that bound a session unset, so neither a
+setting added later nor a number added here can go unnoticed.
 
 ## 🎛️ options
 

@@ -249,6 +249,15 @@ minor bump may break you.
 
 ### changed
 
+- The shipped `kamchatka.json` sets no spend ceiling. It carried one of 200,000 tokens, on the
+  reasoning that a tightening is the one thing a file adopted sight-unseen can safely offer - and
+  the file is the only setting in it that was not the program's own default, in a file whose whole
+  claim is that it is the defaults. What the ceiling buys is a session that stops for a reason
+  nobody chose, which is its own kind of surprise and a worse one to debug than a missing cap: the
+  line says the ceiling was reached and nothing says where the ceiling came from. `spend` is
+  `null` with the rest of the unset settings now, and `--spend`, `/spend` or one edit sets it.
+  The suite holds the file to leaving `deadline` and `spend` unset, beside the checks that it
+  names every key and grants nothing.
 - An output limit is two numbers rather than one: 32,000 bytes where the answer is made of what
   the session holds, and 8,000 where it is a report of a fixed shape. Which tier a subject is in
   is measured rather than decided - between a session of ten items and one of a thousand, with two

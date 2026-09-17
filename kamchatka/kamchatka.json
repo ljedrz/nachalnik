@@ -22,7 +22,7 @@
   "on-ask": "deny",
 
   "deadline": null,
-  "spend": 200000,
+  "spend": null,
   "no-record": false,
 
   "border": null

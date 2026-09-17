@@ -286,9 +286,12 @@ fn a_tool_the_file_names_that_does_not_exist_is_refused() {
 ///
 /// note: a starting point somebody adopts wholesale must not quietly widen anything - `allow` is
 /// empty, the sandbox lists are empty and `on-ask` is `deny`, so the file changes nothing about
-/// what may run. The only setting in it that is not the program's own default is the spend
-/// ceiling, which is a tightening: a session that cannot run up an unbounded bill is the one
-/// thing a default file can safely offer.
+/// what may run. It must not quietly narrow anything either, which is the half this learnt later:
+/// the file carried a spend ceiling of 200,000 tokens, on the reasoning that a tightening is the
+/// one thing a file adopted sight-unseen can safely offer. What that buys is a session that stops
+/// for a reason nobody chose, and the file says on its face that it is the defaults. A ceiling is
+/// worth having and worth deciding on; `--spend` and `/spend` are how, and the key is here at
+/// `null` so that it is one edit away.
 ///
 /// note: the completeness check is a key-set comparison against `Settings` written out, rather
 /// than a list of names here that would go stale the day a field is added. A file missing the
@@ -333,10 +336,25 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
     assert_eq!(shipped["on-ask"], json!("deny"));
     assert_eq!(shipped["no-sandbox"], json!(false));
 
-    // and a session starts under it, with the one setting it does make
+    // and nothing is narrowed either. `requests` and `compact` carry the program's own defaults,
+    // 8 and 0.8, which is what the file is for; the two that bound a session have no default at
+    // all, so a number here would be the file deciding something nobody asked it to
+    for key in ["deadline", "spend"] {
+        assert_eq!(
+            shipped[key],
+            serde_json::Value::Null,
+            "`{key}` has no default and the shipped file sets one"
+        );
+    }
+    assert_eq!(shipped["requests"], json!(8));
+    assert_eq!(shipped["compact"], json!(0.8));
+
+    // and a session starts under it, having narrowed nothing: `/spend` is the one worth asking,
+    // because a ceiling is the setting a file could most plausibly be thought to be doing a
+    // favour with
     let (ok, said) = run(&["--config-file", path], "/spend\n");
     assert!(ok, "{said}");
-    assert!(said.contains("of 200,000"), "{said}");
+    assert!(said.contains("no ceiling"), "{said}");
 }
 
 /// `--send-oversized` reaches the kernel, from the command line and from a file.
