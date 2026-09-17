@@ -65,6 +65,20 @@ minor bump may break you.
   no longer judged against `net:reach`, and a path rule no longer matched the path a call named.
   Both failed towards allowing more, and neither is visible from anywhere but a live session.
 
+- The permissions tab says what a rule covers. `--allow fs` writes a rule about a whole domain, and
+  its row read "nothing registered needs it" while the five `fs:*` rows above it each named `fs`; a
+  server rule read the same, with every tool it covers sitting above it. A row was only filled
+  where a tool declared that exact capability, and no tool declares a bare domain or a server name.
+- A networked command allowed in a headless run is granted the network. Everything answering a
+  permission question means beyond the decision itself lived in the key handler, and that loop has
+  no keys - so `--on-ask allow` let a `curl` through and then ran it with TCP cut. Both drivers
+  answer through one place now.
+- Nothing a tool returns is uncapped. Every tool this program ships has a row in the limits table
+  and reads it; a tool from an MCP server has neither, and fell through to a kernel default of *do
+  not truncate* - so a session started with `--mcp` had no ceiling at all on what somebody else's
+  server could put in its context. It is cut at the same 32,000 bytes as everything else, though
+  not yet by a row `/limit` can change.
+
 - An argument the action a call named does not read is refused, rather than ignored. `log` has
   held its arguments to this since it was written; `fs` and `context` now do too, per *operation*
   rather than per tool, because the mistake actually made is an argument that belongs to a sibling:
