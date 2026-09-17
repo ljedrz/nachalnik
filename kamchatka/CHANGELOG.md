@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- `u` and `U` work on a context pane a filter has emptied, which is where they are most needed.
+  The keys that pick a row need one, so the handler returned early with nothing listed and took
+  those two with it: with `f` on, hiding the last row on the screen removed the row and the key
+  that would put it back, and the way out - press `f` first - is written nowhere.
 - The four tab shortcuts reach past an open search box. The box takes the keys while it is open
   and read every character without `ctrl` as one of its own, `alt` included - so `alt+2` typed a
   `2` into the query instead of going to the context tab, which `/help` promises it does
