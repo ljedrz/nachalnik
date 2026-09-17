@@ -119,6 +119,22 @@ minor bump may break you.
 
 ### changed
 
+- **An operation declares its own arguments.** Each of these tools described itself to the model as
+  one property bag holding every argument any of its operations takes, with the applicability
+  written into the prose: nineteen descriptions opened `for `grep`:` or `required by the nine that
+  change:`. `required` was `["action"]` on five of the six, so a `read` passing `old` was a
+  well-formed call right up until it ran. Now there is a branch per shape, each carrying its own
+  arguments and its own `required`, and twenty-three arguments are named as required where one was.
+  The applicability moves out of the prose and into the schema: inside a branch there is nobody
+  else for an argument to be confused with, so each one says what it is and stops.
+
+  The arguments go inside a `call` object, because the root of a schema may not itself be a union.
+  Passing them flat, the way the old schema asked for them, is still understood; passing them in
+  both places at once is refused, because reading either would drop half of what was asked.
+
+  It costs about six hundred tokens a request - the tools section goes from ~2,690 to ~3,290 - and
+  that is the price of saying in the schema what nine of `context`'s thirteen operations previously
+  had to be told at run time, one wasted turn at a time. `setup` got smaller.
 - **`context` is one tool over one object**: four operations read the context and nine change it.
   It was `context` and `amend`, on the argument that a `ToolSpec` declares its capabilities once,
   so one tool would have meant that answering *always* to "may it look at its own items?" also
