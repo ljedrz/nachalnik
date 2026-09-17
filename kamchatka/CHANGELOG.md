@@ -216,6 +216,17 @@ minor bump may break you.
 
 ### changed
 
+- An output limit is two numbers rather than one: 32,000 bytes where the answer is made of what
+  the session holds, and 8,000 where it is a report of a fixed shape. Which tier a subject is in
+  is measured rather than decided - between a session of ten items and one of a thousand, with two
+  hundred more tools registered, seven answers do not move (`fs:write`, `fs:edit`,
+  `context:budget`, `context:note`, `context:revise`, `setup:model`, `setup:policy`) and every
+  other one does: `context:look` goes from 10kB to 119kB over that pair and `log`'s records from
+  30kB to 517kB. The lower number never fires on a healthy session, which is the point of it - one
+  of those seven arriving cut is an answer that has quietly started quoting the session, and
+  `tests/introspect.rs` holds all seven to it at the size so that the tripwire is the second thing
+  to notice rather than the first. `setup tools` groups the exceptions by their figure rather than
+  naming it once per subject.
 - **`context` has twelve operations, not thirteen: `archive` is gone.** It and `exclude` were one
   behaviour under two words - measured as producing the same request to the token when the moves
   were first named, and nothing in the projector, the compactor, the budget or `search` has ever

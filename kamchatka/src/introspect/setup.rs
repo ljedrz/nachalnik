@@ -279,10 +279,19 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits) -> String {
         .map(|(bytes, _)| *bytes)
         .unwrap_or_default();
 
-    let odd: Vec<String> = held
+    // note: grouped by the figure rather than a clause per row. The table ships with two numbers
+    // - a report of a fixed shape is cut at less than a piece of the session - so five or six
+    // subjects share the second one, and a clause each said `at 8,000` six times to say it once
+    let mut groups: Vec<(usize, Vec<&str>)> = Vec::new();
+    for (subject, bytes) in held.iter().filter(|(_, bytes)| *bytes != common) {
+        match groups.iter_mut().find(|(at, _)| at == bytes) {
+            Some((_, named)) => named.push(subject),
+            None => groups.push((*bytes, vec![subject])),
+        }
+    }
+    let odd: Vec<String> = groups
         .iter()
-        .filter(|(_, bytes)| *bytes != common)
-        .map(|(subject, bytes)| format!("{subject} at {}", thousands(*bytes)))
+        .map(|(bytes, named)| format!("{} at {}", named.join(", "), thousands(*bytes)))
         .collect();
 
     format!(

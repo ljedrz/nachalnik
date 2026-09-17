@@ -95,13 +95,15 @@ the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* cal
 with one reason — and the model is told, rather than left waiting on calls that silently vanished.
 
 So is how much of a call's output the model is shown, keyed by the same subject its permission is —
-one row for `fs:read` and another for `fs:grep`, because a file and a repository-wide search are
-not the same size. `/limit` lists them — numbered, and the
+one row for `fs:read` and another for `fs:grep`, because a file and a repository-wide search are not
+the same size. It starts at 32,000 bytes, and at 8,000 for the seven whose answer is a report of a
+fixed shape rather than a piece of the session: measured against a session of ten items and one of a
+thousand, those seven do not move and everything else does. `/limit` lists them — numbered, and the
 number is one the command takes, so `/limit fs:read 64000` and `/limit 6 64000` are the same
 instruction — and either changes one from its next call onward. The result that has *already* been
-cut is recovered a different way: its whole is archived beside the copy the model was given, and <kbd>space</kbd> on
-it sends that instead — the projector answers one call with one result, so the whole takes the
-call and the short copy drops out.
+cut is recovered a different way: its whole is archived beside the copy the model was given, and
+<kbd>space</kbd> on it sends that instead — the projector answers one call with one result, so the
+whole takes the call and the short copy drops out.
 
 ## 🐢 one transition at a time
 

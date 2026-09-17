@@ -136,6 +136,24 @@ fn truth(args: &Value, name: &str) -> Result<bool, String> {
 /// [`Config::default_tool_output_limit`](nachalnik::Config), set to this in `wiring`.
 pub(crate) const CEILING: usize = 32_000;
 
+/// And what one is cut at whose answer is a report of a fixed shape rather than a piece of the
+/// session, in bytes.
+///
+/// note: the distinction is measured rather than guessed. Between a session of ten items and one
+/// of a thousand, with two hundred more tools registered, seven answers do not move: `fs:write`
+/// and `fs:edit` are a line each, `context:revise` says what it replaced without quoting it,
+/// `context:note` and `setup:model` and `setup:policy` are a short paragraph, and
+/// `context:budget` is a fixed report with the four most expensive rows under it. Everything else
+/// grows with what the session holds - `context:look` went from 10kB to 119kB over that pair, and
+/// `log`'s records from 30kB to 517kB.
+///
+/// note: what a lower number buys where a limit never fires anyway. It is a tripwire: the seven
+/// are bounded because of how each answer is built, so one of them arriving here cut is that
+/// having quietly stopped being true - a `budget` that listed every item, a `revise` that echoed
+/// what it wrote. `tests/introspect.rs` holds the seven to it at the size, which is where such a
+/// change should be caught; this is what happens if it is not.
+pub(crate) const REPORT: usize = 8_000;
+
 /// How much of a call's output the model is shown, by subject, which a person can change
 /// mid-session.
 ///
@@ -170,13 +188,17 @@ impl Default for Limits {
 }
 
 impl Limits {
-    /// The limits this program's tools start with: every subject they declare, at 32,000 bytes.
+    /// The limits this program's tools start with: every subject they declare, at 32,000 bytes -
+    /// or 8,000, where the answer is a report rather than a piece of the session.
     ///
     /// note: 32,000 bytes is about a screenful of a large file or the tail of a long build, and it
-    /// is what every one of these is worth being cut at. They are one number rather than a
-    /// considered number each because a *default* that differed per row would be a set of opinions
-    /// nobody asked for; the table exists so that somebody can hold the one that matters to them
-    /// to something else.
+    /// is what an answer made of what the session holds is worth being cut at. Two numbers rather
+    /// than twenty-four: a number per row would be a set of opinions nobody asked for, and one
+    /// number for every row says that a line confirming a write and the whole of a log are the
+    /// same kind of answer. Which tier a subject is in is a measured fact about its answer rather
+    /// than a view about its importance: seven of them do not move between a session of ten items
+    /// and one of a thousand, and every other one does. The table is there so that somebody can
+    /// hold the one that matters to them to something else.
     ///
     /// note: `fs:grep` and `fs:glob` are in here for `/limit` to list and to raise, and neither is
     /// normally what shapes their answer: both cut themselves at a number of *matches* or *paths*
@@ -203,7 +225,21 @@ impl Limits {
             .chain(["draft", "ask"].map(domains::fork))
             .chain([domains::log("read")])
             .chain(["model", "tools", "permissions", "policy"].map(domains::setup))
-            .map(|subject| (subject.to_string(), CEILING));
+            .map(|subject| {
+                let subject = subject.to_string();
+                let bounded = matches!(
+                    subject.as_str(),
+                    "fs:write"
+                        | "fs:edit"
+                        | "context:budget"
+                        | "context:note"
+                        | "context:revise"
+                        | "setup:model"
+                        | "setup:policy"
+                );
+
+                (subject, if bounded { REPORT } else { CEILING })
+            });
 
         Self(Arc::new(Mutex::new(rows.collect())))
     }

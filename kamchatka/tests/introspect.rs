@@ -2256,8 +2256,17 @@ async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
     let said = answered(&kernel);
     assert!(said.contains("cut at 32,000 bytes"), "{said}");
     assert!(
-        said.contains("except context:search at 4,000"),
-        "the one that differs is named, or the sentence is wrong about it: {said}"
+        said.contains("context:search at 4,000"),
+        "the one somebody changed is named, or the sentence is wrong about it: {said}"
+    );
+    // and the ones the table ships holding to something else are named together rather than a
+    // clause each, since they are one figure said once
+    assert!(
+        said.contains(
+            "context:budget, context:note, context:revise, setup:model, setup:policy \
+                       at 8,000"
+        ),
+        "{said}"
     );
     // and only the subjects this session's tools declare: no `fs` here, so no `fs:read` in the
     // answer, for the reason `if_offered` exists
@@ -3664,6 +3673,129 @@ async fn the_limits_table_has_a_row_for_every_subject_a_tool_declares() {
         "these have a limit row and nothing declares them, so `/limit` lists a number that is \
          never consulted: {extra:?}"
     );
+}
+
+/// The subjects on the lower limit are the ones whose answer does not grow with the session.
+///
+/// note: `Limits` holds two numbers - 32,000 bytes for an answer made of what the session holds,
+/// 8,000 for one that is a report of a fixed shape - and which tier a subject is in is a claim
+/// about how its answer is built. This is that claim, checked: the same seven calls against ten
+/// items and against a thousand, with two hundred more tools registered for the two `setup` ones,
+/// and none of the answers may move. A `budget` that listed every item, or a `revise` that quoted
+/// what it wrote, would be a subject that had quietly changed tier, and the first anybody would
+/// otherwise know of it is a cut answer in a live session.
+///
+/// note: the figures are the point of the pairing rather than the absolute sizes, so it asserts
+/// both: no answer grows by more than the identifiers in it can (`[3]` becomes `[997]`), and every
+/// one is inside the tier with room to spare.
+#[tokio::test]
+async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
+    let dir = common::scratch("bounded-answers");
+    std::fs::write(dir.join("w.rs"), "x".repeat(40_000)).expect("a file to act on");
+
+    // the seven, and one from each tool that has any, so a whole tool moving tier is visible here
+    let calls = |path: &std::path::Path| -> Vec<(&'static str, serde_json::Value)> {
+        vec![
+            (
+                "fs",
+                json!({"call": {"action": "write", "path": path.join("w.rs"),
+                                   "content": "y".repeat(40_000)}}),
+            ),
+            (
+                "fs",
+                json!({"call": {"action": "edit", "path": path.join("w.rs"),
+                                   "old": "y".repeat(300), "new": "z".repeat(300)}}),
+            ),
+            ("context", json!({"call": {"action": "budget"}})),
+            (
+                "context",
+                json!({"call": {"action": "note", "content": "a note",
+                                        "reason": "measuring"}}),
+            ),
+            (
+                "context",
+                json!({"call": {"action": "revise", "ids": [3],
+                                        "content": "q".repeat(30_000), "reason": "measuring"}}),
+            ),
+            ("setup", json!({"call": {"action": "model"}})),
+            ("setup", json!({"call": {"action": "policy"}})),
+        ]
+    };
+
+    // one session of each size, answering the same calls
+    let mut sizes: Vec<Vec<usize>> = Vec::new();
+    for (items, extra) in [(10, 0), (1_000, 200)] {
+        let (kernel, _provider, _anchor) = agent(Vec::new());
+        for tool in kamchatka::tools::builtin(
+            kamchatka::tools::Shell {
+                workdir: dir.clone(),
+                extra: Vec::new(),
+                readable: Vec::new(),
+                policy: Arc::new(Careful::new()),
+                confiner: None,
+                limits: Limits::default(),
+            },
+            kamchatka::sandbox::Reach {
+                workdir: dir.clone(),
+                extra: Vec::new(),
+                readable: Vec::new(),
+                confined: false,
+            },
+            Limits::default(),
+        ) {
+            kernel.add_tool(tool);
+        }
+        for n in 0..items {
+            let body = match n % 7 {
+                0 => "x".repeat(40_000),
+                _ => format!("item number {n}, saying a sentence about what it holds"),
+            };
+            kernel.push(ContextItem::file(format!("src/file_{n}.rs"), body));
+        }
+        for n in 0..extra {
+            kernel.add_tool(Arc::new(
+                nachalnik::test::ConstTool::new(format!("server__tool_{n}"), "did it")
+                    .with_capabilities([nachalnik::Capability::fs("read")]),
+            ));
+        }
+
+        let mut answers = Vec::new();
+        for (n, (tool, args)) in calls(&dir).into_iter().enumerate() {
+            let made = call(&format!("m{n}"), tool, args);
+            let tool = kernel.tool(tool).expect("a registered tool");
+            let out = nachalnik::Tool::invoke(&*tool, &made, nachalnik::OutputSink::disconnected())
+                .await
+                .expect("the call was answered");
+            let said = out.content.to_text();
+            assert!(
+                !said.contains("is required") && !said.contains("no such item"),
+                "the call has to have worked for its size to mean anything: {said}"
+            );
+            answers.push(said.len());
+        }
+        sizes.push(answers);
+    }
+
+    let names = [
+        "fs:write",
+        "fs:edit",
+        "context:budget",
+        "context:note",
+        "context:revise",
+        "setup:model",
+        "setup:policy",
+    ];
+    for ((name, small), big) in names.iter().zip(&sizes[0]).zip(&sizes[1]) {
+        assert!(
+            *big <= small + 256,
+            "{name} answers {small} bytes about ten items and {big} about a thousand, so it is \
+             not a report of a fixed shape and does not belong on the lower limit"
+        );
+        assert!(
+            *big < 8_000,
+            "{name} answers {big} bytes, which the limit it is on would cut"
+        );
+    }
 }
 
 /// `shell` says where its output is cut off, and says the number this session is holding.
