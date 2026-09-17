@@ -109,10 +109,16 @@ impl Undoing {
     }
 
     /// What it will put back, for a report somebody has to read.
+    ///
+    /// note: `now`, not `back to`. Walking back is what the line above this one says, once, and
+    /// most of these really are returning - but a `note` walked back is *archived*, which is a
+    /// state it has never been in. A live run read `10 back to archived` about a note it had
+    /// written thirty seconds earlier and reported that the item had been restored to being
+    /// archived, which is neither what happened nor a thing that could have.
     fn about(&self) -> String {
         match self {
             Self::States(states) => format!(
-                "{} back to {}",
+                "{} now {}",
                 numbers(&states.iter().map(|(id, ..)| *id).collect::<Vec<_>>()),
                 match states.first() {
                     Some((_, state, _)) => state.to_string(),

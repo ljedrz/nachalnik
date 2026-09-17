@@ -1325,7 +1325,7 @@ async fn a_class_of_items_can_be_pruned_without_naming_each_one() {
 /// something already pinned, for a new reason, comes back as `changed` - which is true of the note
 /// and false of the item. The report read it as a move: `1 item(s) are now pinned: 2`, over figures
 /// that had not moved by a token, and it put a step in this tool's journal that `undo` then
-/// described as `2 back to pinned` about an item that was still pinned. Two calls that restated a
+/// described as `2 now pinned` about an item that was still pinned. Two calls that restated a
 /// pin were two things to walk back and neither walked anything. What actually happened is that
 /// the reason was rewritten, so that is what it says now, and the journal holds the moves.
 #[tokio::test]
@@ -1409,8 +1409,8 @@ async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
     );
 
     // and there are two things to walk back, not four: `pin 2` and `pin 1`
-    assert!(said[3].contains("1 back to active"), "{}", said[3]);
-    assert!(said[4].contains("2 back to active"), "{}", said[4]);
+    assert!(said[3].contains("1 now active"), "{}", said[3]);
+    assert!(said[4].contains("2 now active"), "{}", said[4]);
     assert!(
         said[5].contains("there was nothing of yours to walk back"),
         "a restatement is not a step in the journal: {}",
