@@ -1130,7 +1130,7 @@ async fn introspecting(
     if ask_about_changes {
         // the most specific rule with an answer decides, so these stand over the allowed `context`
         for op in [
-            "elide", "exclude", "archive", "pin", "restore", "revise", "note", "undo", "redo",
+            "elide", "exclude", "pin", "restore", "revise", "note", "undo", "redo",
         ] {
             app.policy
                 .set(&Subject::parse(&format!("context:{op}")), Verdict::Ask);

@@ -877,8 +877,8 @@ itself:
   request; it has never said what decided that, and a model that can read the verdict but not the
   rule cannot argue with either.
 
-The other nine operations of **`context`** change it. `elide`, `exclude`, `archive`, `pin` and
-`restore` move items between
+The other eight operations of **`context`** change it. `elide`, `exclude`, `pin` and `restore`
+move items between
 the same states the <kbd>space</kbd> key does, and each is named for the state it leaves — which
 is the word you will read back on the item afterwards:
 

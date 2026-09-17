@@ -42,14 +42,14 @@ use super::{Amend, Pinned, Reach, action, ids, protected, unknown};
 /// How much of an item's text the listing shows on its row.
 const GLIMPSE: usize = 48;
 
-/// The nine that change, each named for what it leaves behind.
+/// The eight that change, each named for what it leaves behind.
 ///
 /// note: the word for the move is the word the result is reported in - an item you `archive` reads
 /// back as `archived` everywhere it is listed. One level, and the same vocabulary at both ends of
 /// it. They were a `prune` action with a `state` argument once, which put the word for one of them
 /// over all nine.
-const CHANGES: [&str; 9] = [
-    "elide", "exclude", "archive", "pin", "restore", "revise", "note", "undo", "redo",
+const CHANGES: [&str; 8] = [
+    "elide", "exclude", "pin", "restore", "revise", "note", "undo", "redo",
 ];
 
 /// Why a call that changes something has to say why, which is the same sentence nine times.
@@ -60,14 +60,14 @@ const WHY: &str = "why, in your own words; the person you work with reads this, 
 const SELECT: &str = "a class of items instead of `ids`, written in the selector grammar this \
                       tool's description sets out";
 
-/// The thirteen operations, what each is for, and what each reads.
+/// The twelve operations, what each is for, and what each reads.
 ///
 /// note: `reason` is `needed()` wherever a call changes something, which is a thing the schema
 /// could not say before. It was asked for in `invoke` instead, under a note reading "`required` in
 /// a schema is all or nothing" - true of one flat property bag, and the whole reason this is
-/// branches now. Nine operations require it and four do not offer it at all.
+/// branches now. Eight operations require it and four do not offer it at all.
 ///
-/// note: thirteen operations, eight shapes. The five that move an item read one argument list,
+/// note: twelve operations, eight shapes. The four that move an item read one argument list,
 /// which the `MOVES` constant they replace said outright ("one list because they are one
 /// function"), and so do `undo` and `redo`; each group is therefore one branch under an `action`
 /// of several words. Written out per operation they came to nine copies of `reason` and five of
@@ -119,16 +119,16 @@ fn ops() -> Vec<Op> {
     ];
 
     ops.push(Op::these(
-        &["elide", "exclude", "archive", "pin", "restore"],
-        "moves items, and each of the five is named for the state it leaves - which is the word \
+        &["elide", "exclude", "pin", "restore"],
+        "moves items, and each of the four is named for the state it leaves - which is the word \
          you will read back on the item afterwards. Name them with `ids`, or a class of them with \
          `select`. `elide` replaces what an item says with a short marker: the call it answers \
          stays answered and stops costing what it holds, which is what to reach for once a tool \
          result has served its purpose. `exclude` takes it out of the request altogether, and \
-         takes down the call that asked for it. `archive` says the same and means you are done \
-         with it. `pin` protects it from being compacted away. `restore` is the way back from any \
-         of the other four, a `pin` of your own included - it puts an item back to plain active, \
-         so restoring something you pinned unpins it.",
+         takes down the call that asked for it - reach for it when you are done with something \
+         rather than merely finished reading it. `pin` protects it from being compacted away. \
+         `restore` is the way back from any of the other three, a `pin` of your own included - it \
+         puts an item back to plain active, so restoring something you pinned unpins it.",
         vec![
             Arg::list(
                 "ids",
@@ -233,7 +233,7 @@ impl Tool for Context {
         ToolSpec::new(
             "context",
             "your own context: what is in it, what it costs, and what you carry into the next \
-             request. Four operations read it and nine change it, and each says what it does. \
+             request. Four operations read it and eight change it, and each says what it does. \
              Nothing destroys anything: every item keeps its number and can be restored. What \
              is refused is changing a system instruction, the turn you are speaking in, or an \
              item the person you work with pinned - those are not yours. A pin of your own is, \
@@ -1095,7 +1095,7 @@ mod tests {
         let declared: Vec<String> = spec.capabilities.iter().map(ToString::to_string).collect();
 
         assert_eq!(offered, declared, "one list of operations, in one order");
-        assert_eq!(offered.len(), 13, "four that read and nine that change");
+        assert_eq!(offered.len(), 12, "four that read and eight that change");
     }
 
     /// Everything that changes something requires a `reason`, and nothing that only reads offers
@@ -1103,11 +1103,11 @@ mod tests {
     ///
     /// note: this used to hold a hand-written table to `CHANGES` and could only ever check that
     /// the *tool* would ask, because the schema could not say it: `required` was `["action"]` for
-    /// all thirteen, under a note reading "required in a schema is all or nothing". A branch per
+    /// all of them, under a note reading "required in a schema is all or nothing". A branch per
     /// operation is what made that false, so the assertion is now against the schema a model is
-    /// actually shown - nine branches that demand a `reason`, and four that do not mention one.
+    /// actually shown - the branches that demand a `reason`, and the four that do not mention one.
     #[test]
-    fn the_nine_that_change_require_a_reason_and_the_four_that_read_do_not() {
+    fn the_eight_that_change_require_a_reason_and_the_four_that_read_do_not() {
         let spec = tool().spec();
         let branches = spec.schema["properties"]["call"]["anyOf"]
             .as_array()

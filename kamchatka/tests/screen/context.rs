@@ -1170,9 +1170,9 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     );
 
     // the number the listing prints is a handle the command takes, or it is decoration: naming
-    // the row and naming the subject are the same instruction. `fs:read` is the twentieth of the
-    // sorted subjects
-    harness.send("/limit 20 48000").await;
+    // the row and naming the subject are the same instruction. `fs:read` is the nineteenth of the
+    // sorted subjects - every `context:*` sorts before it, so the count moves when that tool does
+    harness.send("/limit 19 48000").await;
     assert_eq!(declared(&harness, "fs", "read"), Some(48_000));
     assert_eq!(
         declared(&harness, "fs", "grep"),
@@ -1197,7 +1197,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     // and the listing is where the range is; every subject is in it, `exec:run` among them
     harness.send("/limit").await;
     let screen = harness.sized(120, 40).replace('\n', " ");
-    assert!(screen.contains("[14] exec:run"), "{screen}");
+    assert!(screen.contains("[13] exec:run"), "{screen}");
     harness.press(KeyCode::Esc).await;
 
     // and nought is not a limit, it is a tool that answers with a marker
@@ -1221,7 +1221,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
         "and every other subject: {screen}"
     );
     // numbered, so that the number the command takes is one somebody can read off the screen
-    assert!(screen.contains("[20] fs:read"), "{screen}");
+    assert!(screen.contains("[19] fs:read"), "{screen}");
 }
 
 /// A limit nothing in this session declares says so, in the listing and on the change.

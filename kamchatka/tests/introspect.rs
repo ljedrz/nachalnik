@@ -977,7 +977,7 @@ async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
         .find(|spec| spec.id == "context")
         .expect("it is offered");
     let offers = offers(&offered.schema);
-    for action in ["elide", "exclude", "archive", "pin", "restore"] {
+    for action in ["elide", "exclude", "pin", "restore"] {
         assert!(
             offers.contains(&action),
             "`{action}` is not offered as an action"
@@ -2740,8 +2740,8 @@ async fn two_notes_with_no_label_are_not_reported_as_a_clash() {
     }
 }
 
-/// An archived note costs nothing and contradicts nothing, so a warning about one would be a
-/// warning about nothing. What the sentence counts is what still goes into the request.
+/// A note that is out of the request costs nothing and contradicts nothing, so a warning about one
+/// would be a warning about nothing. What the sentence counts is what still goes into the request.
 #[tokio::test]
 async fn a_name_freed_by_putting_the_item_away_is_free_again() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
@@ -2753,7 +2753,7 @@ async fn a_name_freed_by_putting_the_item_away_is_free_again() {
         call(
             "c2",
             "context",
-            json!({ "action": "archive", "select": "label:plan", "reason": "done with it" }),
+            json!({ "action": "exclude", "select": "label:plan", "reason": "done with it" }),
         ),
         call(
             "c3",
@@ -2767,7 +2767,7 @@ async fn a_name_freed_by_putting_the_item_away_is_free_again() {
     let said = all_answers(&kernel);
     assert!(
         !said[2].contains("that name too"),
-        "the first one is archived and in nobody's way: {}",
+        "the first one is out of the request and in nobody's way: {}",
         said[2]
     );
 }
@@ -3696,10 +3696,6 @@ async fn every_operation_works_with_its_arguments_inside_the_wrapper() {
         (
             "context",
             json!({ "action": "exclude", "ids": [1], "reason": "why" }),
-        ),
-        (
-            "context",
-            json!({ "action": "archive", "ids": [1], "reason": "why" }),
         ),
         (
             "context",

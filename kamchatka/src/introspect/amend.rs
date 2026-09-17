@@ -660,7 +660,6 @@ fn state_of(word: &str) -> Option<ContextState> {
     Some(match word {
         "exclude" => ContextState::Excluded,
         "elide" => ContextState::Elided,
-        "archive" => ContextState::Archived,
         "pin" => ContextState::Pinned,
         "restore" => ContextState::Active,
         _ => return None,

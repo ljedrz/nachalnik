@@ -195,8 +195,8 @@ impl Limits {
             .chain([Capability::exec("run")])
             .chain(
                 [
-                    "look", "budget", "request", "search", "elide", "exclude", "archive", "pin",
-                    "restore", "revise", "note", "undo", "redo",
+                    "look", "budget", "request", "search", "elide", "exclude", "pin", "restore",
+                    "revise", "note", "undo", "redo",
                 ]
                 .map(domains::context),
             )

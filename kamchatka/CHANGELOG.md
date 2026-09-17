@@ -140,6 +140,20 @@ minor bump may break you.
 
 ### changed
 
+- **`context` has twelve operations, not thirteen: `archive` is gone.** It and `exclude` were one
+  behaviour under two words - measured as producing the same request to the token when the moves
+  were first named, and nothing in the projector, the compactor, the budget or `search` has ever
+  told them apart. What it cost was a thirteenth branch in the schema, a thirteenth subject on two
+  tables, and a model choosing between two words for one act. `exclude` says which one it is now:
+  reach for it when you are done with something rather than merely finished reading it.
+
+  `ContextState::Archived` stays, because the runtime uses it for the one thing it is a true
+  statement about - the whole of a tool output an output limit shortened, kept so the short copy is
+  not the only one left - and `state:archived` still selects those. What changed there is the
+  documentation: the three states that are not projected are one behaviour under three words,
+  nothing in the crate branches on which, and `Excluded` no longer says "and restorable" as though
+  the others were not.
+
 - **An operation declares its own arguments.** Each of these tools described itself to the model as
   one property bag holding every argument any of its operations takes, with the applicability
   written into the prose: nineteen descriptions opened `for `grep`:` or `required by the nine that

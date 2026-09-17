@@ -189,8 +189,8 @@ async fn the_tools_that_read_this_session_go_off_and_on_like_any_other() {
     // Reading your own items, reading the record beside them and rewriting one are different
     // questions, and each is answerable on its own row - which is the whole point of a subject
     // being `context:look` rather than the name of whichever tool happened to serve it
-    // context's thirteen, fork's two, setup's four and log's one
-    let operations = 13 + 2 + 4 + 1;
+    // context's twelve, fork's two, setup's four and log's one
+    let operations = 12 + 2 + 4 + 1;
     harness.tab(Tab::Permissions);
     assert_eq!(harness.app.undecided(), before + operations);
     let screen = harness.screen();
