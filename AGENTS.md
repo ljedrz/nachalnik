@@ -188,6 +188,10 @@ the mistake it came from - which is the half that makes them stick.
   alternatives weighed and dropped, and a closing line that restates the opening one. A number
   earns its place when it is a default or a limit a reader will meet, not when it is a souvenir.
   Length is not thoroughness; on a tool description a model pays for every request, it is a toll.
+- **And nothing in it talks about it.** No sentence standing outside the content to announce it
+  or to grade it - "four things differ, and three of them are the right way round", over a list
+  of four things. Say them. Nobody talks like that, and the test is whether you would say it out
+  loud to somebody at the next desk.
 
 ---
 

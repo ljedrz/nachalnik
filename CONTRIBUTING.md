@@ -400,6 +400,24 @@ for, so there is nothing for it to agree with.
   function, a tool description a model pays for on every request, the first screen of a readme.
   Length there is not thoroughness, it is a toll.
 
+- **And nothing in it talks about it.** The other failure is not length, it is a sentence that
+  steps outside the content to comment on it. The ones that got written here, and were cut:
+
+  - **The announcement**, telling the reader the shape of what is coming. "Four things differ,
+    and three of them are the right way round", over a list of four things. "What was looked
+    into, so that nobody looks again", over the thing that was looked into.
+  - **The verdict**, telling them which part to be impressed by. "It is `sandbox-exec` or
+    nothing, then". "Which is the point", "and that is the whole of it".
+
+  Delete the clause; the sentence is still true and the paragraph is shorter. That is the test,
+  and the second one is reading it aloud - nobody says "four things differ, and three of them are
+  the right way round" to somebody at the next desk, and prose in a voice nobody speaks in has to
+  be translated before it can be used.
+
+  The reversal is not this, and stays: "what would unblock it is not a counter, it is a decision
+  about where a picture reaches the model" carries a fact in each half and is how a correction
+  gets stated here.
+
 ---
 
 ## gotchas
