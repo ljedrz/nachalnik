@@ -611,9 +611,10 @@ const SYSTEM: &[&str] = &[
 /// the read-only case caught on the first run.
 ///
 /// note: and it is an [`Option`], because [`make_scratch`] is allowed to fail and this must not
-/// paper over it. A path that cannot be opened makes `add_rules` fail, which would come back
-/// `Unavailable` - a *command running unconfined* because its temporary directory was not there.
-/// No scratch means no `TMPDIR` and a confinement that still holds.
+/// paper over it by handing the command a `TMPDIR` that is not there. The rule for it is dropped
+/// either way: `path_beneath_rules` leaves out a path it cannot open rather than failing, so a
+/// directory that has gone away costs its own rule and nothing else - which is a fact about
+/// `landlock` rather than about this program, and `tests/sandbox.rs` holds the version to it.
 ///
 /// note: `/dev` gets reading and writing of files and nothing else, because `/dev/null` is not
 /// optional and creating things in `/dev` is not something a shell command needs to do.
@@ -837,6 +838,25 @@ pub fn run_if_asked() -> Option<i32> {
                 Confinement::Unsupported => "unsupported",
             }
         );
+    }
+
+    // note: asked to confine *and* to run, in that order, so a ruleset that did not take leaves
+    // nothing to do. It used to run the command anyway - unconfined, with the whole filesystem and
+    // the network, and with nothing saying so, which is the one thing `Confinement` exists to make
+    // sayable. What the permissions tab draws is the startup probe, which is a different call in a
+    // different process: `main` only hands `shell` a confiner where that probe held, but `Setup`
+    // is public and an embedder can hand it one anywhere, and this is the half that makes the
+    // guarantee the child's rather than the caller's.
+    //
+    // note: no test reaches this on a machine whose kernel confines, which is where the suite
+    // runs - what decides it is `create` failing, and Landlock is either there or it is not.
+    // `landlock` drops a rule it cannot build rather than failing, so a missing path does not.
+    if !confinement.is_confined() {
+        eprintln!(
+            "nothing was run: this program was asked to confine the command first and the sandbox \
+             did not take"
+        );
+        return Some(126);
     }
 
     let mut command = std::process::Command::new("sh");

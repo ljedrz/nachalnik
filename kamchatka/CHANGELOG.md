@@ -40,8 +40,25 @@ minor bump may break you.
   example of a path rule. The refusal names the rule and the grammar, and a `*` before the slash
   goes with it - `secrets*/` is somebody expecting `secrets-old/` to be covered.
 
+- A confined command that could not be confined is not run. The child process is asked to hold
+  itself down and then run the command, and it ran it whatever came of the first half - unconfined,
+  with the whole filesystem and the network, and with nothing saying so. What the permissions tab
+  draws is the startup probe, which is a different call in a different process: `main` only hands
+  `shell` a confiner where that probe held, and `Setup` is public, so this is the half that makes
+  the guarantee the child's rather than the caller's. It says what happened and leaves with 126.
+- `shell` says when the working directory is read-only, which is what a refused `fs:write` makes
+  it. `Sandbox::note_for` deliberately says nothing about a refusal naming a path the session
+  reaches - such a refusal is the file's own permissions - and that is wrong exactly when the
+  session may not write: every write inside the working directory is then the boundary, worded the
+  same way. Standard error does not say whether a refusal was a read or a write, so the sentence
+  that can be certain is the one in the description, before anything runs.
+
 ### changed
 
+- The note on `confine` no longer says a path that cannot be opened makes `add_rules` fail.
+  `landlock`'s `path_beneath_rules` drops such a path and builds the rest, so a `--sandbox-allow`
+  directory that has gone away costs its own rule and nothing else; `tests/sandbox.rs` holds the
+  dependency to it, that being a fact about somebody else's crate.
 - `fs` says the walks obey `.gitignore` and stay out of `.git` without counting either. It said
   they "count what they passed over", and those two are passed over silently - a model told that
   sentence and handed an answer with no skip line concludes nothing was left out.

@@ -145,6 +145,27 @@ impl Tool for Shell {
             None => String::new(),
         };
 
+        // note: the working directory being read-only is said here rather than at the point of
+        // failure, where the rest of the confinement is accounted for. `Sandbox::note_for` says
+        // nothing about a refusal naming a path this session reaches, on the grounds that such a
+        // refusal is the file's own permissions - which is right until `fs:write` is refused, and
+        // then every write inside the working directory is the boundary and reads the same way.
+        // Standard error does not say whether a refusal was a read or a write, so the sentence
+        // that can be certain is this one, before anything is run
+        let read_only = self
+            .confiner
+            .is_some()
+            .then(|| {
+                Sandbox::of(
+                    &self.policy,
+                    self.workdir.clone(),
+                    self.extra.clone(),
+                    self.readable.clone(),
+                    false,
+                )
+            })
+            .is_some_and(|sandbox| !sandbox.writable);
+
         ToolSpec::new(
             "shell",
             format!(
@@ -155,10 +176,16 @@ impl Tool for Shell {
                     true => format!(
                         " It runs confined: outside the working directory it can read this \
                          machine's system paths{} and no more, and TCP may be closed - so a \
-                         permission error there is the confinement rather than the command.",
+                         permission error there is the confinement rather than the command.{}",
                         match opened.is_empty() {
                             true => String::new(),
                             false => format!(", and {},", opened.join(" and ")),
+                        },
+                        match read_only {
+                            true =>
+                                " The working directory is read-only in this session, so a \
+                                     refusal to write in it is that boundary too.",
+                            false => "",
                         }
                     ),
                     false => String::new(),
