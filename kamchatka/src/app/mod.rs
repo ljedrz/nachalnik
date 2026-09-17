@@ -2717,10 +2717,18 @@ impl App {
                     .get(&Subject::Domain(capability.domain.clone()))
                     .is_some_and(|verdict| *verdict != Verdict::Ask)
         };
+        // note: and a capability nothing here is judged by is not a question either. `mcp:call` is
+        // declared by every tool from a server and `judges` puts the server's own name in its
+        // place where this program spawned it, so a session run `--mcp big=...` counted a subject
+        // it will never be asked about among the ones it will. A tool declaring it with nobody
+        // holding the far end is a different matter and still counts.
+        let judged = |tool: &str, capability: &Capability| {
+            (self.policy).decides(&Subject::Capability(capability.clone()), tool)
+        };
         for spec in &specs {
             subjects.extend(
                 (spec.capabilities.iter())
-                    .filter(|capability| !answered_above(capability))
+                    .filter(|it| judged(&spec.id, it) && !answered_above(it))
                     .cloned()
                     .map(Subject::Capability),
             );

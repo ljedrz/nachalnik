@@ -392,6 +392,38 @@ async fn a_rule_about_mcp_covers_nothing_a_spawned_server_offers() {
     assert!(row.contains("loose"), "and this one it really does: {row}");
 }
 
+/// And a capability the server answers for is not a question this session has, either.
+///
+/// note: the other half of the same swap, on the count rather than on a row. Every tool from a
+/// server declares `mcp:call` and none of them is judged by it, so a session run `--mcp big=...`
+/// with nobody having written a rule about `mcp` counted a subject it will never stop and ask
+/// about among the ones it will - the figure somebody reads to know how much of the session is
+/// still undecided.
+#[tokio::test]
+async fn a_capability_a_server_answers_for_is_not_a_question_this_session_has() {
+    let mut harness = Harness::new(Vec::new());
+    harness.tab(Tab::Permissions);
+    let untold = harness.app.undecided();
+
+    let unvouched = Capability::of(nachalnik::Domain::Other("mcp".to_owned()), "call");
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("files__read", "did it").with_capabilities([unvouched.clone()]),
+    ));
+    harness.app.policy.came_from("files__read", "files");
+
+    // the server is what a call to it is judged as, so what was added is that server and nothing
+    // else - `mcp:call` is not a decision here and not a question here
+    assert_eq!(harness.app.permissions().len(), 0);
+    assert_eq!(harness.app.undecided(), untold + 1);
+
+    // a tool declaring the same thing with nobody holding the far end of it really will be asked
+    // about under that name, and it counts
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("loose", "did it").with_capabilities([unvouched]),
+    ));
+    assert_eq!(harness.app.undecided(), untold + 2);
+}
+
 #[tokio::test]
 async fn a_shell_reaching_for_the_network_is_judged_as_reaching_for_it() {
     use kamchatka::tools::reaches_the_network as reaches;

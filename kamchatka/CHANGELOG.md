@@ -78,6 +78,11 @@ minor bump may break you.
   row's own column, which is where a rule is read. An operation somebody answered about separately
   keeps its row - `--allow fs --deny fs:write` is two decisions - and one nobody has decided is
   still counted along the bottom.
+- `mcp:call` is not counted among the subjects a session will stop and ask about. Every tool from
+  a server declares it and `Careful::judges` puts the server's own name in its place where this
+  program spawned it, so the figure that says how much is still undecided included a subject
+  nothing here is ever judged by. A tool declaring it with nobody holding the far end of it is
+  still a question and still counts.
 - A networked command allowed in a headless run is granted the network. Everything answering a
   permission question means beyond the decision itself lived in the key handler, and that loop has
   no keys - so `--on-ask allow` let a `curl` through and then ran it with TCP cut. Both drivers
