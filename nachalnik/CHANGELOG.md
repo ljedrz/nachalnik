@@ -75,6 +75,23 @@ minor bump may break you.
   and `pricing_a_picture` is the third keyless example CI runs now, so the blob path has a run
   behind it rather than only a unit test.
 
+### fixed
+
+- What an endpoint charges for its own framing is no longer read as a bias to correct for.
+  `Calibrating` learns only from requests big enough to have a systematic error in them, and it was
+  asking that of the *reported* figure - the wrong side of the ratio. An endpoint's preamble and the
+  scaffolding round a tool call are a fixed cost, so on a small request they are the whole of the
+  difference: `mercury-2.5` reported **933** tokens for a request estimated at 31, a ratio of 30,
+  held at the bounds to 10, and from then on every figure in the session read ten times what it
+  was. The second request of that session was counted at 53,210 tokens and refused for its length
+  before it was sent. Both sides of the pair have to be a real request now.
+- The whole of a shortened tool output carries the same label as the copy the model was shown. An
+  output limit records two items for one call, and the label is the only name either row carries -
+  the column beside it is the kind, which reads `tool_result` for both. Only the short copy was
+  getting the tool and the operation, so a context listed `fs` above the `fs:read` it holds the
+  rest of: a second call, apparently, by a tool that would not say what it did, on precisely the
+  row somebody opens to read the part that was cut.
+
 ## [0.5.2] - 2026-09-14
 
 ### changed

@@ -137,6 +137,25 @@ minor bump may break you.
   function now, and it reads the suffix without regard to case the way `attach` reads an extension,
   so `notes.JSON` names the session on a filesystem that does not care how a name is spelled. The
   stem is left exactly as typed, because that half really does name a different file where it does.
+- A rule about `mcp` covers nothing a server this program spawned offers, and both tables that say
+  what a rule covers now agree with the one that decides. `Careful::judges` takes `mcp:call` out of
+  what it consults for a tool whose server it knows and puts the server's own name there instead,
+  so that `--allow-server` is one flag rather than two; the permissions tab and `setup: permissions`
+  were filling their coverage column from what a tool *declares*, which is the list before that
+  swap. A session run `--allow mcp --mcp big=...` read `mcp:call  allow  big__add, big__spew` and
+  then refused the very next call to one of them. That column is the only account of the
+  permissions a model ever gets, and it is what a person checks their own flags against.
+- The two lines that answered by naming a key now name a command, because a headless run has no
+  keyboard and is the same `App`. A request with several repairs in it said `ctrl+p says where` -
+  and the list itself goes to the trace, which a headless run does not print, so a session driven
+  down a pipe was told to press a key it does not have about a list it could not otherwise see.
+  A line that is not a command said `F1 lists what there is`. `/request` and `/help` open the same
+  two pages and work in both.
+- `undo` no longer describes a note it walked back as going *back to* a state it has never been in.
+  The way back from having written one is to put it away, so an undone note is archived and still
+  listed - and the report read `10 back to archived` about an item created thirty seconds earlier.
+  A live run read exactly that line and told the person the item had been restored to being
+  archived. Each line says where its item ended up; the direction is in the sentence above them.
 
 ### changed
 
