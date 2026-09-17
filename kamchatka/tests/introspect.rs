@@ -17,10 +17,12 @@ use kamchatka::{
     tools::{Careful, Limits, Subject},
 };
 use nachalnik::{
-    Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, Role, ToolCallId,
-    Verdict,
+    Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, OutputSink, Role,
+    ToolCallId, Verdict,
     test::{ScriptedProvider, call},
 };
+mod common;
+
 use serde_json::json;
 
 /// The branches of a tool's schema: one per shape a call may take.
@@ -3629,4 +3631,121 @@ async fn the_limits_table_has_a_row_for_every_subject_a_tool_declares() {
         "these have a limit row and nothing declares them, so `/limit` lists a number that is \
          never consulted: {extra:?}"
     );
+}
+
+/// Every operation works when its arguments arrive the way the schema asks for them.
+///
+/// note: the shape nothing was testing. The schema tells a model to put its arguments inside a
+/// `call` object; `inner` also accepts them flat, because refusing an unambiguous call costs a
+/// turn - and every test in this workspace was written before the wrapper existed, so all 133 of
+/// them take the flat path and the real one was exercised by almost nothing. Three readers had
+/// already been found reading the outside of the wrapper by hand.
+///
+/// note: `invoke` directly rather than through a turn, because what is under test is reading the
+/// arguments and not the policy, the projector or the provider. An operation that failed to unwrap
+/// answers "`` is not something `fs` does" or "the `path` argument is required" - both errors, so
+/// the assertion is simply that nothing came back as one.
+#[tokio::test]
+async fn every_operation_works_with_its_arguments_inside_the_wrapper() {
+    let dir = common::scratch("every-operation-wrapped");
+    std::fs::write(dir.join("a.rs"), "fn main() {}\n").expect("a file to act on");
+
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+    for tool in kamchatka::tools::builtin(
+        kamchatka::tools::Shell {
+            workdir: dir.clone(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            policy: Arc::new(Careful::new()),
+            confiner: None,
+            limits: Limits::default(),
+        },
+        kamchatka::sandbox::Reach {
+            workdir: dir.clone(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            // confined, so a relative path resolves against the directory above rather than
+            // against wherever cargo started this process
+            confined: true,
+        },
+        Limits::default(),
+    ) {
+        kernel.add_tool(tool);
+    }
+    kernel.push(ContextItem::user("something to act on"));
+    kernel.push(ContextItem::user("and a second thing"));
+
+    // one call per operation, in an order that leaves the context usable for the next: the reads
+    // first, then a note to have something of this tool's own to move, then the moves over it
+    let wanted: Vec<(&str, serde_json::Value)> = vec![
+        ("fs", json!({ "action": "read", "path": "a.rs" })),
+        ("fs", json!({ "action": "glob", "pattern": "*.rs" })),
+        ("fs", json!({ "action": "grep", "pattern": "fn" })),
+        (
+            "fs",
+            json!({ "action": "write", "path": "b.rs", "content": "//\n" }),
+        ),
+        (
+            "fs",
+            json!({ "action": "edit", "path": "b.rs", "old": "//", "new": "// x" }),
+        ),
+        ("shell", json!({ "action": "run", "cmd": "echo hello" })),
+        ("log", json!({ "action": "read" })),
+        ("setup", json!({ "action": "model" })),
+        ("setup", json!({ "action": "tools" })),
+        ("setup", json!({ "action": "permissions" })),
+        ("setup", json!({ "action": "policy" })),
+        ("context", json!({ "action": "look" })),
+        ("context", json!({ "action": "budget" })),
+        (
+            "context",
+            json!({ "action": "search", "text": "something" }),
+        ),
+        (
+            "context",
+            json!({ "action": "note", "content": "a finding", "reason": "why" }),
+        ),
+        (
+            "context",
+            json!({ "action": "revise", "ids": [1], "content": "changed", "reason": "why" }),
+        ),
+        (
+            "context",
+            json!({ "action": "elide", "ids": [1], "reason": "why" }),
+        ),
+        (
+            "context",
+            json!({ "action": "exclude", "ids": [1], "reason": "why" }),
+        ),
+        (
+            "context",
+            json!({ "action": "archive", "ids": [1], "reason": "why" }),
+        ),
+        (
+            "context",
+            json!({ "action": "pin", "ids": [2], "reason": "why" }),
+        ),
+        (
+            "context",
+            json!({ "action": "restore", "ids": [2], "reason": "why" }),
+        ),
+        ("context", json!({ "action": "undo", "reason": "why" })),
+        ("context", json!({ "action": "redo", "reason": "why" })),
+    ];
+
+    for (id, args) in wanted {
+        let action = args["action"].as_str().expect("each names one").to_owned();
+        let tool = kernel.tool(id).expect("it is installed");
+        let call = call("c1", id, json!({ "call": args }));
+        let out = tool
+            .invoke(&call, OutputSink::disconnected())
+            .await
+            .unwrap_or_else(|e| panic!("`{id}: {action}` did not run at all: {e}"));
+
+        assert!(
+            !out.is_error,
+            "`{id}: {action}` refused a call in the shape its own schema asks for: {}",
+            out.content
+        );
+    }
 }
