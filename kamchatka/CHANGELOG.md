@@ -58,6 +58,15 @@ minor bump may break you.
 
 ### fixed
 
+- Four things a tool description left a model to find out by spending a call. `shell` said "long
+  output is cut off at the end" and now says at how many bytes, read off the limits table so that
+  `/limit exec:run` moves the sentence too. `context`'s `search` and `log`'s `take` say what
+  happens when they are left out, which every other argument that has a default already did.
+  `log`'s `kinds` said "spelled as the summary spells them", which is the vocabulary behind the
+  thing you need the vocabulary to ask for, and now spells two. And `select` gives three of its
+  forms where a call is written rather than only in the tool's description above. 198 bytes a
+  request, against four ways to spend a turn learning what a sentence could have said.
+
 - A call asked permission for the one thing it does again, rather than for everything its tool can
   do. `context` reading its own items declared all thirteen of its subjects, so `look` at three
   items asked to be allowed `revise` and `elide` too, and `--allow context:look` on its own could

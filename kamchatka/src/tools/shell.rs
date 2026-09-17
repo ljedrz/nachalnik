@@ -134,11 +134,22 @@ impl Tool for Shell {
             )
             .collect();
 
+        // note: the figure rather than "long output", because what a model does about a limit it
+        // cannot see is find out by spending it - and read off the table rather than written into
+        // the sentence, since `/limit exec:run` moves it and a description is built afresh for
+        // every request. Bare, the way the marker a cut output carries is bare: the model reads
+        // `[... 4000 bytes truncated by an output limit ...]` against this, and the two should be
+        // the same kind of number
+        let cut = match self.limits.for_call(&[Capability::exec("run")]) {
+            Some(bytes) => format!(" Output over {bytes} bytes is cut off at the end."),
+            None => String::new(),
+        };
+
         ToolSpec::new(
             "shell",
             format!(
                 "runs one command with `sh -c` in the working directory and returns its exit \
-                 status, its output and its errors. Long output is cut off at the end. Nothing \
+                 status, its output and its errors.{cut} Nothing \
                  is typed at it: a command that waits for input waits for ever.{}",
                 match self.confiner.is_some() {
                     true => format!(

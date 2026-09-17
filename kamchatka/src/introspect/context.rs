@@ -57,8 +57,9 @@ const WHY: &str = "why, in your own words; the person you work with reads this, 
                    the item's note";
 
 /// What a `select` is, said where the five that take one can read it.
-const SELECT: &str = "a class of items instead of `ids`, written in the selector grammar this \
-                      tool's description sets out";
+const SELECT: &str = "a class of items instead of `ids`, in the selector grammar this tool's \
+                      description sets out: `all:tool_results`, `state:elided`, \
+                      `tool:shell:latest`";
 
 /// The twelve operations, what each is for, and what each reads.
 ///
@@ -125,7 +126,11 @@ fn ops() -> Vec<Op> {
                 )
                 .needed(),
                 Arg::list("ids", "integer", "look only in these items, by number"),
-                Arg::whole("take", "show this many of the matching lines"),
+                Arg::whole(
+                    "take",
+                    "show this many of the matching lines; left out, you get the count and the \
+                     price and no lines",
+                ),
             ],
         ),
     ];

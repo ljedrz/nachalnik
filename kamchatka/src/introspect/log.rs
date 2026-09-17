@@ -53,7 +53,8 @@ fn ops() -> Vec<Op> {
         vec![
             Arg::whole(
                 "take",
-                "the most recent N of whatever matched; the header still says how many there are",
+                "the most recent N of whatever matched; left out, all of them. The header says \
+                 how many there are either way",
             ),
             Arg::list(
                 "ids",
@@ -70,10 +71,15 @@ fn ops() -> Vec<Op> {
                 "only the records after this sequence number, which is the first column; `0` is \
                  all of them",
             ),
+            // note: two of them written out, because "spelled as the summary spells them" is the
+            // vocabulary behind the thing you need the vocabulary to ask for. The summary is
+            // still where the list is - it is this session's kinds rather than every kind there
+            // is - and a model that has not read one now knows the shape of a name
             Arg::list(
                 "kinds",
                 "string",
-                "only these kinds, spelled as the summary spells them",
+                "only these kinds, as `context.added` or `permission.decided`; the summary lists \
+                 the ones this session has",
             ),
             // note: the same word `context: look` uses for the same trade, because it is the same
             // trade. Without it a replacement is shown as its first line; with it the whole of

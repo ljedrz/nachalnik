@@ -3666,6 +3666,35 @@ async fn the_limits_table_has_a_row_for_every_subject_a_tool_declares() {
     );
 }
 
+/// `shell` says where its output is cut off, and says the number this session is holding.
+///
+/// note: it said "long output is cut off at the end", which a model finds the edge of by spending
+/// a call on it. The figure is read off the limits table rather than written into the sentence
+/// because `/limit exec:run` moves it and a description is built afresh for every request - so a
+/// session that raised the limit and a description that still quoted the old one would be this
+/// program telling a model something it had itself just made untrue.
+#[tokio::test]
+async fn the_shell_says_how_much_of_an_answer_it_will_hand_back() {
+    let limits = Limits::default();
+    let shell = kamchatka::tools::Shell {
+        workdir: std::path::PathBuf::from("/w"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        policy: Arc::new(Careful::new()),
+        confiner: None,
+        limits: limits.clone(),
+    };
+
+    let said = nachalnik::Tool::spec(&shell).description;
+    assert!(said.contains("32000 bytes is cut off"), "{said}");
+
+    // and the sentence follows the table rather than repeating what it said at startup
+    limits.set("exec:run", 4_000);
+    let said = nachalnik::Tool::spec(&shell).description;
+    assert!(said.contains("4000 bytes is cut off"), "{said}");
+    assert!(!said.contains("32000"), "{said}");
+}
+
 /// Every operation works when its arguments arrive the way the schema asks for them.
 ///
 /// note: the shape nothing was testing. The schema tells a model to put its arguments inside a
