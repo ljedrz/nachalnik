@@ -122,7 +122,11 @@ impl Tool for Fork {
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
 
-        match action(args)? {
+        let action = action(args)?;
+        if let Some(refusal) = crate::tools::ops::unread(action, args, &self.ops) {
+            return Ok(ToolOutput::error(refusal));
+        }
+        match action {
             "draft" => branch(&kernel, None, &[], &output).await,
             "ask" => {
                 let Some(question) = args["question"].as_str() else {
@@ -189,6 +193,12 @@ async fn branch(
     );
     fork.set_provider(provider);
     fork.set_projector(kernel.projector());
+    // whose items the count is about: what follows adds a system instruction of this tool's own,
+    // and `ask` adds the question - neither of them the caller's, and both of them counted as
+    // theirs until now. A fork is worth having because two runs are comparable, and a number that
+    // moves with which of the two operations asked for it is not
+    let theirs: std::collections::BTreeSet<ContextId> =
+        fork.items().iter().map(|item| item.id).collect();
     // note: said out loud, because the copy cannot work it out. It inherits a conversation full of
     // tool calls and their results and no tool definitions at all, and a model reading that asks
     // for a tool - which nothing here can run, so the answer comes back as a call and no words.
@@ -207,7 +217,12 @@ async fn branch(
     // what the fork will actually read, rather than what it was handed: the projector still has
     // to repair the call this very tool is answering out of the copy, and a count taken before it
     // did would be one the fork never saw
-    let items = fork.project().included.len();
+    let items = fork
+        .project()
+        .included
+        .iter()
+        .filter(|id| theirs.contains(id))
+        .count();
 
     let mut events = fork.subscribe();
     let sink = output.clone();
@@ -259,10 +274,10 @@ async fn branch(
     // everything, so the reply says so.
     match left_out.is_empty() {
         true => out.push_str(
-            ". The copy saw all of them: nothing was left out, so this is the same context \
-             answering again rather than a test of what any of it was doing. `without` takes items \
-             away from the copy, and a question that asks it to disregard something is not the \
-             same thing - it is still reading it.",
+            ". Nothing of yours was taken away, so this is the same context answering again \
+             rather than a test of what any of it was doing. `without` takes items away from the \
+             copy, and a question that asks it to disregard something is not the same thing - it \
+             is still reading it.",
         ),
         false => {
             let numbers: Vec<String> = left_out.iter().map(|id| id.to_string()).collect();

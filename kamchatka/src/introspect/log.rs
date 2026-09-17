@@ -165,7 +165,7 @@ impl Tool for Log {
         let read = kernel.with_history(|session| {
             let mut kinds: BTreeMap<&'static str, usize> = BTreeMap::new();
             let mut every = String::new();
-            let mut matched = String::new();
+            let mut matched: Vec<String> = Vec::new();
             let mut added = BTreeSet::new();
             let mut hits = 0;
 
@@ -177,7 +177,7 @@ impl Tool for Log {
                 every.push_str(&line(record, false));
                 if query.wants(record) {
                     hits += 1;
-                    matched.push_str(&line(record, query.whole));
+                    matched.push(line(record, query.whole));
                 }
             }
 
@@ -207,8 +207,14 @@ struct Read {
     kinds: BTreeMap<&'static str, usize>,
     /// Every record, rendered, which is what "if you take them all" is priced from.
     every: String,
-    /// The ones that matched, rendered.
-    matched: String,
+    /// The ones that matched, rendered, one entry per record.
+    ///
+    /// note: per record rather than one string, because `take` is "the most recent N of whatever
+    /// matched" and a record is not a line: `whole` prints a replaced item's old text entire, so
+    /// one record can be forty of them. Counting lines took the last N *lines*, which is the tail
+    /// of somebody's old file with no sequence number and no event name in front of it, and the
+    /// header called that a count of records.
+    matched: Vec<String>,
     /// How many those were.
     hits: usize,
     /// The sequence number of the oldest record still here; `0` when there are none.
@@ -422,7 +428,7 @@ impl Query {
         // matched everything, and "15 match" against a total of 15 is a sentence that says
         // nothing twice
         if self.narrowed() {
-            let matched = counter.count(&Content::text(read.matched.clone()));
+            let matched = counter.count(&Content::text(read.matched.concat()));
             out.push_str(&format!(
                 " {} match {}, ~{} tokens.",
                 thousands(read.hits),
@@ -445,14 +451,13 @@ impl Query {
             }
         }
 
-        // `take` counts from the end, because a log is read from the end - but the lines stay in
-        // the order they happened, which is the order everything else here reports them in
-        let lines: Vec<&str> = read.matched.lines().collect();
+        // `take` counts from the end, because a log is read from the end - but the records stay
+        // in the order they happened, which is the order everything else here reports them in
         let shown = match self.take {
-            Some(take) => take.min(lines.len()),
-            None => lines.len(),
+            Some(take) => take.min(read.matched.len()),
+            None => read.matched.len(),
         };
-        let beyond = lines.len() - shown;
+        let beyond = read.matched.len() - shown;
         match beyond {
             0 => out.push_str(&format!(" Showing {}.\n", thousands(shown))),
             // said as a figure rather than implied by the count, because the thing a shortened
@@ -470,8 +475,7 @@ impl Query {
         }
         out.push_str(&self.inherited(kernel, read));
         out.push('\n');
-        out.push_str(&lines[beyond..].join("\n"));
-        out.push('\n');
+        out.push_str(&read.matched[beyond..].concat());
 
         out
     }

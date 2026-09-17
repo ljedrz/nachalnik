@@ -9,6 +9,26 @@ minor bump may break you.
 
 ### fixed
 
+- `log`'s `take` counts records, which is what it says it counts. It counted rendered lines, and
+  `whole` prints a replaced item's old text entire - so `take: 1` against a record holding three
+  lines of it handed back the last of those lines, with no sequence number and no event name in
+  front of it, under a header calling that one record.
+- `fork` and `setup` refuse an argument the action they name does not read, which the other tools
+  have done since the last release. `without` belongs to `ask`, so a `draft` carrying one bought a
+  request whose answer read as the experiment the caller asked for and was not one - an ablation
+  nobody performed is read as evidence. `shell` asks the same question now, from the same table its
+  schema is built from.
+- A fork counts the caller's items rather than its own. The count was taken after this tool pushes
+  the copy's system instruction, and after `ask` pushes the question, so the figure moved with
+  which operation asked for it - and it is there to be compared between runs.
+- `setup permissions` says what an undecided rule means, which is not the same for the two kinds.
+  One sentence said both stop and ask "whatever the rows above say": true of a server, which is
+  consulted beside the rows, and false of a domain, which an exact rule answers for. A model told
+  that a read it is allowed will stop does not try it.
+- A fork that was given no `without` says nothing of the caller's was taken away, rather than that
+  the copy saw everything. The projector repairs the unfinished call out of the copy, so the
+  stronger sentence was not true; what the line is for is telling an ablation from a question that
+  merely asks the copy to disregard something.
 - An `undo` does not walk back over a decision the person has made since. Every other move in
   `context` asks whether an item is theirs to move - a system instruction, a pin they put on - and
   this one went straight to the kernel, so a pin made after the model elided an item came off again

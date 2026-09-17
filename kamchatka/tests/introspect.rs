@@ -2216,6 +2216,56 @@ async fn a_filtered_log_opens_with_the_whole_total_and_not_the_filtered_one() {
 /// was would have been a false sense of a well-watched seam. What nothing else catches is the
 /// pair of things this tool adds: finding the record by the *item* number rather than by kind,
 /// and `whole` - drop either and only this fails.
+/// `take` counts records, which is what it says it counts, and a whole one is not one line.
+///
+/// note: it counted rendered *lines*, and `whole` prints a replaced item's old text entire - so
+/// `take: 1` against a record holding three lines of old text handed over the last of those lines
+/// with no sequence number and no event name in front of it, and the header called that one
+/// record. The two arguments are tested apart from each other everywhere else.
+#[tokio::test]
+async fn take_counts_records_even_where_one_of_them_is_many_lines() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({
+                "action": "revise",
+                "ids": [1],
+                "content": "one line now",
+                "reason": "it was three",
+            }),
+        ),
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "kinds": ["context.replaced"], "whole": true, "take": 1 }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::memory(
+        "scratch",
+        "the parser is in src/parser.rs\nthe lexer is in src/lex.rs\nthe kernel is next door",
+    ));
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let whole = said.last().unwrap();
+
+    assert!(
+        whole.contains("context.replaced"),
+        "the one record asked for arrived without its name: {whole}"
+    );
+    assert!(
+        whole.contains("src/parser.rs") && whole.contains("the kernel is next door"),
+        "a whole record is the whole of it: {whole}"
+    );
+    assert!(
+        whole.contains("Showing 1.") && !whole.contains("not here"),
+        "one record matched and one was asked for: {whole}"
+    );
+}
+
 #[tokio::test]
 async fn a_revised_item_can_be_read_back_out_of_the_log_by_its_number() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
@@ -2800,6 +2850,49 @@ async fn setup_model_says_whether_this_conversation_was_inherited() {
     assert!(
         now.contains("may not be you"),
         "and says the turns in it are not necessarily its own: {now}"
+    );
+}
+
+/// An undecided domain is not the last word, and an undecided server is; the report says which.
+///
+/// note: one sentence used to cover both - "will stop and ask, whatever the rows above say" -
+/// which is true of a server and false of a domain. `Careful::stance` reads the exact stance in
+/// front of the domain's, so `fs` undecided beside `fs:read` allowed is a read that does not stop,
+/// and the table said it did. A model that believes it will be stopped does not try.
+#[tokio::test]
+async fn an_undecided_domain_says_that_a_row_above_it_can_answer_for_one_operation() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "permissions" }),
+    )])));
+    kernel.set_provider(provider);
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    // somebody has looked at `fs` and left it, and answered for one operation in it
+    policy.set(&Subject::parse("fs"), Verdict::Ask);
+    policy.set(&Subject::parse("fs:read"), Verdict::Allow);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy.clone(), Limits::default());
+
+    kernel.push(ContextItem::user("what may you do?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("unless a row above names that operation"),
+        "an undecided domain is answerable by an exact rule: {said}"
+    );
+    assert!(
+        !said.contains("whatever the rows above say"),
+        "which is what the old sentence claimed for it: {said}"
+    );
+    // and the policy agrees with the sentence
+    assert_eq!(
+        policy.stance(&Subject::parse("fs:read")),
+        Verdict::Allow,
+        "the report and the policy disagree about the same call"
     );
 }
 
@@ -3932,6 +4025,40 @@ async fn a_search_finds_a_blob_by_what_names_it() {
 /// "on 9 of your items", which cannot be read as "on all of them", so nothing in it contradicted
 /// the story. The difference between taking an item away and asking a model to disregard it is the
 /// whole of what `fork` is for.
+/// A `draft` carrying `without` is refused, rather than answered without the items it names.
+///
+/// note: `fork` and `setup` were the two tools that never asked `unread`, and this is the one
+/// where it costs something: `without` belongs to `ask`, `draft` takes no arguments at all, and a
+/// `draft` that carried one bought a request whose answer looked like the experiment the caller
+/// had asked for. An ablation nobody performed is worse than a refusal - it is read as evidence.
+#[tokio::test]
+async fn a_draft_that_names_items_to_leave_out_is_refused_rather_than_answered() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "fork",
+            json!({ "action": "draft", "without": [1] }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("quicksort is fastest"));
+    kernel.push(ContextItem::user("go on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["fork"]);
+    let refusal = said.last().expect("the tool answered");
+    assert!(refusal.contains("`without`"), "{refusal}");
+    assert!(
+        refusal.contains("`ask`"),
+        "it says whose argument it is: {refusal}"
+    );
+    assert!(
+        !refusal.contains("what you would say if you answered now"),
+        "the draft was answered anyway: {refusal}"
+    );
+}
+
 #[tokio::test]
 async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
     let (kernel, _provider, _anchor) = agent([
@@ -3957,9 +4084,17 @@ async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
     let said = answers_from(&kernel, &["fork"]);
     let (pretended, ablated) = (&said[0], &said[1]);
 
+    // note: what it can say, which is that nothing was withheld. It used to say the copy saw all
+    // of the caller's items, and the projector had already repaired the unfinished call out of it
     assert!(
-        pretended.contains("The copy saw all of them"),
+        pretended.contains("Nothing of yours was taken away"),
         "{pretended}"
+    );
+    // and the count is the caller's items, not the two this tool adds: the copy's own system
+    // instruction and the question put to it
+    assert!(
+        pretended.contains("on 2 of your items"),
+        "the count is of the caller's items: {pretended}"
     );
     assert!(
         pretended.contains("is still reading it"),

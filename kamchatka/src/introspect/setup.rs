@@ -121,7 +121,11 @@ impl Tool for Setup {
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
 
-        match action(args)? {
+        let action = action(args)?;
+        if let Some(refusal) = crate::tools::ops::unread(action, args, &self.ops) {
+            return Ok(ToolOutput::error(refusal));
+        }
+        match action {
             "model" => Ok(ToolOutput::new(model(&kernel))),
             "tools" => Ok(ToolOutput::new(tools(&kernel, &self.limits))),
             "permissions" => Ok(ToolOutput::new(permissions(&kernel, &self.policy))),
@@ -343,7 +347,13 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     // this table of operations: it is not declared by anything - a tool declares `context:revise`,
     // never `context` - so it would read `nothing here is judged by it` beside a verdict that
     // governs three rows above it. It gets a section of its own below, the way a path rule does.
-    let mut broader: Vec<(String, String, Verdict)> = Vec::new();
+    //
+    // note: the flag says which of the two kinds a row is, because an undecided one means
+    // different things for each and the sentence below used to make one statement about both. A
+    // domain is answered by a row above it that names the same operation - `Careful::stance`
+    // reads the exact stance in front of the domain's - and a server is consulted *beside* those
+    // rows, so an undecided server stops every call from it whatever its tools' rows say.
+    let mut broader: Vec<(String, String, Verdict, bool)> = Vec::new();
     for (subject, verdict) in policy.stances() {
         match subject {
             Subject::Capability(capability) => {
@@ -354,10 +364,16 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
                     domain.to_string(),
                     "every operation in it".to_owned(),
                     verdict,
+                    false,
                 ));
             }
             Subject::Server(name) => {
-                broader.push((format!("server {name}"), "its tools".to_owned(), verdict));
+                broader.push((
+                    format!("server {name}"),
+                    "its tools".to_owned(),
+                    verdict,
+                    true,
+                ));
             }
             Subject::Path(_) => {}
         }
@@ -420,7 +436,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     // said nothing would be standing silently for every one of those answers
     let (decided, undecided): (Vec<_>, Vec<_>) = broader
         .into_iter()
-        .partition(|(_, _, verdict)| *verdict != Verdict::Ask);
+        .partition(|(_, _, verdict, _)| *verdict != Verdict::Ask);
     if !decided.is_empty() {
         // note: what these cover is the third column, because the two kinds do not cover the same
         // sort of thing: a domain is a set of operations and a server is a set of tools. The
@@ -428,20 +444,32 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         // is the opposite of a domain and not true of either - `--allow log` is every operation in
         // `log`, and `server big` names no tool at all
         out.push_str("\nand the broader rules, which have no row of their own above:\n");
-        for (rule, covers, verdict) in &decided {
+        for (rule, covers, verdict, _) in &decided {
             out.push_str(&format!("{rule:<28}  {:<8}  {covers}\n", said(*verdict)));
         }
     }
-    if !undecided.is_empty() {
+    let (servers, domains): (Vec<_>, Vec<_>) = undecided.iter().partition(|(.., server)| *server);
+    let named = |rules: &[&(String, String, Verdict, bool)]| {
+        rules
+            .iter()
+            .map(|(rule, ..)| rule.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    if !domains.is_empty() {
         out.push_str(&format!(
-            "\n{} broader rule(s) are undecided and will stop and ask, whatever the rows above \
-             say: {}.\n",
-            undecided.len(),
-            undecided
-                .iter()
-                .map(|(rule, _, _)| rule.as_str())
-                .collect::<Vec<_>>()
-                .join(", "),
+            "\n{} domain rule(s) are undecided, so anything done in them stops and asks unless a \
+             row above names that operation: {}.\n",
+            domains.len(),
+            named(&domains),
+        ));
+    }
+    if !servers.is_empty() {
+        out.push_str(&format!(
+            "\n{} server rule(s) are undecided, and a server is consulted beside the rows above - \
+             so a call from one stops and asks whatever its own rows say: {}.\n",
+            servers.len(),
+            named(&servers),
         ));
     }
 

@@ -16,7 +16,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::tools::{
     Careful, Limits, arg,
-    ops::{Arg, Op, inner, schema},
+    ops::{self, Arg, Op, inner, schema},
 };
 
 /// How long a running command may say nothing before the tool looks up to check whether it has
@@ -113,6 +113,19 @@ pub struct Shell {
     pub limits: Limits,
 }
 
+/// The one thing it does, and the one argument that does it.
+///
+/// note: a function rather than written into the schema, because the refusal for an argument
+/// `run` does not read reads the same table the schema is built from - which is what stops the
+/// two from disagreeing about what `shell` takes.
+fn ops() -> Vec<Op> {
+    vec![Op::new(
+        "run",
+        "",
+        vec![Arg::text("cmd", "the command line, as a shell would read it").needed()],
+    )]
+}
+
 #[async_trait]
 impl Tool for Shell {
     fn spec(&self) -> ToolSpec {
@@ -196,11 +209,7 @@ impl Tool for Shell {
         // offers takes an `action` and a model should not have to remember which of them is the
         // exception. It costs a word in the call and buys a rule with no holes in it - the same
         // reasoning `log` is written to
-        .with_schema(schema(&[Op::new(
-            "run",
-            "",
-            vec![Arg::text("cmd", "the command line, as a shell would read it").needed()],
-        )]))
+        .with_schema(schema(&ops()))
         .with_capabilities([Capability::exec("run")])
     }
 
@@ -221,6 +230,13 @@ impl Tool for Shell {
             return Ok(ToolOutput::error(format!(
                 "`{named}` is not something `shell` does; it does run"
             )));
+        }
+        // the rule the other tools hold to, and there is no reason for the one with a single
+        // operation to be the exception: an ignored argument comes back as a real answer - the
+        // answer to the call without it - and `cmd` beside a stray `path` is a command somebody
+        // meant to point somewhere
+        if let Some(refusal) = ops::unread("run", args, &ops()) {
+            return Ok(ToolOutput::error(refusal));
         }
         let cmd = arg(args, "cmd")?;
 
