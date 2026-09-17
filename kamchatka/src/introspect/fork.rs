@@ -16,12 +16,15 @@ use nachalnik::{
     BoxError, Capability, Config, ContextId, ContextItem, ContextState, Delta, Event, Kernel,
     OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
 };
-use serde_json::json;
-use std::time::Duration;
+use serde_json::Value;
+use std::{sync::Arc, time::Duration};
 
 use crate::{
     app::text::thousands,
-    tools::{Limits, domains},
+    tools::{
+        Limits, domains,
+        ops::{Arg, Op, action_of, actions, inner, schema},
+    },
 };
 
 use super::{Reach, action, ids, unknown};
@@ -30,18 +33,49 @@ use super::{Reach, action, ids, unknown};
 const HEARTBEAT: Duration = Duration::from_millis(120);
 
 /// The two ways to ask a copy something: carry on, or put a question.
-const OPS: [&str; 2] = ["draft", "ask"];
+fn ops() -> Vec<Op> {
+    vec![
+        Op::new(
+            "draft",
+            "answers the conversation as it stands, so you can read what you would say *before* \
+             you say it and fix either the answer or the context",
+            vec![],
+        ),
+        Op::new(
+            "ask",
+            "puts a question of your own to the copy - for weighing an approach, or for finding \
+             out whether a piece of your context is what is leading you astray",
+            vec![
+                Arg::text("question", "what to put to the copy").needed(),
+                Arg::list(
+                    "without",
+                    "integer",
+                    "item ids the copy does not get to see. Taking one away is what makes this an \
+                     experiment rather than the same context answering twice",
+                ),
+            ],
+        ),
+    ]
+}
 
 /// Asks a throwaway copy of this session a question, or lets it answer the conversation.
 pub struct Fork {
     reach: Reach,
     limits: Limits,
+    ops: Vec<Op>,
+    schema: Arc<Value>,
 }
 
 impl Fork {
     /// Builds one; see [`super::install`], which is the only caller.
     pub(super) fn new(reach: Reach, limits: Limits) -> Self {
-        Self { reach, limits }
+        let ops = ops();
+        Self {
+            reach,
+            limits,
+            schema: Arc::new(schema(&ops)),
+            ops,
+        }
     }
 }
 
@@ -50,47 +84,28 @@ impl Tool for Fork {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "fork",
-            "asks a copy of you, on a copy of your context, and costs a request. `draft` \
-             answers the conversation as it stands, so you can read what you would say *before* \
-             you say it and fix either the answer or the context. `ask` puts a `question` to the \
-             copy instead, optionally with some items left out - for weighing an approach, or for \
-             finding out whether a piece of your context is what is leading you astray. A fork \
-             has no tools: it can think, not act, and it answers once. Nothing it does reaches \
-             your context, and nobody has read what it said.",
+            "asks a copy of you, on a copy of your context, and costs a request. A fork has no \
+             tools: it can think, not act, and it answers once. Nothing it does reaches your \
+             context, and nobody has read what it said.",
         )
-        .with_schema(json!({
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": OPS,
-                },
-                "question": {
-                    "type": "string",
-                    "description": "for `ask`: what to put to the copy",
-                },
-                "without": {
-                    "type": "array",
-                    "items": { "type": "integer" },
-                    "description": "for `ask`: item ids the copy does not get to see. Taking one \
-                                    away is what makes this an experiment rather than the same \
-                                    context answering twice",
-                },
-            },
-            "required": ["action"],
-        }))
-        .with_capabilities(OPS.map(domains::fork))
+        .with_schema(self.schema.clone())
+        .with_capabilities(
+            actions(&self.ops)
+                .into_iter()
+                .map(domains::fork)
+                .collect::<Vec<_>>(),
+        )
     }
 
     /// note: per operation, because they cost the same and mean different things. `draft` asks
     /// what this session would say next, which is a question about this context; `ask` puts words
     /// of the model's own to a copy, which is not.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
-        match action(&call.args) {
-            Ok(op) if OPS.contains(&op) => vec![domains::fork(op)],
+        match action_of(call, &self.ops) {
+            Some(op) => vec![domains::fork(op)],
             // an operation this tool does not have is refused by `invoke` with a list of the ones
             // it does; what it must not be is a call that needed nothing and was therefore allowed
-            _ => self.spec().capabilities,
+            None => self.spec().capabilities,
         }
     }
 
@@ -101,24 +116,23 @@ impl Tool for Fork {
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
         let kernel = self.reach.kernel()?;
 
-        match action(&call.args)? {
+        let args = match inner(&call.args) {
+            Ok(args) => args,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+        };
+
+        match action(args)? {
             "draft" => branch(&kernel, None, &[], &output).await,
             "ask" => {
-                let Some(question) = call.args["question"].as_str() else {
+                let Some(question) = args["question"].as_str() else {
                     return Ok(ToolOutput::error(
                         "`ask` needs a `question` to put to the copy; `draft` is the one that \
                          just carries on the conversation",
                     ));
                 };
-                branch(
-                    &kernel,
-                    Some(question),
-                    &ids(&call.args, "without"),
-                    &output,
-                )
-                .await
+                branch(&kernel, Some(question), &ids(args, "without"), &output).await
             }
-            other => Ok(ToolOutput::error(unknown(other, &OPS))),
+            other => Ok(ToolOutput::error(unknown(other, &actions(&self.ops)))),
         }
     }
 }

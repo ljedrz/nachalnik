@@ -25,11 +25,15 @@ use nachalnik::{
     BoxError, Content, ContextId, Event, Kernel, OutputSink, Record, Tool, ToolCall, ToolOutput,
     ToolSpec, async_trait,
 };
-use serde_json::json;
+use serde_json::Value;
+use std::sync::Arc;
 
 use crate::{
     app::text::{thousands, trace_line},
-    tools::{Limits, domains, unread},
+    tools::{
+        Limits, domains,
+        ops::{Arg, Op, actions, inner, schema, unread},
+    },
 };
 
 use super::{Reach, if_offered, unknown};
@@ -37,16 +41,70 @@ use super::{Reach, if_offered, unknown};
 /// How wide the event-name column is, which is the longest name plus a space.
 const NAMES: usize = 20;
 
+/// The one thing this does, and the five ways of narrowing it.
+///
+/// note: one operation, and asked for by name anyway, so that every tool this program offers takes
+/// an `action` and none of them is the exception a model has to remember. `shell` is written the
+/// same way and for the same reason.
+fn ops() -> Vec<Op> {
+    vec![Op::new(
+        "read",
+        "",
+        vec![
+            Arg::whole(
+                "take",
+                "the most recent N of whatever matched; the header still says how many there are",
+            ),
+            Arg::list(
+                "ids",
+                "integer",
+                "only the records naming these context items",
+            ),
+            // note: `0` said out loud, because it is not guessable and the guess is costly. This
+            // is exclusive - `since: 1` means *after* record 1 - and a live session reaching for
+            // "everything" wrote `since: 1`, which in a resumed session drops exactly one record:
+            // `session.resumed`, which is always the first. It then answered the question that
+            // record was the answer to, wrongly
+            Arg::whole(
+                "since",
+                "only the records after this sequence number, which is the first column; `0` is \
+                 all of them",
+            ),
+            Arg::list(
+                "kinds",
+                "string",
+                "only these kinds, spelled as the summary spells them",
+            ),
+            // note: the same word `context: look` uses for the same trade, because it is the same
+            // trade. Without it a replacement is shown as its first line; with it the whole of
+            // what the item said arrives in your context and costs what it costs
+            Arg::truth(
+                "whole",
+                "print a replaced item's old text entire rather than its first line. It costs \
+                 what that text costs",
+            ),
+        ],
+    )]
+}
+
 /// Reads the session log: what happened, of what kinds, and what taking it would cost.
 pub struct Log {
     reach: Reach,
     limits: Limits,
+    ops: Vec<Op>,
+    schema: Arc<Value>,
 }
 
 impl Log {
     /// Builds one; see [`super::install`], which is the only caller.
     pub(super) fn new(reach: Reach, limits: Limits) -> Self {
-        Self { reach, limits }
+        let ops = ops();
+        Self {
+            reach,
+            limits,
+            schema: Arc::new(schema(&ops)),
+            ops,
+        }
     }
 }
 
@@ -64,52 +122,7 @@ impl Tool for Log {
              to it. A replacement keeps what the item said before, which once it leaves the undo \
              window is nowhere else at all.",
         )
-        .with_schema(json!({
-            "type": "object",
-            "properties": {
-                // note: one operation, and asked for by name anyway, so that every tool this
-                // program offers takes an `action` and none of them is the exception a model has
-                // to remember. `shell` is written the same way and for the same reason
-                "action": {
-                    "type": "string",
-                    "enum": ["read"],
-                },
-                "take": {
-                    "type": "integer",
-                    "description": "the most recent N of whatever matched; the header still says \
-                                    how many there are",
-                },
-                "ids": {
-                    "type": "array",
-                    "items": { "type": "integer" },
-                    "description": "only the records naming these context items",
-                },
-                // note: `0` said out loud, because it is not guessable and the guess is costly.
-                // This is exclusive - `since: 1` means *after* record 1 - and a live session
-                // reaching for "everything" wrote `since: 1`, which in a resumed session drops
-                // exactly one record: `session.resumed`, which is always the first. It then
-                // answered the question that record was the answer to, wrongly.
-                "since": {
-                    "type": "integer",
-                    "description": "only the records after this sequence number, which is the \
-                                    first column; `0` is all of them",
-                },
-                "kinds": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "only these kinds, spelled as the summary spells them",
-                },
-                // note: the same word `context: look` uses for the same trade, because it is the
-                // same trade. Without it a replacement is shown as its first line; with it the
-                // whole of what the item said arrives in your context and costs what it costs
-                "whole": {
-                    "type": "boolean",
-                    "description": "print a replaced item's old text entire rather than its first \
-                                    line. It costs what that text costs",
-                },
-            },
-            "required": ["action"],
-        }))
+        .with_schema(self.schema.clone())
         .with_capabilities([domains::log("read")])
     }
 
@@ -121,12 +134,16 @@ impl Tool for Log {
         // note: a word this tool does not have is refused by name rather than read as `read`,
         // which is what an absent `action` still is: a model that asked to `clear` the log should
         // be told there is no such thing, not handed the log
-        if let Some(named) = call.args["action"].as_str().filter(|it| *it != "read") {
-            return Ok(ToolOutput::error(unknown(named, &["read"])));
+        let args = match inner(&call.args) {
+            Ok(args) => args,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+        };
+        if let Some(named) = args["action"].as_str().filter(|it| *it != "read") {
+            return Ok(ToolOutput::error(unknown(named, &actions(&self.ops))));
         }
         let kernel = self.reach.kernel()?;
 
-        let query = match Query::read(&call.args) {
+        let query = match Query::read(args, &self.ops) {
             Ok(query) => query,
             Err(e) => return Ok(ToolOutput::error(e)),
         };
@@ -218,19 +235,10 @@ struct Query {
     whole: bool,
 }
 
-/// What this tool's one operation reads, beside `action`.
-///
-/// note: the same table its two siblings keep, in the same shape, for the same [`unread`] to read,
-/// with one row because there is one operation. What it closes is a misspelled *filter* - `limit`
-/// for `take`, `kind` for `kinds` - which would otherwise answer a question nobody asked. That
-/// matters more here than in either sibling: the one wrong answer a log can give is
-/// *nothing happened*, and a filter nobody read produces exactly that.
-const TAKES: [(&str, &[&str]); 1] = [("read", &["take", "ids", "since", "kinds", "whole"])];
-
 impl Query {
     /// Reads one, or says what is wrong with the arguments.
-    fn read(args: &serde_json::Value) -> Result<Self, String> {
-        if let Some(refusal) = unread("read", args, &TAKES) {
+    fn read(args: &Value, ops: &[Op]) -> Result<Self, String> {
+        if let Some(refusal) = unread("read", args, ops) {
             return Err(refusal);
         }
 
@@ -609,43 +617,24 @@ fn names(event: &Event, id: ContextId) -> bool {
 mod tests {
     use super::*;
 
-    /// The schema and [`TAKES`] say the same thing about every argument.
+    /// The schema and the permission subjects are one vocabulary.
     ///
-    /// note: the same check its two siblings keep. One operation makes it a shorter statement and
-    /// not a weaker one: this is the tool whose whole point is that an argument it cannot read is
-    /// refused rather than dropped, and an argument its own schema offers that no row takes would
-    /// be refused for doing as it was told.
+    /// note: what the two-list check became. There is one table now, so an argument the schema
+    /// offers that no operation reads cannot happen - it is the same `Vec<Op>`. What can still
+    /// drift is this: a tool declaring a subject it offers no way to reach, or offering an
+    /// operation the policy was never told about, which is a call that cannot be refused by name.
     #[test]
-    fn every_argument_the_schema_offers_is_one_some_action_takes() {
+    fn the_schema_and_the_subjects_are_one_vocabulary() {
         let tool = Log::new(Reach(std::sync::Weak::new()), Limits::default());
-
         let spec = tool.spec();
-        let declared: Vec<&str> = spec.schema["properties"]
-            .as_object()
-            .expect("the schema is an object with properties")
-            .keys()
-            .map(String::as_str)
-            .filter(|key| *key != "action")
-            .collect();
-        let taken: Vec<&str> = TAKES
-            .iter()
-            .flat_map(|(_, args)| args.iter().copied())
-            .collect();
 
-        for argument in &declared {
-            assert!(
-                taken.contains(argument),
-                "the schema offers `{argument}` and no action takes it, so passing it is refused"
-            );
-        }
-        for argument in &taken {
-            assert!(
-                declared.contains(argument),
-                "`{argument}` is taken by an action and the schema never mentions it"
-            );
-        }
+        let offered: Vec<String> = crate::tools::ops::offered(&spec.schema)
+            .into_iter()
+            .map(|action| domains::log(action).to_string())
+            .collect();
+        let declared: Vec<String> = spec.capabilities.iter().map(ToString::to_string).collect();
 
-        // and the one row is the one operation this tool has
-        assert_eq!(TAKES.map(|(action, _)| action), ["read"]);
+        assert_eq!(offered, declared, "one list of operations, in one order");
+        assert_eq!(offered, ["log:read"]);
     }
 }

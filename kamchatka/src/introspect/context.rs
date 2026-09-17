@@ -27,20 +27,20 @@ use nachalnik::{
     Block, BoxError, Capability, ContextId, ContextItem, ContextKind, Event, Kernel, OutputSink,
     Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
 };
-use serde_json::json;
+use serde_json::Value;
 
 use crate::{
     app::{Going, text::thousands},
-    tools::{Limits, domains, unread},
+    tools::{
+        Limits, domains,
+        ops::{Arg, Op, actions, inner, schema, unread},
+    },
 };
 
 use super::{Amend, Pinned, Reach, action, ids, protected, unknown};
 
 /// How much of an item's text the listing shows on its row.
 const GLIMPSE: usize = 48;
-
-/// The four that read, in the order the schema lists them.
-const READS: [&str; 4] = ["look", "budget", "request", "search"];
 
 /// The nine that change, each named for what it leaves behind.
 ///
@@ -52,46 +52,146 @@ const CHANGES: [&str; 9] = [
     "elide", "exclude", "archive", "pin", "restore", "revise", "note", "undo", "redo",
 ];
 
-/// Every operation this tool has, in one list, because three things have to agree about it: the
-/// `action` a model chooses from, the subject each call declares, and what a refusal names.
-fn operations() -> impl Iterator<Item = &'static str> {
-    READS.into_iter().chain(CHANGES)
+/// Why a call that changes something has to say why, which is the same sentence nine times.
+const WHY: &str = "why, in your own words; the person you work with reads this, and it becomes \
+                   the item's note";
+
+/// Which items to act on, for the five that move one.
+const WHICH: &str = "the items to move. A selector may be given as `select` instead";
+
+/// The thirteen operations, what each is for, and what each reads.
+///
+/// note: `reason` is `needed()` on the nine that change, which is a thing the schema could not say
+/// before. It was asked for in `invoke` instead, under a note reading "`required` in a schema is
+/// all or nothing" - true of one flat property bag, and the whole reason this is thirteen branches
+/// now. Nine of them require it and four of them do not offer it at all.
+///
+/// note: the five that move an item are built by [`moving`] rather than written out, for the
+/// reason the `MOVES` list it replaces gave: five identical rows are five chances to disagree
+/// about one fact, and `label` dropping off `restore` alone would change a real answer.
+fn ops() -> Vec<Op> {
+    let mut ops = vec![
+        Op::new(
+            "look",
+            "lists every item - what it is, what it costs, whether it is going into the next \
+             request and why not if it is not",
+            vec![
+                Arg::list(
+                    "ids",
+                    "integer",
+                    "read these items in full, block by block, including what you were thinking \
+                     when you produced them, instead of listing all of them",
+                ),
+                Arg::truth(
+                    "whole",
+                    "read the named items entire rather than as a start and an end. It costs what \
+                     carrying them costs",
+                ),
+            ],
+        ),
+        Op::new(
+            "budget",
+            "what the next request costs against what there is, what the last one really cost, \
+             and which items are the expensive ones: read it before deciding what to give up",
+            vec![],
+        ),
+        Op::new(
+            "request",
+            "the request you are about to send, message by message, what it repaired, and what \
+             was left out and by which rule - a state you set, which you can undo, or the \
+             projector, which you cannot",
+            vec![],
+        ),
+        Op::new(
+            "search",
+            "finds text anywhere in your context, archived items included, which `look` can only \
+             read by copying them in; it says how many lines match and what they would cost \
+             before showing you one",
+            vec![
+                Arg::text("text", "what to look for, case ignored").needed(),
+                Arg::list("ids", "integer", "look only in these items"),
+                Arg::whole("take", "show this many of the matching lines"),
+            ],
+        ),
+    ];
+
+    ops.push(Op::these(
+        &["elide", "exclude", "archive", "pin", "restore"],
+        "the five that move an item, each named for the state it leaves, which is the word you \
+         will read back on it. `elide` replaces what an item says with a short marker: the call \
+         it answers stays answered and stops costing what it holds, which is what to reach for \
+         once a tool result has served its purpose. `exclude` takes it out of the request \
+         altogether, and takes down the call that asked for it. `archive` says the same and \
+         means you are done with it. `pin` protects it from being compacted away. `restore` is \
+         the way back from any of the other four.",
+        vec![
+            Arg::list("ids", "integer", WHICH),
+            Arg::text(
+                "select",
+                "a class of items instead of `ids`; the forms are above",
+            ),
+            // note: `label` is here because `Amend::moved` reads it. Not to move anything by: to
+            // answer a call that gave one instead of `ids` with the spelling it wanted. An
+            // argument a tool answers about is not one it ignored
+            Arg::text(
+                "label",
+                "a label instead of `ids`, which is `select: \"label:<text>\"`",
+            ),
+            Arg::text("reason", WHY).needed(),
+        ],
+    ));
+
+    ops.extend([
+        Op::new(
+            "revise",
+            "rewrites what one item says, for when you wrote something down wrong",
+            vec![
+                Arg::list("ids", "integer", "the one item to rewrite").needed(),
+                Arg::text("content", "what the item should say instead").needed(),
+                Arg::text("reason", WHY).needed(),
+            ],
+        ),
+        Op::new(
+            "note",
+            "writes something into your context - a plan, a conclusion, a thing not to try again. \
+             Saying it in a turn is not the same: thinking is not carried into later requests, a \
+             note is an item of its own that goes into every one and can be pinned",
+            vec![
+                Arg::text("content", "what to write down").needed(),
+                // note: what it is *not* is half of this line, and it is the half a live run
+                // needed. `label` reads as a key, five notes went in under one name meaning to
+                // replace each other, and the tool appended every time - which the result now
+                // also says when it happens. This is the same sentence one step earlier, where
+                // the name is being chosen rather than regretted
+                Arg::text(
+                    "label",
+                    "a short name for it, so you can find it again. Not a key: a second note \
+                     under a name is a second item, and `revise` is what changes one you already \
+                     wrote",
+                ),
+                Arg::truth(
+                    "pin",
+                    "protect it from compaction, for a finding that has to outlast the context it \
+                     was found in",
+                ),
+                Arg::text("reason", WHY).needed(),
+            ],
+        ),
+        Op::these(
+            &["undo", "redo"],
+            "walk back through the changes *you* made here, and forward again",
+            vec![
+                Arg::whole(
+                    "steps",
+                    "how many of your own changes to walk; 1 by default",
+                ),
+                Arg::text("reason", WHY).needed(),
+            ],
+        ),
+    ]);
+
+    ops
 }
-
-/// What each of them reads, beside `action`, which they all take.
-///
-/// note: the list [`unread`] holds a call to. Thirteen operations share ten arguments and most of
-/// them read three, so most of what this table says is what an operation does *not* take - which
-/// is the half worth saying, and the half no reading of the dispatch below makes obvious. `note`
-/// is the sharp case: it is one of the nine that change, the `ids` argument says it is for the
-/// nine that change, and it writes a new item and has no use for an id.
-const TAKES: [(&str, &[&str]); 13] = [
-    ("look", &["ids", "whole"]),
-    ("budget", &[]),
-    ("request", &[]),
-    ("search", &["ids", "text", "take"]),
-    ("elide", MOVES),
-    ("exclude", MOVES),
-    ("archive", MOVES),
-    ("pin", MOVES),
-    ("restore", MOVES),
-    ("revise", &["ids", "content", "reason"]),
-    ("note", &["content", "label", "pin", "reason"]),
-    ("undo", &["steps", "reason"]),
-    ("redo", &["steps", "reason"]),
-];
-
-/// What the five that move an item take, which is one list because they are one function.
-///
-/// note: named rather than written out five times, and the difference is not brevity. Five
-/// identical rows are five chances to disagree about one fact: `label` off `restore` alone would
-/// change a real answer - a `restore` naming a label instead of `ids` would stop being told the
-/// `select: "label:…"` it meant - and the test for that answer asks `elide`. One list cannot drift.
-///
-/// note: `label` is in here because [`Amend::moved`] reads it. Not to move anything by: to answer
-/// a call that gave one instead of `ids` with the spelling it wanted. An argument a tool answers
-/// about is not one it ignored, which is the only thing this table is for.
-const MOVES: &[&str] = &["ids", "select", "label", "reason"];
 
 /// Reads the context and changes it: what is in it, what it costs, and what goes into the next
 /// request.
@@ -102,16 +202,21 @@ pub struct Context {
     /// The half that changes things, which keeps the journal `undo` walks and the set of items
     /// this tool pinned itself.
     amend: Amend,
+    ops: Vec<Op>,
+    schema: Arc<Value>,
 }
 
 impl Context {
     /// Builds one; see [`super::install`], which is the only caller.
     pub(super) fn new(reach: Reach, pinned: Pinned, limits: Limits) -> Self {
+        let ops = ops();
         Self {
             amend: Amend::new(pinned.clone()),
             reach,
             pinned,
             limits,
+            schema: Arc::new(schema(&ops)),
+            ops,
         }
     }
 }
@@ -122,120 +227,24 @@ impl Tool for Context {
         ToolSpec::new(
             "context",
             "your own context: what is in it, what it costs, and what you carry into the next \
-             request. Four actions read it and nine change it. \
-             `look` lists every item - what it is, what it costs, whether it is going into the \
-             next request and why not if it is not - and with `ids` reads any of them back, block \
-             by block, including what you were thinking when you produced them. `budget` is what \
-             the next request costs against what there is, what the last one really cost, and \
-             which items are the expensive ones: read it before deciding what to give up. \
-             `request` shows the request you are about to send, message by message, what it \
-             repaired, and what was left out and by which rule - a state you set, which you can \
-             undo, or the projector, which you cannot. `search` finds text anywhere in your \
-             context, archived items included, which `look` can only read by copying them in; it \
-             says how many lines match and what they would cost before showing you one. \
-             The five that move an item are named for the state they leave, which is the word \
-             you will read back on it. `elide` replaces what an item says with a short marker: \
-             the call it answers stays answered and stops costing what it holds, which is what to \
-             reach for once a tool result has served its purpose. `exclude` takes it out of the \
-             request altogether, and takes down the call that asked for it. `archive` says the \
-             same and means you are done with it. `pin` protects it from being compacted away. \
-             `restore` is the way \
-             back from any of them. `revise` rewrites what one item says, for when you wrote \
-             something down wrong. `note` writes something into your context - a plan, a \
-             conclusion, a thing not to try again. Saying it in a turn is not the same: thinking \
-             is not carried into later requests, a note is an item of its own that goes into \
-             every one and can be pinned. `undo` and `redo` walk back through the changes *you* \
-             made here. Nothing destroys anything: every item keeps its number and can be \
-             restored. Everything that changes something needs a `reason`. A pinned item, a \
-             system instruction and the turn you are speaking in are refused - they are not \
-             yours.",
+             request. Four operations read it and nine change it, and each says below what it \
+             does. Nothing destroys anything: every item keeps its number and can be restored. A \
+             pinned item, a system instruction and the turn you are speaking in are refused - \
+             they are not yours.\n\
+             Where an operation takes a `select`, it is a class of items instead of `ids`: an \
+             item number; `all`; `all:tool_results` (or files, diagnostics, selections, memories, \
+             instructions, system, user, model, compaction); `kind:<kind>` or `state:<state>`, \
+             taking the words `look` prints in those columns; `tool:<name>`, optionally `:first` \
+             or `:latest`; `source:<name>`; `file:<path>`; `label:<text>`. Anything else is read \
+             as a label.",
         )
-        .with_schema(json!({
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": operations().collect::<Vec<_>>(),
-                },
-                "ids": {
-                    "type": "array",
-                    "items": { "type": "integer" },
-                    "description": "for `look`: read these items in full instead of listing \
-                                    all of them. For `search`: look only in these. For the nine \
-                                    that change: the items to move, and exactly one for \
-                                    `revise`",
-                },
-                // note: the forms, with the variable part written as a placeholder. It listed
-                // examples - `tool:shell`, `kind:assistant_message` - and a model reading them as
-                // literals rather than as instances asked to prune `tool:shell` in a session with
-                // no shell. The closed sets are not spelled out here because `look` prints them
-                // in its own columns, which is a shorter way to learn them than a schema is
-                "select": {
-                    "type": "string",
-                    "description": "a class of items instead of `ids`. One of: an item \
-                                    number; `all`; `all:tool_results` (or files, diagnostics, \
-                                    selections, memories, instructions, system, user, model, \
-                                    compaction); `kind:<kind>` or `state:<state>`, taking the \
-                                    words `look` prints in those columns; `tool:<name>`, \
-                                    optionally `:first` or `:latest`; `source:<name>`; \
-                                    `file:<path>`; `label:<text>`. Anything else is read as a \
-                                    label.",
-                },
-                "text": {
-                    "type": "string",
-                    "description": "for `search`: what to look for, case ignored",
-                },
-                // note: what leaving it out does is in the tool's own description - the count
-                // and the price first - and saying it twice cost twelve tokens on every request
-                "take": {
-                    "type": "integer",
-                    "description": "for `search`: show this many of the matching lines",
-                },
-                // note: declared, because the tool reads it, the description tells the model to
-                // use it, and `look`'s own last line and the marker in a sampled item both end by
-                // telling it to ask for the `whole` of one. An argument named in three places and
-                // absent from the schema is one a model following the schema cannot pass, and one
-                // an endpoint validating against the schema will refuse outright
-                "whole": {
-                    "type": "boolean",
-                    "description": "for `look`: read the named items entire rather than as a \
-                                    start and an end. It costs what carrying them costs",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "for `revise`: what the item should say instead. For `note`: \
-                                    what to write down",
-                },
-                // note: what it is *not* is half of this line, and it is the half a live run
-                // needed. `label` reads as a key, five notes went in under one name meaning to
-                // replace each other, and the tool appended every time - which the result now
-                // also says when it happens. This is the same sentence one step earlier, where
-                // the name is being chosen rather than regretted.
-                "label": {
-                    "type": "string",
-                    "description": "for `note`: a short name for it, so you can find it again. \
-                                    Not a key: a second note under a name is a second item, and \
-                                    `revise` is what changes one you already wrote",
-                },
-                "pin": {
-                    "type": "boolean",
-                    "description": "for `note`: protect it from compaction, for a finding that \
-                                    has to outlast the context it was found in",
-                },
-                "reason": {
-                    "type": "string",
-                    "description": "required by the nine that change: why, in your own words; the \
-                                    person you work with reads this",
-                },
-                "steps": {
-                    "type": "integer",
-                    "description": "for `undo` and `redo`: how many of your own changes to walk; \
-                                    1 by default",
-                },
-            },
-            "required": ["action"],
-        }))
-        .with_capabilities(operations().map(domains::context))
+        .with_schema(self.schema.clone())
+        .with_capabilities(
+            actions(&self.ops)
+                .into_iter()
+                .map(domains::context)
+                .collect::<Vec<_>>(),
+        )
     }
 
     /// note: `action` and nothing else, so a rule about `context:look` is about looking whichever
@@ -245,7 +254,7 @@ impl Tool for Context {
     /// `invoke` then refuses it by name.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match action(&call.args) {
-            Ok(op) if operations().any(|it| it == op) => vec![domains::context(op)],
+            Ok(op) if actions(&self.ops).contains(&op) => vec![domains::context(op)],
             // a word this tool does not have is refused by `invoke` with a list of the ones it
             // does; what it must not be is a call that needed nothing and was therefore allowed
             _ => self.spec().capabilities,
@@ -262,43 +271,46 @@ impl Tool for Context {
         // an operation this tool does not have falls through to the arm that names the ones it
         // does, so there is nothing to hold its arguments to yet; a word it knows is held to them
         // before anything is done with it
-        if let Some(refusal) = unread(action(&call.args)?, &call.args, &TAKES) {
+        let args = match inner(&call.args) {
+            Ok(args) => args,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+        };
+        if let Some(refusal) = unread(action(args)?, args, &self.ops) {
             return Ok(ToolOutput::error(refusal));
         }
 
-        match action(&call.args)? {
+        match action(args)? {
             "look" => Ok(ToolOutput::new(look(
                 &kernel,
-                &ids(&call.args, "ids"),
-                call.args["whole"].as_bool().unwrap_or(false),
+                &ids(args, "ids"),
+                args["whole"].as_bool().unwrap_or(false),
             ))),
             "budget" => Ok(ToolOutput::new(budget(&kernel, &self.pinned.lock()))),
             "request" => Ok(ToolOutput::new(request(&kernel))),
             "search" => {
-                let Some(text) = call.args["text"].as_str().filter(|t| !t.is_empty()) else {
+                let Some(text) = args["text"].as_str().filter(|t| !t.is_empty()) else {
                     return Ok(ToolOutput::error(
                         "`search` needs the `text` to look for; `look` is the one that lists \
                          everything",
                     ));
                 };
-                let take = match taken(&call.args["take"]) {
+                let take = match taken(&args["take"]) {
                     Ok(take) => take,
                     Err(why) => return Ok(ToolOutput::error(why)),
                 };
                 Ok(ToolOutput::new(search(
                     &kernel,
                     text,
-                    &ids(&call.args, "ids"),
+                    &ids(args, "ids"),
                     take,
                 )))
             }
-            // note: the `reason` is asked for here rather than in the schema, because it is
-            // required by nine of the thirteen and `required` in a schema is all or nothing.
-            // `look` and `budget` change nothing and have nothing to justify
+            // note: asked for here *as well as* in the schema, which now says it: a branch per
+            // operation means nine of the thirteen can require it and four can not offer it at
+            // all, where one flat property bag made `required` all or nothing. Nothing is sent
+            // `strict`, so the schema is advice and this is what holds
             op if CHANGES.contains(&op) => {
-                let Some(reason) = call.args["reason"]
-                    .as_str()
-                    .filter(|it| !it.trim().is_empty())
+                let Some(reason) = args["reason"].as_str().filter(|it| !it.trim().is_empty())
                 else {
                     return Ok(ToolOutput::error(
                         "`reason` is required by everything that changes something: it becomes \
@@ -307,12 +319,9 @@ impl Tool for Context {
                     ));
                 };
 
-                Ok(self.amend.change(&kernel, call, op, reason))
+                Ok(self.amend.change(&kernel, call, args, op, reason))
             }
-            other => Ok(ToolOutput::error(unknown(
-                other,
-                &operations().collect::<Vec<_>>(),
-            ))),
+            other => Ok(ToolOutput::error(unknown(other, &actions(&self.ops)))),
         }
     }
 }
@@ -1061,67 +1070,71 @@ fn glimpse(text: &str) -> String {
 mod tests {
     use super::*;
 
-    /// The schema and [`TAKES`] say the same thing about every argument.
+    /// The schema and the permission subjects are one vocabulary.
     ///
-    /// note: the same check `fs` keeps, and it matters more here: thirteen operations share ten
-    /// arguments, so the table is mostly a statement about which of them each one does *not* take,
-    /// and there is no reading the code that makes that obvious. An argument the schema offers and
-    /// no row takes would be refused the moment a model did as it was told.
+    /// note: what the two-list check became. An argument the schema offers that no operation reads
+    /// cannot happen now - they are the same `Vec<Op>`, and the branch an argument appears in is
+    /// the operation that reads it. What can still drift is a subject with no branch to reach it
+    /// by, or a branch the policy was never told about, which is a call that cannot be refused by
+    /// name.
     #[test]
-    fn every_argument_the_schema_offers_is_one_some_action_takes() {
-        let tool = Context::new(
+    fn the_schema_and_the_subjects_are_one_vocabulary() {
+        let spec = tool().spec();
+
+        let offered: Vec<String> = crate::tools::ops::offered(&spec.schema)
+            .into_iter()
+            .map(|action| domains::context(action).to_string())
+            .collect();
+        let declared: Vec<String> = spec.capabilities.iter().map(ToString::to_string).collect();
+
+        assert_eq!(offered, declared, "one list of operations, in one order");
+        assert_eq!(offered.len(), 13, "four that read and nine that change");
+    }
+
+    /// Everything that changes something requires a `reason`, and nothing that only reads offers
+    /// one.
+    ///
+    /// note: this used to hold a hand-written table to `CHANGES` and could only ever check that
+    /// the *tool* would ask, because the schema could not say it: `required` was `["action"]` for
+    /// all thirteen, under a note reading "required in a schema is all or nothing". A branch per
+    /// operation is what made that false, so the assertion is now against the schema a model is
+    /// actually shown - nine branches that demand a `reason`, and four that do not mention one.
+    #[test]
+    fn the_nine_that_change_require_a_reason_and_the_four_that_read_do_not() {
+        let spec = tool().spec();
+        let branches = spec.schema["properties"]["call"]["anyOf"]
+            .as_array()
+            .expect("a branch per operation")
+            .clone();
+
+        for branch in branches {
+            let action = branch["properties"]["action"]["enum"][0]
+                .as_str()
+                .expect("a branch names its own action");
+            let required = branch["required"]
+                .as_array()
+                .expect("a branch says what it requires")
+                .iter()
+                .any(|it| it == "reason");
+            let offered = branch["properties"]["reason"].is_object();
+
+            assert_eq!(
+                required,
+                CHANGES.contains(&action),
+                "`{action}` and `reason` disagree about being required"
+            );
+            assert_eq!(
+                offered, required,
+                "`{action}` offers a `reason` it does not require, or the other way about"
+            );
+        }
+    }
+
+    fn tool() -> Context {
+        Context::new(
             Reach(std::sync::Weak::new()),
             Pinned::default(),
             Limits::default(),
-        );
-
-        let spec = tool.spec();
-        let declared: Vec<&str> = spec.schema["properties"]
-            .as_object()
-            .expect("the schema is an object with properties")
-            .keys()
-            .map(String::as_str)
-            .filter(|key| *key != "action")
-            .collect();
-        let taken: Vec<&str> = TAKES
-            .iter()
-            .flat_map(|(_, args)| args.iter().copied())
-            .collect();
-
-        for argument in &declared {
-            assert!(
-                taken.contains(argument),
-                "the schema offers `{argument}` and no action takes it, so passing it is refused"
-            );
-        }
-        for argument in &taken {
-            assert!(
-                declared.contains(argument),
-                "`{argument}` is taken by an action and the schema never mentions it"
-            );
-        }
-
-        // one list of operations, in one order: the `action` enum, the capabilities and this
-        assert_eq!(
-            TAKES.map(|(action, _)| action).to_vec(),
-            operations().collect::<Vec<_>>(),
-        );
-    }
-
-    /// Everything that changes something takes a `reason`, and nothing that only reads does.
-    ///
-    /// note: `reason` is required by nine of the thirteen and asked for in `invoke` rather than in
-    /// the schema, because `required` in a schema is all or nothing. So the fact that the nine and
-    /// only the nine take one lives in two places, and this is what holds them together: a change
-    /// whose row forgot `reason` would refuse every call anybody made to it.
-    #[test]
-    fn the_nine_that_change_take_a_reason_and_the_four_that_read_do_not() {
-        for (action, takes) in TAKES {
-            assert_eq!(
-                takes.contains(&"reason"),
-                CHANGES.contains(&action),
-                "`{action}` and `reason` disagree"
-            );
-        }
+        )
     }
 }

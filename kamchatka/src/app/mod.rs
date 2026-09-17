@@ -2461,14 +2461,19 @@ impl App {
         }
 
         let items = self.kernel.items();
-        let named: Vec<ContextId> = match request.args["select"].as_str() {
+        // the arguments wherever the model put them: these tools take theirs inside a wrapper, and
+        // a question naming no items is a question nobody can answer on what is on the screen
+        let Ok(args) = crate::tools::ops::inner(&request.args) else {
+            return Vec::new();
+        };
+        let named: Vec<ContextId> = match args["select"].as_str() {
             // a selector is opaque in a way a number is not: `all:tool_results` is the argument
             // most worth expanding, because nobody can count them off the screen it is covering
             Some(select) => match select.parse::<Selector>() {
                 Ok(selector) => selector.matches(&items),
                 Err(_) => return Vec::new(),
             },
-            None => request.args["ids"]
+            None => args["ids"]
                 .as_array()
                 .map(|ids| {
                     ids.iter()

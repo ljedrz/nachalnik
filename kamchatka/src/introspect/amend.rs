@@ -135,14 +135,15 @@ impl Amend {
         &self,
         kernel: &Kernel,
         call: &ToolCall,
+        args: &Value,
         op: &str,
         reason: &str,
     ) -> ToolOutput {
         match op {
-            "revise" => self.revise(kernel, call, reason),
-            "note" => self.note(kernel, call, reason),
-            "undo" => self.walk(kernel, call, reason, true),
-            "redo" => self.walk(kernel, call, reason, false),
+            "revise" => self.revise(kernel, call, args, reason),
+            "note" => self.note(kernel, args, reason),
+            "undo" => self.walk(kernel, args, reason, true),
+            "redo" => self.walk(kernel, args, reason, false),
             // note: the five moves are operations of their own, named for what they do. They were
             // one `prune` action with a `state` argument once, which put the word for *one* of
             // them over all five - including `pin` and `restore`, which are its opposite, so
@@ -151,7 +152,7 @@ impl Amend {
             // Two models in a row spent a call each asking for `restore` and being told it was a
             // state and not an action; the answer was that they were right and the levels were
             // wrong.
-            other => self.moved(kernel, call, reason, other),
+            other => self.moved(kernel, call, args, reason, other),
         }
     }
 }
@@ -215,11 +216,18 @@ fn wrote_anything_down(kernel: &Kernel) -> bool {
 
 impl Amend {
     /// Moves items to a state, refusing the ones that are not the model's to move.
-    fn moved(&self, kernel: &Kernel, call: &ToolCall, reason: &str, action: &str) -> ToolOutput {
+    fn moved(
+        &self,
+        kernel: &Kernel,
+        call: &ToolCall,
+        args: &Value,
+        reason: &str,
+        action: &str,
+    ) -> ToolOutput {
         // a selector, or a list of numbers. Naming a class of items is what makes this usable for
         // the job it is mostly for - "the tool results I am done with" is one thought, and
         // reading twelve numbers off a listing to say it is not
-        let selected = call.args["select"].as_str();
+        let selected = args["select"].as_str();
         let ids = match selected {
             Some(input) => match input.parse::<Selector>() {
                 Ok(selector) => selector.matches(&kernel.items()),
@@ -230,7 +238,7 @@ impl Amend {
                     ));
                 }
             },
-            None => ids(&call.args, "ids"),
+            None => ids(args, "ids"),
         };
         if ids.is_empty() {
             // a selector that parsed and matched nothing is a different mistake from naming no
@@ -245,7 +253,7 @@ impl Amend {
                 // `note`, and a model reaching for a way to say *which item* took it. The label
                 // was a fine way to name one - `select` reads a bare word as a label - so the
                 // useful answer is the spelling of what it meant rather than a list of arguments
-                None => match call.args["label"].as_str() {
+                None => match args["label"].as_str() {
                     Some(label) => format!(
                         "`{action}` needs `ids`, or a `select` naming a class of them. `label` \
                          names a `note`, not the items to move - to move the items called \
@@ -402,12 +410,12 @@ impl Amend {
     }
 
     /// Rewrites what one item says.
-    fn revise(&self, kernel: &Kernel, call: &ToolCall, reason: &str) -> ToolOutput {
-        let ids = ids(&call.args, "ids");
+    fn revise(&self, kernel: &Kernel, call: &ToolCall, args: &Value, reason: &str) -> ToolOutput {
+        let ids = ids(args, "ids");
         let [id] = ids[..] else {
             return ToolOutput::error("`revise` takes exactly one id in `ids`");
         };
-        let Some(content) = call.args["content"].as_str() else {
+        let Some(content) = args["content"].as_str() else {
             return ToolOutput::error("`revise` needs the `content` to put there instead");
         };
         let Some(item) = kernel.item(id) else {
@@ -485,20 +493,17 @@ impl Amend {
     /// note: so a note is the one item in a context that is there because the agent judged a
     /// finding worth keeping, which is why [`wrote_anything_down`] asks about exactly this and
     /// why hiding everything while holding none of them is worth a sentence.
-    fn note(&self, kernel: &Kernel, call: &ToolCall, reason: &str) -> ToolOutput {
-        let Some(content) = call.args["content"]
-            .as_str()
-            .filter(|c| !c.trim().is_empty())
-        else {
+    fn note(&self, kernel: &Kernel, args: &Value, reason: &str) -> ToolOutput {
+        let Some(content) = args["content"].as_str().filter(|c| !c.trim().is_empty()) else {
             return ToolOutput::error("`note` needs the `content` to write down");
         };
         // note: the name as it was given, kept apart from the one written on the item, because
         // only a name somebody *chose* can collide with one. Two notes nobody labelled are both
         // called `note` and telling the second that the first "carries that name too" would be
         // reporting a clash between two names the model never picked.
-        let named = call.args["label"].as_str();
+        let named = args["label"].as_str();
         let label = named.unwrap_or("note");
-        let pin = call.args["pin"].as_bool().unwrap_or(false);
+        let pin = args["pin"].as_bool().unwrap_or(false);
 
         // read before the push, so the new item is not one of its own clashes
         let clashes: Vec<ContextId> = match named {
@@ -551,8 +556,8 @@ impl Amend {
     /// note: the two directions are one loop over two stacks, because an [`Undoing`] applied hands
     /// back the way from where that left things to where they were. There is no separate "redo"
     /// representation to be written, or to fall out of step with the first one.
-    fn walk(&self, kernel: &Kernel, call: &ToolCall, reason: &str, back: bool) -> ToolOutput {
-        let steps = call.args["steps"].as_u64().unwrap_or(1).clamp(1, 64) as usize;
+    fn walk(&self, kernel: &Kernel, args: &Value, reason: &str, back: bool) -> ToolOutput {
+        let steps = args["steps"].as_u64().unwrap_or(1).clamp(1, 64) as usize;
         let before = kernel.budget().used();
 
         let mut put_back = Vec::new();

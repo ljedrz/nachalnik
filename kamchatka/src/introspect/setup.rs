@@ -23,30 +23,58 @@ use nachalnik::{
     BoxError, Capability, Kernel, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, Verdict,
     async_trait,
 };
-use serde_json::json;
+use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     app::text::{short, thousands},
-    tools::{Careful, Limits, Subject, domains},
+    tools::{
+        Careful, Limits, Subject, domains,
+        ops::{Op, action_of, actions, inner, schema},
+    },
 };
 
 use super::{Reach, action, if_offered, unknown};
+
+/// The four things this reads, which take no arguments and are therefore one shape.
+///
+/// note: one branch and not four. A union exists to say which arguments go with which operation
+/// and none of these has any, so four branches would be four copies of the same empty object -
+/// scaffolding charged for on every request to gate nothing.
+fn ops() -> Vec<Op> {
+    vec![Op::these(
+        &["model", "tools", "permissions", "policy"],
+        "`model` is which model you are, what parameters it is being sent, how much context it \
+         has, and whether this conversation was resumed from a snapshot - which matters, because \
+         a resumed context can be somebody else's earlier turns and nothing in them says so. \
+         `tools` is every tool you are offered, what each declares it needs, and how much of its \
+         output you are shown; one that went away mid-session is simply not here. `permissions` \
+         is what the policy allows, refuses, or will stop and ask about, so you can tell a thing \
+         that will be refused from a thing nobody has decided. `policy` is what the compactor and \
+         the projector will do to your context unasked.",
+        vec![],
+    )]
+}
 
 /// Reads what the session is running with: the model, the tools, the policy, the rules.
 pub struct Setup {
     reach: Reach,
     policy: Arc<Careful>,
     limits: Limits,
+    ops: Vec<Op>,
+    schema: Arc<Value>,
 }
 
 impl Setup {
     /// Builds one; see [`super::install`], which is the only caller.
     pub(super) fn new(reach: Reach, policy: Arc<Careful>, limits: Limits) -> Self {
+        let ops = ops();
         Self {
             reach,
             policy,
             limits,
+            schema: Arc::new(schema(&ops)),
+            ops,
         }
     }
 }
@@ -56,34 +84,22 @@ impl Tool for Setup {
     fn spec(&self) -> ToolSpec {
         ToolSpec::new(
             "setup",
-            "reads what you are running with, which you cannot otherwise find out. `model` is \
-             which model you are, what parameters it is being sent, how much context it has, and \
-             whether this conversation was resumed from a snapshot - which matters, because a \
-             resumed context can be somebody else's earlier turns and nothing in them says so. \
-             `tools` is every tool you are offered, what each declares it needs, and how much of \
-             its output you are shown; one that went away mid-session is simply not here. \
-             `permissions` is what the policy allows, refuses, or will stop and ask about, so you \
-             can tell a thing that will be refused from a thing nobody has decided. `policy` is \
-             what the compactor and the projector will do to your context unasked. All of it is \
+            "reads what you are running with, which you cannot otherwise find out. All of it is \
              read-only; `context` is what changes one.",
         )
-        .with_schema(json!({
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": ["model", "tools", "permissions", "policy"],
-                },
-            },
-            "required": ["action"],
-        }))
-        .with_capabilities(["model", "tools", "permissions", "policy"].map(domains::setup))
+        .with_schema(self.schema.clone())
+        .with_capabilities(
+            actions(&self.ops)
+                .into_iter()
+                .map(domains::setup)
+                .collect::<Vec<_>>(),
+        )
     }
 
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
-        match action(&call.args) {
-            Ok(action) => vec![domains::setup(action)],
-            Err(_) => self.spec().capabilities,
+        match action_of(call, &self.ops) {
+            Some(action) => vec![domains::setup(action)],
+            None => self.spec().capabilities,
         }
     }
 
@@ -94,15 +110,17 @@ impl Tool for Setup {
     async fn invoke(&self, call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
         let kernel = self.reach.kernel()?;
 
-        match action(&call.args)? {
+        let args = match inner(&call.args) {
+            Ok(args) => args,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+        };
+
+        match action(args)? {
             "model" => Ok(ToolOutput::new(model(&kernel))),
             "tools" => Ok(ToolOutput::new(tools(&kernel, &self.limits))),
             "permissions" => Ok(ToolOutput::new(permissions(&kernel, &self.policy))),
             "policy" => Ok(ToolOutput::new(rules(&kernel))),
-            other => Ok(ToolOutput::error(unknown(
-                other,
-                &["model", "tools", "permissions", "policy"],
-            ))),
+            other => Ok(ToolOutput::error(unknown(other, &actions(&self.ops)))),
         }
     }
 }
