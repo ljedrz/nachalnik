@@ -12,10 +12,12 @@ use nachalnik::{
 };
 
 use crate::sandbox::Sandbox;
-use serde_json::json;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
-use crate::tools::{Careful, Limits, arg};
+use crate::tools::{
+    Careful, Limits, arg,
+    ops::{Arg, Op, inner, schema},
+};
 
 /// How long a running command may say nothing before the tool looks up to check whether it has
 /// been asked to stop.
@@ -152,24 +154,15 @@ impl Tool for Shell {
                 }
             ),
         )
-        .with_schema(json!({
-            "type": "object",
-            "properties": {
-                // note: one operation, and asked for by name anyway, because every tool this
-                // program offers takes an `action` and a model should not have to remember which
-                // of them is the exception. It costs a word in the call and buys a rule with no
-                // holes in it - the same reasoning `log` is written to
-                "action": {
-                    "type": "string",
-                    "enum": ["run"],
-                },
-                "cmd": {
-                    "type": "string",
-                    "description": "the command line, as a shell would read it",
-                },
-            },
-            "required": ["action", "cmd"],
-        }))
+        // note: one operation, and asked for by name anyway, because every tool this program
+        // offers takes an `action` and a model should not have to remember which of them is the
+        // exception. It costs a word in the call and buys a rule with no holes in it - the same
+        // reasoning `log` is written to
+        .with_schema(schema(&[Op::new(
+            "run",
+            "",
+            vec![Arg::text("cmd", "the command line, as a shell would read it").needed()],
+        )]))
         .with_capabilities([Capability::exec("run")])
     }
 
@@ -182,12 +175,16 @@ impl Tool for Shell {
         // call that meant something else and was answered as `run` is a command nobody asked for.
         // The tool is `shell` and the operation is `run` - the domain it declares is `exec`,
         // which is what a permission rule is written against
-        if let Some(named) = call.args["action"].as_str().filter(|it| *it != "run") {
+        let args = match inner(&call.args) {
+            Ok(args) => args,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+        };
+        if let Some(named) = args["action"].as_str().filter(|it| *it != "run") {
             return Ok(ToolOutput::error(format!(
                 "`{named}` is not something `shell` does; it does run"
             )));
         }
-        let cmd = arg(&call.args, "cmd")?;
+        let cmd = arg(args, "cmd")?;
 
         // what the command may reach, which is a different question from whether it may run: the
         // kernel answered that one before this was called
@@ -426,7 +423,7 @@ mod tests {
             #[cfg(unix)]
             ("kill -9 $$", Exit::Stopped),
         ] {
-            let call = ToolCall::new("c1", "shell", json!({ "cmd": command }));
+            let call = ToolCall::new("c1", "shell", serde_json::json!({ "cmd": command }));
             let output = shell
                 .invoke(&call, OutputSink::disconnected())
                 .await

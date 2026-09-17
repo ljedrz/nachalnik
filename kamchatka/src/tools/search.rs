@@ -25,7 +25,8 @@ use globset::GlobBuilder;
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use ignore::WalkBuilder;
-use nachalnik::{BoxError, OutputSink, ToolCall, ToolOutput, Verdict};
+use nachalnik::{BoxError, OutputSink, ToolOutput, Verdict};
+use serde_json::Value;
 
 use crate::{
     sandbox::{Access, Reach},
@@ -348,11 +349,11 @@ pub(super) struct Grep(pub(super) Looking);
 impl Grep {
     pub(super) async fn invoke(
         &self,
-        call: &ToolCall,
+        args: &Value,
         output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
-        let pattern = arg(&call.args, "pattern")?.to_owned();
-        let asked = call.args["path"].as_str().unwrap_or(".").to_owned();
+        let pattern = arg(args, "pattern")?.to_owned();
+        let asked = args["path"].as_str().unwrap_or(".").to_owned();
         let root = match self.0.reach.allows(&asked, Access::Reading) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
@@ -362,7 +363,7 @@ impl Grep {
         // costs no directory at all - and the answer is the one thing a model can act on
         // immediately, which is why it says how to spell what it probably meant
         let matcher = match RegexMatcherBuilder::new()
-            .case_insensitive(call.args["ignore_case"].as_bool().unwrap_or(false))
+            .case_insensitive(args["ignore_case"].as_bool().unwrap_or(false))
             .build(&pattern)
         {
             Ok(matcher) => matcher,
@@ -374,7 +375,7 @@ impl Grep {
                 )));
             }
         };
-        let only = match call.args["glob"].as_str() {
+        let only = match args["glob"].as_str() {
             Some(glob) => match GlobBuilder::new(glob).build() {
                 Ok(built) => Some(built.compile_matcher()),
                 Err(e) => return Ok(ToolOutput::error(format!("`{glob}` is not a glob: {e}"))),
@@ -386,12 +387,12 @@ impl Grep {
         // quoted - `"context": "3"` - is a search that quietly does something else and says it
         // did what was asked, and for `files_only` that is the expensive answer arriving with
         // nothing to explain it. See `tools::whole`
-        let wanted = match whole(&call.args, "context", 0) {
+        let wanted = match whole(args, "context", 0) {
             Ok(lines) => lines,
             Err(why) => return Ok(ToolOutput::error(why)),
         };
         let context = wanted.min(CONTEXT) as usize;
-        let files_only = match truth(&call.args, "files_only") {
+        let files_only = match truth(args, "files_only") {
             Ok(only) => only,
             Err(why) => return Ok(ToolOutput::error(why)),
         };
@@ -666,11 +667,11 @@ pub(super) struct Glob(pub(super) Looking);
 impl Glob {
     pub(super) async fn invoke(
         &self,
-        call: &ToolCall,
+        args: &Value,
         output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
-        let pattern = arg(&call.args, "pattern")?.to_owned();
-        let asked = call.args["path"].as_str().unwrap_or(".").to_owned();
+        let pattern = arg(args, "pattern")?.to_owned();
+        let asked = args["path"].as_str().unwrap_or(".").to_owned();
         let root = match self.0.reach.allows(&asked, Access::Reading) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),

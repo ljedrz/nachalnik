@@ -19,49 +19,106 @@ use std::sync::Arc;
 use nachalnik::{
     BoxError, Capability, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
 };
-use serde_json::json;
+use serde_json::Value;
 
 use crate::{
     sandbox::Reach,
     tools::{
         Limits,
         files::{Edit, PATH_ARG, Read, Write},
+        ops::{Arg, Op, action_of, actions, inner, schema, unread},
         search::{GLOB_ARG, Glob, Grep, Looking, MATCHES, PATHS, WIDTH},
-        unread,
     },
 };
 
-/// The operations this tool offers, in the order a schema lists them.
+/// The five things this tool does, what each is for, and what each reads.
 ///
-/// note: the whole of the vocabulary, in one place, because three things have to agree about it -
-/// the `action` enum a model chooses from, the subject each call declares, and the row `/limit`
-/// keys on. They were three lists when there were five tools, and the only thing keeping them in
-/// step was that each tool had one of each.
-pub(super) const OPS: [&str; 5] = ["read", "glob", "grep", "write", "edit"];
-
-/// What each of them reads, beside `action`, which they all take.
+/// note: one table where there were three - the `action` enum, the `TAKES` list [`unread`] holds a
+/// call to, and a flat schema listing every argument any operation takes. Four things have to
+/// agree about this vocabulary: the enum a model chooses from, the subject each call declares, the
+/// row `/limit` keys on, and what the model is actually allowed to pass. Three of them were
+/// derived from a list and the fourth was written out by hand beside it.
 ///
-/// note: the list [`unread`] holds a call to. It is beside [`OPS`] because the two have to agree,
-/// and it has to agree with the schema below as well: a name the schema offers and no row here
-/// takes is refused the moment a model does as it was told, which is the worse half of the failure
-/// this closes. The unit test at the foot of this file is what holds the three together.
-const TAKES: [(&str, &[&str]); 5] = [
-    ("read", &["path"]),
-    ("glob", &["path", "pattern"]),
-    (
-        "grep",
-        &[
-            "path",
-            "pattern",
+/// note: what the arguments no longer have to say is which operation they belong to. `for
+/// \`grep\`:` opened eight of the nine descriptions here, because a flat bag is the only place a
+/// reader could be told - and it was advice, not a rule. Inside a branch there is nobody else to
+/// be confused with, so each one says what it is and stops.
+fn ops() -> Vec<Op> {
+    vec![
+        Op::new(
+            "read",
+            "reads a whole text file",
+            vec![Arg::text("path", "the file to read").needed()],
+        ),
+        Op::new(
             "glob",
-            "ignore_case",
-            "context",
-            "files_only",
-        ],
-    ),
-    ("write", &["path", "content"]),
-    ("edit", &["path", "old", "new"]),
-];
+            "finds paths without opening anything",
+            vec![
+                Arg::text("pattern", GLOB_ARG).needed(),
+                Arg::text("path", WHERE),
+            ],
+        ),
+        Op::new(
+            "grep",
+            "searches inside files",
+            vec![
+                Arg::text(
+                    "pattern",
+                    "a regular expression in Rust's regex syntax - `\\bKernel\\b`, `impl .* for`. \
+                     It has no look-around; escape anything you mean literally: `Vec<u8>\\(`",
+                )
+                .needed(),
+                Arg::text("path", WHERE),
+                Arg::text(
+                    "glob",
+                    format!("search only the files whose path matches this: {GLOB_ARG}"),
+                ),
+                Arg::truth(
+                    "ignore_case",
+                    "match without regard to case; false by default",
+                ),
+                Arg::whole(
+                    "context",
+                    "lines to show either side of each match, up to 10; none by default. They are \
+                     marked with a `-` where a match is marked with a `:`",
+                ),
+                Arg::truth(
+                    "files_only",
+                    "answer with the files that match and how many each has - `path: 12`, most \
+                     first - instead of the lines, which is `grep -l`. For a common word, or when \
+                     you do not know where something lives: a fraction of the tokens, and it names \
+                     the file to search properly next",
+                ),
+            ],
+        ),
+        Op::new(
+            "write",
+            "writes a whole file, replacing whatever was there",
+            vec![
+                Arg::text("path", "the file to write").needed(),
+                Arg::text("content", "the whole new file").needed(),
+            ],
+        ),
+        Op::new(
+            "edit",
+            "replaces one piece of a file",
+            vec![
+                Arg::text("path", "the file to change").needed(),
+                Arg::text(
+                    "old",
+                    "the exact text to replace, whitespace included; include enough of the \
+                     surrounding lines to make it the only match",
+                )
+                .needed(),
+                Arg::text("new", "what to put there instead").needed(),
+            ],
+        ),
+    ]
+}
+
+/// What `glob` and `grep` say about the path they are pointed at, which is the same thing twice.
+const WHERE: &str = "where to look - one file, or a directory and everything under it; the \
+                     working directory if left out";
 
 /// Everything a session may do to a file, as one tool.
 pub(super) struct Fs {
@@ -71,10 +128,16 @@ pub(super) struct Fs {
     write: Write,
     edit: Edit,
     limits: Limits,
+    ops: Vec<Op>,
+    /// note: built once rather than per `spec`, which is called afresh for every request. It was
+    /// one `json!` before and cost the same; a branch per operation is enough more work to be
+    /// worth not doing sixty times a session.
+    schema: Arc<Value>,
 }
 
 impl Fs {
     pub(super) fn new(reach: Arc<Reach>, looking: Looking, limits: Limits) -> Self {
+        let ops = ops();
         Self {
             read: Read(reach.clone()),
             glob: Glob(looking.clone()),
@@ -82,14 +145,14 @@ impl Fs {
             write: Write(reach.clone()),
             edit: Edit(reach),
             limits,
+            schema: Arc::new(schema(&ops)),
+            ops,
         }
     }
 
     /// The operation a call names, if it names one this tool has.
     fn op<'a>(&self, call: &'a ToolCall) -> Option<&'a str> {
-        call.args["action"]
-            .as_str()
-            .filter(|action| OPS.contains(action))
+        action_of(call, &self.ops)
     }
 }
 
@@ -99,77 +162,20 @@ impl Tool for Fs {
         ToolSpec::new(
             "fs",
             format!(
-                "the filesystem: `read` a whole text file, `glob` for paths, `grep` inside \
-                 files, `write` a whole file, `edit` part of one. `glob` and `grep` walk a \
-                 directory here with no shell: they obey `.gitignore`, they do look at hidden \
-                 files, and they count what they passed over. At most {MATCHES} matches or \
-                 {PATHS} paths come back, and a line wider than {WIDTH} characters is cut."
+                "the filesystem, five operations on it. A `path` is absolute or relative to the \
+                 working directory; {PATH_ARG}. `glob` and `grep` walk a directory here with no \
+                 shell: they obey `.gitignore`, they do look at hidden files, and they count what \
+                 they passed over. At most {MATCHES} matches or {PATHS} paths come back, and a \
+                 line wider than {WIDTH} characters is cut."
             ),
         )
-        .with_schema(json!({
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "string",
-                    "enum": OPS,
-                    "description": "what each needs: `read` a `path`; `glob` and `grep` a \
-                                    `pattern`, and a `path` for where to look; `write` a `path` \
-                                    and `content`; `edit` a `path`, `old` and `new`",
-                },
-                "path": {
-                    "type": "string",
-                    "description": format!(
-                        "the file to act on, or for `glob` and `grep` where to look - one file, \
-                         or a directory and everything under it, the working directory if left \
-                         out. {PATH_ARG}"
-                    ),
-                },
-                "pattern": {
-                    "type": "string",
-                    "description": format!(
-                        "for `grep`, a regular expression in Rust's regex syntax - \
-                         `\\bKernel\\b`, `impl .* for`. It has no look-around; escape anything \
-                         you mean literally: `Vec<u8>\\(`. For `glob`, {GLOB_ARG}"
-                    ),
-                },
-                "content": { "type": "string", "description": "for `write`: the whole new file" },
-                "old": {
-                    "type": "string",
-                    "description": "for `edit`: the exact text to replace, whitespace included; \
-                                    include enough of the surrounding lines to make it the only \
-                                    match",
-                },
-                "new": {
-                    "type": "string",
-                    "description": "for `edit`: what to put there instead",
-                },
-                "glob": {
-                    "type": "string",
-                    "description": "for `grep`: search only the files whose path matches this, \
-                                    written the way `pattern` is for a `glob`",
-                },
-                "ignore_case": {
-                    "type": "boolean",
-                    "description": "for `grep`: match without regard to case; false by default",
-                },
-                "context": {
-                    "type": "integer",
-                    "description": "for `grep`: lines to show either side of each match, up to \
-                                    10; none by default. They are marked with a `-` where a \
-                                    match is marked with a `:`",
-                },
-                "files_only": {
-                    "type": "boolean",
-                    "description": "for `grep`: answer with the files that match and how many \
-                                    each has - `path: 12`, most first - instead of the lines, \
-                                    which is `grep -l`. For a common word, or when you do not \
-                                    know where something lives: a fraction of the tokens, and it \
-                                    names the file to search properly next",
-                },
-            },
-            "required": ["action"],
-        }))
-        .with_capabilities(OPS.map(Capability::fs))
+        .with_schema(self.schema.clone())
+        .with_capabilities(
+            actions(&self.ops)
+                .into_iter()
+                .map(Capability::fs)
+                .collect::<Vec<_>>(),
+        )
     }
 
     /// note: `action` and nothing else, so a rule about `fs:read` is about reading whichever way
@@ -187,27 +193,34 @@ impl Tool for Fs {
     }
 
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
+        // the arguments wherever the model put them, which is the one thing that has to happen
+        // before anything here reads one
+        let args = match inner(&call.args) {
+            Ok(args) => args,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+        };
+
         // note: the operation is checked here as well as in `needs`, because a refusal a model
-        // can act on is one that names what was wrong. The alternative - dispatching on a default - runs
-        // something nobody asked for
+        // can act on is one that names what was wrong. The alternative - dispatching on a default
+        // - runs something nobody asked for
         let Some(action) = self.op(call) else {
             return Ok(ToolOutput::error(format!(
                 "`{}` is not something `fs` does; it does {}",
-                call.args["action"].as_str().unwrap_or("nothing"),
-                OPS.join(", ")
+                args["action"].as_str().unwrap_or("nothing"),
+                actions(&self.ops).join(", ")
             )));
         };
 
-        if let Some(refusal) = unread(action, &call.args, &TAKES) {
+        if let Some(refusal) = unread(action, args, &self.ops) {
             return Ok(ToolOutput::error(refusal));
         }
 
         match action {
-            "read" => self.read.invoke(call, output).await,
-            "glob" => self.glob.invoke(call, output).await,
-            "grep" => self.grep.invoke(call, output).await,
-            "write" => self.write.invoke(call, output).await,
-            _ => self.edit.invoke(call, output).await,
+            "read" => self.read.invoke(args, output).await,
+            "glob" => self.glob.invoke(args, output).await,
+            "grep" => self.grep.invoke(args, output).await,
+            "write" => self.write.invoke(args, output).await,
+            _ => self.edit.invoke(args, output).await,
         }
     }
 }
@@ -216,31 +229,27 @@ impl Tool for Fs {
 mod tests {
     use super::*;
 
-    /// The schema and [`TAKES`] say the same thing about every argument.
+    /// The schema and the permission subjects are one vocabulary.
     ///
-    /// note: the check that keeps this table from becoming the bug it was written to fix. An
-    /// argument the schema offers and no row takes is refused the moment a model does as it was
-    /// told, which is a worse failure than the silent one - it reads as a tool that has changed
-    /// its mind. An argument a row takes and the schema never mentions is one no model will pass.
-    ///
-    /// note: it goes both ways deliberately. The one that bites is schema-without-row, and the
-    /// other direction is what catches a rename that only got done in one place.
+    /// note: what the two-list check became. It used to assert that `OPS`, `TAKES` and a flat
+    /// schema agreed about every argument, which they had to be made to do by hand; they are one
+    /// `Vec<Op>` now, and the branch an argument appears in *is* the operation that reads it. What
+    /// can still drift is this: a subject with no branch to reach it by, or a branch the policy
+    /// was never told about, which is a call that cannot be refused by name.
     #[test]
-    fn every_argument_the_schema_offers_is_one_some_action_takes() {
-        let tool = Fs::new(
+    fn the_schema_and_the_subjects_are_one_vocabulary() {
+        let reach = || {
             Arc::new(Reach {
                 workdir: std::env::temp_dir(),
                 extra: Vec::new(),
                 readable: Vec::new(),
                 confined: true,
-            }),
+            })
+        };
+        let tool = Fs::new(
+            reach(),
             Looking {
-                reach: Arc::new(Reach {
-                    workdir: std::env::temp_dir(),
-                    extra: Vec::new(),
-                    readable: Vec::new(),
-                    confined: true,
-                }),
+                reach: reach(),
                 policy: Arc::new(crate::tools::Careful::new()),
                 limits: Limits::default(),
             },
@@ -248,36 +257,65 @@ mod tests {
         );
 
         let spec = tool.spec();
-        let declared: Vec<&str> = spec.schema["properties"]
-            .as_object()
-            .expect("the schema is an object with properties")
-            .keys()
-            .map(String::as_str)
-            .filter(|key| *key != "action")
+        let offered: Vec<String> = crate::tools::ops::offered(&spec.schema)
+            .into_iter()
+            .map(|action| Capability::fs(action).to_string())
             .collect();
-        let taken: Vec<&str> = TAKES
-            .iter()
-            .flat_map(|(_, args)| args.iter().copied())
-            .collect();
+        let declared: Vec<String> = spec.capabilities.iter().map(ToString::to_string).collect();
 
-        for argument in &declared {
-            assert!(
-                taken.contains(argument),
-                "the schema offers `{argument}` and no action takes it, so passing it is refused"
-            );
-        }
-        for argument in &taken {
-            assert!(
-                declared.contains(argument),
-                "`{argument}` is taken by an action and the schema never mentions it"
-            );
-        }
-
-        // and every row is an operation this tool has, in the same order
+        assert_eq!(offered, declared, "one list of operations, in one order");
         assert_eq!(
-            TAKES.map(|(action, _)| action),
-            OPS,
-            "one list of operations, in one order"
+            offered,
+            ["fs:read", "fs:glob", "fs:grep", "fs:write", "fs:edit"]
         );
+    }
+
+    /// An argument belongs to the operations that read it, and to no others.
+    ///
+    /// note: the half of the old check that was about the model rather than about the code. `old`
+    /// was a well-formed argument to `fs: read` under the flat schema and the only thing saying
+    /// otherwise was the phrase "for `edit`:" at the front of its description. Now the branch says
+    /// it, so this asserts on the branch.
+    #[test]
+    fn an_argument_is_offered_by_the_operations_that_read_it() {
+        let wanted = [
+            ("read", vec!["action", "path"]),
+            ("glob", vec!["action", "path", "pattern"]),
+            (
+                "grep",
+                vec![
+                    "action",
+                    "context",
+                    "files_only",
+                    "glob",
+                    "ignore_case",
+                    "path",
+                    "pattern",
+                ],
+            ),
+            ("write", vec!["action", "content", "path"]),
+            ("edit", vec!["action", "new", "old", "path"]),
+        ];
+
+        for (op, mut expected) in wanted {
+            let branch = schema(&ops())["properties"]["call"]["anyOf"]
+                .as_array()
+                .expect("a branch per operation")
+                .iter()
+                .find(|it| it["properties"]["action"]["enum"][0] == op)
+                .cloned()
+                .unwrap_or_else(|| panic!("no branch for `{op}`"));
+
+            let mut offered: Vec<&str> = branch["properties"]
+                .as_object()
+                .expect("a branch is an object")
+                .keys()
+                .map(String::as_str)
+                .collect();
+            offered.sort_unstable();
+            expected.sort_unstable();
+
+            assert_eq!(offered, expected, "`{op}` offers the wrong arguments");
+        }
     }
 }

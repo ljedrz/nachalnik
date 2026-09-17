@@ -8,7 +8,8 @@
 
 use std::sync::Arc;
 
-use nachalnik::{BoxError, OutputSink, ToolCall, ToolOutput};
+use nachalnik::{BoxError, OutputSink, ToolOutput};
+use serde_json::Value;
 
 use crate::sandbox::{Access, Reach};
 
@@ -38,10 +39,10 @@ pub(super) struct Read(pub(super) Arc<Reach>);
 impl Read {
     pub(super) async fn invoke(
         &self,
-        call: &ToolCall,
+        args: &Value,
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
-        let path = match self.0.allows(arg(&call.args, "path")?, Access::Reading) {
+        let path = match self.0.allows(arg(args, "path")?, Access::Reading) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -59,10 +60,10 @@ pub(super) struct Write(pub(super) Arc<Reach>);
 impl Write {
     pub(super) async fn invoke(
         &self,
-        call: &ToolCall,
+        args: &Value,
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
-        let (path, content) = (arg(&call.args, "path")?, arg(&call.args, "content")?);
+        let (path, content) = (arg(args, "path")?, arg(args, "content")?);
         let path = match self.0.allows(path, Access::Writing) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
@@ -84,11 +85,11 @@ pub(super) struct Edit(pub(super) Arc<Reach>);
 impl Edit {
     pub(super) async fn invoke(
         &self,
-        call: &ToolCall,
+        args: &Value,
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
-        let (old, new) = (arg(&call.args, "old")?, arg(&call.args, "new")?);
-        let path = match self.0.allows(arg(&call.args, "path")?, Access::Writing) {
+        let (old, new) = (arg(args, "old")?, arg(args, "new")?);
+        let path = match self.0.allows(arg(args, "path")?, Access::Writing) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
