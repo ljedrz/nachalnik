@@ -36,6 +36,19 @@ minor bump may break you.
   provider does not say what the model holds, and the comparison is `>` the limit rather than a
   fraction of it - a margin here would be the kernel having a policy about how full a context may
   be.
+- `Tool::needs(call)`, which says which of the capabilities a tool declared *this* call is. A tool
+  that does one thing declares it once on its spec and never implements this; a tool whose `action`
+  picks between reading a file and writing one is the only thing that can tell those apart, because
+  it is the only thing that knows its own arguments. It replaces the kernel reading the `action`
+  argument for itself, which meant guessing from a string's shape whether `<name>:<name>` was an
+  operation or a tool that happened to have a colon in its name. The default is the whole of
+  `ToolSpec::capabilities`, which is safe for anything that declines to narrow: the strictest of
+  everything consulted wins, so a tool that says nothing is judged against all of it.
+- `Tool::limit(call)`, the same question about how much of a call's output the model is shown. A
+  tool that reads a file and also searches a directory has two natural answer sizes and one
+  `ToolSpec::output_limit` to put them in. What it decides is what the model is shown and never
+  what is kept: the kernel still archives the whole of anything it shortens, under
+  `Config::keep_truncated_output`.
 
 ### changed
 
@@ -51,13 +64,6 @@ minor bump may break you.
   number in a refusal is the model's own count of the same bytes, and the only one taken in the
   units the limit is enforced in. Without it a session that had run out of room corrected nothing,
   because every request from then on failed and no failure was a lesson.
-- `#[non_exhaustive]` on `Selector` and `Which`, which name a syntax that grows, and on
-  `StateChange`, `Record`, `Removed` and `CompactionReport`, which this crate answers with and
-  nothing outside it builds - so the next field on any of them is a patch. The attribute closes
-  exhaustive matching and not construction, and nothing in the workspace needed changing for it.
-  Deliberately not marked: `Grant` and `Verdict`, which are the whole of what a decision can be;
-  and `Budget`, `Usage`, `ModelInfo`, `ToolOutput`, `CompactionPlan`, `Projection` and `Skipped`,
-  each of which looks like an answer and is built by somebody implementing one of the six traits.
 - `Event::ContextRecounted` and `Event::SessionResumed` no longer call their figures the projected
   total. Both carry `Context::tokens()` - the sum over the items sending their content - and *the
   projected total* means something else here: what the projected messages cost, which is the figure
@@ -77,6 +83,41 @@ minor bump may break you.
 
 ### breaking
 
+- A capability is a domain and an operation. `Capability` was an enum of six - `Read`, `Write`,
+  `Edit`, `Shell`, `Network` and `Custom(String)` - and is now a struct over a `Domain` of its own:
+
+  ```rust
+  pub enum Domain { Fs, Exec, Net, Other(String) }
+  pub struct Capability { pub domain: Domain, pub op: String }
+  ```
+
+  This crate ships no tools, so it can vouch for the domains every agent has - a filesystem, a
+  process, a socket - and cannot know that a client calls one of its own `context`. Those arrive
+  as `Domain::Other`, named by whoever brought them. `Capability::{fs, exec, net}` build one in a
+  named domain and `of` builds one in any; `parse` reads `domain:op` back, which is the inverse of
+  `Display`, so a rule spelled on a command line and a rule read off a screen are the same rule.
+
+  What the old shape could not express is a rule narrower than a tool. A capability called `read`
+  was declared by a tool called `read`, so a client showing what a rule covered had a tautology to
+  show, and the granularity a rule could have was whatever granularity of tool somebody happened
+  to register. A domain is a thing that can be acted on and an operation is one act on it, so a
+  rule is either about the thing or about one act and there is no third question to ask.
+
+  The recorded spelling changed with it. A capability serializes as `fs:read` where it was `read`,
+  so a `permission.requested` event written by 0.5.2 no longer deserializes - it comes back as
+  `` `read` names no operation; it should be `domain:op` ``. Nothing that resumes a session reads
+  those: a `Snapshot` carries items, parameters and what the counter learned, and none of the
+  three holds a `Capability`. What is affected is reading a session log back as `Record`.
+- `#[non_exhaustive]` on `Selector` and `Which`, which name a syntax that grows, and on
+  `StateChange`, `Record`, `Removed` and `CompactionReport`, which this crate answers with and
+  nothing outside it builds - so the next variant or field on any of them is a patch. It is here
+  rather than under `changed` because of what it costs the caller who was already doing either
+  thing: a match over one of the two enums needs a wildcard arm, and the four structs can no
+  longer be built with a struct literal outside this crate. Nothing in the workspace needed
+  changing for it. Deliberately not marked: `Grant` and `Verdict`, which are the whole of what a
+  decision can be; and `Budget`, `Usage`, `ModelInfo`, `ToolOutput`, `CompactionPlan`, `Projection`
+  and `Skipped`, each of which looks like an answer and is built by somebody implementing one of
+  the six traits.
 - `Projection` has a `reordered` list beside `repairs`, and a move is in the new one. They were one
   list and they are two pieces of news: a repair is content the model would have had and will not -
   a call whose result is gone, a result whose call is, an ordered turn a flat shape cannot carry -
