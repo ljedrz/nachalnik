@@ -1668,7 +1668,7 @@ impl App {
                 // the kernel altering what the model is told is not a detail for the trace pane.
                 // One compaction pass can orphan half a dozen calls at once, though, and six
                 // notices in a row push the answer off the screen to say one thing - so the
-                // conversation gets the fact and ctrl+p gets the list
+                // conversation gets the fact and the request preview gets the list
                 //
                 // note: and only when they change. See `App::reported_repairs` - a repair lasts as
                 // long as the state that caused it, so the projector re-does it for every request
@@ -1676,10 +1676,16 @@ impl App {
                 // every message for the rest of a session over one tool result taken out once
                 //
                 // note: the count is everything being repaired rather than what is newly so,
-                // because it is the number `ctrl+p` will show. And the wording says the repair
+                // because it is the number the preview will show. And the wording says the repair
                 // stands: in the past tense it reads as something that happened to this one
                 // request, which is exactly what somebody then goes looking for the cause of,
                 // and there is nothing about this turn to find
+                //
+                // note: `/request` and not `ctrl+p`, which is the same page and is the key for it
+                // on a screen. Everything this program says goes out of a headless run too, where
+                // there is no keyboard and the trace holding the list is not printed - so a run
+                // driven down a pipe was told to press a key that does not exist there, about a
+                // list it had no other way to see. The command works in both
                 if repairs != self.reported_repairs {
                     match repairs.len() {
                         0 => {}
@@ -1694,7 +1700,7 @@ impl App {
                             Speaker::Note,
                             format!(
                                 "the request is repaired in {many} places, and will be while they \
-                                 stand; ctrl+p says where"
+                                 stand; `/request` says where"
                             ),
                         ),
                     }

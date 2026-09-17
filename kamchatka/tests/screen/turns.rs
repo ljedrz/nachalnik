@@ -70,7 +70,9 @@ async fn several_repairs_at_once_are_one_line_rather_than_a_wall_of_them() {
     let screen = harness.screen();
     assert_eq!(screen.matches("dropped the call").count(), 0, "{screen}");
     assert!(screen.contains("repaired in 3 places"), "{screen}");
-    assert!(screen.contains("ctrl+p says where"), "{screen}");
+    // a command rather than a key, because this line reaches a headless run too and there is no
+    // keyboard there; `/request` opens the same page `ctrl+p` does
+    assert!(screen.contains("`/request` says where"), "{screen}");
 }
 
 /// A repair that stands is said once, not after every message.

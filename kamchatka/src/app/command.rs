@@ -405,9 +405,13 @@ impl App {
             // same file - a fresh session built around the snapshot - and two things a keystroke
             // apart that differ in what happens to the context you already have is a trap
             "load" => self.load(rest),
+            // note: `/help` and not `F1`, which is the same panel and is the key for it on a
+            // screen. A line typed at a headless run that is not a command is answered here too,
+            // and there is no function key down a pipe - so the one answer that pointed anywhere
+            // pointed somewhere that run could not go
             other => self.say(
                 Speaker::Error,
-                format!("there is no `/{other}`; F1 lists what there is"),
+                format!("there is no `/{other}`; `/help` lists what there is"),
             ),
         }
     }
