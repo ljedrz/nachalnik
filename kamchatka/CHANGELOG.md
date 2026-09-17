@@ -9,6 +9,27 @@ minor bump may break you.
 
 ### fixed
 
+- An `undo` does not walk back over a decision the person has made since. Every other move in
+  `context` asks whether an item is theirs to move - a system instruction, a pin they put on - and
+  this one went straight to the kernel, so a pin made after the model elided an item came off again
+  on the model's next `undo`. Silently, and against the one thing the word promises. What it leaves
+  alone is named in the answer.
+- Walking a move back is one undo for the person, however many items the move named. It set each
+  item's state in a call of its own, so undoing what this tool reported as one change left three
+  checkpoints on their stack; the items are grouped by the state they return to. The report names
+  each of those states rather than the first one for all of them.
+- `ids` refuses a number that is not an item number, and reads the same number twice as one item.
+  It dropped whatever it could not read, so `[-1]` arrived as no items at all - which is how a call
+  naming none arrives - and `search` with one bad number searched the whole context. The refusal
+  for naming items twice reads `ids` and `select` as *given* now, rather than as what they came to:
+  a call with both, one of which parsed to nothing, was going through as the other one.
+- `steps` outside what a walk takes is refused rather than rounded into range. It was clamped, so
+  `steps: 0` walked one change back, a word walked one back, and a hundred walked sixty-four - and
+  the schema advertised none of it. It says `from 1 to 64` now.
+- The way back from an elision is spelled the way it is sent. The line said `state: "restore"`, from
+  when the four moves were one argument with a `state`; they are four actions, and an argument
+  nothing reads is refused by name - so a model following the instruction spent the call the
+  instruction exists to save.
 - An `edit` whose `old` names two places changes neither and says how many it named. The argument
   asks for enough of the surrounding lines to make it the only match and nothing checked, so the
   first was replaced, the second stayed, and the answer read `replaced one occurrence` - which is

@@ -11,7 +11,7 @@
 //! journal rather than the kernel's stack, which belongs to the person. Both rules are in the
 //! doc comments below, where the code that enforces them is.
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, collections::BTreeSet};
 
 use nachalnik::{
     Content, ContextId, ContextItem, ContextKind, ContextState, Kernel, ToolCall, ToolCallId,
@@ -23,6 +23,13 @@ use serde_json::{Value, json};
 use crate::app::text::thousands;
 
 use super::{Pinned, ids, named, protected};
+
+/// How many of its own changes one call may walk back or forward.
+///
+/// note: a bound at all, because `undo` is a loop over a journal and a model that means "all of
+/// it" writes a big number. Said in the schema and refused above it rather than clamped, which is
+/// how a call asking for a hundred used to get sixty-four and read as though it had got a hundred.
+const WALK: u64 = 64;
 
 /// Changes the context: prunes it, rewrites an item, writes something down, walks its own
 /// changes back.
@@ -81,51 +88,95 @@ enum Undoing {
     Said(ContextId, Content, Value),
 }
 
+/// One step of a walk: the way back from it, what it did, and what it would not touch.
+#[derive(Default)]
+struct Applied {
+    /// The way from where this left things to where they were, where anything moved.
+    inverse: Option<Undoing>,
+    /// What it did, in the words somebody reads.
+    did: Option<String>,
+    /// What it left alone, and why.
+    left: Vec<String>,
+}
+
 impl Undoing {
     /// Applies it, and hands back the way from where that leaves things to where they were.
-    fn apply(self, kernel: &Kernel) -> Option<Self> {
+    ///
+    /// note: `protected` is asked here too, which is the question every other move in this tool
+    /// asks and this one did not. A person who pins an item after the model elided it has made a
+    /// decision about that item; `undo` went straight to `set_state` and took the pin off again,
+    /// silently, which is the one thing the word pin promises not to happen.
+    ///
+    /// note: grouped by the state they land in, rather than an item at a time. One operation is
+    /// one undo, and walking back a move of three items left three checkpoints on the person's
+    /// stack - so undoing what the model called one change took them three.
+    ///
+    /// note: `own_turn` is `None` because a change recorded earlier cannot be about the turn this
+    /// call is speaking in: that item did not exist when the change was made, and identifiers are
+    /// never reused.
+    fn apply(self, kernel: &Kernel, mine: &BTreeSet<ContextId>) -> Applied {
         match self {
             Self::States(states) => {
                 let mut back = Vec::new();
+                let mut left = Vec::new();
+                let mut groups: Vec<(ContextState, Option<String>, Vec<ContextId>)> = Vec::new();
                 for (id, state, note) in states {
                     let Some(item) = kernel.item(id) else {
                         continue;
                     };
+                    if let Some(why) = protected(&item, mine, None) {
+                        left.push(format!("[{id}] {why}"));
+                        continue;
+                    }
                     back.push((id, item.state, item.note.clone()));
-                    kernel.set_state([id], state, note);
+                    match groups
+                        .iter_mut()
+                        .find(|(known, said, _)| *known == state && *said == note)
+                    {
+                        Some((.., ids)) => ids.push(id),
+                        None => groups.push((state, note, vec![id])),
+                    }
                 }
 
-                (!back.is_empty()).then_some(Self::States(back))
+                let did = (!groups.is_empty()).then(|| {
+                    groups
+                        .iter()
+                        .map(|(state, _, ids)| format!("{} now {state}", numbers(ids)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                });
+                for (state, note, ids) in groups {
+                    kernel.set_state(ids, state, note);
+                }
+
+                Applied {
+                    inverse: (!back.is_empty()).then_some(Self::States(back)),
+                    did,
+                    left,
+                }
             }
             Self::Said(id, content, meta) => {
-                let item = kernel.item(id)?;
+                let Some(item) = kernel.item(id) else {
+                    return Applied::default();
+                };
+                if let Some(why) = protected(&item, mine, None) {
+                    return Applied {
+                        left: vec![format!("[{id}] {why}")],
+                        ..Applied::default()
+                    };
+                }
                 let back = Self::Said(id, item.content.clone(), item.meta.clone());
-                kernel.replace(id, content).ok()?;
+                if kernel.replace(id, content).is_err() {
+                    return Applied::default();
+                }
                 let _ = kernel.annotate(id, meta);
 
-                Some(back)
-            }
-        }
-    }
-
-    /// What it will put back, for a report somebody has to read.
-    ///
-    /// note: `now`, not `back to`. Walking back is what the line above this one says, once, and
-    /// most of these really are returning - but a `note` walked back is *archived*, which is a
-    /// state it has never been in. A live run read `10 back to archived` about a note it had
-    /// written thirty seconds earlier and reported that the item had been restored to being
-    /// archived, which is neither what happened nor a thing that could have.
-    fn about(&self) -> String {
-        match self {
-            Self::States(states) => format!(
-                "{} now {}",
-                numbers(&states.iter().map(|(id, ..)| *id).collect::<Vec<_>>()),
-                match states.first() {
-                    Some((_, state, _)) => state.to_string(),
-                    None => "nothing".to_owned(),
+                Applied {
+                    inverse: Some(back),
+                    did: Some(format!("what [{id}] said")),
+                    left: Vec::new(),
                 }
-            ),
-            Self::Said(id, ..) => format!("what [{id}] said"),
+            }
         }
     }
 }
@@ -361,10 +412,17 @@ impl Amend {
             });
         }
         // the way back, at the moment it becomes worth knowing. A session that elided twenty-two
-        // items spent its next two calls guessing at an `action` called `restore` and then gave
-        // up; the reversal is a `state`, and six words here are cheaper than that
+        // items spent its next two calls guessing at how to put them back and then gave up; six
+        // words here are cheaper than that
+        //
+        // note: `action`, which is what `restore` is. It said `state: "restore"` from when the
+        // four moves were a `state` argument, and went on saying it after they became four
+        // actions of their own - so a model following the sentence sent an argument nothing
+        // reads, which is now refused by name. The way back cost the call it was there to save
         if !moved.is_empty() && !state.sends_content() {
-            out.push_str("back: the same ids with `state: \"restore\"`, or `undo` for all of it\n");
+            out.push_str(
+                "back: the same ids with `action: \"restore\"`, or `undo` for all of it\n",
+            );
             // the failure this closes: a run gathered nineteen thousand tokens of evidence across
             // seventeen tool results, said nothing in its own turns, elided all seventeen at once,
             // and then answered all ten questions from nothing - confidently, and wrong on every
@@ -409,7 +467,10 @@ impl Amend {
 
     /// Rewrites what one item says.
     fn revise(&self, kernel: &Kernel, call: &ToolCall, args: &Value, reason: &str) -> ToolOutput {
-        let ids = ids(args, "ids");
+        let ids = match ids(args, "ids") {
+            Ok(ids) => ids,
+            Err(why) => return ToolOutput::error(why),
+        };
         let [id] = ids[..] else {
             return ToolOutput::error("`revise` takes exactly one id in `ids`");
         };
@@ -555,11 +616,30 @@ impl Amend {
     /// back the way from where that left things to where they were. There is no separate "redo"
     /// representation to be written, or to fall out of step with the first one.
     fn walk(&self, kernel: &Kernel, args: &Value, reason: &str, back: bool) -> ToolOutput {
-        let steps = args["steps"].as_u64().unwrap_or(1).clamp(1, 64) as usize;
+        // note: read rather than clamped. It took `as_u64().unwrap_or(1).clamp(1, 64)`, so a
+        // `steps` of nought walked one change back, a negative number walked one back, a word
+        // walked one back, and a hundred walked sixty-four - each of them a call that did
+        // something other than what it said, and the schema advertised none of it
+        let steps = match &args["steps"] {
+            Value::Null => 1,
+            Value::Number(given) if given.as_u64().is_some_and(|it| (1..=WALK).contains(&it)) => {
+                given.as_u64().unwrap_or(1) as usize
+            }
+            given => {
+                return ToolOutput::error(format!(
+                    "`steps` is `{given}`, and nothing was done. It is how many of your own \
+                     changes to walk, from 1 to {WALK}; left out, it is 1."
+                ));
+            }
+        };
         let before = kernel.budget().used();
 
         let mut put_back = Vec::new();
+        let mut left_alone = Vec::new();
         let mut touched = Vec::new();
+        // taken before the journal, and copied, so that the two locks are never held in this
+        // order anywhere - `note_pin` below holds the other one on its own
+        let mine = self.pinned.lock().clone();
         {
             let mut journal = self.journal.lock();
             for _ in 0..steps {
@@ -570,12 +650,13 @@ impl Amend {
                 let Some(change) = taken else {
                     break;
                 };
-                put_back.push(change.about());
-
-                // an item that has since gone gives nothing to walk to, and the entry is spent
-                // either way rather than left to be retried against a context it no longer
-                // describes
-                let Some(inverse) = change.apply(kernel) else {
+                // an item that has since gone, or that is no longer this tool's to move, gives
+                // nothing to walk to, and the entry is spent either way rather than left to be
+                // retried against a context it no longer describes
+                let step = change.apply(kernel, &mine);
+                put_back.extend(step.did);
+                left_alone.extend(step.left);
+                let Some(inverse) = step.inverse else {
                     continue;
                 };
                 if let Undoing::States(states) = &inverse {
@@ -614,6 +695,12 @@ impl Amend {
                 put_back.join("\n  "),
             ),
         };
+        if !left_alone.is_empty() {
+            out.push_str(&format!(
+                "left alone, being no longer yours to move:\n  {}\n",
+                left_alone.join("\n  ")
+            ));
+        }
         out.push_str(&format!(
             "{done} change(s) of yours can still be undone, {undone} redone.\n"
         ));

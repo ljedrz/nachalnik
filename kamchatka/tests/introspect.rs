@@ -179,16 +179,18 @@ async fn look_lists_every_item_with_its_state_and_why() {
 
 #[tokio::test]
 async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
-    // the failure this closes: a session elided twenty-two items, then spent two calls asking for
-    // an `action` called `restore`, was told no such thing existed, and gave up. The reversal is
-    // a `state`, and the moment worth saying so is the one where something has just been hidden
+    // the failure this closes: a session elided twenty-two items, then spent two calls guessing
+    // at how to put them back and gave up. The moment worth saying so is the one where something
+    // has just been hidden - and the sentence has to name the spelling that works: it said
+    // `state: "restore"` from when the four moves were one argument, and an argument nothing
+    // reads is refused by name, so following the instruction cost the call it was there to save
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
             "context",
             json!({"action": "elide", "ids": [1], "reason": "done with it"}),
         ),
-        // not a word the schema lists, and unambiguous: there is one state that is "put it back"
+        // the instruction the first answer gives, followed to the letter
         call(
             "c2",
             "context",
@@ -205,8 +207,8 @@ async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
 
     assert!(said[0].contains("now elided"), "{}", said[0]);
     assert!(
-        said[0].contains("restore"),
-        "the way back is on the line: {}",
+        said[0].contains("`action: \"restore\"`"),
+        "the way back is on the line, spelled the way it is sent: {}",
         said[0]
     );
     assert!(
@@ -215,8 +217,13 @@ async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
         said[0]
     );
 
-    // `unelide` is not in the enum and means exactly one thing
+    // and the call that followed it did what the sentence said it would
     assert_eq!(kernel.items()[0].state, ContextState::Active, "{}", said[1]);
+    assert!(
+        !said[1].contains("is not an argument") && !said[1].contains("there is no"),
+        "the instruction was refused: {}",
+        said[1]
+    );
 
     // and putting something back does not then advertise a way back from that
     assert!(!said[1].contains("back:"), "{}", said[1]);
@@ -885,6 +892,234 @@ async fn undo_walks_back_this_tools_own_changes_and_nothing_else() {
     let notes = kernel.item(nachalnik::ContextId(2)).unwrap();
     assert_eq!(notes.content.to_text(), "a long note");
     assert!(notes.meta["revised"].is_null());
+}
+
+/// A pin the person puts on afterwards survives the model's undo, and the answer says it was left.
+///
+/// note: the half the test above does not cover. That one makes the person's decision *before* the
+/// model's change, where the journal never held the item; this one makes it in between, where the
+/// journal holds `[1] was active` and walking back used to write that over a pin made since -
+/// silently, and against the one promise the word makes. Every other move in this tool asks
+/// `protected` first; `undo` went straight to `set_state`.
+#[tokio::test]
+async fn an_undo_does_not_walk_back_over_a_decision_made_since() {
+    let (kernel, _provider, _anchor) = agent(vec![
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({ "action": "elide", "ids": [1, 2], "reason": "read them both" }),
+        )]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "reason": "I want them back" }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+
+    let theirs = kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    let mine = kernel.push(ContextItem::file("other.rs", "1".repeat(400)));
+    kernel.push(ContextItem::user("tidy up"));
+    kernel.turn().await.expect("the first turn failed");
+
+    // between the two turns, the person pins one of the items the model elided
+    kernel.set_state([theirs], ContextState::Pinned, Some("I need this".into()));
+    kernel.turn().await.expect("the second turn failed");
+
+    let said = all_answers(&kernel);
+    let walked = said.last().unwrap();
+    assert_eq!(
+        kernel.item(theirs).unwrap().state,
+        ContextState::Pinned,
+        "a pin the person made was walked back over: {walked}"
+    );
+    assert!(
+        walked.contains("left alone") && walked.contains("a pin is a promise"),
+        "and it says what it did not touch: {walked}"
+    );
+    assert_eq!(
+        kernel.item(mine).unwrap().state,
+        ContextState::Active,
+        "the rest of the change still walked back: {walked}"
+    );
+}
+
+/// Walking back a move of several items is one undo for the person, not one for each item.
+///
+/// note: `Undoing::apply` called `set_state` an item at a time, so undoing what this tool reported
+/// as one change left three checkpoints on the person's stack - and one operation is one undo.
+/// They are grouped by the state they land in now, which is also what the report names: it used to
+/// say every item was in the state of the first of them.
+///
+/// note: counted against the same session moving one item rather than against a number, because
+/// what is being claimed is that the size of a move does not reach the person's stack - and a
+/// number here would be counting the pushes either session happens to make.
+#[tokio::test]
+async fn walking_back_one_move_is_one_undo_for_the_person() {
+    async fn walked(moved: Vec<u64>) -> usize {
+        let (kernel, _provider, _anchor) = agent(vec![
+            ModelResponse::tool_calls(vec![call(
+                "c1",
+                "context",
+                json!({ "action": "exclude", "ids": moved, "reason": "these" }),
+            )]),
+            ModelResponse::text("done"),
+            ModelResponse::tool_calls(vec![call(
+                "c2",
+                "context",
+                json!({ "action": "undo", "reason": "put them back" }),
+            )]),
+            ModelResponse::text("done"),
+        ]);
+
+        for name in ["a.rs", "b.rs", "c.rs"] {
+            kernel.push(ContextItem::file(name, "0".repeat(400)));
+        }
+        kernel.push(ContextItem::user("tidy up"));
+        kernel.turn().await.expect("the first turn failed");
+        kernel.turn().await.expect("the second turn failed");
+
+        let mut depth = 0;
+        while kernel.undo() {
+            depth += 1;
+        }
+
+        depth
+    }
+
+    assert_eq!(
+        walked(vec![1, 2, 3]).await,
+        walked(vec![1]).await,
+        "undoing a move of three items cost the person more than undoing a move of one"
+    );
+}
+
+/// And the report says which state each item went to, rather than the first one's for all of them.
+#[tokio::test]
+async fn walking_back_says_where_each_item_ended_up() {
+    let (kernel, _provider, _anchor) = agent(vec![
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({ "action": "elide", "ids": [1, 2], "reason": "both" }),
+        )]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "reason": "back" }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+
+    let excluded = kernel.push(ContextItem::file("a.rs", "0".repeat(400)));
+    kernel.push(ContextItem::file("b.rs", "1".repeat(400)));
+    kernel.push(ContextItem::user("tidy up"));
+    // one of the two was already out of the request when the move found it, so the way back is
+    // two states and the report has two things to say
+    kernel.set_state([excluded], ContextState::Excluded, Some("mine".into()));
+    kernel.turn().await.expect("the first turn failed");
+    kernel.turn().await.expect("the second turn failed");
+
+    let walked = all_answers(&kernel).last().unwrap().clone();
+    assert!(walked.contains("1 now excluded"), "{walked}");
+    assert!(walked.contains("2 now active"), "{walked}");
+}
+
+/// A number that is not an item number is refused, and the same number twice is one item.
+///
+/// note: `ids` dropped whatever it could not read, so `[-1]` arrived as no items at all - which is
+/// how a call that named none arrives too. `search` then searched the whole context, and a call
+/// giving `ids` *and* `select` went through as a `select`, the refusal for naming items twice
+/// having found no numbers to object to. A duplicate was counted twice in what a move reported.
+#[tokio::test]
+async fn an_id_that_is_not_one_is_refused_rather_than_dropped() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "elide", "ids": [-1], "reason": "the first one" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "elide", "ids": [1, 1], "reason": "twice over" }),
+        ),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "look", "ids": [], "select": "all:files" }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    assert!(said[0].contains("not an item number"), "{}", said[0]);
+    assert!(said[0].contains("nothing was done"), "{}", said[0]);
+
+    assert!(
+        said[1].contains("1 item(s)") || said[1].contains("[1]"),
+        "the same id twice is one item: {}",
+        said[1]
+    );
+    assert!(!said[1].contains("2 item(s)"), "{}", said[1]);
+
+    assert!(
+        said[2].contains("`ids` and `select` in one call"),
+        "an empty `ids` is still `ids`: {}",
+        said[2]
+    );
+}
+
+/// A `steps` outside what a walk takes is refused, rather than walking some other number.
+///
+/// note: it was `as_u64().unwrap_or(1).clamp(1, 64)`, so nought walked one change back, a word
+/// walked one back, and a hundred walked sixty-four - each of them a call that did something other
+/// than what it said, and the schema advertised none of it.
+#[tokio::test]
+async fn a_walk_of_no_steps_walks_nothing() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "elide", "ids": [1], "reason": "done with it" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "steps": 0, "reason": "none of it" }),
+        ),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "undo", "steps": "two", "reason": "a word" }),
+        ),
+        call(
+            "c4",
+            "context",
+            json!({ "action": "undo", "steps": 100, "reason": "all of it" }),
+        ),
+    ]));
+
+    let big = kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    for refusal in &said[1..4] {
+        assert!(refusal.contains("`steps` is"), "{refusal}");
+        assert!(refusal.contains("from 1 to 64"), "{refusal}");
+        assert!(!refusal.contains("walked"), "{refusal}");
+    }
+    assert_eq!(
+        kernel.item(big).unwrap().state,
+        ContextState::Elided,
+        "a refused `steps` walked something back anyway"
+    );
 }
 
 #[tokio::test]

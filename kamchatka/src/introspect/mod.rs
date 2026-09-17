@@ -142,17 +142,44 @@ fn unknown(action: &str, known: &[&str]) -> String {
     )
 }
 
-/// The context ids in a named array argument.
-fn ids(args: &Value, name: &str) -> Vec<ContextId> {
-    args[name]
-        .as_array()
-        .map(|ids| {
-            ids.iter()
-                .filter_map(|id| id.as_u64())
-                .map(ContextId)
-                .collect()
-        })
-        .unwrap_or_default()
+/// The context ids in a named array argument, or what is wrong with what is in it.
+///
+/// note: it used to drop whatever it could not read. `ids: [-1]` came back as no items at all,
+/// which is also how a call that named none arrives - so `search` with one bad number searched
+/// the whole context, and a call giving `ids` *and* `select` went through as a `select`, the
+/// refusal below having found no numbers to object to. A number that is not an item number is a
+/// call nobody made, the same as an argument nobody reads.
+///
+/// note: and the same number twice is one item. It is not a mistake worth refusing - a model
+/// gathering ids from two places writes it - but it was counted twice in what a move reported,
+/// so a call naming one item was told two had moved.
+fn ids(args: &Value, name: &str) -> Result<Vec<ContextId>, String> {
+    if args[name].is_null() {
+        return Ok(Vec::new());
+    }
+    let Some(given) = args[name].as_array() else {
+        return Err(format!(
+            "`{name}` is `{}`, and nothing was done. It is a list of the numbers `look` prints, \
+             so one item is `{name}: [{}]`.",
+            args[name],
+            args[name].as_u64().unwrap_or(7)
+        ));
+    };
+
+    let mut ids: Vec<ContextId> = Vec::new();
+    for value in given {
+        let Some(id) = value.as_u64().map(ContextId) else {
+            return Err(format!(
+                "`{name}` holds `{value}`, which is not an item number, and nothing was done. \
+                 They are the numbers `look` prints, as whole numbers."
+            ));
+        };
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+
+    Ok(ids)
 }
 
 /// Which items a call named, and which of the two ways it named them.
@@ -177,7 +204,7 @@ pub(crate) struct Named<'a> {
 /// is a closed set of fields and has neither. `anyOf` does not say it either: a branch per argument
 /// still matches a call carrying both, since nothing in it is exclusive.
 pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<Named<'a>, String> {
-    let numbers = ids(args, "ids");
+    let numbers = ids(args, "ids")?;
     let Some(input) = args["select"].as_str().filter(|it| !it.trim().is_empty()) else {
         return Ok(Named {
             select: None,
@@ -185,15 +212,23 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
         });
     };
 
-    if !numbers.is_empty() {
+    // note: whether `ids` was *given*, rather than whether it came to anything. `ids: []` beside a
+    // selector is the same call as any other that names items twice, and it used to be read as a
+    // selector on its own
+    if !args["ids"].is_null() {
         return Err(format!(
             "`ids` and `select` in one call, and nothing was done. They are two ways of saying \
              which items - `ids: {}` is those by number, `select: \"{input}\"` is a class of them \
              - and reading one of the two would have answered a call you did not make. Send \
-             whichever you meant; a selector takes an item number too, so `select: \"{}\"` is that \
-             one item.",
+             whichever you meant{}.",
             serde_json::Value::Array(numbers.iter().map(|id| json!(id.0)).collect::<Vec<_>>()),
-            numbers[0],
+            match numbers.first() {
+                Some(id) => format!(
+                    "; a selector takes an item number too, so `select: \"{}\"` is that one item",
+                    id.0
+                ),
+                None => String::new(),
+            }
         ));
     }
 

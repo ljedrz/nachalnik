@@ -131,7 +131,11 @@ impl Tool for Fork {
                          just carries on the conversation",
                     ));
                 };
-                branch(&kernel, Some(question), &ids(args, "without"), &output).await
+                let without = match ids(args, "without") {
+                    Ok(without) => without,
+                    Err(why) => return Ok(ToolOutput::error(why)),
+                };
+                branch(&kernel, Some(question), &without, &output).await
             }
             other => Ok(ToolOutput::error(unknown(other, &actions(&self.ops)))),
         }
