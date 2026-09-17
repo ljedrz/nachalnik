@@ -165,7 +165,8 @@ impl Tool for Fs {
             format!(
                 "the filesystem, five operations on it. Every `path` is {PATH_ARG}. `glob` \
                  and `grep` walk a directory with no shell in front of them: they obey \
-                 `.gitignore`, they do look at hidden files, and they count what they passed over. \
+                 `.gitignore` and stay out of `.git`, neither of them counted; they do look at \
+                 hidden files, and they count everything else they passed over. \
                  At most {MATCHES} matches or {PATHS} paths come back, and a line wider than \
                  {WIDTH} characters is cut."
             ),

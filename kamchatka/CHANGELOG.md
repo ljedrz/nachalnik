@@ -9,6 +9,23 @@ minor bump may break you.
 
 ### fixed
 
+- An `edit` whose `old` names two places changes neither and says how many it named. The argument
+  asks for enough of the surrounding lines to make it the only match and nothing checked, so the
+  first was replaced, the second stayed, and the answer read `replaced one occurrence` - which is
+  true of the file and reads as the edit being done. That is the half nobody goes back for: a model
+  told its change landed does not read the file again. An empty `old` is refused with them, having
+  named position zero and put `new` at the front of the file.
+- `glob` looks at the file the call named, the way `grep` and `read` do. The policy is asked about
+  the path in the call - `.env*` matched it, somebody answered - and the walk then skipped that
+  same file and reported it as one a path rule says to ask about. An answer contradicting the
+  permission just given is worse than either half of it.
+- The two numbers in a search's answer add up. `N file(s) searched` counted a file before the
+  search rather than after, so one that would not open or turned out to be binary was reported as
+  read through *and* as skipped, and a model adding up a null result got a walk that does not
+  reconcile.
+- A walk stopped after the two hundredth path says it handed over the first two hundred. It said
+  how many it had found and listed the cap's worth, with nothing accounting for the difference.
+
 - Every answer in a batch stands until its call has run. A one-off `yes` to a command that reaches
   the network is permission for that call, and the grants were held sixty-four at a time with the
   oldest dropped - on the reasoning that one turn cannot produce more, which is an assumption about
@@ -25,6 +42,9 @@ minor bump may break you.
 
 ### changed
 
+- `fs` says the walks obey `.gitignore` and stay out of `.git` without counting either. It said
+  they "count what they passed over", and those two are passed over silently - a model told that
+  sentence and handed an answer with no skip line concludes nothing was left out.
 - The note on `Careful::judges` says what it does about somebody else's tool: a `call` object is
   read through whoever's tool it belongs to, so a foreign argument of that name has its `path` read
   as a path. It can only add a subject, which asks a question nobody needed, where passing it over

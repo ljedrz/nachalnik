@@ -471,7 +471,6 @@ impl Grep {
                     room: (!files_only).then(|| MATCHES - found.matches),
                     ..Lines::default()
                 };
-                found.searched += 1;
                 if searcher
                     .search_path(&matcher, entry.path(), &mut lines)
                     .is_err()
@@ -483,6 +482,10 @@ impl Grep {
                     found.skipped.binary += 1;
                     continue;
                 }
+                // counted here rather than before the search, so that the two numbers in the
+                // answer add up: a file that would not open or turned out to be binary is one of
+                // the skipped, and was also being reported as one of the files read through
+                found.searched += 1;
                 if lines.matched == 0 {
                     continue;
                 }
@@ -719,7 +722,11 @@ impl Glob {
                 }
 
                 let path = named(entry.path(), &workdir);
-                if barred.iter().any(|rule| path_matches(rule, &path)) {
+                // the file the *call* named is one the policy has already been asked about; only
+                // what the walk found under it is barred here. See `Looking::barred`
+                if entry.path() != root.as_path()
+                    && barred.iter().any(|rule| path_matches(rule, &path))
+                {
                     skipped.asked += 1;
                     continue;
                 }
@@ -739,6 +746,13 @@ impl Glob {
         .await?;
 
         let head = match (stopped, all) {
+            // note: the cap belongs in this arm as much as in the one below it. A walk stopped
+            // after its two hundredth path said how many it had found and handed over the first
+            // two hundred, with nothing accounting for the difference
+            (true, n) if n > paths.len() => format!(
+                "stopped before it finished · {n} path(s) so far · the first {} of them",
+                paths.len()
+            ),
             (true, n) => format!("stopped before it finished · {n} path(s) so far"),
             (false, 0) => format!("nothing matches `{pattern}` under {asked}"),
             (false, n) if n > paths.len() => {

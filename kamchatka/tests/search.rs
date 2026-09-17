@@ -233,6 +233,37 @@ async fn a_path_rule_keeps_a_walk_out_of_a_file() {
     assert!(named.contains(".env:1:TOKEN=Kernel-of-a-secret"), "{named}");
 }
 
+/// And `glob` names a file the same way `grep` does: the path in the call is the policy's question.
+///
+/// note: `grep` exempted the root of its walk and `glob` did not, so a `glob` at `.env` was a
+/// question - `judges` reads the `path` argument and `.env*` matched it - and then skipped the
+/// file it had just been allowed to look at, reporting it as one a path rule says to ask about.
+/// An answer that contradicts the permission somebody has this moment given is worse than either
+/// answer on its own.
+#[tokio::test]
+async fn a_walk_that_was_pointed_at_one_file_looks_at_it() {
+    let dir = tree("glob-named");
+    put(&dir, ".env", "TOKEN=Kernel-of-a-secret\n");
+
+    let walked = ask(&dir, "glob", json!({ "pattern": "*" })).await;
+    assert!(
+        walked.contains("skipped: 1 file(s) a path rule says to ask about"),
+        "a walk cannot ask, so it leaves it out and says so: {walked}"
+    );
+
+    let named = ask(&dir, "glob", json!({ "pattern": "*", "path": ".env" })).await;
+    assert!(
+        named.contains(".env"),
+        "the file the call named is not walked over: {named}"
+    );
+    assert!(
+        !named.contains("a path rule says to ask about"),
+        "and it is not reported as kept out: {named}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A link is a question about the reach, not about links.
 ///
 /// note: both halves, because the first rule here was "skip every link" and a live run in this
