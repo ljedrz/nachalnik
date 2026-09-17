@@ -313,31 +313,42 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     let mut out = format!("the policy deciding your calls is `{in_force}`.\n");
 
     // which tools each capability binds, so a verdict is read as being about something
+    //
+    // note: `Careful::decides` as well as the declaration, because they are not the same list.
+    // `mcp:call` is declared by every tool from a server and answered for by the server's own
+    // name where this program spawned it, so a session run `--allow mcp --mcp big=...` read
+    // `mcp:call  allow  big__add, big__spew` here and then refused both of them. A row still
+    // appears - somebody wrote that rule - and it says what is true, which is that nothing here
+    // is judged by it
     let mut binds: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
     for spec in kernel.tool_specs() {
         for capability in spec.capabilities {
-            binds.entry(capability).or_default().push(spec.id.clone());
+            let bound = policy.decides(&Subject::Capability(capability.clone()), &spec.id);
+            let tools = binds.entry(capability).or_default();
+            if bound {
+                tools.push(spec.id.clone());
+            }
         }
     }
     // note: a rule about a whole domain is a stance too, and it is deliberately not a row in
     // this table of operations: it is not declared by anything - a tool declares `context:revise`,
     // never `context` - so it would read `nothing you have declares it` beside a verdict that
     // governs three rows above it. It gets a section of its own below, the way a path rule does.
-    let mut actions: Vec<(String, String, Verdict)> = Vec::new();
+    let mut broader: Vec<(String, String, Verdict)> = Vec::new();
     for (subject, verdict) in policy.stances() {
         match subject {
             Subject::Capability(capability) => {
                 binds.entry(capability).or_default();
             }
             Subject::Domain(domain) => {
-                actions.push((
+                broader.push((
                     domain.to_string(),
                     "every operation in it".to_owned(),
                     verdict,
                 ));
             }
             Subject::Server(name) => {
-                actions.push((format!("server {name}"), "its tools".to_owned(), verdict));
+                broader.push((format!("server {name}"), "its tools".to_owned(), verdict));
             }
             Subject::Path(_) => {}
         }
@@ -394,19 +405,24 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     // the same split the path rules get, and for the same reason its note gives: a row of `ask`
     // nobody has thought about is not information, and a report that listed none of them and
     // said nothing would be standing silently for every one of those answers
-    let (decided, undecided): (Vec<_>, Vec<_>) = actions
+    let (decided, undecided): (Vec<_>, Vec<_>) = broader
         .into_iter()
         .partition(|(_, _, verdict)| *verdict != Verdict::Ask);
     if !decided.is_empty() {
-        out.push_str("\nand rules about single actions, which bind the tool they name:\n");
-        for (rule, tool, verdict) in &decided {
-            out.push_str(&format!("{rule:<28}  {:<8}  {tool}\n", said(*verdict)));
+        // note: what these cover is the third column, because the two kinds do not cover the same
+        // sort of thing: a domain is a set of operations and a server is a set of tools. The
+        // heading used to read "rules about single actions, which bind the tool they name", which
+        // is the opposite of a domain and not true of either - `--allow log` is every operation in
+        // `log`, and `server big` names no tool at all
+        out.push_str("\nand the broader rules, which have no row of their own above:\n");
+        for (rule, covers, verdict) in &decided {
+            out.push_str(&format!("{rule:<28}  {:<8}  {covers}\n", said(*verdict)));
         }
     }
     if !undecided.is_empty() {
         out.push_str(&format!(
-            "\n{} action rule(s) are undecided and will stop and ask, whatever the tool's own \
-             verdict is: {}.\n",
+            "\n{} broader rule(s) are undecided and will stop and ask, whatever the rows above \
+             say: {}.\n",
             undecided.len(),
             undecided
                 .iter()

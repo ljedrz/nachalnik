@@ -2871,6 +2871,59 @@ async fn setup_permissions_puts_a_domain_rule_in_a_section_of_its_own() {
         said.contains("context") && said.contains("deny"),
         "the rule and what it answers: {said}"
     );
+    // note: a domain is a set of operations and a server is a set of tools, which is what the
+    // third column of that section says; the heading used to call both of them "rules about
+    // single actions, which bind the tool they name", which is true of neither
+    assert!(
+        !said.contains("single action"),
+        "the section is not about single actions: {said}"
+    );
+}
+
+/// `mcp:call` names no tool that came from a server this program spawned, because it does not
+/// decide for one.
+///
+/// note: live, on a session run `--allow mcp --mcp big=...`. The answer read `mcp:call  allow
+/// big__add, big__spew` and the very next call to `big__spew` was refused: `Careful::judges` takes
+/// `mcp:call` back out for a tool whose server it knows and puts the server's own name in its
+/// place, so that `--allow-server` is one flag rather than two. The table was filled from what the
+/// tools *declare*, which is the list before that swap - so it named a rule as being in force over
+/// two tools it is never consulted about, in the one answer a model has for checking what it may
+/// do.
+#[tokio::test]
+async fn setup_permissions_does_not_credit_mcp_with_a_server_s_tools() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "permissions" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy.clone(), Limits::default());
+
+    let unvouched = nachalnik::Capability::of(nachalnik::Domain::Other("mcp".to_owned()), "call");
+    for id in ["big__spew", "loose"] {
+        kernel.add_tool(Arc::new(
+            nachalnik::test::ConstTool::new(id, "did it").with_capabilities([unvouched.clone()]),
+        ));
+    }
+    policy.came_from("big__spew", "big");
+
+    kernel.push(ContextItem::user("what may you touch?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    let row = said
+        .lines()
+        .find(|line| line.starts_with("mcp:call"))
+        .unwrap_or_else(|| panic!("the row is there: {said}"));
+    assert!(
+        !row.contains("big__spew"),
+        "the server answers for that one: {row}"
+    );
+    assert!(row.contains("loose"), "and this one it decides: {row}");
 }
 
 /// An argument this tool does not take is a mistake to report, not one to ignore.

@@ -272,6 +272,45 @@ async fn a_rule_about_a_server_names_the_tools_that_came_from_it() {
     assert!(!row.contains("nothing registered needs it"), "{row}");
 }
 
+/// And `mcp:call` does not, because a tool from a server this program spawned is not judged by it.
+///
+/// note: the coverage column was filled from what a tool *declares* while `Careful::judges` decides
+/// from something narrower: every tool from a server declares `mcp:call`, and `judges` swaps it for
+/// the server's own name so that `--allow-server files` is one flag rather than two. So a session
+/// run `--allow mcp --mcp big=...` was shown `mcp:call  allow  big__spew` and then refused the very
+/// call - a table that reads as a rule in force over a tool the rule is never consulted about, and
+/// the table somebody checks their flags against.
+#[tokio::test]
+async fn a_rule_about_mcp_covers_nothing_a_spawned_server_offers() {
+    let mut harness = Harness::new(Vec::new());
+    let unvouched = Capability::of(nachalnik::Domain::Other("mcp".to_owned()), "call");
+    for id in ["files__read", "loose"] {
+        harness.app.kernel.add_tool(Arc::new(
+            ConstTool::new(id, "did it").with_capabilities([unvouched.clone()]),
+        ));
+    }
+    // one of them came from a server this program spawned, and the other is a tool that declares
+    // the same subject with nobody holding the far end of it
+    harness.app.policy.came_from("files__read", "files");
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(unvouched), Verdict::Allow);
+    harness.tab(Tab::Permissions);
+
+    let screen = harness.sized(110, 30);
+    let row = screen
+        .lines()
+        .find(|line| line.contains("mcp:call"))
+        .unwrap_or_else(|| panic!("the rule is listed: {screen}"));
+
+    assert!(
+        !row.contains("files__read"),
+        "the server answers for that one, not this rule: {row}"
+    );
+    assert!(row.contains("loose"), "and this one it really does: {row}");
+}
+
 #[tokio::test]
 async fn a_shell_reaching_for_the_network_is_judged_as_reaching_for_it() {
     use kamchatka::tools::reaches_the_network as reaches;

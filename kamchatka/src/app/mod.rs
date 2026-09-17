@@ -2733,9 +2733,14 @@ impl App {
             if let Subject::Domain(domain) = subject {
                 let mut inside: Vec<String> = specs
                     .iter()
-                    .flat_map(|spec| spec.capabilities.iter())
-                    .filter(|it| it.domain == *domain)
-                    .map(ToString::to_string)
+                    .flat_map(|spec| spec.capabilities.iter().map(move |it| (spec, it)))
+                    .filter(|(spec, it)| {
+                        it.domain == *domain
+                            && self
+                                .policy
+                                .decides(&Subject::Capability((*it).clone()), &spec.id)
+                    })
+                    .map(|(_, it)| it.to_string())
                     .collect();
                 inside.sort_unstable();
                 inside.dedup();
@@ -2746,7 +2751,14 @@ impl App {
             specs
                 .iter()
                 .filter(|spec| match subject {
-                    Subject::Capability(capability) => spec.capabilities.contains(capability),
+                    // note: what the tool declares *and* what the policy would be asked about it.
+                    // They are the same list but for `mcp:call`, which every tool from a server
+                    // declares and which `judges` answers with the server's name instead - so
+                    // this column named two tools a rule about `mcp` will never be consulted for
+                    Subject::Capability(capability) => {
+                        spec.capabilities.contains(capability)
+                            && self.policy.decides(subject, &spec.id)
+                    }
                     Subject::Server(name) => {
                         self.policy.server_of(&spec.id).as_deref() == Some(name.as_str())
                     }

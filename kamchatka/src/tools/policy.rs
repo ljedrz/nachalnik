@@ -55,6 +55,8 @@ impl fmt::Display for Subject {
 impl Subject {
     /// Reads one back: `fs`, `fs:read`, `.env*`, `secrets/`.
     ///
+    /// note: see [`unvouched`] for the one subject a tool declares and is not always judged by.
+    ///
     /// note: anything holding a `/`, a `*` or a leading `.` is a path pattern; anything holding a
     /// `:` is one operation; anything else is a whole domain. It has to be a rule rather than a
     /// guess because all three are spelled as bare text, and this one is readable in a sentence:
@@ -76,6 +78,17 @@ impl Subject {
             Err(_) => Self::Domain(Domain::from(text)),
         }
     }
+}
+
+/// `mcp:call`: the subject every tool from a server declares, meaning "somebody else's tool, and
+/// nobody has vouched for what it does".
+///
+/// note: named once rather than spelled in each of the three places that need it, because the two
+/// of them that *report* on it have to agree with the one that decides by it. See
+/// [`Careful::judges`], which answers for it with the server's own name where it knows the server,
+/// and [`Careful::decides`], which is how a table says so.
+fn unvouched() -> Capability {
+    Capability::of(Domain::Other("mcp".into()), "call")
 }
 
 /// The paths a fresh policy has something to say about.
@@ -337,13 +350,37 @@ impl Careful {
         // for one decision. Whatever the server's *annotations* claimed is untouched: a tool that
         // says it writes is still judged against `fs:write`.
         if let Some(server) = self.servers.lock().get(&request.tool) {
-            let unvouched =
-                Subject::Capability(Capability::of(Domain::Other("mcp".into()), "call"));
+            let unvouched = Subject::Capability(unvouched());
             judged.retain(|subject| *subject != unvouched);
             judged.push(Subject::Server(server.clone()));
         }
 
         judged
+    }
+
+    /// Whether a rule about `subject` has anything to say about a call to `tool`, asked of the
+    /// tool rather than of a call it has not made yet.
+    ///
+    /// note: for the two tables that say what a rule covers - the permissions tab and
+    /// `setup: permissions` - and it exists because they were both answering from
+    /// [`ToolSpec::capabilities`](nachalnik::ToolSpec) while [`Careful::judges`] answers from
+    /// something narrower. `mcp:call` is the case: every tool from a server declares it, and
+    /// `judges` takes it back out again for a server this program spawned, so a session started
+    /// `--allow mcp --mcp big=...` read `mcp:call  allow  big__add, big__spew` and then refused
+    /// them both. A coverage column that names tools a rule will not be consulted about is worse
+    /// than an empty one: it is the answer somebody checks their own flags against.
+    ///
+    /// note: it takes a name and not a [`PermissionRequest`], so a path rule - which is about the
+    /// argument of one call rather than about the tool - is not something it can answer. Those
+    /// two tables have their own section for path rules, which is the honest place for a subject
+    /// whose coverage is not a property of any tool.
+    pub fn decides(&self, subject: &Subject, tool: &str) -> bool {
+        match subject {
+            Subject::Capability(capability) if *capability == unvouched() => {
+                self.server_of(tool).is_none()
+            }
+            _ => true,
+        }
     }
 
     /// What it would answer about a whole call, deciding nothing and recording nothing.
