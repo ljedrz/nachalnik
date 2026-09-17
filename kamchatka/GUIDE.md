@@ -403,14 +403,15 @@ place, where it can be changed:
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
 │Careful · anything it has not been told about: ask                                                            │
 │                                                                                                              │
-│  capability or path     answer      the tools it covers                                                      │
-│  read                   allow       glob, grep, read                                                         │
-│  write                  deny        write                                                                    │
-│  shell                  allow       shell                                                                    │
-│  network                allow       shell, when the command reaches for it                                   │
-│  .env*                  deny        edit, glob, grep, read, write                                            │
+│  capability or path     answer      what it covers                                                           │
+│  fs:write               deny        fs:write                                                                 │
+│  exec:run               allow       exec:run                                                                 │
+│  net:reach              allow       shell, when the command reaches for it                                   │
+│  fs                     allow       fs:edit, fs:glob, fs:grep, fs:read, fs:write                             │
+│  log                    allow       log:read                                                                 │
+│  .env*                  deny        fs                                                                       │
 │                                                                                                              │
-└──────────────── shell: confined · 12 more it will ask about · space cycles · a allow · n never · r ask again ┘
+└──────────────── shell: confined · 27 more it will ask about · space cycles · a allow · n never · r ask again ┘
 ```
 
 The line along the top is the policy in force and what it answers about everything the list does
@@ -423,8 +424,8 @@ A fresh session has no rows at all: everything starts at `ask`, and the tab fill
 Rows are **decisions**, not defaults. `ask` is what this policy does about anything nobody has
 mentioned, so a row per undecided thing would be a screenful of "it will stop and ask" burying the
 one or two lines that say what this agent can do *without* stopping. What is not listed is counted
-instead — `12 more it will ask about` — because a screen showing five decisions while standing for
-seventeen answers would be a different kind of dishonest. A subject arrives here when somebody
+instead — `27 more it will ask about` — because a screen showing six decisions while standing for
+thirty-three answers would be a different kind of dishonest. A subject arrives here when somebody
 answers a question about it, and cycling one back to `ask` takes it off again, which is what taking
 a decision back looks like.
 
@@ -432,6 +433,13 @@ A rule about a whole domain is one row too. `--allow log` decides `log:read`, an
 names it in the column beside it rather than the operation getting a row that says the same answer
 back — `--allow context` would put fourteen of those on the screen. An operation is a row of its
 own when somebody has answered about it separately: `--allow fs --deny fs:write` is two decisions.
+
+**What it covers** is said in the terms the rule is written in, and is never wider than the rule: a
+domain names the operations in it, an operation names itself, and a server or a path rule names the
+tools it binds. `fs:glob  allow  fs` was one operation reading as an answer about the whole tool.
+Where nothing here is judged by a rule the column says that instead, so a flag that reaches nothing
+looks like one — which is what `--allow mcp` is beside a server this program spawned, since a call
+to one of its tools is judged as the server it came from.
 
 What that costs is worth saying plainly: you cannot refuse something here that has never come up.
 Deciding in advance means answering the first question with <kbd>a</kbd> or <kbd>n</kbd>.

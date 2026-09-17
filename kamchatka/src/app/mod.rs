@@ -2771,23 +2771,35 @@ impl App {
                 return inside;
             }
 
+            // note: and a rule about one operation answers for that operation and nothing wider.
+            // It named the tools, which with one tool to a domain is the subject's own first half
+            // read back: `fs:glob  allow  fs` puts the narrow rule over the whole tool, the one
+            // direction it cannot go. What a rule reaches is never broader than the rule.
+            //
+            // note: an empty list is how the row says nothing here is judged by it, and that is
+            // the answer where every tool declaring the capability came from a server - `judges`
+            // swaps `mcp:call` for the server's name, so a rule about `mcp` decides for none of
+            // them however many declare it.
+            if let Subject::Capability(capability) = subject {
+                let anything = specs.iter().any(|spec| {
+                    spec.capabilities.contains(capability) && judged(&spec.id, capability)
+                });
+
+                return match anything {
+                    true => vec![capability.to_string()],
+                    false => Vec::new(),
+                };
+            }
+
             specs
                 .iter()
                 .filter(|spec| match subject {
-                    // note: what the tool declares *and* what the policy would be asked about it.
-                    // They are the same list but for `mcp:call`, which every tool from a server
-                    // declares and which `judges` answers with the server's name instead - so
-                    // this column named two tools a rule about `mcp` will never be consulted for
-                    Subject::Capability(capability) => {
-                        spec.capabilities.contains(capability)
-                            && self.policy.decides(subject, &spec.id)
-                    }
                     Subject::Server(name) => {
                         self.policy.server_of(&spec.id).as_deref() == Some(name.as_str())
                     }
                     Subject::Path(_) => spec.capabilities.iter().any(|it| it.domain == Domain::Fs),
-                    // handled above, because what a domain covers is not a list of tools
-                    Subject::Domain(_) => false,
+                    // both handled above, because what either covers is not a list of tools
+                    Subject::Capability(_) | Subject::Domain(_) => false,
                 })
                 .map(|spec| spec.id.clone())
                 .collect()

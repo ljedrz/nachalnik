@@ -178,10 +178,15 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         .find(|line| line.contains("exec:run"))
         .expect("a decided capability is listed");
     assert!(shell.contains("deny"), "{shell}");
-    assert!(
-        shell.contains("rm"),
-        "the row names what it covers: {shell}"
+    // and names what it covers, which for a rule about one operation is that operation. It named
+    // the tool, and a tool is wider than an operation of it: `fs:glob  allow  fs` reads as the
+    // narrow rule answering for the whole thing
+    assert_eq!(
+        shell.matches("exec:run").count(),
+        2,
+        "the subject, and the operation it covers: {shell}"
     );
+    assert!(!shell.contains("rm"), "which is not the tool: {shell}");
 
     // no tool declares `network` - but the shell is judged against it anyway, on what the command
     // says, so its row names the tool the answer actually reaches rather than claiming that
@@ -383,13 +388,28 @@ async fn a_rule_about_mcp_covers_nothing_a_spawned_server_offers() {
     let row = screen
         .lines()
         .find(|line| line.contains("mcp:call"))
-        .unwrap_or_else(|| panic!("the rule is listed: {screen}"));
+        .unwrap_or_else(|| panic!("the rule is listed: {screen}"))
+        .to_owned();
 
     assert!(
         !row.contains("files__read"),
         "the server answers for that one, not this rule: {row}"
     );
-    assert!(row.contains("loose"), "and this one it really does: {row}");
+    assert!(
+        !row.contains("nothing here is judged by it")
+            && !row.contains("nothing registered needs it"),
+        "and something is: the tool with nobody holding the far end of it: {row}"
+    );
+
+    // take that one away and the rule is inert, which is the row's other answer and the one it
+    // owes somebody who wrote a flag that decides nothing
+    harness.app.kernel.remove_tool("loose");
+    let screen = harness.sized(110, 30);
+    let row = screen
+        .lines()
+        .find(|line| line.contains("mcp:call"))
+        .unwrap_or_else(|| panic!("somebody wrote the rule, so it is still listed: {screen}"));
+    assert!(row.contains("nothing registered needs it"), "{row}");
 }
 
 /// And a capability the server answers for is not a question this session has, either.
@@ -640,7 +660,7 @@ async fn the_permissions_tab_says_which_policy_is_deciding() {
         .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     let filled = harness.flat();
     assert!(filled.contains("Careful"), "{filled}");
-    assert!(filled.contains("read allow read"), "{filled}");
+    assert!(filled.contains("fs:read allow fs:read"), "{filled}");
 
     // the short name, not the path `PermissionPolicy::name` defaults to - that belongs to /seams
     assert!(

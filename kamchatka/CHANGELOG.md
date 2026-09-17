@@ -78,6 +78,12 @@ minor bump may break you.
   row's own column, which is where a rule is read. An operation somebody answered about separately
   keeps its row - `--allow fs --deny fs:write` is two decisions - and one nobody has decided is
   still counted along the bottom.
+- What a rule covers is never wider than the rule. An operation's row named the tools that declare
+  it, which with one tool to a domain is the subject's own first half read back: `fs:glob  allow
+  fs` is a rule about one operation reading as an answer about everything the tool does, next to a
+  `log  allow  log:read` that reads the other way round. It names the operation now - a domain
+  names the operations in it, an operation names itself, and a server or a path rule names the
+  tools it binds.
 - `mcp:call` is not counted among the subjects a session will stop and ask about. Every tool from
   a server declares it and `Careful::judges` puts the server's own name in its place where this
   program spawned it, so the figure that says how much is still undecided included a subject
