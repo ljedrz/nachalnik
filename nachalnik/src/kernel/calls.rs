@@ -214,6 +214,12 @@ impl Kernel {
                 output.is_error,
             );
             item.state = ContextState::Archived;
+            // the same label its short copy gets, because the two are one call and the row
+            // somebody opens to read what was cut is this one. Labelled `fs` beside an `fs:read`
+            // it answers, it reads as a different call by a tool that did not say what it did
+            if let Some(label) = self.operation_label(&prepared.call) {
+                item.label = label;
+            }
             // the note says why it is archived, which is what a note is for and which stops being
             // true the moment somebody activates it. The `because` is the half that does not:
             // this item is the whole of an output that was shortened, whatever state it ends up in
@@ -227,6 +233,44 @@ impl Kernel {
 
         let truncated = limit.and_then(|limit| output.content.truncate_to(limit));
         self.record_tool_result(&prepared.call, output, truncated, whole, whole.is_none());
+    }
+
+    /// What a result of this call is called: the tool's name and the operation the call named,
+    /// for a tool that does more than one thing.
+    ///
+    /// note: a context listing thirteen rows all labelled `context` says nothing about what any of
+    /// them did, and the label is the only place the row carries a name at all - the column beside
+    /// it is the *kind*, which reads `tool_result` for every one of them. [`Tool::needs`] is how a
+    /// call says which operation it is, and it is asked for every call anyway, to consult the
+    /// policy.
+    ///
+    /// note: the tool's id and not the capability's domain, though for every multi-operation tool
+    /// in this workspace the two are the same word and the label comes out as the subject exactly.
+    /// Where they differ the tool's name is the one worth keeping: a tool called `shell` acting in
+    /// `exec` would be labelled `exec:run`, and every tool from an MCP server declares `mcp:call`,
+    /// so a context full of them would say `mcp:call` thirteen times and name none of them. That
+    /// is the failure this is fixing, one word further along.
+    ///
+    /// note: `None` for a tool that declares one operation, and for a call that named none of the
+    /// ones it declares. A tool that does one thing is described by its own name, and appending
+    /// the one operation it has would be noise on every row; a call naming no operation declares
+    /// all of them, and the tool's name is the honest label for one nobody can place.
+    /// [`ContextKind::ToolResult`] keeps the tool id either way, so `tool:<name>` selects what it
+    /// always did.
+    ///
+    /// note: asked here rather than written at the one place a result is recorded, because a
+    /// shortened output is recorded as *two* items and both of them are that call. The whole was
+    /// the one left carrying the bare tool name - so the row a person opens to read the part that
+    /// was cut was the row that would not say which read it came from.
+    fn operation_label(&self, call: &ToolCall) -> Option<String> {
+        let tool = self.tool(&call.tool)?;
+        if tool.spec().capabilities.len() < 2 {
+            return None;
+        }
+        match &tool.needs(call)[..] {
+            [needed] => Some(format!("{}:{}", call.tool, needed.op)),
+            _ => None,
+        }
     }
 
     /// Records a tool result in the context and broadcasts [`Event::ToolFinished`].
@@ -246,31 +290,8 @@ impl Kernel {
         let mut item =
             ContextItem::tool_result(call.id.clone(), call.tool.clone(), output.content, is_error);
 
-        // note: the tool's name and the operation the call named, for a tool that does more than
-        // one thing. A context listing thirteen rows all labelled `context` says nothing about
-        // what any of them did, and the label is the only place the row carries a name at all -
-        // the column beside it is the *kind*, which reads `tool_result` for every one of them.
-        // [`Tool::needs`] is how a call says which operation it is, and it is asked for every call
-        // anyway, to consult the policy.
-        //
-        // note: the tool's id and not the capability's domain, though for every multi-operation
-        // tool in this workspace the two are the same word and the label comes out as the subject
-        // exactly. Where they differ the tool's name is the one worth keeping: a tool called
-        // `shell` acting in `exec` would be labelled `exec:run`, and every tool from an MCP server
-        // declares `mcp:call`, so a context full of them would say `mcp:call` thirteen times and
-        // name none of them. That is the failure this is fixing, one word further along.
-        //
-        // note: only for a tool that declares several operations, and only where the call named
-        // one of them. A tool that does one thing is described by its own name, and appending the
-        // one operation it has would be noise on every row; a call naming no operation declares
-        // all of them, and the tool's name is the honest label for one nobody can place.
-        // `ContextKind::ToolResult` keeps the tool id either way, so `tool:<name>` selects what it
-        // always did.
-        if let Some(tool) = self.tool(&call.tool)
-            && tool.spec().capabilities.len() > 1
-            && let [needed] = &tool.needs(call)[..]
-        {
-            item.label = format!("{}:{}", call.tool, needed.op);
+        if let Some(label) = self.operation_label(call) {
+            item.label = label;
         }
         // note: `included_because` and not `note`, which is documented as why an item is in its
         // *current state* and is replaced whenever that changes. This item is `Active`, so it has

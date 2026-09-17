@@ -367,6 +367,67 @@ async fn output_limits_are_enforced_and_admitted() {
     assert!(kernel.item(shown.id).unwrap().is_projected());
 }
 
+/// Both halves of a shortened output say which operation produced them.
+///
+/// note: the label is the only name a tool result's row carries, and the pair an output limit
+/// leaves behind is two rows for one call. The whole was the one still labelled with the bare
+/// tool name, so a live run's context listed `fs` beside the `fs:read` it holds the rest of -
+/// which reads as a second call, by a tool that would not say what it did, on precisely the row
+/// somebody opens to read the part that was cut.
+#[tokio::test]
+async fn the_whole_of_a_shortened_output_is_named_for_the_operation_too() {
+    let (kernel, _) = permissive([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "files",
+        json!({ "action": "read" }),
+    )])]);
+    kernel.add_tool(Arc::new(Narrowing));
+    kernel.push(ContextItem::user("read it"));
+
+    kernel.step().await.unwrap();
+    assert!(matches!(kernel.step().await.unwrap(), State::Idle));
+
+    let results = tool_results(&kernel);
+    assert_eq!(
+        results.len(),
+        2,
+        "the whole and the copy the model is shown"
+    );
+    assert_eq!(results[0].state, ContextState::Archived);
+    assert_eq!(
+        (results[0].label.as_str(), results[1].label.as_str()),
+        ("files:read", "files:read"),
+    );
+}
+
+/// A tool of several operations that says which one a call is, which is what earns a label.
+struct Narrowing;
+
+#[async_trait::async_trait]
+impl nachalnik::Tool for Narrowing {
+    fn spec(&self) -> nachalnik::ToolSpec {
+        nachalnik::ToolSpec {
+            capabilities: vec![Capability::fs("read"), Capability::fs("write")],
+            output_limit: Some(100),
+            ..nachalnik::ToolSpec::new("files", "reads a file or writes one")
+        }
+    }
+
+    fn needs(&self, call: &nachalnik::ToolCall) -> Vec<Capability> {
+        vec![Capability::fs(
+            call.args["action"].as_str().unwrap_or("read"),
+        )]
+    }
+
+    async fn invoke(
+        &self,
+        _call: &nachalnik::ToolCall,
+        _output: nachalnik::OutputSink,
+    ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+        Ok(nachalnik::ToolOutput::new("x".repeat(1_000)))
+    }
+}
+
 /// What a truncated result *is* outlives every state it passes through.
 ///
 /// note: the bug this closes. `note` is documented as why an item is in its current state, and it
