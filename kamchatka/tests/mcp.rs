@@ -168,6 +168,65 @@ async fn an_answer_given_in_advance_covers_a_tool_that_did_not_exist_yet() {
     );
 }
 
+/// `setup tools` says what cuts a server's tool short, which is the kernel's own ceiling.
+///
+/// note: the limits table is keyed by subject and a tool from a server declares none of those
+/// subjects, so the sentence was built from an empty list: a session offering nothing but foreign
+/// tools read `Nothing here cuts an answer short` while the kernel cut every one of them at
+/// 32,000 bytes. A model told nothing is cut has no reason to ask for less.
+#[tokio::test]
+async fn setup_tools_says_what_cuts_a_tool_that_has_no_row_of_its_own() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "setup", json!({ "action": "tools" }))]),
+        ModelResponse::text("read it"),
+    ];
+    // `setup` and a server's tools, and nothing else: the point is a list whose limits are not in
+    // that table at all
+    let wired = Setup {
+        tools: Some(vec!["setup".to_owned()]),
+        compact: None,
+        allow: vec![Subject::parse("setup"), Subject::Server("py".to_owned())],
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    wired
+        .app
+        .kernel
+        .set_provider(Arc::new(ScriptedProvider::new(script)));
+    let _servers = kamchatka::mcp::attach(&wired.app.kernel, &wired.app.policy, &[spec!()])
+        .await
+        .expect("the server did not start");
+
+    let run = driven(wired, "what are you offered?\n").await;
+
+    let said = run
+        .app
+        .kernel
+        .items()
+        .iter()
+        .find(|item| {
+            item.content
+                .to_text()
+                .contains("tool(s), which is every one")
+        })
+        .map(|item| item.content.to_text().into_owned())
+        .expect("`setup tools` answered");
+
+    assert!(
+        !said.contains("Nothing here cuts an answer short"),
+        "the kernel cuts these at its own ceiling: {said}"
+    );
+    assert!(
+        said.contains("A tool with no row of its own - one from a server - is cut at"),
+        "and the answer says so: {said}"
+    );
+}
+
 /// Without that answer it is a question, and a question here is a refusal.
 ///
 /// note: this is what gives the test above its teeth. A run in which the tool is allowed and a run

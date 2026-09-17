@@ -237,11 +237,25 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
         ));
     }
 
-    out.push_str(&format!("\n{}", shown(&specs, limits)));
-    out.push_str(
-        "The whole of anything cut is archived beside what you were shown and can be restored. A \
-         tool that was taken away mid-session is not on this list.\n",
-    );
+    let config = kernel.config();
+    out.push_str(&format!(
+        "\n{}",
+        shown(&specs, limits, config.default_tool_output_limit)
+    ));
+    // note: read off the configuration rather than stated, which `rules` has always done and this
+    // did not - so a session run `--forget-truncated` was told here that the whole of anything cut
+    // is still available and told the opposite two actions away. What it costs is a model going
+    // looking for content this session was told to drop
+    out.push_str(match config.keep_truncated_output {
+        true => {
+            "The whole of anything cut is archived beside what you were shown and can be \
+             restored. A tool that was taken away mid-session is not on this list.\n"
+        }
+        false => {
+            "What is cut is not kept: this session was told to forget it. A tool that was taken \
+             away mid-session is not on this list.\n"
+        }
+    });
     out.push_str(&if_offered(kernel, "log", || {
         "`log` with `kinds: [\"tools.changed\"]` says when one went.\n".to_owned()
     }));
@@ -254,7 +268,7 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
 /// note: only the subjects these tools actually declare, so a session that is not offering `fs`
 /// is not told what `fs:read` would be cut at. It is the rule `if_offered` is named for, one
 /// level down: everything named in an answer reads as a thing that is there.
-fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits) -> String {
+fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -> String {
     let mut held: Vec<(String, usize)> = specs
         .iter()
         .flat_map(|spec| spec.capabilities.iter())
@@ -265,8 +279,29 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits) -> String {
         .collect();
     held.sort();
     held.dedup();
+
+    // note: the kernel's own ceiling, which is what cuts a tool with no row in that table - every
+    // tool from an MCP server. Without it a session offering nothing but those read `Nothing here
+    // cuts an answer short` while the kernel was cutting all of them at 32,000 bytes, and a model
+    // reading that has no reason to ask for less
+    let elsewhere = specs.iter().any(|spec| {
+        spec.output_limit.is_none()
+            && !spec
+                .capabilities
+                .iter()
+                .any(|subject| limits.of(&subject.to_string()).is_some())
+    });
+    let floor = floor.filter(|_| elsewhere).map(|bytes| {
+        format!(
+            "A tool with no row of its own - one from a server - is cut at {}. ",
+            thousands(bytes)
+        )
+    });
     if held.is_empty() {
-        return "Nothing here cuts an answer short.\n".to_owned();
+        return match floor {
+            Some(said) => format!("{said}\n"),
+            None => "Nothing here cuts an answer short.\n".to_owned(),
+        };
     }
 
     // the one most of them share, which is what a session nobody has changed anything in has
@@ -299,12 +334,13 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits) -> String {
         .collect();
 
     format!(
-        "An answer is cut at {} bytes{}. ",
+        "An answer is cut at {} bytes{}. {}",
         thousands(common),
         match odd.is_empty() {
             true => String::new(),
             false => format!(", except {}", odd.join(", ")),
-        }
+        },
+        floor.unwrap_or_default()
     )
 }
 

@@ -392,27 +392,6 @@ async fn session() -> Result<()> {
         }
     }
 
-    // two wire formats, one trait. `--gemini` is what a person picks, and everything downstream -
-    // the kernel, the screen, `/model`, `/provider` - is written against `Endpoint` and never
-    // finds out which one it got
-    let model = args.model.clone().unwrap_or_else(|| {
-        match args.gemini {
-            true => "gemini-3.6-flash",
-            false => "openai/gpt-4o-mini",
-        }
-        .to_owned()
-    });
-    let provider: Arc<dyn Endpoint> = match args.gemini {
-        true => provider::gemini::connect(&model)
-            .await
-            .map(|it| it as Arc<dyn Endpoint>),
-        false => provider::connect(&model)
-            .await
-            .map(|it| it as Arc<dyn Endpoint>),
-    }
-    .map_err(|e| anyhow::anyhow!("{e}"))
-    .context("could not reach the model")?;
-
     // note: the reading of the file is here rather than in `Setup`, because the two error
     // messages worth writing - which path, and whether it was a session at all - belong to
     // whoever was handed the path
@@ -425,11 +404,8 @@ async fn session() -> Result<()> {
         ),
         None => None,
     };
-    let Wired {
-        mut app,
-        mut events,
-        mut finished,
-    } = Setup {
+
+    let setup = Setup {
         resume,
         // the runtime's own default is a counter that restarts at 1 with the process, which is
         // fine as an identity and useless as a filename: every session would write over the last
@@ -471,9 +447,40 @@ async fn session() -> Result<()> {
         tools: args.tools.clone(),
         system: args.system.clone(),
         files: args.file.clone(),
+    };
+
+    // note: before the provider, which is a round trip and an API key away. Everything `check`
+    // answers is answerable from the arguments alone - a tool nobody offers, a path rule nothing
+    // can match - and being told about one of those by an endpoint's refusal to talk is being
+    // told about the wrong thing. `wire` asks it again for whoever is not `main`
+    setup.check().map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    // two wire formats, one trait. `--gemini` is what a person picks, and everything downstream -
+    // the kernel, the screen, `/model`, `/provider` - is written against `Endpoint` and never
+    // finds out which one it got
+    let model = args.model.clone().unwrap_or_else(|| {
+        match args.gemini {
+            true => "gemini-3.6-flash",
+            false => "openai/gpt-4o-mini",
+        }
+        .to_owned()
+    });
+    let provider: Arc<dyn Endpoint> = match args.gemini {
+        true => provider::gemini::connect(&model)
+            .await
+            .map(|it| it as Arc<dyn Endpoint>),
+        false => provider::connect(&model)
+            .await
+            .map(|it| it as Arc<dyn Endpoint>),
     }
-    .wire(provider)
-    .map_err(|e| anyhow::anyhow!("{e}"))?;
+    .map_err(|e| anyhow::anyhow!("{e}"))
+    .context("could not reach the model")?;
+
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = setup.wire(provider).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // note: after the wiring rather than a field in `Setup`, because `Setup` is what an embedder
     // fills in to get a session and this is a fact about a window. Somebody embedding `App` draws

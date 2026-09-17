@@ -153,9 +153,81 @@ pub struct Wired {
     pub finished: mpsc::UnboundedReceiver<Outcome>,
 }
 
+/// The identifiers of the tools a session starts with.
+///
+/// note: read off tools built and dropped rather than from a list written out here. A list is a
+/// second thing to forget, and what it would drift from is exactly what the refusal above is
+/// about - a name that is not a tool. Building them costs six schemas and happens once.
+fn offered_ids() -> Vec<String> {
+    let kernel = Kernel::new(Config::default());
+    let policy = Arc::new(Careful::new());
+    for tool in tools::builtin(
+        tools::Shell {
+            policy: policy.clone(),
+            workdir: std::path::PathBuf::new(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            confiner: None,
+            limits: Limits::default(),
+        },
+        crate::sandbox::Reach {
+            workdir: std::path::PathBuf::new(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            confined: true,
+        },
+        Limits::default(),
+    ) {
+        kernel.add_tool(tool);
+    }
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+
+    kernel.tool_specs().into_iter().map(|it| it.id).collect()
+}
+
 impl Setup {
+    /// What can be said about a setup before anything is reached: a path rule nothing can match,
+    /// a tool nobody offers.
+    ///
+    /// note: separate from [`Setup::wire`], and called by it, so that a program can find out its
+    /// arguments are wrong before it builds a provider. `main` connects to an endpoint and asks it
+    /// what the model holds, which is a round trip and an API key - neither of them anybody's idea
+    /// of how to be told that a settings file names `contxt`.
+    pub fn check(&self) -> Result<(), String> {
+        for subject in self.allow.iter().chain(self.deny.iter()) {
+            // a path rule that cannot match stops the session rather than being drawn on the
+            // permissions tab like any other: a `--deny` that refuses nothing is worse than no
+            // rule, because it reads as given
+            if let tools::Subject::Path(pattern) = subject
+                && let Some(objection) = tools::objection_to(pattern)
+            {
+                return Err(objection);
+            }
+        }
+
+        // note: a name that is not a tool stops the session rather than being skipped, for the
+        // reason `deny_unknown_fields` is on the settings struct. Asking for `contxt` and getting
+        // a session with no context tool and nothing said about it is the failure this setting is
+        // most likely to have
+        if let Some(wanted) = &self.tools {
+            let offered = offered_ids();
+            if let Some(unknown) = wanted.iter().find(|it| !offered.contains(it)) {
+                return Err(format!(
+                    "`{unknown}` is not one of this program's tools; they are {}",
+                    offered.join(", ")
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
     /// Wires one up around a provider that is already connected.
     pub fn wire(self, provider: Arc<dyn Endpoint>) -> Result<Wired, String> {
+        // before anything is built, so that an embedder gets the same refusal `main` gets before
+        // it reaches an endpoint at all
+        self.check()?;
+
         let config = Config {
             session_name: self.session_name,
             max_requests_per_turn: self.requests,
@@ -184,17 +256,6 @@ impl Setup {
         // events, and a client that started listening afterwards gets a session whose first few
         // facts are only in the log
         let events = kernel.subscribe();
-
-        // note: a path rule that cannot match stops the session rather than being drawn on the
-        // permissions tab like any other, for the reason a tool nobody offers does below: a
-        // `--deny` that refuses nothing is worse than no rule, because it reads as given
-        for subject in self.allow.iter().chain(self.deny.iter()) {
-            if let tools::Subject::Path(pattern) = subject
-                && let Some(objection) = tools::objection_to(pattern)
-            {
-                return Err(objection);
-            }
-        }
 
         let policy = Arc::new(Careful::new());
         for (subjects, verdict) in [
@@ -296,18 +357,15 @@ impl Setup {
         // a session with no context tool and nothing said about it is the failure this setting is
         // most likely to have
         if let Some(wanted) = self.tools {
+            // the names were answered for by `Setup::check` before anything was built; what is
+            // left is the position itself - everything is here, and what was not asked for goes
+            // on the shelf
             let offered: Vec<String> = app
                 .kernel
                 .tool_specs()
                 .into_iter()
                 .map(|it| it.id)
                 .collect();
-            if let Some(unknown) = wanted.iter().find(|it| !offered.contains(it)) {
-                return Err(format!(
-                    "`{unknown}` is not one of this program's tools; they are {}",
-                    offered.join(", ")
-                ));
-            }
             for id in offered.iter().filter(|it| !wanted.contains(it)) {
                 app.toggle(id);
             }

@@ -33,6 +33,42 @@ fn run(args: &[&str], lines: &str) -> (bool, String) {
     run_with(args, lines, &[])
 }
 
+/// The same with no API key anywhere, which is what somebody trying this for the first time has.
+///
+/// note: removed rather than set empty, because an empty variable is a variable: `provider::connect`
+/// reads one and only fails where there is none, which is the case this is about.
+fn run_keyless(args: &[&str], lines: &str) -> (bool, String) {
+    let mut child = Command::new(program())
+        .args(["--no-record"])
+        .args(args)
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env_remove("KAMCHATKA_MODEL")
+        .env_remove("KAMCHATKA_API_KEY")
+        .env_remove("OPENROUTER_API_KEY")
+        .env_remove("OPENAI_API_KEY")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    child
+        .stdin
+        .take()
+        .expect("stdin is a pipe")
+        .write_all(lines.as_bytes())
+        .expect("the lines were not sent");
+    let out = child.wait_with_output().expect("the program never ended");
+
+    (
+        out.status.success(),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        ),
+    )
+}
+
 /// The same, with these environment variables set over the top.
 fn run_with(args: &[&str], lines: &str, env: &[(&str, &str)]) -> (bool, String) {
     let mut child = Command::new(program())
@@ -268,6 +304,11 @@ fn the_file_says_which_tools_a_session_starts_with() {
 }
 
 /// A tool the file names that this program does not have stops it, the way an unknown key does.
+///
+/// note: and before the endpoint is reached, which is the second half. The answer is in the
+/// arguments, and a session that connects first reports a missing API key to somebody whose
+/// actual problem is a typo in their settings file - with the key set, it is a round trip spent
+/// to be told something that was true before it was made.
 #[test]
 fn a_tool_the_file_names_that_does_not_exist_is_refused() {
     let path = settings("tools-bad", r#"{ "tools": ["fs", "contxt"] }"#);
@@ -280,6 +321,18 @@ fn a_tool_the_file_names_that_does_not_exist_is_refused() {
         "{said}"
     );
     assert!(said.contains("context"), "and it says which are: {said}");
+
+    // with no key anywhere, which is what somebody trying the program for the first time has
+    let (ok, said) = run_keyless(&["--config-file", &path], "");
+    assert!(!ok, "{said}");
+    assert!(
+        said.contains("`contxt` is not one of this program's tools"),
+        "the settings file is answered before the endpoint is reached: {said}"
+    );
+    assert!(
+        !said.contains("KAMCHATKA_API_KEY"),
+        "and answered instead of the key, which is not what is wrong here: {said}"
+    );
 }
 
 /// A path rule nothing can match stops the program, whichever door it came in by.

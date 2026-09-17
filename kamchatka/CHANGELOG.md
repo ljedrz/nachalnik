@@ -9,6 +9,17 @@ minor bump may break you.
 
 ### fixed
 
+- `setup tools` says whether what is cut is kept, rather than promising it always is. `policy`
+  reads that setting and this stated the opposite, so a session run `--forget-truncated` got two
+  answers from one tool two actions apart - and the one it was likelier to read sends a model
+  looking for content the session was told to drop.
+- `setup tools` says what cuts a tool that has no row in the limits table. Those are keyed by
+  subject and a tool from a server declares none of them, so a session offering nothing else read
+  `Nothing here cuts an answer short` while the kernel cut every one of them at its own ceiling.
+- A settings file is answered before an endpoint is reached. `Setup::check` is what `wire` asks
+  first and what `main` asks before it builds a provider, so a file naming `contxt`, or a path rule
+  nothing can match, stops the program by name rather than after a round trip - or, with no API key
+  anywhere, rather than being reported as a missing key.
 - A second message sent into one running turn says that it replaces the first. The slot holds one
   and the newest wins, which is a decision - being silent about it is not, since the waiting
   message is drawn at the end of the conversation, so the second took that row away and put its

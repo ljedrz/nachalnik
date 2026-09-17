@@ -2757,6 +2757,45 @@ async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
     );
 }
 
+/// What a session was told to forget, `tools` says it has forgotten - the way `policy` does.
+///
+/// note: `rules` reads the configuration for this sentence and `tools` stated the opposite
+/// outright, so one tool gave two answers about the same setting two actions apart. What it costs
+/// is a model going looking for content this session was told to drop.
+#[tokio::test]
+async fn setup_tools_says_whether_what_is_cut_is_kept() {
+    for keep in [true, false] {
+        let kernel = Kernel::new(Config {
+            keep_truncated_output: keep,
+            ..Config::default()
+        });
+        kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+            "c1",
+            "setup",
+            json!({ "action": "tools" }),
+        )]))));
+        let policy = Arc::new(Careful::new());
+        policy.set(&Subject::parse("setup"), Verdict::Allow);
+        kernel.set_policy(policy.clone());
+        let _anchor = introspect::install(&kernel, policy, Limits::default());
+
+        kernel.push(ContextItem::user("what are you offered?"));
+        kernel.turn().await.expect("the turn failed");
+
+        let said = answered(&kernel);
+        match keep {
+            true => assert!(
+                said.contains("archived beside what you were shown"),
+                "{said}"
+            ),
+            false => assert!(
+                said.contains("not kept: this session was told to forget it"),
+                "`--forget-truncated` was set and this says it can be restored: {said}"
+            ),
+        }
+    }
+}
+
 /// A tool taken away mid-session is not on the list, which is the point of there being a list.
 ///
 /// note: the shape this exists for. Nothing anywhere let an agent enumerate its own tools, so a
