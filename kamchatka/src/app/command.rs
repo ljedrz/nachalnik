@@ -70,7 +70,7 @@ impl App {
         // says a message *without* an item to tie it to is the one path that has no item yet.
         // Everywhere else goes through `App::ask`, which cannot forget the third step
         if self.busy || !self.kernel.pending_permissions().is_empty() {
-            self.typed_ahead = Some(line.to_owned());
+            let replaced = self.typed_ahead.replace(line.to_owned());
             self.follow = true;
             // said out loud, because until the turn ends this is the one thing on the screen that
             // the context does not have: a session saved now would not contain it
@@ -78,6 +78,17 @@ impl App {
                 Speaker::Note,
                 "this goes in when the turn stops, and gets a turn of its own",
             );
+            // note: and the one it replaced is accounted for. The slot holds one and the newest
+            // wins, which is a decision; what it cannot be is silent, because the waiting message
+            // is *drawn* at the end of the conversation - so a second one sent into the same turn
+            // took that row away and put its own there, with nothing said. `up` reaches what is
+            // waiting now, which is this one and never the one it replaced
+            if replaced.is_some() {
+                self.say(
+                    Speaker::Note,
+                    "the message that was waiting is not going in; this one replaces it",
+                );
+            }
 
             return self.replied(Did::Queued, from, pages);
         }
@@ -114,10 +125,24 @@ impl App {
             // with a message, because otherwise the only way to reach the first transition is to
             // send one - which runs the whole turn, and there is nothing left to step through
             "step" => {
-                if !rest.is_empty() {
-                    self.ask(rest);
+                // note: the guard `App::submit` puts on a message, for the reason its note gives -
+                // an item pushed into a running turn lands between a call and its result, which
+                // most of these APIs refuse outright. The text went in here before `start_step`
+                // had said whether it could step at all, so `/step something` typed into a running
+                // turn put the something in the context and then declined the step in silence.
+                // A bare `/step` is left alone: advancing a paused turn is what it is for
+                match (rest.is_empty(), self.busy || self.asked().is_some()) {
+                    (false, true) => self.say(
+                        Speaker::Note,
+                        "a turn is running, so this message is not going in - send it on its own                          and it waits for the end of the turn, or `/stop` first",
+                    ),
+                    (empty, _) => {
+                        if !empty {
+                            self.ask(rest);
+                        }
+                        self.start_step();
+                    }
                 }
-                self.start_step();
             }
             "request" => self.preview("the next request", request_preview(&self.kernel)),
             "payload" => {

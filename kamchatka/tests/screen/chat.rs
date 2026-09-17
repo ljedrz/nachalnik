@@ -390,6 +390,38 @@ async fn a_message_that_has_to_wait_says_that_it_is_waiting() {
     );
 }
 
+/// A second message into the same turn says that it replaces the first.
+///
+/// note: the slot holds one and the newest wins, which is a decision; being silent about it is
+/// not. The waiting message is drawn at the end of the conversation, so a second one took that
+/// row away and put its own there with nothing said - and `up` reaches what is waiting now, never
+/// the one it replaced. A row that vanishes with no account of why is the thing this program does
+/// not do, which is what its own note on `put_back` says.
+#[tokio::test]
+async fn a_second_message_into_one_turn_says_which_of_them_is_going_in() {
+    let mut harness = Harness::new([ModelResponse::text("the first answer")]);
+
+    harness.send("the first question").await;
+    harness.app.busy = true;
+    harness.send("the second question").await;
+    let screen = harness.screen();
+    assert!(
+        !screen.contains("replaces it"),
+        "nothing was replaced by the first of them: {screen}"
+    );
+
+    harness.send("the third question").await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("the message that was waiting is not going in; this one replaces it"),
+        "the row that went away is accounted for: {screen}"
+    );
+    assert!(
+        screen.contains("the third question"),
+        "and the one that is waiting is drawn: {screen}"
+    );
+}
+
 /// And <kbd>up</kbd> takes it back, which is the whole of what the key is for.
 ///
 /// note: a message typed into a running turn used to be unreachable: `typed_ahead` holds one, the

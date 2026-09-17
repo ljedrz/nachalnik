@@ -89,7 +89,10 @@ takes it away, which is the way back for whoever set it too low.
 
 An endpoint that reports no usage at all says so, once, rather than holding a ceiling that nothing
 will ever reach — a limit quietly never met is worse than no limit, because whoever set it is
-reading the run as bounded. `--deadline` is the one that needs nobody's cooperation.
+reading the run as bounded. `--deadline` is the one that needs nobody's cooperation - of the
+model, at least. What it cannot cut short is a command of your own that is waiting on the endpoint:
+`/models` fetches a list, and `/model` and `/provider` finish their switch before the next line is
+read, so a deadline that falls during one of those is served when it returns.
 
 A line is read only while the runtime is resting, which is the one place this differs from a
 person at a prompt and is what makes a piped script mean what it says: the lines of a script

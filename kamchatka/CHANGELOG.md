@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### fixed
 
+- A second message sent into one running turn says that it replaces the first. The slot holds one
+  and the newest wins, which is a decision - being silent about it is not, since the waiting
+  message is drawn at the end of the conversation, so the second took that row away and put its
+  own there with nothing said. `up` reaches what is waiting, never what it replaced.
+- `/step` with a message, typed into a running turn, puts nothing into the context. The text was
+  pushed before anything had said whether it could step, so it landed in a turn already running -
+  the shape a plain message is held back from, because an item between a call and its result is
+  one most of these APIs refuse - and the step was then declined in silence.
 - `log`'s `take` counts records, which is what it says it counts. It counted rendered lines, and
   `whole` prints a replaced item's old text entire - so `take: 1` against a record holding three
   lines of it handed back the last of those lines, with no sequence number and no event name in
@@ -96,6 +104,11 @@ minor bump may break you.
 
 ### changed
 
+- `--deadline` says what it cannot cut short: a command of the operator's own that is waiting on
+  the endpoint. `/models` fetches a list, and `/model` and `/provider` finish their switch, inside
+  the branch that read the line - so the deadline and `ctrl+c` branches are unreachable until it
+  answers. RUNNING.md said it was the one that needs nobody's cooperation; POSTPONED.md says what
+  closing it would take and why a `timeout_at` around `App::submit` is not it.
 - The note on `confine` no longer says a path that cannot be opened makes `add_rules` fail.
   `landlock`'s `path_beneath_rules` drops such a path and builds the rest, so a `--sandbox-allow`
   directory that has gone away costs its own rule and nothing else; `tests/sandbox.rs` holds the

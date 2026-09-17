@@ -313,6 +313,34 @@ async fn a_turn_that_runs_out_of_requests_says_so_instead_of_looking_finished() 
     assert!(harness.screen().contains("and there it was"));
 }
 
+/// `/step` with a message, typed into a running turn, puts nothing into the context.
+///
+/// note: the text was pushed before `start_step` had said whether it could step at all, so it
+/// went into a turn that was already running - which is the shape `App::submit` refuses a message
+/// for: an item landing between a call and its result is one most of these APIs reject outright.
+/// The step was then declined in silence, so the whole call did one thing and said nothing.
+#[tokio::test]
+async fn a_step_with_a_message_waits_for_the_turn_the_way_a_message_does() {
+    let mut harness = Harness::new([ModelResponse::text("still going")]);
+
+    harness.send("the first question").await;
+    harness.app.busy = true;
+    let before = harness.app.kernel.items().len();
+
+    harness.send("/step and this too").await;
+
+    assert_eq!(
+        harness.app.kernel.items().len(),
+        before,
+        "a message went into a running turn"
+    );
+    let screen = harness.screen();
+    assert!(
+        screen.contains("this message is not going in"),
+        "and it says so rather than declining in silence: {screen}"
+    );
+}
+
 #[tokio::test]
 async fn stepping_stops_where_a_turn_walks_straight_through() {
     let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(

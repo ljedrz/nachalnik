@@ -36,6 +36,21 @@ Referenced from [AGENTS.md](AGENTS.md).
   about the one that goes out. That is the only place in this workspace where those two differ
   in a way a figure can see.
 
+- **A headless deadline that can cut short a command of the operator's own.** `--deadline` and
+  `ctrl+c` are branches of the driver's `select!`, and a line read from the input is submitted
+  *inside* the branch that read it - so while `/models` fetches a list, or `/model` and
+  `/provider` finish a switch, neither branch can be reached. A deadline falling in that window is
+  served when the command returns. The model's own turns are interruptible, which is where a run
+  spends its time, so the hole is real and narrow.
+
+  What would unblock it is somewhere for a command to run that the loop can outlive: `App::submit`
+  takes `&mut App`, so the obvious move - a `timeout_at` around it - would drop the future
+  mid-command and leave a `/provider` half applied, which is a worse thing to leave a session than
+  a late deadline. The shape that works is the one `/model` already uses for its switch (a task,
+  and `App::settling` awaited before the next line is read), applied to the commands that are
+  themselves a request; what has to be decided first is what a deadline *means* for one - whether
+  it interrupts the request or merely stops what comes after it.
+
 - **Getting the shipped settings file to somebody who installed the binary.** `kamchatka.json`
   ships in the crate and in the release archive, so it reaches whoever clones the repository,
   unpacks the `.crate`, or downloads a build - and `cargo install` copies no files, so it reaches
