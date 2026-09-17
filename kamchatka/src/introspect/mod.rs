@@ -37,9 +37,11 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use nachalnik::{BoxError, ContextId, ContextItem, ContextKind, ContextState, Kernel};
+use nachalnik::{
+    BoxError, ContextId, ContextItem, ContextKind, ContextState, Kernel, selectors::Selector,
+};
 use parking_lot::Mutex;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::tools::{Careful, Limits};
 
@@ -151,6 +153,60 @@ fn ids(args: &Value, name: &str) -> Vec<ContextId> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Which items a call named, and which of the two ways it named them.
+pub(crate) struct Named<'a> {
+    /// The selector as it was written, where the call named a class rather than numbers.
+    pub(crate) select: Option<&'a str>,
+    /// The items it comes to, either way.
+    pub(crate) ids: Vec<ContextId>,
+}
+
+/// Reads the two arguments that say which items, and refuses a call that gives both.
+///
+/// note: `select` used to win and `ids` was dropped without a word. That is the failure
+/// [`crate::tools::ops::inner`] refuses one level out, where a call puts arguments inside the
+/// wrapper and beside it, and it is the same failure for the same reason: whichever of the two is
+/// read, the answer comes back as an ordinary one, and nothing in it says the other half was never
+/// looked at. `elide` with `ids: [4]` and `select: "all:tool_results"` moves whatever the selector
+/// matched, reports exactly that, and reads as a call that did what it was told.
+///
+/// note: refused here rather than said in the schema, because the schema cannot say it. Mutual
+/// exclusion is `oneOf` or `not`, and neither is a keyword both dialects take - Google's `Schema`
+/// is a closed set of fields and has neither. `anyOf` does not say it either: a branch per argument
+/// still matches a call carrying both, since nothing in it is exclusive.
+pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<Named<'a>, String> {
+    let numbers = ids(args, "ids");
+    let Some(input) = args["select"].as_str().filter(|it| !it.trim().is_empty()) else {
+        return Ok(Named {
+            select: None,
+            ids: numbers,
+        });
+    };
+
+    if !numbers.is_empty() {
+        return Err(format!(
+            "`ids` and `select` in one call, and nothing was done. They are two ways of saying \
+             which items - `ids: {}` is those by number, `select: \"{input}\"` is a class of them \
+             - and reading one of the two would have answered a call you did not make. Send \
+             whichever you meant; a selector takes an item number too, so `select: \"{}\"` is that \
+             one item.",
+            serde_json::Value::Array(numbers.iter().map(|id| json!(id.0)).collect::<Vec<_>>()),
+            numbers[0],
+        ));
+    }
+
+    match input.parse::<Selector>() {
+        Ok(selector) => Ok(Named {
+            select: Some(input),
+            ids: selector.matches(items),
+        }),
+        Err(e) => Err(format!(
+            "`{input}` is not a selector: {e}\n\n{}",
+            crate::help::SELECTORS
+        )),
+    }
 }
 
 /// Why this item is not the model's to change, if it is not.

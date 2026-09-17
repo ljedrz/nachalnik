@@ -1353,6 +1353,55 @@ async fn a_waiting_question_can_be_left_and_come_back_to() {
     );
 }
 
+/// A question about a call that names its items twice describes no items at all.
+///
+/// note: the overlay reads the arguments the tool will read, and a call giving `ids` and `select`
+/// is one the tool refuses - there is no set of items it is about. Naming the selector's matches
+/// anyway would put a list of forty rows in front of somebody, over a call that is going to move
+/// none of them whichever way they answer.
+#[tokio::test]
+async fn a_question_naming_its_items_twice_is_not_described_as_a_move() {
+    async fn asked_about(args: serde_json::Value) -> Vec<String> {
+        let mut harness = Harness::new([
+            ModelResponse::tool_calls(vec![call("c1", "context", args)]),
+            ModelResponse::text("done"),
+        ]);
+        harness.app.kernel.add_tool(Arc::new(
+            ConstTool::new("context", "elided")
+                .with_capabilities([kamchatka::tools::domains::context("elide")]),
+        ));
+        harness
+            .app
+            .kernel
+            .push(ContextItem::file("secrets.txt", "a password, probably"));
+
+        harness.send("tidy the context").await;
+        harness.settle().await;
+        let asked = harness.app.asked().expect("a question is waiting");
+
+        harness.app.about(&asked)
+    }
+
+    // a class on its own is the argument most worth expanding, because nobody can count what
+    // `files` comes to off the screen this question is covering
+    let one_way = asked_about(json!({
+        "action": "elide", "select": "files", "reason": "tidying",
+    }))
+    .await;
+    assert!(
+        one_way.iter().any(|line| line.contains("secrets.txt")),
+        "{one_way:?}"
+    );
+
+    // and with the numbers beside it there is no set of items to name, because the call moves
+    // nothing whichever way it is answered
+    let both = asked_about(json!({
+        "action": "elide", "ids": [1], "select": "files", "reason": "tidying",
+    }))
+    .await;
+    assert!(both.is_empty(), "{both:?}");
+}
+
 #[tokio::test]
 async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
     // an `amend` that rewrites a tool result carries the replacement in its arguments, and the

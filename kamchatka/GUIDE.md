@@ -917,7 +917,12 @@ is the word you will read back on the item afterwards:
 * `pin` — protect it from compaction.
 
 Items are named by `ids`, or by `select`, which takes the same selector language `/exclude` does. So
-"the tool results I am done with" is one call rather than twelve numbers read off a listing.
+"the tool results I am done with" is one call rather than twelve numbers read off a listing. One or
+the other, and a call giving both is refused rather than answered on whichever it read first: a move
+that quietly dropped half of what it was told reads exactly like a move that did what it was asked.
+That cannot be said in the schema — mutual exclusion is `oneOf`, and neither of the two dialects one
+schema has to go out in has the keyword — so it is said in each argument's description and enforced
+where the call is read.
 
 `revise` rewrites what an item says. `note` writes something into the context — a plan, a
 conclusion, a thing not to try again. A note is attributed to `agent`, so the context pane can say

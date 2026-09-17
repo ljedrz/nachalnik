@@ -1319,6 +1319,65 @@ async fn a_class_of_items_can_be_pruned_without_naming_each_one() {
     assert!(answers[1].contains("state:excluded"), "{answers:?}");
 }
 
+/// A call that says which items twice is refused, rather than half of it being done.
+///
+/// note: `select` won and `ids` was dropped without a word, which is the shape of failure the
+/// wrapper already refuses one level out - arguments inside `call` and beside it. The answer to a
+/// call like this one is an ordinary report of the items the selector matched, and nothing in it
+/// mentions the one number that was also asked for, so there is nothing to read that says half the
+/// call was never looked at.
+#[tokio::test]
+async fn naming_the_items_twice_in_one_call_is_refused_rather_than_half_done() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({
+            "action": "elide",
+            "ids": [2],
+            "select": "all:tool_results",
+            "reason": "tidying up",
+        }),
+    )]));
+
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call_of("t1"), call_of("t2")],
+    ));
+    for id in ["t1", "t2"] {
+        kernel.push(ContextItem::tool_result(
+            ToolCallId::from(id),
+            "shell",
+            "0".repeat(500),
+            false,
+        ));
+    }
+    kernel.push(ContextItem::user("tidy up"));
+
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answered(&kernel);
+    assert!(said.contains("nothing was done"), "{said}");
+    // both of them quoted back, because which one to drop is the question being asked
+    assert!(
+        said.contains("`ids`") && said.contains("`select`"),
+        "{said}"
+    );
+    assert!(said.contains("all:tool_results"), "{said}");
+    assert!(
+        said.contains(r#"select: "2""#),
+        "the way to say the numbers as a class is on the line: {said}"
+    );
+    // and nothing moved: not the id it named, and not the class it named either
+    for item in kernel.items() {
+        assert_eq!(
+            item.state,
+            ContextState::Active,
+            "[{}] moved on a call that was refused",
+            item.id
+        );
+    }
+}
+
 /// An item asked into the state it is already in did not move, and is not journalled as having.
 ///
 /// note: `StateChange::unchanged` is "already in that state *with that note*", so `pin [2]` on

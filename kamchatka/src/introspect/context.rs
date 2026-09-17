@@ -57,9 +57,13 @@ const WHY: &str = "why, in your own words; the person you work with reads this, 
                    the item's note";
 
 /// What a `select` is, said where the five that take one can read it.
-const SELECT: &str = "a class of items instead of `ids`, in the selector grammar this tool's \
-                      description sets out: `all:tool_results`, `state:elided`, \
-                      `tool:shell:latest`";
+///
+/// note: "instead of" is the load-bearing half, and it is said in both directions - here and on
+/// each `ids` beside it - because a call giving both is refused and the schema cannot say so. What
+/// would say it is `oneOf`, which is not a keyword either dialect this crate speaks has.
+const SELECT: &str = "a class of items instead of `ids`, never both in one call, in the selector \
+                      grammar this tool's description sets out: `all:tool_results`, \
+                      `state:elided`, `tool:shell:latest`";
 
 /// The twelve operations, what each is for, and what each reads.
 ///
@@ -139,18 +143,20 @@ fn ops() -> Vec<Op> {
         &["elide", "exclude", "pin", "restore"],
         "moves items, and each of the four is named for the state it leaves - which is the word \
          you will read back on the item afterwards. Name them with `ids`, or a class of them with \
-         `select`. `elide` replaces what an item says with a short marker: the call it answers \
-         stays answered and stops costing what it holds, which is what to reach for once a tool \
-         result has served its purpose. `exclude` takes it out of the request altogether, and \
-         takes down the call that asked for it - reach for it when you are done with something \
-         rather than merely finished reading it. `pin` protects it from being compacted away. \
-         `restore` is the way back from any of the other three, a `pin` of your own included - it \
-         puts an item back to plain active, so restoring something you pinned unpins it.",
+         `select`, and never with both in one call. `elide` replaces what an item says with a \
+         short marker: the call it answers stays answered and stops costing what it holds, which \
+         is what to reach for once a tool result has served its purpose. `exclude` takes it out of \
+         the request altogether, and takes down the call that asked for it - reach for it when you \
+         are done with something rather than merely finished reading it. `pin` protects it from \
+         being compacted away. `restore` is the way back from any of the other three, a `pin` of \
+         your own included - it puts an item back to plain active, so restoring something you \
+         pinned unpins it.",
         vec![
             Arg::list(
                 "ids",
                 "integer",
-                "the items to move, by the numbers `look` prints",
+                "the items to move, by the numbers `look` prints; not with `select`, which is the \
+                 other way of saying which",
             ),
             Arg::text("select", SELECT),
             // note: read but not offered, because it is neither a way to move anything nor an

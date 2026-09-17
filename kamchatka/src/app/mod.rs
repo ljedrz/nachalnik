@@ -21,7 +21,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
     Budget, Capability, Content, ContextId, ContextItem, ContextKind, Delta, Domain, Event, Grant,
     GrantSource, Kernel, Overrun, PermissionRequest, Record, State, Tool, Usage, Verdict,
-    selectors::Selector,
 };
 use nachalnik_providers::Endpoint;
 #[cfg(feature = "tui")]
@@ -2549,23 +2548,14 @@ impl App {
         let Ok(args) = crate::tools::ops::inner(&request.args) else {
             return Vec::new();
         };
-        let named: Vec<ContextId> = match args["select"].as_str() {
-            // a selector is opaque in a way a number is not: `all:tool_results` is the argument
-            // most worth expanding, because nobody can count them off the screen it is covering
-            Some(select) => match select.parse::<Selector>() {
-                Ok(selector) => selector.matches(&items),
-                Err(_) => return Vec::new(),
-            },
-            None => args["ids"]
-                .as_array()
-                .map(|ids| {
-                    ids.iter()
-                        .filter_map(|id| id.as_u64())
-                        .map(ContextId)
-                        .collect()
-                })
-                .unwrap_or_default(),
+        // the same reading the tool will do, so that a call it is going to refuse is not described
+        // here as one about to move things. A selector is the argument most worth expanding -
+        // nobody can count `all:tool_results` off the screen this overlay is covering - and a
+        // call naming its items both ways is one the tool refuses, so there is nothing to name
+        let Ok(named) = crate::introspect::named(&items, args) else {
+            return Vec::new();
         };
+        let named = named.ids;
         if named.is_empty() {
             return Vec::new();
         }

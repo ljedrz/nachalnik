@@ -15,14 +15,14 @@ use std::cmp::Ordering;
 
 use nachalnik::{
     Content, ContextId, ContextItem, ContextKind, ContextState, Kernel, ToolCall, ToolCallId,
-    ToolOutput, selectors::Selector,
+    ToolOutput,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
 use crate::app::text::thousands;
 
-use super::{Pinned, ids, protected};
+use super::{Pinned, ids, named, protected};
 
 /// Changes the context: prunes it, rewrites an item, writes something down, walks its own
 /// changes back.
@@ -230,22 +230,14 @@ impl Amend {
         reason: &str,
         action: &str,
     ) -> ToolOutput {
-        // a selector, or a list of numbers. Naming a class of items is what makes this usable for
-        // the job it is mostly for - "the tool results I am done with" is one thought, and
-        // reading twelve numbers off a listing to say it is not
-        let selected = args["select"].as_str();
-        let ids = match selected {
-            Some(input) => match input.parse::<Selector>() {
-                Ok(selector) => selector.matches(&kernel.items()),
-                Err(e) => {
-                    return ToolOutput::error(format!(
-                        "`{input}` is not a selector: {e}\n\n{}",
-                        crate::help::SELECTORS
-                    ));
-                }
-            },
-            None => ids(args, "ids"),
+        // a selector, or a list of numbers, and never both. Naming a class of items is what makes
+        // this usable for the job it is mostly for - "the tool results I am done with" is one
+        // thought, and reading twelve numbers off a listing to say it is not
+        let named = match named(&kernel.items(), args) {
+            Ok(named) => named,
+            Err(refusal) => return ToolOutput::error(refusal),
         };
+        let (selected, ids) = (named.select, named.ids);
         if ids.is_empty() {
             // a selector that parsed and matched nothing is a different mistake from naming no
             // items at all, and telling them apart is the difference between trying again with a

@@ -74,6 +74,17 @@ minor bump may break you.
 
 ### fixed
 
+- `ids` and `select` in one call are refused rather than half done. `select` won and `ids` was
+  dropped without a word, so `elide` with both moved whatever the selector matched and reported
+  exactly that - an ordinary answer, with nothing in it saying the numbers were never looked at.
+  It is the failure the argument wrapper already refuses one level out, where a call puts
+  arguments inside `call` and beside it, for the same reason. The refusal quotes both back and
+  says how to spell either.
+
+  The schema cannot say it: mutual exclusion is `oneOf` or `not`, and neither is a keyword both
+  dialects one schema goes out in accept - Google's `Schema` is a closed set of fields with
+  neither in it. `anyOf` does not say it either, since a branch per argument still matches a call
+  carrying both. So each description says it in words and the tool enforces it.
 - Four things a tool description left a model to find out by spending a call. `shell` said "long
   output is cut off at the end" and now says at how many bytes, read off the limits table so that
   `/limit exec:run` moves the sentence too. `context`'s `search` and `log`'s `take` say what
