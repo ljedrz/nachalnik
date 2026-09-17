@@ -8,11 +8,17 @@
 //! copy of it can be run - so a model can stop guessing and go and look. What that is worth is a
 //! number, and these two tools are how it is obtained.
 //!
-//! note: Two tools rather than one with a mode, for the reason `kamchatka` gives: a [`ToolSpec`]
-//! declares its capabilities once for every call it will ever receive, so one tool would mean
-//! that answering *yes* to "may it experiment on itself?" also answered "may it rewrite its own
-//! memory?". Looking and changing are separately grantable here, and [`Granted`] grants exactly
-//! the two and nothing else.
+//! note: Two tools rather than one with a mode. A [`ToolSpec`] declares its capabilities once for
+//! every call it will ever receive, and neither of these implements [`Tool::needs`], so one tool
+//! would mean that answering *yes* to "may it experiment on itself?" also answered "may it rewrite
+//! its own memory?". Looking and changing are separately grantable here, and [`Granted`] grants
+//! exactly the two and nothing else.
+//!
+//! note: `kamchatka` split the same pair and then put it back together, and its reason for doing
+//! so does not reach here. There a call declares which operation it is - `Tool::needs` reads the
+//! `action` and answers `context:look` or `context:revise` - so one tool is thirteen separately
+//! grantable subjects. These two answer for every call alike, which is the whole difference: a
+//! tool that cannot say which of its operations a call is has only its own name to be granted by.
 //!
 //! note: `test` forks from an [`Origin`] frozen when the handles were installed, not from the
 //! live context. That is deliberate and it is what makes the model's measurement and the
