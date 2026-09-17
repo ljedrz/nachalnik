@@ -165,10 +165,15 @@ async fn what_write_put_there_is_what_read_hands_back() {
         json!({ "path": "notes/new.md", "content": "one\n" }),
     )
     .await;
-    assert!(
-        missing.contains("notes/new.md"),
-        "it names the path: {missing}"
-    );
+    // the name a component at a time, because the answer carries the path as the operating system
+    // spells it: `notes\new.md` under a `\\?\D:\...` prefix on Windows, where this asked for
+    // `notes/new.md` and failed on the separator rather than on anything it is about
+    for part in ["notes", "new.md"] {
+        assert!(
+            missing.contains(part),
+            "it names the path it could not write: {missing}"
+        );
+    }
     assert!(
         !dir.join("notes").exists(),
         "the directory above a file is not made for it"
