@@ -2719,17 +2719,34 @@ impl App {
         // the sort of check that implies more than it delivers. What `grep` and `glob` do about a
         // rule is not to open what it names; see `tools::search`
         let covers = |subject: &Subject| -> Vec<String> {
+            // note: a domain rule answers for a *set of capabilities*, and those are what it is
+            // worth naming. Saying which tools it reaches is true and says nothing - `--allow log`
+            // produced a row reading `log  allow  log`, three times the same word - where the
+            // capabilities are the thing somebody wrote the rule to decide and the thing they
+            // would look for to check they got it right.
+            if let Subject::Domain(domain) = subject {
+                let mut inside: Vec<String> = specs
+                    .iter()
+                    .flat_map(|spec| spec.capabilities.iter())
+                    .filter(|it| it.domain == *domain)
+                    .map(ToString::to_string)
+                    .collect();
+                inside.sort_unstable();
+                inside.dedup();
+
+                return inside;
+            }
+
             specs
                 .iter()
                 .filter(|spec| match subject {
                     Subject::Capability(capability) => spec.capabilities.contains(capability),
-                    Subject::Domain(domain) => {
-                        spec.capabilities.iter().any(|it| it.domain == *domain)
-                    }
                     Subject::Server(name) => {
                         self.policy.server_of(&spec.id).as_deref() == Some(name.as_str())
                     }
                     Subject::Path(_) => spec.capabilities.iter().any(|it| it.domain == Domain::Fs),
+                    // handled above, because what a domain covers is not a list of tools
+                    Subject::Domain(_) => false,
                 })
                 .map(|spec| spec.id.clone())
                 .collect()

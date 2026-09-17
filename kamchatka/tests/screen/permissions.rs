@@ -213,10 +213,10 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         .expect("what the policy has been told about is listed");
     assert!(write.contains("nothing registered needs it"), "{write}");
 
-    // a rule about a whole domain covers every tool with a capability in it, which is the answer
-    // `--allow fs` is actually giving. It read "nothing registered needs it" while the `fs:read`
-    // row directly above it named `grep`, because a row was only filled where a tool declared
-    // that exact capability and no tool declares a bare domain
+    // a rule about a whole domain names the capabilities it answers for, which is what somebody
+    // wrote it to decide. It read "nothing registered needs it" - a row was only filled where a
+    // tool declared that exact capability, and no tool declares a bare domain - and naming its
+    // tools instead would have told somebody who wrote `--allow log` that it covered `log`
     harness
         .app
         .policy
@@ -231,8 +231,8 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
         })
         .unwrap_or_else(|| panic!("the domain rule is listed: {screen}"));
     assert!(
-        domain.contains("grep"),
-        "a rule about `fs` covers the tool that reads files: {domain}"
+        domain.contains("fs:read"),
+        "a rule about `fs` answers for the operations in it: {domain}"
     );
     assert!(!domain.contains("nothing registered needs it"), "{domain}");
 }

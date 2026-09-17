@@ -185,12 +185,7 @@ async fn hiding_an_item_says_how_to_get_it_back_and_takes_any_word_for_it() {
     kernel.push(ContextItem::user("go"));
     kernel.turn().await.expect("the turn failed");
 
-    let said: Vec<String> = kernel
-        .items()
-        .iter()
-        .filter(|item| item.label == "context")
-        .map(|item| item.content.to_text().into_owned())
-        .collect();
+    let said = answers_from(&kernel, &["context"]);
     assert_eq!(said.len(), 2, "{said:?}");
 
     assert!(said[0].contains("now elided"), "{}", said[0]);
@@ -436,12 +431,7 @@ async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for(
     kernel.push(ContextItem::user("go"));
     kernel.turn().await.expect("the turn failed");
 
-    let results: Vec<String> = kernel
-        .items()
-        .iter()
-        .filter(|item| item.label == "context")
-        .map(|item| item.content.to_text().into_owned())
-        .collect();
+    let results = answers_from(&kernel, &["context"]);
     assert_eq!(results.len(), 2, "both calls answered");
     let (sampled, whole) = (&results[0], &results[1]);
 
@@ -1221,12 +1211,7 @@ async fn look_says_what_each_item_sends_and_what_it_is_holding_out() {
 
     kernel.turn().await.expect("the turn ran");
 
-    let said: Vec<String> = kernel
-        .items()
-        .iter()
-        .filter(|item| item.label == "context")
-        .map(|item| item.content.to_text().into_owned())
-        .collect();
+    let said = answers_from(&kernel, &["context"]);
     assert_eq!(said.len(), 2, "{said:?}");
 
     // the listing: two columns, and the turn's row carries a figure in each
@@ -1611,12 +1596,7 @@ async fn hiding_everything_while_holding_no_notes_says_what_that_costs() {
     kernel.push(ContextItem::user("go"));
     kernel.turn().await.expect("the turn failed");
 
-    let said: Vec<String> = kernel
-        .items()
-        .iter()
-        .filter(|item| item.label == "context")
-        .map(|item| item.content.to_text().into_owned())
-        .collect();
+    let said = answers_from(&kernel, &["context"]);
     assert_eq!(said.len(), 3, "{said:?}");
 
     assert!(

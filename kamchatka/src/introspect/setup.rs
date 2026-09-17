@@ -533,16 +533,21 @@ fn said(verdict: Verdict) -> &'static str {
 }
 
 /// The first sentence of a tool's description, which is the part that says what it is.
+///
+/// note: the whole sentence, however long. It used to be cut at 56 characters with an ellipsis, to
+/// fit a column - and a column is a terminal's problem, not a reader's. What came back was
+/// `your own context: what is in it, what it costs, and wha…`, which is a tool result that looks
+/// like the answer and is not one: a model has no way to tell a description that ends there from
+/// one that was clipped, and nothing on the line says which it is.
+///
+/// note: it costs nothing that is not already being paid. Every one of these descriptions is in
+/// the request in full, in the tool definitions, and the longest first sentence here is a hundred
+/// and ten characters. Cutting it saved fifty characters and spent the one thing this tool exists
+/// to give, which is an account of what is there that can be relied on.
 fn first_clause(description: &str) -> String {
-    /// How much of it fits the column.
-    const ROOM: usize = 56;
-
-    let first = description
+    description
         .split_once(". ")
         .map(|(head, _)| head)
-        .unwrap_or(description);
-    match first.chars().count() > ROOM {
-        true => format!("{}…", first.chars().take(ROOM - 1).collect::<String>()),
-        false => first.to_owned(),
-    }
+        .unwrap_or(description)
+        .to_owned()
 }

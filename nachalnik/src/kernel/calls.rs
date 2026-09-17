@@ -245,6 +245,33 @@ impl Kernel {
         let is_error = output.is_error;
         let mut item =
             ContextItem::tool_result(call.id.clone(), call.tool.clone(), output.content, is_error);
+
+        // note: the tool's name and the operation the call named, for a tool that does more than
+        // one thing. A context listing thirteen rows all labelled `context` says nothing about
+        // what any of them did, and the label is the only place the row carries a name at all -
+        // the column beside it is the *kind*, which reads `tool_result` for every one of them.
+        // [`Tool::needs`] is how a call says which operation it is, and it is asked for every call
+        // anyway, to consult the policy.
+        //
+        // note: the tool's id and not the capability's domain, though for every multi-operation
+        // tool in this workspace the two are the same word and the label comes out as the subject
+        // exactly. Where they differ the tool's name is the one worth keeping: a tool called
+        // `shell` acting in `exec` would be labelled `exec:run`, and every tool from an MCP server
+        // declares `mcp:call`, so a context full of them would say `mcp:call` thirteen times and
+        // name none of them. That is the failure this is fixing, one word further along.
+        //
+        // note: only for a tool that declares several operations, and only where the call named
+        // one of them. A tool that does one thing is described by its own name, and appending the
+        // one operation it has would be noise on every row; a call naming no operation declares
+        // all of them, and the tool's name is the honest label for one nobody can place.
+        // `ContextKind::ToolResult` keeps the tool id either way, so `tool:<name>` selects what it
+        // always did.
+        if let Some(tool) = self.tool(&call.tool)
+            && tool.spec().capabilities.len() > 1
+            && let [needed] = &tool.needs(call)[..]
+        {
+            item.label = format!("{}:{}", call.tool, needed.op);
+        }
         // note: `included_because` and not `note`, which is documented as why an item is in its
         // *current state* and is replaced whenever that changes. This item is `Active`, so it has
         // no state to explain - and being a shortened copy is a fact about what it holds, which

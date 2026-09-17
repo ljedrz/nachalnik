@@ -556,7 +556,11 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
                 "capability or path",
                 "answer",
                 match covers >= 8 {
-                    true => "the tools it covers",
+                    // note: not "the tools it covers", which it was. A capability, a server and a
+                    // path are each about a set of tools; a whole domain is about a set of
+                    // capabilities, and naming its tools instead told somebody who wrote
+                    // `--allow log` that it covered `log`
+                    true => "what it covers",
                     false => "",
                 }
             ),
