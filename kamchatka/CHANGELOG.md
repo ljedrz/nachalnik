@@ -132,9 +132,13 @@ minor bump may break you.
   Passing them flat, the way the old schema asked for them, is still understood; passing them in
   both places at once is refused, because reading either would drop half of what was asked.
 
-  It costs about six hundred tokens a request - the tools section goes from ~2,690 to ~3,290 - and
-  that is the price of saying in the schema what nine of `context`'s thirteen operations previously
-  had to be told at run time, one wasted turn at a time. `setup` got smaller.
+  Operations that read the same arguments are one branch under an `action` of several words, so
+  `context`'s five moves are declared once rather than five times, and a tool whose operations all
+  read the same arguments gets no union at all.
+
+  It costs about eight hundred tokens a request - the tools section goes from ~2,690 to ~3,500 -
+  and that is the price of saying in the schema what nine of `context`'s thirteen operations
+  previously had to be told at run time, one wasted turn at a time.
 - **`context` is one tool over one object**: four operations read the context and nine change it.
   It was `context` and `amend`, on the argument that a `ToolSpec` declares its capabilities once,
   so one tool would have meant that answering *always* to "may it look at its own items?" also
