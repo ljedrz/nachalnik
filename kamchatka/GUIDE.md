@@ -924,6 +924,12 @@ That cannot be said in the schema — mutual exclusion is `oneOf`, and neither o
 schema has to go out in has the keyword — so it is said in each argument's description and enforced
 where the call is read.
 
+`look` takes the same `select`, and that is the only way to resolve a selector without using it on
+something. It lists the items the class comes to, their cost against the request's, and which of
+them a move would refuse — the person's pins, a system instruction, the turn the model is speaking
+in — read off the same function the move consults, so a preview and the move it previews cannot
+disagree.
+
 `revise` rewrites what an item says. `note` writes something into the context — a plan, a
 conclusion, a thing not to try again. A note is attributed to `agent`, so the context pane can say
 who put it there, and it can be pinned so compaction cannot take it. Saying the same thing out

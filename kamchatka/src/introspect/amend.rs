@@ -665,7 +665,7 @@ fn state_of(word: &str) -> Option<ContextState> {
 }
 
 /// The item holding the assistant turn that asked for this call, if it is still there.
-fn own_turn(kernel: &Kernel, call: &ToolCallId) -> Option<ContextId> {
+pub(super) fn own_turn(kernel: &Kernel, call: &ToolCallId) -> Option<ContextId> {
     kernel.with_context(|context| {
         context
             .items()

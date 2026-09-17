@@ -115,6 +115,21 @@ fn answered(kernel: &Kernel) -> String {
         .expect("the turn recorded no tool result")
 }
 
+/// The figures on a line, in the order they are written, read back off `~1,204` and the like.
+fn tokens_in(line: &str) -> Vec<usize> {
+    line.split('~')
+        .skip(1)
+        .filter_map(|rest| {
+            let figure: String = rest
+                .chars()
+                .take_while(|it| it.is_ascii_digit() || *it == ',')
+                .filter(|it| *it != ',')
+                .collect();
+            figure.parse().ok()
+        })
+        .collect()
+}
+
 /// Every `context` result, oldest first; `answers_from` takes any other tool.
 fn all_answers(kernel: &Kernel) -> Vec<String> {
     answers_from(kernel, &["context"])
@@ -1323,9 +1338,9 @@ async fn a_class_of_items_can_be_pruned_without_naming_each_one() {
 ///
 /// note: `select` won and `ids` was dropped without a word, which is the shape of failure the
 /// wrapper already refuses one level out - arguments inside `call` and beside it. The answer to a
-/// call like this one is an ordinary report of the items the selector matched, and nothing in it
-/// mentions the one number that was also asked for, so there is nothing to read that says half the
-/// call was never looked at.
+/// call like this one is an ordinary report of forty items moved, and nothing in it mentions the
+/// one number that was also asked for, so there is nothing to read that says half the call was
+/// never looked at.
 #[tokio::test]
 async fn naming_the_items_twice_in_one_call_is_refused_rather_than_half_done() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
@@ -1364,7 +1379,7 @@ async fn naming_the_items_twice_in_one_call_is_refused_rather_than_half_done() {
     );
     assert!(said.contains("all:tool_results"), "{said}");
     assert!(
-        said.contains(r#"select: "2""#),
+        said.contains("select: \\\"2\\\"") || said.contains(r#"select: "2""#),
         "the way to say the numbers as a class is on the line: {said}"
     );
     // and nothing moved: not the id it named, and not the class it named either
@@ -1376,6 +1391,83 @@ async fn naming_the_items_twice_in_one_call_is_refused_rather_than_half_done() {
             item.id
         );
     }
+}
+
+/// A class can be read off before anything moves, and says which of it a move would refuse.
+///
+/// note: the selector grammar belongs to the half of this tool that changes things, and until
+/// `look` took one there was no way to resolve a selector except by using it on something. The
+/// preview is the same `Selector::matches` and the same [`protected`] the move consults, so the
+/// two cannot disagree about what a class comes to or about which of it is off limits.
+#[tokio::test]
+async fn a_class_lists_what_it_comes_to_before_a_move_takes_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "look", "select": "files" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "look", "select": "label:nothing-here" }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::file("src/parser.rs", "fn parse() {}"));
+    let big = kernel.push(ContextItem::file("big.rs", "0".repeat(2_000)));
+    let theirs = kernel.push(ContextItem::file("keep.rs", "fn keep() {}"));
+    kernel.push(ContextItem::user("what is in here?"));
+    kernel.set_state([theirs], ContextState::Pinned, Some("mine".into()));
+
+    kernel.turn().await.expect("the turn ran");
+
+    let answers = all_answers(&kernel);
+    let listing = &answers[0];
+    // what it matched, counted against what there is, so a selector that took more than it meant
+    // to reads as one
+    assert!(listing.contains("`files` matches 3 of"), "{listing}");
+    for named in ["src/parser.rs", "big.rs", "keep.rs"] {
+        assert!(listing.contains(named), "{listing}");
+    }
+    assert!(
+        !listing.contains("what is in here?"),
+        "the listing is the class and not the context: {listing}"
+    );
+    // the figures are the class's own, which is the number the decision turns on, with the
+    // session's beside it to read them against - so the two are not the same number
+    let figures = listing
+        .lines()
+        .find(|line| line.contains("out of ~"))
+        .map(tokens_in)
+        .expect("the line with the figures on it");
+    assert_eq!(figures.len(), 3, "{listing}");
+    assert!(
+        figures[0] < figures[2],
+        "the class is charged for the whole session: {listing}"
+    );
+    // the one a move would refuse, marked here rather than found out by moving
+    assert!(
+        listing.contains("not yours to move: pinned by the person"),
+        "{listing}"
+    );
+    assert!(
+        listing.contains("less the 1 marked as not yours"),
+        "the closing line counts them: {listing}"
+    );
+    // and nothing moved, because looking is looking
+    assert_eq!(
+        kernel.item(big).expect("still there").state,
+        ContextState::Active
+    );
+
+    // a class that matches nothing is an answer rather than a refusal: the question was which
+    // items these are, and the answer is none of them
+    assert!(
+        answers[1].contains("nothing in your context matches it"),
+        "{}",
+        answers[1]
+    );
 }
 
 /// An item asked into the state it is already in did not move, and is not journalled as having.

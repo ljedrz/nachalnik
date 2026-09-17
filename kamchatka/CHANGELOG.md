@@ -71,6 +71,12 @@ minor bump may break you.
   line says what it did rather than that the clipboard now holds it, and the byte count is the
   receipt. `App::clipboard` is the seam: the app sets the text, the loop that owns a terminal
   writes the sequence, and an embedder gets the text to do its own thing with.
+- `context` with `look` takes a `select`, which lists the items a class comes to without moving
+  any of them. Until now the selector grammar could only be resolved by using it: `elide` with
+  `select: "tool:shell"` said what it had taken after taking it. The listing carries what that
+  class is sending and holding against what the whole request carries, and marks the items a move
+  would refuse - the person's pins, a system instruction, the turn being spoken in - off the same
+  function the move consults, so the preview and the move cannot come apart. 483 bytes a request.
 
 ### fixed
 
@@ -85,6 +91,7 @@ minor bump may break you.
   dialects one schema goes out in accept - Google's `Schema` is a closed set of fields with
   neither in it. `anyOf` does not say it either, since a branch per argument still matches a call
   carrying both. So each description says it in words and the tool enforces it.
+
 - Four things a tool description left a model to find out by spending a call. `shell` said "long
   output is cut off at the end" and now says at how many bytes, read off the limits table so that
   `/limit exec:run` moves the sentence too. `context`'s `search` and `log`'s `take` say what

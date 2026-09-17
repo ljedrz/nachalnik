@@ -37,7 +37,7 @@ use crate::{
     },
 };
 
-use super::{Amend, Pinned, Reach, action, ids, protected, unknown};
+use super::{Amend, Pinned, Reach, action, amend::own_turn, ids, named, protected, unknown};
 
 /// How much of an item's text the listing shows on its row.
 const GLIMPSE: usize = 48;
@@ -89,6 +89,13 @@ fn ops() -> Vec<Op> {
                     "integer",
                     "read these items in full - block by block, including what you were \
                      thinking when you produced them - instead of listing all of them",
+                ),
+                Arg::text(
+                    "select",
+                    "list only the items this class comes to, which is the set a change naming \
+                     the same `select` would take: the grammar is the one in this tool's \
+                     description. Not with `ids`, which names items to read rather than a class \
+                     to resolve",
                 ),
                 Arg::truth(
                     "whole",
@@ -143,14 +150,15 @@ fn ops() -> Vec<Op> {
         &["elide", "exclude", "pin", "restore"],
         "moves items, and each of the four is named for the state it leaves - which is the word \
          you will read back on the item afterwards. Name them with `ids`, or a class of them with \
-         `select`, and never with both in one call. `elide` replaces what an item says with a \
-         short marker: the call it answers stays answered and stops costing what it holds, which \
-         is what to reach for once a tool result has served its purpose. `exclude` takes it out of \
-         the request altogether, and takes down the call that asked for it - reach for it when you \
-         are done with something rather than merely finished reading it. `pin` protects it from \
-         being compacted away. `restore` is the way back from any of the other three, a `pin` of \
-         your own included - it puts an item back to plain active, so restoring something you \
-         pinned unpins it.",
+         `select`, and never with both in one call; `look` with the same `select` lists what it \
+         comes to, if you want to see them before they move. `elide` replaces what an item says \
+         with a short marker: the call it answers stays answered and stops costing what it holds, \
+         which is what to reach for once a tool result has served its purpose. `exclude` takes it \
+         out of the request altogether, and takes down the call that asked for it - reach for it \
+         when you are done with something rather than merely finished reading it. `pin` protects \
+         it from being compacted away. `restore` is the way back from any of the other three, a \
+         `pin` of your own included - it puts an item back to plain active, so restoring something \
+         you pinned unpins it.",
         vec![
             Arg::list(
                 "ids",
@@ -310,11 +318,26 @@ impl Tool for Context {
         }
 
         match action(args)? {
-            "look" => Ok(ToolOutput::new(look(
-                &kernel,
-                &ids(args, "ids"),
-                args["whole"].as_bool().unwrap_or(false),
-            ))),
+            "look" => {
+                let named = match named(&kernel.items(), args) {
+                    Ok(named) => named,
+                    Err(refusal) => return Ok(ToolOutput::error(refusal)),
+                };
+                Ok(ToolOutput::new(match named.select {
+                    Some(select) => matched(
+                        &kernel,
+                        select,
+                        &named.ids,
+                        &self.pinned.lock(),
+                        own_turn(&kernel, &call.id),
+                    ),
+                    None => look(
+                        &kernel,
+                        &named.ids,
+                        args["whole"].as_bool().unwrap_or(false),
+                    ),
+                }))
+            }
             "budget" => Ok(ToolOutput::new(budget(&kernel, &self.pinned.lock()))),
             "request" => Ok(ToolOutput::new(request(&kernel))),
             "search" => {
@@ -474,6 +497,98 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
          `whole` of it. What a row shows under `held` is already out of the next request: giving \
          that item up frees what it is `sending` and none of what it is holding.\n",
     );
+
+    out
+}
+
+/// The rows of the items a class comes to, which is the set a change naming the same class takes.
+///
+/// note: the one question the reading half could not answer about the changing half's grammar. A
+/// selector is resolved against the context at the moment it is used, and until this there was no
+/// way to use one except by moving something: `elide` with `select: "tool:shell"` said what it had
+/// taken *after* taking it. Undoing that is one call, and knowing first is none.
+///
+/// note: the figures are the matched items' own rather than the session's, because that is the
+/// number the decision turns on - what giving this class up would free - and the request's total
+/// is on the line beside it to read them against. The rest of the accounting is `budget`'s.
+///
+/// note: the items a change would refuse are marked here rather than left to be discovered by the
+/// change. A preview that named four items where a move takes three is exactly the confident wrong
+/// answer the rest of this tool is written to avoid, and [`protected`] is the same function the
+/// move itself consults, so the two cannot come apart.
+fn matched(
+    kernel: &Kernel,
+    select: &str,
+    ids: &[ContextId],
+    mine: &BTreeSet<ContextId>,
+    own: Option<ContextId>,
+) -> String {
+    let items = kernel.items();
+    let going = Going::of(kernel);
+    let wanted: BTreeSet<ContextId> = ids.iter().copied().collect();
+    let picked: Vec<&Arc<ContextItem>> =
+        items.iter().filter(|it| wanted.contains(&it.id)).collect();
+    if picked.is_empty() {
+        return format!(
+            "`{select}` is a selector, and nothing in your context matches it. `look` with no \
+             `select` lists what there is.\n"
+        );
+    }
+
+    let sending: usize = (picked.iter())
+        .map(|item| going.costs.get(&item.id).copied().unwrap_or(0))
+        .sum();
+    let withheld: usize = picked.iter().map(|item| going.held_back(item)).sum();
+    let carried: Vec<Arc<ContextItem>> = picked.iter().map(|item| Arc::clone(item)).collect();
+
+    let mut out = inherited(kernel, &carried);
+    out.push_str(&format!(
+        "`{select}` matches {} of {} items · {} of them go into the next request\n\
+         ~{} tokens going and ~{} held back, out of ~{} the whole request carries\n\n\
+         {:>4}  {:<10}  {:<18}  {:>8}  {:>8}  what it is\n",
+        picked.len(),
+        items.len(),
+        picked.iter().filter(|item| item.is_projected()).count(),
+        thousands(sending),
+        thousands(withheld),
+        thousands(kernel.budget().used()),
+        "id",
+        "state",
+        "kind",
+        "sending",
+        "held",
+    ));
+
+    let mut refused = 0;
+    for item in &picked {
+        let mut said = row(item, &going);
+        if let Some(why) = protected(item, mine, own) {
+            refused += 1;
+            said.push_str(&format!(" · not yours to move: {why}"));
+        }
+        out.push_str(&format!(
+            "{:>4}  {:<10}  {:<18}  {:>8}  {:>8}  {}\n",
+            item.id.0,
+            item.state.to_string(),
+            item.kind.name(),
+            thousands(going.costs.get(&item.id).copied().unwrap_or(0)),
+            match going.held_back(item) {
+                0 => String::new(),
+                held => thousands(held),
+            },
+            said,
+        ));
+    }
+
+    out.push_str(&format!(
+        "\na change naming the same `select` takes these{}. Giving them up frees what they are \
+         `sending` and none of what they are holding; `look` with `ids` reads any of them back in \
+         full.\n",
+        match refused {
+            0 => String::new(),
+            n => format!(", less the {n} marked as not yours"),
+        }
+    ));
 
     out
 }
