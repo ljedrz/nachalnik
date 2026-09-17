@@ -114,3 +114,47 @@ Referenced from [AGENTS.md](AGENTS.md).
   names it, `enter` on it names it, and the person's own knowledge of the file is the only
   account of what was sent. A client that renders is a different client, and the runtime already
   supports it; see `Blob::meta` and `pricing_a_picture.rs` for the half that is not rendering.
+
+- **Confining the shell on macOS, and the Mac binary that would go with it.** Away from Linux
+  `confine` answers `Unsupported` and the shell runs unconfined, which the readme says and
+  `Confinement` says on the status line. It waits on two things: nobody here can test it, so CI
+  would be the only thing that ever checked the boundary, and the one interface that could carry
+  it is deprecated.
+
+  macOS has one mechanism, Seatbelt - Apple's TrustedBSD MAC layer - and it is the right shape:
+  kernel-level, unprivileged, path-scoped file rules and network rules. Two of its three doors are
+  shut. `sandbox_init(3)` is the self-apply call and the true Landlock analogue: deprecated,
+  private in the form that takes arbitrary SBPL, and `unsafe` FFI. App Sandbox entitlements are
+  what the deprecation notice points at, need code signing, and sandbox the app rather than a
+  child command. `sandbox-exec(1)` is deprecated in its own man page and still shipped and
+  working; `apple/containerization#737` asks for a removal timeline and a replacement and is
+  unanswered.
+
+  A backend goes in `confine`'s `cfg(not(target_os = "linux"))` arm. The child this program
+  re-executes would not confine itself; it would `exec sandbox-exec -p <profile> -- sh -c <cmd>`,
+  which is no FFI, no `unsafe` and no dependency. Landlock's paths-with-rights map onto SBPL
+  directly: `(deny default)`, `(allow file-read* (subpath ...))`,
+  `(allow file-write* (subpath ...))`, `(deny network*)`.
+
+  What differs. `(deny network*)` covers UDP, so the module's "`no network` here means no TCP" is
+  a Linux-only sentence. There is no `Partial` - a profile applies or it does not - so macOS
+  answers `Full` or `Unavailable`, and `Unavailable` becomes a runtime check for
+  `/usr/bin/sandbox-exec`, which doubles as the warning if Apple pulls it. `SYSTEM` needs a macOS
+  twin: `/System` for the dyld cache, `/private/var`, `/Library`. And the profile is generated
+  text, so a working directory holding a `"` is an injection surface that wants escaping and a
+  test before the rest is worth having.
+
+  `birdcage` covers both platforms and is the wrong fit: it confines the calling process, so the
+  restriction leaks past the spawn, which is the opposite of the re-execution this program does
+  deliberately.
+
+  `tests/sandbox.rs` is `#![cfg(target_os = "linux")]` at the file level, so the `macos-latest`
+  column in CI is green while checking none of this. Splitting it is the first step: the claims
+  about the program - a command cannot write outside the working directory, a `curl` is refused -
+  run on both, and only the ones naming a mechanism stay gated.
+
+  **The Mac binary is separable and is not blocked by any of it.** It is one matrix entry on
+  `macos-latest` for `aarch64-apple-darwin` in the `upload-rust-binary-action` the Linux job
+  already uses. Gatekeeper gates it rather than the build: an unsigned download is quarantined
+  until `xattr -d com.apple.quarantine`, and signing and notarising needs a paid Apple Developer
+  account and two secrets in CI. A Homebrew tap avoids quarantine.
