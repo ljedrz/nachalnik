@@ -16,9 +16,9 @@ minor bump may break you.
   yes works the pass out again rather than applying the list that was shown, so a pin made while
   reading it is honoured rather than refused after the fact.
 
-  It is also the only way out of a context too big to send. `context` and `amend` are the model's
-  tools and reaching them costs a request - the request that is failing - so until now a session
-  that had run out of room could only be pruned by hand, item by item.
+  It is also the only way out of a context too big to send. `context` is the model's own tool and
+  reaching it costs a request - the request that is failing - so until now a session that had run
+  out of room could only be pruned by hand, item by item.
 
   `--headless` prints the list and takes it, there being no key to press down a pipe. The opposite
   of what `--on-ask` does with a tool's question, because they are different questions: a tool's is
@@ -102,7 +102,7 @@ minor bump may break you.
   request, against four ways to spend a turn learning what a sentence could have said.
 
 - A call asked permission for the one thing it does again, rather than for everything its tool can
-  do. `context` reading its own items declared all thirteen of its subjects, so `look` at three
+  do. `context` reading its own items declared every one of its subjects, so `look` at three
   items asked to be allowed `revise` and `elide` too, and `--allow context:look` on its own could
   not look. The same reading fault had the policy miss the two arguments it consults: a `curl` was
   no longer judged against `net:reach`, and a path rule no longer matched the path a call named.
@@ -148,8 +148,8 @@ minor bump may break you.
   `old` on a `read` is `edit`'s, and `ids` on a `note` reads as the item to annotate when `note`
   writes a new one. An ignored argument comes back as a real answer — the answer to the call
   without it — so a read meant to be narrowed arrives as the whole file with nothing saying so.
-  The refusal names the operation the argument belongs to when exactly one does; `ids` is eleven of
-  `context`'s thirteen, and naming the first would report the order of a table as a fact about the
+  The refusal names the operation the argument belongs to when exactly one does; `ids` is seven of
+  `context`'s twelve, and naming the first would report the order of a table as a fact about the
   argument.
 - `glob` and `grep` obey a `.gitignore` outside a git repository, which is what `fs` has been
   telling models they do. The walker honours one only inside a repository by default, so outside
@@ -166,17 +166,16 @@ minor bump may break you.
   race. At a keyboard it usually resolved in the gap before somebody typed; down a pipe there is
   no gap, so a script got the losing side as a matter of course. The wait is in `App::submit`, the
   one door every typed line goes through, so a frame drawn mid-switch is still a frame.
-- A capability is the whole of its tool, and a rule finer than one is about the part it names.
-  `--allow amend` allows amend; `--allow amend:note` allows a note and says nothing about the
-  rest; `--allow amend --deny amend:revise` is everything but that one. Both halves were wrong
-  before. Four of `amend`'s actions shipped pre-seeded as questions, so allowing the tool left an
-  `exclude` still asking - `--allow amend` meant something other than `amend`, with nothing in
+- A rule about a domain covers it, and a rule finer than one is about the part it names.
+  `--allow context` allows the lot; `--allow context:note` allows a note and says nothing about
+  the rest; `--allow context --deny context:revise` is everything but that one. Both halves were
+  wrong before, under the tool names the subjects had then. Four of the changing actions shipped
+  pre-seeded as questions, so allowing the tool left an `exclude` still asking, with nothing in
   the words to say which four were the exceptions. And naming one action put the rule beside the
-  tool's capability rather than in front of it, so `--allow amend:note` was read against an
-  `amend` nobody had answered about and granted nothing at all, which is the worst way for a
-  permission rule to be wrong: it reads as given. The one thing a finer rule still cannot do is
-  overrule a refusal, because the strictest of everything consulted wins and `--deny` is the last
-  word.
+  tool's capability rather than in front of it, so the finer rule was read against a subject
+  nobody had answered about and granted nothing at all, which is the worst way for a permission
+  rule to be wrong: it reads as given. The one thing a finer rule still cannot do is overrule a
+  refusal, because the strictest of everything consulted wins and `--deny` is the last word.
 - `--compact` below a third asked for a compaction and got nothing. The compactor took its target
   twenty points under its threshold with a flat floor of ten percent, so `--compact 0.15` started
   at fifteen percent of the limit and aimed at ten - and a context between the two was already
@@ -293,9 +292,9 @@ minor bump may break you.
   read the same arguments gets no union at all.
 
   It costs about eight hundred tokens a request - the tools section goes from ~2,690 to ~3,500 -
-  and that is the price of saying in the schema what nine of `context`'s thirteen operations
+  and that is the price of saying in the schema what eight of `context`'s twelve operations
   previously had to be told at run time, one wasted turn at a time.
-- **`context` is one tool over one object**: four operations read the context and nine change it.
+- **`context` is one tool over one object**: four operations read the context and eight change it.
   It was `context` and `amend`, on the argument that a `ToolSpec` declares its capabilities once,
   so one tool would have meant that answering *always* to "may it look at its own items?" also
   answered "may it rewrite a tool result?". That hazard is real and it stopped being a reason for
@@ -314,10 +313,10 @@ minor bump may break you.
   the tool that is the exception is the one a model gets wrong - a live session called
   `log {action: "look"}`, got the summary back and cited it as the answer to a question it had not
   asked. That call is now refused by name, and the paragraph of advice written to catch it is gone.
-- **`context` takes thirteen words and no other spellings.** `prune` with a `state` argument, and
+- **`context` takes twelve words and no other spellings.** `prune` with a `state` argument, and
   `unpin`, `unelide`, `unexclude`, `elided`, `excluded`, `active` and `include`, are all gone. They
   were there on the reasoning that accepting a word somebody reached for costs nothing, which was
-  true of the word and not of the program: the schema advertised thirteen operations, and every
+  true of the word and not of the program: the schema advertises twelve operations, and every
   place that had to answer "which operation is this call" needed a second table of the words that
   are not in it. One list, in the schema, is the whole of the vocabulary.
 - **An output limit is keyed by subject**, which is the same string the permissions table is keyed
@@ -328,12 +327,13 @@ minor bump may break you.
   was offering `fs`. `setup tools` reports them as the figure they share and then whichever ones do
   not, rather than as a column that would have had one number standing for `fs:read` and `fs:grep`
   alike.
-- **The tool definitions are 5.5% smaller**, and two of them were wrong. `fs`'s `glob` argument -
-  which is what `grep` filters files by - carried the glob *grammar* as its description and never
-  said what it was for, so the schema explained the same syntax twice and neither copy said which
-  of the two arguments filtered anything. `context` said `archive` puts an item away "for good"
-  three sentences before saying every item can be restored, and said all nine of its changing
-  operations are named for the state they leave, which is true of five of them. The rest of the
+- **A pass over the tool definitions took the six of them from 11,369 characters to 10,745**, and
+  two of them were wrong. `fs`'s `glob` argument - which is what `grep` filters files by - carried
+  the glob *grammar* as its description and never said what it was for, so the schema explained
+  the same syntax twice and neither copy said which of the two arguments filtered anything.
+  `context`, which still had `archive` at the time, said it put an item away "for good" three
+  sentences before saying every item can be restored, and said all nine of the changing operations
+  it then had were named for the state they leave, which was true of five. The rest of the
   saving is duplication: sentences in a description that the argument beside it already said, and
   claims a tool was making about how well it reports itself. Every argument now says which
   operation it belongs to the way `fs`'s do - `for `note`: a short name` rather than `note: a
@@ -359,10 +359,13 @@ minor bump may break you.
   `shell` offered that way is confined exactly as one offered at startup would have been.
 - `wiring::Setup`'s `builtin_tools` and `introspect` are one field, `tools: Option<Vec<String>>`,
   with the same meanings: `None` is every tool, `Some(vec![])` builds none at all.
-- `budget` names the three held-back states that are the model's (`excluded`, `archived`, `elided`)
-  instead of counting them off as "the first three". Models read the ordinal as item ids.
-- `amend` says in words which way the request figure went - smaller, larger or unchanged - and that
-  the `from ~` figure is what the request cost when the change found it, not what an earlier
+- `budget` names the held-back states instead of counting them off as "the first three", which
+  models read as item ids. It names the two the model sets (`excluded`, `elided`) apart from
+  `archived`, which is where an undone note and the whole of a shortened answer go rather than
+  somewhere to send one - it said all three were the model's to set for as long as `archive` was
+  an action, and went on saying it after the word left the vocabulary.
+- `context` says in words which way the request figure went - smaller, larger or unchanged - and
+  that the `from ~` figure is what the request cost when the change found it, not what an earlier
   `budget` reported. Models compared against a remembered figure and read drops as growth.
 - The status line ends at the figures; `F1 for the keys` is off it. `esc stops it` stays. The live
   suite no longer tests how the line narrows - `edges.rs` pins that offline.

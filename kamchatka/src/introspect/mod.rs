@@ -11,7 +11,7 @@
 //! may do.
 //!
 //! note: a tool per noun, and the noun is what the tool is *about* rather than what it does to
-//! it. [`Context`] is the context - reading it and changing it, thirteen operations over one
+//! it. [`Context`] is the context - reading it and changing it, twelve operations over one
 //! [`Log`] is the record beside it, [`Setup`] is what the session is running with, and [`Fork`]
 //! is a copy of this session standing up to answer something.
 //!

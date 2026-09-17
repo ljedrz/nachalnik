@@ -84,7 +84,7 @@ impl Arg {
 
     /// An argument the operation reads but does not offer.
     ///
-    /// note: for the one case that is neither. `context`'s five moves read `label` so that a call
+    /// note: for the one case that is neither. `context`'s four moves read `label` so that a call
     /// giving one instead of `ids` can be answered with the spelling it meant - a live run reached
     /// for it that way, and `Amend::moved` says `select: "label:<text>"` back. It is not a way to
     /// name the items to move, so advertising it would teach exactly the mistake the answer exists
@@ -120,10 +120,11 @@ impl Arg {
 /// One *shape* a call may take: the operations that share it, and what they read.
 ///
 /// note: several operations rather than one, because a branch per operation is only worth its
-/// scaffolding where the operations differ. `context`'s five moves take one argument list - which
+/// scaffolding where the operations differ. `context`'s four moves take one argument list - which
 /// the `MOVES` constant they replace said outright, "one list because they are one function" - so
-/// they are one branch under an `action` of five words, and the arguments are written once. Five
-/// copies of `reason` cost 728 bytes on every request to say a thing that was already true.
+/// they are one branch under an `action` of four words, and the arguments are written once. Those
+/// arguments are 525 bytes, so three more copies of them would cost 1,575 on every request to say
+/// a thing that was already true.
 pub(crate) struct Op {
     actions: Vec<&'static str>,
     does: String,
@@ -323,7 +324,7 @@ pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
 
     // note: named only when one operation has it, because the sentence is a *pointer* and there is
     // nowhere to point otherwise. `old` is `edit`'s and saying so is the whole answer; `ids` is
-    // eleven of `context`'s thirteen, and "that one is `look`'s" - the first row that has it - is
+    // seven of `context`'s twelve, and "that one is `look`'s" - the first row that has it - is
     // a fact about this table's order being read as a fact about the argument. A model that has
     // just been told its call was wrong is in no position to discount what it is told next
     let others: Vec<&str> = ops
@@ -347,7 +348,7 @@ pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
         "`{op}` does not take `{stray}`{whose}. It takes {}, and nothing was done: a call that \
          ignored an argument would have answered as if you had never given it.",
         // note: what it *offers*, so a tolerated argument is not named here. `label` is read by
-        // the five that move an item only so that a call giving one can be told what it meant,
+        // the four that move an item only so that a call giving one can be told what it meant,
         // and listing it as one of the arguments they take is the advertisement `Arg::tolerated`
         // exists to withhold - printed, of all places, in the refusal correcting that mistake
         match &offers[..] {

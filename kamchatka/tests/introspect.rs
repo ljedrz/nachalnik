@@ -1136,6 +1136,47 @@ async fn budget_reports_what_is_really_going_and_what_it_would_buy_to_drop_it() 
 /// put it at the top. That is an offer of 25,903 tokens for an elision that frees a thousand,
 /// under a note whose whole point is that it does not offer what giving something up would not
 /// buy. It ranks on the column that decides now, and says what the row is holding beside it.
+/// Every state `budget` says the model sets is one this tool has an action for.
+///
+/// note: `budget` named `archived` among "three states you set" for as long as `archive` was an
+/// action, and went on naming it after `archive` was merged into `exclude` and the word left the
+/// vocabulary. A tool that tells a model about a state and gives it no way to reach one is the
+/// exact failure the moves were renamed to close - two models in a row spent a call each asking
+/// for an `action` called `restore` before it was one. The check is against `CHANGES` rather than
+/// against a list written here, so the sentence cannot outlive the word again.
+#[tokio::test]
+async fn budget_promises_no_state_the_vocabulary_cannot_reach() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "budget" }),
+    )]));
+
+    kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    kernel.push(ContextItem::user("what is this costing?"));
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answered(&kernel);
+    // the clause between the two, however it is punctuated: the states this sentence hands the
+    // model as its own to set
+    let claimed = (said.split_once("held back:").expect("the held-back line").1)
+        .split_once("you set")
+        .expect("and the clause saying which of them the model sets")
+        .0;
+
+    for state in ["archived", "pinned", "superseded"] {
+        assert!(
+            !claimed.contains(state),
+            "`budget` offers `{state}` as a state the model sets, and no action leaves one: {said}"
+        );
+    }
+    for state in ["excluded", "elided"] {
+        assert!(claimed.contains(state), "{said}");
+    }
+    // archived is still worth naming, as somewhere items arrive rather than somewhere to send them
+    assert!(said.contains("archived"), "{said}");
+}
+
 #[tokio::test]
 async fn the_expensive_list_ranks_by_what_a_row_sends_not_by_what_it_holds() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
@@ -1196,9 +1237,13 @@ async fn the_expensive_list_ranks_by_what_a_row_sends_not_by_what_it_holds() {
         !said.contains("the first three"),
         "an ordinal here reads as item ids, because the table under it is a column of them: {said}"
     );
+    // note: it was `three states you set` until `archive` stopped being an action, which made the
+    // count wrong as well as the ordinal - the model sets two of the four now, and `archived` is
+    // somewhere items arrive rather than somewhere to send them. Naming them is the part that
+    // matters and the part this holds; the number was never the point
     assert!(
-        said.contains("three states you set"),
-        "so the three that are the caller's are named as states instead: {said}"
+        said.contains("excluded or elided to a marker, which you set"),
+        "so the ones that are the caller's are named as states instead: {said}"
     );
     assert!(
         said.contains("which is not yours to change"),

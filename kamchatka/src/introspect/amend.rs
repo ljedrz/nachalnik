@@ -131,11 +131,11 @@ impl Undoing {
 }
 
 impl Amend {
-    /// Runs one of the nine operations that change something.
+    /// Runs one of the eight operations that change something.
     ///
     /// note: it is handed the operation and the reason rather than reading either, because both
     /// are the vocabulary's and the vocabulary is `context`'s: it is the tool a model called, it
-    /// holds the list of thirteen, and it is what says so when a call names none of them. What is
+    /// holds the list of twelve, and it is what says so when a call names none of them. What is
     /// in here is what changing a context *is*.
     pub(super) fn change(
         &self,
@@ -150,9 +150,9 @@ impl Amend {
             "note" => self.note(kernel, args, reason),
             "undo" => self.walk(kernel, args, reason, true),
             "redo" => self.walk(kernel, args, reason, false),
-            // note: the five moves are operations of their own, named for what they do. They were
+            // note: the four moves are operations of their own, named for what they do. They were
             // one `prune` action with a `state` argument once, which put the word for *one* of
-            // them over all five - including `pin` and `restore`, which are its opposite, so
+            // them over all four - including `pin` and `restore`, which are its opposite, so
             // "prune to pin it" was the documented spelling of protecting something. It also
             // disagreed with every place the result is read back, all of which name the state.
             // Two models in a row spent a call each asking for `restore` and being told it was a
@@ -645,14 +645,14 @@ impl Amend {
     }
 }
 
-/// The state each of the five moves leaves an item in.
+/// The state each of the four moves leaves an item in.
 ///
-/// note: five words for five states, and no second spelling of any of them. It took `excluded`,
+/// note: four words for four states, and no second spelling of any of them. It took `excluded`,
 /// `unpin`, `unelide`, `active` and `include` too, on the reasoning that accepting a word
 /// somebody reached for costs nothing - which was true of the word and not of the program. The
-/// schema advertises thirteen operations; every place that had to answer "which operation is
+/// schema advertises twelve operations; every place that had to answer "which operation is
 /// this call" then needed a table of the words that are not in it, and `needs` was reduced to
-/// declaring all thirteen for a call it could not place. One list, in the schema, is the whole
+/// declaring all twelve for a call it could not place. One list, in the schema, is the whole
 /// of the vocabulary now.
 fn state_of(word: &str) -> Option<ContextState> {
     Some(match word {

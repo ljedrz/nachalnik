@@ -44,19 +44,19 @@ const GLIMPSE: usize = 48;
 
 /// The eight that change, each named for what it leaves behind.
 ///
-/// note: the word for the move is the word the result is reported in - an item you `archive` reads
-/// back as `archived` everywhere it is listed. One level, and the same vocabulary at both ends of
+/// note: the word for the move is the word the result is reported in - an item you `elide` reads
+/// back as `elided` everywhere it is listed. One level, and the same vocabulary at both ends of
 /// it. They were a `prune` action with a `state` argument once, which put the word for one of them
-/// over all nine.
+/// over all eight.
 const CHANGES: [&str; 8] = [
     "elide", "exclude", "pin", "restore", "revise", "note", "undo", "redo",
 ];
 
-/// Why a call that changes something has to say why, which is the same sentence nine times.
+/// Why a call that changes something has to say why, which is the same sentence eight times.
 const WHY: &str = "why, in your own words; the person you work with reads this, and it becomes \
                    the item's note";
 
-/// What a `select` is, said where the five that take one can read it.
+/// What a `select` is, said where the four that take one can read it.
 ///
 /// note: "instead of" is the load-bearing half, and it is said in both directions - here and on
 /// each `ids` beside it - because a call giving both is refused and the schema cannot say so. What
@@ -75,7 +75,7 @@ const SELECT: &str = "a class of items instead of `ids`, never both in one call,
 /// note: twelve operations, eight shapes. The four that move an item read one argument list,
 /// which the `MOVES` constant they replace said outright ("one list because they are one
 /// function"), and so do `undo` and `redo`; each group is therefore one branch under an `action`
-/// of several words. Written out per operation they came to nine copies of `reason` and five of
+/// of several words. Written out per operation they came to eight copies of `reason` and five of
 /// `select`, 1,200 bytes a request to say a thing that was already true once.
 fn ops() -> Vec<Op> {
     let mut ops = vec![
@@ -288,7 +288,7 @@ impl Tool for Context {
     /// note: `action` and nothing else, so a rule about `context:look` is about looking whichever
     /// way a call asked for it - and so that the reading half and the changing half are still
     /// separately grantable now that they are one tool. A call naming no operation this tool has
-    /// declares all thirteen, which is the strictest reading of a call nobody can place, and
+    /// declares all twelve, which is the strictest reading of a call nobody can place, and
     /// `invoke` then refuses it by name.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
         match action_of(call, &self.ops) {
@@ -359,7 +359,7 @@ impl Tool for Context {
                 )))
             }
             // note: asked for here *as well as* in the schema, which now says it: a branch per
-            // operation means nine of the thirteen can require it and four can not offer it at
+            // operation means eight of the twelve can require it and four can not offer it at
             // all, where one flat property bag made `required` all or nothing. Nothing is sent
             // `strict`, so the schema is advice and this is what holds
             op if CHANGES.contains(&op) => {
@@ -1010,9 +1010,10 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
 
     let mut out = format!(
         "the next request is ~{} tokens{room}\n  {} in the context, {} in the tool definitions\n\
-         ~{} tokens are being held back: excluded, archived or elided to a marker - three states \
-         you set, and `restore` takes any of them off again - or thinking this endpoint will not \
-         take back, which is not yours to change\n",
+         ~{} tokens are being held back: excluded or elided to a marker, which you set; archived, \
+         which is where a note you undid and the whole of a shortened answer go; or thinking this \
+         endpoint will not take back, which is not yours to change. `restore` puts an excluded, \
+         elided or archived item back\n",
         thousands(budget.used()),
         thousands(budget.context_tokens),
         thousands(budget.tool_tokens),

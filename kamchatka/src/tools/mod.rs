@@ -164,7 +164,7 @@ pub(crate) const REPORT: usize = 8_000;
 ///
 /// note: it was keyed by tool id, which stopped working the day a tool did several things. `fs`
 /// is one tool over five operations whose answers are nothing like the same size - a whole file
-/// and a repo-wide search - and `context` is one over thirteen, from a listing of forty items to
+/// and a repo-wide search - and `context` is one over twelve, from a listing of forty items to
 /// a line confirming a pin. A number per tool is a number for whichever of those somebody thought
 /// of first.
 ///

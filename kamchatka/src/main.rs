@@ -301,7 +301,7 @@ impl Args {
 /// note: `deny` is the default, and it is the whole of the difference between this and
 /// `examples/recorded.rs`, which grants every question it is asked. That is right for a recording
 /// somebody is watching and wrong for a program: a run nobody is watching should not be able to do
-/// a thing nobody has allowed, and `--allow shell` is one flag away for anyone who means it.
+/// a thing nobody has allowed, and `--allow exec` is one flag away for anyone who means it.
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum OnAsk {
     /// Refuse it. The model is told, and told that it was this call rather than a standing rule.
