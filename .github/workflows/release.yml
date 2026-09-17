@@ -86,8 +86,10 @@ jobs:
           locked: true
           checksum: sha256
           # the one file that is worth more beside the binary than it is on a web page. Every
-          # setting the program has, named and at its default, for somebody who wants to stop
-          # typing the same four arguments: `kamchatka --config-file kamchatka.json` and edit it.
+          # setting the program has, named, and at its default but for the spend ceiling - which
+          # is a tightening, and the only thing a file adopted sight-unseen can safely offer. For
+          # somebody who wants to stop typing the same four arguments: `kamchatka --config-file
+          # kamchatka.json` and edit it.
           # A `cargo install` copies no files, so an archive is the only way it reaches anybody
           # who did not clone the repository.
           #
