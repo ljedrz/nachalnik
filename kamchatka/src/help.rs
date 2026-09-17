@@ -2,7 +2,7 @@
 //! it.
 //!
 //! note: not in `ui`, where it was, because none of it is drawing: `/help` and `/exclude` print it,
-//! and the `amend` tool hands the selector list to a *model*. A build with no screen still answers
+//! and `context` hands the selector list to a *model*. A build with no screen still answers
 //! both, so text that a command owns cannot live behind the feature that draws.
 //!
 //! note: the keys are [`SECTIONS`] rather than one string, and which of them somebody is shown
