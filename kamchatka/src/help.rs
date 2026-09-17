@@ -127,6 +127,9 @@ pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is 
                         (what a turn *did* is not something it says, so a
                          turn that is only a tool call declines the key)
     f                   list only what the next request carries, or everything
+    y                   hand the whole of what it says to the terminal, for the
+                        clipboard - unwrapped, and with no frame down the sides
+                        of it, which is what dragging a mouse over the pane gets
     enter               read the whole of it: what the model gets, what it
                         says, and what it said before it was rewritten
     left / right        move between those, while one is open
@@ -237,6 +240,9 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /restore SELECTOR   put them back
     /budget             the estimate, what the last request really cost, and the
                         correction the counter has worked out from the difference
+    /copy [N]           hand the last thing the model said to the terminal, for
+                        the clipboard, or item N. `y` on the context tab is the
+                        same act on the row it is standing on
     /compact            what the compactor would take, listed, and then `y` or
                         `n`. The list waits, so `p` on the context tab keeps
                         something out of it and the pass is worked out again

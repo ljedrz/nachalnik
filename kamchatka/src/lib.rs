@@ -78,6 +78,7 @@
 
 pub mod app;
 pub mod attach;
+pub mod clipboard;
 pub mod config;
 pub mod headless;
 pub mod introspect;

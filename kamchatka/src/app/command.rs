@@ -4,7 +4,9 @@
 //! know about. `/context`, `/seams` and `/budget` read public values off a [`nachalnik::Kernel`]
 //! and print them; nothing in this file is a capability the runtime had to grow.
 
-use nachalnik::{Calibration, ContextId, ContextItem, ContextState, selectors::Selector};
+use nachalnik::{
+    Calibration, ContextId, ContextItem, ContextKind, ContextState, selectors::Selector,
+};
 
 use crate::{app::text::thousands, tools::Limits};
 
@@ -152,6 +154,11 @@ impl App {
             "limit" => self.limit(rest),
             "spend" => self.spend_command(rest),
             "budget" => self.budget(),
+            // note: a command as well as the `y` on the context tab, because on the chat tab the
+            // keys belong to the prompt - a bare `y` there is a `y` typed into a message, which
+            // is the rule the permission question is built around too. This is the same act
+            // reached from where somebody is standing when they want it
+            "copy" => self.copy_command(rest),
             "compact" => self.compact().await,
             "seams" => self.seams(),
             // it used to print a line naming the allowed capabilities. The tab is that line, plus
@@ -1055,6 +1062,46 @@ impl App {
                 thousands(holding),
             ),
         );
+    }
+
+    /// `/copy` hands the last thing the model said to the terminal; `/copy N` hands item N.
+    ///
+    /// note: the last answer with nothing after it, because that is what somebody is reaching for
+    /// when they have just read one and want it somewhere else. Anything else on this screen is a
+    /// row on the context tab with `y` on it, and a command that took a selector would be a second
+    /// way to say what that tab already says better - it shows what each item *is* before you
+    /// copy it.
+    fn copy_command(&mut self, rest: &str) {
+        let named = rest.trim().trim_start_matches('[').trim_end_matches(']');
+        let id = match named {
+            "" => self
+                .kernel
+                .items()
+                .iter()
+                .rev()
+                .find(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+                .map(|item| item.id),
+            number => match number.parse::<u64>() {
+                Ok(number) => Some(ContextId(number)),
+                // note: the number rather than a selector, and it says so rather than reading a
+                // word as a label and copying whatever that found. A paste is not a thing somebody
+                // checks before using
+                Err(_) => {
+                    return self.say(
+                        Speaker::Note,
+                        format!(
+                            "`/copy` takes an item number, and `{number}` is not one; `y` on the \
+                             context tab copies the row it is on"
+                        ),
+                    );
+                }
+            },
+        };
+
+        match id {
+            Some(id) => self.copy(id),
+            None => self.say(Speaker::Note, "the model has not said anything yet"),
+        }
     }
 
     fn budget(&mut self) {

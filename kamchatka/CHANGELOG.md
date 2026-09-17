@@ -56,6 +56,22 @@ minor bump may break you.
   Sent only to OpenRouter; `KAMCHATKA_NO_ATTRIBUTION` turns all attribution off. An unrecognised
   category is dropped silently by OpenRouter, so nothing here checks the spelling.
 
+- <kbd>y</kbd> on the context tab, and `/copy [N]`, which hand what an item says to the terminal
+  for its clipboard. A screen is a rectangle and a selection over one is a rectangle too, so a
+  mouse dragged across the chat pane takes the frame down both sides of every line with it, the
+  wrapping of whatever width the window was, and none of what has scrolled past - and getting a
+  model's answer out of here meant deleting a `│` from the front and the back of forty lines. This
+  is the answer as the context holds it, unwrapped and whole. `/copy` with nothing after it is the
+  last thing the model said, which is the one people are usually reaching for, and a command as
+  well as a key because on the chat tab a bare `y` is a `y` typed into a message.
+
+  It is OSC 52, an escape sequence rather than a dependency, so it works over `ssh` - the terminal
+  at the far end is the one holding the clipboard. What it cannot do is find out whether it
+  worked: there is no reply, and a terminal that does not implement it drops it silently. So the
+  line says what it did rather than that the clipboard now holds it, and the byte count is the
+  receipt. `App::clipboard` is the seam: the app sets the text, the loop that owns a terminal
+  writes the sequence, and an embedder gets the text to do its own thing with.
+
 ### fixed
 
 - Four things a tool description left a model to find out by spending a call. `shell` said "long

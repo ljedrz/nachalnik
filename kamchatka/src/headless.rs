@@ -198,6 +198,15 @@ impl<'a> Headless<'a> {
                                     .map_err(|e| e.to_string())?;
                             }
                         }
+                        // `/copy` down a pipe is still worth answering: stdout is the session log
+                        // and stderr may well be somebody's terminal, which is where the sequence
+                        // goes either way. Where it is not, the line says so rather than the
+                        // command reporting that it did something
+                        if let Some(text) = app.clipboard.take()
+                            && let Err(why) = crate::clipboard::hand_over(&text)
+                        {
+                            app.say(crate::app::Speaker::Note, why);
+                        }
                         // `/compact` asks, and there are no keys here to answer with. Taken
                         // rather than left, which is the opposite of what `--on-ask` does with a
                         // tool's question - and the two are different questions. A tool's is the

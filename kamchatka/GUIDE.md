@@ -109,11 +109,28 @@ back and the same context reports it as spent, without a byte of it moving.
 | <kbd>p</kbd> | pin it, so that the compactor is refused if it tries |
 | <kbd>e</kbd> | change what it **says** — a tool call is not something a turn says, so a turn that is only a call declines this and tells you why |
 | <kbd>f</kbd> | list only what the next request carries, or everything again |
+| <kbd>y</kbd> | hand the whole of what it says to the terminal, for the clipboard — see below |
 | <kbd>/</kbd> | filter the rows: fuzzy, over the label, the kind and the whole of what an item holds — see below |
 | <kbd>enter</kbd> | read the whole of it — see below |
 | <kbd>←</kbd> / <kbd>→</kbd> | move between its pages, while it is open |
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
 | <kbd>23G</kbd> | go to the item numbered 23 — the number `/exclude` takes |
+
+**<kbd>y</kbd> is for getting something out of here and into something else.** A screen is a
+rectangle and a selection dragged over one is a rectangle too, so a mouse across the chat pane
+takes the frame down both sides of every line with it, the wrapping of whatever width the window
+happened to be, and none of what has scrolled past. This program is holding the answer itself —
+unwrapped, whole, and with nothing drawn around it — and <kbd>y</kbd> hands that to the terminal
+instead, which puts it on the clipboard. `/copy` is the same act from the chat tab, where the keys
+belong to the prompt: with nothing after it, the last thing the model said; `/copy 7`, item 7.
+
+It is [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands),
+an escape sequence rather than a library, so it also works over `ssh` — the terminal at the far end
+is the one with the clipboard you will paste into. What it cannot do is find out whether it worked:
+there is no reply to read, and a terminal that does not implement it drops it silently. `foot` and
+`alacritty` take it, `tmux` passes it on only with `set-clipboard on`, and Apple's Terminal has
+never had it. So the line it prints says what it did — `[7] to the clipboard: 1,204 bytes` — and
+the byte count is what to compare against whatever turns up in the paste.
 
 An oversized tool result is held as *two* items: the truncated copy the model was shown, and the
 whole of it beside it, marked `▫ archived` and not going. <kbd>space</kbd> or <kbd>p</kbd> on that

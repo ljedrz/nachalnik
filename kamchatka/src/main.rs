@@ -719,6 +719,13 @@ async fn run(
 
     loop {
         terminal.draw(|frame| ui::draw(frame, app))?;
+        // after the frame rather than before it, so the line saying what was handed over is on
+        // the screen by the time the terminal has it
+        if let Some(text) = app.clipboard.take()
+            && let Err(why) = kamchatka::clipboard::hand_over(&text)
+        {
+            app.say(Speaker::Note, why);
+        }
         if app.quit {
             return Ok(());
         }

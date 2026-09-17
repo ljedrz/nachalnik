@@ -317,6 +317,9 @@ impl App {
                 };
                 self.kernel.set_state([picked.id], to, None);
             }
+            // the row's own text, out of the window and onto the clipboard. A mouse over the chat
+            // pane takes the frame with it, and `y` is the key a pager binds this to
+            KeyCode::Char('y') => self.copy(picked.id),
             // a view, not a change: nothing is touched and nothing is logged. After a compaction
             // most of the list is items the model will never read again, and reading past them to
             // find the conversation is the thing this tab is for

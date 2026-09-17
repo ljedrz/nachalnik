@@ -742,6 +742,17 @@ pub struct App {
     acted: bool,
     /// Whether it is time to leave.
     pub quit: bool,
+    /// Text the loop has been asked to hand the terminal, for its clipboard, and has not yet.
+    ///
+    /// note: a field rather than a write, because a screen belongs to whoever owns it. The two
+    /// loops in this program take it and write the escape sequence; a host embedding the `App`
+    /// gets the text and does whatever its own window does with a copy, which is what it would
+    /// have had to do anyway with an escape it never asked for written into its terminal.
+    ///
+    /// note: the whole of the item rather than what is drawn of it. That is the point of copying
+    /// from here instead of dragging a mouse over the pane: this text is not wrapped to a window,
+    /// has no frame down either side of it, and is all there whether or not it fits on a screen.
+    pub clipboard: Option<String>,
     /// How many tokens the provider may charge for this session before it stops; `None` never
     /// stops. [`App::set_spend`] is how it is changed, and [`App::spend`] reads it.
     ///
@@ -918,6 +929,7 @@ impl App {
             busy: false,
             acted: false,
             quit: false,
+            clipboard: None,
             spend: None,
             rendered: 0,
             viewport: 0,
@@ -949,6 +961,35 @@ impl App {
     }
 
     // ------------------------------------------------------------------------ saying things
+
+    /// Hands what an item says to the loop, for the terminal to put on the clipboard.
+    ///
+    /// note: the item's own text, which is not what is on the screen. A selection dragged across
+    /// the chat pane takes the frame down both sides of every line, the wrapping of whatever
+    /// width the window was, and none of what has scrolled past - and a model's answer is the
+    /// thing people most often want out of here whole. This is that answer as the context holds
+    /// it; see [`crate::clipboard`] for what the loop then does with it, and for the one thing
+    /// neither can find out, which is whether the terminal took it.
+    ///
+    /// note: it says how many bytes, because that is the only receipt there is. A line reading
+    /// "copied" would be claiming a thing this program cannot see; the figure is what somebody
+    /// compares against what turns up in their paste.
+    ///
+    /// note: and it does not name the terminal, because the loop is what finds out whether there
+    /// is one. Said here, `handed to the terminal` was followed down a pipe by `there is no
+    /// terminal here for it to go to` - two lines about one act, the second contradicting the
+    /// first.
+    pub fn copy(&mut self, id: ContextId) {
+        let Some(item) = self.kernel.item(id) else {
+            self.say(Speaker::Note, format!("there is no item {id}"));
+            return;
+        };
+
+        let text = item.content.to_text().into_owned();
+        let said = format!("[{id}] to the clipboard: {} bytes", thousands(text.len()));
+        self.clipboard = Some(text);
+        self.say(Speaker::Note, said);
+    }
 
     /// Adds a finished entry to the transcript, ending whatever was still arriving.
     ///

@@ -413,6 +413,73 @@ async fn editing_an_item_leaves_it_doing_whatever_it_was_doing() {
     assert!(!sent.contains("shorter wall"), "{sent}");
 }
 
+/// `y` hands the whole of an item to the terminal, which is not what is on the screen.
+///
+/// note: the thing this is for. A selection dragged across the chat pane takes the frame down
+/// both sides of every line with it, the wrapping of whatever width the window was, and none of
+/// what has scrolled out of view - so pasting a model's answer meant deleting a `│` from the
+/// front and the back of forty lines. What the context holds has none of that, and the item here
+/// is deliberately wider than any window and taller than the pane.
+///
+/// note: the `App` sets the text and the loop that owns the terminal writes the escape, so what
+/// this can check is the half that is this program's. `clipboard::sequence` is where the other
+/// half is pinned, and whether the terminal took it is a thing neither can find out.
+#[tokio::test]
+async fn y_hands_the_whole_of_an_item_to_the_terminal_rather_than_what_is_drawn_of_it() {
+    let mut harness = Harness::new([]);
+    let wide = format!(
+        "a line of an answer that is wider than any window {}",
+        "x".repeat(400)
+    );
+    let tall = std::iter::repeat_n(wide.as_str(), 60)
+        .collect::<Vec<_>>()
+        .join("\n");
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("what does it say?"));
+    let long = harness.app.kernel.push(ContextItem::assistant(
+        nachalnik::Content::text(tall.clone()),
+        Vec::new(),
+    ));
+    harness.tab(Tab::Context);
+
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Char('y')).await;
+
+    assert_eq!(
+        harness.app.clipboard.as_deref(),
+        Some(tall.as_str()),
+        "the item's own text, whole and unwrapped"
+    );
+    // and it says what it did rather than that the clipboard now holds it, which is the thing
+    // this program cannot see. On the chat tab, where everything this program says goes
+    harness.tab(Tab::Chat);
+    let said = harness.flat();
+    assert!(
+        said.contains(&format!("[{long}] to the clipboard")),
+        "{said}"
+    );
+
+    // the same act from the chat tab, where the keys belong to the prompt: `/copy` with nothing
+    // after it takes the last thing the model said
+    harness.app.clipboard = None;
+    harness.app.submit("/copy").await;
+    assert_eq!(harness.app.clipboard.as_deref(), Some(tall.as_str()));
+
+    // a number takes that item, and a word is refused rather than read as a label: a paste is not
+    // something anybody checks before using it
+    harness.app.clipboard = None;
+    harness.app.submit("/copy 1").await;
+    assert_eq!(harness.app.clipboard.as_deref(), Some("what does it say?"));
+
+    harness.app.clipboard = None;
+    let reply = harness.app.submit("/copy the answer").await;
+    assert!(harness.app.clipboard.is_none());
+    let said: String = reply.said.iter().map(|entry| entry.text.clone()).collect();
+    assert!(said.contains("takes an item number"), "{said}");
+}
+
 #[tokio::test]
 async fn any_one_item_can_be_taken_out_of_the_request_or_pinned_against_compaction() {
     let mut harness = Harness::new([]);
