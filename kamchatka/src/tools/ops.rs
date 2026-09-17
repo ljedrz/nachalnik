@@ -32,12 +32,14 @@ use serde_json::{Map, Value, json};
 pub(crate) const WRAPPER: &str = "call";
 
 /// What the wrapper says it is, which is the same sentence for every tool that has one.
-const ABOUT: &str = "which operation, and the arguments that one takes";
+const ABOUT: &str = "the operation to perform, and the arguments that operation takes";
 
 /// One argument of one operation: its name, its schema, and whether leaving it out is a call.
 pub(crate) struct Arg {
     name: &'static str,
-    schema: Value,
+    /// How the schema describes it, or nothing where it is read but not offered; see
+    /// [`Arg::tolerated`].
+    schema: Option<Value>,
     required: bool,
 }
 
@@ -61,11 +63,37 @@ impl Arg {
     pub(crate) fn list(name: &'static str, of: &'static str, about: impl Into<String>) -> Self {
         Self {
             name,
-            schema: json!({
+            schema: Some(json!({
                 "type": "array",
                 "items": { "type": of },
                 "description": about.into(),
-            }),
+            })),
+            required: false,
+        }
+    }
+
+    /// A list of exactly one thing, which is a different claim from a list.
+    pub(crate) fn one_of(name: &'static str, of: &'static str, about: impl Into<String>) -> Self {
+        let mut arg = Self::list(name, of, about);
+        if let Some(schema) = arg.schema.as_mut() {
+            schema["minItems"] = json!(1);
+            schema["maxItems"] = json!(1);
+        }
+        arg
+    }
+
+    /// An argument the operation reads but does not offer.
+    ///
+    /// note: for the one case that is neither. `context`'s five moves read `label` so that a call
+    /// giving one instead of `ids` can be answered with the spelling it meant - a live run reached
+    /// for it that way, and `Amend::moved` says `select: "label:<text>"` back. It is not a way to
+    /// name the items to move, so advertising it would teach exactly the mistake the answer exists
+    /// to correct; and leaving it out of the table altogether would have [`unread`] refuse the call
+    /// before that answer could be given.
+    pub(crate) fn tolerated(name: &'static str) -> Self {
+        Self {
+            name,
+            schema: None,
             required: false,
         }
     }
@@ -83,7 +111,7 @@ impl Arg {
     fn of(name: &'static str, kind: &'static str, about: impl Into<String>) -> Self {
         Self {
             name,
-            schema: json!({ "type": kind, "description": about.into() }),
+            schema: Some(json!({ "type": kind, "description": about.into() })),
             required: false,
         }
     }
@@ -156,9 +184,13 @@ pub(crate) fn schema(ops: &[Op]) -> Value {
     let inside = match ops {
         [only] => {
             let mut one = branch(only);
-            // note: said here as well, because the wrapper is the same argument in both shapes and
-            // a model reading two of these tools should not find one of them silent about it
-            one["description"] = json!(ABOUT);
+            // note: the branch's own words where it has any, and the wrapper's where it has not,
+            // so that a tool with one shape is never silent about what `call` is. Writing ABOUT
+            // over the top unconditionally is what this used to do, and it threw away `setup`'s
+            // account of its four operations - the only description that lived on a lone branch
+            if one["description"].is_null() {
+                one["description"] = json!(ABOUT);
+            }
             one
         }
         several => json!({
@@ -184,7 +216,10 @@ fn branch(op: &Op) -> Value {
 
     let mut required = vec![json!("action")];
     for arg in &op.takes {
-        properties.insert(arg.name.to_owned(), arg.schema.clone());
+        let Some(schema) = arg.schema.clone() else {
+            continue;
+        };
+        properties.insert(arg.name.to_owned(), schema);
         if arg.required {
             required.push(json!(arg.name));
         }
@@ -282,16 +317,23 @@ pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
         _ => String::new(),
     };
 
+    let offers: Vec<String> = mine
+        .takes
+        .iter()
+        .filter(|arg| arg.schema.is_some())
+        .map(|arg| format!("`{}`", arg.name))
+        .collect();
+
     Some(format!(
         "`{op}` does not take `{stray}`{whose}. It takes {}, and nothing was done: a call that \
          ignored an argument would have answered as if you had never given it.",
-        match &mine.takes[..] {
+        // note: what it *offers*, so a tolerated argument is not named here. `label` is read by
+        // the five that move an item only so that a call giving one can be told what it meant,
+        // and listing it as one of the arguments they take is the advertisement `Arg::tolerated`
+        // exists to withhold - printed, of all places, in the refusal correcting that mistake
+        match &offers[..] {
             [] => "no arguments beside `action`".to_owned(),
-            takes => takes
-                .iter()
-                .map(|arg| format!("`{}`", arg.name))
-                .collect::<Vec<_>>()
-                .join(", "),
+            offers => offers.join(", "),
         }
     ))
 }
