@@ -2804,7 +2804,7 @@ async fn a_name_taken_many_times_over_names_some_and_counts_the_rest() {
     assert!(last.contains("`label:status` now names 6"), "{last}");
 }
 
-/// Every row is one operation in one domain, and the tools that declare it are named beside it.
+/// Every row is one operation in one domain, and the tools it decides for are named beside it.
 ///
 /// note: the table used to have a row per *capability*, and seven of the ten tools declared one
 /// named after themselves - `read` the capability, declared by `read` the tool. The column that
@@ -2826,8 +2826,8 @@ async fn setup_permissions_lists_one_row_per_operation() {
     assert!(said.contains("context:look"), "{said}");
     assert!(said.contains("context:revise"), "{said}");
     assert!(
-        !said.contains("nothing you have declares it"),
-        "every operation here is declared by something: {said}"
+        !said.contains("nothing here is judged by it"),
+        "every operation here decides for something: {said}"
     );
     // and every row is an operation rather than a tool's own name, which is what the old table
     // had on seven of its ten rows

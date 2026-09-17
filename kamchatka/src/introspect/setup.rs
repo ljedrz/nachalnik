@@ -332,7 +332,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     }
     // note: a rule about a whole domain is a stance too, and it is deliberately not a row in
     // this table of operations: it is not declared by anything - a tool declares `context:revise`,
-    // never `context` - so it would read `nothing you have declares it` beside a verdict that
+    // never `context` - so it would read `nothing here is judged by it` beside a verdict that
     // governs three rows above it. It gets a section of its own below, the way a path rule does.
     let mut broader: Vec<(String, String, Verdict)> = Vec::new();
     for (subject, verdict) in policy.stances() {
@@ -355,9 +355,13 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     }
 
     if !binds.is_empty() {
+        // note: what the rule *decides for*, which is not quite what declares it. `mcp:call` is
+        // declared by every tool from a server and decides for none this program spawned, so a
+        // column headed "the tools that declare it" had one true answer and one useful one and
+        // could not give both. The useful one is the one a rule is read for
         out.push_str(&format!(
             "\n{:<28}  {:<8}  {}\n",
-            "capability", "verdict", "the tools that declare it"
+            "capability", "verdict", "the tools it decides for"
         ));
         for (capability, tools) in &binds {
             let verdict = policy.stance(&Subject::Capability(capability.clone()));
@@ -366,7 +370,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
                 capability.to_string(),
                 said(verdict),
                 match tools.is_empty() {
-                    true => "nothing you have declares it".to_owned(),
+                    true => "nothing here is judged by it".to_owned(),
                     false => tools.join(", "),
                 },
             ));
