@@ -83,7 +83,7 @@ session, the tools, the policy, the trace, `submit`, `interrupt`, `on_event`, `w
 not, and neither is `headless.rs`, which is the second caller that proves the first one is not
 privileged. The rule for anything new: if it takes a `KeyEvent` or a `ratatui` type it goes behind the
 feature, and if a *command* can reach it, it cannot. That is what `help.rs` and the two formatters
-in `app/text.rs` are doing where they are: `/prune` prints the selector listing and `context`
+in `app/text.rs` are doing where they are: `/exclude` prints the selector listing and `context`
 formats token counts for a model to read, so neither can live in the module that draws.
 
 `cargo test -p kamchatka --no-default-features` is the check, and every suite it runs is about the

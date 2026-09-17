@@ -225,7 +225,7 @@ impl App {
             }
             KeyCode::Home | KeyCode::Char('g') => self.selected = 0,
             // `23G` goes to the item *numbered* 23 rather than the twenty-third row, because the
-            // number in the first column is the one `/prune` takes and the one every note names.
+            // number in the first column is the one `/exclude` takes and the one every note names.
             // Bare `G` is the last item, as everywhere else
             KeyCode::End | KeyCode::Char('G') => {
                 self.selected = match count.parse::<u64>() {

@@ -2601,7 +2601,7 @@ impl App {
     /// columns and a filter that found less on a narrow terminal would be the worse surprise.
     ///
     /// note: the state is deliberately not in here. It is on the row as a mark rather than a word,
-    /// so there is nothing somebody would be typing to match it, and `/prune state:excluded` is
+    /// so there is nothing somebody would be typing to match it, and `/exclude state:excluded` is
     /// the language for asking that question.
     fn item_text(item: &ContextItem) -> String {
         format!(

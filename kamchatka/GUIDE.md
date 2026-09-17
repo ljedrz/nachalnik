@@ -163,7 +163,7 @@ committing rewrites the item where it stands:
 ```
 
 One row, the same number, and the same state it was in: editing decides what an item says, not
-whether it is sent, so a pruned item stays pruned and an elided one stays elided. What it said
+whether it is sent, so an excluded item stays excluded and an elided one stays elided. What it said
 before is under <kbd>enter</kbd> as `v1`, and the edit is one <kbd>u</kbd> from coming back — on
 both screens, since the conversation reads the item out of the context rather than keeping its own
 copy. Trimming a 2,000-line file down to the function that matters is two keystrokes and a delete.
@@ -356,7 +356,7 @@ keystroke away on the context tab.
 Stopping is cooperative rather than a killed process. The provider notices between fragments and
 returns the text it has; the shell tool kills the command — and everything the command started,
 since it runs in a process group of its own — and still answers the call it was given. The partial
-turn ends up in the context like any other, where it can be read, pruned, or left alone.
+turn ends up in the context like any other, where it can be read, excluded, or left alone.
 
 A message sent while a turn is running **waits for the end of it**, and then goes in and gets a
 turn of its own. It says so when you send it: until the turn ends it is on the screen but not yet
@@ -770,7 +770,7 @@ is not what *nothing is destroyed* is supposed to mean. Same rule as `log`: the 
 first, the lines on request, never the item.
 
 ```text
-⟩ context({"action":"search","text":"landlock"})
+⟩ context({"call":{"action":"search","text":"landlock"}})
 
   14 line(s) say `landlock`, ~300 tokens if you take them all, in 2 item(s):
     13  archived    tool_result            9 line(s)  shell: cargo test --workspace…
@@ -785,13 +785,14 @@ was told there were no matches has been told something false about itself, silen
 shape of wrong answer a search must not have. A nil result says what it looked at for the same
 reason.
 
-`draft` and `fork` take a snapshot of the context, resume it as a second kernel with **no tools**,
-ask it once, and hand back only what it said. `draft` is for reading your own answer before you
-give it; `fork` is for asking whether a piece of context is what is leading you astray:
+`fork` is its own tool, with `draft` and `ask`. Both take a snapshot of the context, resume it as
+a second kernel with **no tools**, ask it once, and hand back only what it said. `draft` is for
+reading your own answer before you give it; `ask` is for asking whether a piece of context is what
+is leading you astray:
 
 ```text
-⟩ context({"action":"fork","question":"am I overfitting to the first stack trace?",
-          "without":[14,15]})
+⟩ fork({"call":{"action":"ask","question":"am I overfitting to the first stack trace?",
+                "without":[14,15]}})
 
   a copy of you, asked `am I overfitting to the first stack trace?`, on 9 of your items,
   without 14, 15, which the copy could not read at all. None of this is in your context

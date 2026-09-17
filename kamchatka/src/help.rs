@@ -1,7 +1,7 @@
 //! The reference text a person is shown, kept where both the screen and the commands can reach
 //! it.
 //!
-//! note: not in `ui`, where it was, because none of it is drawing: `/help` and `/prune` print it,
+//! note: not in `ui`, where it was, because none of it is drawing: `/help` and `/exclude` print it,
 //! and the `amend` tool hands the selector list to a *model*. A build with no screen still answers
 //! both, so text that a command owns cannot live behind the feature that draws.
 //!
@@ -268,7 +268,7 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         answer to the same file: a fresh session from it)
     /quit               also /exit, /q";
 
-/// The selector language, shown by `/prune` with nothing to prune.
+/// The selector language, shown by `/exclude` with nothing to exclude.
 ///
 /// note: Kept beside the help rather than derived from the crate, because `Selector` is a parser
 /// and a parser cannot tell you what it would have accepted. It is the same list as the type's
