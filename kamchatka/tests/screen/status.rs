@@ -982,6 +982,49 @@ async fn a_change_of_model_drops_the_anchor() {
     );
 }
 
+/// And the correction with it, for the same reason one word further in.
+///
+/// note: `Calibrating` is the ratio between what this counter guessed and what a provider billed,
+/// and it is cumulative - so a scale learnt from one tokenizer goes on correcting the next one's
+/// figures, and the new model's own observations are averaged into the old one's totals instead of
+/// replacing them. `Calibrating::reset` is documented as being for exactly this and had no caller
+/// anywhere in the workspace; a live session read a scale of 1.152 off one model, switched, and
+/// settled at 1.017, which is neither model's number.
+#[tokio::test]
+async fn a_change_of_model_drops_the_correction_too() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(1_300),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("notes.md", "a sentence. ".repeat(200)));
+
+    harness.send("go").await;
+    harness.settle().await;
+
+    let learned = harness
+        .app
+        .kernel
+        .counter()
+        .calibration()
+        .expect("the counter this ships with learns");
+    assert_eq!(learned.observations, 1);
+    assert_ne!(learned.scale, 1.0, "and it learnt something from that one");
+
+    harness.send("/model something-else").await;
+
+    assert_eq!(
+        harness.app.kernel.counter().calibration(),
+        Some(nachalnik::Calibration::default()),
+        "what it learnt was about the model that is gone"
+    );
+}
+
 /// The line after a switch is read by the session the switch produced, not the one it replaced.
 ///
 /// note: `/model` and `/provider` hand the switch to a task, because finding out what the new

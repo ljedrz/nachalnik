@@ -4,7 +4,7 @@
 //! know about. `/context`, `/seams` and `/budget` read public values off a [`nachalnik::Kernel`]
 //! and print them; nothing in this file is a capability the runtime had to grow.
 
-use nachalnik::{ContextId, ContextItem, ContextState, selectors::Selector};
+use nachalnik::{Calibration, ContextId, ContextItem, ContextState, selectors::Selector};
 
 use crate::{app::text::thousands, tools::Limits};
 
@@ -177,12 +177,7 @@ impl App {
                 if !rest.is_empty() {
                     let (provider, model) = (self.provider.clone(), rest.to_owned());
                     self.say(Speaker::Note, format!("switching to {model}"));
-                    // and the anchor goes with it: it is one model's tokenizer counting one
-                    // model's request, and carrying it across is the corner reporting what the
-                    // *last* model would have charged for a request going to a different one.
-                    // `App::anchored` has always said it falls back after a change of model;
-                    // this is the line that makes that true
-                    self.anchor = None;
+                    self.forget_the_last_model();
                     // the new model has a context limit of its own, and finding it out is a round
                     // trip; the screen should not stop for it, and the next line does
                     self.settling =
@@ -294,9 +289,9 @@ impl App {
                         ),
                     },
                 );
-                // for the reason `/model` drops it, and more so: the same name at a different
+                // for the reason `/model` drops them, and more so: the same name at a different
                 // address is a different model, and this is the command that says so
-                self.anchor = None;
+                self.forget_the_last_model();
                 // the new endpoint has a context limit of its own, and a list of what it serves;
                 // both are round trips, the screen should not stop for them, and the next line does
                 self.settling = Some(tokio::spawn(async move {
@@ -565,6 +560,27 @@ impl App {
             self.ask(asked);
             self.start_turn();
         }
+    }
+
+    /// Drops the two figures that were one model's tokenizer counting one model's request.
+    ///
+    /// note: the anchor is what the provider charged for the last request, and carrying it across
+    /// is the corner reporting what the *last* model would have charged for a request going to a
+    /// different one. `App::anchored` has always said it falls back after a change of model; this
+    /// is the line that makes that true.
+    ///
+    /// note: and the correction, for exactly the same reason one word further in. `Calibrating` is
+    /// the ratio between what this counter guessed and what a provider billed, cumulative over
+    /// every observation - so a scale learnt from one tokenizer goes on correcting the next one's
+    /// figures, and a fresh observation from the new model is averaged into the old model's totals
+    /// rather than replacing them. `Calibrating::reset` is documented as being for precisely this
+    /// and had no caller anywhere: a session that read `7` off one model and then switched carried
+    /// a scale of 1.152 across and settled at 1.017, which is neither model's number. Through
+    /// `Kernel::recalibrate` because that recounts the items as well, which is the half that keeps
+    /// the `sending` column and the budget on one scale.
+    fn forget_the_last_model(&mut self) {
+        self.anchor = None;
+        self.kernel.recalibrate(Calibration::default());
     }
 
     /// Puts something into the context that the model should have and does not have to answer.

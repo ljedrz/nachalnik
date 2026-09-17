@@ -151,6 +151,13 @@ minor bump may break you.
   down a pipe was told to press a key it does not have about a list it could not otherwise see.
   A line that is not a command said `F1 lists what there is`. `/request` and `/help` open the same
   two pages and work in both.
+- `/model` and `/provider` drop what the counter learnt, as well as the anchor. Both already drop
+  the anchor, on the grounds that it is one model's tokenizer counting one model's request - and
+  the correction is the same claim one word further in, cumulative over every observation, so a
+  scale learnt from one tokenizer went on correcting the next one's figures and the new model's own
+  observations were averaged into the old model's totals. Watched live: a session read a scale of
+  1.152 off one model, switched, and settled at 1.017, which is neither model's number.
+  `Calibrating::reset` is documented as being for exactly this and had no caller anywhere.
 - `undo` no longer describes a note it walked back as going *back to* a state it has never been in.
   The way back from having written one is to put it away, so an undone note is archived and still
   listed - and the report read `10 back to archived` about an item created thirty seconds earlier.
