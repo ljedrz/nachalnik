@@ -497,17 +497,94 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
         // every argument says what it is for. A bare `{"type": "string"}` leaves a model to
         // guess whether a path is absolute, what `old` has to match, what a `select` accepts -
         // and a guess costs a turn each time
-        let properties = spec.schema["properties"]
-            .as_object()
-            .unwrap_or_else(|| panic!("{} has no object schema", spec.id));
-        for (name, field) in properties {
-            let said = field
-                .get("description")
-                .and_then(|text| text.as_str())
-                .is_some_and(|text| !text.trim().is_empty());
+        //
+        // note: walked into the branches rather than over the top level, which since the schema
+        // grew a `call` wrapper is one property and would pass this vacuously. An argument belongs
+        // to the operation that reads it now, and that is where it has to say what it is
+        let inside = &spec.schema["properties"]["call"];
+        let branches = match inside["anyOf"].as_array() {
+            Some(several) => several.clone(),
+            None => vec![inside.clone()],
+        };
+        let mut seen = 0;
+        for branch in &branches {
+            let properties = branch["properties"]
+                .as_object()
+                .unwrap_or_else(|| panic!("{} has no object schema: {}", spec.id, spec.schema));
+            for (name, field) in properties {
+                seen += 1;
+                let said = field
+                    .get("description")
+                    .and_then(|text| text.as_str())
+                    .is_some_and(|text| !text.trim().is_empty());
+                assert!(
+                    said || field.get("enum").is_some(),
+                    "`{}`'s `{name}` has nothing to say for itself",
+                    spec.id
+                );
+            }
+        }
+        assert!(
+            seen >= branches.len(),
+            "`{}` declares no arguments at all, so this checked nothing",
+            spec.id
+        );
+
+        // every keyword in it is one both wire formats accept. The narrower is Google's, whose
+        // `Schema` is a closed set of fields rather than a JSON Schema document; this is that set
+        // intersected with what OpenAI documents. One schema goes to both dialects, so a keyword
+        // outside it is a 400 from one endpoint and a silent drop from the other - and neither is
+        // something a person would find without reading the bytes
+        const BOTH: [&str; 22] = [
+            "type",
+            "format",
+            "title",
+            "description",
+            "nullable",
+            "enum",
+            "items",
+            "maxItems",
+            "minItems",
+            "properties",
+            "required",
+            "minProperties",
+            "maxProperties",
+            "minimum",
+            "maximum",
+            "minLength",
+            "maxLength",
+            "pattern",
+            "example",
+            "anyOf",
+            "propertyOrdering",
+            "default",
+        ];
+        fn keywords(node: &serde_json::Value, at: &str, found: &mut Vec<String>) {
+            match node {
+                serde_json::Value::Object(fields) => {
+                    for (key, value) in fields {
+                        // the keys of `properties` are argument names, not keywords
+                        match at {
+                            "properties" => keywords(value, key, found),
+                            _ => {
+                                found.push(key.clone());
+                                keywords(value, key, found);
+                            }
+                        }
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    items.iter().for_each(|it| keywords(it, at, found))
+                }
+                _ => {}
+            }
+        }
+        let mut found = Vec::new();
+        keywords(&spec.schema, "", &mut found);
+        for keyword in &found {
             assert!(
-                said || field.get("enum").is_some(),
-                "`{}`'s `{name}` has nothing to say for itself",
+                BOTH.contains(&keyword.as_str()),
+                "`{}` uses `{keyword}`, which one of the two dialects does not take",
                 spec.id
             );
         }

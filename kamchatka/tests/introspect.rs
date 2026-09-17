@@ -23,6 +23,46 @@ use nachalnik::{
 };
 use serde_json::json;
 
+/// The branches of a tool's schema: one per shape a call may take.
+///
+/// note: a tool whose operations read different arguments declares a branch of an `anyOf` per
+/// shape; one whose operations all read the same arguments - or which has only one - carries that
+/// shape directly, because a union with one arm gates nothing and is charged for on every request.
+/// Both are handled here so a test can ask about an operation without knowing which its tool is.
+fn branches(schema: &serde_json::Value) -> Vec<&serde_json::Value> {
+    let inside = &schema["properties"]["call"];
+    match inside["anyOf"].as_array() {
+        Some(several) => several.iter().collect(),
+        None => vec![inside],
+    }
+}
+
+/// The branch a given operation is declared in.
+fn branch<'a>(schema: &'a serde_json::Value, action: &str) -> &'a serde_json::Value {
+    branches(schema)
+        .into_iter()
+        .find(|it| {
+            it["properties"]["action"]["enum"]
+                .as_array()
+                .is_some_and(|actions| actions.iter().any(|it| it == action))
+        })
+        .unwrap_or_else(|| panic!("no branch for `{action}`: {schema}"))
+}
+
+/// Every operation a tool's schema offers, in the order it offers them.
+fn offers(schema: &serde_json::Value) -> Vec<&str> {
+    branches(schema)
+        .into_iter()
+        .flat_map(|it| {
+            it["properties"]["action"]["enum"]
+                .as_array()
+                .unwrap_or_else(|| panic!("a branch names the actions it covers: {schema}"))
+                .iter()
+                .map(|it| it.as_str().expect("an action is a word"))
+        })
+        .collect()
+}
+
 /// A kernel with the tools installed, the provider that will answer it, and the handle the tools
 /// reach it through - which the caller has to hold on to, or they stop working.
 ///
@@ -384,7 +424,8 @@ async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for(
     // validating against the schema refuses the call outright
     let spec = kernel.tool("context").expect("it is installed").spec();
     assert_eq!(
-        spec.schema["properties"]["whole"]["type"], "boolean",
+        branch(&spec.schema, "look")["properties"]["whole"]["type"],
+        "boolean",
         "`whole` is read, and advertised in three places: {}",
         spec.schema
     );
@@ -943,19 +984,18 @@ async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
         .into_iter()
         .find(|spec| spec.id == "context")
         .expect("it is offered");
-    assert!(
-        offered.schema["properties"].get("state").is_none(),
-        "the level that caused this is still in the schema: {}",
-        offered.schema
-    );
+    let offers = offers(&offered.schema);
     for action in ["elide", "exclude", "archive", "pin", "restore"] {
         assert!(
-            offered.schema["properties"]["action"]["enum"]
-                .as_array()
-                .expect("an enum")
-                .iter()
-                .any(|listed| listed == action),
+            offers.contains(&action),
             "`{action}` is not offered as an action"
+        );
+        assert!(
+            branch(&offered.schema, action)["properties"]
+                .get("state")
+                .is_none(),
+            "the level that caused this is still in the schema: {}",
+            offered.schema
         );
     }
 }
@@ -1946,11 +1986,15 @@ async fn log_declares_its_own_capability_and_no_way_to_write() {
     // it takes an `action` like every other tool here, and `read` is the only one there is:
     // uniform beats terse, because the tool that is the exception is the one a model gets wrong
     assert_eq!(
-        spec.schema["properties"]["action"]["enum"],
-        json!(["read"]),
+        offers(&spec.schema),
+        ["read"],
         "every tool here takes an action, and this one reads"
     );
-    assert_eq!(spec.schema["required"], json!(["action"]));
+    assert_eq!(
+        branch(&spec.schema, "read")["required"],
+        json!(["action"]),
+        "`read` takes filters and requires none of them"
+    );
 }
 
 // ------------------------------------------------------------------------------------ search
@@ -2982,7 +3026,7 @@ async fn since_one_is_not_since_the_beginning_and_the_schema_says_so() {
     );
 
     let spec = kernel.tool("log").expect("installed").spec();
-    let since = spec.schema["properties"]["since"]["description"]
+    let since = branch(&spec.schema, "read")["properties"]["since"]["description"]
         .as_str()
         .expect("it says what it is for");
     assert!(

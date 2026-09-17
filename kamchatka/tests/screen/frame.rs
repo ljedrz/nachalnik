@@ -258,11 +258,12 @@ async fn the_help_lists_the_keys_that_exist() {
         harness.app.policy.clone(),
         Limits::default(),
     );
+    // note: the tool's own description rather than the `select` argument's. Five operations take a
+    // `select` and they are five branches of one schema now, so the grammar is stated once where
+    // all five can be read against it - a copy per branch would be five places for one rule to
+    // rot, which is the thing this whole check is about
     let context = harness.app.kernel.tool("context").expect("installed");
-    let select = context.spec().schema["properties"]["select"]["description"]
-        .as_str()
-        .expect("it says what it takes")
-        .to_owned();
+    let select = context.spec().description.clone();
     drop(offered);
 
     for form in [
