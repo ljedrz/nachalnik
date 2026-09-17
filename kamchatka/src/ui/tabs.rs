@@ -339,8 +339,18 @@ pub(super) fn draw_context(
                     (true, false) => "what it says, or why it is not being sent".to_owned(),
                     // the count belongs on the header rather than in a note, because it is a
                     // property of what is on the screen and it stops being true when the toggle does
-                    (true, true) =>
-                        format!("what it says · {held_back} not being sent, hidden by f"),
+                    // note: counted here rather than taken from `held_back`, which is every item
+                    // `listed` dropped - both filters added together. With a search running as
+                    // well, that figure blamed `f` for rows the query is what hid, which is the
+                    // miscount the empty pane above has a note about avoiding
+                    (true, true) => format!(
+                        "what it says · {} not being sent, hidden by f",
+                        app.kernel
+                            .items()
+                            .iter()
+                            .filter(|item| !going.sends_content(item))
+                            .count()
+                    ),
                 }
             ),
             quiet(),
@@ -750,19 +760,23 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
 
         let named = Style::default().fg(colour);
         let said = quiet();
-        let indent = " ".repeat(column.max(2));
-        let mut detail = wrapped(&event.detail, width, &indent).into_iter();
-
         let under = " ".repeat(match (when, clock) {
             (true, _) => WHEN + GAP,
             (false, true) => GAP,
             (false, false) => 0,
         });
+        let indent = " ".repeat(column.max(2));
+        // note: what is left after the columns in front of it, rather than the width of the pane.
+        // The detail was wrapped against the whole width and the clock and the name were put in
+        // front of every line afterwards, so a long one ran off the right edge and was clipped -
+        // in the one pane whose promise is that a detail wraps rather than being cut. Every line
+        // carries the same prefix here and the wrapping is given what is left
+        let room = width.saturating_sub(under.chars().count() + indent.chars().count());
+        let mut detail = wrapped(&event.detail, room, "").into_iter();
         match (event.name.is_empty(), event.detail.is_empty()) {
             // a continuation: something the event before it had more to say about
-            (true, _) => {
-                lines.extend(detail.map(|line| Line::styled(format!("{under}{line}"), said)))
-            }
+            (true, _) => lines
+                .extend(detail.map(|line| Line::styled(format!("{under}{indent}{line}"), said))),
             (false, true) => lines.push(Line::from(
                 [stamp, vec![Span::styled(event.name.clone(), named)]].concat(),
             )),
@@ -779,7 +793,9 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
                     ]
                     .concat(),
                 ));
-                lines.extend(detail.map(|line| Line::styled(format!("{under}{line}"), said)));
+                lines.extend(
+                    detail.map(|line| Line::styled(format!("{under}{indent}{line}"), said)),
+                );
             }
         }
     }

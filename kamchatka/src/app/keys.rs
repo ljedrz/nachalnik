@@ -515,8 +515,14 @@ impl App {
                 true
             }
             // a modifier means it is somebody reaching past the box for one of the keys that work
-            // everywhere, not a character
-            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+            // everywhere, not a character - `alt` as well as `ctrl`, which this said and did not
+            // do: with a search open, `alt+2` typed a `2` into the query instead of going to the
+            // context tab, and `/help` promises those four everywhere
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
                 search.push(c);
                 true
             }

@@ -73,6 +73,31 @@ async fn slash_filters_the_trace_and_esc_puts_it_back() {
     assert_eq!(harness.app.traced().len(), all, "and put every row back");
 }
 
+/// The four tab shortcuts reach past an open search box, which is what `/help` promises of them.
+///
+/// note: the handler's own comment says a modifier means somebody reaching past the box for a key
+/// that works everywhere - and it excluded `ctrl` only, so `alt+1` typed a `1` into the query.
+/// Driven through `on_key` on purpose: that is where the search box takes its turn before the
+/// shortcuts are reached, and a test that called `Harness::tab` would never see it.
+#[tokio::test]
+async fn a_tab_shortcut_works_while_a_search_is_open() {
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+    harness.send("go").await;
+    harness.settle().await;
+    harness.tab(Tab::Trace);
+
+    press(&mut harness, KeyCode::Char('/')).await;
+    type_in(&mut harness, "model").await;
+
+    harness.alt(KeyCode::Char('1')).await;
+    assert_eq!(harness.app.tab, Tab::Chat, "`alt+1` went into the query");
+    // and the box went with the tab, which is what leaving one does to a search of it
+    assert!(
+        harness.app.search.is_none(),
+        "the box outlived the tab it was over"
+    );
+}
+
 #[tokio::test]
 async fn the_trace_can_be_searched_by_the_hour_it_happened() {
     let mut harness = Harness::new([ModelResponse::text("done")]);

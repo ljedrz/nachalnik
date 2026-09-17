@@ -9,6 +9,22 @@ minor bump may break you.
 
 ### fixed
 
+- The four tab shortcuts reach past an open search box. The box takes the keys while it is open
+  and read every character without `ctrl` as one of its own, `alt` included - so `alt+2` typed a
+  `2` into the query instead of going to the context tab, which `/help` promises it does
+  everywhere. The handler's own note said a modifier means somebody reaching past the box.
+- The context header counts what `f` is holding back rather than what a search is also hiding. The
+  figure was every row the list dropped, which with a query running is the two filters together,
+  under a label naming `f` as the reason - so items going into the request were reported as not
+  being sent. The empty pane has a note about not making that claim; this was the same claim one
+  branch further on.
+- A pipe inside a table cell stays inside it. Every pipe was read as a column boundary and every
+  pipe was trimmed off both ends, so `\|` moved each value after it one column left and the row
+  was then cut to the header's width, dropping whatever fell off - and a row opening with an empty
+  cell lost it. A table drawn from an answer has to say what the answer said.
+- A long trace detail wraps instead of running off the right edge. It was wrapped against the whole
+  pane and then had the clock and the name column put in front of it, which is the one pane whose
+  promise is that a detail wraps rather than being cut.
 - `setup tools` says whether what is cut is kept, rather than promising it always is. `policy`
   reads that setting and this stated the opposite, so a session run `--forget-truncated` got two
   answers from one tool two actions apart - and the one it was likelier to read sends a model
