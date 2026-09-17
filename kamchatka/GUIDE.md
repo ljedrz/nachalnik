@@ -428,6 +428,11 @@ seventeen answers would be a different kind of dishonest. A subject arrives here
 answers a question about it, and cycling one back to `ask` takes it off again, which is what taking
 a decision back looks like.
 
+A rule about a whole domain is one row too. `--allow log` decides `log:read`, and the `log` row
+names it in the column beside it rather than the operation getting a row that says the same answer
+back — `--allow context` would put fourteen of those on the screen. An operation is a row of its
+own when somebody has answered about it separately: `--allow fs --deny fs:write` is two decisions.
+
 What that costs is worth saying plainly: you cannot refuse something here that has never come up.
 Deciding in advance means answering the first question with <kbd>a</kbd> or <kbd>n</kbd>.
 

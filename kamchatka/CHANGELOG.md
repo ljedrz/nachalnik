@@ -69,6 +69,15 @@ minor bump may break you.
   its row read "nothing registered needs it" while the five `fs:*` rows above it each named `fs`; a
   server rule read the same, with every tool it covers sitting above it. A row was only filled
   where a tool declared that exact capability, and no tool declares a bare domain or a server name.
+- The permissions tab draws one row per decision, where a domain rule drew one for every operation
+  under it as well. `--allow log` in a settings file read `log  allow  log:read` above
+  `log:read  allow  log`, each row naming the other in the column beside it, and `--allow setup`
+  put four more of them on the screen. Every capability a registered tool declares is a subject
+  here, and a rule about the domain above one makes it a *decided* subject, so one answer was
+  listed as the rule and again for every operation it reaches. The operations are in the domain
+  row's own column, which is where a rule is read. An operation somebody answered about separately
+  keeps its row - `--allow fs --deny fs:write` is two decisions - and one nobody has decided is
+  still counted along the bottom.
 - A networked command allowed in a headless run is granted the network. Everything answering a
   permission question means beyond the decision itself lived in the key handler, and that loop has
   no keys - so `--on-ask allow` let a `curl` through and then ran it with TCP cut. Both drivers

@@ -2699,16 +2699,31 @@ impl App {
         let reaching = Subject::Capability(Capability::net("reach"));
 
         // every subject worth a row: a rule somebody has written, whether or not a registered tool
-        // declares it; every capability the registered tools do declare; and every server their
-        // tools came from
-        let mut subjects: BTreeSet<Subject> = self
-            .policy
-            .stances()
-            .into_iter()
-            .map(|(subject, _)| subject)
-            .collect();
+        // declares it; every capability the registered tools do declare and nothing has answered
+        // for already; and every server their tools came from
+        let ruled: BTreeMap<Subject, Verdict> = self.policy.stances().into_iter().collect();
+        let mut subjects: BTreeSet<Subject> = ruled.keys().cloned().collect();
+
+        // note: an operation whose answer comes from the domain above it is the same decision a
+        // second time. `--allow log` is one rule and drew two rows - `log` and `log:read`, each
+        // naming the other in the column beside it - and `--allow context` drew fourteen. The
+        // domain row says it and names every operation it answers for, which is what a rule is
+        // read for. One somebody has answered about separately keeps its row, since that is a
+        // decision of its own, and so does one nobody has decided: that is what the count of the
+        // rest is made of
+        let answered_above = |capability: &Capability| {
+            !ruled.contains_key(&Subject::Capability(capability.clone()))
+                && ruled
+                    .get(&Subject::Domain(capability.domain.clone()))
+                    .is_some_and(|verdict| *verdict != Verdict::Ask)
+        };
         for spec in &specs {
-            subjects.extend(spec.capabilities.iter().cloned().map(Subject::Capability));
+            subjects.extend(
+                (spec.capabilities.iter())
+                    .filter(|capability| !answered_above(capability))
+                    .cloned()
+                    .map(Subject::Capability),
+            );
             if let Some(server) = self.policy.server_of(&spec.id) {
                 subjects.insert(Subject::Server(server));
             }

@@ -237,6 +237,87 @@ async fn the_permissions_tab_shows_every_answer_the_policy_would_give() {
     assert!(!domain.contains("nothing registered needs it"), "{domain}");
 }
 
+/// An operation the domain above it answers for is not a second row saying the same thing.
+///
+/// note: every capability a registered tool declares was a subject, and a domain rule made each of
+/// them a *decided* one - so `--allow log` wrote one rule and drew two rows, `log  allow  log:read`
+/// and `log:read  allow  log`, each naming the other in the column beside it. `--allow context`
+/// drew fourteen. Rows on this tab are decisions somebody took, and the two halves of that are
+/// checked here: an operation somebody answered about separately keeps its row, and one nobody has
+/// decided is still counted along the bottom rather than quietly dropped with the rest.
+#[tokio::test]
+async fn an_operation_the_domain_above_it_answers_for_has_no_row_of_its_own() {
+    let mut harness = Harness::new(Vec::new());
+    for (id, capability) in [
+        ("read", Capability::fs("read")),
+        ("write", Capability::fs("write")),
+        ("rm", Capability::exec("run")),
+    ] {
+        harness.app.kernel.add_tool(Arc::new(
+            ConstTool::new(id, "did it").with_capabilities([capability]),
+        ));
+    }
+    harness.tab(Tab::Permissions);
+    let untold = harness.app.undecided();
+
+    harness
+        .app
+        .policy
+        .set(&Subject::Domain(Domain::Fs), Verdict::Allow);
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::fs("write")), Verdict::Deny);
+
+    let screen = harness.sized(110, 30);
+    let row = |named: &str| {
+        screen
+            .lines()
+            .map(|line| line.replace('\u{2502}', " "))
+            .find(|line| line.trim_start().starts_with(&format!("{named} ")))
+    };
+
+    let domain = row("fs").unwrap_or_else(|| panic!("the rule somebody wrote is listed: {screen}"));
+    assert!(
+        domain.contains("fs:read") && domain.contains("fs:write"),
+        "naming every operation it answers for: {domain}"
+    );
+    assert!(
+        row("fs:read").is_none(),
+        "and that operation has no row of its own: {screen}"
+    );
+
+    let refused = row("fs:write").unwrap_or_else(|| panic!("this one was decided too: {screen}"));
+    assert!(
+        refused.contains("deny"),
+        "a rule of its own, and the strictest wins: {refused}"
+    );
+
+    // the shell's `exec:run` is nobody's decision, so it is not a row and never was one - it is
+    // counted along the bottom, and the two the rules answered are the only two that left
+    assert!(row("exec:run").is_none(), "{screen}");
+    assert_eq!(harness.app.undecided(), untold - 2);
+
+    // and cycling the domain back to `ask` takes that decision back, so the operation under it is
+    // undecided again rather than hidden behind a rule that no longer answers anything. Which is
+    // the count it started at: `fs:read` is a question again, `fs:write` is still refused, and the
+    // `fs` row somebody cycled is now a subject nobody has decided either
+    harness
+        .app
+        .policy
+        .set(&Subject::Domain(Domain::Fs), Verdict::Ask);
+    assert_eq!(harness.app.undecided(), untold);
+
+    let screen = harness.sized(110, 30);
+    assert!(
+        screen
+            .lines()
+            .map(|line| line.replace('\u{2502}', " "))
+            .any(|line| line.trim_start().starts_with("fs:write ")),
+        "the one somebody did decide stays: {screen}"
+    );
+}
+
 /// A rule about an MCP server names the tools that came from it.
 ///
 /// note: the same fault as the domain row, on the subject that had it worse - `Careful::servers`
