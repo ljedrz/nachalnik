@@ -3500,3 +3500,75 @@ async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
     assert!(ablated.contains("could not read at all"), "{ablated}");
     assert!(!ablated.contains("saw all of them"), "{ablated}");
 }
+
+/// A call asks permission for the one thing it does, however its arguments are wrapped.
+///
+/// note: the regression this is here for. These tools take their arguments inside a `call` object,
+/// and `Tool::needs` on `context` was reading the outside of it - so it found no `action`, took
+/// the branch meant for a call nobody can place, and declared all thirteen subjects. A `look` at
+/// three items asked the person to allow `context:revise` and `context:elide` along with it, and a
+/// session holding `--allow context:look` and nothing else could not look at all.
+///
+/// note: over every tool this program installs rather than over `context`, because the bug was not
+/// `context`'s. It was that `needs` and `invoke` read the arguments two different ways, which is
+/// available to any tool here and invisible until somebody reads a permission question.
+#[tokio::test]
+async fn a_call_needs_the_one_subject_it_names_through_the_wrapper() {
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+    for tool in kamchatka::tools::builtin(
+        kamchatka::tools::Shell {
+            workdir: std::path::PathBuf::from("/w"),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            policy: Arc::new(Careful::new()),
+            confiner: None,
+            limits: Limits::default(),
+        },
+        kamchatka::sandbox::Reach {
+            workdir: std::path::PathBuf::from("/w"),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            confined: false,
+        },
+        Limits::default(),
+    ) {
+        kernel.add_tool(tool);
+    }
+
+    let wanted = [
+        (
+            "context",
+            json!({ "action": "look", "ids": [14, 15, 17], "whole": true }),
+            "context:look",
+        ),
+        (
+            "context",
+            json!({ "action": "note", "content": "x", "reason": "y" }),
+            "context:note",
+        ),
+        ("fs", json!({ "action": "read", "path": "a.rs" }), "fs:read"),
+        (
+            "fs",
+            json!({ "action": "edit", "path": "a.rs", "old": "x", "new": "y" }),
+            "fs:edit",
+        ),
+        ("shell", json!({ "action": "run", "cmd": "ls" }), "exec:run"),
+        ("log", json!({ "action": "read" }), "log:read"),
+        ("setup", json!({ "action": "tools" }), "setup:tools"),
+        ("fork", json!({ "action": "draft" }), "fork:draft"),
+    ];
+
+    for (id, args, subject) in wanted {
+        let tool = kernel.tool(id).expect("it is installed");
+        for (how, args) in [("wrapped", json!({ "call": args.clone() })), ("flat", args)] {
+            let needs = tool.needs(&call("c1", id, args));
+            let named: Vec<String> = needs.iter().map(ToString::to_string).collect();
+            assert_eq!(
+                named,
+                [subject],
+                "{id} asks for {} subjects on a {how} call that does one thing",
+                needs.len()
+            );
+        }
+    }
+}

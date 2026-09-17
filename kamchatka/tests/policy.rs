@@ -441,3 +441,66 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
         "`revise` was never consulted, so nothing here answered it"
     );
 }
+
+/// The two arguments the policy reads are found inside the wrapper the schema puts them in.
+///
+/// note: the regression this is here for, and it is the worse half of the one that had `context`
+/// asking permission for all thirteen of its operations. These tools take their arguments inside a
+/// `call` object; `judges` was reading the outside of one, where there is no `cmd` and no `path`.
+/// So a `curl` stopped being judged against `net:reach` and every path rule stopped matching, both
+/// silently and both in the direction of allowing more - which is the one direction a permission
+/// policy does not get to fail in.
+///
+/// note: flat as well as wrapped, because somebody else's tool arrives through an MCP server with
+/// no wrapper at all and is judged by the same code.
+#[test]
+fn the_policy_reads_a_path_and_a_command_through_the_wrapper() {
+    let policy = Careful::new();
+    policy.set(&Subject::parse(".env*"), Verdict::Deny);
+
+    let ask = |tool: &str, capability: Capability, args: serde_json::Value| PermissionRequest {
+        id: PermissionId(1),
+        call: nachalnik::ToolCallId("c1".to_owned()),
+        tool: tool.to_owned(),
+        capabilities: vec![capability],
+        args: std::sync::Arc::new(args),
+    };
+
+    for wrap in [true, false] {
+        let dress = |args: serde_json::Value| match wrap {
+            true => json!({ "call": args }),
+            false => args,
+        };
+
+        // a command whose whole point is the network answers to `net:reach` as well as to running
+        let curl = ask(
+            "shell",
+            Capability::exec("run"),
+            dress(json!({ "action": "run", "cmd": "curl https://example.com" })),
+        );
+        assert!(
+            policy
+                .judges(&curl)
+                .contains(&Subject::Capability(Capability::net("reach"))),
+            "wrapped={wrap}: a `curl` was not judged against the network"
+        );
+
+        // and a path there is a rule about is one of the things the call is judged by
+        let secret = ask(
+            "fs",
+            Capability::fs("read"),
+            dress(json!({ "action": "read", "path": ".env.local" })),
+        );
+        assert!(
+            policy
+                .judges(&secret)
+                .contains(&Subject::Path(".env*".to_owned())),
+            "wrapped={wrap}: a path rule did not match the path the call named"
+        );
+        assert_eq!(
+            policy.verdict(&secret),
+            Verdict::Deny,
+            "wrapped={wrap}: the rule matched and the call was allowed anyway"
+        );
+    }
+}

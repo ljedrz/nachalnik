@@ -109,7 +109,13 @@ fn question_parts(
     // eliding item 22 was unanswerable while the thing asking it covered the list saying what 22
     // is. It is a convenience now - the context tab is a keystroke away and stays that way - and
     // still worth having, because the answer is usually right here
-    let mut shown = readable(&request.args, columns);
+    // note: through the wrapper, because these tools take their arguments inside a `call` object
+    // and the outside of one is a single field holding the whole call as a blob. What that costs
+    // is exactly what this panel is for: `old` in red and `new` in green, one argument to a line
+    let mut shown = readable(
+        crate::tools::ops::inner(&request.args).unwrap_or(&request.args),
+        columns,
+    );
     let about = app.about(&request);
     if !about.is_empty() {
         shown.extend(

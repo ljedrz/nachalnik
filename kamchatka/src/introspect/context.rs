@@ -33,7 +33,7 @@ use crate::{
     app::{Going, text::thousands},
     tools::{
         Limits, domains,
-        ops::{Arg, Op, actions, inner, schema, unread},
+        ops::{Arg, Op, action_of, actions, inner, schema, unread},
     },
 };
 
@@ -258,11 +258,11 @@ impl Tool for Context {
     /// declares all thirteen, which is the strictest reading of a call nobody can place, and
     /// `invoke` then refuses it by name.
     fn needs(&self, call: &ToolCall) -> Vec<Capability> {
-        match action(&call.args) {
-            Ok(op) if actions(&self.ops).contains(&op) => vec![domains::context(op)],
+        match action_of(call, &self.ops) {
+            Some(op) => vec![domains::context(op)],
             // a word this tool does not have is refused by `invoke` with a list of the ones it
             // does; what it must not be is a call that needed nothing and was therefore allowed
-            _ => self.spec().capabilities,
+            None => self.spec().capabilities,
         }
     }
 

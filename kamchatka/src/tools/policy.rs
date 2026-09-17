@@ -294,6 +294,13 @@ impl Careful {
     /// of these said no. A one-off `yes` to a `curl` that then ran with the network cut is the
     /// shape of bug that comes of having four of them.
     pub fn judges(&self, request: &PermissionRequest) -> Vec<Subject> {
+        // note: the arguments as the tool will read them. This program's own tools take theirs
+        // inside a `call` object, and reading the outside of that finds neither the `cmd` a
+        // network rule is about nor the `path` a path rule is about - so both would quietly stop
+        // being consulted, which is the one failure a permission policy does not get to have.
+        // Somebody else's tool has no wrapper and `inner` hands its arguments back unchanged
+        let args = super::ops::inner(&request.args).unwrap_or(&request.args);
+
         let mut judged: Vec<Subject> = request
             .capabilities
             .iter()
@@ -302,13 +309,13 @@ impl Careful {
             .collect();
 
         if request.capabilities.contains(&Capability::exec("run"))
-            && command(&request.args).is_some_and(reaches_the_network)
+            && command(args).is_some_and(reaches_the_network)
         {
             judged.push(Subject::Capability(Capability::net("reach")));
         }
         // note: the path a *tool* was handed, which is not the same as a path named inside a shell
         // command; see the note on `Careful` for why the second is not attempted
-        if let Some(path) = request.args.get("path").and_then(|path| path.as_str()) {
+        if let Some(path) = args.get("path").and_then(|path| path.as_str()) {
             judged.extend(
                 self.paths
                     .lock()
