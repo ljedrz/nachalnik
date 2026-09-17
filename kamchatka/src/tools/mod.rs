@@ -8,7 +8,8 @@
 //! note: a file each, because they answer to three different traits and are read at three
 //! different moments. `files`, `search` and `shell` are the tools themselves, `policy` is what
 //! decides whether one of them runs, and `trim` is what happens when there is no room left for the
-//! results.
+//! results. `ops` is under all of them: what a tool that does several things declares, and the
+//! schema a model is shown for it.
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -20,6 +21,7 @@ use serde_json::Value;
 
 mod files;
 mod fs;
+pub(crate) mod ops;
 mod policy;
 mod search;
 mod shell;
@@ -102,55 +104,6 @@ fn whole(args: &Value, name: &str, default: u64) -> Result<u64, String> {
     Err(format!(
         "`{name}` is a whole number and this one is `{value}`. Nothing was searched, rather than \
          something being searched for differently than you asked."
-    ))
-}
-
-/// What is wrong with the arguments a call gave, if anything: an argument the operation it named
-/// does not read.
-///
-/// note: the same failure [`whole`] is about, one step earlier. An argument that is silently
-/// ignored comes back as a *real answer* - the answer to the call without it - so nothing in the
-/// reply says that what was asked for did not happen, and a read that was meant to be narrowed
-/// arrives as the whole file looking like the thing that was asked for.
-///
-/// note: per *operation* rather than per tool, which is what makes it worth having on a tool that
-/// does several things. `old` is a real `fs` argument that belongs to `edit`, so a flat list of
-/// what `fs` takes would pass a `read` that gave one; and naming the operation it belongs to is
-/// the whole of what a caller in that position needs.
-pub(crate) fn unread(op: &str, args: &Value, takes: &[(&str, &[&str])]) -> Option<String> {
-    let mine = takes.iter().find(|(name, _)| *name == op)?.1;
-    let given = args.as_object()?;
-    let stray = given
-        .keys()
-        .map(String::as_str)
-        .find(|key| *key != "action" && !mine.contains(key))?;
-
-    // note: named only when one operation has it, because the sentence is a *pointer* and there is
-    // nowhere to point otherwise. `old` is `edit`'s and saying so is the whole answer; `ids` is
-    // eleven of `context`'s thirteen, and "that one is `look`'s" - the first row that has it - is
-    // a fact about this table's order being read as a fact about the argument. A model that has
-    // just been told its call was wrong is in no position to discount what it is told next
-    let others: Vec<&str> = takes
-        .iter()
-        .filter(|(name, theirs)| *name != op && theirs.contains(&stray))
-        .map(|(name, _)| *name)
-        .collect();
-    let whose = match others[..] {
-        [only] => format!(" - that one is `{only}`'s"),
-        _ => String::new(),
-    };
-
-    Some(format!(
-        "`{op}` does not take `{stray}`{whose}. It takes {}, and nothing was done: a call that \
-         ignored an argument would have answered as if you had never given it.",
-        match mine {
-            [] => "no arguments beside `action`".to_owned(),
-            mine => mine
-                .iter()
-                .map(|key| format!("`{key}`"))
-                .collect::<Vec<_>>()
-                .join(", "),
-        }
     ))
 }
 
