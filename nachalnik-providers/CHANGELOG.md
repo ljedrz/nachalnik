@@ -5,6 +5,32 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- `Jev` speaks to the second service serving `jev`. OpenRouter resells it, takes the same
+  `{model, state, questions}` body, and puts it behind `/decisions` on an `/api/alpha` path of its
+  own - not the `/api/v1` its chat endpoint is on, which a decision sent there answers with a 404.
+  Which of the two a client is talking to is read off the base URL it was given, the way the app
+  headers are, so nothing has to be passed beside the address and `set_endpoint` moving a live
+  client between them moves the path with it. `Jev::through_openrouter` is the pair of constants
+  for it, as `Jev::latest` is TypeSafe's.
+
+  A refusal is read out of whichever envelope it arrives in. TypeSafe's is `detail` with an
+  `error_type`; OpenRouter's is the `error` the rest of its API uses, with a `code` that is a
+  number at one service and a string at the other. Nothing holding one of these knows which
+  answered, so both are read in one place.
+
+  No listing is asked of OpenRouter. It publishes none on the path it takes these on, and the one
+  it publishes elsewhere does not carry this model at all - it is served out of an alpha route
+  `/api/v1/models` does not report. Asking that one would announce a model that is served as
+  missing, which is the failure the empty answer already exists to avoid.
+
+  `OPENROUTER_MODEL` names a version rather than a moving name, because there is no moving name to
+  use: `typesafe/jev-latest` is not among the identifiers OpenRouter serves. It is a constant
+  somebody has to bump, and `Answers::model` is what says which version actually answered.
+
 ## [0.3.0] - 2026-09-17
 
 ### added
