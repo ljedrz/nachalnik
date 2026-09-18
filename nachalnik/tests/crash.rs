@@ -20,8 +20,8 @@ use std::{
 };
 
 use nachalnik::{
-    BoxError, Capability, Config, ContextItem, ContextKind, Kernel, ModelResponse, OutputSink,
-    Record, Snapshot, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, async_trait,
+    BoxError, Capability, Config, ContextItem, ContextKind, Event, Kernel, ModelResponse,
+    OutputSink, Record, Snapshot, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, async_trait,
     test::{AllowAll, ScriptedProvider, call},
 };
 use parking_lot::Mutex;
@@ -254,6 +254,48 @@ async fn a_resumed_session_refuses_to_reuse_the_identifier() {
             .contains(&ToolCallId("pay-1".to_owned())),
         "the snapshot carries what has already been called: {:?}",
         snapshot.used_calls
+    );
+
+    // and the refusal itself, which is what the name promises: the snapshot carrying the
+    // identifier is the precondition, not the guarantee. A resumed session whose model asks for
+    // `pay-1` again has the call renamed before it runs, so the key the application reconciles
+    // against is not handed out twice
+    let resumed = Kernel::resume(Config::default(), snapshot);
+    resumed.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("pay-1", "charge", json!({}))]),
+        ModelResponse::text("done"),
+    ])));
+    resumed.set_policy(Arc::new(AllowAll));
+    resumed.add_tool(Arc::new(Charge {
+        ledger: ledger.clone(),
+        crash_after_effect: false,
+    }));
+
+    let mut events = resumed.subscribe();
+    resumed.turn().await.unwrap();
+
+    let repaired = std::iter::from_fn(|| events.try_recv().ok()).find_map(|event| match event {
+        Event::ToolCallRepaired { call, was, reason } => Some((call, was, reason)),
+        _ => None,
+    });
+    let Some((now, was, reason)) = repaired else {
+        panic!("the resumed session handed out `pay-1` again")
+    };
+    assert_eq!(was, "pay-1");
+    assert_ne!(now, ToolCallId("pay-1".to_owned()));
+    assert!(
+        reason.contains("reused an identifier from earlier in the session"),
+        "and it says which kind of reuse it was: {reason}"
+    );
+
+    // so the money moved under a name of its own, and the key the application had already
+    // reconciled is still the one charge it was
+    assert_eq!(ledger.committed("pay-1"), Some(100));
+    assert_eq!(ledger.committed(&now.0), Some(100));
+    assert_eq!(
+        ledger.distinct(),
+        2,
+        "two attempts, two keys, neither replayed"
     );
 }
 

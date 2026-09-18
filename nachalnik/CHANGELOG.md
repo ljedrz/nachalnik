@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### fixed
 
+- `tests/crash.rs`'s `a_resumed_session_refuses_to_reuse_the_identifier` checks the refusal it is
+  named for. It asserted that the snapshot carries `used_calls` and stopped there, never resuming -
+  so it was a test of the precondition, and it would have passed unchanged if `Kernel::resume` had
+  stopped extending `seen_calls` or `repair_call_ids` had stopped consulting them, which is the
+  regression it exists to catch. It now resumes, lets the model ask for the spent identifier again,
+  and asserts the rename, the `tool.repaired` reason, and that the key the application had already
+  reconciled was not handed out a second time.
+
 - `LinearProjector` orders a turn's results by the pairing it made rather than by identifier, so
   two calls that share a `ToolCallId` each keep their own answer. `repair_orphans` says the pairing
   is "one for one, in order, rather than by set membership" and names a hand-assembled or restored
