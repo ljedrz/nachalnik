@@ -31,6 +31,19 @@ minor bump may break you.
   use: `typesafe/jev-latest` is not among the identifiers OpenRouter serves. It is a constant
   somebody has to bump, and `Answers::model` is what says which version actually answered.
 
+- `is_openrouter`, which is the one address test the crate had been writing out per caller. Three
+  things now turn it into a decision - whether to send the app headers that put a program in a
+  public ranking, which of the two services serving `jev` a question is shaped for, and, in a
+  caller, whether a session's own key may be spent anywhere else - and each is about somebody's
+  credentials or somebody's data. `openai`'s `ranks_apps` keeps its name, since what it answers is
+  whether there is a ranking to be listed in, and defers to this for the address.
+
+  It reads the authority out of a whole URL as well as a bare host, which the private version never
+  had to. `openrouter.ai.example.com` is the case that decides the shape of it: a `contains` or a
+  suffix test over the raw address matches that host, and the callers would then name a program,
+  shape a request and spend a key against somebody who merely put another name in front of their
+  own.
+
 ## [0.3.0] - 2026-09-17
 
 ### added

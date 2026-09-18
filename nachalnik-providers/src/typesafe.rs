@@ -98,11 +98,11 @@ enum Service {
 impl Service {
     /// Which one an address belongs to.
     ///
-    /// note: on the authority alone, so a regional subdomain still counts and
-    /// `openrouter.ai.example.com` does not.
-    fn of(host: &str) -> Self {
-        let host = host.split(':').next().unwrap_or(host);
-        match host == "openrouter.ai" || host.ends_with(".openrouter.ai") {
+    /// note: anything that is not OpenRouter's is read as TypeSafe's own API rather than refused,
+    /// because that is the shape a self-hosted proxy of it has - a proxy keeps the upstream's
+    /// paths.
+    fn of(address: &str) -> Self {
+        match crate::is_openrouter(address) {
             true => Self::OpenRouter,
             false => Self::TypeSafe,
         }

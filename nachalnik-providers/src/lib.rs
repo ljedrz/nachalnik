@@ -189,6 +189,30 @@ pub fn same_model(listed: &str, model: &str) -> bool {
         || listed.strip_suffix(":latest") == Some(model)
 }
 
+/// Whether an address is OpenRouter's. Takes a whole URL or a bare authority.
+///
+/// note: one rule, in one place, because three things in this workspace need it and each one is a
+/// decision about somebody's credentials or about somebody's data. Whether to send the app headers
+/// that put a program in a public ranking; which of the two services serving `jev` a question is
+/// shaped for; and, in `kamchatka`, whether a session's own key may be spent on anything else.
+/// Three copies of a host test is three chances for one of them to be read as saying what the
+/// others say when it no longer does.
+///
+/// note: on the authority alone, so a path, a port and a regional subdomain all still count, and
+/// `openrouter.ai.example.com` does not. That last one is the whole reason this is not a
+/// `contains`.
+pub fn is_openrouter(address: &str) -> bool {
+    let authority = address
+        .split_once("://")
+        .map_or(address, |(_, rest)| rest)
+        .split('/')
+        .next()
+        .unwrap_or_default();
+    let host = authority.split(':').next().unwrap_or(authority);
+
+    host == "openrouter.ai" || host.ends_with(".openrouter.ai")
+}
+
 /// Installs the cryptography `rustls` will use, and says nothing if it is already installed.
 ///
 /// note: reqwest is built here with `rustls-no-provider`, so there is no default waiting behind
@@ -204,6 +228,44 @@ pub fn install_crypto() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Whose address it is, from either a whole URL or a bare authority.
+    ///
+    /// note: three things turn this into a decision - app attribution, which of two services a
+    /// `jev` question is shaped for, and whether `kamchatka` may spend a session's key on advice -
+    /// and the third is the reason the URL forms are here. `ranks_apps` only ever saw a bare host,
+    /// so a scheme and a path went untested until something passed one.
+    ///
+    /// note: `openrouter.ai.example.com` is the case that decides the shape of the whole function.
+    /// A `contains` or a suffix test over the raw address would match it, and the three callers
+    /// would then name a program, shape a request and spend a key against a host that merely put
+    /// somebody else's name in front of its own.
+    #[test]
+    fn an_address_is_openrouters_by_its_authority_and_nothing_else() {
+        for theirs in [
+            "openrouter.ai",
+            "openrouter.ai:443",
+            "api.openrouter.ai",
+            "https://openrouter.ai/api/v1",
+            "https://openrouter.ai/api/alpha",
+            "https://openrouter.ai",
+        ] {
+            assert!(is_openrouter(theirs), "{theirs}");
+        }
+
+        for not in [
+            "localhost:11434",
+            "http://localhost:11434/v1",
+            "https://generativelanguage.googleapis.com/v1beta",
+            "https://api.typesafe.ai/v1",
+            "openrouter.ai.example.com",
+            "https://openrouter.ai.example.com/api/v1",
+            "notopenrouter.ai",
+            "",
+        ] {
+            assert!(!is_openrouter(not), "{not}");
+        }
+    }
 
     /// Every vendor writes the same complaint differently, and the arithmetic is the same in all
     /// of them.

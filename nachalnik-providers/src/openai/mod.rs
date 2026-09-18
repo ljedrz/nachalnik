@@ -126,11 +126,12 @@ pub struct Attribution {
 
 /// Whether an endpoint is one that keeps a ranking of the apps calling it.
 ///
-/// note: on the authority rather than on the whole address, so a self-hosted path or a regional
-/// subdomain still counts, and `openrouter.ai.example.com` does not.
+/// note: named for what it decides rather than for whose address it is, since what the caller here
+/// is asking is whether there is a ranking to be listed in. The address test is
+/// [`crate::is_openrouter`], shared with the two other places in this workspace that turn the same
+/// question into a decision about somebody's credentials or data.
 fn ranks_apps(host: &str) -> bool {
-    let host = host.split(':').next().unwrap_or(host);
-    host == "openrouter.ai" || host.ends_with(".openrouter.ai")
+    crate::is_openrouter(host)
 }
 
 impl OpenAiCompatible {
