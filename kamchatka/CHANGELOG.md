@@ -7,6 +7,29 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- Feature `assisted-shell`, which has the advisor place each command a question is about on a
+  three-level rubric - it only looks; it changes something that could be put back; it destroys
+  something that cannot be got back or sends something off this machine - and draws that in the
+  question in green, yellow or red. It is on top of `advise` rather than beside it and needs
+  `--advise` at runtime as well. The line sits in the header, above the arguments and inside the
+  region that does not scroll, because a warning that can be paged out of sight is one nobody has
+  to have seen; the confidence is printed beside it, since a band is not a fact about the command.
+- The rating **decides nothing**: it is never folded into a verdict, so a session with the feature
+  on refuses and allows exactly what the same session without it does. Two rules keep it honest in
+  the other direction. A score is read by the level it is nearest rather than the one it has
+  passed, so a command mostly on the top level is drawn as being on it; and a rating the advisor
+  was not sure of is never drawn in green and never drawn safer than it scored, on the grounds
+  that a distribution spread across a safety rubric is the advisor saying it could not tell, which
+  is not the same as saying a command is safe.
+- What it costs is a wider disclosure than `advise` alone, which is why it is a second opt-in and
+  not part of the first. `advise` sends a call's arguments only where the standing rules were
+  going to *allow* it - in a default session, not one command, since `exec:run` is a question. A
+  rating is asked for where they were going to *ask*, which is every command the model writes. A
+  call heading for a refusal is still sent nowhere: it has no question to colour, and rating one
+  would hand over the arguments of a call that was never going to run.
+
 ### fixed
 
 - `u` and `U` work on a context pane a filter has emptied, which is where they are most needed.

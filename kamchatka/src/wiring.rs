@@ -289,9 +289,18 @@ impl Setup {
         // directly - the `shell` tool asks it what a command may reach, the permissions tab draws
         // its stances, and `/allow` changes them - because those are all about the standing rules
         // and a second opinion has none to show. What the wrapper owns is one call's verdict
+        //
+        // note: built once and kept as itself as well as handed over, because `assisted-shell`
+        // has the screen read a rating off it and `Arc<dyn PermissionPolicy>` cannot be asked for
+        // one. Two of them would be two memories of what the advisor said, one of them always
+        // empty - and the empty one is the one the panel would be holding
         #[cfg(feature = "advise")]
-        let decides: Arc<dyn nachalnik::PermissionPolicy> = match self.advisor {
-            Some(jev) => Arc::new(tools::Advised::new(policy.clone(), jev)),
+        let advisor = self
+            .advisor
+            .map(|jev| Arc::new(tools::Advised::new(policy.clone(), jev)));
+        #[cfg(feature = "advise")]
+        let decides: Arc<dyn nachalnik::PermissionPolicy> = match &advisor {
+            Some(advised) => advised.clone(),
             None => policy.clone(),
         };
         #[cfg(not(feature = "advise"))]
@@ -374,6 +383,10 @@ impl Setup {
 
         let (outcomes, finished) = mpsc::unbounded_channel();
         let mut app = App::new(kernel, policy, provider, limits, outcomes);
+        #[cfg(feature = "assisted-shell")]
+        {
+            app.advisor = advisor;
+        }
         app.confinement = confinement;
         app.introspect = introspect;
         app.set_spend(self.spend);

@@ -529,7 +529,9 @@ the screen:
 ┌ a tool wants to run · tab ───────────────────────────────────────────┐
 │ shell wants: shell, network                                          │
 │                                                                      │
-│ cmd: curl -s https://example.com                                     │
+│ cmd:                                                                 │
+│ │ curl -s https://example.com                                        │
+│ │   | tee /tmp/page.html                                             │
 │                                                                      │
 │ [tab] puts the keys here, and then:                                  │
 │ [y] once   [a] always, for shell and network   [n] no                │
@@ -570,6 +572,30 @@ Arguments longer than the box get their own scrolling region between the header 
 with <kbd>pgup</kbd> and <kbd>pgdn</kbd> moving them; the answers stay where they are. A `revise`
 carrying a rewritten tool result is as long as the result was, and a question whose answers had
 been pushed off the bottom of the screen is one nobody can answer.
+
+A shell command is drawn as code — the rule down the left, the colours a fenced block gets on the
+chat tab — and is broken at its joints, one stage to a line with the `|`, `&&`, `||` or `;` that
+reaches it at the head of the line. Wrapped as prose, the second half of a pipeline went back to
+the margin and read as the next argument, which is the one misreading this panel cannot afford. A
+separator inside a quote is left where it is, and a command this cannot read to the end — an
+unterminated quote, an unclosed `$(` — is drawn exactly as it arrived rather than guessed at.
+<kbd>i</kbd> is the byte-exact view, and stays the thing to reach for when the question is what
+*precisely* would run.
+
+A build with `--features assisted-shell` puts one more line in the header, above the arguments and
+inside the part that does not scroll:
+
+```text
+│ shell wants: shell, network                                          │
+│ the advisor reads this as: destroys, or sends something out · 93% sure│
+```
+
+Green, yellow or red, off a three-level rubric — it only looks; it changes something that could be
+put back; it destroys something that cannot be got back or sends something off this machine. It
+decides nothing: the verdict is the same one the rules would have given, and an advisor that is
+down costs the line and nothing else. A rating nobody was sure of is never drawn green, which is
+why the percentage is on the line — a yellow you cannot explain is a yellow the advisor could not
+place. [RUNNING.md](RUNNING.md) has what it sends out, which is more than `--advise` alone does.
 
 An `edit` is drawn as a diff, since it is the call where two blocks of near-identical text sit one
 above the other and the whole question is which of them is on its way out: the value of `old` is

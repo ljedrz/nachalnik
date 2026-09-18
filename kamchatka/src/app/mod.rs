@@ -599,6 +599,18 @@ pub struct App {
 
     /// The policy, which the permission overlay teaches.
     pub policy: Arc<Careful>,
+    /// The advisor wrapped around it, where there is one, for the rating the question draws.
+    ///
+    /// note: the only thing this is read for. What *decides* is inside the kernel and is reached
+    /// through no field here - see the note in `wiring`, which is careful that the policy the
+    /// kernel holds and the stances the screen draws are one object and not two. This is the
+    /// advisor's own memory of what it said about a command, which nothing else has a way to ask
+    /// it for.
+    ///
+    /// note: `None` in a session started without `--advise`, which is the default, and the whole
+    /// of what `assisted-shell` off means at this end.
+    #[cfg(feature = "assisted-shell")]
+    pub advisor: Option<Arc<crate::tools::Advised>>,
     /// The provider, for switching models - whichever dialect it speaks.
     pub provider: Arc<dyn Dialect>,
     /// A `/model` or `/provider` still settling, which the next line waits for.
@@ -896,6 +908,8 @@ impl App {
         Self {
             kernel,
             policy,
+            #[cfg(feature = "assisted-shell")]
+            advisor: None,
             provider,
             limits,
             versions: BTreeMap::new(),
@@ -2527,6 +2541,18 @@ impl App {
             .decide(request.id, grant)
             .map(|_| ())
             .map_err(|e| e.to_string())
+    }
+
+    /// Where the advisor put the command a question is about, if it was asked and answered.
+    ///
+    /// note: read at draw time out of what the advisor wrote down while the verdict was being
+    /// worked out, rather than asked for here. That ordering is what makes the rating simple: the
+    /// kernel awaits the policy before it raises a question, so by the time there is a panel to
+    /// draw the answer is either already there or is never coming, and nothing on the screen has
+    /// to know about a request in flight.
+    #[cfg(feature = "assisted-shell")]
+    pub fn rating(&self, request: &PermissionRequest) -> Option<crate::tools::Rated> {
+        self.advisor.as_ref()?.rating(&request.call)
     }
 
     /// The context items a pending call names, described the way a row on the context tab is.

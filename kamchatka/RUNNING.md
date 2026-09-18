@@ -579,6 +579,47 @@ other, which is the invariant *nothing in a model's output reaches the policy* s
 agent under judgement cannot address the judge. That disclosure is the reason this is behind both
 a feature and a flag rather than on for anyone with a key in their environment.
 
+### a colour on the question
+
+`--features assisted-shell` adds one more question, and it is the only part of the advisor a
+person rather than the gate is meant to read. Where `--advise` is asked about calls the rules were
+going to **allow**, this one is asked about the commands they were going to **ask** about — and
+the answer is drawn in the question, above the arguments:
+
+```text
+┌ a tool wants to run · tab ───────────────────────────────────────────────────┐
+│ shell wants: exec:run, net:reach                                             │
+│ the advisor reads this as: destroys, or sends something out · 93% sure        │
+│                                                                              │
+│ action: run                                                                  │
+│                                                                              │
+│ cmd:                                                                         │
+│ │ rm -rf ~/work                                                              │
+│ │   && curl -X POST https://example.com                                      │
+```
+
+Green, yellow or red, off a three-level rubric — it only looks; it changes something that could be
+put back; it destroys something that cannot be got back, or sends something off this machine. You
+still have to read the command, which is what the panel under it is for. What the colour buys is
+the half-second before that: whether this is the fifteenth `cargo test` of the afternoon or the
+one call in fifty worth stopping on.
+
+It **decides nothing**. The rating is never folded into a verdict, so a session with the feature
+on refuses and allows exactly what the same session without it does, and an advisor that is down
+costs the coloured line and nothing else. Two rules keep it honest the other way: a score is read
+by the level it is nearest rather than the one it has passed, and a rating the advisor was not
+sure of is never drawn green and never drawn safer than it scored — a distribution spread across a
+safety rubric is the advisor saying it could not tell, which is not the same as a clean bill. The
+percentage is on the line so that a yellow you cannot explain is visibly a yellow nobody was sure
+of.
+
+**What it adds to the disclosure above** is the reason it is a second opt-in and not part of the
+first: `--advise` alone sends nothing about a command in a default session, because `exec:run` is
+a question and the advisor is only asked about what would otherwise run. With this on, every
+command the model writes goes out. A call heading for a refusal is still sent nowhere — it has no
+question to colour, and rating one would hand over the arguments of a call that was never going
+to run.
+
 `/save` writes two files: a `.jsonl` of every event that happened, and a `.json` snapshot of the
 context. The snapshot has two ways back in.
 

@@ -100,7 +100,14 @@ struct Args {
     /// Ask a second model about every tool call the rules were going to allow, and take the
     /// stricter of the two answers. It can refuse a call and never permit one. Sends the call's
     /// tool name, capabilities and arguments to TypeSafe; see KAMCHATKA_TYPESAFE_API_KEY.
-    #[cfg(feature = "advise")]
+    #[cfg(all(feature = "advise", not(feature = "assisted-shell")))]
+    #[arg(long)]
+    advise: bool,
+
+    /// The same, and this build also asks it where each command a question is about lands on a
+    /// three-level rubric, and colours the question by the answer. The rating decides nothing.
+    /// That sends every command the model writes to TypeSafe, and not only the allowed ones.
+    #[cfg(feature = "assisted-shell")]
     #[arg(long)]
     advise: bool,
 

@@ -31,6 +31,8 @@ mod trim;
 
 #[cfg(feature = "advise")]
 pub use crate::tools::advice::Advised;
+#[cfg(feature = "assisted-shell")]
+pub use crate::tools::advice::{Rated, Rating};
 pub use crate::tools::{
     policy::{Careful, Subject, objection_to, path_matches, reaches_the_network},
     shell::{Exit, Shell},

@@ -1761,3 +1761,165 @@ async fn a_separator_inside_a_quote_does_not_become_a_second_command() {
         "the quote was read as a joint: {screen}"
     );
 }
+
+/// The advisor's rating, drawn in the question, in the colour it earned.
+///
+/// note: a stub endpoint rather than a live one, because what is under test here is the path -
+/// a score off the wire, into the advisor's memory, onto the pinned half of the panel, in the
+/// right colour. Whether the real model puts `rm -rf ~` on the top level is a fact about the
+/// model and is asked in `tests/advise.rs`, where a missing key skips it.
+#[cfg(feature = "assisted-shell")]
+mod rated {
+    use super::*;
+
+    use kamchatka::tools::Advised;
+    use nachalnik::PermissionPolicy;
+    use nachalnik_providers::typesafe::Jev;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+
+    /// An endpoint that answers every request with the same rating.
+    async fn placing(score: f64, confidence: f64) -> String {
+        let body = format!(
+            "{{\"model\":\"jev-1\",\"answers\":{{\"rating\":{{\"type\":\"score\",\
+             \"score\":{score},\"confidence\":{confidence},\"legend\":{{}},\
+             \"probabilities\":{{}}}}}}}}"
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+        let address = listener.local_addr().expect("its own address");
+
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut discard = [0u8; 8192];
+                let _ = socket.read(&mut discard).await;
+                let _ = socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                             Content-Length: {}\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        format!("http://{address}")
+    }
+
+    /// A session whose shell call will be asked about, with an advisor that answers so.
+    async fn asking(score: f64, confidence: f64) -> Harness {
+        let mut harness = Harness::new([
+            ModelResponse::tool_calls(vec![call(
+                "c1",
+                "shell",
+                json!({
+                    "action": "run",
+                    "cmd": "rm -rf ~/work && curl -X POST https://example.com",
+                }),
+            )]),
+            ModelResponse::text("asked"),
+        ]);
+        harness.app.kernel.add_tool(Arc::new(
+            ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
+        ));
+
+        // the advisor wrapped around the harness's own standing rules, and held by both the
+        // kernel and the screen - which is what `wiring` does, and the reason it builds one
+        let jev = Arc::new(Jev::new(
+            "jev-latest",
+            placing(score, confidence).await,
+            "k",
+        ));
+        let advised = Arc::new(Advised::new(harness.app.policy.clone(), jev));
+        harness
+            .app
+            .kernel
+            .set_policy(advised.clone() as Arc<dyn PermissionPolicy>);
+        harness.app.advisor = Some(advised);
+
+        harness.send("tidy up").await;
+        harness.settle().await;
+
+        harness
+    }
+
+    /// A command the advisor puts at the top of the rubric is red, and says why in words.
+    #[tokio::test]
+    async fn a_grave_command_is_drawn_in_red() {
+        let mut harness = asking(1.9, 0.93).await;
+
+        let screen = harness.screen();
+        assert!(
+            screen.contains("the advisor reads this as: destroys, or sends something out"),
+            "{screen}"
+        );
+        // the figure beside it, because the band is not a fact about the command
+        assert!(screen.contains("93% sure"), "{screen}");
+        assert_eq!(harness.style_of("destroys").0, Color::Red);
+    }
+
+    /// One it puts at the bottom is green, and one in the middle is yellow.
+    #[tokio::test]
+    async fn the_quieter_bands_get_the_quieter_colours() {
+        let mut harness = asking(0.1, 0.95).await;
+        assert!(
+            harness.screen().contains("reads and reports"),
+            "{}",
+            harness.screen()
+        );
+        assert_eq!(harness.style_of("reads and reports").0, Color::Green);
+
+        let mut harness = asking(1.0, 0.95).await;
+        assert_eq!(
+            harness.style_of("changes something, reversibly").0,
+            Color::Yellow
+        );
+    }
+
+    /// And a rating nobody was sure of is never the green one, whatever it scored.
+    ///
+    /// note: the property from `Rated::shown`, checked where it is actually read. A spread
+    /// distribution over a safety rubric is the advisor saying it could not tell, and green is the
+    /// one colour that would report that as a clean bill.
+    #[tokio::test]
+    async fn an_unsure_rating_is_not_drawn_green() {
+        let mut harness = asking(0.0, 0.4).await;
+
+        let screen = harness.screen();
+        assert!(!screen.contains("reads and reports"), "{screen}");
+        assert!(screen.contains("changes something, reversibly"), "{screen}");
+        assert_eq!(
+            harness.style_of("changes something, reversibly").0,
+            Color::Yellow
+        );
+        assert!(screen.contains("40% sure"), "{screen}");
+    }
+
+    /// An advisor that is not there leaves the question exactly as it was.
+    #[tokio::test]
+    async fn no_advisor_means_no_line() {
+        let mut harness = Harness::new([
+            ModelResponse::tool_calls(vec![call(
+                "c1",
+                "shell",
+                json!({ "action": "run", "cmd": "ls" }),
+            )]),
+            ModelResponse::text("asked"),
+        ]);
+        harness.app.kernel.add_tool(Arc::new(
+            ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
+        ));
+
+        harness.send("look").await;
+        harness.settle().await;
+
+        let screen = harness.screen();
+        assert!(screen.contains("a tool wants to run"), "{screen}");
+        assert!(!screen.contains("the advisor reads this"), "{screen}");
+    }
+}

@@ -36,6 +36,19 @@ default = ["mcp", "tui"]
 # and that is a decision somebody has to make rather than inherit from a build. See
 # `tools::advice`, which is where the whole of what leaves the machine is written down.
 advise = ["nachalnik-providers/typesafe"]
+# the same advisor, asked a different question: where a `shell` command lands on a three-level
+# rubric, drawn in the permission question in green, yellow or red so that somebody deciding
+# whether to press `y` can see at a glance what they are being asked about.
+#
+# note: on top of `advise` rather than beside it, and a second opt-in rather than part of the
+# first, because it widens what leaves the machine in a way the first one's note does not cover.
+# `advise` sends only calls the standing rules were going to *allow*; this sends the ones they
+# were going to *ask about*, which in a default session is every command the model writes. That
+# is the disclosure somebody has to agree to separately - see `tools::advice`.
+#
+# note: it decides nothing. The rating is drawn and is never folded into a verdict, so a session
+# with this on refuses and allows exactly what the same session without it would.
+assisted-shell = ["advise"]
 # `--mcp 'cmd args'` puts somebody else's MCP server's tools in the same list as the built-in
 # ones. Optional because the runtime does not need it and neither does the terminal.
 mcp = ["dep:nachalnik-mcp"]

@@ -21,6 +21,21 @@
 //! for it by name and why [`ROOM`] caps what one call can send. Nothing else goes: not the
 //! conversation, not the system instruction, not the model's prose about why it wants the call.
 //!
+//! note: and **what feature `assisted-shell` adds to that**, which is the reason it is a second
+//! opt-in rather than part of the first. Everything above is sent only for a call the standing
+//! rules were going to *allow* - in a default session, not one command, since `exec:run` is a
+//! question by default. [`Rating`] is asked for on a call they were going to *ask about*, which
+//! is every command the model writes. The same object goes, capped the same way, to the same
+//! endpoint; what changes is how often, and a person who agreed to the first has not thereby
+//! agreed to the second.
+//!
+//! note: the rating **decides nothing**. It is never folded into a verdict and never reaches
+//! [`Advised::evaluate`]'s return, so a session with `assisted-shell` on refuses and allows
+//! exactly what the same session with it off would. It is drawn in the question, in green, yellow
+//! or red, for somebody deciding whether to press `y` - the same reasoning as the exit colours in
+//! [`Exit`](crate::tools::Exit), one flight up: a coarse question, answered at a glance, beside
+//! the exact thing it is about.
+//!
 //! note: the invariant *nothing in a model's output reaches the policy* still holds, and is worth
 //! being precise about. What reaches this is the tool name and the arguments, both as data, which
 //! is what reached [`Careful`] before. The agent under judgement cannot address the judge: there
@@ -29,6 +44,8 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
+#[cfg(feature = "assisted-shell")]
+use nachalnik::Capability;
 use nachalnik::{PermissionPolicy, PermissionRequest, ToolCallId, Verdict, async_trait};
 use nachalnik_providers::typesafe::{Jev, Question};
 use parking_lot::Mutex;
@@ -74,6 +91,113 @@ const VERDICT: &str = "verdict";
 /// And the one whose answer is only ever read out in a sentence.
 const IRREVERSIBLE: &str = "irreversible";
 
+/// The rubric a command is placed on for the person about to answer for it.
+#[cfg(feature = "assisted-shell")]
+const RATING: &str = "rating";
+
+/// Where a command lands on that rubric: what a colour in the question means.
+///
+/// note: three, and ordered, because the question a colour answers is coarse - does this only
+/// look, does it change something that could be put back, or is it the kind of thing there is no
+/// undo for. A fourth band would be a distinction nobody makes at a glance, which is the only
+/// moment this is read; and the three map onto the green, yellow and red a terminal has had since
+/// before anyone had to be told what they meant.
+///
+/// note: here rather than where it is drawn, for the reason [`Exit`](crate::tools::Exit) is: the
+/// band is worked out from an answer this module owns, and a colour worked out at the other end
+/// from a number it does not own is a second opinion about what a rating means. The two drift the
+/// first time the rubric is reworded. `ui` maps this to a colour and to nothing else.
+///
+/// note: it is not a verdict and cannot become one. Nothing in this enum reaches
+/// [`Verdict`] - see the module note.
+#[cfg(feature = "assisted-shell")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Rating {
+    /// It looks and reports; nothing here changes and nothing goes out.
+    Reads,
+    /// It changes something on this machine, and what it changes could be put back.
+    Changes,
+    /// It destroys something that cannot be got back, or sends something off this machine.
+    Grave,
+}
+
+/// The levels as the model is given them, lowest first - so a higher score is a command somebody
+/// should look harder at.
+///
+/// note: written as what a command *does* rather than as `safe`/`unsafe`, because the model is
+/// being asked to place a command and not to agree with a label. A rubric whose levels are
+/// adjectives is answered from how the command feels; one whose levels are outcomes is answered
+/// from what the command says.
+#[cfg(feature = "assisted-shell")]
+const LEVELS: [&str; 3] = [
+    "it only looks: it reads, lists, searches or reports, and changes nothing anywhere",
+    "it changes something on this machine, and what it changes could be put back",
+    "it destroys something that cannot be got back, or sends something off this machine",
+];
+
+#[cfg(feature = "assisted-shell")]
+impl Rating {
+    /// What the band is called in the question.
+    pub fn said(self) -> &'static str {
+        match self {
+            Self::Reads => "reads and reports",
+            Self::Changes => "changes something, reversibly",
+            Self::Grave => "destroys, or sends something out",
+        }
+    }
+}
+
+/// A rating, and how sure the advisor was of it.
+///
+/// note: both, and kept apart, because the number is not decoration. A rubric's confidence says
+/// how concentrated the distribution over the levels was, and a command the advisor could not
+/// place is a different thing from one it placed low - `Rated::shown` is where that difference is
+/// turned into a colour, and it is the only place, so the words and the colour cannot disagree.
+#[cfg(feature = "assisted-shell")]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rated {
+    /// Where the advisor put it, before [`Rated::shown`] has had its say.
+    pub scored: Rating,
+    /// How sure it was, from 0 to 1.
+    pub confidence: f64,
+}
+
+#[cfg(feature = "assisted-shell")]
+impl Rated {
+    /// Reads a position on [`LEVELS`] back as a band.
+    ///
+    /// note: the nearest level rather than a floor, because the score is a weighted position and
+    /// `1.8` is a command the advisor mostly put on the top level. Flooring would draw that one
+    /// yellow, which is the direction this must never round in.
+    fn of(score: f64, confidence: f64) -> Self {
+        let scored = match score {
+            it if it < 0.5 => Rating::Reads,
+            it if it < 1.5 => Rating::Changes,
+            _ => Rating::Grave,
+        };
+
+        Self { scored, confidence }
+    }
+
+    /// The band this is actually drawn as.
+    ///
+    /// note: never a safer one than it scored, and never [`Rating::Reads`] where the advisor was
+    /// not sure - which is `SURE`'s job over here, and the same principle the verdict fold lives
+    /// by one screen away: an uncertain answer is worth having and is not worth acting on as
+    /// though it were a certain one. A spread distribution over a safety rubric is not evidence
+    /// that a command is safe, and green is the one colour that would say it was.
+    ///
+    /// note: the confidence is drawn beside this rather than folded away into it, so that a person
+    /// reading a yellow line can see whether it is yellow because the command changes something or
+    /// yellow because nobody could tell.
+    pub fn shown(self) -> Rating {
+        match self.confidence >= SURE {
+            true => self.scored,
+            false => self.scored.max(Rating::Changes),
+        }
+    }
+}
+
 /// [`Careful`], with a model asked about whatever it was going to allow.
 pub struct Advised {
     /// The standing rules, which decide first and decide alone whenever this cannot reach a
@@ -83,6 +207,14 @@ pub struct Advised {
     jev: Arc<Jev>,
     /// What it said about each call, for [`Advised::said`] and for the refusal the model reads.
     said: Mutex<VecDeque<(ToolCallId, String)>>,
+    /// And where it put each command it was asked to rate, for the question to draw.
+    ///
+    /// note: beside `said` rather than in it. That one holds a sentence the *model* is shown when
+    /// a call is refused, and a rating is neither a refusal nor anything the model is told - it is
+    /// for the person at the keys, and putting it in the same queue would be one step from its
+    /// arriving in a turn.
+    #[cfg(feature = "assisted-shell")]
+    rated: Mutex<VecDeque<(ToolCallId, Rated)>>,
 }
 
 impl Advised {
@@ -92,6 +224,8 @@ impl Advised {
             careful,
             jev,
             said: Mutex::new(VecDeque::new()),
+            #[cfg(feature = "assisted-shell")]
+            rated: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -107,6 +241,69 @@ impl Advised {
             .iter()
             .find(|(known, _)| known == call)
             .map(|(_, said)| said.clone())
+    }
+
+    /// Where the advisor put a command, if it was asked to place one.
+    ///
+    /// note: `None` covers every way of not having an answer and does not distinguish between
+    /// them, because the question draws a line for a rating and no line at all otherwise. A call
+    /// nobody asked about, an endpoint that was down, an answer that did not parse and a build
+    /// with the feature off all mean the same thing to a person reading the panel: this one is
+    /// theirs to judge, as it was before any of this existed.
+    #[cfg(feature = "assisted-shell")]
+    pub fn rating(&self, call: &ToolCallId) -> Option<Rated> {
+        self.rated
+            .lock()
+            .iter()
+            .find(|(known, _)| known == call)
+            .map(|(_, rated)| *rated)
+    }
+
+    /// Asks where a command lands, and writes down the answer for the question to draw.
+    ///
+    /// note: it returns nothing, and every way of failing leaves nothing written down. There is no
+    /// branch from here to a verdict - see the module note - so the worst an outage can do is take
+    /// the coloured line off a panel that did not have one a version ago.
+    #[cfg(feature = "assisted-shell")]
+    async fn rate(&self, request: &PermissionRequest) {
+        let asked = self
+            .jev
+            .ask(
+                state(request),
+                [(
+                    RATING,
+                    Question::score(
+                        "A command is about to be run on the user's machine, and a person is \
+                         about to be asked whether to let it. Place it on this rubric by what it \
+                         would do.",
+                        LEVELS,
+                    ),
+                )],
+            )
+            .await;
+
+        // note: the score and the confidence together or not at all. A score with no confidence
+        // beside it cannot be drawn by `Rated::shown`'s rule, and the safe reading of half an
+        // answer is that nothing was said
+        let Some((score, confidence)) = asked.ok().and_then(|answers| {
+            Some((
+                answers.score(RATING)?,
+                answers.confidence(RATING).unwrap_or(0.0),
+            ))
+        }) else {
+            return;
+        };
+
+        let mut rated = self.rated.lock();
+        match rated.iter_mut().find(|(known, _)| known == &request.call) {
+            Some(known) => known.1 = Rated::of(score, confidence),
+            None => {
+                if rated.len() == REMEMBERED {
+                    rated.pop_front();
+                }
+                rated.push_back((request.call.clone(), Rated::of(score, confidence)));
+            }
+        }
     }
 
     /// Writes down what was said about a call, keeping the last [`REMEMBERED`] of them.
@@ -210,6 +407,23 @@ impl PermissionPolicy for Advised {
 
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
         let standing = self.careful.evaluate(request).await;
+
+        // the other half of the round trip, and the only one that produces something a person
+        // reads rather than something the gate acts on: a command somebody is about to be asked
+        // about, placed on a rubric so that the question can be coloured
+        //
+        // note: `Ask` only. A `Deny` is not a question and has no panel to draw a rating in, so
+        // rating one would send the arguments of a call that was never going to run - which the
+        // test below holds this to. An `Allow` has no panel either, and is the branch underneath
+        //
+        // note: and `exec:run` only, which is the capability rather than the tool's name. The
+        // rubric is written about a command, and `shell` is the tool that takes one; a tool that
+        // declares the capability is asking for the same thing whatever it calls itself, and one
+        // that does not is not what `assisted-shell` was turned on for
+        #[cfg(feature = "assisted-shell")]
+        if standing == Verdict::Ask && request.capabilities.contains(&Capability::exec("run")) {
+            self.rate(request).await;
+        }
 
         // note: asked only about what would otherwise run. A call already heading for `Ask` or
         // `Deny` cannot be made stricter by anything the model says, so asking would spend a
@@ -408,6 +622,87 @@ mod tests {
         // and `allow` changes nothing, which is what makes this only ever a tightening
         assert_eq!(advised("allow", 0.99), Verdict::Allow);
         assert_eq!(advised("allow", 0.0), Verdict::Allow);
+    }
+
+    /// The rubric is read by the nearest level, not by the one it has passed.
+    #[cfg(feature = "assisted-shell")]
+    #[test]
+    fn a_score_lands_on_the_band_it_is_nearest() {
+        let sure = |score| Rated::of(score, 1.0).shown();
+
+        assert_eq!(sure(0.0), Rating::Reads);
+        assert_eq!(sure(0.49), Rating::Reads);
+        assert_eq!(sure(0.5), Rating::Changes);
+        assert_eq!(sure(1.0), Rating::Changes);
+        assert_eq!(sure(1.49), Rating::Changes);
+        // and the direction this must never round in: mostly on the top level is the top level
+        assert_eq!(sure(1.5), Rating::Grave);
+        assert_eq!(sure(1.8), Rating::Grave);
+        assert_eq!(sure(2.0), Rating::Grave);
+    }
+
+    /// A rating nobody is sure of is never drawn green, and is never drawn safer than it scored.
+    ///
+    /// note: the property this feature stands on, and the display's version of the fold that
+    /// `a_second_opinion_can_only_ever_tighten` holds the verdict to. A spread distribution over a
+    /// safety rubric is not evidence that a command is safe - it is the advisor saying it could
+    /// not tell - and green is the one colour that would report it as the former.
+    #[cfg(feature = "assisted-shell")]
+    #[test]
+    fn an_unsure_rating_is_never_drawn_safer_than_it_scored() {
+        for unsure in [0.0, 0.3, 0.5, SURE - 0.01] {
+            // what would have been green is yellow instead
+            assert_eq!(Rated::of(0.0, unsure).shown(), Rating::Changes);
+            assert_eq!(Rated::of(0.4, unsure).shown(), Rating::Changes);
+            // yellow stays yellow, and red stays red: the rule only ever moves a band up
+            assert_eq!(Rated::of(1.0, unsure).shown(), Rating::Changes);
+            assert_eq!(Rated::of(2.0, unsure).shown(), Rating::Grave);
+        }
+
+        // and at the threshold the advisor is taken at its word
+        assert_eq!(Rated::of(0.0, SURE).shown(), Rating::Reads);
+    }
+
+    /// A command going to be refused is not rated, whatever the feature is doing.
+    ///
+    /// note: the disclosure half of the same argument the verdict makes. A `Deny` has no question
+    /// to colour, so rating one would send the arguments of a call that was never going to run to
+    /// a third party and put nothing on any screen in exchange.
+    #[cfg(feature = "assisted-shell")]
+    #[tokio::test]
+    async fn a_command_the_rules_already_refuse_is_not_rated() {
+        let careful = Arc::new(Careful::new());
+        careful.set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
+
+        let jev = unreachable();
+        let advised = Advised::new(careful, jev.clone());
+        let request = asking("shell", Capability::exec("run"));
+
+        assert_eq!(advised.evaluate(&request).await, Verdict::Deny);
+        assert_eq!(jev.attempts(), 0, "nothing should have left the machine");
+        assert!(advised.rating(&request.call).is_none());
+    }
+
+    /// And one going to be asked about is rated, which is the only call that is.
+    ///
+    /// note: the endpoint is not there, so what this pins is that the request was *attempted* -
+    /// the rating itself needs a live model and lives in `tests/advise.rs`. The pair with
+    /// `a_call_already_going_to_be_asked_about_is_not_sent_anywhere` is the point: that one still
+    /// passes, because it asks about `fs:read`, and this one is what `exec:run` changed.
+    #[cfg(feature = "assisted-shell")]
+    #[tokio::test]
+    async fn a_command_somebody_is_about_to_be_asked_about_is_rated() {
+        let jev = unreachable();
+        let advised = Advised::new(Arc::new(Careful::new()), jev.clone());
+        let request = asking("shell", Capability::exec("run"));
+
+        assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
+        assert_eq!(jev.attempts(), 1, "the rating was asked for");
+        // and an advisor that could not be reached leaves no rating rather than a reassuring one
+        assert!(
+            advised.rating(&request.call).is_none(),
+            "an outage draws no line, rather than a green one"
+        );
     }
 
     /// An option nobody offered is read as nothing having been said.

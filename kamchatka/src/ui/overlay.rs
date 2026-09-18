@@ -43,11 +43,16 @@ pub(super) fn draw_overlay(frame: &mut Frame, app: &App) -> usize {
 /// the answers off the bottom and left the panel with no way to read the rest and no way to see
 /// that `y` was still a key - the question was unanswerable by anything except a guess. The
 /// answers are pinned to the bottom, and the arguments scroll between them and the header.
+///
+/// note: the header is styled lines and the other two are strings, which is not tidiness but the
+/// difference between them. The header is the one region with a colour in it - the advisor's
+/// rating - and it is also the one that is pinned above the scroll, which is where a rating has to
+/// be: a warning that can be scrolled out of view is a warning nobody is obliged to have seen.
 fn question_parts(
     app: &App,
     columns: usize,
     cut: bool,
-) -> Option<(Vec<String>, Vec<Line<'static>>, Vec<String>)> {
+) -> Option<(Vec<Line<'static>>, Vec<Line<'static>>, Vec<String>)> {
     // a tool's question comes first where both are somehow open, because it is the one holding a
     // turn still. A compaction holds nothing: it is somebody's own command, waiting on them
     let Some(request) = app.asked() else {
@@ -99,11 +104,18 @@ fn question_parts(
         }
     );
 
-    let head = wrapped(
-        &format!("{} wants: {}\n", request.tool, judged.join(", ")),
+    let mut head: Vec<Line<'static>> = wrapped(
+        &format!("{} wants: {}", request.tool, judged.join(", ")),
         columns,
         "",
-    );
+    )
+    .into_iter()
+    .map(Line::raw)
+    .collect();
+    head.extend(rating(app, &request, columns));
+    // the blank the `\n` above used to put here, and now the one thing under the header whether or
+    // not there is a rating between the two
+    head.push(Line::default());
     // the arguments, and then what the ones naming context items actually are. This used to be the
     // only way to know: the question was a box over the middle of the screen, so a question about
     // eliding item 22 was unanswerable while the thing asking it covered the list saying what 22
@@ -136,6 +148,53 @@ fn question_parts(
     ))
 }
 
+/// What the advisor made of the command, as a line of the header, or nothing at all.
+///
+/// note: the colour is the whole feature. Somebody answering a question about a command has to
+/// read the command either way - that is what the panel under this is for - and what a band of
+/// green, yellow or red buys is the half-second before that: whether this is the ordinary `cargo
+/// test` the turn has been full of, or the one call in fifty that is about to send something
+/// somewhere. It is put above the arguments rather than below them because that is the pinned
+/// region, and a warning that can be scrolled out of sight is one nobody has to have seen.
+///
+/// note: the band and the words both come from [`Rated::shown`], and the colour is the only thing
+/// decided here. `ui` does not read the score, does not know where the thresholds are, and cannot
+/// disagree with the sentence beside it - the same division `Exit` is drawn under, one file along.
+///
+/// note: the percentage is on the line because the band it produced is not a fact about the
+/// command. `Rated::shown` will not draw an unsure rating green, so an uncertain reading arrives
+/// yellow - and a person who cannot tell that from a confident yellow has been told the advisor
+/// was sure when it was not.
+#[cfg(feature = "assisted-shell")]
+fn rating(app: &App, request: &nachalnik::PermissionRequest, columns: usize) -> Vec<Line<'static>> {
+    use crate::tools::Rating;
+
+    let Some(rated) = app.rating(request) else {
+        return Vec::new();
+    };
+    let shown = rated.shown();
+    let colour = match shown {
+        Rating::Reads => Color::Green,
+        Rating::Changes => Color::Yellow,
+        Rating::Grave => Color::Red,
+    };
+
+    refit(
+        &Line::from(vec![
+            Span::raw("the advisor reads this as: "),
+            Span::styled(shown.said().to_owned(), Style::default().fg(colour).bold()),
+            Span::styled(format!(" · {:.0}% sure", rated.confidence * 100.0), quiet()),
+        ]),
+        columns,
+    )
+}
+
+/// The same where the advisor is not in the build, which is every line of it.
+#[cfg(not(feature = "assisted-shell"))]
+fn rating(_: &App, _: &nachalnik::PermissionRequest, _: usize) -> Vec<Line<'static>> {
+    Vec::new()
+}
+
 /// The other question: a compaction pass, listed, waiting on a `y`.
 ///
 /// note: the list goes where a tool's arguments go, so it scrolls the same way and the panel does
@@ -147,7 +206,7 @@ fn compaction_parts(
     app: &App,
     columns: usize,
     cut: bool,
-) -> Option<(Vec<String>, Vec<Line<'static>>, Vec<String>)> {
+) -> Option<(Vec<Line<'static>>, Vec<Line<'static>>, Vec<String>)> {
     let proposed = app.proposed.as_ref()?;
 
     let answers = format!(
@@ -162,7 +221,7 @@ fn compaction_parts(
         },
     );
 
-    let head = wrapped(
+    let head: Vec<Line<'static>> = wrapped(
         &format!(
             "compacting would take {} item(s), holding {} tokens - less what the markers cost.              Nothing has happened yet: `p` on the context tab keeps one out of it\n",
             proposed.count,
@@ -170,7 +229,10 @@ fn compaction_parts(
         ),
         columns,
         "",
-    );
+    )
+    .into_iter()
+    .map(Line::raw)
+    .collect();
     let shown = proposed
         .rows
         .iter()
@@ -292,7 +354,7 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
 
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
-    frame.render_widget(Paragraph::new(head.join("\n")), above);
+    frame.render_widget(Paragraph::new(head), above);
     frame.render_widget(Paragraph::new(args).scroll((at as u16, 0)), middle);
     frame.render_widget(Paragraph::new(foot.join("\n")), below);
 

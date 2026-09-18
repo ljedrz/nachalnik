@@ -47,7 +47,11 @@ where `bullet` reads a list marker, because knowing the shape of the thing being
 fitting it takes), `tools/` (`fs.rs` for the filesystem tool, dispatching to `files.rs` for the three operations that
 open one file and `search.rs` for the two that walk a directory of them with ripgrep's engine, and
 `shell.rs` for the one tool that is a process - with `policy.rs` for `Careful`, `trim.rs` for
-the compactor, and `mod.rs` for `Limits`, the domains this program's own tools act in, and the
+the compactor, `advice.rs` for the two things a model is asked about a call and the one file
+where what leaves this machine is written down (feature `advise` is the verdict, which is folded
+into the gate; feature `assisted-shell` is `Rating`, which is drawn in the question and folded
+into nothing - and is a second opt-in because it is asked on far more calls), and `mod.rs` for
+`Limits`, the domains this program's own tools act in, and the
 argument readers every tool here shares, `unread` among them, which `introspect/` reaches for too),
 `introspect/` (the four tools an agent inspects and manages its own session with, one per file and
 named for the noun each is about: `context` is the context, reading it and changing it, with

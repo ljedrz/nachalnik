@@ -141,7 +141,7 @@ Rust 1.88 or newer, and that is the whole list: no system libraries, no `pkg-con
 to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
 looking for yours.
 
-Three features, two of them on by default. `--no-default-features --features tui` drops MCP
+Four features, two of them on by default. `--no-default-features --features tui` drops MCP
 support and the `--mcp` flag with it. `tui` is the other default, and it is the screen and the
 keys: without it you get the same program, headless, 88 crates lighter.
 
@@ -153,6 +153,15 @@ verdict exactly where the rules left it. It is off by default and behind a flag 
 feature because it is the one thing in this program that sends a tool's *arguments* to a third
 party — for a write, that is the text being written — and that is a decision to make rather than
 inherit. `KAMCHATKA_TYPESAFE_API_KEY` is its key, and it has no fallback to the others.
+
+`assisted-shell` is the fourth, also **off**, and sits on top of `advise`. It asks the same model
+where each command you are being asked about lands on a three-level rubric, and colours the
+question green, yellow or red by the answer, so that the fifteenth `cargo test` of the afternoon
+and the one call in fifty worth stopping on do not look alike. The rating decides nothing — it is
+never folded into a verdict — and a rating the advisor was not sure of is never drawn green. It is
+a separate opt-in because it widens what leaves the machine: `advise` sends only the calls the
+rules were going to allow, which in a default session is not one command; this sends every command
+the model writes.
 
 **The sandbox is Linux-only.** The `shell` tool is confined with [Landlock](https://landlock.io),
 which is a Linux LSM. Everywhere else the program builds and runs, but the shell is unconfined:
