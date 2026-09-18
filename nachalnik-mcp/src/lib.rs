@@ -4,23 +4,31 @@
 //! An [MCP](https://modelcontextprotocol.io) bridge for [`nachalnik`]: a tool somebody else wrote,
 //! as a [`Tool`](nachalnik::Tool) like any other.
 //!
-//! ```no_run
-//! use std::sync::Arc;
-//!
-//! use nachalnik::{Config, Kernel};
-//! use nachalnik_mcp::Server;
-//! use tokio::process::Command;
-//!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let kernel = Kernel::new(Config::default());
-//!
-//! let files = Server::spawn("files", Command::new("mcp-server-filesystem")).await?;
-//! let installed = files.install(&kernel).await?;
-//! println!("{} tools: {}", installed.added.len(), installed.added.join(", "));
-//! # Ok(())
-//! # }
-//! ```
-//!
+// the example is `Server::spawn`'s, so it is documented under the feature that has one: a build
+// without `child-process` is a bridge to a server somebody else opened the transport to, and a
+// doctest calling a function that build does not have is a failure about nothing
+#![cfg_attr(
+    feature = "child-process",
+    doc = r#"
+```no_run
+use std::sync::Arc;
+
+use nachalnik::{Config, Kernel};
+use nachalnik_mcp::Server;
+use tokio::process::Command;
+
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+let kernel = Kernel::new(Config::default());
+
+let files = Server::spawn("files", Command::new("mcp-server-filesystem")).await?;
+let installed = files.install(&kernel).await?;
+println!("{} tools: {}", installed.added.len(), installed.added.join(", "));
+# Ok(())
+# }
+```
+"#
+)]
+
 //! # Why this is not in the runtime
 //!
 //! `nachalnik` promises to spawn no processes, open no sockets and run nothing in the background.

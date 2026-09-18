@@ -33,6 +33,15 @@ child-process = ["rmcp/transport-child-process", "dep:tokio", "tokio/process"]
 # Servers reached over HTTP.
 http = ["rmcp/transport-streamable-http-client-reqwest"]
 
+# the suite that spawns somebody else's server as a process, which is `Server::spawn` and
+# therefore the feature that brings `tokio::process` in. Without it the crate is a bridge to a
+# server reached some other way, and this suite is not part of it - `bridge.rs`, which stands one
+# up in this process and talks to it over a pipe, is, and needs no feature to build.
+[[test]]
+name = "foreign"
+path = "tests/foreign.rs"
+required-features = ["child-process"]
+
 [dependencies]
 nachalnik.workspace = true
 serde_json.workspace = true
