@@ -485,7 +485,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         }
     }
     let (servers, domains): (Vec<_>, Vec<_>) = undecided.iter().partition(|(.., server)| *server);
-    let named = |rules: &[&(String, String, Verdict, bool)]| {
+    let listed = |rules: &[&(String, String, Verdict, bool)]| {
         rules
             .iter()
             .map(|(rule, ..)| rule.as_str())
@@ -497,7 +497,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
             "\n{} domain rule(s) are undecided, so anything done in them stops and asks unless a \
              row above names that operation: {}.\n",
             domains.len(),
-            named(&domains),
+            listed(&domains),
         ));
     }
     if !servers.is_empty() {
@@ -505,7 +505,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
             "\n{} server rule(s) are undecided, and a server is consulted beside the rows above - \
              so a call from one stops and asks whatever its own rows say: {}.\n",
             servers.len(),
-            named(&servers),
+            listed(&servers),
         ));
     }
 

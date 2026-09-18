@@ -231,7 +231,7 @@ fn under(workdir: &Path) -> PathBuf {
 /// means the same thing on every platform; and the model, which is handed `/` everywhere else in
 /// the answer and hands it back to `read`, where Windows takes it. `MAIN_SEPARATOR` rather than a
 /// bare backslash, so that a Unix file whose name really contains one keeps it.
-fn named(path: &Path, workdir: &Path) -> String {
+fn relative(path: &Path, workdir: &Path) -> String {
     path.strip_prefix(workdir)
         .unwrap_or(path)
         .to_string_lossy()
@@ -453,7 +453,7 @@ impl Grep {
                     }
                 }
 
-                let path = named(entry.path(), &workdir);
+                let path = relative(entry.path(), &workdir);
                 // the file the *call* named is one the policy has already been asked about; only
                 // what the walk found under it is barred here. See `Looking::barred`
                 if entry.path() != root.as_path()
@@ -721,7 +721,7 @@ impl Glob {
                     }
                 }
 
-                let path = named(entry.path(), &workdir);
+                let path = relative(entry.path(), &workdir);
                 // the file the *call* named is one the policy has already been asked about; only
                 // what the walk found under it is barred here. See `Looking::barred`
                 if entry.path() != root.as_path()
@@ -790,7 +790,7 @@ mod tests {
     #[test]
     fn a_named_path_is_written_with_one_separator() {
         let root = PathBuf::from("w");
-        assert_eq!(named(&root.join("src").join("a.rs"), &root), "src/a.rs");
+        assert_eq!(relative(&root.join("src").join("a.rs"), &root), "src/a.rs");
     }
 
     /// And the separator replaced is the platform's rather than a backslash, so a unix file whose
@@ -799,7 +799,7 @@ mod tests {
     #[test]
     fn a_unix_name_that_contains_a_backslash_keeps_it() {
         let root = PathBuf::from("w");
-        assert_eq!(named(&root.join(r"a\b.rs"), &root), r"a\b.rs");
+        assert_eq!(relative(&root.join(r"a\b.rs"), &root), r"a\b.rs");
     }
 
     /// The resolved working directory is a prefix of the paths the walk hands back.
@@ -817,7 +817,7 @@ mod tests {
         std::fs::write(dir.join("src").join("a.rs"), "x").expect("a file");
 
         let root = under(&dir);
-        assert_eq!(named(&root.join("src").join("a.rs"), &root), "src/a.rs");
+        assert_eq!(relative(&root.join("src").join("a.rs"), &root), "src/a.rs");
     }
 
     /// Nothing skipped says nothing.

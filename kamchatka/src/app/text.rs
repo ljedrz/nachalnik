@@ -324,9 +324,10 @@ fn without_blobs(value: &Value) -> Value {
     match value {
         // `data:image/png;base64,AAAA...`, wherever it sits
         Value::String(text) => match text.split_once(";base64,") {
-            Some((head, payload)) if head.starts_with("data:") => {
-                Value::String(named(head.trim_start_matches("data:"), payload.len()))
-            }
+            Some((head, payload)) if head.starts_with("data:") => Value::String(shown_instead(
+                head.trim_start_matches("data:"),
+                payload.len(),
+            )),
             _ => value.clone(),
         },
         Value::Array(items) => Value::Array(items.iter().map(without_blobs).collect()),
@@ -343,7 +344,7 @@ fn without_blobs(value: &Value) -> Value {
             {
                 elided.insert(
                     "data".to_owned(),
-                    Value::String(named(media, payload.len())),
+                    Value::String(shown_instead(media, payload.len())),
                 );
             }
 
@@ -359,7 +360,7 @@ fn without_blobs(value: &Value) -> Value {
 /// one stands inside `/payload`, which is the request byte for byte with the base64 taken out -
 /// so the number is the length of the exact string that was removed from the JSON being read,
 /// and rounding it would make the one view whose promise is exactness stop keeping it.
-fn named(media_type: &str, bytes: usize) -> String {
+fn shown_instead(media_type: &str, bytes: usize) -> String {
     format!("[ base64 blob, {media_type}, {bytes} bytes ]")
 }
 
