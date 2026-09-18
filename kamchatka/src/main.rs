@@ -64,10 +64,12 @@ fn environment() -> String {
     const ADVISOR: &str = "
 
 The advisor, which is only ever asked when --advise is given:
-  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. No fallback to the above -
-                              it is a different service, and a different account
-  KAMCHATKA_TYPESAFE_BASE_URL where its questions go; TypeSafe's own by default
-  KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest by default";
+  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. Without one it falls back
+                              to KAMCHATKA_API_KEY, since OpenRouter serves jev too
+  KAMCHATKA_TYPESAFE_BASE_URL where its questions go; the endpoint of whichever of
+                              those two keys was found
+  KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest at TypeSafe,
+                              typesafe/jev-1.13 through OpenRouter";
     #[cfg(not(feature = "advise"))]
     const ADVISOR: &str = "";
 

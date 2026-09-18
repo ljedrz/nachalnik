@@ -532,10 +532,12 @@ Environment:
   KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter
 
 The advisor, which is only ever asked when --advise is given:
-  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. No fallback to the above -
-                              it is a different service, and a different account
-  KAMCHATKA_TYPESAFE_BASE_URL where its questions go; TypeSafe's own by default
-  KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest by default
+  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. Without one it falls back
+                              to KAMCHATKA_API_KEY, since OpenRouter serves jev too
+  KAMCHATKA_TYPESAFE_BASE_URL where its questions go; the endpoint of whichever of
+                              those two keys was found
+  KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest at TypeSafe,
+                              typesafe/jev-1.13 through OpenRouter
 ```
 
 That is `--help`, which lists the environment too rather than leaving three settings for the
@@ -557,6 +559,20 @@ $ kamchatka --advise --allow exec:run "tidy up the build artifacts"
 `--allow exec:run` is the setting this is for. Answering *always* to one shell command answers for
 every shell command, and `Careful` is a heuristic over a command line: `rm -rf ./target` and `rm
 -rf /` are the same capability. The advisor reads the next one.
+
+**Without a dedicated key it uses yours.** `jev` is served through OpenRouter as well as by
+TypeSafe, so a session with only `KAMCHATKA_API_KEY` set can still have an advisor — it asks
+`typesafe/jev-1.13` at `https://openrouter.ai/api/alpha` and the key that pays for the conversation
+pays for the questions too. A key is only ever sent to the service it belongs to, and the dedicated
+one is checked first, so setting `KAMCHATKA_TYPESAFE_API_KEY` is what moves the questions to
+TypeSafe's own API. What the fallback changes is who is told: the arguments below go to OpenRouter
+as well as to the model behind it.
+
+The two settings underneath follow whichever key was found, and `KAMCHATKA_TYPESAFE_BASE_URL` moves
+the address without moving the account — pointing it at the other service means naming that
+service's model with `KAMCHATKA_TYPESAFE_MODEL` as well. TypeSafe resolves `jev-latest` to whatever
+version is current; OpenRouter serves versions under their own names, which is why the identifier
+this program sends there names one.
 
 It can only ever **tighten**. It is asked only about calls the rules already allow, its answer is
 folded in with the strictest-wins rule the rest of the permissions use, and every way of not

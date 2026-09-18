@@ -152,7 +152,9 @@ can never permit one: an advisor that is unreachable, out of quota or unparseabl
 verdict exactly where the rules left it. It is off by default and behind a flag as well as a
 feature because it is the one thing in this program that sends a tool's *arguments* to a third
 party — for a write, that is the text being written — and that is a decision to make rather than
-inherit. `KAMCHATKA_TYPESAFE_API_KEY` is its key, and it has no fallback to the others.
+inherit. `KAMCHATKA_TYPESAFE_API_KEY` is its key; without one it falls back to the key already
+paying for the conversation, since `jev` is served through OpenRouter too, and a key is only ever
+sent to the service it belongs to.
 
 `assisted-shell` is the fourth, also **off**, and sits on top of `advise` — it needs `--advise`
 at runtime too, and the permissions tab says so when it has not got it. It asks the same model

@@ -9,6 +9,23 @@ minor bump may break you.
 
 ### added
 
+- `--advise` falls back to `KAMCHATKA_API_KEY` where no dedicated key is set. `jev` is served
+  through OpenRouter as well as by TypeSafe, so the key already paying for the conversation can pay
+  for the questions too, and a session that was not given a second key is no longer a session that
+  cannot have an advisor. `KAMCHATKA_TYPESAFE_API_KEY` is still checked first, so a session holding
+  both pays TypeSafe.
+
+  What makes the fallback safe is that a key is never sent anywhere but the service it belongs to,
+  which is what the old refusal to fall back was protecting: reaching for an OpenRouter key would
+  once have meant handing it to TypeSafe. What it widens is who is told - the arguments `--advise`
+  already sends off the machine now go to OpenRouter as well as to the model behind it, which is
+  why it is written into `--help` beside the variable rather than left to the readme.
+
+  The endpoint and the model follow from whichever key was found rather than being read
+  independently, since three settings that can disagree are three ways to send a key to a service
+  it is not for. `KAMCHATKA_TYPESAFE_BASE_URL` and `KAMCHATKA_TYPESAFE_MODEL` still override each,
+  and pointing one at the other service means setting the other too.
+
 - Feature `assisted-shell`, which has the advisor place each command a question is about on a
   three-level rubric - it only looks; it changes something that could be put back; it destroys
   something that cannot be got back or sends something off this machine - and draws that in the

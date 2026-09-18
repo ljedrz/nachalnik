@@ -1,6 +1,7 @@
 //! The second opinion, against the real advisor.
 //!
-//! They are skipped unless a key is in the environment:
+//! They are skipped unless a key is in the environment - either the dedicated one, which asks
+//! TypeSafe's own API, or `KAMCHATKA_API_KEY`, which asks the same model through OpenRouter:
 //!
 //! ```text
 //! TYPESAFE_API_KEY=apikey_... cargo test -p kamchatka --features advise --test advise -- --nocapture
@@ -20,7 +21,7 @@
 
 #![cfg(feature = "advise")]
 
-use std::{env, sync::Arc};
+use std::sync::Arc;
 
 use kamchatka::{
     endpoint,
@@ -39,11 +40,17 @@ static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 /// note: `exec:run` set to `allow` is the whole setting this feature is for. A session that
 /// answered `always` to one shell command has answered for every shell command, and the advisor
 /// is what reads the next one.
+///
+/// note: the skip asks the program which key it would use rather than reading the variables again.
+/// Either one runs these - a dedicated key against TypeSafe's own API, or `KAMCHATKA_API_KEY`
+/// against OpenRouter - and a guard carrying its own copy of that rule is one that goes stale the
+/// next time the rule moves.
 macro_rules! advised {
     () => {{
-        if env::var("TYPESAFE_API_KEY").is_err() && env::var("KAMCHATKA_TYPESAFE_API_KEY").is_err()
-        {
-            eprintln!("skipped: set TYPESAFE_API_KEY to run the live advisor tests");
+        if endpoint::advise::account().is_err() {
+            eprintln!(
+                "skipped: set TYPESAFE_API_KEY or KAMCHATKA_API_KEY to run the live advisor tests"
+            );
             return;
         }
 
@@ -184,10 +191,11 @@ mod rating {
     /// A policy that will ask about a command, advised by the real endpoint - or a skipped test.
     macro_rules! rating {
         () => {{
-            if env::var("TYPESAFE_API_KEY").is_err()
-                && env::var("KAMCHATKA_TYPESAFE_API_KEY").is_err()
-            {
-                eprintln!("skipped: set TYPESAFE_API_KEY to run the live advisor tests");
+            if endpoint::advise::account().is_err() {
+                eprintln!(
+                    "skipped: set TYPESAFE_API_KEY or KAMCHATKA_API_KEY to run the live advisor \
+                     tests"
+                );
                 return;
             }
 

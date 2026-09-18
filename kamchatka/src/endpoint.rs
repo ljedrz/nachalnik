@@ -87,38 +87,96 @@ pub async fn connect(model: impl Into<String>) -> Result<Arc<OpenAiCompatible>, 
 
 /// The advisor: a second model, asked about tool calls rather than about turns.
 ///
-/// note: its own key under its own name, and no fallback to the three above. Those are one
-/// account paying for a conversation; this is a different service with a different key, and a
-/// program that reached for `KAMCHATKA_API_KEY` here would send somebody's OpenRouter key to
-/// TypeSafe the first time they turned this on.
+/// note: its own key under its own name first, and this program's own only where there is no
+/// second one. What makes the fallback safe is that a key is never sent anywhere but the service
+/// it belongs to: `jev` is served through OpenRouter as well as by TypeSafe, and
+/// `KAMCHATKA_API_KEY` is reached for only to talk to OpenRouter, which is where it already goes.
+/// A dedicated key is checked first, so a session holding both pays TypeSafe.
 ///
-/// note: nothing in here is read unless `--advise` was asked for. The flag is what decides
-/// whether a tool's arguments leave the machine at all - see `tools::advice` - and a key sitting
-/// in the environment is not a decision to send them.
+/// note: what the fallback widens is who is told, which is the question `tools::advice` is about.
+/// `--advise` already sends a tool's arguments off the machine; without a dedicated key they go to
+/// OpenRouter as well as to the model behind it. Nothing in here is read unless `--advise` was
+/// asked for - the flag is what decides whether they leave at all, and a key sitting in the
+/// environment is not a decision to send them.
 #[cfg(feature = "advise")]
 pub mod advise {
     use nachalnik_providers::typesafe::{self, Jev};
 
     use super::*;
 
-    /// The advisor's key, under either of the documented names.
-    pub fn api_key() -> Result<String, BoxError> {
-        env::var("KAMCHATKA_TYPESAFE_API_KEY")
-            .or_else(|_| env::var("TYPESAFE_API_KEY"))
-            .map_err(|_| {
-                "--advise needs a key: set KAMCHATKA_TYPESAFE_API_KEY (or TYPESAFE_API_KEY)".into()
+    /// Which account pays for the advice, and the key that proves it.
+    ///
+    /// note: a key and a service together, because the three settings have to agree and three
+    /// variables read on their own would not. A TypeSafe key sent to OpenRouter is a 401,
+    /// `jev-latest` asked of OpenRouter is a name it does not serve, and the address decides which
+    /// of the two shapes the request even has. So the choice is made once - is there a key of
+    /// TypeSafe's own - and the endpoint and the model follow from it.
+    ///
+    /// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries. A
+    /// third service serving the same model is exactly the kind of thing that happened once
+    /// already, and it should be a patch rather than a break.
+    #[non_exhaustive]
+    pub enum Account {
+        /// TypeSafe's own, under either of the documented names.
+        TypeSafe(String),
+        /// The key that already pays for the conversation, which pays for this too. A session that
+        /// was not given a second key is not thereby a session that cannot have an advisor.
+        OpenRouter(String),
+    }
+
+    impl Account {
+        /// The key itself.
+        pub fn api_key(&self) -> &str {
+            match self {
+                Self::TypeSafe(key) | Self::OpenRouter(key) => key,
+            }
+        }
+
+        /// The endpoint to talk to; the one this account is with unless told otherwise.
+        ///
+        /// note: `KAMCHATKA_TYPESAFE_BASE_URL` moves the address and does not move the account.
+        /// It is for a proxy in front of one of the two, and somebody pointing it at the *other*
+        /// service is setting the model by hand as well - which is the same bargain the variable
+        /// made before there were two.
+        pub fn base_url(&self) -> String {
+            env::var("KAMCHATKA_TYPESAFE_BASE_URL").unwrap_or_else(|_| {
+                match self {
+                    Self::TypeSafe(_) => typesafe::DEFAULT_BASE_URL,
+                    Self::OpenRouter(_) => typesafe::OPENROUTER_BASE_URL,
+                }
+                .to_owned()
             })
+        }
+
+        /// Which model answers; the name the service it is with knows it by.
+        ///
+        /// note: the two do not call it the same thing. TypeSafe resolves `jev-latest` to whatever
+        /// version is current; OpenRouter lists the versions it serves and has no moving name
+        /// among them, so what goes there names one version.
+        pub fn model(&self) -> String {
+            env::var("KAMCHATKA_TYPESAFE_MODEL").unwrap_or_else(|_| {
+                match self {
+                    Self::TypeSafe(_) => typesafe::DEFAULT_MODEL,
+                    Self::OpenRouter(_) => typesafe::OPENROUTER_MODEL,
+                }
+                .to_owned()
+            })
+        }
     }
 
-    /// Which model answers; TypeSafe's own default unless told otherwise.
-    pub fn model() -> String {
-        env::var("KAMCHATKA_TYPESAFE_MODEL").unwrap_or_else(|_| typesafe::DEFAULT_MODEL.to_owned())
-    }
+    /// Whose key is available to pay for it, of the two that can.
+    pub fn account() -> Result<Account, BoxError> {
+        if let Ok(key) =
+            env::var("KAMCHATKA_TYPESAFE_API_KEY").or_else(|_| env::var("TYPESAFE_API_KEY"))
+        {
+            return Ok(Account::TypeSafe(key));
+        }
 
-    /// The endpoint to talk to; TypeSafe's own unless told otherwise.
-    pub fn base_url() -> String {
-        env::var("KAMCHATKA_TYPESAFE_BASE_URL")
-            .unwrap_or_else(|_| typesafe::DEFAULT_BASE_URL.to_owned())
+        api_key().map(Account::OpenRouter).map_err(|_| {
+            "--advise needs a key: set KAMCHATKA_TYPESAFE_API_KEY (or TYPESAFE_API_KEY) for \
+             TypeSafe's own API, or KAMCHATKA_API_KEY to ask the same model through OpenRouter"
+                .into()
+        })
     }
 
     /// Builds the advisor from the environment, checking that the model it names is served.
@@ -126,9 +184,16 @@ pub mod advise {
     /// note: the listing is asked for here rather than on the first refusal, for the reason
     /// `Gemini::probe` is called at startup: a model name that is not served comes back a 400,
     /// and the moment to find that out is before a session is running rather than the first time
-    /// a permission question depends on it.
+    /// a permission question depends on it. OpenRouter publishes no listing for this model, so a
+    /// session paying through it gets no such warning - which is why the identifier this program
+    /// sends there is a constant rather than something a person types.
     pub async fn connect() -> Result<Arc<Jev>, BoxError> {
-        let jev = Arc::new(Jev::new(model(), base_url(), api_key()?));
+        let account = account()?;
+        let jev = Arc::new(Jev::new(
+            account.model(),
+            account.base_url(),
+            account.api_key(),
+        ));
         jev.probe().await;
 
         Ok(jev)
