@@ -47,7 +47,7 @@ static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 /// next time the rule moves.
 macro_rules! advised {
     () => {{
-        if endpoint::advise::account().is_err() {
+        if endpoint::advise::account(&endpoint::base_url()).is_err() {
             eprintln!(
                 "skipped: set TYPESAFE_API_KEY or KAMCHATKA_API_KEY to run the live advisor tests"
             );
@@ -59,7 +59,7 @@ macro_rules! advised {
             &Subject::Capability(Capability::exec("run")),
             Verdict::Allow,
         );
-        let jev = endpoint::advise::connect()
+        let jev = endpoint::advise::connect(&endpoint::base_url())
             .await
             .expect("the advisor connects");
 
@@ -191,7 +191,7 @@ mod rating {
     /// A policy that will ask about a command, advised by the real endpoint - or a skipped test.
     macro_rules! rating {
         () => {{
-            if endpoint::advise::account().is_err() {
+            if endpoint::advise::account(&endpoint::base_url()).is_err() {
                 eprintln!(
                     "skipped: set TYPESAFE_API_KEY or KAMCHATKA_API_KEY to run the live advisor \
                      tests"
@@ -200,7 +200,7 @@ mod rating {
             }
 
             // nothing set, so `exec:run` is `ask` - which is the branch a rating is asked on
-            let jev = endpoint::advise::connect()
+            let jev = endpoint::advise::connect(&endpoint::base_url())
                 .await
                 .expect("the advisor connects");
 

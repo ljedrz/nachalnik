@@ -532,8 +532,9 @@ Environment:
   KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter
 
 The advisor, which is only ever asked when --advise is given:
-  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. Without one it falls back
-                              to KAMCHATKA_API_KEY, since OpenRouter serves jev too
+  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. Without one it borrows
+                              KAMCHATKA_API_KEY, but only where this session already
+                              talks to OpenRouter, which serves jev too
   KAMCHATKA_TYPESAFE_BASE_URL where its questions go; the endpoint of whichever of
                               those two keys was found
   KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest at TypeSafe,
@@ -560,13 +561,28 @@ $ kamchatka --advise --allow exec:run "tidy up the build artifacts"
 every shell command, and `Careful` is a heuristic over a command line: `rm -rf ./target` and `rm
 -rf /` are the same capability. The advisor reads the next one.
 
-**Without a dedicated key it uses yours.** `jev` is served through OpenRouter as well as by
-TypeSafe, so a session with only `KAMCHATKA_API_KEY` set can still have an advisor — it asks
-`typesafe/jev-1.13` at `https://openrouter.ai/api/alpha` and the key that pays for the conversation
-pays for the questions too. A key is only ever sent to the service it belongs to, and the dedicated
-one is checked first, so setting `KAMCHATKA_TYPESAFE_API_KEY` is what moves the questions to
-TypeSafe's own API. What the fallback changes is who is told: the arguments below go to OpenRouter
-as well as to the model behind it.
+**Without a dedicated key it can borrow yours, in one case.** `jev` is served through OpenRouter as
+well as by TypeSafe, so a session whose requests *already go to OpenRouter* can have an advisor
+with only `KAMCHATKA_API_KEY` set — it asks `typesafe/jev-1.13` at
+`https://openrouter.ai/api/alpha`, and the key paying for the conversation pays for the questions
+too.
+
+Any other session is refused and told why. A key is an OpenRouter key because it is being sent to
+OpenRouter, not because of the variable it was read from — so a session pointed at ollama, at
+Google with `--gemini`, or at a gateway of your own holds a key that service issued, and spending
+it here would hand a third party a credential with no business with them. Those still need
+`KAMCHATKA_TYPESAFE_API_KEY`, exactly as before:
+
+```console
+$ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka --advise "…"
+error: could not reach the advisor
+caused by: --advise needs a key: set KAMCHATKA_TYPESAFE_API_KEY (or TYPESAFE_API_KEY). This
+session talks to http://localhost:11434/v1, so its own key is not OpenRouter's to borrow
+```
+
+The dedicated key is checked first, so setting it is what moves the questions to TypeSafe's own API
+from anywhere. What the fallback changes is who is told: the arguments below go to OpenRouter as
+well as to the model behind it.
 
 The two settings underneath follow whichever key was found, and `KAMCHATKA_TYPESAFE_BASE_URL` moves
 the address without moving the account — pointing it at the other service means naming that

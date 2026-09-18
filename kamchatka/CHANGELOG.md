@@ -9,17 +9,23 @@ minor bump may break you.
 
 ### added
 
-- `--advise` falls back to `KAMCHATKA_API_KEY` where no dedicated key is set. `jev` is served
-  through OpenRouter as well as by TypeSafe, so the key already paying for the conversation can pay
-  for the questions too, and a session that was not given a second key is no longer a session that
-  cannot have an advisor. `KAMCHATKA_TYPESAFE_API_KEY` is still checked first, so a session holding
-  both pays TypeSafe.
+- `--advise` borrows `KAMCHATKA_API_KEY` where no dedicated key is set **and the session's own
+  requests already go to OpenRouter**. `jev` is served there as well as by TypeSafe, so in that one
+  configuration the key already paying for the conversation can pay for the questions too, and a
+  session that was not given a second key is no longer a session that cannot have an advisor.
+  `KAMCHATKA_TYPESAFE_API_KEY` is still checked first, so a session holding both pays TypeSafe.
 
-  What makes the fallback safe is that a key is never sent anywhere but the service it belongs to,
-  which is what the old refusal to fall back was protecting: reaching for an OpenRouter key would
-  once have meant handing it to TypeSafe. What it widens is who is told - the arguments `--advise`
-  already sends off the machine now go to OpenRouter as well as to the model behind it, which is
-  why it is written into `--help` beside the variable rather than left to the readme.
+  The condition is the whole of what makes it safe, because a key is an OpenRouter key by virtue of
+  being sent to OpenRouter and not by virtue of the variable it was read from. A session pointed at
+  ollama, at Google with `--gemini`, or at a gateway of somebody's own holds a key that service
+  issued, and spending it here would hand a third party a credential with no business with them -
+  which is what the old refusal to fall back was protecting, pointing the other way. Those sessions
+  are refused, and told which address the refusal was about rather than being told they need a key
+  while holding one.
+
+  What the fallback does widen is who is told: the arguments `--advise` already sends off the
+  machine go to OpenRouter as well as to the model behind it, which is why it is in `--help` beside
+  the variable rather than left to the readme.
 
   The endpoint and the model follow from whichever key was found rather than being read
   independently, since three settings that can disagree are three ways to send a key to a service

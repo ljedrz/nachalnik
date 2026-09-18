@@ -64,8 +64,9 @@ fn environment() -> String {
     const ADVISOR: &str = "
 
 The advisor, which is only ever asked when --advise is given:
-  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. Without one it falls back
-                              to KAMCHATKA_API_KEY, since OpenRouter serves jev too
+  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. Without one it borrows
+                              KAMCHATKA_API_KEY, but only where this session already
+                              talks to OpenRouter, which serves jev too
   KAMCHATKA_TYPESAFE_BASE_URL where its questions go; the endpoint of whichever of
                               those two keys was found
   KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest at TypeSafe,
@@ -515,7 +516,7 @@ async fn session() -> Result<()> {
     let setup = match args.advise {
         false => setup,
         true => {
-            let jev = endpoint::advise::connect()
+            let jev = endpoint::advise::connect(&endpoint::session_endpoint(args.gemini))
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))
                 .context("could not reach the advisor")?;
