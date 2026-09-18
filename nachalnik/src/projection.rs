@@ -1,9 +1,12 @@
 //! Context items in, wire messages out.
 //!
 //! note: the seam where the shape of a request is decided, and the one seam whose default a real
-//! API may well disagree with - which is why the whole of it is one method. [`Projection`] is the
-//! answer to "what is about to be sent", available before anything is, and the [`Skipped`] list
-//! beside it is why that answer is shorter than the context it came from.
+//! API may well disagree with - which is why the trait is one method: a projector that disagrees
+//! replaces the whole shape rather than overriding a piece of it. What the default does behind
+//! that one method is three passes - count the calls against the results, build a message per
+//! item, put them in the order the wire needs - and none of that is anybody else's to reach.
+//! [`Projection`] is the answer to "what is about to be sent", available before anything is, and
+//! the [`Skipped`] list beside it is why that answer is shorter than the context it came from.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -257,41 +260,34 @@ impl Projector for LinearProjector {
             reordered: Vec::new(),
         };
 
-        // how many results are available to answer each call, and how many calls are available
-        // to be answered by each result, among the projected items; both are consumed as the
-        // messages are built, so a call and a result are paired one for one
-        let mut answers: HashMap<ToolCallId, usize> = HashMap::new();
-        let mut calls: HashMap<ToolCallId, usize> = HashMap::new();
-        for item in items.iter().filter(|i| i.is_projected()) {
-            match &item.kind {
-                ContextKind::ToolResult { call, .. } => {
-                    *answers.entry(call.clone()).or_default() += 1;
-                }
-                ContextKind::AssistantMessage { .. } => {
-                    // `calls()` rather than the kind's own list: a turn recorded as ordered
-                    // blocks keeps its calls in its content, and pairing that found none there
-                    // would repair away every result it ever got
-                    for call in item.calls() {
-                        *calls.entry(call.id.clone()).or_default() += 1;
-                    }
-                }
-                _ => {}
-            }
+        // three passes, and the middle one is the only place a decision about an item is made.
+        // The counting is what that pass needs and cannot work out as it goes, since whether a
+        // call has a result is a fact about the whole projection rather than about the item in
+        // hand; the ordering is the wire's answer to the same kind of question.
+        let (mut answers, mut calls) = pairings(items);
+        let built = self.build(items, &mut answers, &mut calls, &mut projection);
+        for (id, message) in in_wire_order(built, &mut projection.reordered) {
+            projection.included.push(id);
+            projection.messages.push(message);
         }
 
-        /// Claims one of the remaining counterparts for a call identifier, if there is one left.
-        fn claim(remaining: &mut HashMap<ToolCallId, usize>, id: &ToolCallId) -> bool {
-            match remaining.get_mut(id) {
-                Some(left) if *left > 0 => {
-                    *left -= 1;
-                    true
-                }
-                _ => false,
-            }
-        }
+        projection
+    }
+}
 
-        // built in the order the context has them; the order the *request* has them is a pass of
-        // its own, below
+impl LinearProjector {
+    /// Every item as the message it projects to, in the order the context has them.
+    ///
+    /// note: the order the *request* has them is [`in_wire_order`], a pass of its own. What is
+    /// decided here is everything about one item on its own - what it says, which role says it,
+    /// and whether it goes at all.
+    fn build(
+        &self,
+        items: &[Arc<ContextItem>],
+        answers: &mut HashMap<ToolCallId, usize>,
+        calls: &mut HashMap<ToolCallId, usize>,
+        projection: &mut Projection,
+    ) -> Vec<(ContextId, Message)> {
         let mut built: Vec<(ContextId, Message)> = Vec::with_capacity(items.len());
 
         for item in items {
@@ -335,141 +331,12 @@ impl Projector for LinearProjector {
                 ContextKind::AssistantMessage {
                     tool_calls,
                     reasoning,
-                } => {
-                    let elided = item.state.is_elided();
-
-                    // the turn as one ordered sequence, whichever way it was recorded. For a
-                    // conventional one that is the order every provider has been assuming
-                    // anyway - what it thought, what it said, what it asked for - so flattening
-                    // it back below reproduces exactly what came in; for one recorded as blocks
-                    // it is the order the model actually produced, which is the whole point.
-                    // Doing it in two steps rather than four arms is what keeps the repair, the
-                    // elision and the skip rule from being written twice
-                    let recorded: Vec<Block> = match item.content.as_blocks() {
-                        Some(blocks) => blocks.to_vec(),
-                        None => {
-                            let mut assembled = Vec::with_capacity(tool_calls.len() + 2);
-                            assembled.extend(reasoning.clone().map(Block::reasoning));
-                            // an empty text is no text at all - but an elided turn still gets
-                            // its marker, which is the whole of what elision leaves behind
-                            if elided || item.content.as_text() != Some("") {
-                                assembled.push(Block::text(item.content.clone()));
-                            }
-                            assembled.extend(tool_calls.iter().cloned().map(Block::Call));
-
-                            assembled
-                        }
-                    };
-
-                    let mut kept: Vec<Block> = Vec::with_capacity(recorded.len());
-                    let mut marked = false;
-                    for block in recorded {
-                        match &block {
-                            Block::Call(call) => {
-                                if !self.repair_orphans || claim(&mut answers, &call.id) {
-                                    kept.push(block);
-                                } else {
-                                    projection.repairs.push(format!(
-                                        "dropped the call `{}` ({}) from item {}: its result is not in the projection",
-                                        call.id, call.tool, item.id
-                                    ));
-                                }
-                            }
-                            // an elided turn's thinking goes with its words. Keeping it
-                            // would mean a turn whose content is a one-line marker still
-                            // costing every token it ever thought - so eliding a turn would
-                            // free nothing, and a compactor would watch the total refuse to
-                            // move and elide it again. Worse under `send_blocks`: a signed
-                            // thinking block would go out beside a marker that is not the
-                            // words it was signed over
-                            Block::Reasoning(_) if elided || !self.send_reasoning => {}
-                            // an elided turn loses what it *said* and keeps everything else: the
-                            // calls still answer their results, so the turn keeps its shape
-                            Block::Text(_) if elided => {
-                                if !marked {
-                                    kept.push(Block::text(said.clone()));
-                                    marked = true;
-                                }
-                            }
-                            _ => kept.push(block),
-                        }
-                    }
-                    // a turn recorded as blocks need not have had any text to mark
-                    if elided && !marked {
-                        kept.insert(0, Block::text(said.clone()));
-                    }
-
-                    let calls: Vec<ToolCall> =
-                        kept.iter().filter_map(Block::call).cloned().collect();
-                    let spoke: Vec<&Part> = kept.iter().filter_map(Block::said).collect();
-
-                    if spoke.is_empty() && calls.is_empty() {
-                        // note: a turn that is *nothing but* reasoning goes too, because this
-                        // projector speaks the dialect in which an assistant message with no
-                        // content is rejected. A provider whose API keeps thinking-only turns -
-                        // and some do - wants a projector of its own; the reasoning is still in
-                        // the context either way, which is why this says so out loud
-                        let reason = match kept.is_empty() {
-                            false => {
-                                "an assistant turn with no content and no answered calls, so its reasoning goes with it"
-                            }
-                            true => "an assistant turn with no content and no answered calls",
-                        };
-                        projection.skipped.push(Skipped {
-                            id: item.id,
-                            reason: reason.into(),
-                        });
-                        continue;
-                    }
-
-                    // note: whichever shape it goes out in, the message falls through to the
-                    // foot of the loop rather than being pushed here, because that is where the
-                    // repair above has finished taking calls down - and the ordering pass reads
-                    // the calls a message actually kept
-                    if self.send_blocks {
-                        Message::assistant(Some(Content::Blocks(kept.into())), Vec::new())
-                    } else {
-                        // flattening into the three slots, and saying so where it costs
-                        // something: two thinking blocks joined into one is a signature
-                        // destroyed, and a sentence that came after a call arrives before it
-                        if item.content.as_blocks().is_some() {
-                            let thoughts = kept.iter().filter(|b| b.thought().is_some()).count();
-                            let interleaved = kept
-                                .iter()
-                                .skip_while(|block| block.call().is_none())
-                                .any(|block| block.call().is_none());
-                            // a signature on a text or a thinking part has nowhere to go in a
-                            // conventional message, and going missing is the thing it is most
-                            // important to say out loud: it is what an API rejects the next
-                            // request over, and the reason it went is that this projector was
-                            // asked for a shape that cannot hold it
-                            let signed = kept
-                                .iter()
-                                .filter_map(Block::part)
-                                .any(|part| !part.extra.is_null());
-                            if interleaved || spoke.len() > 1 || thoughts > 1 || signed {
-                                let also = match signed {
-                                    true => ", and what the provider had attached to them",
-                                    false => "",
-                                };
-                                projection.repairs.push(format!(
-                                    "flattened item {} out of {} ordered block(s): this projector \
-                                     sends one content slot, one reasoning slot and a list of \
-                                     calls, so their order is not carried{also}",
-                                    item.id,
-                                    kept.len(),
-                                ));
-                            }
-                        }
-
-                        let content = join(spoke);
-                        let reasoning = join(kept.iter().filter_map(Block::thought).collect());
-
-                        Message::assistant(content, calls).with_reasoning(reasoning)
-                    }
-                }
+                } => match self.turn(item, tool_calls, reasoning, &said, answers, projection) {
+                    Some(message) => message,
+                    None => continue,
+                },
                 ContextKind::ToolResult { call, tool, .. } => {
-                    if self.repair_orphans && !claim(&mut calls, call) {
+                    if self.repair_orphans && !claim(calls, call) {
                         // note: there are two ways to fail to claim a call and they do not read
                         // the same. One this projection does not carry is an orphan; one it
                         // carries whose answers are all spoken for is a *second* result for it -
@@ -502,100 +369,308 @@ impl Projector for LinearProjector {
             built.push((item.id, message));
         }
 
-        // A result has to reach the wire immediately after the call it answers: it is what the
-        // dialect specifies, and a strict endpoint refuses the whole request otherwise, naming
-        // the `tool_call_id` that went unanswered. So each turn's results are gathered to it, and
-        // everything else keeps the order the context had it in.
-        //
-        // note: *a* strict endpoint, not every endpoint, and the difference was measured rather
-        // than assumed. Inception Labs' `mercury-2.5` accepts the malformed order without
-        // complaint - a `tool` message two messages away from its call went out and came back
-        // answered - so an endpoint that tolerates it is not hypothetical and a test that only
-        // checks "the API accepted it" would pass on the broken order there. Which is why the
-        // property in `tests/invariants.rs` asserts the adjacency itself rather than trusting a
-        // provider to complain, and why the live test asserts the *position* of the result and
-        // not merely that the request went through.
-        //
-        // note: a pass rather than bookkeeping inside the loop above, and the difference is a bug
-        // that lived here. What the loop kept was a *count* of what the current turn was waiting
-        // for, reset on the next turn - so a result whose turn was no longer the current one had
-        // nothing anchoring it, and two turns in a row with the first one's result recorded after
-        // the second put a `tool` message several messages away from its call. A count also let
-        // any result decrement it, including one answering somebody else. Reading the whole list
-        // at once costs one walk and cannot get either wrong: a result goes where its own call
-        // is, and a call is a place in a list rather than a number that has to be kept.
-        let mut results: HashMap<&ToolCallId, Vec<usize>> = HashMap::new();
-        for (at, (_, message)) in built.iter().enumerate() {
-            if let Some(answers) = &message.tool_call_id {
-                results.entry(answers).or_default().push(at);
-            }
-        }
-
-        let mut placed = vec![false; built.len()];
-        let mut order: Vec<usize> = Vec::with_capacity(built.len());
-        for (at, (_, message)) in built.iter().enumerate() {
-            // a result waits for the call it answers to place it - unless nothing in the request
-            // asks for it, which `repair_orphans` normally takes care of and a caller can turn
-            // off; then it keeps the place it had rather than being lost
-            let deferred = message
-                .tool_call_id
-                .as_ref()
-                .is_some_and(|answers| results.contains_key(answers));
-            if placed[at] || deferred {
-                continue;
-            }
-
-            placed[at] = true;
-            order.push(at);
-
-            // `calls()` rather than the kind's own list: with `send_blocks` a turn keeps its
-            // calls in its content, and the repair above may have taken some down
-            let mut adjacent = at + 1;
-            for call in message.calls() {
-                // one result per call, and the next unplaced one, because that is the pairing
-                // the pass above made: calls and results are claimed one for one, in order,
-                // rather than by set membership. Taking every result that shares the identifier
-                // undid exactly that where it matters - two calls carrying one identifier, which
-                // `repair_orphans` names as the case counting exists for, put both answers behind
-                // the first call and left the second reaching the wire with nothing after it. Two
-                // `tool` messages in a row and a trailing unanswered call, and nothing said,
-                // because nothing had been dropped
-                let answer = results
-                    .get(&call.id)
-                    .into_iter()
-                    .flatten()
-                    .copied()
-                    .find(|answer| !placed[*answer]);
-                let Some(answer) = answer else {
-                    continue;
-                };
-
-                if answer != adjacent {
-                    projection.reordered.push(format!(
-                        "moved item {} up behind the call `{}` it answers: a tool result has to \
-                         reach the wire immediately after the call it answers",
-                        built[answer].0, call.id
-                    ));
-                }
-                placed[answer] = true;
-                order.push(answer);
-                adjacent += 1;
-            }
-        }
-        // nothing is dropped to achieve an order. A result whose call is in the request is placed
-        // by it above; one that got here another way keeps its place at the end rather than going
-        // missing, which is the guarantee `Projection::included` is read for
-        order.extend((0..built.len()).filter(|at| !placed[*at]));
-
-        // taken rather than cloned: a projection is built for every budget and every preview, and
-        // an order is a permutation - each message is wanted exactly once, somewhere else
-        let mut built: Vec<Option<(ContextId, Message)>> = built.into_iter().map(Some).collect();
-        for at in order {
-            let (id, message) = built[at].take().expect("an order places each message once");
-            projection.included.push(id);
-            projection.messages.push(message);
-        }
-
-        projection
+        built
     }
+
+    /// One assistant turn as the message it projects to, or nothing where it projects to none.
+    ///
+    /// note: the turn is read as one ordered sequence whichever way it was recorded, so the
+    /// repair, the elision and the skip rule are each written once and only the last step asks
+    /// which of the two shapes it goes out in. Four arms would have asked that first and
+    /// written the other three twice.
+    fn turn(
+        &self,
+        item: &ContextItem,
+        tool_calls: &[ToolCall],
+        reasoning: &Option<Content>,
+        said: &Content,
+        answers: &mut HashMap<ToolCallId, usize>,
+        projection: &mut Projection,
+    ) -> Option<Message> {
+        let elided = item.state.is_elided();
+
+        // the turn as one ordered sequence, whichever way it was recorded. For a conventional one
+        // that is the order every provider has been assuming anyway - what it thought, what it
+        // said, what it asked for - so flattening it back below reproduces exactly what came in;
+        // for one recorded as blocks it is the order the model actually produced, which is the
+        // whole point. Doing it in two steps rather than four arms is what keeps the repair, the
+        // elision and the skip rule from being written twice
+        let recorded: Vec<Block> = match item.content.as_blocks() {
+            Some(blocks) => blocks.to_vec(),
+            None => {
+                let mut assembled = Vec::with_capacity(tool_calls.len() + 2);
+                assembled.extend(reasoning.clone().map(Block::reasoning));
+                // an empty text is no text at all - but an elided turn still gets its marker, which
+                // is the whole of what elision leaves behind
+                if elided || item.content.as_text() != Some("") {
+                    assembled.push(Block::text(item.content.clone()));
+                }
+                assembled.extend(tool_calls.iter().cloned().map(Block::Call));
+
+                assembled
+            }
+        };
+
+        let mut kept: Vec<Block> = Vec::with_capacity(recorded.len());
+        let mut marked = false;
+        for block in recorded {
+            match &block {
+                Block::Call(call) => {
+                    if !self.repair_orphans || claim(answers, &call.id) {
+                        kept.push(block);
+                    } else {
+                        projection.repairs.push(format!(
+                            "dropped the call `{}` ({}) from item {}: its result is not in the \
+                             projection",
+                            call.id, call.tool, item.id
+                        ));
+                    }
+                }
+                // an elided turn's thinking goes with its words. Keeping it would mean a turn whose
+                // content is a one-line marker still costing every token it ever thought - so
+                // eliding a turn would free nothing, and a compactor would watch the total refuse
+                // to move and elide it again. Worse under `send_blocks`: a signed thinking block
+                // would go out beside a marker that is not the words it was signed over
+                Block::Reasoning(_) if elided || !self.send_reasoning => {}
+                // an elided turn loses what it *said* and keeps everything else: the calls still
+                // answer their results, so the turn keeps its shape
+                Block::Text(_) if elided => {
+                    if !marked {
+                        kept.push(Block::text(said.clone()));
+                        marked = true;
+                    }
+                }
+                _ => kept.push(block),
+            }
+        }
+        // a turn recorded as blocks need not have had any text to mark
+        if elided && !marked {
+            kept.insert(0, Block::text(said.clone()));
+        }
+
+        let calls: Vec<ToolCall> = kept.iter().filter_map(Block::call).cloned().collect();
+        let spoke: Vec<&Part> = kept.iter().filter_map(Block::said).collect();
+
+        if spoke.is_empty() && calls.is_empty() {
+            // note: a turn that is *nothing but* reasoning goes too, because this projector speaks
+            // the dialect in which an assistant message with no content is rejected. A provider
+            // whose API keeps thinking-only turns - and some do - wants a projector of its own; the
+            // reasoning is still in the context either way, which is why this says so out loud
+            let reason = match kept.is_empty() {
+                false => {
+                    "an assistant turn with no content and no answered calls, so its reasoning \
+                     goes with it"
+                }
+                true => "an assistant turn with no content and no answered calls",
+            };
+            projection.skipped.push(Skipped {
+                id: item.id,
+                reason: reason.into(),
+            });
+            return None;
+        }
+
+        // note: whichever shape it goes out in, the message is handed back rather than pushed
+        // anywhere here, because the caller is where the repair above has finished taking calls
+        // down - and the ordering pass reads the calls a message actually kept
+        if self.send_blocks {
+            Some(Message::assistant(
+                Some(Content::Blocks(kept.into())),
+                Vec::new(),
+            ))
+        } else {
+            // flattening into the three slots, and saying so where it costs something
+            if let Some(lost) = flattening_lost(item, &kept, spoke.len()) {
+                projection.repairs.push(lost);
+            }
+
+            let content = join(spoke);
+            let reasoning = join(kept.iter().filter_map(Block::thought).collect());
+
+            Some(Message::assistant(content, calls).with_reasoning(reasoning))
+        }
+    }
+}
+
+/// What a turn recorded as ordered blocks loses by going out in three slots, where it loses
+/// anything: two thinking blocks joined into one is a signature destroyed, and a sentence that
+/// came after a call arrives before it.
+///
+/// note: asked of a turn that *was* recorded as blocks and of no other, because a conventional
+/// one is being put back into the shape it arrived in - there is nothing to lose and nothing to
+/// report. A turn with one of everything, in the order the slots are in, loses nothing either.
+///
+/// note: a signature on a text or a thinking part has nowhere to go in a conventional message,
+/// and going missing is the thing here it is most important to say out loud: it is what an API
+/// rejects the next request over, and the reason it went is that this projector was asked for a
+/// shape that cannot hold it.
+fn flattening_lost(item: &ContextItem, kept: &[Block], spoke: usize) -> Option<String> {
+    // only a turn that was recorded as blocks has an order to lose
+    item.content.as_blocks()?;
+
+    let thoughts = kept.iter().filter(|b| b.thought().is_some()).count();
+    let interleaved = kept
+        .iter()
+        .skip_while(|block| block.call().is_none())
+        .any(|block| block.call().is_none());
+    let signed = kept
+        .iter()
+        .filter_map(Block::part)
+        .any(|part| !part.extra.is_null());
+    if !(interleaved || spoke > 1 || thoughts > 1 || signed) {
+        return None;
+    }
+
+    let also = match signed {
+        true => ", and what the provider had attached to them",
+        false => "",
+    };
+
+    Some(format!(
+        "flattened item {} out of {} ordered block(s): this projector sends one content slot, one \
+         reasoning slot and a list of calls, so their order is not carried{also}",
+        item.id,
+        kept.len(),
+    ))
+}
+
+/// How many results are available to answer each call, and how many calls are available to be
+/// answered by each result, among the items a projection will carry.
+///
+/// note: both are consumed as the messages are built, so a call and a result are paired one for
+/// one. Counting rather than asking whether the identifier is present is what keeps that true of
+/// a context in which one arrives twice - see [`LinearProjector::repair_orphans`].
+fn pairings(
+    items: &[Arc<ContextItem>],
+) -> (HashMap<ToolCallId, usize>, HashMap<ToolCallId, usize>) {
+    let mut answers: HashMap<ToolCallId, usize> = HashMap::new();
+    let mut calls: HashMap<ToolCallId, usize> = HashMap::new();
+    for item in items.iter().filter(|i| i.is_projected()) {
+        match &item.kind {
+            ContextKind::ToolResult { call, .. } => {
+                *answers.entry(call.clone()).or_default() += 1;
+            }
+            ContextKind::AssistantMessage { .. } => {
+                // `calls()` rather than the kind's own list: a turn recorded as ordered blocks
+                // keeps its calls in its content, and pairing that found none there would repair
+                // away every result it ever got
+                for call in item.calls() {
+                    *calls.entry(call.id.clone()).or_default() += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    (answers, calls)
+}
+
+/// Claims one of the remaining counterparts for a call identifier, if there is one left.
+fn claim(remaining: &mut HashMap<ToolCallId, usize>, id: &ToolCallId) -> bool {
+    match remaining.get_mut(id) {
+        Some(left) if *left > 0 => {
+            *left -= 1;
+            true
+        }
+        _ => false,
+    }
+}
+
+/// The messages in the order the request needs them, and a line for everything that had to move.
+///
+/// A result has to reach the wire immediately after the call it answers: it is what the
+/// dialect specifies, and a strict endpoint refuses the whole request otherwise, naming
+/// the `tool_call_id` that went unanswered. So each turn's results are gathered to it, and
+/// everything else keeps the order the context had it in.
+///
+/// note: *a* strict endpoint, not every endpoint, and the difference was measured rather
+/// than assumed. Inception Labs' `mercury-2.5` accepts the malformed order without
+/// complaint - a `tool` message two messages away from its call went out and came back
+/// answered - so an endpoint that tolerates it is not hypothetical and a test that only
+/// checks "the API accepted it" would pass on the broken order there. Which is why the
+/// property in `tests/invariants.rs` asserts the adjacency itself rather than trusting a
+/// provider to complain, and why the live test asserts the *position* of the result and
+/// not merely that the request went through.
+///
+/// note: a pass rather than bookkeeping inside the loop above, and the difference is a bug
+/// that lived here. What the loop kept was a *count* of what the current turn was waiting
+/// for, reset on the next turn - so a result whose turn was no longer the current one had
+/// nothing anchoring it, and two turns in a row with the first one's result recorded after
+/// the second put a `tool` message several messages away from its call. A count also let
+/// any result decrement it, including one answering somebody else. Reading the whole list
+/// at once costs one walk and cannot get either wrong: a result goes where its own call
+/// is, and a call is a place in a list rather than a number that has to be kept.
+fn in_wire_order(
+    built: Vec<(ContextId, Message)>,
+    reordered: &mut Vec<String>,
+) -> Vec<(ContextId, Message)> {
+    let mut results: HashMap<&ToolCallId, Vec<usize>> = HashMap::new();
+    for (at, (_, message)) in built.iter().enumerate() {
+        if let Some(answers) = &message.tool_call_id {
+            results.entry(answers).or_default().push(at);
+        }
+    }
+
+    let mut placed = vec![false; built.len()];
+    let mut order: Vec<usize> = Vec::with_capacity(built.len());
+    for (at, (_, message)) in built.iter().enumerate() {
+        // a result waits for the call it answers to place it - unless nothing in the request asks
+        // for it, which `repair_orphans` normally takes care of and a caller can turn off; then it
+        // keeps the place it had rather than being lost
+        let deferred = message
+            .tool_call_id
+            .as_ref()
+            .is_some_and(|answers| results.contains_key(answers));
+        if placed[at] || deferred {
+            continue;
+        }
+
+        placed[at] = true;
+        order.push(at);
+
+        // `calls()` rather than the kind's own list: with `send_blocks` a turn keeps its calls in
+        // its content, and the repair above may have taken some down
+        let mut adjacent = at + 1;
+        for call in message.calls() {
+            // one result per call, and the next unplaced one, because that is the pairing the pass
+            // above made: calls and results are claimed one for one, in order, rather than by set
+            // membership. Taking every result that shares the identifier undid exactly that where
+            // it matters - two calls carrying one identifier, which `repair_orphans` names as the
+            // case counting exists for, put both answers behind the first call and left the second
+            // reaching the wire with nothing after it. Two `tool` messages in a row and a trailing
+            // unanswered call, and nothing said, because nothing had been dropped
+            let answer = results
+                .get(&call.id)
+                .into_iter()
+                .flatten()
+                .copied()
+                .find(|answer| !placed[*answer]);
+            let Some(answer) = answer else {
+                continue;
+            };
+
+            if answer != adjacent {
+                reordered.push(format!(
+                    "moved item {} up behind the call `{}` it answers: a tool result has to \
+                     reach the wire immediately after the call it answers",
+                    built[answer].0, call.id
+                ));
+            }
+            placed[answer] = true;
+            order.push(answer);
+            adjacent += 1;
+        }
+    }
+    // nothing is dropped to achieve an order. A result whose call is in the request is placed by it
+    // above; one that got here another way keeps its place at the end rather than going missing,
+    // which is the guarantee `Projection::included` is read for
+    order.extend((0..built.len()).filter(|at| !placed[*at]));
+
+    // taken rather than cloned: a projection is built for every budget and every preview, and an
+    // order is a permutation - each message is wanted exactly once, somewhere else
+    let mut built: Vec<Option<(ContextId, Message)>> = built.into_iter().map(Some).collect();
+    order
+        .into_iter()
+        .map(|at| built[at].take().expect("an order places each message once"))
+        .collect()
 }
