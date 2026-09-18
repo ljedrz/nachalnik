@@ -475,9 +475,59 @@ impl Provider for Gemini {
         let body = self.render(&request).expect("this provider always renders");
         let (base, model) = (self.endpoint(), self.model.lock().clone());
 
-        // the same bargain the other provider makes: waiting and trying again is the provider's
-        // business, because the kernel must not send a request twice behind a caller's back
-        let mut response = loop {
+        let mut response = match self.sent(&body, &base, &model, &deltas).await? {
+            // nobody is owed an error for being obeyed
+            Sent::Answered(answer) => return Ok(answer),
+            Sent::Streaming(response) => response,
+        };
+        let streamed = self.read(&mut response, &model, &deltas).await?;
+
+        answer(streamed, &deltas)
+    }
+}
+
+/// A request that is over, one way or the other: a stream to read, or an answer already in hand.
+///
+/// note: the only answer this dialect hands back without reading a stream is an interrupt,
+/// there being no whole-answer path here - `alt=sse` is on every request. It is the shape the
+/// other dialect's is because it means the same thing: the turn is over.
+enum Sent {
+    /// The turn, whole: nothing was waited for.
+    Answered(ModelResponse),
+    /// A response whose body is still arriving.
+    Streaming(reqwest::Response),
+}
+
+/// A stream, read: the turn as the parts left it.
+///
+/// note: `partial` is the turn in the order it was produced, which is this dialect's whole
+/// point and the reason it gathers parts where the other one gathers three slots.
+#[derive(Default)]
+struct Streamed {
+    /// The turn so far, in the order the model produced it.
+    partial: Vec<Partial>,
+    /// Why the turn ended, once something has said.
+    finish: Option<String>,
+    /// What the request cost, where the server reported it.
+    usage: Option<Usage>,
+    /// Every payload the server sent, verbatim.
+    chunks: Vec<Value>,
+    /// What arrived after the last whole line: nothing, in an answer that ended tidily, and the
+    /// whole of a response that was never a stream at all.
+    buffer: Vec<u8>,
+}
+
+impl Gemini {
+    /// Sends the request, waiting out an upstream that is merely busy, and hands back whichever
+    /// of the two things arrived.
+    async fn sent(
+        &self,
+        body: &Value,
+        base: &str,
+        model: &str,
+        deltas: &DeltaSink,
+    ) -> Result<Sent, BoxError> {
+        Ok(loop {
             self.attempts.fetch_add(1, Ordering::SeqCst);
             let response = match watched(
                 self.client
@@ -487,8 +537,8 @@ impl Provider for Gemini {
                     .header("x-goog-api-key", &self.api_key)
                     .json(&body)
                     .send(),
-                &deltas,
-                &model,
+                deltas,
+                model,
                 &self.notice,
                 PATIENCE,
             )
@@ -504,7 +554,7 @@ impl Provider for Gemini {
                     let wait = Duration::from_secs(1 << attempt);
                     if attempt >= RETRIES {
                         self.backoff.store(0, Ordering::SeqCst);
-                        return Err(reason.giving_up(&model));
+                        return Err(reason.giving_up(model));
                     }
 
                     *self.notice.lock() = Some(format!(
@@ -516,8 +566,8 @@ impl Provider for Gemini {
                     continue;
                 }
                 // nobody is owed an error for being obeyed
-                Err(Unsent::Interrupted) => return Ok(interrupted()),
-                Err(reason) => return Err(reason.giving_up(&model)),
+                Err(Unsent::Interrupted) => return Ok(Sent::Answered(interrupted())),
+                Err(reason) => return Err(reason.giving_up(model)),
             };
 
             let status = response.status();
@@ -526,7 +576,7 @@ impl Provider for Gemini {
                 // that had already ridden out four busy servers answered the fifth by giving up
                 // on the first try
                 self.backoff.store(0, Ordering::SeqCst);
-                break response;
+                break Sent::Streaming(response);
             }
 
             let transient = status.as_u16() == 429 || status.is_server_error();
@@ -547,8 +597,20 @@ impl Provider for Gemini {
                 wait.as_secs()
             ));
             tokio::time::sleep(wait).await;
-        };
+        })
+    }
 
+    /// Reads the response to its end, handing the parts to `deltas` as they arrive.
+    ///
+    /// note: what stops this is the server, an interrupt, or the stall watch - and the first two
+    /// of those are answers rather than failures, which is why what comes back is what had
+    /// arrived rather than an error.
+    async fn read(
+        &self,
+        response: &mut reqwest::Response,
+        model: &str,
+        deltas: &DeltaSink,
+    ) -> Result<Streamed, BoxError> {
         // bytes rather than a `String`, because a chunk boundary is not a character boundary. A
         // multi-byte character split across two reads used to be decoded twice, lossily, and
         // arrived as two replacement characters that then went into the context, the transcript
@@ -616,7 +678,7 @@ impl Provider for Gemini {
                             .into());
                         }
                         Silence::Worth(seconds) => {
-                            *self.notice.lock() = Some(gone_quiet(&model, seconds));
+                            *self.notice.lock() = Some(gone_quiet(model, seconds));
                         }
                         Silence::Ordinary => {}
                     }
@@ -680,7 +742,7 @@ impl Provider for Gemini {
                     .into_iter()
                     .flatten()
                 {
-                    Self::absorb(part, &mut partial, &deltas);
+                    Self::absorb(part, &mut partial, deltas);
                 }
 
                 chunks.push(chunk);
@@ -690,59 +752,76 @@ impl Provider for Gemini {
             }
         }
 
-        if chunks.is_empty() {
-            if finish.as_deref() == Some("interrupted") || deltas.is_interrupted() {
-                return Ok(interrupted());
-            }
-
-            let buffer = String::from_utf8_lossy(&buffer);
-            let payload: Value = serde_json::from_str(&buffer).unwrap_or(Value::Null);
-            return match payload.get("error").filter(|e| !e.is_null()) {
-                Some(error) => Err(format!("{error}").into()),
-                None => Err(format!("the stream carried no data: {buffer}").into()),
-            };
-        }
-
-        let blocks: Vec<Block> = partial
-            .into_iter()
-            .map(|part| match part {
-                Partial::Text(said, extra) => Block::Text(Part::new(said).with_extra(extra)),
-                Partial::Reasoning(said, extra) => {
-                    Block::Reasoning(Part::new(said).with_extra(extra))
-                }
-                Partial::Call(call) => Block::Call(call),
-            })
-            .collect();
-        let asked = blocks.iter().any(|block| block.call().is_some());
-
-        Ok(ModelResponse {
-            // the whole turn in one slot, in the order it was produced. `reasoning` and
-            // `tool_calls` stay empty: they are the other way of recording the same turn, and a
-            // response carrying both would be two accounts of it
-            content: (!blocks.is_empty()).then(|| Content::blocks(blocks)),
-            reasoning: None,
-            tool_calls: Vec::new(),
-            // note: derived from the parts, not from `finishReason`, which says `STOP` for a turn
-            // that asked for three tools. What ends a turn here is running out of things to say,
-            // and a call is not that
-            stop: match finish.as_deref() {
-                Some("interrupted") => StopReason::Other("interrupted".to_owned()),
-                // note: ahead of `asked`, for the reason `interrupted` is ahead of it. That the
-                // turn asked for a tool is visible in the blocks it is carrying; that the stream
-                // stopped partway through is visible nowhere else. The kernel decides what to run
-                // from the calls rather than from this, so saying so costs the turn nothing
-                Some("cut off") => StopReason::Other("cut off".to_owned()),
-                _ if asked => StopReason::ToolUse,
-                Some("STOP") => StopReason::EndTurn,
-                Some("MAX_TOKENS") => StopReason::Length,
-                Some("SAFETY" | "PROHIBITED_CONTENT" | "BLOCKLIST" | "SPII") => StopReason::Refusal,
-                Some(other) => StopReason::Other(other.to_lowercase()),
-                None => StopReason::Other("unreported".to_owned()),
-            },
+        Ok(Streamed {
+            partial,
+            finish,
             usage,
-            raw: Some(json!({ "stream": chunks })),
+            chunks,
+            buffer,
         })
     }
+}
+
+/// The turn the stream came to: the parts in the order they were produced, and what ended it.
+fn answer(streamed: Streamed, deltas: &DeltaSink) -> Result<ModelResponse, BoxError> {
+    let Streamed {
+        partial,
+        finish,
+        usage,
+        chunks,
+        buffer,
+    } = streamed;
+
+    if chunks.is_empty() {
+        if finish.as_deref() == Some("interrupted") || deltas.is_interrupted() {
+            return Ok(interrupted());
+        }
+
+        let buffer = String::from_utf8_lossy(&buffer);
+        let payload: Value = serde_json::from_str(&buffer).unwrap_or(Value::Null);
+        return match payload.get("error").filter(|e| !e.is_null()) {
+            Some(error) => Err(format!("{error}").into()),
+            None => Err(format!("the stream carried no data: {buffer}").into()),
+        };
+    }
+
+    let blocks: Vec<Block> = partial
+        .into_iter()
+        .map(|part| match part {
+            Partial::Text(said, extra) => Block::Text(Part::new(said).with_extra(extra)),
+            Partial::Reasoning(said, extra) => Block::Reasoning(Part::new(said).with_extra(extra)),
+            Partial::Call(call) => Block::Call(call),
+        })
+        .collect();
+    let asked = blocks.iter().any(|block| block.call().is_some());
+
+    Ok(ModelResponse {
+        // the whole turn in one slot, in the order it was produced. `reasoning` and
+        // `tool_calls` stay empty: they are the other way of recording the same turn, and a
+        // response carrying both would be two accounts of it
+        content: (!blocks.is_empty()).then(|| Content::blocks(blocks)),
+        reasoning: None,
+        tool_calls: Vec::new(),
+        // note: derived from the parts, not from `finishReason`, which says `STOP` for a turn
+        // that asked for three tools. What ends a turn here is running out of things to say,
+        // and a call is not that
+        stop: match finish.as_deref() {
+            Some("interrupted") => StopReason::Other("interrupted".to_owned()),
+            // note: ahead of `asked`, for the reason `interrupted` is ahead of it. That the
+            // turn asked for a tool is visible in the blocks it is carrying; that the stream
+            // stopped partway through is visible nowhere else. The kernel decides what to run
+            // from the calls rather than from this, so saying so costs the turn nothing
+            Some("cut off") => StopReason::Other("cut off".to_owned()),
+            _ if asked => StopReason::ToolUse,
+            Some("STOP") => StopReason::EndTurn,
+            Some("MAX_TOKENS") => StopReason::Length,
+            Some("SAFETY" | "PROHIBITED_CONTENT" | "BLOCKLIST" | "SPII") => StopReason::Refusal,
+            Some(other) => StopReason::Other(other.to_lowercase()),
+            None => StopReason::Other("unreported".to_owned()),
+        },
+        usage,
+        raw: Some(json!({ "stream": chunks })),
+    })
 }
 
 #[async_trait]
