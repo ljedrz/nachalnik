@@ -54,7 +54,7 @@ use crate::{
     suite::{
         counterfactual,
         dossier::{DEPOT, Dossier, id_of},
-        instrument, note_drift, script,
+        instrument, note_drift, said_or_nothing, script,
     },
     trial::{Kind, Labelled, Resolution, Step, Trial},
 };
@@ -621,11 +621,4 @@ impl Experiment for Conflict {
 
         Ok(())
     }
-}
-
-/// What the copies answered, or that they did not.
-fn said_or_nothing(answer: &Option<String>) -> String {
-    answer
-        .clone()
-        .map_or_else(|| "nothing readable".to_owned(), |said| format!("`{said}`"))
 }

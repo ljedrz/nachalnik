@@ -11,7 +11,7 @@ use crate::{
     intervene::Intervention,
     probe::{Answer, Probe},
     subject::Subject,
-    suite::{instrument, script},
+    suite::{instrument, said_or_nothing, script},
     trial::{Kind, Labelled, Resolution, Step, Trial},
 };
 
@@ -390,11 +390,4 @@ impl Experiment for Provenance {
 
         Ok(())
     }
-}
-
-/// What the copies answered, or that they did not.
-fn said_or_nothing(answer: &Option<String>) -> String {
-    answer
-        .clone()
-        .map_or_else(|| "nothing readable".to_owned(), |said| format!("`{said}`"))
 }

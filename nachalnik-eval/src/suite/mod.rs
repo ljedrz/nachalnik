@@ -124,6 +124,16 @@ pub(crate) fn note_drift(trial: &Trial, live: &Answer, control: &Observation) {
     }
 }
 
+/// What the copies answered, or that they did not.
+///
+/// note: here rather than beside the experiment that reads it, because two of them read it and
+/// the sentence a record carries is the thing a reader compares across experiments.
+pub(crate) fn said_or_nothing(answer: &Option<String>) -> String {
+    answer
+        .clone()
+        .map_or_else(|| "nothing readable".to_owned(), |said| format!("`{said}`"))
+}
+
 /// The nine experiments, at their default settings.
 ///
 /// note: One copy per condition, which is the cheap end. It is enough to run the whole thing for
