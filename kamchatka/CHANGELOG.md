@@ -151,6 +151,19 @@ minor bump may break you.
   read through whoever's tool it belongs to, so a foreign argument of that name has its `path` read
   as a path. It can only add a subject, which asks a question nobody needed, where passing it over
   would be a rule that stops being one. Documentation only.
+- A `shell` question draws the command as code and reads it down the panel rather than across it:
+  the rule down the left that a fenced block already gets, its tokens in the same colours, and one
+  stage to a line with the joint that reaches it - `|`, `||`, `&&`, `;` - at the head of the line,
+  the shape rustfmt gives a long boolean expression. Wrapped as prose it was folded wherever the
+  space ran out and the continuation went back to the margin, so the second half of a pipeline sat
+  under `cmd:` looking exactly like the next argument, on the one screen whose whole job is saying
+  what is about to run. The reading is quote-aware and declines rather than guessing: a separator
+  inside a quote, inside `$(…)` or inside backticks is left where it is, and an unterminated quote,
+  an unclosed `$(` or a trailing backslash means the command is drawn as it arrived - the panel
+  will not show a command nobody wrote. A command that brought its own newlines, a heredoc most
+  often, gets the rule and the colours and none of the breaking. `[i]` is still the byte-exact
+  view, which is what the broken form is not: a newline before `|` ends a command where a newline
+  after one continues it, so what is drawn is a rendering rather than a second spelling.
 
 ## [0.12.0] - 2026-09-17
 

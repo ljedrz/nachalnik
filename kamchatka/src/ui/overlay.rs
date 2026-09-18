@@ -16,10 +16,10 @@ use ratatui::{
 
 use crate::{
     app::{App, Focus, Overlay, Page, Tab, text::thousands},
-    ui::text::{refit, wrapped},
+    ui::text::{joints, refit, wrapped},
 };
 
-use super::{Scrolled, faint, quiet, scrollbar};
+use super::{Scrolled, faint, markdown::highlighted, quiet, scrollbar};
 
 /// Whatever is on top of everything else.
 ///
@@ -113,6 +113,7 @@ fn question_parts(
     // and the outside of one is a single field holding the whole call as a blob. What that costs
     // is exactly what this panel is for: `old` in red and `new` in green, one argument to a line
     let mut shown = readable(
+        &request.tool,
         crate::tools::ops::inner(&request.args).unwrap_or(&request.args),
         columns,
     );
@@ -323,7 +324,19 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
 /// `markdown`, and they are the terminal's own for the reason given there - this program does not
 /// know what is behind them. The red here is a pair with the green and reads as one; the border's
 /// red is about whether anybody is at the keys, and nothing else in the panel is either colour.
-fn readable(args: &serde_json::Value, columns: usize) -> Vec<Line<'static>> {
+///
+/// note: a shell command is drawn as code, through the same [`highlighted`] a fenced ```sh block
+/// in the chat goes through, and broken at its joints by [`joints`] first. Wrapped as prose it was
+/// folded at whatever space ran out, and the continuation went back to the margin - so the second
+/// half of a pipeline sat under `cmd:` looking exactly like the next argument, on the one screen
+/// whose whole job is saying what is about to run. The rule down the left settles that by itself;
+/// the highlighting is what makes a quoted string legible as one thing rather than as a run of
+/// flags.
+///
+/// note: by the tool's name as well as the field's, the way [`App::about`] picks its two out. A
+/// `cmd` is a shell command *here* because `shell` is the tool that takes one, and somebody else's
+/// tool with a field of that name has not said it is drawing a command line.
+fn readable(tool: &str, args: &serde_json::Value, columns: usize) -> Vec<Line<'static>> {
     let Some(fields) = args.as_object() else {
         return serde_json::to_string_pretty(args)
             .unwrap_or_default()
@@ -343,6 +356,18 @@ fn readable(args: &serde_json::Value, columns: usize) -> Vec<Line<'static>> {
             _ => Style::default(),
         };
         match value {
+            // before the multi-line arm, so that a command which brought its own newlines - a
+            // heredoc, most often - is drawn as code too. `joints` declines to touch that one, so
+            // what it gets is the rule and the colours and none of the breaking
+            serde_json::Value::String(text) if tool == "shell" && name == "cmd" => {
+                out.extend(refit(&Line::raw(format!("{name}:")), columns));
+                let broken = joints(text);
+                out.extend(highlighted(
+                    "sh",
+                    broken.as_deref().unwrap_or(text),
+                    columns,
+                ));
+            }
             serde_json::Value::String(text) if text.contains('\n') => {
                 out.extend(refit(&Line::raw(format!("{name}:")), columns));
                 for line in text.lines() {

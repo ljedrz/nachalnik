@@ -1692,3 +1692,72 @@ async fn a_call_waiting_on_a_decision_is_not_drawn_as_withheld() {
         "the call it made is still what happened: {screen}"
     );
 }
+
+/// A command the model wrote on one line is read down the panel as its stages.
+///
+/// note: the joints lead their lines, so that going down the left edge says how each stage is
+/// reached before saying what it is. What this is really fixing is the row under `cmd:`: wrapped
+/// as prose, the second half of a pipeline went back to the margin and read as the next argument,
+/// on the one screen whose whole job is saying what is about to run.
+#[tokio::test]
+async fn a_long_command_is_read_down_the_question_rather_than_across_it() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "shell",
+            json!({
+                "action": "run",
+                "cmd": "rg -n 'fn draw' src/ | sort -u | head -20 && cargo build --release 2>&1",
+            }),
+        )]),
+        ModelResponse::text("ran it"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("look for it").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    // the first stage at the margin, and every other one under the joint that reaches it
+    for line in [
+        "│ rg -n 'fn draw' src/",
+        "│   | sort -u",
+        "│   | head -20",
+        "│   && cargo build --release 2>&1",
+    ] {
+        assert!(screen.contains(line), "no `{line}` in: {screen}");
+    }
+}
+
+/// A separator that is part of an argument does not become a line of its own.
+///
+/// note: the case that decides whether this is worth doing at all. `echo 'a | b'` drawn as two
+/// lines is the panel showing a command nobody wrote, which is worse than the wrapping it
+/// replaced - so the reading is quote-aware, and gives up rather than guessing. `[i]` is still the
+/// byte-exact view either way.
+#[tokio::test]
+async fn a_separator_inside_a_quote_does_not_become_a_second_command() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "shell",
+            json!({ "action": "run", "cmd": "echo 'a | b'" }),
+        )]),
+        ModelResponse::text("said it"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("say it").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("│ echo 'a | b'"), "{screen}");
+    assert!(
+        !screen.contains("| b'\n"),
+        "the quote was read as a joint: {screen}"
+    );
+}
