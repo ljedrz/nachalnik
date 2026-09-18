@@ -286,6 +286,70 @@ fn a_nonsensical_report_cannot_turn_a_budget_into_a_fiction() {
     assert_eq!(counter.calibration().scale, 1.0);
 }
 
+/// The bound a ratio this counter worked out is held to is the bound one it is *handed* is held
+/// to as well. `Calibration` is `serde` with public fields and a `Snapshot` carries one, so a
+/// scale arriving that way has been derived by nobody - and `0.0` is the value
+/// `Calibration::default` is hand-written to avoid, reachable through the other door.
+#[test]
+fn a_calibration_that_was_derived_nowhere_is_held_to_the_same_bounds() {
+    let counter = calibrating();
+
+    counter.recalibrate(Calibration {
+        scale: 0.0,
+        observations: 4,
+        estimated: 4_000,
+        reported: 5_000,
+    });
+    assert_eq!(counter.calibration().scale, 0.1, "clamped, not believed");
+    assert_ne!(
+        counter.count(&Content::text("x".repeat(4_000))),
+        0,
+        "a scale of zero reports a whole context as costing nothing"
+    );
+
+    // what it was told about those observations is kept: the correction is the only field that
+    // was not arrived at by counting something
+    assert_eq!(counter.calibration().observations, 4);
+    assert_eq!(counter.calibration().estimated, 4_000);
+    assert_eq!(counter.calibration().reported, 5_000);
+
+    counter.recalibrate(Calibration {
+        scale: 1e9,
+        ..Calibration::default()
+    });
+    assert_eq!(counter.calibration().scale, 10.0);
+
+    // and a number nothing can be done with corrects nothing, rather than surviving a `clamp`
+    // that answers a NaN with a NaN and making every figure in the session `0`
+    counter.recalibrate(Calibration {
+        scale: f64::NAN,
+        ..Calibration::default()
+    });
+    assert_eq!(counter.calibration().scale, 1.0);
+    assert_ne!(counter.count(&Content::text("x".repeat(4_000))), 0);
+}
+
+/// And what it learns next is learned from where it really is, rather than from the figure that
+/// was refused. A scale of `0.0` left in place made `observe` divide by it, which saturates to
+/// `u64::MAX` on the way into a running total.
+#[test]
+fn a_refused_correction_does_not_poison_what_is_learned_after_it() {
+    let counter = calibrating();
+
+    counter.recalibrate(Calibration {
+        scale: 0.0,
+        ..Calibration::default()
+    });
+    counter.observe(1_000, 1_250);
+
+    let learned = counter.calibration();
+    assert_eq!(learned.observations, 1);
+    // 1,000 estimated at a scale of 0.1 is 10,000 of the underlying counter's own units
+    assert_eq!(learned.estimated, 10_000);
+    assert_eq!(learned.reported, 1_250);
+    assert_eq!(learned.scale, 0.125);
+}
+
 #[test]
 fn a_request_too_small_to_have_a_bias_in_it_teaches_nothing() {
     let counter = calibrating();
@@ -561,6 +625,31 @@ fn recalibrating_a_counter_that_does_not_learn_does_nothing() {
         learning.recalibrate(Calibration::default()),
         Some(Calibration::default())
     );
+    assert!(events.try_recv().is_err(), "it recounted for nothing");
+}
+
+/// Nor when the correction offered is one the counter will not apply. What was asked for and what
+/// was applied are two questions, and the recount follows the second: a scale nothing can be done
+/// with leaves the counter where it was, and rewriting every stored figure to what it already said
+/// would be a recount announced for nothing.
+#[test]
+fn recalibrating_with_a_correction_the_counter_refuses_recounts_nothing() {
+    let kernel = kernel();
+    let item = kernel.push(ContextItem::file("big.rs", "x".repeat(4_000)));
+    let before = kernel.item(item).unwrap().tokens;
+
+    let mut events = kernel.subscribe();
+    assert_eq!(
+        kernel.recalibrate(Calibration {
+            scale: f64::NAN,
+            ..Calibration::default()
+        }),
+        Some(Calibration::default()),
+        "what it knew before, which is also what it still knows"
+    );
+
+    assert_eq!(kernel.counter().calibration(), Some(Calibration::default()));
+    assert_eq!(kernel.item(item).unwrap().tokens, before);
     assert!(events.try_recv().is_err(), "it recounted for nothing");
 }
 

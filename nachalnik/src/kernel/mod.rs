@@ -761,12 +761,16 @@ impl Kernel {
     /// ever offers back what a counter gave it, which is the rule [`TokenCounter::calibration`]
     /// states; a counter that never changes its mind has nothing to be told and nothing to
     /// recount for. A correction identical to the one in force is not a change either, and takes
-    /// no recount.
+    /// no recount - read off what the counter says afterwards rather than off what it was handed,
+    /// since what was asked for and what was applied are not the same question.
     pub fn recalibrate(&self, calibration: Calibration) -> Option<Calibration> {
         let counter = self.counter();
         let previous = counter.calibration()?;
         counter.recalibrate(calibration);
-        if previous != calibration {
+        // a counter is entitled to hold a correction to what it can actually apply, and
+        // `Calibrating` does - so offering it a scale it refuses is not a change to recount for,
+        // and a scale it takes in part is a recount against the part it took
+        if counter.calibration() != Some(previous) {
             self.recount();
         }
 

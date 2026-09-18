@@ -5,6 +5,23 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- `Calibrating::recalibrate` holds the scale it is handed to the same bounds the one it works out
+  for itself goes through. `observe` clamped its ratio and this door had nothing on it, which
+  matters because it is the door a `Snapshot` comes through: `Calibration` is `serde` with public
+  fields, so what a file says a scale is has been derived by nobody. A `0.0` there is the value
+  `Calibration::default` is hand-written to avoid, arriving by the other route - every figure in
+  the session reported as nothing, a compactor that never fires and an oversized request never
+  refused, and then `observe` dividing by it, which comes out as an infinity that saturates to
+  `u64::MAX` on its way into a running total. A NaN is named separately rather than left to the
+  clamp, which answers one with a NaN.
+- `Kernel::recalibrate` decides whether to recount from what the counter says afterwards rather
+  than from what it was handed, so a correction a counter declines to apply is not announced as a
+  change to every stored figure.
+
 ## [0.6.0] - 2026-09-17
 
 ### added

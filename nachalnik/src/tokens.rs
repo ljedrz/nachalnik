@@ -364,6 +364,30 @@ const BOUNDS: (f64, f64) = (0.1, 10.0);
 /// framing to be a percentage rather than the answer.
 const WORTH_LEARNING_FROM: usize = 256;
 
+/// The scale a correction is actually applied at: inside [`BOUNDS`], and a number the arithmetic
+/// around it can be done with.
+///
+/// note: one function rather than a `clamp` where the ratio is worked out, because there are two
+/// doors into that field and only one of them was holding the bound. [`TokenCounter::observe`]
+/// derives a ratio and clamped it; [`TokenCounter::recalibrate`] is *handed* one, and what comes
+/// through it is a [`Snapshot`](crate::Snapshot)'s - `Calibration` is `serde` with public fields,
+/// so what a file says a scale is has been derived by nobody. A `0.0` there is the value
+/// [`Calibration::default`] is hand-written to avoid, and it arrives by another route: every
+/// figure in the session reported as nothing, and the next `observe` dividing by it, which comes
+/// out as an infinity that saturates to `u64::MAX` and is then added to a running total.
+///
+/// note: the finite test is not redundant with the clamp. `f64::clamp` answers a NaN with a NaN
+/// rather than with a bound, and a NaN scale makes every count `0` - a float-to-integer `as`
+/// saturates one to zero - for the rest of the session, with `observe` unable to correct it
+/// because the same NaN comes back out of its own division. `1.0` is the honest answer to a number
+/// nothing can be done with: correct nothing, and let the next response teach it.
+fn applicable(scale: f64) -> f64 {
+    match scale.is_finite() {
+        true => scale.clamp(BOUNDS.0, BOUNDS.1),
+        false => 1.0,
+    }
+}
+
 impl<C> Calibrating<C> {
     /// Wraps a counter, correcting nothing until it has been told something.
     pub fn new(inner: C) -> Self {
@@ -439,7 +463,12 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
     }
 
     fn recalibrate(&self, calibration: Calibration) {
-        *self.learned.write() = calibration;
+        // through the same gate the ratio this counter works out for itself goes through; see
+        // `applicable` for what arrives here that has been through nothing
+        *self.learned.write() = Calibration {
+            scale: applicable(calibration.scale),
+            ..calibration
+        };
     }
 
     fn observe(&self, estimated: usize, reported: usize) {
@@ -461,7 +490,6 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
         learned.observations += 1;
         learned.estimated += own;
         learned.reported += reported as u64;
-        learned.scale =
-            (learned.reported as f64 / learned.estimated.max(1) as f64).clamp(BOUNDS.0, BOUNDS.1);
+        learned.scale = applicable(learned.reported as f64 / learned.estimated.max(1) as f64);
     }
 }
