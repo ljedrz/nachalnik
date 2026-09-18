@@ -40,18 +40,15 @@ use std::{
 use nachalnik::{
     BoxError, ContextId, ContextItem, ContextKind, ContextState, Kernel, selectors::Selector,
 };
-use parking_lot::Mutex;
 use serde_json::{Value, json};
 
 use crate::tools::{Careful, Limits};
 
-mod amend;
 mod context;
 mod fork;
 mod log;
 mod setup;
 
-use crate::introspect::amend::Amend;
 pub use crate::introspect::{context::Context, fork::Fork, log::Log, setup::Setup};
 
 /// Registers the tools, and returns the handle that keeps their reach into the kernel alive.
@@ -76,16 +73,8 @@ pub use crate::introspect::{context::Context, fork::Fork, log::Log, setup::Setup
 pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits) -> Arc<Kernel> {
     let anchor = Arc::new(kernel.clone());
     let reach = Reach(Arc::downgrade(&anchor));
-    // shared, because these tools are one agent's hands: what `amend` pinned is what
-    // `context` should report as the agent's own to unpin, and a second set would have them
-    // disagreeing about a promise
-    let pinned = Arc::new(Mutex::new(BTreeSet::new()));
 
-    kernel.add_tool(Arc::new(Context::new(
-        reach.clone(),
-        pinned,
-        limits.clone(),
-    )));
+    kernel.add_tool(Arc::new(Context::new(reach.clone(), limits.clone())));
     kernel.add_tool(Arc::new(Fork::new(reach.clone(), limits.clone())));
     kernel.add_tool(Arc::new(Log::new(reach.clone(), limits.clone())));
     kernel.add_tool(Arc::new(Setup::new(reach, policy, limits)));
@@ -105,10 +94,6 @@ impl Reach {
         })
     }
 }
-
-/// The items the agent pinned itself, shared between the tool that sets them and the one that
-/// reports them.
-type Pinned = Arc<Mutex<BTreeSet<ContextId>>>;
 
 // ------------------------------------------------------------------------------------ helpers
 

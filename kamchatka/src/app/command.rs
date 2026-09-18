@@ -199,7 +199,7 @@ impl App {
             "note" => self.note(rest),
             // note: one word per mechanism, and the mechanism here is a state. `/prune` moved an
             // item to `excluded` and every place the result is read back said `excluded`, so the
-            // command is named for that now - and `amend`'s own five moves are named the same way,
+            // command is named for that now - and `context`'s own moves are named the same way,
             // so the person and the model reach for the same word. The old spellings still work:
             // accepting a word somebody typed costs nothing
             "exclude" | "prune" => self.by_selector("exclude", rest),
@@ -630,8 +630,8 @@ impl App {
     /// that reads it. The model gets `note:` in front of the words, so it can tell a fact it was
     /// handed from a thing it was asked; `/exclude memories` names every one of them and nothing
     /// else; the chat draws it as what went in rather than as something said; and the runtime's
-    /// own taxonomy already had the word, with `amend`'s `note` writing the same kind of item from
-    /// the model's hand.
+    /// own taxonomy already had the word, with `context`'s `note` writing the same kind of item
+    /// from the model's hand.
     ///
     /// note: not pinned, exactly as `/attach` is not. What is worth keeping from compaction is a
     /// judgement about the note rather than about notes, and `p` is one key on the row.
@@ -984,9 +984,9 @@ impl App {
     /// lost; this is the same information one step earlier, where it is still a decision.
     ///
     /// note: it exists for the session that cannot ask the model to tidy up, which is the one
-    /// most likely to need tidying. `context` and `amend` are the model's tools, and reaching
-    /// them costs a request - the request that is failing. A context too big to send is a context
-    /// whose only way out was through the thing that no longer works.
+    /// most likely to need tidying. `context` is the model's tool for this, and reaching it costs
+    /// a request - the request that is failing. A context too big to send is a context whose only
+    /// way out was through the thing that no longer works.
     ///
     /// note: the question stands in the prompt's place like a tool's, and for the same reason it
     /// is pinned rather than modal: the context tab is a keystroke away while it waits, `p` there

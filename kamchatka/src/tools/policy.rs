@@ -334,9 +334,9 @@ impl Careful {
             // Both were decisions taken for the user about things they may perfectly well want,
             // and the sandbox is what makes either answer mean something once they have given it.
             //
-            // note: and no operation rules either. Four of `amend`'s were seeded here at `ask`,
+            // note: and no operation rules either. Four of `context`'s were seeded here at `ask`,
             // so that allowing the tool still left an `exclude` a question - which made `--allow
-            // amend` mean something other than `amend`, and there is no way to guess from the
+            // context` mean something other than `context`, and there is no way to guess from the
             // words which four. A domain is the whole of what is done in it; somebody who wants
             // less than that writes the operation they want.
             stances: Mutex::new(BTreeMap::new()),

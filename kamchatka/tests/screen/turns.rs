@@ -227,7 +227,7 @@ async fn what_the_screen_shows_of_the_next_request_is_the_next_request() {
 /// how one stops being offered.
 ///
 /// note: this was `/introspect`, one command for these four. It switched them off by dropping the
-/// handle they reach the kernel through, which also threw away what `amend` was remembering - and
+/// handle they reach the kernel through, which also threw away what `context` was remembering - and
 /// it left every other tool with `/tools drop`, which had no way back. One word for every tool
 /// replaced both, so what this now checks is that these four are not special.
 #[tokio::test]
@@ -269,8 +269,8 @@ async fn the_tools_that_read_this_session_go_off_and_on_like_any_other() {
     }
     assert!(harness.app.kernel.tool_ids().is_empty());
     // and the handle they reach the kernel through has *not* gone with them, which is the
-    // difference this replaced: a tool that is not offered is still the same tool, so what `amend`
-    // pinned is still pinned and what it could walk back it still can
+    // difference this replaced: a tool that is not offered is still the same tool, so what
+    // `context` pinned is still pinned and what it could walk back it still can
     assert!(harness.app.introspect.is_some());
 
     // and back, which is the half there was no way to do before

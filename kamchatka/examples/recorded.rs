@@ -37,18 +37,18 @@ const BRIEF: &str = "You are working in a Rust workspace on this machine, throug
 You have a hard context budget of 10,000 tokens for this whole task, and tool output here is \
 large: one careless command will spend most of it. Four tools let you do something about that.
 
-`context` reads your own state: `budget` says where you stand and which items are costing you \
-the most, `look` lists what you are carrying, `search` finds text anywhere in it without putting \
-the item back, `draft` shows you your own answer before you give it, and `fork` asks a copy of \
-you a question without spending your context on the reply.
+`context` reads your own state and changes it: `budget` says where you stand and which items are \
+costing you the most, `look` lists what you are carrying, `search` finds text anywhere in it \
+without putting the item back, `elide` replaces an item you are done with by a short marker and \
+gives you its tokens back, `select` names a whole class of them at once, and `note` writes \
+something down where compaction cannot reach it.
+
+`fork` asks a copy of you something without spending your context on the reply: `draft` shows you \
+your own answer before you give it, and `ask` puts a question of your own to the copy.
 
 `log` reads the record kept beside your context - what was added, replaced or elided, and what \
 was asked permission for. `setup` says what this session is running with: which model, which \
 tools, and what the policy will refuse before you ask.
-
-`amend` manages your context: `elide` replaces an item you are done with by a short marker and \
-gives you its tokens back, `select` names a whole class of them at once, and `note` writes \
-something down where compaction cannot reach it.
 
 Check your budget before and after anything expensive. Answer only when you are sure.";
 

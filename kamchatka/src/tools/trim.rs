@@ -238,8 +238,8 @@ impl Compactor for Trim {
         // a conversation in which it never asked for any of this, directly above a note saying
         // the results had been dropped. The two accounts disagreed and the marker is the true one
         Some(CompactionPlan {
-            // note: `elided`, which is the word the pane puts on the row, the word `amend`'s own
-            // `prune` takes, and the word the runtime's state is called. It said `shortened to a
+            // note: `elided`, which is the word the pane puts on the row, the word `context`'s own
+            // `elide` takes, and the word the runtime's state is called. It said `shortened to a
             // marker`, which is a third name for the thing - and a fourth mechanism away from
             // `truncated`, which is what an output limit does and is not this at all
             // note: the blobs get their own clause, and they need one. What the model is left

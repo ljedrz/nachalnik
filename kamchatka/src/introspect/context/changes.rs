@@ -4,7 +4,7 @@
 //! note: a file of its own and not a tool of its own. It was both until the two were merged, and
 //! what stayed behind is everything that is really about *changing* a context - the journal
 //! `undo` walks, the refusals, and the accounting that says what a change cost. The schema and
-//! the dispatch are in `context.rs` with the reading half, because that is what a model sees.
+//! the dispatch are next door with the reading half, because that is what a model sees.
 //!
 //! note: what it will not do is undo a person's decisions - a pinned item, a system instruction
 //! and the assistant turn carrying the call in flight are refused, and `undo` walks its own
@@ -20,9 +20,12 @@ use nachalnik::{
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::app::text::thousands;
+use crate::{
+    app::text::thousands,
+    introspect::{ids, named, protected, unknown},
+};
 
-use super::{Pinned, ids, named, protected};
+use super::{CHANGES, Pinned};
 
 /// How many of its own changes one call may walk back or forward.
 ///
@@ -44,14 +47,14 @@ const WALK: u64 = 64;
 /// their work rather than its own. And the top of that stack, at the moment a tool is running, is
 /// always the assistant turn that asked for the call: one step would erase the model's own
 /// question, orphan the answer it is waiting for, and leave the loop rebuilding a request from
-/// before it asked. A journal of this tool's own amendments has neither problem, and it is the
+/// before it asked. A journal of this tool's own changes has neither problem, and it is the
 /// honest scope of "undo my mistakes" - the mistakes being the ones it made.
-pub(super) struct Amend {
+pub(super) struct Changes {
     pinned: Pinned,
     journal: Mutex<Journal>,
 }
 
-impl Amend {
+impl Changes {
     /// Builds one; [`Context`](super::Context) is the only caller.
     ///
     /// note: the journal starts empty and is made here rather than handed in - what `undo` walks
@@ -69,14 +72,14 @@ impl Amend {
     }
 }
 
-/// What [`Amend`] has done, and what it has walked back.
+/// What [`Changes`] has made, and what it has walked back.
 #[derive(Default)]
 struct Journal {
     done: Vec<Undoing>,
     undone: Vec<Undoing>,
 }
 
-/// One amendment, recorded as the way back from it.
+/// One change, recorded as the way back from it.
 ///
 /// note: the way back rather than the change itself, because applying one returns the way back
 /// from *that* - so undo and redo are the same operation run against two stacks, and there is no
@@ -181,14 +184,14 @@ impl Undoing {
     }
 }
 
-impl Amend {
+impl Changes {
     /// Runs one of the eight operations that change something.
     ///
     /// note: it is handed the operation and the reason rather than reading either, because both
-    /// are the vocabulary's and the vocabulary is `context`'s: it is the tool a model called, it
-    /// holds the list of twelve, and it is what says so when a call names none of them. What is
-    /// in here is what changing a context *is*.
-    pub(super) fn change(
+    /// are the vocabulary's and the vocabulary belongs to the half next door: that is the tool a
+    /// model called, it holds the list of twelve, and it is what says so when a call names none of
+    /// them. What is in here is what changing a context *is*.
+    pub(super) fn make(
         &self,
         kernel: &Kernel,
         call: &ToolCall,
@@ -209,7 +212,16 @@ impl Amend {
             // Two models in a row spent a call each asking for `restore` and being told it was a
             // state and not an action; the answer was that they were right and the levels were
             // wrong.
-            other => self.moved(kernel, call, args, reason, other),
+            //
+            // note: the state is read here, where the four are named, rather than inside the move.
+            // It used to be read in there and answered with a listing of what to say instead - a
+            // listing that went on offering `archive` after `archive` stopped being an action, in
+            // a branch nothing can reach: `CHANGES` is what gets a call this far and the four
+            // above are the rest of it.
+            other => match state_of(other) {
+                Some(state) => self.moved(kernel, call, args, reason, other, state),
+                None => ToolOutput::error(unknown(other, &CHANGES)),
+            },
         }
     }
 }
@@ -271,7 +283,7 @@ fn wrote_anything_down(kernel: &Kernel) -> bool {
     })
 }
 
-impl Amend {
+impl Changes {
     /// Moves items to a state, refusing the ones that are not the model's to move.
     fn moved(
         &self,
@@ -280,6 +292,7 @@ impl Amend {
         args: &Value,
         reason: &str,
         action: &str,
+        state: ContextState,
     ) -> ToolOutput {
         // a selector, or a list of numbers, and never both. Naming a class of items is what makes
         // this usable for the job it is mostly for - "the tool results I am done with" is one
@@ -312,27 +325,6 @@ impl Amend {
                 },
             });
         }
-        let Some(state) = state_of(action) else {
-            // what each one does rather than only what it is called: the choice between `elide`
-            // and `exclude` is the one that decides whether a tool call keeps its answer, and a
-            // list of five words does not help anybody make it
-            //
-            // note: `archive` said "keep it, do not send it, and stop counting it against the
-            // budget", which is three things `exclude` also does - so the clause only meant
-            // anything by implying that an excluded item is still charged for, and it is not.
-            // Measured against a real endpoint, the two produce the same request to the token:
-            // 3,451 active, 2,219 either way. What actually separates them is what the person
-            // reading the pane is meant to conclude, so that is what the line says now
-            return ToolOutput::error(
-                "say which move you mean, as the `action`:\n  \
-                 elide    - replace what it says with a marker; a tool call keeps its answer\n  \
-                 exclude  - take it out of the request; a tool call loses its answer too\n  \
-                 archive  - the same, for what you are done with rather than setting aside\n  \
-                 pin      - protect it from compaction\n  \
-                 restore  - put it back the way it was",
-            );
-        };
-
         let before = kernel.budget().used();
         let mine = self.pinned.lock().clone();
         let own = own_turn(kernel, &call.id);
@@ -502,7 +494,7 @@ impl Amend {
         // context tab, which replaces in place as well and writes `by: user` for the same reason.
         // So the two paths must not look alike: a model reading its own metadata is never shown
         // its own tool as the editor of a sentence a person rewrote, and the person is never told
-        // they did something `amend` did. The `unwrap_or` on the pane that draws this guards
+        // they did something `context` did. The `unwrap_or` on the pane that draws this guards
         // somebody else's metadata, not either of those
         meta["revised"] = json!({ "by": "context", "reason": reason, "call": call.id.to_string() });
         let _ = kernel.annotate(id, meta);
@@ -610,7 +602,7 @@ impl Amend {
         ))
     }
 
-    /// Walks this tool's own amendments back, or forward again.
+    /// Walks this tool's own changes back, or forward again.
     ///
     /// note: the two directions are one loop over two stacks, because an [`Undoing`] applied hands
     /// back the way from where that left things to where they were. There is no separate "redo"
@@ -712,7 +704,7 @@ impl Amend {
         ToolOutput::new(out)
     }
 
-    /// Records an amendment, and makes whatever had been walked back unreachable.
+    /// Records a change, and makes whatever had been walked back unreachable.
     ///
     /// note: the same rule the kernel's own redo stack follows, and for the same reason: a redo
     /// that reached across work done since would be overwriting it rather than restoring anything.

@@ -18,8 +18,9 @@
 //! two descriptions in every request, most of each spent saying which of the two the other one
 //! was.
 //!
-//! note: the changing half is still in `amend.rs`, which is the file it was written in and the
-//! file its journal and its refusals belong to. What moved is the schema and the dispatch.
+//! note: a directory, with the changing half in `changes.rs`: the journal `undo` walks, the
+//! refusals, and the accounting that says what a change cost. What is here is what a model sees -
+//! the schema, the dispatch, and everything that only reads.
 
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -27,6 +28,7 @@ use nachalnik::{
     Block, BoxError, Capability, ContextId, ContextItem, ContextKind, Event, Kernel, OutputSink,
     Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
 };
+use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::{
@@ -37,7 +39,15 @@ use crate::{
     },
 };
 
-use super::{Amend, Pinned, Reach, action, amend::own_turn, ids, named, protected, unknown};
+use super::{Reach, action, ids, named, protected, unknown};
+
+mod changes;
+
+use changes::{Changes, own_turn};
+
+/// The items the agent pinned itself, shared between the half that sets them and the half that
+/// reports them.
+type Pinned = Arc<Mutex<BTreeSet<ContextId>>>;
 
 /// How much of an item's text the listing shows on its row.
 const GLIMPSE: usize = 48;
@@ -238,17 +248,23 @@ pub struct Context {
     limits: Limits,
     /// The half that changes things, which keeps the journal `undo` walks and the set of items
     /// this tool pinned itself.
-    amend: Amend,
+    changes: Changes,
     ops: Vec<Op>,
     schema: Arc<Value>,
 }
 
 impl Context {
     /// Builds one; see [`super::install`], which is the only caller.
-    pub(super) fn new(reach: Reach, pinned: Pinned, limits: Limits) -> Self {
+    ///
+    /// note: the pinned set is made here and shared with the changing half rather than handed in.
+    /// It was handed in while `context` and the tool that changed it were two, and what it is now
+    /// is one tool's memory of which pins are its own - so a second holder of it could only ever
+    /// be something that would disagree about a promise.
+    pub(super) fn new(reach: Reach, limits: Limits) -> Self {
         let ops = ops();
+        let pinned = Pinned::default();
         Self {
-            amend: Amend::new(pinned.clone()),
+            changes: Changes::new(pinned.clone()),
             reach,
             pinned,
             limits,
@@ -371,7 +387,7 @@ impl Tool for Context {
                     ));
                 };
 
-                Ok(self.amend.change(&kernel, call, args, op, reason))
+                Ok(self.changes.make(&kernel, call, args, op, reason))
             }
             other => Ok(ToolOutput::error(unknown(other, &actions(&self.ops)))),
         }
@@ -1289,10 +1305,6 @@ mod tests {
     }
 
     fn tool() -> Context {
-        Context::new(
-            Reach(std::sync::Weak::new()),
-            Pinned::default(),
-            Limits::default(),
-        )
+        Context::new(Reach(std::sync::Weak::new()), Limits::default())
     }
 }

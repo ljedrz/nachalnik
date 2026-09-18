@@ -54,10 +54,11 @@ into nothing - and is a second opt-in because it is asked on far more calls), an
 `Limits`, the domains this program's own tools act in, and the
 argument readers every tool here shares, `unread` among them, which `introspect/` reaches for too),
 `introspect/` (the four tools an agent inspects and manages its own session with, one per file and
-named for the noun each is about: `context` is the context, reading it and changing it, with
-`amend.rs` holding the changing half; `log` is the record beside it; `setup` is what the session is
-running with; `fork` is a copy of the session, asked something - with `mod.rs` holding
-`install` and the handful of things they all use),
+named for the noun each is about: `context/` is the context, reading it and changing it, a
+directory because the changing half is a file of its own - `changes.rs`, holding the journal
+`undo` walks, the refusals and what a change cost; `log` is the record beside it; `setup` is what
+the session is running with; `fork` is a copy of the session, asked something - with `mod.rs`
+holding `install` and the handful of things they all use),
 `sandbox.rs` (the Landlock ruleset the `shell` tool is re-executed under, `Reach` for what the
 in-process tools will open, and `Confinement` for every way the first of those can fail to be
 there - see [SECURITY.md](SECURITY.md) before changing any of it), `attach.rs` (one file into the
