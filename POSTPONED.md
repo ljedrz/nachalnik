@@ -189,3 +189,26 @@ Referenced from [AGENTS.md](AGENTS.md).
   already uses. Gatekeeper gates it rather than the build: an unsigned download is quarantined
   until `xattr -d com.apple.quarantine`, and signing and notarising needs a paid Apple Developer
   account and two secrets in CI. A Homebrew tap avoids quarantine.
+
+- **Naming this program to OpenRouter when the *advisor* is what is calling it.** `Jev` sends no
+  app headers, so a session that borrows its own key for `--advise` is attributed for the
+  conversation and anonymous for the advice, out of the same account on the same service. The
+  headers themselves are a solved problem - `OpenAiCompatible::on_behalf_of` and `filed_under`
+  build them, and `kamchatka::endpoint` already holds the URL, the title and the categories to
+  pass.
+
+  What stops it being three lines is that `Attribution` is an inherent part of one client, and
+  `Jev` is deliberately not a `Dialect`: two unrelated clients now want the same pair of headers,
+  and copying them onto the second is the third place in this workspace to write out the same
+  thing - which is what `is_openrouter` was just consolidated out of. So what would unblock it is
+  deciding **where the pair lives** now that it is not one client's business: a builder the crate
+  offers, rather than a method each client grows.
+
+  `KAMCHATKA_NO_ATTRIBUTION` has to cover both the day it does, and as one switch. Somebody who
+  turned attribution off for their conversation has not agreed to be named by a second client on
+  the same account, and two switches would be a way to be half off without noticing.
+
+  Worth knowing for whoever picks this up: it is only ever half applicable. TypeSafe's own API
+  keeps no ranking of the apps calling it, so a `Jev` pointed there has nothing to send and must
+  not send it - `is_openrouter` is already the test for that, and it is the same test the request
+  path uses.
