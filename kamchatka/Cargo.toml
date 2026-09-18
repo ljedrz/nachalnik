@@ -147,6 +147,15 @@ unicode-segmentation = { version = "1.13", optional = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"
 
+# using TypeSafe's `jev` to decide what a full context can afford to lose, against the age order
+# `Trim` really uses. Nothing in the crate does this - it is here to be read and run by somebody
+# wondering what a System One model is for. It wants a real endpoint, so it rides on the feature
+# that brings that client in
+[[example]]
+name = "jev_assisted_compaction"
+path = "examples/jev_assisted_compaction.rs"
+required-features = ["advise"]
+
 # some of the suites are the terminal's: they draw a frame and read the characters back, or press a
 # key to get at a verb. The rest - the policy's own questions, real commands under a real ruleset,
 # the introspection tools through the real loop, and a whole session driven by lines rather
