@@ -154,7 +154,8 @@ feature because it is the one thing in this program that sends a tool's *argumen
 party — for a write, that is the text being written — and that is a decision to make rather than
 inherit. `KAMCHATKA_TYPESAFE_API_KEY` is its key, and it has no fallback to the others.
 
-`assisted-shell` is the fourth, also **off**, and sits on top of `advise`. It asks the same model
+`assisted-shell` is the fourth, also **off**, and sits on top of `advise` — it needs `--advise`
+at runtime too, and the permissions tab says so when it has not got it. It asks the same model
 where each command you are being asked about lands on a three-level rubric, and colours the
 question green, yellow or red by the answer, so that the fifteenth `cargo test` of the afternoon
 and the one call in fifty worth stopping on do not look alike. The rating decides nothing — it is

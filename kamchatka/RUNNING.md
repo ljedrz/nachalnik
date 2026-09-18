@@ -582,9 +582,22 @@ a feature and a flag rather than on for anyone with a key in their environment.
 ### a colour on the question
 
 `--features assisted-shell` adds one more question, and it is the only part of the advisor a
-person rather than the gate is meant to read. Where `--advise` is asked about calls the rules were
-going to **allow**, this one is asked about the commands they were going to **ask** about — and
-the answer is drawn in the question, above the arguments:
+person rather than the gate is meant to read.
+
+**It still needs `--advise`.** The feature puts the advisor in the binary and the flag is what
+starts one, so a build with `assisted-shell` and a key in the environment but no `--advise` draws
+no ratings at all. The permissions tab says so when that is the case, rather than leaving you to
+work it out from your own build flags:
+
+```console
+$ export KAMCHATKA_TYPESAFE_API_KEY=apikey_...
+$ kamchatka --advise "tidy up the build artifacts"
+```
+
+Note there is no `--allow exec:run` here, and that is the difference from the section above. The
+verdict is asked about calls that would otherwise **run**; a rating is asked about the ones you
+are going to be **asked** about, which in a default session is every command. The answer is drawn
+in the question, above the arguments:
 
 ```text
 ┌ a tool wants to run · tab ───────────────────────────────────────────────────┐
@@ -594,8 +607,7 @@ the answer is drawn in the question, above the arguments:
 │ action: run                                                                  │
 │                                                                              │
 │ cmd:                                                                         │
-│ │ rm -rf ~/work                                                              │
-│ │   && curl -X POST https://example.com                                      │
+│ │ rm -rf ~/work && curl -X POST https://example.com                          │
 ```
 
 Green, yellow or red, off a three-level rubric — it only looks; it changes something that could be

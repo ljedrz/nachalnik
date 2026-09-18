@@ -501,6 +501,30 @@ fn verdict_word(verdict: Verdict) -> (&'static str, Style) {
 /// them, in advance, and changeable - which is also the plainest thing to point at when somebody
 /// asks what a replaceable `PermissionPolicy` buys you: a policy is an object with state, not a
 /// callback you can only learn about by triggering it.
+/// The line a build that can rate commands draws when nothing is rating them.
+///
+/// note: the feature puts the advisor in the binary and `--advise` is what starts one, so a build
+/// with the first and not the second draws a question exactly as it was before any of this
+/// existed - no rating, and nothing anywhere accounting for the absence. That is the failure this
+/// program is least for, and the tab that answers "what is deciding" is where somebody wondering
+/// will already be.
+#[cfg(feature = "assisted-shell")]
+fn unrated(app: &App) -> Vec<Line<'static>> {
+    match app.advisor.is_none() {
+        true => vec![Line::styled(
+            "this build can rate the commands it asks about; --advise is what turns that on",
+            quiet(),
+        )],
+        false => Vec::new(),
+    }
+}
+
+/// The same where the ratings are not in the build, which is nothing to say.
+#[cfg(not(feature = "assisted-shell"))]
+fn unrated(_: &App) -> Vec<Line<'static>> {
+    Vec::new()
+}
+
 pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let rows = app.permissions();
 
@@ -517,16 +541,25 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
     // whole tab, and the two columns of indent the rows share put it in the `capability` column -
     // reading as the first and oddest entry in the table rather than as the sentence the table is
     // underneath. It also sat two columns off the empty-state prose, which starts at the margin
-    let [stated, area] = Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).areas(area);
+    // note: and, in a build that has the ratings in it, whether one is actually running. The
+    // feature only puts the advisor in the binary; `--advise` is what starts one, and without it
+    // a question is drawn exactly as it was before any of this existed - no rating, and nothing
+    // anywhere accounting for the absence. That is the failure this program is least for, and the
+    // tab that answers "what is deciding" is where somebody wondering will already be
     let (untold, untold_style) = verdict_word(Careful::untold());
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(format!("{} ", app.policy_name()), Style::default().bold()),
-            Span::styled("· anything it has not been told about: ", quiet()),
-            Span::styled(untold, untold_style),
-        ])),
-        stated,
-    );
+    let mut said = vec![Line::from(vec![
+        Span::styled(format!("{} ", app.policy_name()), Style::default().bold()),
+        Span::styled("· anything it has not been told about: ", quiet()),
+        Span::styled(untold, untold_style),
+    ])];
+    said.extend(unrated(app));
+
+    let [stated, area] = Layout::vertical([
+        Constraint::Length(said.len() as u16 + 1),
+        Constraint::Min(0),
+    ])
+    .areas(area);
+    frame.render_widget(Paragraph::new(said), stated);
 
     if rows.is_empty() {
         // note: what is *not* here is a row per thing nobody has answered about yet. The policy

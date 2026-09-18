@@ -1693,21 +1693,21 @@ async fn a_call_waiting_on_a_decision_is_not_drawn_as_withheld() {
     );
 }
 
-/// A command the model wrote on one line is read down the panel as its stages.
+/// A command's own joints are picked out of it, so that the stages can be told apart.
 ///
-/// note: the joints lead their lines, so that going down the left edge says how each stage is
-/// reached before saying what it is. What this is really fixing is the row under `cmd:`: wrapped
-/// as prose, the second half of a pipeline went back to the margin and read as the next argument,
-/// on the one screen whose whole job is saying what is about to run.
+/// note: what this replaced was breaking the line at each joint, one stage to a row. That read
+/// well and cost a row per stage on a panel whose rows are its scarcest thing - and the broken
+/// form was not a spelling `sh` would take back, so the panel was showing something nobody could
+/// act on. The colour says the same thing in the command as the model wrote it.
 #[tokio::test]
-async fn a_long_command_is_read_down_the_question_rather_than_across_it() {
+async fn a_commands_joints_are_picked_out_of_it() {
     let mut harness = Harness::new([
         ModelResponse::tool_calls(vec![call(
             "c1",
             "shell",
             json!({
                 "action": "run",
-                "cmd": "rg -n 'fn draw' src/ | sort -u | head -20 && cargo build --release 2>&1",
+                "cmd": "rg -n 'fn draw' src/ | sort -u && cargo build --release 2>&1",
             }),
         )]),
         ModelResponse::text("ran it"),
@@ -1719,26 +1719,26 @@ async fn a_long_command_is_read_down_the_question_rather_than_across_it() {
     harness.send("look for it").await;
     harness.settle().await;
 
+    // the command as it was written, on one line, under the rule a fenced block gets
     let screen = harness.screen();
-    // the first stage at the margin, and every other one under the joint that reaches it
-    for line in [
-        "│ rg -n 'fn draw' src/",
-        "│   | sort -u",
-        "│   | head -20",
-        "│   && cargo build --release 2>&1",
-    ] {
-        assert!(screen.contains(line), "no `{line}` in: {screen}");
-    }
+    assert!(
+        screen.contains("│ rg -n 'fn draw' src/ | sort -u && cargo build --release 2>&1"),
+        "{screen}"
+    );
+
+    // and the joints in a colour of their own, which the flags and paths around them are not in
+    assert_eq!(harness.style_of_last("&&").0, Color::Cyan);
+    assert_ne!(harness.style_of_last("cargo").0, Color::Cyan);
 }
 
-/// A separator that is part of an argument does not become a line of its own.
+/// A separator that is part of an argument is not coloured as a joint.
 ///
-/// note: the case that decides whether this is worth doing at all. `echo 'a | b'` drawn as two
-/// lines is the panel showing a command nobody wrote, which is worse than the wrapping it
-/// replaced - so the reading is quote-aware, and gives up rather than guessing. `[i]` is still the
-/// byte-exact view either way.
+/// note: the case that decides whether this is worth doing at all. A `|` inside a string drawn in
+/// the joint's colour is the panel telling somebody a quoted character is a pipe, on the screen
+/// where they decide whether to run it - so the reading is quote-aware, and gives up rather than
+/// guessing.
 #[tokio::test]
-async fn a_separator_inside_a_quote_does_not_become_a_second_command() {
+async fn a_separator_inside_a_quote_is_not_coloured_as_a_joint() {
     let mut harness = Harness::new([
         ModelResponse::tool_calls(vec![call(
             "c1",
@@ -1756,10 +1756,8 @@ async fn a_separator_inside_a_quote_does_not_become_a_second_command() {
 
     let screen = harness.screen();
     assert!(screen.contains("│ echo 'a | b'"), "{screen}");
-    assert!(
-        !screen.contains("| b'\n"),
-        "the quote was read as a joint: {screen}"
-    );
+    // the `|` is inside the string, so it is drawn as the string's own colour and not as a joint
+    assert_ne!(harness.style_of_last("| b'").0, Color::Cyan);
 }
 
 /// The advisor's rating, drawn in the question, in the colour it earned.
@@ -1922,4 +1920,21 @@ mod rated {
         assert!(screen.contains("a tool wants to run"), "{screen}");
         assert!(!screen.contains("the advisor reads this"), "{screen}");
     }
+}
+
+/// A build that can rate commands and is not doing so says why, where somebody would look.
+///
+/// note: the failure this catches is the one that actually happened: built with the feature, a
+/// key in the environment, no `--advise`, and a question drawn exactly as it was before any of it
+/// existed - no rating, and nothing anywhere accounting for the absence. The feature puts the
+/// advisor in the binary and the flag starts one, and a screen that does not say so leaves
+/// somebody reading their own build flags to find out.
+#[cfg(feature = "assisted-shell")]
+#[tokio::test]
+async fn a_build_that_can_rate_commands_says_when_nothing_is_rating_them() {
+    let mut harness = Harness::new([]);
+    harness.tab(Tab::Permissions);
+
+    let said = harness.flat();
+    assert!(said.contains("--advise is what turns that on"), "{said}");
 }

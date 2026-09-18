@@ -16,10 +16,10 @@ use ratatui::{
 
 use crate::{
     app::{App, Focus, Overlay, Page, Tab, text::thousands},
-    ui::text::{joints, refit, wrapped},
+    ui::text::{refit, wrapped},
 };
 
-use super::{Scrolled, faint, markdown::highlighted, quiet, scrollbar};
+use super::{Scrolled, faint, markdown::command, quiet, scrollbar};
 
 /// Whatever is on top of everything else.
 ///
@@ -423,12 +423,7 @@ fn readable(tool: &str, args: &serde_json::Value, columns: usize) -> Vec<Line<'s
             // what it gets is the rule and the colours and none of the breaking
             serde_json::Value::String(text) if tool == "shell" && name == "cmd" => {
                 out.extend(refit(&Line::raw(format!("{name}:")), columns));
-                let broken = joints(text);
-                out.extend(highlighted(
-                    "sh",
-                    broken.as_deref().unwrap_or(text),
-                    columns,
-                ));
+                out.extend(command(text, columns));
             }
             serde_json::Value::String(text) if text.contains('\n') => {
                 out.extend(refit(&Line::raw(format!("{name}:")), columns));

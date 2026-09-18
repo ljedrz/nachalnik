@@ -153,6 +153,22 @@ impl Harness {
 
     /// Draws, and reports how the first character of `needle` is styled.
     pub(crate) fn style_of(&mut self, needle: &str) -> (Color, Modifier) {
+        self.styled(needle, false)
+    }
+
+    /// The same, reading up from the bottom instead of down from the top.
+    ///
+    /// note: for anything drawn in the question, which sits under a chat pane that is echoing the
+    /// *same text* - the call it is asking about is on both. Reading from the top answers about
+    /// the copy in the conversation, so an assertion about how the panel draws a command passed or
+    /// failed on the strength of a row it was not about. The panel is the last thing on the
+    /// screen, so the last match is its.
+    pub(crate) fn style_of_last(&mut self, needle: &str) -> (Color, Modifier) {
+        self.styled(needle, true)
+    }
+
+    /// How the first character of `needle` is styled, from whichever end.
+    fn styled(&mut self, needle: &str, from_the_bottom: bool) -> (Color, Modifier) {
         let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
         terminal
             .draw(|frame| ui::draw(frame, &mut self.app))
@@ -160,7 +176,11 @@ impl Harness {
         let buffer = terminal.backend().buffer().clone();
 
         let first = needle.chars().next().expect("a needle to look for");
-        for y in 0..buffer.area.height {
+        let rows: Vec<u16> = match from_the_bottom {
+            true => (0..buffer.area.height).rev().collect(),
+            false => (0..buffer.area.height).collect(),
+        };
+        for y in rows {
             let row: String = (0..buffer.area.width)
                 .map(|x| buffer[(x, y)].symbol())
                 .collect();

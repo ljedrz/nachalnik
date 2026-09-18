@@ -15,6 +15,7 @@ use ratatui::{
 use crate::ui::table::is_delimiter;
 
 use super::faint;
+use crate::ui::text::{joints, refit};
 
 /// Puts a blank line in, unless there is one there already or there is nothing to separate from.
 pub(super) fn separate(lines: &mut Vec<Line<'static>>) {
@@ -111,6 +112,127 @@ pub(super) fn highlighted(language: &str, body: &str, width: usize) -> Vec<Line<
     }
 
     drawn
+}
+
+/// The colour a command's own joints are picked out in.
+///
+/// note: cyan, which in the table above belongs to `struct`, `namespace`, `type` and `key` -
+/// none of which a shell produces, so in this one context it is a colour nothing else is using.
+/// It is also none of green, yellow or red, which the panel above this has spent on the advisor's
+/// rating and cannot afford to have echoed by punctuation.
+fn joint() -> Style {
+    Style::default().fg(Color::Cyan).bold()
+}
+
+/// A shell command, drawn as code with its own joints picked out.
+///
+/// note: the same rule, the same highlighter and the same wrapping a fenced ```sh block gets, and
+/// one thing on top: the `|`, `&&`, `||` and `;` that join one stage to the next are coloured.
+/// They are what a person scanning the command is looking for - where it stops doing one thing and
+/// starts doing another - and unpicked out they are two grey characters in the middle of a run of
+/// flags and paths.
+///
+/// note: the joints come from [`joints`], which reads the command, rather than from the
+/// highlighter, which does not read it well enough. See the note there.
+pub(super) fn command(cmd: &str, width: usize) -> Vec<Line<'static>> {
+    let bar = Span::styled("│ ", faint());
+    let room = width.saturating_sub(2).max(8);
+    let source: Vec<String> = cmd.lines().map(str::to_owned).collect();
+
+    let mut highlighter = synoptic::from_extension("sh", 4);
+    if let Some(highlighter) = &mut highlighter {
+        highlighter.run(&source);
+    }
+    // note: over the whole command, and so only where the whole command is one line. `joints`
+    // declines a command with newlines in it and this asks it once, so a heredoc is drawn with
+    // nothing picked out rather than with the offsets of a line other than the one being drawn
+    let picked = joints(cmd);
+
+    let mut drawn = Vec::new();
+    for (y, line) in source.iter().enumerate() {
+        let spans: Vec<(String, Style)> = match &highlighter {
+            Some(highlighter) => highlighter
+                .line(y, line)
+                .into_iter()
+                .map(|piece| match piece {
+                    synoptic::TokOpt::Some(text, name) => (text, token(&name)),
+                    synoptic::TokOpt::None(text) => (text, Style::default()),
+                })
+                .collect(),
+            None => vec![(line.clone(), Style::default().fg(Color::Cyan))],
+        };
+
+        // note: `refit` rather than `fit`, which is the one place this parts company with a fenced
+        // block. `fit` cuts where the room runs out, because reflowing a block of code would be
+        // showing something the model did not write - and a command is one logical line, so
+        // breaking it at a space is wrapping rather than reflowing. Cut, `cargo build` arrived as
+        // `carg` at the end of one row and `o build` at the start of the next, which is a worse
+        // thing to put in front of somebody deciding whether to run it than any argument for
+        // fidelity supports. The rule down the left is what makes this safe: it says the second
+        // row is a continuation, which is exactly what the margin could not say
+        let styled = Line::from(
+            accented(spans, &picked)
+                .into_iter()
+                .map(|(text, style)| Span::styled(text, style))
+                .collect::<Vec<_>>(),
+        );
+        for row in refit(&styled, room) {
+            let mut cells = vec![bar.clone()];
+            cells.extend(row.spans);
+            drawn.push(Line::from(cells));
+        }
+    }
+
+    drawn
+}
+
+/// The same pieces, cut where a joint starts and ends, with the joints restyled.
+///
+/// note: the highlighter's spans and the joints are two readings of one string and neither is
+/// built from the other, so this walks the pieces keeping a byte offset rather than trusting them
+/// to line up. A piece that straddles the start of a joint is split; what is inside a joint's
+/// range takes [`joint`]'s style whatever the highlighter made of it, because the highlighter's
+/// opinion of `|` is that it is not a token at all.
+fn accented(spans: Vec<(String, Style)>, picked: &[(usize, usize)]) -> Vec<(String, Style)> {
+    if picked.is_empty() {
+        return spans;
+    }
+
+    let mut out = Vec::with_capacity(spans.len());
+    let mut at = 0;
+    for (text, style) in spans {
+        let mut rest = text.as_str();
+        while !rest.is_empty() {
+            // how far this piece can go before it meets the start or the end of a joint
+            let inside = picked.iter().find(|(from, to)| at >= *from && at < *to);
+            let until = match inside {
+                Some((_, to)) => *to,
+                None => picked
+                    .iter()
+                    .find(|(from, _)| *from > at)
+                    .map_or(usize::MAX, |(from, _)| *from),
+            };
+            let take = rest.len().min(until.saturating_sub(at));
+            // a boundary inside a character cannot happen - every joint is ASCII and so are its
+            // edges - but slicing on a guess is not worth the certainty
+            let take = match rest.is_char_boundary(take) {
+                true => take,
+                false => rest.len(),
+            };
+
+            out.push((
+                rest[..take].to_owned(),
+                match inside.is_some() {
+                    true => joint(),
+                    false => style,
+                },
+            ));
+            at += take;
+            rest = &rest[take..];
+        }
+    }
+
+    out
 }
 
 /// Breaks a run of styled pieces into rows no wider than `room`, keeping every style.

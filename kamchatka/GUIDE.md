@@ -530,8 +530,7 @@ the screen:
 │ shell wants: shell, network                                          │
 │                                                                      │
 │ cmd:                                                                 │
-│ │ curl -s https://example.com                                        │
-│ │   | tee /tmp/page.html                                             │
+│ │ curl -s https://example.com | tee /tmp/page.html                   │
 │                                                                      │
 │ [tab] puts the keys here, and then:                                  │
 │ [y] once   [a] always, for shell and network   [n] no                │
@@ -574,16 +573,21 @@ carrying a rewritten tool result is as long as the result was, and a question wh
 been pushed off the bottom of the screen is one nobody can answer.
 
 A shell command is drawn as code — the rule down the left, the colours a fenced block gets on the
-chat tab — and is broken at its joints, one stage to a line with the `|`, `&&`, `||` or `;` that
-reaches it at the head of the line. Wrapped as prose, the second half of a pipeline went back to
-the margin and read as the next argument, which is the one misreading this panel cannot afford. A
-separator inside a quote is left where it is, and a command this cannot read to the end — an
-unterminated quote, an unclosed `$(` — is drawn exactly as it arrived rather than guessed at.
-<kbd>i</kbd> is the byte-exact view, and stays the thing to reach for when the question is what
-*precisely* would run.
+chat tab — with its own joints picked out: the `|`, `&&`, `||` and `;` that join one stage to the
+next are coloured, because they are what you are scanning for. Wrapped as prose it was folded
+wherever the space ran out and the continuation went back to the margin, so the second half of a
+pipeline sat under `cmd:` looking exactly like the next argument; the rule settles that, and it
+wraps at a space rather than cutting mid-word the way a block of code does.
 
-A build with `--features assisted-shell` puts one more line in the header, above the arguments and
-inside the part that does not scroll:
+The joints are read off the command rather than off the highlighter, which calls every flag's
+hyphen an operator and does not tokenise `|` at all. A separator inside a quote is not a joint and
+is not coloured as one, and a command this cannot read to the end — an unterminated quote, an
+unclosed `$(` — is drawn with nothing picked out rather than guessed at. <kbd>i</kbd> is the
+byte-exact view, and stays the thing to reach for when the question is what *precisely* would
+run.
+
+A build with `--features assisted-shell`, run with `--advise`, puts one more line in the header,
+above the arguments and inside the part that does not scroll:
 
 ```text
 │ shell wants: shell, network                                          │

@@ -1743,3 +1743,86 @@ async fn a_batch_of_answers_is_not_forgotten_before_its_calls_run() {
         calls.len()
     );
 }
+
+/// The rating reaches the screen through the wiring a real session is built by.
+///
+/// note: the screen tests build an `App` and hand it an advisor directly, which checks the
+/// drawing and takes the wiring on trust. This one goes the other way: `Setup { advisor: .. }`,
+/// `wire`, a shell call, and then the question asked for what it would draw. What it is holding
+/// to is that the object the kernel decides with and the object the panel reads are the same one.
+#[cfg(feature = "assisted-shell")]
+#[tokio::test]
+async fn a_wired_session_draws_the_rating_the_kernel_asked_for() {
+    use kamchatka::tools::Rating;
+    use nachalnik::ContextItem;
+    use nachalnik_providers::typesafe::Jev;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+
+    let body = "{\"model\":\"jev-1\",\"answers\":{\"rating\":{\"type\":\"score\",\
+                \"score\":1.9,\"confidence\":0.93,\"legend\":{},\"probabilities\":{}}}}";
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let mut discard = [0u8; 8192];
+            let _ = socket.read(&mut discard).await;
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                         Content-Length: {}\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        }
+    });
+
+    let wired = Setup {
+        tools: Some(vec!["shell".to_owned()]),
+        compact: None,
+        confine: false,
+        advisor: Some(Arc::new(Jev::new(
+            "jev-latest",
+            format!("http://{address}"),
+            "k",
+        ))),
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+
+    let app = wired.app;
+    app.kernel.set_provider(Arc::new(ScriptedProvider::new(vec![
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "shell",
+            json!({ "action": "run", "cmd": "rm -rf ~/work" }),
+        )]),
+        ModelResponse::text("asked"),
+    ])));
+    app.kernel.push(ContextItem::user("tidy up"));
+
+    // the turn stops at the question, which is the moment the rating has to be there
+    let _ = app.kernel.step().await;
+    let request = app
+        .kernel
+        .pending_permissions()
+        .first()
+        .cloned()
+        .expect("the shell call is a question");
+
+    let rated = app
+        .rating(&request)
+        .expect("the wiring gave the panel the advisor the kernel decided with");
+    assert_eq!(rated.shown(), Rating::Grave);
+}
