@@ -26,7 +26,9 @@ obvious from the file names. [AGENTS.md](AGENTS.md) has the one-line version.
 | `test.rs` | feature `test`: `ScriptedProvider`/`TooLongProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |
 
 `kamchatka/src`: `app/` (the state - `mod.rs` is what a caller may ask of it and what a kernel
-event does to it, `keys.rs` is what the keys do, `command.rs` is the slash commands, `text.rs`
+event does to it, `transcript.rs` is the chat as a person reads it (`Speaker`, `Entry`, `Said`,
+and what builds a drawn line out of a context item and the lines that are not one), `keys.rs` is
+what the keys do, `command.rs` is the slash commands, `text.rs`
 turns a runtime value into a line, `search.rs` is the `/` filter over a pane's rows and `when.rs`
 the clock a trace line is stamped with - the last two are here rather than in `ui/` because a pane
 that searched one string and drew another would find nothing where it says there is something),
