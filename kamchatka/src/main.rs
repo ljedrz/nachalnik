@@ -24,7 +24,7 @@ use crossterm::{
     execute,
 };
 use nachalnik::Grant;
-use nachalnik_providers::Endpoint;
+use nachalnik_providers::Dialect;
 
 use kamchatka::{
     app::App,
@@ -465,13 +465,13 @@ async fn session() -> Result<()> {
         }
         .to_owned()
     });
-    let provider: Arc<dyn Endpoint> = match args.gemini {
+    let provider: Arc<dyn Dialect> = match args.gemini {
         true => provider::gemini::connect(&model)
             .await
-            .map(|it| it as Arc<dyn Endpoint>),
+            .map(|it| it as Arc<dyn Dialect>),
         false => provider::connect(&model)
             .await
-            .map(|it| it as Arc<dyn Endpoint>),
+            .map(|it| it as Arc<dyn Dialect>),
     }
     .map_err(|e| anyhow::anyhow!("{e}"))
     .context("could not reach the model")?;

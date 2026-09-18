@@ -5,12 +5,24 @@
 //! adopter writing the same thousand lines of streamed HTTP before they can ask a model anything,
 //! which is what this crate is here to stop.
 //!
-//! Two dialects, each behind a feature:
+//! Everything in here is an [`Endpoint`]: an address, a key, a model identifier, a listing, and
+//! something to say when the server is slow. What splits the crate in two is whether the model
+//! behind it answers in *turns*.
+//!
+//! A [`Dialect`] does. It implements [`nachalnik::Provider`], so a kernel can be handed one and a
+//! session is what comes out. Two of them, each behind a feature:
 //!
 //! - [`openai`] - `POST /chat/completions`, `choices[].delta`, tool calls assembled from
 //!   fragments. What OpenRouter, ollama, vLLM, LM Studio, Together and most of the rest speak.
 //! - [`gemini`] - Google's own `generateContent`: `candidates[].content.parts`, whole calls, and
 //!   ordered `thought` parts, which is the dialect [`nachalnik::Content::Blocks`] was built for.
+//!
+//! An `Endpoint` that is not a `Dialect` answers something other than a turn, and there is no
+//! kernel in its path at all:
+//!
+//! - [`typesafe`] - TypeSafe's `jev`, a System One model. Typed questions put to a state and
+//!   answered with probabilities: no text, no tool calls, nothing to stream. What it is for is
+//!   the decisions a program makes *around* a conversation rather than the conversation.
 //!
 //! ```no_run
 //! # use std::sync::Arc;
@@ -58,14 +70,18 @@ pub mod conformance;
 pub mod gemini;
 #[cfg(feature = "openai")]
 pub mod openai;
+#[cfg(feature = "typesafe")]
+pub mod typesafe;
 #[cfg(any(feature = "gemini", feature = "openai"))]
 pub(crate) mod waiting;
 
-pub use crate::endpoint::Endpoint;
+pub use crate::endpoint::{Dialect, Endpoint};
 #[cfg(feature = "gemini")]
 pub use crate::gemini::Gemini;
 #[cfg(feature = "openai")]
 pub use crate::openai::OpenAiCompatible;
+#[cfg(feature = "typesafe")]
+pub use crate::typesafe::Jev;
 
 /// Whether an error means an account is out of free requests for the day, rather than having hit
 /// a momentary upstream limit.

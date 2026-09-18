@@ -1,28 +1,77 @@
-//! The half of a provider the person driving it asks about, rather than the kernel.
+//! The half of a model's service the person driving it asks about, rather than the kernel.
 
 use nachalnik::{LinearProjector, Provider, async_trait};
 
-/// The half of a provider its user drives, rather than the kernel.
+/// The half of a model's service its user drives, rather than the kernel.
 ///
 /// note: [`Provider`] is the kernel's half, and it is one method: the kernel asks for an answer
 /// and has no opinion about where the answer comes from. Where the requests go, what the endpoint
 /// serves, which model is being asked and what the last retry was about belong to whoever built
-/// the provider - a `/model` command, a status line, a run that compares two endpoints - and they
-/// are the same questions whichever dialect is in use. So they are a trait of this crate's own
+/// the client - a `/model` command, a status line, a run that compares two endpoints - and they
+/// are the same questions whichever model is behind them. So they are a trait of this crate's own
 /// rather than something the runtime was made to carry: the runtime has no network in it and no
 /// business knowing that one exists.
 ///
-/// note: [`Provider`] is a supertrait, so one `Arc` answers both. That is what lets a program
-/// hold a provider without knowing which wire format is behind it, and what lets it swap one for
-/// the other while a session is running.
+/// note: [`Provider`] is deliberately *not* a supertrait, which it was until a model arrived that
+/// answers none of the questions a turn is made of. TypeSafe's [`Jev`](crate::typesafe::Jev) has
+/// an address, a key, a model identifier, a listing and a usage report - every question below -
+/// and it generates no text and calls no tools, so there is no turn for it to drive. Requiring
+/// one of everything in here would have meant either shutting it out of the crate or handing the
+/// kernel an assistant turn manufactured out of probabilities. The turn-driving half is
+/// [`Dialect`], and it is the one that carries the `Provider` bound.
 #[async_trait]
-pub trait Endpoint: Provider {
+pub trait Endpoint: Send + Sync {
     /// Where the requests are going.
     fn endpoint(&self) -> String;
 
     /// Which model is being asked.
     fn model(&self) -> String;
 
+    /// Just the authority of [`Endpoint::endpoint`] - `openrouter.ai`, `localhost:11434` - for
+    /// the status line, which has no room for the rest of it.
+    ///
+    /// note: hand-parsed rather than through a URL crate, because the whole use of it is a string
+    /// to draw. Anything this does not recognise as a URL is handed back as it came, since a
+    /// status line showing nothing would be worse than one showing something odd.
+    fn host(&self) -> String {
+        let endpoint = self.endpoint();
+        let after_scheme = endpoint
+            .split_once("://")
+            .map_or(endpoint.as_str(), |(_, rest)| rest);
+
+        after_scheme
+            .split('/')
+            .next()
+            .filter(|host| !host.is_empty())
+            .unwrap_or(&endpoint)
+            .to_owned()
+    }
+
+    /// What this endpoint serves, which is what [`Endpoint::set_model`] takes.
+    async fn models(&self) -> Vec<String>;
+
+    /// Switches models.
+    async fn set_model(&self, model: String);
+
+    /// Switches the address the requests go to, and optionally the model with it.
+    async fn set_endpoint(&self, url: String, model: Option<String>);
+
+    /// Takes whatever the client last wanted to say for itself, if anything.
+    fn take_notice(&self) -> Option<String>;
+}
+
+/// An [`Endpoint`] whose model answers in turns: the wire format a conversation is carried in.
+///
+/// note: this is the trait a client of this crate holds when what it wants is a session. Both
+/// halves in one bound, so a single `Arc` answers the kernel and the status line, which is what
+/// lets a program hold a model without knowing which wire format is behind it and swap one for
+/// the other while a session is running.
+///
+/// note: the two methods below live here rather than on [`Endpoint`] because both are questions
+/// about a *turn*, and a model that does not produce one has no answer to either. `projection`
+/// is about the shape of a message on the wire, and `lists_every_parameter` is about
+/// [`nachalnik::ModelInfo::parameters`], which arrives through `Provider`.
+pub trait Dialect: Endpoint + Provider {
     /// Whether [`nachalnik::ModelInfo::parameters`] is the whole of what the model takes, or only
     /// the part of it this endpoint publishes.
     ///
@@ -60,36 +109,4 @@ pub trait Endpoint: Provider {
             ..Default::default()
         }
     }
-
-    /// Just the authority of [`Endpoint::endpoint`] - `openrouter.ai`, `localhost:11434` - for
-    /// the status line, which has no room for the rest of it.
-    ///
-    /// note: hand-parsed rather than through a URL crate, because the whole use of it is a string
-    /// to draw. Anything this does not recognise as a URL is handed back as it came, since a
-    /// status line showing nothing would be worse than one showing something odd.
-    fn host(&self) -> String {
-        let endpoint = self.endpoint();
-        let after_scheme = endpoint
-            .split_once("://")
-            .map_or(endpoint.as_str(), |(_, rest)| rest);
-
-        after_scheme
-            .split('/')
-            .next()
-            .filter(|host| !host.is_empty())
-            .unwrap_or(&endpoint)
-            .to_owned()
-    }
-
-    /// What this endpoint serves, which is what [`Endpoint::set_model`] takes.
-    async fn models(&self) -> Vec<String>;
-
-    /// Switches models.
-    async fn set_model(&self, model: String);
-
-    /// Switches the address the requests go to, and optionally the model with it.
-    async fn set_endpoint(&self, url: String, model: Option<String>);
-
-    /// Takes whatever the provider last wanted to say for itself, if anything.
-    fn take_notice(&self) -> Option<String>;
 }

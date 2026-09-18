@@ -21,7 +21,7 @@ use kamchatka::{
 use nachalnik::{
     Block, Capability, Content, ContextItem, ContextKind, Event, Grant, Kernel, LinearProjector,
 };
-use nachalnik_providers::Endpoint;
+use nachalnik_providers::Dialect;
 
 /// What it is being asked to work out.
 fn task() -> String {
@@ -79,13 +79,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         .to_owned()
     });
-    let provider: Arc<dyn Endpoint> = match ordered {
+    let provider: Arc<dyn Dialect> = match ordered {
         true => provider::gemini::connect(&model)
             .await
-            .map(|it| it as Arc<dyn Endpoint>),
+            .map(|it| it as Arc<dyn Dialect>),
         false => provider::connect(&model)
             .await
-            .map(|it| it as Arc<dyn Endpoint>),
+            .map(|it| it as Arc<dyn Dialect>),
     }
     .map_err(|e| format!("could not reach {model}: {e}"))?;
 

@@ -14,7 +14,7 @@ use nachalnik::{ModelRequest, async_trait};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::{Endpoint, install_crypto, same_model, waiting::WHOLE_ANSWER};
+use crate::{Dialect, Endpoint, install_crypto, same_model, waiting::WHOLE_ANSWER};
 
 mod wire;
 
@@ -646,10 +646,6 @@ impl Endpoint for OpenAiCompatible {
         self.model()
     }
 
-    fn lists_every_parameter(&self) -> bool {
-        *self.every_parameter.lock()
-    }
-
     async fn models(&self) -> Vec<String> {
         self.models().await
     }
@@ -664,6 +660,12 @@ impl Endpoint for OpenAiCompatible {
 
     fn take_notice(&self) -> Option<String> {
         self.take_notice()
+    }
+}
+
+impl Dialect for OpenAiCompatible {
+    fn lists_every_parameter(&self) -> bool {
+        *self.every_parameter.lock()
     }
 }
 

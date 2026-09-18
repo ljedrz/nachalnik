@@ -22,7 +22,7 @@ use nachalnik::{
     Budget, Capability, Content, ContextId, ContextItem, ContextKind, Delta, Domain, Event, Grant,
     GrantSource, Kernel, Overrun, PermissionRequest, Record, State, Tool, Usage, Verdict,
 };
-use nachalnik_providers::Endpoint;
+use nachalnik_providers::Dialect;
 #[cfg(feature = "tui")]
 use ratatui_textarea::{TextArea, WrapMode};
 use serde_json::Value;
@@ -600,7 +600,7 @@ pub struct App {
     /// The policy, which the permission overlay teaches.
     pub policy: Arc<Careful>,
     /// The provider, for switching models - whichever dialect it speaks.
-    pub provider: Arc<dyn Endpoint>,
+    pub provider: Arc<dyn Dialect>,
     /// A `/model` or `/provider` still settling, which the next line waits for.
     ///
     /// note: both commands hand the switch to a task rather than standing there while it happens,
@@ -874,7 +874,7 @@ impl App {
     pub fn new(
         kernel: Kernel,
         policy: Arc<Careful>,
-        provider: Arc<dyn Endpoint>,
+        provider: Arc<dyn Dialect>,
         limits: Limits,
         outcomes: UnboundedSender<Outcome>,
     ) -> Self {

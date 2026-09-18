@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 use nachalnik::{Config, ContextItem, Event, Kernel, Snapshot};
-use nachalnik_providers::Endpoint;
+use nachalnik_providers::Dialect;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
@@ -223,7 +223,7 @@ impl Setup {
     }
 
     /// Wires one up around a provider that is already connected.
-    pub fn wire(self, provider: Arc<dyn Endpoint>) -> Result<Wired, String> {
+    pub fn wire(self, provider: Arc<dyn Dialect>) -> Result<Wired, String> {
         // before anything is built, so that an embedder gets the same refusal `main` gets before
         // it reaches an endpoint at all
         self.check()?;

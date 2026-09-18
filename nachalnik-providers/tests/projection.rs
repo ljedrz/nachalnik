@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use nachalnik::{Config, Content, ContextItem, ContextKind, Kernel, Provider};
-use nachalnik_providers::Endpoint;
+use nachalnik_providers::Dialect;
 
 /// A session holding one assistant turn: a short answer and a long think, which is the usual
 /// ratio for a reasoning model and the reason this matters at all.

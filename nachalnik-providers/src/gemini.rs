@@ -35,7 +35,7 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Endpoint, install_crypto, refused, same_model,
+    Dialect, Endpoint, install_crypto, refused, same_model,
     waiting::{PATIENCE, RETRIES, Silence, Unsent, Vigil, gone_quiet, interrupted, watched},
 };
 
@@ -755,17 +755,6 @@ impl Endpoint for Gemini {
         self.model()
     }
 
-    /// Both of the things the conventional dialect cannot take. This one's whole point is that
-    /// the shape of a turn is an order, and flattening it into three slots on the way out would
-    /// undo, one request later, the ordering that was recorded on the way in; and it takes a
-    /// turn's thinking back as a part marked `thought`, which for a signed one it has to.
-    fn projection(&self) -> LinearProjector {
-        LinearProjector {
-            send_blocks: true,
-            ..Default::default()
-        }
-    }
-
     async fn models(&self) -> Vec<String> {
         let base = self.endpoint();
         let Ok(response) = self
@@ -817,6 +806,19 @@ impl Endpoint for Gemini {
 
     fn take_notice(&self) -> Option<String> {
         self.notice.lock().take()
+    }
+}
+
+impl Dialect for Gemini {
+    /// Both of the things the conventional dialect cannot take. This one's whole point is that
+    /// the shape of a turn is an order, and flattening it into three slots on the way out would
+    /// undo, one request later, the ordering that was recorded on the way in; and it takes a
+    /// turn's thinking back as a part marked `thought`, which for a signed one it has to.
+    fn projection(&self) -> LinearProjector {
+        LinearProjector {
+            send_blocks: true,
+            ..Default::default()
+        }
     }
 }
 
