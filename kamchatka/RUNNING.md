@@ -341,7 +341,7 @@ let wired = kamchatka::wiring::Setup {
     spend: Some(50_000),
     ..Default::default()
 }
-.wire(kamchatka::provider::connect("mercury-2").await?)?;
+.wire(kamchatka::endpoint::connect("mercury-2").await?)?;
 ```
 
 Two of those steps are not guessable and are the reason this exists rather than a page of

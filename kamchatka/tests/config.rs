@@ -35,7 +35,7 @@ fn run(args: &[&str], lines: &str) -> (bool, String) {
 
 /// The same with no API key anywhere, which is what somebody trying this for the first time has.
 ///
-/// note: removed rather than set empty, because an empty variable is a variable: `provider::connect`
+/// note: removed rather than set empty, because an empty variable is a variable: `endpoint::connect`
 /// reads one and only fails where there is none, which is the case this is about.
 fn run_keyless(args: &[&str], lines: &str) -> (bool, String) {
     let mut child = Command::new(program())

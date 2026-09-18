@@ -397,7 +397,7 @@ fn a_picture_in_the_context_is_named_rather_than_drawn() {
 /// The status line names the address as well as the model, and the address it names is the
 /// authority rather than the whole URL, which would not fit beside the rest of the line.
 ///
-/// note: hand-parsed in `provider::host`, so the shapes worth pinning are the ones a person
+/// note: hand-parsed in `OpenAiCompatible::host`, so the shapes worth pinning are the ones a person
 /// actually types at `/provider`: a bare host, a path to strip, a port to keep, and the ones that
 /// are not URLs at all - which come back as they came, a status line showing something odd being
 /// better than one showing nothing.

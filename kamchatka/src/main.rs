@@ -29,7 +29,7 @@ use nachalnik_providers::Dialect;
 use kamchatka::{
     app::App,
     config::Settings,
-    headless, provider, sandbox,
+    endpoint, headless, sandbox,
     tools::Subject,
     wiring::{Setup, Wired},
 };
@@ -513,7 +513,7 @@ async fn session() -> Result<()> {
     let setup = match args.advise {
         false => setup,
         true => {
-            let jev = provider::advise::connect()
+            let jev = endpoint::advise::connect()
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))
                 .context("could not reach the advisor")?;
@@ -542,10 +542,10 @@ async fn session() -> Result<()> {
         .to_owned()
     });
     let provider: Arc<dyn Dialect> = match args.gemini {
-        true => provider::gemini::connect(&model)
+        true => endpoint::gemini::connect(&model)
             .await
             .map(|it| it as Arc<dyn Dialect>),
-        false => provider::connect(&model)
+        false => endpoint::connect(&model)
             .await
             .map(|it| it as Arc<dyn Dialect>),
     }

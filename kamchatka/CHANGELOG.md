@@ -158,6 +158,12 @@ minor bump may break you.
 
 ### changed
 
+- **`provider` is `endpoint`.** `provider::connect`, `provider::gemini::connect`,
+  `provider::advise::connect`, `provider::api_key`, `provider::base_url` and
+  `provider::configured_limit` are `endpoint::` now. The module holds no provider and has not
+  since the dialects became `nachalnik-providers`: what is in it is the four environment variables
+  this program reads and the functions that turn them into a connected client. A module called
+  `provider` beside a crate of providers reads as the place one is implemented.
 - `--deadline` says what it cannot cut short: a command of the operator's own that is waiting on
   the endpoint. `/models` fetches a list, and `/model` and `/provider` finish their switch, inside
   the branch that read the line - so the deadline and `ctrl+c` branches are unreachable until it

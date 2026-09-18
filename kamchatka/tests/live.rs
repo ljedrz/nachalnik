@@ -138,7 +138,7 @@ async fn talking_to(model: String) -> Option<Arc<OpenAiCompatible>> {
         .ok()?;
     let provider = Arc::new(
         OpenAiCompatible::new(model, base_url(), key)
-            .with_context_limit(kamchatka::provider::configured_limit()),
+            .with_context_limit(kamchatka::endpoint::configured_limit()),
     );
     provider.probe().await;
 

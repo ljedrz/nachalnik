@@ -80,11 +80,11 @@ pub mod app;
 pub mod attach;
 pub mod clipboard;
 pub mod config;
+pub mod endpoint;
 pub mod headless;
 pub mod introspect;
 #[cfg(feature = "mcp")]
 pub mod mcp;
-pub mod provider;
 pub mod sandbox;
 pub mod tools;
 #[cfg(feature = "tui")]

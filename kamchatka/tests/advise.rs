@@ -23,7 +23,7 @@
 use std::{env, sync::Arc};
 
 use kamchatka::{
-    provider,
+    endpoint,
     tools::{Advised, Careful, Subject},
 };
 use nachalnik::{
@@ -52,7 +52,7 @@ macro_rules! advised {
             &Subject::Capability(Capability::exec("run")),
             Verdict::Allow,
         );
-        let jev = provider::advise::connect()
+        let jev = endpoint::advise::connect()
             .await
             .expect("the advisor connects");
 
@@ -192,7 +192,7 @@ mod rating {
             }
 
             // nothing set, so `exec:run` is `ask` - which is the branch a rating is asked on
-            let jev = provider::advise::connect()
+            let jev = endpoint::advise::connect()
                 .await
                 .expect("the advisor connects");
 

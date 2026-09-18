@@ -64,8 +64,9 @@ in-process tools will open, and `Confinement` for every way the first of those c
 there - see [SECURITY.md](SECURITY.md) before changing any of it), `attach.rs` (one file into the
 context: the short table of media types this program is prepared to name, and text for everything
 else),
-`provider.rs` (**not a provider**: the four environment variables this program reads, and the two
-`connect` functions that turn them into one), `main.rs` (arguments, and the loop that draws). It is
+`endpoint.rs` (where the requests go: the four environment variables this program reads, and the
+two `connect` functions that turn them into a provider - it was `provider.rs` while the dialects
+were files in this crate), `main.rs` (arguments, and the loop that draws). It is
 a library plus a binary so the screen can be drawn against a `TestBackend` in tests, and because
 the screen is not the program.
 
@@ -110,7 +111,7 @@ feature; `waiting.rs` is what makes them one crate rather than two.
 
 This crate **reads no environment**. Where the requests go, which key pays for them and what limit
 to measure against are arguments, and the two callers in this workspace supply them:
-`kamchatka/src/provider.rs` reads `KAMCHATKA_*` and `nachalnik-utils` reads `NACHALNIK_*`. A
+`kamchatka/src/endpoint.rs` reads `KAMCHATKA_*` and `nachalnik-utils` reads `NACHALNIK_*`. A
 library that quietly picked up `OPENAI_API_KEY` would be spending somebody's money on the strength
 of a variable they exported for another reason.
 

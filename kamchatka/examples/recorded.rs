@@ -13,8 +13,9 @@
 use std::{fs, io::Write, path::PathBuf, sync::Arc, time::Duration};
 
 use kamchatka::{
+    endpoint,
     headless::Headless,
-    provider, sandbox,
+    sandbox,
     tools::Subject,
     wiring::{Setup, Wired},
 };
@@ -80,10 +81,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_owned()
     });
     let provider: Arc<dyn Dialect> = match ordered {
-        true => provider::gemini::connect(&model)
+        true => endpoint::gemini::connect(&model)
             .await
             .map(|it| it as Arc<dyn Dialect>),
-        false => provider::connect(&model)
+        false => endpoint::connect(&model)
             .await
             .map(|it| it as Arc<dyn Dialect>),
     }

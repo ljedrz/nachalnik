@@ -5,6 +5,11 @@
 //! caller's to decide. This is that caller: four variables, documented in `--help` and in the
 //! README, and one place that turns them into a provider. A dialect each, because the address
 //! they default to is the one thing the two do not share.
+//!
+//! note: named for what it settles rather than for what it hands back. It was `provider`, which
+//! was the truth while the dialects were files in this crate and stopped being it the day they
+//! became [`nachalnik_providers`] - and a module called `provider` next to a crate of providers
+//! reads as the place one is implemented rather than the place one is addressed.
 
 use std::{env, sync::Arc};
 

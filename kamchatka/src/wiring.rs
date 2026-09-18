@@ -13,7 +13,7 @@
 //!
 //! note: what it deliberately does not do is reach the network or read the environment.
 //! [`Setup::wire`] takes the provider already connected, because where the requests go, which key
-//! pays for them and what dialect they speak are the caller's to decide - `provider::connect` is
+//! pays for them and what dialect they speak are the caller's to decide - `endpoint::connect` is
 //! one line and `tests` hand in a scripted one.
 
 use std::sync::Arc;
