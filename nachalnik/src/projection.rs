@@ -552,21 +552,34 @@ impl Projector for LinearProjector {
             // calls in its content, and the repair above may have taken some down
             let mut adjacent = at + 1;
             for call in message.calls() {
-                for answer in results.get(&call.id).into_iter().flatten() {
-                    if placed[*answer] {
-                        continue;
-                    }
-                    if *answer != adjacent {
-                        projection.reordered.push(format!(
-                            "moved item {} up behind the call `{}` it answers: a tool result has \
-                             to reach the wire immediately after the call it answers",
-                            built[*answer].0, call.id
-                        ));
-                    }
-                    placed[*answer] = true;
-                    order.push(*answer);
-                    adjacent += 1;
+                // one result per call, and the next unplaced one, because that is the pairing
+                // the pass above made: calls and results are claimed one for one, in order,
+                // rather than by set membership. Taking every result that shares the identifier
+                // undid exactly that where it matters - two calls carrying one identifier, which
+                // `repair_orphans` names as the case counting exists for, put both answers behind
+                // the first call and left the second reaching the wire with nothing after it. Two
+                // `tool` messages in a row and a trailing unanswered call, and nothing said,
+                // because nothing had been dropped
+                let answer = results
+                    .get(&call.id)
+                    .into_iter()
+                    .flatten()
+                    .copied()
+                    .find(|answer| !placed[*answer]);
+                let Some(answer) = answer else {
+                    continue;
+                };
+
+                if answer != adjacent {
+                    projection.reordered.push(format!(
+                        "moved item {} up behind the call `{}` it answers: a tool result has to \
+                         reach the wire immediately after the call it answers",
+                        built[answer].0, call.id
+                    ));
                 }
+                placed[answer] = true;
+                order.push(answer);
+                adjacent += 1;
             }
         }
         // nothing is dropped to achieve an order. A result whose call is in the request is placed

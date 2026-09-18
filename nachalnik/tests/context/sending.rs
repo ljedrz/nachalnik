@@ -237,6 +237,68 @@ fn a_result_follows_the_call_it_answers_whatever_lands_between_them() {
     );
 }
 
+/// Two calls that share an identifier are two calls, and the second one is not answered by the
+/// first one's result. `LinearProjector::repair_orphans` says the pairing is "one for one, in
+/// order, rather than by set membership", and names this input as the reason it counts: the kernel
+/// keeps provider-produced identifiers unique, but a context assembled by hand or restored from
+/// elsewhere can repeat one.
+///
+/// note: the ordering pass keyed results by identifier, so both results went behind the *first*
+/// call and the second call reached the wire with nothing answering it - two `tool` messages in a
+/// row and a trailing unanswered call, which is the pair of shapes the dialect refuses a whole
+/// request over. Nothing was reported, because nothing had been dropped. The property suite cannot
+/// reach it either: its generator mints a fresh identifier for every call, so the shape it would
+/// fail on is one it never builds.
+#[test]
+fn two_calls_sharing_an_identifier_each_keep_their_own_result() {
+    let kernel = kernel();
+    let shared = nachalnik::test::call("c5", "grep", json!({}));
+    kernel.push(ContextItem::assistant("first", vec![shared.clone()]));
+    kernel.push(ContextItem::assistant("second", vec![shared.clone()]));
+    kernel.push(ContextItem::tool_result(
+        shared.id.clone(),
+        "grep",
+        "the first answer",
+        false,
+    ));
+    kernel.push(ContextItem::tool_result(
+        shared.id.clone(),
+        "grep",
+        "the second answer",
+        false,
+    ));
+
+    let sent = kernel.project();
+    assert_eq!(
+        sent.messages.len(),
+        4,
+        "nothing is dropped: the counts match"
+    );
+
+    // every result reaches the wire immediately after a call that is still waiting for one
+    let mut waiting = 0;
+    for message in &sent.messages {
+        match message.tool_call_id.is_some() {
+            true => {
+                assert!(
+                    waiting > 0,
+                    "a result answering `c5` that no call before it was waiting for: {:?}",
+                    sent.messages
+                        .iter()
+                        .map(|m| (m.role, m.tool_call_id.is_some(), m.tool_calls.len()))
+                        .collect::<Vec<_>>()
+                );
+                waiting -= 1;
+            }
+            false => waiting += message.tool_calls.len(),
+        }
+    }
+    assert_eq!(
+        waiting, 0,
+        "a call reached the wire with nothing answering it"
+    );
+}
+
 /// Restoring the whole of a truncated output beside the copy the model was shown is one keystroke,
 /// and the projector is what makes it safe: the pair is one call's answer, so the whole claims the
 /// call and the shortened copy is dropped. What it says about that has to be true, though.

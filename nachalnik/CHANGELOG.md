@@ -9,6 +9,16 @@ minor bump may break you.
 
 ### fixed
 
+- `LinearProjector` orders a turn's results by the pairing it made rather than by identifier, so
+  two calls that share a `ToolCallId` each keep their own answer. `repair_orphans` says the pairing
+  is "one for one, in order, rather than by set membership" and names a hand-assembled or restored
+  context as the case that makes it matter; the ordering pass then keyed results by identifier and
+  handed both answers to the first call, leaving the second to reach the wire with nothing after
+  it. Two `tool` messages in a row and a trailing unanswered call - the two shapes the dialect
+  refuses a whole request over - and nothing in `repairs` or `skipped`, because nothing had been
+  dropped. The property suite could not catch it: its generator mints a fresh identifier for every
+  call, so the shape the adjacency property would fail on is one it never builds.
+
 - `Kernel::cancel_pending_calls` takes one undo checkpoint for the batch rather than one per call,
   which is what "one operation is one undo" says and what `push_all` exists to do. Dropping a
   turn's calls is one thing somebody did; a checkpoint each made a single `undo` take back one
