@@ -575,12 +575,22 @@ impl Jev {
         Err(format!("{} never answered", self.model()).into())
     }
 
-    /// Says so on the notice if the model being asked for is not one the endpoint lists.
+    /// Asks the endpoint what it serves, and says so on the notice if the model being asked for
+    /// is not on the list.
     ///
     /// note: the same courtesy the Gemini dialect does, and for the same reason: a name that is
     /// not there comes back a 400 on the next request, which is a worse place to find out. An
     /// endpoint that answers no listing at all says nothing, rather than claiming every model is
     /// missing.
+    ///
+    /// note: there is nothing else for a probe to ask. What the sibling dialects use one for is
+    /// the model's context limit, and this model has no window to measure a conversation against
+    /// - a request is one state and a handful of questions, and the endpoint prices it afterwards.
+    pub async fn probe(&self) {
+        self.say_if_the_model_is_not_there().await;
+    }
+
+    /// Says so on the notice if the model being asked for is not one the endpoint lists.
     async fn say_if_the_model_is_not_there(&self) {
         let model = self.model();
         let listed = self.models().await;

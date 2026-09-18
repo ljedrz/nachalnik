@@ -141,9 +141,18 @@ Rust 1.88 or newer, and that is the whole list: no system libraries, no `pkg-con
 to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
 looking for yours.
 
-Two features, both on by default. `--no-default-features --features tui` drops MCP support and
-the `--mcp` flag with it. `tui` is the other one, and it is the screen and the keys: without it
-you get the same program, headless, 88 crates lighter.
+Three features, two of them on by default. `--no-default-features --features tui` drops MCP
+support and the `--mcp` flag with it. `tui` is the other default, and it is the screen and the
+keys: without it you get the same program, headless, 88 crates lighter.
+
+`advise` is the third and is **off**. It adds `--advise`, which asks a second model — TypeSafe's
+`jev`, which answers typed questions rather than writing text — about every tool call the standing
+rules were going to allow, and takes the stricter of the two answers. It can refuse a call and it
+can never permit one: an advisor that is unreachable, out of quota or unparseable leaves the
+verdict exactly where the rules left it. It is off by default and behind a flag as well as a
+feature because it is the one thing in this program that sends a tool's *arguments* to a third
+party — for a write, that is the text being written — and that is a decision to make rather than
+inherit. `KAMCHATKA_TYPESAFE_API_KEY` is its key, and it has no fallback to the others.
 
 **The sandbox is Linux-only.** The `shell` tool is confined with [Landlock](https://landlock.io),
 which is a Linux LSM. Everywhere else the program builds and runs, but the shell is unconfined:

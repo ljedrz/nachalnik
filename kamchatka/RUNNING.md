@@ -492,6 +492,9 @@ kamchatka [OPTIONS] [MESSAGE]...
       --parallel            run the model's tool calls at the same time
       --gemini              talk to Google's own API rather than an OpenAI-compatible
                             one, so a turn keeps the order it was produced in
+      --advise              ask a second model about every tool call the rules were
+                            going to allow, and take the stricter of the two. Needs
+                            the `advise` feature; sends the call's arguments out
       --headless            drive the session from lines on stdin: the session log to
                             stdout, one JSON record a line, and what the model says to
                             stderr. Implied when stdout is not a terminal
@@ -527,10 +530,54 @@ Environment:
                            with --gemini
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
   KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter
+
+The advisor, which is only ever asked when --advise is given:
+  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. No fallback to the above -
+                              it is a different service, and a different account
+  KAMCHATKA_TYPESAFE_BASE_URL where its questions go; TypeSafe's own by default
+  KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest by default
 ```
 
 That is `--help`, which lists the environment too rather than leaving three settings for the
-readme alone to mention.
+readme alone to mention. The advisor's block is printed by a build that has an `--advise` to use
+it and by no other, which is why it is the one part of the above you may not see.
+
+### a second opinion on a tool call
+
+`--advise` is off unless the program was built with `--features advise`, and then it still has to
+be asked for. What it adds is one question, put to [TypeSafe](https://docs.typesafe.ai)'s `jev` —
+a model that answers typed questions rather than writing text — about every tool call the standing
+rules were going to **allow**:
+
+```console
+$ export KAMCHATKA_TYPESAFE_API_KEY=apikey_...
+$ kamchatka --advise --allow exec:run "tidy up the build artifacts"
+```
+
+`--allow exec:run` is the setting this is for. Answering *always* to one shell command answers for
+every shell command, and `Careful` is a heuristic over a command line: `rm -rf ./target` and `rm
+-rf /` are the same capability. The advisor reads the next one.
+
+It can only ever **tighten**. It is asked only about calls the rules already allow, its answer is
+folded in with the strictest-wins rule the rest of the permissions use, and every way of not
+getting an answer — an unreachable endpoint, a refused key, a spent quota, an answer that does not
+parse, an option nobody offered — leaves the verdict exactly where the rules left it and says so
+on the permissions tab. There is no path from anything the advisor says to a call running that
+would not have run anyway.
+
+A refusal it is sure of is a refusal; one it is not sure of becomes a question, because a
+distribution spread across three options is not a refusal and acting on one as though it were
+would stop ordinary work on a coin toss. The sentence carries the figure it acted on, and both the
+screen and the *model* read it — `the advisor said` \``deny`\` `(99% sure); it judges this
+irreversible (98%)` is something a refused agent can do something with.
+
+**What leaves the machine**: the tool's id, the capabilities it declared, and its arguments — for
+a write, the text being written, capped at 2KB per argument with the cut named. Not the
+conversation, not the system instruction, not the model's own prose about why it wants the call. A
+tool call whose arguments *claim* it was already approved is a string in a JSON document like any
+other, which is the invariant *nothing in a model's output reaches the policy* still holding: the
+agent under judgement cannot address the judge. That disclosure is the reason this is behind both
+a feature and a flag rather than on for anyone with a key in their environment.
 
 `/save` writes two files: a `.jsonl` of every event that happened, and a `.json` snapshot of the
 context. The snapshot has two ways back in.

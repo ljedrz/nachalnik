@@ -28,6 +28,14 @@ path = "src/main.rs"
 
 [features]
 default = ["mcp", "tui"]
+# `--advise` asks TypeSafe's `jev` for a second opinion on a tool call the standing rules were
+# going to allow, and folds it in with `Verdict::strictest` so that it can only ever tighten.
+#
+# note: optional, and deliberately not in `default`. It is the one thing in this program that
+# sends a tool's *arguments* to a third party - which for a write is the text being written -
+# and that is a decision somebody has to make rather than inherit from a build. See
+# `tools::advice`, which is where the whole of what leaves the machine is written down.
+advise = ["nachalnik-providers/typesafe"]
 # `--mcp 'cmd args'` puts somebody else's MCP server's tools in the same list as the built-in
 # ones. Optional because the runtime does not need it and neither does the terminal.
 mcp = ["dep:nachalnik-mcp"]
@@ -144,6 +152,11 @@ landlock = "0.4"
 # the introspection tools through the real loop, and a whole session driven by lines rather
 # than keys - are about the program rather than the screen, so `cargo test --no-default-features`
 # runs them instead of failing to compile them
+[[test]]
+name = "advise"
+path = "tests/advise.rs"
+required-features = ["advise"]
+
 [[test]]
 name = "edges"
 path = "tests/edges.rs"

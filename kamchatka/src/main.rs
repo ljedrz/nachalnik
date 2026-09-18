@@ -52,19 +52,38 @@ const TICK: std::time::Duration = std::time::Duration::from_millis(120);
 /// arguments, so clap cannot list them the way it lists `KAMCHATKA_MODEL` beside `--model`. A
 /// setting nothing on the screen mentions is a setting nobody finds, and `--help` is where a
 /// person looks for the list.
-#[derive(Parser)]
-#[command(
-    version,
-    about,
-    long_about = None,
-    after_help = "\
+/// The variables `--help` lists, and what each of them is for.
+///
+/// note: a function rather than the literal it was, so that the advisor's three are listed by a
+/// build that has an `--advise` to use them and by no other. A variable named in the help of a
+/// program that reads it nowhere is the same failure as a settings key nothing consults.
+fn environment() -> String {
+    /// The advisor's three, listed by a build that has an `--advise` and empty in one that does
+    /// not.
+    #[cfg(feature = "advise")]
+    const ADVISOR: &str = "
+
+The advisor, which is only ever asked when --advise is given:
+  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. No fallback to the above -
+                              it is a different service, and a different account
+  KAMCHATKA_TYPESAFE_BASE_URL where its questions go; TypeSafe's own by default
+  KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest by default";
+    #[cfg(not(feature = "advise"))]
+    const ADVISOR: &str = "";
+
+    format!(
+        "\
 Environment:
   KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY
   KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
                            OpenRouter by default, or Google's own v1beta with --gemini
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
-  KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter"
-)]
+  KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter{ADVISOR}"
+    )
+}
+
+#[derive(Parser)]
+#[command(version, about, long_about = None, after_help = environment())]
 struct Args {
     /// A first message, sent as soon as it starts.
     message: Vec<String>,
@@ -77,6 +96,13 @@ struct Args {
     /// order it was produced in: thinking, a sentence, a tool call, more thinking.
     #[arg(long)]
     gemini: bool,
+
+    /// Ask a second model about every tool call the rules were going to allow, and take the
+    /// stricter of the two answers. It can refuse a call and never permit one. Sends the call's
+    /// tool name, capabilities and arguments to TypeSafe; see KAMCHATKA_TYPESAFE_API_KEY.
+    #[cfg(feature = "advise")]
+    #[arg(long)]
+    advise: bool,
 
     /// A file to put in the context, pinned; a PDF or an image goes in as itself. May be
     /// repeated, and `/attach` is the same thing at the prompt.
@@ -292,6 +318,20 @@ impl Args {
             _ => {}
         }
 
+        // the same rule for the same reason, and it matters more here: a settings file that asked
+        // for a second opinion on every tool call, in a build with no advisor in it, would run
+        // the session with its permissions decided by the heuristic alone and say nothing
+        match settings.advise {
+            #[cfg(feature = "advise")]
+            Some(advise) if !typed("advise") => self.advise = advise,
+            #[cfg(not(feature = "advise"))]
+            Some(true) => anyhow::bail!(
+                "this build has no advisor in it, so `advise` in the settings file cannot be \
+                 honoured"
+            ),
+            _ => {}
+        }
+
         Ok(self)
     }
 }
@@ -447,6 +487,8 @@ async fn session() -> Result<()> {
         tools: args.tools.clone(),
         system: args.system.clone(),
         files: args.file.clone(),
+        #[cfg(feature = "advise")]
+        advisor: None,
     };
 
     // note: before the provider, which is a round trip and an API key away. Everything `check`
@@ -454,6 +496,33 @@ async fn session() -> Result<()> {
     // can match - and being told about one of those by an endpoint's refusal to talk is being
     // told about the wrong thing. `wire` asks it again for whoever is not `main`
     setup.check().map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    // note: after `check` and before the provider, and the order is the point. A missing advisor
+    // key is a fact about the arguments and should not cost a round trip to the *other* endpoint
+    // to find out about; and a session that was asked for with `--advise` and could not reach an
+    // advisor is refused rather than quietly run with its permissions decided by the heuristic
+    // alone. Somebody who turned this on is entitled to have it on or be told it is not
+    #[cfg(feature = "advise")]
+    let setup = match args.advise {
+        false => setup,
+        true => {
+            let jev = provider::advise::connect()
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))
+                .context("could not reach the advisor")?;
+            // what the probe had to say about the model it was asked for - a name the endpoint
+            // does not serve, most likely. On stderr because there is no screen yet and this is
+            // the last moment it can be read before one covers it
+            if let Some(notice) = jev.take_notice() {
+                eprintln!("advisor: {notice}");
+            }
+
+            Setup {
+                advisor: Some(jev),
+                ..setup
+            }
+        }
+    };
 
     // two wire formats, one trait. `--gemini` is what a person picks, and everything downstream -
     // the kernel, the screen, `/model`, `/provider` - is written against `Endpoint` and never

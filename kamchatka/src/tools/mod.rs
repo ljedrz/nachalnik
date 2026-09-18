@@ -19,6 +19,8 @@ use parking_lot::Mutex;
 use crate::sandbox::Reach;
 use serde_json::Value;
 
+#[cfg(feature = "advise")]
+mod advice;
 mod files;
 mod fs;
 pub(crate) mod ops;
@@ -27,6 +29,8 @@ mod search;
 mod shell;
 mod trim;
 
+#[cfg(feature = "advise")]
+pub use crate::tools::advice::Advised;
 pub use crate::tools::{
     policy::{Careful, Subject, objection_to, path_matches, reaches_the_network},
     shell::{Exit, Shell},

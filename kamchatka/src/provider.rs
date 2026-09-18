@@ -80,6 +80,56 @@ pub async fn connect(model: impl Into<String>) -> Result<Arc<OpenAiCompatible>, 
     Ok(provider)
 }
 
+/// The advisor: a second model, asked about tool calls rather than about turns.
+///
+/// note: its own key under its own name, and no fallback to the three above. Those are one
+/// account paying for a conversation; this is a different service with a different key, and a
+/// program that reached for `KAMCHATKA_API_KEY` here would send somebody's OpenRouter key to
+/// TypeSafe the first time they turned this on.
+///
+/// note: nothing in here is read unless `--advise` was asked for. The flag is what decides
+/// whether a tool's arguments leave the machine at all - see `tools::advice` - and a key sitting
+/// in the environment is not a decision to send them.
+#[cfg(feature = "advise")]
+pub mod advise {
+    use nachalnik_providers::typesafe::{self, Jev};
+
+    use super::*;
+
+    /// The advisor's key, under either of the documented names.
+    pub fn api_key() -> Result<String, BoxError> {
+        env::var("KAMCHATKA_TYPESAFE_API_KEY")
+            .or_else(|_| env::var("TYPESAFE_API_KEY"))
+            .map_err(|_| {
+                "--advise needs a key: set KAMCHATKA_TYPESAFE_API_KEY (or TYPESAFE_API_KEY)".into()
+            })
+    }
+
+    /// Which model answers; TypeSafe's own default unless told otherwise.
+    pub fn model() -> String {
+        env::var("KAMCHATKA_TYPESAFE_MODEL").unwrap_or_else(|_| typesafe::DEFAULT_MODEL.to_owned())
+    }
+
+    /// The endpoint to talk to; TypeSafe's own unless told otherwise.
+    pub fn base_url() -> String {
+        env::var("KAMCHATKA_TYPESAFE_BASE_URL")
+            .unwrap_or_else(|_| typesafe::DEFAULT_BASE_URL.to_owned())
+    }
+
+    /// Builds the advisor from the environment, checking that the model it names is served.
+    ///
+    /// note: the listing is asked for here rather than on the first refusal, for the reason
+    /// `Gemini::probe` is called at startup: a model name that is not served comes back a 400,
+    /// and the moment to find that out is before a session is running rather than the first time
+    /// a permission question depends on it.
+    pub async fn connect() -> Result<Arc<Jev>, BoxError> {
+        let jev = Arc::new(Jev::new(model(), base_url(), api_key()?));
+        jev.probe().await;
+
+        Ok(jev)
+    }
+}
+
 /// The same four variables, pointed at Google's own API.
 pub mod gemini {
     use super::*;

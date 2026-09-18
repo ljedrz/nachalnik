@@ -118,6 +118,20 @@ pub struct Setup {
     pub system: Option<String>,
     /// Files to put in the context, pinned; a PDF or an image goes in as itself.
     pub files: Vec<String>,
+    /// A model to ask about tool calls the standing rules were going to allow.
+    ///
+    /// note: `None` is the default and is a session whose permissions are decided entirely on
+    /// this machine. Handing one over turns on the second opinion in [`tools::Advised`], which
+    /// sends the tool's id, its declared capabilities and its arguments to that endpoint - and
+    /// can only ever make a verdict stricter. The module says what leaves and why it cannot
+    /// loosen anything.
+    ///
+    /// note: the connected client rather than a key or a flag, for the reason `wire` takes a
+    /// connected provider: this function reaches no network and reads no environment, so whether
+    /// to have an advisor at all - and which endpoint it is - is the caller's to decide and its
+    /// business to say out loud.
+    #[cfg(feature = "advise")]
+    pub advisor: Option<Arc<nachalnik_providers::typesafe::Jev>>,
 }
 
 impl Default for Setup {
@@ -139,6 +153,8 @@ impl Default for Setup {
             deny: Vec::new(),
             system: None,
             files: Vec::new(),
+            #[cfg(feature = "advise")]
+            advisor: None,
         }
     }
 }
@@ -267,7 +283,22 @@ impl Setup {
             }
         }
         kernel.set_provider(provider.clone());
-        kernel.set_policy(policy.clone());
+
+        // note: the kernel gets the advisor wrapped around the standing rules where there is one,
+        // and the rules themselves where there is not. Everything else keeps holding `Careful`
+        // directly - the `shell` tool asks it what a command may reach, the permissions tab draws
+        // its stances, and `/allow` changes them - because those are all about the standing rules
+        // and a second opinion has none to show. What the wrapper owns is one call's verdict
+        #[cfg(feature = "advise")]
+        let decides: Arc<dyn nachalnik::PermissionPolicy> = match self.advisor {
+            Some(jev) => Arc::new(tools::Advised::new(policy.clone(), jev)),
+            None => policy.clone(),
+        };
+        #[cfg(not(feature = "advise"))]
+        let decides: Arc<dyn nachalnik::PermissionPolicy> = policy.clone();
+        // one call rather than one per branch: setting the policy is an `Event`, and a session
+        // whose trace said it twice would be a session that had two
+        kernel.set_policy(decides);
         // the projector decides the shape of a turn on the wire, so the provider that owns that
         // wire is the thing asked what it can carry - rather than a caller deciding a second time
         // from the same flag, which is how the two came apart in the first place

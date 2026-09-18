@@ -41,6 +41,14 @@ pub struct Settings {
     pub model: Option<String>,
     /// Whether to speak Google's own dialect rather than an OpenAI-compatible one.
     pub gemini: Option<bool>,
+    /// Whether to ask a second model about tool calls the standing rules were going to allow.
+    ///
+    /// note: not behind the `advise` feature, for the reason `mcp` is not: one file works for
+    /// every build of this program, and a build without it refuses the key rather than ignoring
+    /// it - see `main.rs`. A setting that silently did nothing is worse here than almost
+    /// anywhere else in this file, because what it would silently not be doing is checking
+    /// permissions.
+    pub advise: Option<bool>,
     /// A system instruction, pinned.
     pub system: Option<String>,
     /// MCP servers to run, as `[name=]command`.

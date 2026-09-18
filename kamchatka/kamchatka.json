@@ -1,6 +1,7 @@
 {
   "model": null,
   "gemini": false,
+  "advise": false,
   "system": null,
   "mcp": [],
 
