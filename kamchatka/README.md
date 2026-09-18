@@ -4,7 +4,7 @@
 [![docs.rs](https://docs.rs/kamchatka/badge.svg)](https://docs.rs/kamchatka)
 [![CI](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml/badge.svg)](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml)
 
-**A terminal agent that shows you its context.**
+**A terminal agent that gives you full control of the context.**
 
 Built on [`nachalnik`][nachalnik], and built to demonstrate it. Everything in here is
 ordinary user code — the tools, the permission policy, the compactor, the drawing, and the two
@@ -12,7 +12,7 @@ providers next door in [`nachalnik-providers`][providers]. The runtime supplies 
 the context and the paper trail.
 
 ```console
-$ cargo install kamchatka
+$ cargo install kamchatka # or download the released binary
 $ export KAMCHATKA_API_KEY=sk-or-...
 $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 ```
@@ -36,24 +36,21 @@ $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 ┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ ask for something, or /help                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- done · gpt-4o-mini @ openrouter.ai · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back
+ done · qwen/qwen3-coder @ openrouter.ai · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back
 ```
 
-> **The permissions are enforced, and it is still a demonstration rather than a hardened agent.**
-> The `shell` tool runs under [Landlock](https://landlock.io), so `network: deny` is a TCP
-> `connect()` refused by the kernel rather than a policy reading the word `curl` — TCP being the
-> whole of what the `landlock` crate can refuse, so a UDP datagram still goes out; the kernel grew
-> UDP rights in ABI 10 (Linux 7.2) and the crate has not caught up. `write: deny` makes the working
-> directory read-only, and nothing outside that directory is readable or writable, with one
-> deliberate exception: the system directories, because a command that cannot read `/usr/bin`
-> cannot be a command. So `cat /etc/passwd` works and `cat ~/.ssh/id_rsa` does not.
-> `fs`, which is not a process, is held to the same boundary by its own code and to a
-> tighter one: it refuses `/etc/passwd` too, and it never expands `~` — there is no shell in front
-> of it, so a path is taken at its word and it says so rather than reporting the file as missing.
-> `--sandbox-allow PATH` opens up more, `--sandbox-read PATH` opens it for reading only, and
-> `--no-sandbox` turns it off. It is one LSM, not a container; see [what it does and does not
-> protect you from][protection], and [the permissions tab][guide-permissions] for what the screen
-> says about which of it your kernel actually took.
+## ❓ who this is for
+
+You're likely to find `kamchatka` compelling if any of these apply to you:
+- you're a Linux user (the bundled sandbox is Linux-only), or apply your own sandbox in any other OS
+- you hate when the agent forgets an important piece of information, or can't trace its reasoning
+back to earlier points in the discussion
+- you're dissatisfied with token accounting and auto-compaction being imprecise and unpredictable
+- you worry about supply-chain attack surface of large codebases
+- you distrust generic community tools hosted by `npm`
+- you want clear, fine-grained control over all the decisions taken by the agent
+- you want a minimalistic agent with negligible OS footprint and a transparent configuration
+- you like to keep detailed, auditable, and local transcripts of past conversations
 
 ## 🔧 what it comes with
 
@@ -131,6 +128,9 @@ to drive.
 
 ## 📦 installing
 
+Download one of the binaries from [releases](https://github.com/ljedrz/nachalnik/releases), or
+install the latest release using `cargo`:
+
 ```console
 $ cargo install kamchatka                     # from the registry
 $ cargo install --git https://github.com/ljedrz/nachalnik kamchatka
@@ -163,15 +163,6 @@ never folded into a verdict — and a rating the advisor was not sure of is neve
 a separate opt-in because it widens what leaves the machine: `advise` sends only the calls the
 rules were going to allow, which in a default session is not one command; this sends every command
 the model writes.
-
-**The sandbox is Linux-only.** The `shell` tool is confined with [Landlock](https://landlock.io),
-which is a Linux LSM. Everywhere else the program builds and runs, but the shell is unconfined:
-the permissions tab says `shell: a command can do any of these` rather than `shell: confined`, and
-the stances are answers you were asked for rather than a boundary anything enforces.
-
-On Linux it also wants a kernel new enough to have Landlock — 5.13 for the filesystem rules, 6.2
-for the one that refuses `truncate()`, and 6.7 for `network: deny`. The tab says how much of it the
-kernel took: `confined`, or `partly confined` where some of it is older than the machine.
 
 ## 📚 the rest of it
 
