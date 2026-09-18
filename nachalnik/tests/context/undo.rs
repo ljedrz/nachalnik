@@ -8,7 +8,11 @@
 
 use std::sync::Arc;
 
-use nachalnik::{Config, ContextId, ContextItem, ContextState, Event, Kernel};
+use nachalnik::{
+    Config, ContextId, ContextItem, ContextState, Event, Kernel, ModelResponse,
+    test::{AllowAll, ConstTool, ScriptedProvider, call},
+};
+use serde_json::json;
 
 use crate::{drain, kernel, select};
 
@@ -230,6 +234,46 @@ fn a_set_of_files_is_one_thing_the_user_did() {
     assert!(kernel.items().is_empty());
 
     assert!(kernel.push_all([]).is_empty());
+}
+
+/// And so is dropping a turn's calls. The model asked for three tools and somebody said no, which
+/// is one thing that happened: a checkpoint each would make a single `undo` take back one refusal
+/// and leave the other two, so the model would be looking at a turn where two of its calls were
+/// answered and one was never mentioned. It is also what the depth is measured against - a model
+/// asking for sixteen tools would otherwise spend the whole undo history on one keystroke.
+#[tokio::test]
+async fn cancelling_a_turn_s_calls_is_one_thing_the_user_did() {
+    let kernel = kernel();
+    kernel.set_policy(Arc::new(AllowAll));
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![
+            call("c1", "shell", json!({ "cmd": "a" })),
+            call("c2", "shell", json!({ "cmd": "b" })),
+            call("c3", "shell", json!({ "cmd": "c" })),
+        ]),
+    ])));
+    kernel.add_tool(Arc::new(ConstTool::new("shell", "it ran!")));
+    kernel.push(ContextItem::user("do three things"));
+
+    // one step: the calls are prepared and nothing has run
+    kernel.step().await.unwrap();
+    let depth = kernel.with_context(|c| c.undo_len());
+
+    assert_eq!(kernel.cancel_pending_calls("changed my mind"), 3);
+    assert_eq!(
+        kernel.with_context(|c| c.undo_len()),
+        depth + 1,
+        "three refusals would have spent three of the sixteen the user has"
+    );
+
+    assert!(kernel.undo());
+    assert!(
+        !kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("changed my mind")),
+        "one undo left part of the cancellation behind"
+    );
 }
 
 #[test]

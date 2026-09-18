@@ -1341,6 +1341,14 @@ impl Kernel {
     /// note: The model is told that the calls were refused, because a call without a result is
     /// not something most providers accept. Whether it *sees* that is up to the
     /// [`Projector`] - the record is kept either way.
+    ///
+    /// note: one checkpoint for the batch, taken by the first result and joined by the rest -
+    /// the shape [`Kernel::push_all`] uses, for the reason it uses it. Dropping the calls is one
+    /// thing somebody did, so one `undo` is to put the whole of it back; a checkpoint each would
+    /// make a single `undo` take back one refusal and leave the others, which is a turn where
+    /// some of the model's calls were answered and one was never mentioned. It is also what
+    /// [`Config::context_undo_depth`] is measured against: a model asking for sixteen tools and
+    /// a person who says no would otherwise spend the whole undo history on one keystroke.
     pub fn cancel_pending_calls(&self, reason: impl Into<String>) -> usize {
         let reason = reason.into();
         let prepared = {
@@ -1354,7 +1362,7 @@ impl Kernel {
         };
         let count = prepared.len();
 
-        for call in prepared {
+        for (nth, call) in prepared.into_iter().enumerate() {
             self.emit(Event::PermissionDecided {
                 id: call.request.id,
                 call: call.call.id.clone(),
@@ -1367,7 +1375,7 @@ impl Kernel {
                 ToolOutput::error(format!("the call was cancelled: {reason}")),
                 None,
                 None,
-                true,
+                nth == 0,
             );
         }
 

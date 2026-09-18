@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### fixed
 
+- `Kernel::cancel_pending_calls` takes one undo checkpoint for the batch rather than one per call,
+  which is what "one operation is one undo" says and what `push_all` exists to do. Dropping a
+  turn's calls is one thing somebody did; a checkpoint each made a single `undo` take back one
+  refusal and leave the others, so the model was left looking at a turn where some of its calls
+  were answered and one was never mentioned - and a model asking for sixteen tools spent the whole
+  of the default undo depth on one keystroke. The two tests that cancelled anything cancelled one
+  call, where the two behaviours are identical.
+
 - `Calibrating::recalibrate` holds the scale it is handed to the same bounds the one it works out
   for itself goes through. `observe` clamped its ratio and this door had nothing on it, which
   matters because it is the door a `Snapshot` comes through: `Calibration` is `serde` with public
