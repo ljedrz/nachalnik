@@ -357,7 +357,7 @@ fn asking_about_action(policy: &Careful, action: &str) -> Verdict {
 /// `context` allows the context: every action it has, with nothing else to say about it.
 ///
 /// note: four of them were seeded as questions, so allowing the tool left an `exclude` still
-/// asking - which made `--allow amend` mean something other than `amend`, with no way to tell
+/// asking - which made `--allow context` mean something other than `context`, with no way to tell
 /// from the words which four were the exceptions.
 #[test]
 fn allowing_a_tool_allows_every_action_of_it() {

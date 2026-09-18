@@ -184,8 +184,8 @@ impl App {
 
         // whose hand it was, on the item itself. The content is now the only content, so a
         // reader of the row - the person here, and the model through `context` - would
-        // otherwise have nothing saying it was ever anything else. `amend` writes this same key
-        // with `by: amend`, and the one thing the two paths must not do is look alike: a model
+        // otherwise have nothing saying it was ever anything else. `context` writes this same
+        // key with `by: context`, and the one thing the two paths must not do is look alike: a model
         // reading its own metadata should never find its own tool credited with a sentence a
         // person rewrote
         let mut meta = match old.meta.is_object() {
@@ -404,7 +404,7 @@ impl App {
             Page {
                 name: "as stored".into(),
                 body: match item.meta.get("revised") {
-                    // who rewrote it and why, which `amend` records on the item itself; the trace
+                    // who rewrote it and why, which `context` records on the item itself; the trace
                     // has the rest, and this is the line that sends somebody to it
                     Some(revised) => format!(
                         "rewritten by `{}`: {}\n\n{}",
@@ -662,7 +662,7 @@ impl App {
             return;
         };
 
-        // the arguments can be longer than the panel has room for - an `amend` carrying a
+        // the arguments can be longer than the panel has room for - a `revise` carrying a
         // rewritten tool result is as long as the result - so the keys that scroll everything else
         // scroll them here too
         match key.code {

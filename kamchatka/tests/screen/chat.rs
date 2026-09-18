@@ -1236,7 +1236,7 @@ async fn a_turn_that_arrives_padded_is_not_read_padded() {
 ///
 /// note: the gap between the two ways content changes, and the one nothing covered. A terminal
 /// edit used to *supersede*: a new item, a new identifier, and the transcript line re-pointed at
-/// it. `amend revise` **replaces**, in place, so the identifier never moves - and the chat went
+/// it. `context revise` **replaces**, in place, so the identifier never moves - and the chat went
 /// on showing the words that had streamed in while the context tab, the `enter` overlay and the
 /// request itself all showed the new ones. Nothing on the screen said which of the two the model
 /// had actually read. Both hands replace now, so this is the only path there is.
@@ -1251,7 +1251,7 @@ async fn a_turn_rewritten_in_place_reads_as_it_is_now() {
     harness.settle().await;
     assert!(harness.screen().contains("the words that streamed in"));
 
-    // what `amend revise` does: same item, different content, no new identifier
+    // what `context revise` does: same item, different content, no new identifier
     let answered = harness.app.kernel.items()[1].id;
     harness
         .app
@@ -1396,7 +1396,7 @@ fn the_chat_is_the_conversation_the_model_is_in() {
         Elide(usize),
         Pin(usize),
         Archive(usize),
-        /// New words under the same identifier: what `e` does, and what `amend revise` does.
+        /// New words under the same identifier: what `e` does, and what `context revise` does.
         Edit(usize),
         /// New words beside it, with the old marked superseded. Nothing in this program does
         /// this any more - `e` replaces - but [`Kernel::supersede`] is the runtime's and a

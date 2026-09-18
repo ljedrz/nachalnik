@@ -39,7 +39,7 @@ pub(super) fn draw_overlay(frame: &mut Frame, app: &App) -> usize {
 /// What a waiting question is made of, at the width it will be drawn at.
 ///
 /// note: three regions rather than one paragraph, because the arguments are the only part with no
-/// bound on it. Sized as one block, an `amend` carrying eighty lines of replacement text pushed
+/// bound on it. Sized as one block, a `revise` carrying eighty lines of replacement text pushed
 /// the answers off the bottom and left the panel with no way to read the rest and no way to see
 /// that `y` was still a key - the question was unanswerable by anything except a guess. The
 /// answers are pinned to the bottom, and the arguments scroll between them and the header.

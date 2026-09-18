@@ -242,7 +242,7 @@ async fn editing_an_item_changes_what_the_model_reads_and_keeps_what_it_said() {
     assert_eq!(items.len(), 1, "an edit is not a second item: {items:#?}");
     assert_eq!(items[0].id.0, 1);
     assert_eq!(items[0].state, ContextState::Active);
-    // whose hand it was, on the item itself - `amend` writes the same key saying `amend`, and a
+    // whose hand it was, on the item itself - `context` writes the same key saying `context`, and a
     // model reading this should never find its own tool credited with a sentence a person wrote
     assert_eq!(items[0].meta["revised"]["by"], "user");
 
@@ -590,7 +590,7 @@ async fn an_item_that_was_rewritten_can_still_be_read_as_it_was() {
     let id = harness.app.kernel.items()[0].id;
     harness.drain();
 
-    // what `amend revise` does: replaced in place, keeping the number, so the old text exists
+    // what `context revise` does: replaced in place, keeping the number, so the old text exists
     // nowhere except the event that announced it going
     for said in ["the tool said 400", "the tool said 412"] {
         harness

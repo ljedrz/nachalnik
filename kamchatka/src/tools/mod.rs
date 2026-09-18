@@ -156,7 +156,7 @@ pub(crate) const CEILING: usize = 32_000;
 /// note: what a lower number buys where a limit never fires anyway. It is a tripwire: the seven
 /// are bounded because of how each answer is built, so one of them arriving here cut is that
 /// having quietly stopped being true - a `budget` that listed every item, a `revise` that echoed
-/// what it wrote. `tests/introspect.rs` holds the seven to it at the size, which is where such a
+/// what it wrote. `tests/introspect/shared.rs` holds the seven to it at the size, which is where such a
 /// change should be caught; this is what happens if it is not.
 pub(crate) const REPORT: usize = 8_000;
 

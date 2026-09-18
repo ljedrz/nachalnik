@@ -1404,7 +1404,7 @@ async fn a_question_naming_its_items_twice_is_not_described_as_a_move() {
 
 #[tokio::test]
 async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
-    // an `amend` that rewrites a tool result carries the replacement in its arguments, and the
+    // a `revise` that rewrites a tool result carries the replacement in its arguments, and the
     // replacement is as long as the result was. Sized as one block, the box grew past the bottom
     // of the screen and `centred` cut what was last in it - the answers
     let long: String = (0..80)
@@ -1558,7 +1558,7 @@ async fn a_call_refused_once_at_the_prompt_says_so_rather_than_naming_a_rule() {
     );
 }
 
-/// The question about an `amend` names the items it would change.
+/// The question about a change to the context names the items it would change.
 ///
 /// note: `ids: [2]` is a true account of the arguments and a useless one to be asked about. The
 /// tool rewrites and hides pieces of the context, the box asking covers the list those numbers

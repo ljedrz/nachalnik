@@ -697,7 +697,7 @@ fn gemini() -> Option<(
     // about used to stop the turn to ask. The turn then sat in `Deciding` with the prompt open,
     // the next message was swallowed the way the app swallows anything typed at one, and the
     // wire format this file exists to check never got its second request
-    for capability in ["context", "log", "setup", "amend"] {
+    for capability in ["context", "log", "setup", "fork"] {
         policy.set(&Subject::parse(capability), Verdict::Allow);
     }
     kernel.set_policy(policy.clone());
@@ -860,7 +860,7 @@ async fn a_real_turn_carries_its_thinking_in_the_order_it_was_produced() {
         // nothing declared, which is the condition a summary arrived in four times out of five.
         // The registry is live, which is the whole reason this can be a second question rather
         // than a second harness
-        for tool in ["secret", "context", "log", "setup", "amend"] {
+        for tool in ["secret", "context", "log", "setup", "fork"] {
             app.kernel.remove_tool(tool);
         }
         for _ in 1..=3 {
@@ -1546,13 +1546,13 @@ async fn a_real_model_asks_for_the_moves_by_name() {
     send(
         &mut app,
         &mut finished,
-        "Using the amend tool, do exactly two things: first pin the context item called \
+        "Using the context tool, do exactly two things: first pin the context item called \
          notes.txt, then write a note that says the code word is PELICAN. Then stop.",
     )
     .await;
 
     for result in results(&app) {
-        println!("    amend said: {}", result.replace('\n', " · "));
+        println!("    context said: {}", result.replace('\n', " · "));
     }
     let refused: Vec<String> = results(&app)
         .into_iter()

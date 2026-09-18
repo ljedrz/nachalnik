@@ -546,10 +546,10 @@ pub struct App {
     /// it. A replacement is the one context operation that overwrites something, which is why
     /// [`nachalnik::Event::ContextReplaced`] is the one event that carries content - so that a
     /// client which wants the history can have it, and one that does not pays nothing. Before
-    /// this, an `amend` that rewrote a tool result left the old text nowhere a person could read
+    /// this, a `context` that rewrote a tool result left the old text nowhere a person could read
     /// it: on the trace as a line of JSON, and in an undo window that closes.
     ///
-    /// note: both hands land here now. A terminal edit replaces in place as `amend: revise`
+    /// note: both hands land here now. A terminal edit replaces in place as `context: revise`
     /// does, so this is where the words it changed are, and the reason it needs no second
     /// mechanism of its own.
     versions: BTreeMap<ContextId, Vec<Content>>,
@@ -562,7 +562,7 @@ pub struct App {
     /// [`crate::introspect::install`].
     ///
     /// note: it used to be what `/introspect` moved - the four tools were switched off by dropping
-    /// this, which also threw away what `amend` was remembering. Turning a tool off is
+    /// this, which also threw away what `context` was remembering. Turning a tool off is
     /// [`App::toggle`] now, and a shelved tool is still the same tool: what it pinned is still
     /// pinned, and what it could still walk back it still can.
     pub introspect: Option<Arc<Kernel>>,

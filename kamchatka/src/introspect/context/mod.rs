@@ -452,8 +452,9 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
     let budget = kernel.budget();
     // note: the undo depth is reported and named as somebody else's on purpose. It is the stack
     // behind the `u` key in the terminal, it holds everything that has ever happened to this
-    // context, and `amend undo` does not touch it - a figure that big, sitting unlabelled next to
-    // a tool called `undo`, would be an invitation to try to walk back the person's work
+    // context, and this tool's own `undo` does not touch it - a figure that big, sitting
+    // unlabelled beside an operation called `undo`, would be an invitation to try to walk back
+    // the person's work
     let theirs = kernel.with_context(|context| context.undo_len());
     let withheld: usize = items.iter().map(|item| going.held_back(item)).sum();
 
@@ -1094,7 +1095,7 @@ fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
         let cost = going.costs.get(&item.id).copied().unwrap_or(0);
         running += cost;
         // saying so here saves a call that would only be refused, and the reason is the same one
-        // `amend` would give: it is not the model's to move
+        // a move would give: it is not the model's to move
         let whose = match protected(item, mine, None) {
             Some(_) => " · not yours",
             None => "",
