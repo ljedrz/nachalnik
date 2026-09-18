@@ -45,8 +45,8 @@ Referenced from [AGENTS.md](AGENTS.md).
 
   What would unblock it is a dependency and a sweep: `unicode-width` (already in the tree under
   `ratatui`, so it costs nothing but a line in the manifest and the comment saying why), and then
-  every place that measures - eighteen `chars().count()` sites, of which the ones in `refit`,
-  `fold`, `split_to_fit`, `clip` and `fit` are about width and the rest are about text. Splitting
+  every place that measures - the `chars().count()` sites, of which the ones in `refit`, `fold`,
+  `split_to_fit`, `clip` and `fit` are about width and the rest are about text. Splitting
   has to move to grapheme clusters at the same time, since half of a wide character is not a
   character; `unicode-segmentation` is already here for word bounds. What would make it credible
   is screen tests that recover every character of wide prose, of a code block and of a permission

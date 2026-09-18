@@ -72,7 +72,7 @@ So a whole-suite run against an OpenAI-compatible endpoint leaves the ordered-bl
 unexercised, which is worth knowing before reading the count as a clean sweep - and the count says
 `23 passed` either way, because a skipped test passes. Measured 2026-09-13 against OpenRouter:
 **17 of `kamchatka`'s 23 actually ran**, the other six being the five native-dialect tests and the
-PDF one. `nachalnik` does better - 26 of 27, the PDF again - and `--nocapture` with a grep for
+PDF one. `nachalnik` does better - 26 of the 27 it had then, the PDF again - and `--nocapture` with a grep for
 `skip` is how to see it, since the skip lines are the only place it is said.
 
 **`kamchatka`'s live suite sends requests to Google's shim unless told otherwise**, and that is a
