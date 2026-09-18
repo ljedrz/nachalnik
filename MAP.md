@@ -27,7 +27,9 @@ obvious from the file names. [AGENTS.md](AGENTS.md) has the one-line version.
 
 `kamchatka/src`: `app/` (the state - `mod.rs` is what a caller may ask of it and what a kernel
 event does to it, `transcript.rs` is the chat as a person reads it (`Speaker`, `Entry`, `Said`,
-and what builds a drawn line out of a context item and the lines that are not one), `keys.rs` is
+and what builds a drawn line out of a context item and the lines that are not one),
+`views.rs` is what the screen asks of it and nothing else does - the question waiting, what the
+next request does with each item, the rows the context and permissions tabs draw - `keys.rs` is
 what the keys do, `command.rs` is the slash commands, `text.rs`
 turns a runtime value into a line, `search.rs` is the `/` filter over a pane's rows and `when.rs`
 the clock a trace line is stamped with - the last two are here rather than in `ui/` because a pane
