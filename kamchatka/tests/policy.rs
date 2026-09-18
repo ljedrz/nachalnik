@@ -518,7 +518,7 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
 /// The two arguments the policy reads are found inside the wrapper the schema puts them in.
 ///
 /// note: the regression this is here for, and it is the worse half of the one that had `context`
-/// asking permission for all thirteen of its operations. These tools take their arguments inside a
+/// asking permission for all twelve of its operations. These tools take their arguments inside a
 /// `call` object; `judges` was reading the outside of one, where there is no `cmd` and no `path`.
 /// So a `curl` stopped being judged against `net:reach` and every path rule stopped matching, both
 /// silently and both in the direction of allowing more - which is the one direction a permission

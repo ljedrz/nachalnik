@@ -86,7 +86,7 @@ impl Arg {
     ///
     /// note: for the one case that is neither. `context`'s four moves read `label` so that a call
     /// giving one instead of `ids` can be answered with the spelling it meant - a live run reached
-    /// for it that way, and `Amend::moved` says `select: "label:<text>"` back. It is not a way to
+    /// for it that way, and `Changes::moved` says `select: "label:<text>"` back. It is not a way to
     /// name the items to move, so advertising it would teach exactly the mistake the answer exists
     /// to correct; and leaving it out of the table altogether would have [`unread`] refuse the call
     /// before that answer could be given.

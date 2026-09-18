@@ -1,6 +1,6 @@
 //! What the Gemini provider makes of a turn, in both directions.
 //!
-//! note: a socket rather than a unit test over a parser, for the same reason `streaming.rs` uses
+//! note: a socket rather than a unit test over a parser, for the same reason `conformance.rs` uses
 //! one: the assembly of a streamed turn happens inside `respond`, between reading bytes off a
 //! response and handing back a `ModelResponse`, and a test that reached in beside it would be
 //! testing a copy of the code under test. The bodies below are the shapes the real API sent,

@@ -2,7 +2,7 @@
 //! record kept beside it, one for what the session is running with, and one for asking a copy of
 //! itself.
 //!
-//! note: Everything here is ordinary user code, like the rest of `tools.rs`, and none of it
+//! note: Everything here is ordinary user code, like the rest of `tools/`, and none of it
 //! needed a line added to the runtime. What the runtime has is a context that is a list of public
 //! values, a request that can be built without being sent, and a session that can be snapshotted
 //! and resumed - and a tool is allowed to call all of it. That is the whole trick: introspection

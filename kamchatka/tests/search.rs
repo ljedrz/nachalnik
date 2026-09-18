@@ -697,7 +697,7 @@ async fn lines_that_fit_are_still_the_lines() {
 /// session needed to know and it is one lookup away in the same table. Only when exactly one owns
 /// it: `path` here belongs to all five, and a first-row-wins answer would be reporting this
 /// table's order as if it were a fact about the argument. `context` is where that bites - `ids`
-/// is eleven of its thirteen - and the rule is one rule, so it is checked here too.
+/// is seven of its twelve - and the rule is one rule, so it is checked here too.
 #[tokio::test]
 async fn an_argument_belonging_to_another_action_is_refused_by_name() {
     let dir = tree("fs-stray-arg");

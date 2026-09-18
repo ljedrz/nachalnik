@@ -569,7 +569,7 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             "{} says nothing",
             spec.id
         );
-        // long enough to be useful, short enough to be read. `context` is thirteen operations
+        // long enough to be useful, short enough to be read. `context` is twelve operations
         // over one object and earns its length - it is shorter than the two descriptions it
         // replaced, which came to 2,700 characters between them and spent a good deal of that
         // saying which of the two the other one was. A file tool that needed this much would be

@@ -179,7 +179,7 @@ fn ops() -> Vec<Op> {
             Arg::text("select", SELECT),
             // note: read but not offered, because it is neither a way to move anything nor an
             // argument to refuse. A live run reached for `label` to say *which item*, and
-            // `Amend::moved` answers that with the spelling it meant - which it cannot do if
+            // `Changes::moved` answers that with the spelling it meant - which it cannot do if
             // `unread` has already refused the call, and should not have to do if the schema has
             // just advertised `label` as the way to name one
             Arg::tolerated("label"),

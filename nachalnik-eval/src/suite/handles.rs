@@ -16,7 +16,7 @@
 //!
 //! note: `kamchatka` split the same pair and then put it back together, and its reason for doing
 //! so does not reach here. There a call declares which operation it is - `Tool::needs` reads the
-//! `action` and answers `context:look` or `context:revise` - so one tool is thirteen separately
+//! `action` and answers `context:look` or `context:revise` - so one tool is twelve separately
 //! grantable subjects. These two answer for every call alike, which is the whole difference: a
 //! tool that cannot say which of its operations a call is has only its own name to be granted by.
 //!

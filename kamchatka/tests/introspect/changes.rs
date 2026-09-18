@@ -1327,7 +1327,7 @@ async fn a_note_given_an_id_to_annotate_is_refused_rather_than_written_anyway() 
         said.contains("`content`") && said.contains("`label`"),
         "and what it does take: {said}"
     );
-    // `ids` is eleven of the thirteen, so there is no one operation to send it to and none is
+    // `ids` is seven of the twelve, so there is no one operation to send it to and none is
     // named. The first row that takes it would have been `look`, which is a fact about the order
     // of a table in this file and not about `ids`
     assert!(!said.contains("that one is"), "{said}");

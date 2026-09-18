@@ -237,7 +237,7 @@ for, so there is nothing for it to agree with.
   `pin` and `restore` included, so "prune to pin it" was the documented way to protect
   something - and an item you pruned then read back as `archived` on every screen that listed it.
   Two live models in a row spent a call each asking for `restore` as an action, were told it was a
-  state and not an action, and gave up; they were right and the levels were wrong. The five moves
+  state and not an action, and gave up; they were right and the levels were wrong. The four moves
   are actions now, named for the state each leaves behind.
 
   This is about what the program **says**, not what it accepts. Taking a word somebody reached for

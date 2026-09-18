@@ -84,7 +84,7 @@ async fn an_answer_does_not_point_at_a_tool_that_has_been_taken_away() {
 ///
 /// note: the regression this is here for. These tools take their arguments inside a `call` object,
 /// and `Tool::needs` on `context` was reading the outside of it - so it found no `action`, took
-/// the branch meant for a call nobody can place, and declared all thirteen subjects. A `look` at
+/// the branch meant for a call nobody can place, and declared all twelve subjects. A `look` at
 /// three items asked the person to allow `context:revise` and `context:elide` along with it, and a
 /// session holding `--allow context:look` and nothing else could not look at all.
 ///

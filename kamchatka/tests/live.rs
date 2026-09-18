@@ -17,13 +17,13 @@
 //! middle section. And the *lite* models return no thought summaries, so
 //! `KAMCHATKA_GEMINI_MODEL` wants the full one or the test about thinking skips.
 //!
-//! note: `screen.rs` drives the same keys against a scripted model and asserts what is drawn.
-//! This file exists for the two things that cannot answer. The first is whether the request the
-//! keys produced is a request a real API accepts: the state cycle on the context tab rewrites the
-//! messages - eliding a tool result replaces its content, excluding one takes the call down as
-//! well - and "the projection is well formed" is a claim only a server can settle. The second is
-//! whether the sentences these tools write are ones a model can act on, which is the last section
-//! below; a scripted provider agrees with every refusal it is handed.
+//! note: the `screen` suite drives the same keys against a scripted model and asserts what is
+//! drawn. This file exists for the two things that cannot answer. The first is whether the
+//! request the keys produced is a request a real API accepts: the state cycle on the context tab
+//! rewrites the messages - eliding a tool result replaces its content, excluding one takes the
+//! call down as well - and "the projection is well formed" is a claim only a server can settle.
+//! The second is whether the sentences these tools write are ones a model can act on, which is
+//! the last section below; a scripted provider agrees with every refusal it is handed.
 //!
 //! note: three fixtures, three sections, and the environment says which endpoint each is pointed
 //! at. `KAMCHATKA_BASE_URL` and `KAMCHATKA_TEST_MODEL` move the first and the last; the middle one
@@ -1109,11 +1109,11 @@ async fn agent(
 
 /// The same, with the introspection tools offered as well.
 ///
-/// note: `ask_about_changes` sets the nine that change to `Ask` over an allowed `context`, which
+/// note: `ask_about_changes` sets the eight that change to `Ask` over an allowed `context`, which
 /// is the claim the merge rests on: reading this session's items and rewriting one are separate
 /// questions whether they arrive under one tool's name or two. It used to say `amend`, which was
 /// a domain when this was written and is not one now - so the stance landed on a domain nothing
-/// declares, `context` stayed allowed for all thirteen, and the one test that asks whether a
+/// declares, `context` stayed allowed for all twelve, and the one test that asks whether a
 /// change can still be questioned separately was answering about nothing.
 async fn introspecting(
     dir: &std::path::Path,
@@ -1529,7 +1529,7 @@ async fn the_question_about_a_real_change_names_the_item() {
     );
 }
 
-// ----------------------------------------------------------------- five moves, five action names
+// ---------------------------------------------------------------- four moves, four action names
 
 /// Each move is an action named for what it leaves behind, so a model that reads the schema can
 /// ask for one without being told twice that `restore` is not a thing.
@@ -1827,7 +1827,7 @@ async fn a_pdf_attached_at_the_prompt_is_read_by_the_model() {
 
 /// A resumed session carries on, and what it sends next is a request the endpoint accepts.
 ///
-/// note: `screen.rs` proves a resume reads back as the conversation it was. What it cannot
+/// note: the `screen` suite proves a resume reads back as the conversation it was. What it cannot
 /// settle is the next request. A snapshot carries states as well as words - an elided item, a
 /// tool exchange, the identifiers already spent - and the projection built from a context nobody
 /// assembled turn by turn is the one nothing has ever sent anywhere. So this one saves a session

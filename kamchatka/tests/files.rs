@@ -1,7 +1,7 @@
 //! `read`, `write` and `edit`, against real files.
 //!
 //! note: the three `fs` does that are not walks had no suite of their own - the walks have
-//! `search.rs` and these were reached only by the smoke test in `introspect.rs`, which calls each
+//! `search.rs` and these were reached only by the smoke test in `introspect/shared.rs`, which calls each
 //! tool once to see that it answers. What that misses is the answer: `edit` replaced the first of
 //! however many matches there were and said `replaced one occurrence`, and nothing anywhere
 //! compared that sentence with what the file then held.
