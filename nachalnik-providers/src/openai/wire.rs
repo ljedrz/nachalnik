@@ -317,138 +317,70 @@ impl Provider for OpenAiCompatible {
         // through would make one wait look like two
         let model = self.model.lock().clone();
 
-        // a free tier answers "busy" often enough that not retrying makes the whole thing look
-        // broken when it is not. Waiting and trying again is the *provider's* business: the
-        // kernel must not silently send a request twice behind a caller's back
-        let mut response = loop {
-            self.attempts.fetch_add(1, Ordering::SeqCst);
-            let response = match watched(
-                self.attributed(
-                    self.client
-                        .post(format!("{}/chat/completions", self.endpoint()))
-                        .bearer_auth(&self.api_key),
-                )
-                .json(&body)
-                .send(),
-                &deltas,
-                &model,
-                &self.notice,
-                patience,
-            )
-            .await
-            {
-                Ok(response) => response,
-                // a connection that timed out is a busy server wearing different clothes, and it
-                // used to be the one thing here that was not waited out: a 429 got four tries and
-                // a doubling, a stall got none. Eleven of fourteen runs against one upstream died
-                // this way while the same model answered a single request in six seconds. A
-                // refused connection is *not* this - it is a definite answer, usually an address
-                // with nothing behind it, and making a typo take four doublings to report helps
-                // nobody
-                Err(reason) if reason.worth_waiting_out() => {
-                    let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
-                    let wait = Duration::from_secs(1 << attempt);
-                    if attempt >= RETRIES {
-                        self.backoff.store(0, Ordering::SeqCst);
-                        return Err(reason.giving_up(&model));
-                    }
-
-                    *self.notice.lock() = Some(format!(
-                        "{model} {}; trying again in {}s",
-                        reason.what_happened(),
-                        wait.as_secs()
-                    ));
-                    tokio::time::sleep(wait).await;
-                    continue;
-                }
-                // nobody is owed an error for being obeyed
-                Err(Unsent::Interrupted) => return Ok(interrupted()),
-                Err(reason) => return Err(reason.giving_up(&model)),
-            };
-
-            let status = response.status();
-            if status.is_success() {
-                // a whole answer is read here rather than after the loop, because this dialect's
-                // other way of saying 429 is an `error` object inside a perfectly good 200 - and
-                // an upstream limit reported that way is exactly as worth waiting out as one
-                // reported as a status. There is nothing to watch arrive and nothing to
-                // interrupt: by the time this reads it the model has finished and been billed
-                if !streaming {
-                    let text = response.text().await?;
-                    let payload: Value = serde_json::from_str(&text)
-                        .map_err(|e| format!("the answer was not JSON ({e}): {text}"))?;
-                    let Some(error) = payload.get("error").filter(|e| !e.is_null()) else {
-                        self.backoff.store(0, Ordering::SeqCst);
-                        return Ok(whole(&payload, self.thinking_in_content));
-                    };
-
-                    let code = error["code"].as_u64().unwrap_or_default();
-                    // a spent daily quota is a 429 that will still be one in a minute, so it is
-                    // told apart here rather than waited out four times over
-                    let transient =
-                        (code == 429 || (500..600).contains(&code)) && !out_of_quota(&text);
-                    let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
-                    let wait = Duration::from_secs(1 << attempt);
-                    if !transient || attempt >= RETRIES {
-                        self.backoff.store(0, Ordering::SeqCst);
-                        return Err(refused(
-                            match said(error) {
-                                Some(said) => said,
-                                None => format!("{error}").chars().take(300).collect(),
-                            },
-                            self.info().context_limit,
-                        ));
-                    }
-
-                    *self.notice.lock() = Some(format!(
-                        "{model} answered {code}; trying again in {}s",
-                        wait.as_secs()
-                    ));
-                    tokio::time::sleep(wait).await;
-                    continue;
-                }
-
-                // the budget belongs to a request, not to a session: without this an afternoon
-                // that had already ridden out four busy servers answered the fifth by giving up
-                // on the first try
-                self.backoff.store(0, Ordering::SeqCst);
-                break response;
-            }
-
-            // the server's own answer to "when?", where it gives one. Guessing at a doubling is
-            // for a server that did not say
-            let asked = response
-                .headers()
-                .get(reqwest::header::RETRY_AFTER)
-                .and_then(|value| value.to_str().ok())
-                .and_then(|value| value.trim().parse::<u64>().ok())
-                .map(Duration::from_secs);
-
-            let transient = status.as_u16() == 429 || status.is_server_error();
-            let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
-            let wait = asked.unwrap_or(Duration::from_secs(1 << attempt));
-            if !transient || attempt >= RETRIES || wait > LINGER {
-                self.backoff.store(0, Ordering::SeqCst);
-                let body = response.text().await.unwrap_or_default();
-                let mut said = complaint(status, &body);
-                if transient && wait > LINGER {
-                    said.push_str(&format!(
-                        " - it asked to be left for {}s, which is longer than this waits",
-                        wait.as_secs()
-                    ));
-                }
-                return Err(refused(said, self.info().context_limit));
-            }
-
-            *self.notice.lock() = Some(format!(
-                "{} answered {}; trying again in {}s",
-                self.model.lock(),
-                status.as_u16(),
-                wait.as_secs()
-            ));
-            tokio::time::sleep(wait).await;
+        let mut response = match self
+            .sent(&body, streaming, patience, &model, &deltas)
+            .await?
+        {
+            // a whole answer is an answer; so is a request nobody was still waiting for
+            Sent::Answered(answer) => return Ok(answer),
+            Sent::Streaming(response) => response,
         };
 
+        let streamed = self.read(&mut response, &deltas).await?;
+
+        self.answer(streamed, &deltas)
+    }
+}
+
+/// A request that is over, one way or the other: a stream to read, or an answer already in hand.
+///
+/// note: the whole-answer path and an interrupt both end here with a [`ModelResponse`], because
+/// both are a turn that is finished and there is nothing left to watch arrive. A stream is the
+/// only one of the three with reading still to do.
+enum Sent {
+    /// The turn, whole: nothing was streamed, or nothing was waited for.
+    Answered(ModelResponse),
+    /// A response whose body is still arriving.
+    Streaming(reqwest::Response),
+}
+
+/// A stream, read: the turn as the fragments left it.
+///
+/// note: the whole of what one pass over a response produces, so that reading it and making sense
+/// of it are two functions rather than two halves of one. Nothing here is the answer yet - `text`
+/// still holds whatever thinking the model wrote into it, and a call's arguments are still the
+/// string they arrived in.
+#[derive(Default)]
+struct Streamed {
+    /// What the model said, as it was streamed.
+    text: String,
+    /// What it thought, where the server sent that in a slot of its own.
+    reasoning: String,
+    /// The calls, each gathered out of the fragments that carry it.
+    calls: Vec<PartialCall>,
+    /// Why the turn ended, once something has said.
+    finish: Option<String>,
+    /// What the request cost, where the server reported it.
+    usage: Option<Usage>,
+    /// Every payload the server sent, verbatim.
+    chunks: Vec<Value>,
+    /// What arrived after the last whole line: nothing, in an answer that ended tidily, and the
+    /// whole of a response that was never a stream at all.
+    buffer: Vec<u8>,
+}
+
+impl OpenAiCompatible {
+    /// Reads the response to its end, handing the fragments to `deltas` as they arrive.
+    ///
+    /// note: what stops this is the server, an interrupt, or the stall watch - and the first
+    /// two of those are answers rather than failures, which is why what comes back is what had
+    /// arrived rather than an error. A turn that was cut off mid-answer has been generated and
+    /// billed for; throwing it away is the one thing worse than reporting it short.
+    async fn read(
+        &self,
+        response: &mut reqwest::Response,
+        deltas: &DeltaSink,
+    ) -> Result<Streamed, BoxError> {
         // bytes rather than a `String`, because a chunk boundary is not a character boundary. A
         // multi-byte character split across two reads used to be decoded twice, lossily, and
         // arrived as two replacement characters that then went into the context, the transcript
@@ -584,67 +516,10 @@ impl Provider for OpenAiCompatible {
                     deltas.reasoning(fragment);
                     reasoning.push_str(fragment);
                 }
-                summarised(&chunk, &mut reasoning, &deltas);
+                summarised(&chunk, &mut reasoning, deltas);
 
                 for requested in delta["tool_calls"].as_array().into_iter().flatten() {
-                    // note: OpenAI numbers the calls in a message and streams each one's arguments
-                    // in fragments, so the index is what says which call a fragment belongs to.
-                    // Google's compatible endpoint sends no index at all - one whole call per
-                    // chunk, each with an identifier of its own - and taking that for index zero
-                    // folded three parallel calls into one: the names ran together into
-                    // `writewritewrite` and the model was told there was no such tool. So the
-                    // identifier decides when there is no index, and a fragment with neither
-                    // continues whatever came last
-                    let at = match requested["index"].as_u64() {
-                        // note: the index says which call a fragment belongs to. It is *not* a
-                        // position in the list: minimax numbers its calls from one, and using it
-                        // as a slot left an unfilled call at zero, which the kernel then reported
-                        // as a repaired identifier and a tool with no name - a wasted round trip
-                        // and an error the model had to read. So an index is looked up, and a
-                        // number never seen before starts a new call at the end
-                        Some(index) => match calls.iter().position(|call| call.slot == Some(index))
-                        {
-                            Some(at) => at,
-                            None => {
-                                calls.push(PartialCall {
-                                    slot: Some(index),
-                                    ..PartialCall::default()
-                                });
-                                calls.len() - 1
-                            }
-                        },
-                        None => match requested["id"].as_str().filter(|id| !id.is_empty()) {
-                            Some(id) => match calls.iter().position(|call| call.id == id) {
-                                Some(at) => at,
-                                None => {
-                                    calls.push(PartialCall::default());
-                                    calls.len() - 1
-                                }
-                            },
-                            None => match calls.is_empty() {
-                                true => {
-                                    calls.push(PartialCall::default());
-                                    0
-                                }
-                                false => calls.len() - 1,
-                            },
-                        },
-                    };
-                    let call = &mut calls[at];
-
-                    if let Some(id) = requested["id"].as_str() {
-                        call.id = id.to_owned();
-                    }
-                    if let Some(name) = requested["function"]["name"].as_str() {
-                        call.name.push_str(name);
-                    }
-                    if !requested["extra_content"].is_null() {
-                        call.extra = requested["extra_content"].clone();
-                    }
-                    if let Some(fragment) = requested["function"]["arguments"].as_str() {
-                        call.args.push_str(fragment);
-                        deltas.tool_args(ToolCallId(call.id.clone()), fragment);
-                    }
+                    gather_call(&mut calls, requested, deltas);
                 }
 
                 chunks.push(chunk);
@@ -653,6 +528,31 @@ impl Provider for OpenAiCompatible {
                 break;
             }
         }
+
+        Ok(Streamed {
+            text,
+            reasoning,
+            calls,
+            finish,
+            usage,
+            chunks,
+            buffer,
+        })
+    }
+
+    /// The turn the stream came to: the thinking taken out of what was said, the arguments
+    /// parsed, and the whole of it kept as it arrived.
+    fn answer(&self, streamed: Streamed, deltas: &DeltaSink) -> Result<ModelResponse, BoxError> {
+        let Streamed {
+            text,
+            reasoning,
+            calls,
+            finish,
+            usage,
+            chunks,
+            buffer,
+        } = streamed;
+
         if chunks.is_empty() {
             // a request stopped before the server had said anything is not a broken response, and
             // reporting it as one would put a red line on the screen for doing what was asked
@@ -699,6 +599,213 @@ impl Provider for OpenAiCompatible {
             usage,
             raw: Some(json!({ "stream": chunks })),
         })
+    }
+    /// Sends the request, waiting out an upstream that is merely busy, and hands back whichever
+    /// of the two things arrived.
+    ///
+    /// note: a whole answer is read *here* rather than by the caller, because this dialect's
+    /// other way of saying 429 is an `error` object inside a perfectly good 200 - and a limit
+    /// reported that way is exactly as worth waiting out as one reported as a status. Reading it
+    /// out here is what lets one loop wait for both.
+    async fn sent(
+        &self,
+        body: &Value,
+        streaming: bool,
+        patience: Duration,
+        model: &str,
+        deltas: &DeltaSink,
+    ) -> Result<Sent, BoxError> {
+        // a free tier answers "busy" often enough that not retrying makes the whole thing look
+        // broken when it is not. Waiting and trying again is the *provider's* business: the
+        // kernel must not silently send a request twice behind a caller's back
+        Ok(loop {
+            self.attempts.fetch_add(1, Ordering::SeqCst);
+            let response = match watched(
+                self.attributed(
+                    self.client
+                        .post(format!("{}/chat/completions", self.endpoint()))
+                        .bearer_auth(&self.api_key),
+                )
+                .json(&body)
+                .send(),
+                deltas,
+                model,
+                &self.notice,
+                patience,
+            )
+            .await
+            {
+                Ok(response) => response,
+                // a connection that timed out is a busy server wearing different clothes, and it
+                // used to be the one thing here that was not waited out: a 429 got four tries and
+                // a doubling, a stall got none. Eleven of fourteen runs against one upstream died
+                // this way while the same model answered a single request in six seconds. A
+                // refused connection is *not* this - it is a definite answer, usually an address
+                // with nothing behind it, and making a typo take four doublings to report helps
+                // nobody
+                Err(reason) if reason.worth_waiting_out() => {
+                    let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
+                    let wait = Duration::from_secs(1 << attempt);
+                    if attempt >= RETRIES {
+                        self.backoff.store(0, Ordering::SeqCst);
+                        return Err(reason.giving_up(model));
+                    }
+
+                    *self.notice.lock() = Some(format!(
+                        "{model} {}; trying again in {}s",
+                        reason.what_happened(),
+                        wait.as_secs()
+                    ));
+                    tokio::time::sleep(wait).await;
+                    continue;
+                }
+                // nobody is owed an error for being obeyed
+                Err(Unsent::Interrupted) => return Ok(Sent::Answered(interrupted())),
+                Err(reason) => return Err(reason.giving_up(model)),
+            };
+
+            let status = response.status();
+            if status.is_success() {
+                // a whole answer is read here rather than after the loop, because this dialect's
+                // other way of saying 429 is an `error` object inside a perfectly good 200 - and
+                // an upstream limit reported that way is exactly as worth waiting out as one
+                // reported as a status. There is nothing to watch arrive and nothing to
+                // interrupt: by the time this reads it the model has finished and been billed
+                if !streaming {
+                    let text = response.text().await?;
+                    let payload: Value = serde_json::from_str(&text)
+                        .map_err(|e| format!("the answer was not JSON ({e}): {text}"))?;
+                    let Some(error) = payload.get("error").filter(|e| !e.is_null()) else {
+                        self.backoff.store(0, Ordering::SeqCst);
+                        return Ok(Sent::Answered(whole(&payload, self.thinking_in_content)));
+                    };
+
+                    let code = error["code"].as_u64().unwrap_or_default();
+                    // a spent daily quota is a 429 that will still be one in a minute, so it is
+                    // told apart here rather than waited out four times over
+                    let transient =
+                        (code == 429 || (500..600).contains(&code)) && !out_of_quota(&text);
+                    let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
+                    let wait = Duration::from_secs(1 << attempt);
+                    if !transient || attempt >= RETRIES {
+                        self.backoff.store(0, Ordering::SeqCst);
+                        return Err(refused(
+                            match said(error) {
+                                Some(said) => said,
+                                None => format!("{error}").chars().take(300).collect(),
+                            },
+                            self.info().context_limit,
+                        ));
+                    }
+
+                    *self.notice.lock() = Some(format!(
+                        "{model} answered {code}; trying again in {}s",
+                        wait.as_secs()
+                    ));
+                    tokio::time::sleep(wait).await;
+                    continue;
+                }
+
+                // the budget belongs to a request, not to a session: without this an afternoon
+                // that had already ridden out four busy servers answered the fifth by giving up
+                // on the first try
+                self.backoff.store(0, Ordering::SeqCst);
+                break Sent::Streaming(response);
+            }
+
+            // the server's own answer to "when?", where it gives one. Guessing at a doubling is
+            // for a server that did not say
+            let asked = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.trim().parse::<u64>().ok())
+                .map(Duration::from_secs);
+
+            let transient = status.as_u16() == 429 || status.is_server_error();
+            let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
+            let wait = asked.unwrap_or(Duration::from_secs(1 << attempt));
+            if !transient || attempt >= RETRIES || wait > LINGER {
+                self.backoff.store(0, Ordering::SeqCst);
+                let body = response.text().await.unwrap_or_default();
+                let mut said = complaint(status, &body);
+                if transient && wait > LINGER {
+                    said.push_str(&format!(
+                        " - it asked to be left for {}s, which is longer than this waits",
+                        wait.as_secs()
+                    ));
+                }
+                return Err(refused(said, self.info().context_limit));
+            }
+
+            *self.notice.lock() = Some(format!(
+                "{} answered {}; trying again in {}s",
+                self.model.lock(),
+                status.as_u16(),
+                wait.as_secs()
+            ));
+            tokio::time::sleep(wait).await;
+        })
+    }
+}
+
+/// Folds one `tool_calls` fragment into the calls gathered so far, and streams whatever arguments
+/// came with it.
+///
+/// note: OpenAI numbers the calls in a message and streams each one's arguments in fragments, so
+/// the index is what says which call a fragment belongs to. Google's compatible endpoint sends no
+/// index at all - one whole call per chunk, each with an identifier of its own - and taking that
+/// for index zero folded three parallel calls into one: the names ran together into
+/// `writewritewrite` and the model was told there was no such tool. So the identifier decides when
+/// there is no index, and a fragment with neither continues whatever came last
+fn gather_call(calls: &mut Vec<PartialCall>, requested: &Value, deltas: &DeltaSink) {
+    let at = match requested["index"].as_u64() {
+        // note: the index says which call a fragment belongs to. It is *not* a position in the
+        // list: minimax numbers its calls from one, and using it as a slot left an unfilled call at
+        // zero, which the kernel then reported as a repaired identifier and a tool with no name - a
+        // wasted round trip and an error the model had to read. So an index is looked up, and a
+        // number never seen before starts a new call at the end
+        Some(index) => match calls.iter().position(|call| call.slot == Some(index)) {
+            Some(at) => at,
+            None => {
+                calls.push(PartialCall {
+                    slot: Some(index),
+                    ..PartialCall::default()
+                });
+                calls.len() - 1
+            }
+        },
+        None => match requested["id"].as_str().filter(|id| !id.is_empty()) {
+            Some(id) => match calls.iter().position(|call| call.id == id) {
+                Some(at) => at,
+                None => {
+                    calls.push(PartialCall::default());
+                    calls.len() - 1
+                }
+            },
+            None => match calls.is_empty() {
+                true => {
+                    calls.push(PartialCall::default());
+                    0
+                }
+                false => calls.len() - 1,
+            },
+        },
+    };
+    let call = &mut calls[at];
+
+    if let Some(id) = requested["id"].as_str() {
+        call.id = id.to_owned();
+    }
+    if let Some(name) = requested["function"]["name"].as_str() {
+        call.name.push_str(name);
+    }
+    if !requested["extra_content"].is_null() {
+        call.extra = requested["extra_content"].clone();
+    }
+    if let Some(fragment) = requested["function"]["arguments"].as_str() {
+        call.args.push_str(fragment);
+        deltas.tool_args(ToolCallId(call.id.clone()), fragment);
     }
 }
 
