@@ -486,19 +486,21 @@ impl App {
             if item.state.is_projected() {
                 let from = said.len();
                 Self::as_conversation(item, &mut said);
-                // note: every line the item produced, not the first. An elided assistant turn can
-                // be a thought, a sentence and two calls, and the marker stands for the whole of
-                // it - so a line of it left as it was would be the one part of a hidden turn still
-                // legible. This is what the chat pane did line by line before it moved here
+                // note: one line for the whole item rather than one per line it produced. An
+                // elided assistant turn can be a thought, a sentence and two calls, and the marker
+                // stands for the whole of it - so leaving any of them as it was would be the one
+                // part of a hidden turn still legible, and repeating the marker over all four says
+                // four things were hidden where one was. The pane dims the block so the repeats
+                // read as one; a client drawing rows has nothing to draw them as but four rows
                 if let Some(marker) = item
                     .state
                     .is_elided()
                     .then(|| going.marker.get(&item.id))
                     .flatten()
+                    && let Some(line) = said.get_mut(from)
                 {
-                    for line in &mut said[from..] {
-                        line.text = Cow::Borrowed(marker.as_str());
-                    }
+                    line.text = Cow::Borrowed(marker.as_str());
+                    said.truncate(from + 1);
                 }
             }
         }
