@@ -17,15 +17,11 @@ use serde_json::json;
 mod common;
 
 /// The binary under test.
+///
+/// note: what cargo sets for exactly this; see `common::program`, which this cannot be, because
+/// that one is `cfg(unix)` and this suite runs anywhere.
 fn program() -> std::path::PathBuf {
-    // the test binary lives beside it
-    let mut path = std::env::current_exe().expect("a test binary has a path");
-    path.pop();
-    if path.ends_with("deps") {
-        path.pop();
-    }
-
-    path.join("kamchatka")
+    std::path::PathBuf::from(env!("CARGO_BIN_EXE_kamchatka"))
 }
 
 /// Runs it with these arguments and these lines typed at it, and hands back what a person read.

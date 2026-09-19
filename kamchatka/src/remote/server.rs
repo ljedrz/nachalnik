@@ -116,16 +116,30 @@ impl Server {
     /// convenient thing, and it is how one session silently takes another's socket away from every
     /// client attached to it - so what happens instead is a sentence naming the path, and whoever
     /// knows nothing is using it removes it themselves.
+    ///
+    /// note: and the sentence says which of the two it found, because they want opposite things
+    /// done about them and the refusal is all anybody has to go on. `Drop` is the only thing that
+    /// takes the file away, so a `SIGKILL` leaves a path every later `--serve` refuses for ever -
+    /// and connecting to it distinguishes "a session is using this" from "nothing is" without
+    /// taking anything away from anybody.
     #[cfg(unix)]
     async fn unix(path: &str) -> Result<Self, String> {
         use std::os::unix::fs::PermissionsExt as _;
 
         let path = std::path::PathBuf::from(path);
         if path.exists() {
-            return Err(format!(
-                "there is already something at {}; remove it if no session is using it",
-                path.display()
-            ));
+            return Err(match tokio::net::UnixStream::connect(&path).await {
+                Ok(_) => format!(
+                    "there is a session listening at {}; attach to it with `--connect unix:{}`",
+                    path.display(),
+                    path.display()
+                ),
+                Err(_) => format!(
+                    "there is a socket file at {} that nothing is listening on, left behind by a \
+                     session that was killed; remove it and try again",
+                    path.display()
+                ),
+            });
         }
         let listener = tokio::net::UnixListener::bind(&path)
             .map_err(|e| format!("could not listen at {}: {e}", path.display()))?;

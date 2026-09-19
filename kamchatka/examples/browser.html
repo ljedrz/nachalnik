@@ -255,9 +255,22 @@ function conversation(lines) {
   log.scrollTop = stuck ? log.scrollHeight : was;
 }
 
-/** Sends one command. The answer comes back on the stream, not from here. */
+/**
+ * Sends one command. The answer comes back on the stream, not from here - but whether it was
+ * *taken* comes back from here, and a line that was not taken has to say so. The page is careful
+ * everywhere else not to tell the reader something happened when it did not, and a `fetch` whose
+ * response is thrown away makes a 409, a 502 and a dead network all look like a command that
+ * worked, with the typed line gone off the screen.
+ */
 async function send(command) {
-  await fetch(`/do?tab=${tab}`, { method: "POST", body: JSON.stringify(command) });
+  try {
+    const answer = await fetch(`/do?tab=${tab}`, { method: "POST", body: JSON.stringify(command) });
+    if (answer.ok) return true;
+    say("error", `${command.do}: the gateway said ${answer.status} ${answer.statusText}`);
+  } catch (e) {
+    say("error", `${command.do}: ${e.message}`);
+  }
+  return false;
 }
 
 /** Adds a line, keeping the view at the bottom if it was already there. */
@@ -541,7 +554,7 @@ document.getElementById("answers").onclick = (e) => {
   });
 };
 
-prompt.onsubmit = (e) => {
+prompt.onsubmit = async (e) => {
   e.preventDefault();
   const text = line.value.trim();
   if (!text) return;
@@ -551,8 +564,17 @@ prompt.onsubmit = (e) => {
   // this page is the only thing that knows them until it asks - and because a line sent into a
   // running turn is queued, and would be invisible until that turn ended. `claim` is what stops
   // it being drawn again when it does become an item
-  pending.push(say("user", text));
-  send({ do: "submit", line: text });
+  const drawn = say("user", text);
+  pending.push(drawn);
+  // and taken back where the gateway would not take it. A line drawn optimistically is a promise
+  // this page can keep or break in one round trip, and the reader's own words are the one thing
+  // they will assume arrived. It goes back in the box, because what somebody wants after a line
+  // that did not send is to send it again
+  if (!(await send({ do: "submit", line: text }))) {
+    pending.splice(pending.indexOf(drawn), 1);
+    drawn.remove();
+    if (!line.value) line.value = text;
+  }
 };
 
 // enter sends, shift+enter is a newline; and the box grows with what is in it

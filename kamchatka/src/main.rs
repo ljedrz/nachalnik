@@ -431,6 +431,33 @@ fn headless(asked: bool, piped: bool) -> bool {
 }
 
 /// The program proper: wired the same way whichever of the two drives it.
+/// What else was typed on a command line that also has `--connect`.
+///
+/// note: refused rather than ignored, and named rather than counted. A client assembles nothing,
+/// so every one of these is an argument that would be dropped on the floor - and `-m "a question"`
+/// beside `--connect` is a natural thing to type, which used to connect and say nothing at all
+/// about the message.
+///
+/// note: read off the matches rather than declared as `conflicts_with_all`, because the list would
+/// be every argument this program has and two of them are behind features. `--serve` can say it
+/// the short way because it conflicts with two.
+fn also_typed(matches: &clap::ArgMatches) -> Vec<String> {
+    // the declared arguments rather than `ArgMatches::ids`, which also hands back the group clap's
+    // derive makes for the struct itself - and that group reads as typed whenever anything in it is
+    Args::command()
+        .get_arguments()
+        .map(|arg| arg.get_id().as_str().to_owned())
+        .filter(|id| {
+            id != "connect"
+                && matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
+        })
+        .map(|id| match id.as_str() {
+            "message" => "the message".to_owned(),
+            id => format!("`--{}`", id.replace('_', "-")),
+        })
+        .collect()
+}
+
 async fn session() -> Result<()> {
     // note: the matches as well as the struct, because the settings file needs to know which
     // arguments were typed and the struct cannot say - a value that equals its default and a value
@@ -450,6 +477,14 @@ async fn session() -> Result<()> {
     // client that attached to somebody else's session and then failed because *it* could not reach
     // a provider would be failing about a job that was never its own
     if let Some(address) = args.connect.clone() {
+        let ignored = also_typed(&matches);
+        if !ignored.is_empty() {
+            return Err(anyhow::anyhow!(
+                "`--connect` takes nothing else: the model, the key, the tools, the sandbox and \
+                 the context all belong to whoever is serving. Drop {}",
+                ignored.join(", ")
+            ));
+        }
         let (mut records, mut prose) = (stdout(), std::io::stderr());
         return remote::Client::new(&mut records, &mut prose)
             .run(&address, tokio::io::BufReader::new(tokio::io::stdin()))
