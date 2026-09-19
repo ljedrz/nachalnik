@@ -223,6 +223,34 @@ minor bump may break you.
   screen suite and one of the two new ones. The ring was already well covered; what was not covered,
   and is what the new test is for, is that a client can reach it at all.
 
+- **The page opened with its conversation and its prompt hidden.** The stylesheet reads a class on
+  `body` to decide which view is showing and `show` is the only thing that sets it, so a page that
+  had never cycled a tab had no class at all - which `body:not(.chat)` reads as *not the chat*. The
+  chat and the prompt came back the moment somebody cycled round to chat, which is what made it
+  look intermittent. `show("chat")` runs before the stream is opened now, and the invariant it
+  keeps is that the class and the view always agree.
+
+  `draw` was the other half of the same shape: the permissions view was its fall-through, so any
+  view it did not know about was drawn as the permissions. Named, because a view this does not know
+  about is a bug and drawing something plausible at it is the kind that looks like a feature.
+
+- **A streamed answer could be truncated, or arrive behind blank lines.** The page kept whatever
+  fragments had arrived as the final text of a turn, and fragments are the half of the stream that
+  can be lost: a page that fell behind kept a short answer for good, with nothing to say so. They
+  are also what the provider sent byte for byte, so an answer that began with two newlines began
+  with two newlines - measured, `'\n\nok'` against a recorded `'ok'`.
+
+  The terminal has neither problem because it does not keep them: `Entry::transient` drops every
+  streamed line the moment the turn is recorded, and the chat is read off the context from then on.
+  The page does that now - the fragments stay as the live preview they are, and the recorded item
+  replaces them when it arrives. A rebuild also keeps the reader where they were rather than
+  snapping to the newest line, which matters far more now that one happens every turn.
+
+- **A blinking mark in the corner while a turn is running.** `working…` was a word at the other end
+  of the header, and a turn can be a minute of nothing arriving - a model thinking, a command
+  running, a provider gone quiet - which from a phone is indistinguishable from a page whose
+  connection died. It honours `prefers-reduced-motion` by holding still, which says the same thing.
+
 ### fixed
 
 - **`/help` described a terminal to callers that have none.** Six of its seven pages are key

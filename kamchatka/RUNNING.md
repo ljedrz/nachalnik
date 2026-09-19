@@ -246,7 +246,16 @@ for nothing, because the records are what it already has.
 The prompt is on the chat and nowhere else, which is where the terminal keeps it; a view that is a
 list of rows has nothing to say to a box that takes a line. A waiting question colours the cycler
 rather than following you about — the same thing the tab strip does by going red, and for the same
-reason: from another view, the question is not what you are looking at.
+reason: from another view, the question is not what you are looking at. A mark in the top left
+blinks while a turn is running, because a turn can be a minute of nothing arriving and a still page
+is otherwise indistinguishable from a dead connection.
+
+A model's answer streams in as it is written and is then **replaced by what was recorded**, which
+is the rule the terminal follows: the fragments are the live half and the item is what was kept.
+They are worth replacing rather than keeping. A fragment is best-effort, so a client that fell
+behind would otherwise hold a truncated answer for ever with nothing to say so; and fragments are
+what the provider sent byte for byte, where the context trims the blank lines some of them like to
+open with.
 
 `/clear` takes this program's own lines off the chat — what it said about what it did, and what it
 answered a command with — and leaves the conversation, which is the context. It is the command form
