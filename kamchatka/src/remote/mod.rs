@@ -67,6 +67,15 @@
 //! configuration in which handing that to a network interface is what somebody meant. Across a
 //! network, tunnel something that does authenticate.
 //!
+//! **No arbitration between clients.** Every attached client may submit, interrupt and answer
+//! questions, and there is room for exactly one message queued into a running turn - so a second
+//! client typing during a turn takes the first one's place, and the session says so to everybody
+//! rather than letting a line disappear quietly. Nothing on the wire carries a client identifier,
+//! which is the first thing any answer to this would need. What several people driving one agent
+//! should *mean* is undecided rather than unbuilt; `POSTPONED.md` has it, along with the two other
+//! things this module is knowingly without - a command that awaits the endpoint holding the whole
+//! loop, and a record too large for [`protocol::MAX_LINE`] locking every client out.
+//!
 //! **Nothing in [`nachalnik`] knows any of this exists**, and that is the test this module was
 //! held to rather than a remark about it. `nachalnik-mcp`, `kamchatka`'s introspection tools and
 //! `nachalnik-eval` were each written with no change to the runtime at all; if remote control had

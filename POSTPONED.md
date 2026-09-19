@@ -212,3 +212,61 @@ Referenced from [AGENTS.md](AGENTS.md).
   keeps no ranking of the apps calling it, so a `Jev` pointed there has nothing to send and must
   not send it - `is_openrouter` is already the test for that, and it is the same test the request
   path uses.
+
+- **Arbitration between clients attached to one session.** Every attached client may submit,
+  interrupt and answer questions, and there is room for exactly one message queued into a running
+  turn - so a second client typing during a turn silently takes the first one's place. The session
+  says so, to everybody, which is the least it can do and is not the same as the line not being
+  lost. Anybody who attaches two phones to one session meets this, and `RUNNING.md` names it in
+  passing, which is the right disclosure in the wrong file.
+
+  There is nothing to unblock: what is missing is a decision about what several people driving one
+  agent *means*. The cheap version is a queue instead of a slot, and it is cheap because the slot
+  is one `Option<String>` on `App` - but a queue of messages into one turn is a different thing to
+  be shown on a screen, and a second person's line arriving in the middle of the first person's
+  thought is a conversation nobody has designed. The honest first step is smaller: say who typed
+  what. Nothing on the wire carries a client identifier today, and every later answer needs one.
+
+- **A client command that awaits the endpoint holds the whole session loop.** `remote::server`'s
+  loop applies a command inside its own `select!`, and `App::submit` awaits: `/models` fetches a
+  list, `/model` and `/provider` finish a switch, `/compact` runs a whole compaction pass, and a
+  switch still in flight is awaited before the next line is read at all. While any of those is
+  awaited the loop accepts no connections, answers no other client, processes no kernel events and
+  does not poll `ctrl_c`. One client typing `/models` at an endpoint that has gone quiet freezes
+  everybody attached.
+
+  It is the same hole as the headless deadline above rather than a new one, and it wants the same
+  fix - somewhere for a command to run that the loop can outlive - which that entry rejects for a
+  reason that applies here too: `App::submit` takes `&mut App`, so a future dropped mid-command
+  leaves a `/provider` half applied. What is different here is the blast radius, and one thing that
+  is cheap and is not the fix: while the loop is blocked its subscription to the kernel can lag, and
+  `App::trace` is what a lagged loop loses. Clients lose no records - they read the log - but
+  `Attached::trace` is built from `App::trace`, so a session that lagged hands every later client a
+  trace with holes in it, which `protocol::Tracing` describes as capped and not otherwise trimmed.
+
+- **A record larger than `protocol::MAX_LINE` makes a session unattachable.** The cap is enforced
+  on what is read, and nothing caps what the session writes. `context.replaced` is the one event
+  that carries content, so a rewritten tool result over 32 MB is written by the session and refused
+  by every client - and because a client resumes by sequence, it comes back to the same record on
+  every attempt, retries for a minute and exits. One legitimate record locks everybody out for the
+  rest of the session.
+
+  Raising the number is not the fix: it moves the size of the thing that breaks. What would close
+  it is a way to say *this record is too big to send*, which the protocol has no message for and
+  which has a decision in it - a client that is told is a client that has a gap in a numbered
+  stream, and `Command::Inspect` is the shape of the answer, because it is already how content is
+  fetched on demand rather than streamed. Until then the honest statement is the one on `MAX_LINE`:
+  the reading side owes the limit and the writing side does not.
+
+- **How many clients a session will accept, and what their arrival and departure cost.** Neither is
+  bounded. `client N attached` and `client N left` go through `App::say`, so they are in `App::loose`
+  and therefore in the conversation of every projection handed out afterwards - and a browser
+  reconnecting every second on a flaky link, which `examples/browser.html` asks for with
+  `retry: 1000`, fills the conversation with them until somebody types `/clear`.
+
+  Saying it through `App` is deliberate and is what makes a session somebody else can type into say
+  so to everybody in it. What would unblock the rest is deciding whether those lines are part of
+  the conversation or part of the *trace*, which is already a ring of the last few hundred lines
+  and is where a thing that happens once a second belongs. That is a small change and a real
+  decision: a client attaching is the one event in here that a person reading the chat later may
+  genuinely want to see.

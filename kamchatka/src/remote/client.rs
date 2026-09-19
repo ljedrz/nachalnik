@@ -187,7 +187,7 @@ impl<'a> Client<'a> {
             }
         };
         let (read, mut write) = tokio::io::split(stream);
-        let mut lines = BufReader::new(read).lines();
+        let mut frames = protocol::Frames::new(BufReader::new(read));
         // note: whatever was in flight when the last socket died is owed an answer that is never
         // coming, and nothing else can ever take the count back down. It is reset per connection
         // rather than decremented on the way out, because a client cannot tell which of what it
@@ -224,7 +224,7 @@ impl<'a> Client<'a> {
                 // a turn sitting in a buffer
                 biased;
 
-                message = protocol::read::<Message>(&mut lines) => match message {
+                message = protocol::read::<Message>(&mut frames) => match message {
                     Ok(Some(message)) => match self.heard(message) {
                         // note: a session that has said it is finished closing its socket is not a
                         // connection that dropped, and the difference is five reconnection attempts

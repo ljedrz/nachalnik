@@ -218,7 +218,7 @@ async fn stream<W: AsyncWrite + Unpin>(
     };
     let _ = upstream.set_nodelay(true);
     let (up, mut down) = upstream.into_split();
-    let mut up = BufReader::new(up).lines();
+    let mut up = protocol::Frames::new(BufReader::new(up));
     // taken out of the lock before the write rather than inside the call, because a guard held
     // across an `await` is a future that cannot be sent between threads
     let was = named.lock().expect("the name is not poisoned").clone();
@@ -283,7 +283,7 @@ async fn stream<W: AsyncWrite + Unpin>(
 /// Turns every message the session sends into one event, until one end stops.
 async fn relay<W: AsyncWrite + Unpin, R: AsyncBufRead + Unpin>(
     write: &mut W,
-    up: &mut tokio::io::Lines<R>,
+    up: &mut protocol::Frames<R>,
     named: &Named,
 ) -> Result<(), String> {
     // note: read as JSON rather than as a `Message`, and passed on as it arrived. A relay that

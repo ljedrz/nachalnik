@@ -131,7 +131,7 @@ fn wired_as(name: Option<&str>, script: Vec<ModelResponse>) -> Wired {
 
 /// One end of a connection, speaking the protocol by hand.
 struct Peer {
-    lines: tokio::io::Lines<BufReader<tokio::net::tcp::OwnedReadHalf>>,
+    lines: protocol::Frames<BufReader<tokio::net::tcp::OwnedReadHalf>>,
     write: tokio::net::tcp::OwnedWriteHalf,
 }
 
@@ -147,7 +147,7 @@ impl Peer {
             .into_split();
 
         Self {
-            lines: BufReader::new(read).lines(),
+            lines: protocol::Frames::new(BufReader::new(read)),
             write,
         }
     }
@@ -1140,19 +1140,45 @@ async fn a_malformed_frame_closes_the_connection() {
     session.ended().await.1.expect("the session failed");
 }
 
-/// So does a line nobody could have meant.
+/// So does one with no end to it, while it is still arriving.
+///
+/// note: nothing this sends contains a newline, which is the case `MAX_LINE` says it is there for
+/// and the one a cap checked against an already-read line cannot catch - the reading is the thing
+/// it was supposed to stop. This used to send `MAX_LINE + 1` bytes *and a newline*, so it only
+/// ever exercised the check after the fact, which is the check that was there.
 #[tokio::test]
 async fn an_oversized_frame_closes_the_connection() {
     let session = served(vec![], |_| {}).await;
 
-    let mut peer = Peer::connect(&session.at).await;
-    let huge = vec![b'x'; protocol::MAX_LINE + 1];
-    peer.raw(&huge).await;
-    peer.raw(b"\n").await;
-    let Message::Failed { error, .. } = peer.recv().await else {
-        panic!("an oversized frame was accepted");
+    let Peer {
+        mut lines,
+        mut write,
+    } = Peer::connect(&session.at).await;
+    // a peer that writes and never finishes a message, for as long as anybody will listen
+    let writing = tokio::spawn(async move {
+        let chunk = vec![b'x'; 1024 * 1024];
+        let mut sent = 0;
+        while write.write_all(&chunk).await.is_ok() {
+            sent += chunk.len();
+        }
+
+        sent
+    });
+
+    let read = tokio::time::timeout(PATIENCE, protocol::read::<Message>(&mut lines))
+        .await
+        .expect("a frame with no end to it was read for ever");
+    let Ok(Some(Message::Failed { error, .. })) = read else {
+        panic!("an oversized frame was accepted: {read:?}");
     };
     assert!(error.contains("over the"), "{error}");
+    // and it was stopped while it arrived: what got in is the cap and whatever was in flight
+    // behind it, rather than however much this was willing to send
+    let sent = writing.await.expect("the writer panicked");
+    assert!(
+        sent < protocol::MAX_LINE * 2,
+        "{sent} bytes were read before anybody objected"
+    );
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");

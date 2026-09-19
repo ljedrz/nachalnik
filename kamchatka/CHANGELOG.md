@@ -449,6 +449,21 @@ minor bump may break you.
   path from `CARGO_BIN_EXE_kamchatka`, which cargo sets for exactly this and which knows about
   extensions and profiles.
 
+- **`MAX_LINE` was checked after the frame had been read, against the one case it names.** Its own
+  doc says what it defends against is a peer that never sends a newline, which would otherwise be
+  read into memory for ever - and that was the case it could not catch, because
+  `Lines::next_line` grows its buffer until a newline arrives and the check ran on what came back.
+  `protocol::Frames` holds the part-read frame itself and stops as soon as there is too much of it.
+  It is cancel-safe for the same reason `Lines` is, which both loops that read commands need: the
+  part-read frame lives in the reader rather than in the future.
+
+  **The reading side owes the limit and the writing side does not**, which is now said where the
+  constant is. Nothing caps what a session writes, so one `context.replaced` over 32 MB is written
+  by the session, refused by every client, and met again on every resume - which locks everybody
+  out for the rest of the session. That is in `POSTPONED.md` with what would close it, along with
+  arbitration between clients, and a client command that awaits the endpoint holding the whole
+  session loop.
+
 ## [0.13.0] - 2026-09-19
 
 ### added
