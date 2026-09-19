@@ -30,7 +30,7 @@
 //! newline-delimited JSON, one object per line:
 //!
 //! ```text
-//! → {"do":"attach","since":null}
+//! → {"do":"attach","since":null,"session":null,"version":1}
 //! ← {"is":"attached","session":"…","seq":9,"busy":false,"conversation":[…],"items":[…], …}
 //! → {"do":"submit","line":"what is 2+2"}
 //! ← {"is":"replied","did":{"asked":1},"page":null,"busy":true}

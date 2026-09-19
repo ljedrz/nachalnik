@@ -239,9 +239,10 @@ the ones that will be asked about.
 
 Switching to context or permissions asks the session for a fresh projection rather than adding up
 the records, because `going`, `left_out` and `marker` are answers about the *next request* and no
-record carries them. That is `project`, which every client has: it is `attach` without the replay,
-for a client that wants today's figures and not the whole session over again. The events view asks
-for nothing, because the records are what it already has.
+record carries them. That is `project`, which every client has: it answers with the figures and
+leaves the stream where it is, where an `attached` means *start again* — so a client that could not
+tell the two apart would wipe its own screen to refresh a token count. The events view asks for
+nothing, because the records are what it already has.
 
 The prompt is on the chat and nowhere else, which is where the terminal keeps it; a view that is a
 list of rows has nothing to say to a box that takes a line. A waiting question colours the cycler
