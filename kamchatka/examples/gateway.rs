@@ -257,6 +257,11 @@ async fn relay<W: AsyncWrite + Unpin, R: AsyncBufRead + Unpin>(
         // note: the whole mapping, and it is three lines because the standard already had the
         // shape. An `id:` is what a browser resumes from, so it goes on exactly the messages that
         // *can* be resumed from - which is the numbered ones, which is the ones in the log
+        //
+        // note: `Projected` falls to the default and carries a `seq` that would be a valid one,
+        // which is the near miss worth naming. It is an answer to a command rather than a place in
+        // the stream, and a browser resuming from it would be resuming from a message nobody can
+        // ask for again by number. The rule is what can be *re-sent*, not what has a number on it
         let id = match &message {
             Message::Record(record) => Some(record.seq),
             Message::Attached(attached) => Some(attached.seq),

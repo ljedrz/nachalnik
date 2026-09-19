@@ -281,6 +281,16 @@ impl<'a> Client<'a> {
                 self.happened(&record.event)
             }
             Message::Progress { event, .. } => self.happened(&event),
+            // note: nothing, and the same nothing `--headless` does with it. What this writes is a
+            // stream rather than a screen: the lines are already down a pipe and on somebody's
+            // terminal, and there is no taking them back. A page can clear itself and this cannot,
+            // so saying so would be a line about lines that are still there
+            Message::Cleared => Ok(()),
+            // note: nothing either, and for a plainer reason: this client renders the conversation
+            // and nothing else, so a fresher account of the items and the budget answers a
+            // question it never asks. It does not send `project`; a client that wants one reads
+            // the fields off it - see `examples/gateway.rs` and the page it serves
+            Message::Projected(_) => Ok(()),
             Message::Said { speaker, text } => {
                 self.fresh_line()?;
                 match speaker {

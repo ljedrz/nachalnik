@@ -123,6 +123,48 @@ minor bump may break you.
   machine that refuses one - `socket2` gates `with_interval` by operating system, and CI builds on
   three of them.
 
+- **`/clear`, which is `ctrl+l` as a command.** It takes the program's own lines off the chat -
+  what it said about what it did, and what it answered a command with - and leaves the
+  conversation, which is the context and is not this program's to take away. `clear_notices` was
+  reachable only by a key, so the two loops with no keyboard could not reach it at all, and the one
+  where a pile of notices is the whole screen rather than a quarter of a tall one is the browser.
+  It says nothing when it is done, which is that function's own rule: a line reporting that the
+  lines are gone would be the first line of the pile it just cleared.
+
+  **It breaks an invariant two loops were relying on, which is most of what this cost.**
+  `App::notes` is a watermark over the Note-and-Error lines and its own note says why that is safe:
+  the filtered sequence is append-only, whatever the list underneath does. A clear empties that
+  sequence, so a loop holding a mark of three against a sequence of nothing swallows the next three
+  lines - silently, and for the rest of the session. `App::cleared` is a generation counter for
+  exactly this, both loops read it, and `Message::Cleared` carries it to every attached client,
+  which is also what makes a session two people are watching clear for both of them rather than
+  one. Measured: breaking either reset fails only the test written for it.
+
+- **`project`, and `Message::Projected` answering it: the projection again, without the replay.**
+  `attach` with no watermark already answers with one and then re-sends every record there has ever
+  been, which is what a client with nothing needs and exactly wrong for a client that wants today's
+  figures - it would have to throw away the conversation it already had to take them. What the new
+  command is for is the half of a session that is not the conversation: the items, the budget, what
+  the policy will answer. Those cannot be added up from the stream, and the reason is worth stating
+  because it looks as though they could - `context.added` names an item and says nothing about what
+  the *next request* will do with it, and `going`, `left_out` and `marker` are answers to that
+  question. They are worked out by projecting, so they are only true as of a moment.
+
+  It is a separate variant from `attached` rather than the same one twice because a client takes an
+  `attached` as *start again*. One that could not tell them apart would wipe its own screen to
+  refresh a token count.
+
+  `Attached::undecided` goes with it, and is the permissions tab's own figure: how many subjects the
+  policy holds an opinion about and will simply ask. The rows deliberately list only what somebody
+  has decided, so a client cannot count what is missing, and one showing two decisions while
+  standing for eighteen answers is a different kind of dishonest.
+
+- **The page has the terminal's tabs.** One button in the top right corner cycles chat, context and
+  permissions. The context view is the context tab's rows and tapping one fetches the whole of that
+  item; the permissions view is the rules and what each covers, under the confinement. There is no
+  trace view and there is not going to be one: the trace is the records, and a page fed the records
+  has them already.
+
 ### fixed
 
 - **`/help` described a terminal to callers that have none.** Six of its seven pages are key

@@ -66,6 +66,22 @@ pub enum Command {
         /// Whether to remember it, so the policy stops asking. This is the `a` key.
         remember: bool,
     },
+    /// Ask for the projection again, as it stands now.
+    ///
+    /// note: [`Command::Attach`] already answers with one and is deliberately not the way to do
+    /// this: attaching with no watermark is answered with the projection *and then every record
+    /// there has ever been*, because that is what a client with nothing has to be given. A client
+    /// that only wants today's figures would be asking for the whole session to be replayed at it,
+    /// and would have to throw away the conversation it already had in order to take it.
+    ///
+    /// note: what it is for is the half of a session that is not the conversation - the items, the
+    /// budget, what the policy will answer - which a client renders as a second view and which the
+    /// records deliberately cannot supply. `context.added` names an item and says nothing about
+    /// what the *next request* will do with it, and `going`, `left_out` and `marker` are answers
+    /// to that question rather than to the question of what happened. They are worked out by
+    /// projecting, so they are only ever true as of a moment, and this is how a client asks for
+    /// that moment to be now.
+    Project,
     /// Ask what one context item actually says.
     ///
     /// note: this is the whole reason the protocol is not "events, and render them however you
@@ -98,6 +114,19 @@ pub enum Message {
     /// note: boxed because it is much the largest of these and every other variant would
     /// otherwise be sized against it.
     Attached(Box<Attached>),
+    /// The projection again, for a client that asked, and nothing else changes with it.
+    ///
+    /// note: the same payload as [`Message::Attached`] under a different name, and the name is the
+    /// whole point. A client takes an `attached` as *start again* - it has just been handed the
+    /// conversation and every record after it, so whatever it had drawn belongs to a stream it is
+    /// no longer on. This one changes nothing: the stream is where it was, the records already
+    /// sent are still the records, and only the figures are newer. A client that could not tell
+    /// the two apart would wipe its own screen to refresh a token count.
+    ///
+    /// note: it carries no `id:` where a gateway gives one, for the same reason [`Message::Item`]
+    /// does not: an id is what a browser resumes from, and this is an answer to a command rather
+    /// than a place in the stream.
+    Projected(Box<Attached>),
     /// One entry of the session log, verbatim.
     Record(Record),
     /// A fragment of something still arriving: a model writing, or a tool talking.
@@ -111,6 +140,19 @@ pub enum Message {
         /// The fragment, as `model.delta` or `tool.output`.
         event: Event,
     },
+    /// The program's own lines are gone: `/clear`, or `ctrl+l` at a terminal watching the same
+    /// session.
+    ///
+    /// note: what a client does with it is drop the [`Message::Said`] lines it has drawn and keep
+    /// everything else, because that is what was cleared - the conversation is the context and is
+    /// not this program's to take away.
+    ///
+    /// note: unnumbered and best-effort, like the lines it is about. They were never in the log,
+    /// so there is nothing to recover and nothing that could recover it; a client that missed this
+    /// is carrying lines the session no longer has, and gets them taken away by the next
+    /// [`Message::Attached`], whose conversation does not have them either. That is the same
+    /// recovery a missed `Said` has, which is the argument for giving the two the same standing.
+    Cleared,
     /// Something the program said for itself: a command's answer, a notice, an error.
     Said {
         /// Who said it.
@@ -229,8 +271,16 @@ pub struct Attached {
     pub items: Vec<Listed>,
     /// Every question waiting on somebody, in the order they were asked.
     pub asking: Vec<PermissionRequest>,
-    /// What the policy will answer about each capability and path rule.
+    /// What the policy will answer about each capability and path rule somebody has decided.
     pub permissions: Vec<Stanced>,
+    /// How many more it holds an opinion about and will simply ask.
+    ///
+    /// note: a count rather than rows, which is the same answer the permissions tab gives and for
+    /// its reason: a row for a `.aws` rule nobody has thought about is not information. What the
+    /// count is for is the other half of that - a client listing two decisions while standing for
+    /// eighteen answers is a different kind of dishonest, and a client cannot work this out from
+    /// the list above, because the list is exactly what it leaves out.
+    pub undecided: usize,
     /// A message somebody typed into the running turn, waiting for it to end.
     pub queued: Option<String>,
     /// What the shell tool's sandbox came to, or nothing where there is none.

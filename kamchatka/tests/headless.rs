@@ -19,8 +19,9 @@ use kamchatka::{
     wiring::{Setup, Wired},
 };
 use nachalnik::{
-    BoxError, Capability, DeltaSink, Grant, ModelInfo, ModelRequest, ModelResponse, OutputSink,
-    Provider, Record, Tool, ToolCall, ToolOutput, ToolSpec, Usage, Verdict, async_trait,
+    BoxError, Capability, ContextItem, DeltaSink, Grant, ModelInfo, ModelRequest, ModelResponse,
+    OutputSink, Provider, Record, Tool, ToolCall, ToolOutput, ToolSpec, Usage, Verdict,
+    async_trait,
     test::{ConstTool, ScriptedProvider, call},
 };
 use nachalnik_providers::OpenAiCompatible;
@@ -1813,5 +1814,73 @@ async fn a_question_answered_inside_the_window_still_carries_the_turn_on() {
             .iter()
             .any(|item| item.content.to_text().contains("carried on")),
         "the model was never asked again"
+    );
+}
+
+/// `/clear` down a pipe says nothing, and does not swallow what is said after it.
+///
+/// note: two claims and only the second is a bug. A pipe cannot unprint what it has already
+/// written, so `/clear` here is nearly a no-op for whoever is reading - which is right, and is
+/// why the first assertion is that it is silent rather than that anything vanished. What it is
+/// not a no-op for is the *watermark*: this loop reads the program's lines through `App::notes`,
+/// which counts the filtered sequence, and a clear empties that sequence rather than shortening
+/// it. A loop that did not notice would hold a mark of three against a sequence of nothing and
+/// print none of the next three lines, for the rest of the run.
+///
+/// note: the lines around the clear are commands that answer with a *line* rather than a page,
+/// because a page is printed from `Reply` and would go out whatever the watermark said - so a
+/// test built on those would pass with the bug in place. And it counts the same refusal twice
+/// rather than looking for a distinctive one, because a refusal that quoted its argument would be
+/// a different line each time and would not notice a mark that is merely too high by one.
+#[tokio::test]
+async fn a_clear_down_a_pipe_is_silent_and_keeps_saying_things_afterwards() {
+    let refused = "is not a number of tokens";
+    let run = run(
+        "/limit nonsense\n/spend nonsense\n/clear\n/spend nonsense\n",
+        vec![],
+        |_| {},
+    )
+    .await;
+
+    assert!(
+        !run.prose.to_lowercase().contains("clear"),
+        "a clear announced itself, which is the one thing it must not do: {}",
+        run.prose
+    );
+    assert_eq!(
+        run.prose.matches(refused).count(),
+        2,
+        "the line after a clear was swallowed: {}",
+        run.prose
+    );
+}
+
+/// And the same act through the key and through the command reaches the same place.
+///
+/// note: `/clear` is `ctrl+l`, and the reason to pin it is that they are two doors onto one
+/// function rather than two implementations. `tests/screen/chat.rs` presses the key; this sends
+/// the line, in a build with no keys at all to press.
+#[tokio::test]
+async fn clear_is_a_command_as_well_as_a_key() {
+    let Wired { mut app, .. } = wired(vec![]);
+    app.say(Speaker::Note, "something the program said");
+    app.kernel
+        .push(ContextItem::user("something a person said"));
+
+    let before = app.cleared();
+    app.submit("/clear").await;
+
+    assert_eq!(app.cleared(), before + 1, "the generation did not move");
+    assert!(
+        app.notes(0).next().is_none(),
+        "the program's own lines are still there: {:?}",
+        app.loose
+    );
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("something a person said")),
+        "the conversation is the context and was not this command's to take"
     );
 }

@@ -210,6 +210,23 @@ client code, and the negative space matches too: an event with no `id:` does not
 `Last-Event-ID`, so records get one and the fragments of a model still typing do not. A browser
 never tries to resume from something that was never recoverable.
 
+The page has the terminal's tabs, minus the trace: the button in the top right corner cycles
+**chat → context → permissions**. The context view is the rows the context tab draws — what each
+item is, what it is estimated to cost, and what the next request will do with it — and tapping one
+fetches the whole of that item, because the projection names items rather than carrying them. The
+permissions view is the rules the policy holds and what each covers, with the confinement over the
+top and a count of the subjects nobody has decided, which are the ones that will be asked about.
+
+Switching to either asks the session for a fresh projection rather than adding up the records,
+because `going`, `left_out` and `marker` are answers about the *next request* and no record carries
+them. That is `project`, which every client has: it is `attach` without the replay, for a client
+that wants today's figures and not the whole session over again.
+
+`/clear` takes this program's own lines off the chat — what it said about what it did, and what it
+answered a command with — and leaves the conversation, which is the context. It is the command form
+of <kbd>ctrl+l</kbd>, so it works at a terminal, down a pipe, through `--connect` and on the page;
+and because a session has one voice, clearing it on one client clears it on all of them.
+
 The gateway has **no authentication and no encryption**, and says so when you point it at anything
 but loopback. `--serve` itself still refuses to. Whatever reaches the page reaches the `shell`
 tool, so it is a thing for a network you trust while you are watching it, and not a thing to leave

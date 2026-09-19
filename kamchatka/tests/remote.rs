@@ -1510,3 +1510,137 @@ async fn a_served_run_says_the_address_it_got_and_a_client_can_reach_it() {
         .expect("the session did not end")
         .expect("the host did not finish");
 }
+
+/// `/clear` reaches every attached client, not only the one that typed it.
+///
+/// note: a broadcast rather than an answer, for the reason every other notice is one: the program
+/// has one voice, and a session two people are watching does not have half of it cleared. The
+/// second client here never sends anything.
+#[tokio::test]
+async fn clearing_the_notices_is_said_to_everybody() {
+    let served = served(vec![], |_| {}).await;
+    let (mut one, _) = Peer::attached(&served.at).await;
+    let (mut two, _) = Peer::attached(&served.at).await;
+
+    // something for it to take away, said by a command rather than invented: `/seams` answers with
+    // a page, and the arrival of a second client is a note in its own right
+    one.send(Command::Submit {
+        line: "/clear".to_owned(),
+    })
+    .await;
+
+    for (who, peer) in [("the client that asked", &mut one), ("the other", &mut two)] {
+        let heard = peer.until(|m| matches!(m, Message::Cleared)).await;
+        assert!(
+            heard.iter().any(|m| matches!(m, Message::Cleared)),
+            "{who} was not told the lines went: {heard:?}"
+        );
+    }
+
+    one.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    served.ended().await.1.expect("the session failed");
+}
+
+/// And a line said after a clear still reaches a client, which is the half that breaks quietly.
+///
+/// note: this is the test that is worth having and the one above is the feature. The server reads
+/// the program's lines through `App::notes`, which is a watermark over the filtered sequence -
+/// safe only while that sequence grows, and `/clear` empties it. A server that did not notice
+/// would hold a mark of three against a sequence of nothing and swallow the next three lines,
+/// silently, for the rest of the session. Two lines are cleared here so that the mark is high
+/// enough for the swallowing to be visible.
+#[tokio::test]
+async fn a_line_said_after_a_clear_is_not_swallowed() {
+    let served = served(vec![], |_| {}).await;
+    let (mut peer, _) = Peer::attached(&served.at).await;
+
+    for line in ["/seams", "/budget", "/clear"] {
+        peer.send(Command::Submit {
+            line: line.to_owned(),
+        })
+        .await;
+    }
+    peer.until(|m| matches!(m, Message::Cleared)).await;
+
+    // and now something to say. `/seams` says its piece as a page rather than a line, so this asks
+    // for one that is refused - a refusal is a line, and it is the shape a session says most of
+    // what it says in
+    peer.send(Command::Submit {
+        line: "/limit nonsense".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until(|m| matches!(m, Message::Said { .. } | Message::Done { .. }))
+        .await;
+    assert!(
+        heard.iter().any(|m| matches!(m, Message::Said { .. })),
+        "the line after a clear was swallowed: {heard:?}"
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    served.ended().await.1.expect("the session failed");
+}
+
+/// `project` answers with the figures again and leaves the stream where it was.
+///
+/// note: the distinction the whole command exists for. `attach` would also answer with a
+/// projection and would then replay every record there has ever been, which is what a client with
+/// nothing needs and what a client refreshing a token count must not be given - it would have to
+/// throw away the conversation it already had in order to take it. So what is asserted is the
+/// negative: a `projected`, and no record behind it.
+#[tokio::test]
+async fn a_projection_can_be_asked_for_again_without_starting_over() {
+    let script = vec![ModelResponse::text("the kernel is a state machine")];
+    let served = served(script, |_| {}).await;
+    let (mut peer, first) = Peer::attached(&served.at).await;
+
+    peer.send(Command::Submit {
+        line: "what does the kernel do?".to_owned(),
+    })
+    .await;
+    peer.until_record("model.finished").await;
+
+    peer.send(Command::Project).await;
+    let heard = peer.until(|m| matches!(m, Message::Projected(_))).await;
+    let Some(Message::Projected(again)) = heard
+        .into_iter()
+        .find(|m| matches!(m, Message::Projected(_)))
+    else {
+        unreachable!("the loop above only ends on one");
+    };
+
+    // the session is the same one and has moved on, which is the whole of what a client wanted
+    assert_eq!(again.session, first.session);
+    assert!(
+        again.seq > first.seq,
+        "a fresh projection reported a stale sequence: {} then {}",
+        first.seq,
+        again.seq
+    );
+    assert!(
+        !again.items.is_empty() && first.items.is_empty(),
+        "the items are what it was asked for: {:?}",
+        again.items
+    );
+
+    // and nothing was replayed. The next thing on the wire is the answer to the next command,
+    // because asking for a projection is not attaching
+    peer.send(Command::Interrupt).await;
+    let next = peer.recv().await;
+    assert!(
+        matches!(next, Message::Done { .. }),
+        "asking for a projection put something back on the stream: {next:?}"
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    served.ended().await.1.expect("the session failed");
+}
