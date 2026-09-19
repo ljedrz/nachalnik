@@ -464,6 +464,16 @@ minor bump may break you.
   arbitration between clients, and a client command that awaits the endpoint holding the whole
   session loop.
 
+- **<kbd>ctrl+c</kbd> was subscribed to once per turn round each loop, and deaf between them.**
+  `tokio::signal::ctrl_c()` is an `async fn`, so naming it in a `select!` builds a new subscription
+  every iteration and drops it with the future - and its own documentation says the future
+  completes on the first press *after* the initial poll. A signal delivered between one iteration
+  finishing and the next poll is not late, it is gone: the handler sets a flag, the driver
+  broadcasts to whoever is listening, and a receiver made afterwards starts from the present. What
+  makes it worth closing rather than noting is that all three loops read a *second* press as "leave
+  now", and the press that lands in the window is the second one, arriving while the first is still
+  being handled. `stopping::Stopping` subscribes once and all three hold one.
+
 ## [0.13.0] - 2026-09-19
 
 ### added

@@ -95,6 +95,7 @@ pub mod introspect;
 pub mod mcp;
 pub mod remote;
 pub mod sandbox;
+pub mod stopping;
 pub mod tools;
 #[cfg(feature = "tui")]
 pub mod ui;

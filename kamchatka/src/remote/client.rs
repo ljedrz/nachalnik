@@ -195,6 +195,12 @@ impl<'a> Client<'a> {
         self.outstanding = 0;
         // whether `ctrl+c` has already asked the turn to stop on this connection
         let mut stopping = false;
+        // subscribed once, because a second press arriving while the first is being handled is the
+        // one that means leave; see `crate::stopping`
+        let mut presses = match crate::stopping::Stopping::new() {
+            Ok(presses) => presses,
+            Err(e) => return Left::Failed(format!("could not listen for ctrl+c: {e}")),
+        };
 
         // note: `since` is sent only where this client has a session to name it against. After a
         // first attach it has a conversation on the screen already, and asking for the projection
@@ -275,7 +281,7 @@ impl<'a> Client<'a> {
                 // dropped and came back is a fresh pair of stages, because the alternative is a
                 // single `ctrl+c` pressed an hour ago detaching somebody from the middle of a turn
                 // they are watching now
-                _ = tokio::signal::ctrl_c() => match stopping {
+                () = presses.pressed() => match stopping {
                     // the second one: the turn has been asked to stop and this client is not
                     // waiting to watch it happen. The session carries on without it, which is the
                     // invariant rather than a shortcut - see the module note
