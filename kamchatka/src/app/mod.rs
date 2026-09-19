@@ -571,6 +571,15 @@ pub struct App {
     /// [`App::conversation`] reads it every frame; this is what that reading cannot account
     /// for. See [`Entry`].
     pub loose: Vec<Entry>,
+    /// How many times [`App::clear_notices`] has emptied the program's own lines.
+    ///
+    /// note: a generation rather than a flag, because what reads it is a watermark rather than a
+    /// screen. [`App::notes`] is safe to count against only while the filtered sequence is
+    /// append-only, and this is the one thing in the program that is not - it empties that
+    /// sequence outright. A loop holding `said` against a sequence that went back to nothing
+    /// swallows the next `said` lines, silently, for the rest of the session. Compare it, and
+    /// start again from nothing when it moves.
+    cleared: u64,
     /// Every event, name and detail.
     pub trace: VecDeque<Traced>,
     /// The prompt.
@@ -817,6 +826,7 @@ impl App {
             pending: Anchor::default(),
             failed: None,
             loose: Vec::new(),
+            cleared: 0,
             trace: VecDeque::new(),
             #[cfg(feature = "tui")]
             input,
@@ -1503,6 +1513,10 @@ impl App {
     /// it; a live run lost `spent 1,106 tokens of 500; stopping`, which was decided, recorded,
     /// and acted on, and whose only missing reader was the person. What the filtered sequence
     /// *is* is append-only: a note is not something that streams.
+    ///
+    /// note: with one exception, and it is `/clear`. [`App::clear_notices`] empties this sequence
+    /// rather than shortening it, so a watermark against it is stale in the one direction that is
+    /// silent. [`App::cleared`] is what says so, and every caller of this has to read it.
     pub fn notes(&self, said: usize) -> impl Iterator<Item = &Entry> {
         self.loose
             .iter()
@@ -1736,9 +1750,26 @@ impl App {
     /// streamed answer is ever open, and it is a turn rather than a notice - but the guard is
     /// here rather than left to the speaker, since what must never happen is a line vanishing
     /// mid-sentence.
+    /// note: it counts, and [`App::cleared`] is the count. A loop with no screen reads its lines
+    /// through [`App::notes`], which is a watermark over the filtered sequence and is safe only
+    /// while that sequence grows - and this is the one thing that empties it. A caller that did
+    /// not notice would skip the next `said` lines for good.
     pub fn clear_notices(&mut self) {
         self.loose
             .retain(|entry| entry.open || !matches!(entry.speaker, Speaker::Note | Speaker::Error));
+        self.cleared += 1;
+    }
+
+    /// How many times the program's own lines have been taken off the chat.
+    ///
+    /// note: for a caller holding a watermark into [`App::notes`], and it is the whole of what
+    /// such a caller has to do about `/clear`: keep this beside `said`, and when it moves, set
+    /// `said` back to nothing. There is no arithmetic to do, because what a clear leaves behind
+    /// is not a shorter sequence but an empty one - everything it removes is exactly what `notes`
+    /// filters *for*, and the only survivor is a line still being streamed, which is a model
+    /// speaking and not a notice.
+    pub fn cleared(&self) -> u64 {
+        self.cleared
     }
 
     /// Opens a tab, and puts the keys wherever they are useful on it.

@@ -122,6 +122,12 @@ impl App {
             "quit" | "exit" | "q" => self.quit = true,
             "help" | "?" => self.help(),
             "continue" => self.start_turn(),
+            // note: a command as well as `ctrl+l`, because two of the three loops have no keys to
+            // press and one of them is the browser, where a pile of notices is the whole screen
+            // rather than a quarter of a tall one. It says nothing when it is done, which is
+            // `clear_notices`' own rule and the one place this program is deliberately silent: a
+            // line reporting that the lines are gone is the first line of the pile it just cleared
+            "clear" => self.clear_notices(),
             // with a message, because otherwise the only way to reach the first transition is to
             // send one - which runs the whole turn, and there is nothing left to step through
             "step" => {

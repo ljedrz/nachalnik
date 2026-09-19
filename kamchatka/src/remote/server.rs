@@ -226,6 +226,8 @@ impl Server {
         // how many of the program's own lines have gone out; see `App::notes` for why it counts
         // the filtered sequence rather than the list
         let mut said = 0;
+        // and which generation of that sequence, because `/clear` starts it again from nothing
+        let mut cleared = app.cleared();
         let mut clients = 0;
         // whether the session was busy the last time anybody was told. See `Message::Busy` for why
         // this is the session saying so rather than a client working it out of the records
@@ -234,6 +236,16 @@ impl Server {
         let mut failed = None;
 
         loop {
+            // before the lines, because it is about the ones already sent: `/clear` takes the
+            // program's own half of every attached client's screen away, and the watermark below
+            // goes back to nothing with it. Broadcast rather than answered to whoever asked, for
+            // the reason every other notice is - the program has one voice, and a session two
+            // people are watching does not clear for one of them
+            if cleared != app.cleared() {
+                cleared = app.cleared();
+                said = 0;
+                let _ = voice.send(Arc::new(Message::Cleared));
+            }
             // the program has one voice and every client hears it, which is most of the difference
             // between a session several people are attached to and several sessions
             let fresh: Vec<_> = app
@@ -373,12 +385,15 @@ impl Drop for Server {
 
 /// Does one of the things that need the session itself, and says what it did.
 ///
-/// note: four, where the protocol has five. `Inspect` is answered by the connection that asked it,
+/// note: five, where the protocol has six. `Inspect` is answered by the connection that asked it,
 /// out of a `Kernel` handle of its own, because reading what an item says needs no `App` - and a
 /// client reading a four-megabyte tool result should not be something the session stops to do.
 async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> {
     match command {
         Command::Attach { .. } => Some(Message::Attached(Box::new(project(app)))),
+        // note: the same projection under a name that does not mean "start again", because that is
+        // the whole difference a client cares about. See `Message::Projected`
+        Command::Project => Some(Message::Projected(Box::new(project(app)))),
         Command::Submit { line } => {
             // note: read before the line goes in, because handing one in is what replaces it.
             // There is room for exactly one queued message, so a second client typing during a turn
@@ -471,6 +486,7 @@ fn project(app: &App) -> Attached {
         items: items.iter().map(|item| Listed::of(item, &going)).collect(),
         asking: app.kernel.pending_permissions(),
         permissions: app.permissions().iter().map(Stanced::of).collect(),
+        undecided: app.undecided(),
         queued: app.queued().map(str::to_owned),
         confinement: app.confinement(),
     }
@@ -725,6 +741,7 @@ fn name(command: &Command) -> &'static str {
         Command::Interrupt => "interrupt",
         Command::Decide { .. } => "decide",
         Command::Inspect { .. } => "inspect",
+        Command::Project => "project",
     }
 }
 

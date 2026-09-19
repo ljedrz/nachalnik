@@ -19,6 +19,10 @@
     gateway turns into `attach { since }`. Resume, for free.
   * a permission question takes the prompt's place rather than stacking above it, which is what the
     terminal does and for the same reason: the box the keys are in should be the box on the screen.
+  * the three views are the terminal's tabs, minus the trace, which is the records - and a page fed
+    the records has them already. Switching to one asks for a fresh projection rather than working
+    the figures out of the stream, because `going`, `left_out` and `marker` are answers about the
+    *next request* and no record carries them; see `Command::Project`.
 -->
 
 <style>
@@ -45,7 +49,28 @@
     font-size: 12px; color: var(--dim);
   }
   header b { color: var(--fg); font-weight: 600; }
-  #log { flex: 1; overflow-y: auto; padding: 12px; overscroll-behavior: contain; }
+  /* the cycler sits in the corner the tab strip is in upstairs, and takes the space left over */
+  #view {
+    margin-left: auto; font-size: 12px; padding: 4px 10px; min-height: 0;
+    color: var(--dim); white-space: nowrap;
+  }
+  #log, #panel { flex: 1; overflow-y: auto; padding: 12px; overscroll-behavior: contain; }
+  #panel { display: none; }
+  body.context #log, body.permissions #log { display: none; }
+  body.context #panel, body.permissions #panel { display: block; }
+  /* a row is the same shape on both of them: a name, some figures, and why */
+  .row { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .row.act { cursor: pointer; }
+  .name { overflow-wrap: anywhere; }
+  .figures { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .why { font-size: 12px; color: var(--note); margin-top: 2px; font-style: italic; }
+  .body {
+    display: none; margin-top: 8px; padding: 8px; white-space: pre-wrap;
+    overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 6px;
+  }
+  .row.open .body { display: block; }
+  .empty { color: var(--dim); }
+  .allowed { color: var(--user); } .denied { color: var(--bad); } .asks { color: var(--call); }
   .line { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .line::before { color: var(--dim); }
   .user { color: var(--user); } .user::before { content: "> "; }
@@ -83,9 +108,11 @@
   <span id="model"></span>
   <span id="budget"></span>
   <span id="busy"></span>
+  <button id="view" type="button" title="the next view: chat, context, permissions">chat</button>
 </header>
 
 <div id="log"></div>
+<div id="panel"></div>
 
 <footer>
   <form id="prompt">
@@ -119,6 +146,10 @@ let streaming = false;  // whether the fragments arriving still belong to anythi
 let wanted = new Set(); // items already asked about, so nothing is asked about twice
 let pending = [];       // lines this page drew on sending, not yet tied to an item
 let mine = new Set();   // the items those lines turned out to be
+let latest = null;      // the last projection, which is what the other two views are drawn from
+let showing = "chat";   // which of the three is on screen
+
+const VIEWS = ["chat", "context", "permissions"];
 
 /** Sends one command. The answer comes back on the stream, not from here. */
 async function send(command) {
@@ -168,6 +199,123 @@ function inspect(id, kind) {
     say(kind, "…", id).classList.add("pending");
   }
   send({ do: "inspect", id });
+}
+
+/**
+ * Moves to a view and draws it.
+ *
+ * note: it asks for a projection every time rather than drawing the one it has, and the staleness
+ * it is avoiding is not the obvious one. The items can be read out of the records - `context.added`
+ * names each as it arrives - but what the context view is *for* is the columns that say what the
+ * next request will do with each of them, and those are worked out by projecting rather than
+ * recorded by anything. A page that accumulated rows from the stream would show a column that was
+ * right when the item arrived and has been wrong since.
+ *
+ * note: what it does not ask for is the conversation, even though the answer carries one. The chat
+ * is drawn from the stream as it arrives and is already right; taking it from here as well would
+ * be two accounts of one thing, and the projection's is the one that cannot show a model still
+ * typing.
+ */
+function show(next) {
+  showing = next;
+  document.body.className = next;
+  document.getElementById("view").textContent = next;
+  if (next !== "chat") {
+    draw();
+    send({ do: "project" });
+  }
+}
+
+document.getElementById("view").onclick = () => {
+  show(VIEWS[(VIEWS.indexOf(showing) + 1) % VIEWS.length]);
+};
+
+/** One row: a name, a line of figures under it, and a reason where there is one. */
+function row(into, name, figures, why) {
+  const el = document.createElement("div");
+  el.className = "row";
+  const head = document.createElement("div");
+  head.className = "name";
+  head.textContent = name;
+  el.append(head);
+  if (figures) {
+    const sub = document.createElement("div");
+    sub.className = "figures";
+    sub.textContent = figures;
+    el.append(sub);
+  }
+  if (why) {
+    const sub = document.createElement("div");
+    sub.className = "why";
+    sub.textContent = why;
+    el.append(sub);
+  }
+  into.append(el);
+  return el;
+}
+
+/** Whichever of the two panels is open, from the last projection. */
+function draw() {
+  const panel = document.getElementById("panel");
+  panel.replaceChildren();
+  if (!latest) return aside(panel, "nothing yet");
+
+  if (showing === "context") {
+    if (!latest.items.length) return aside(panel, "the context is empty");
+    for (const item of latest.items) {
+      // what it costs the request it is in, or why it is in none of it. The two are one answer:
+      // every item is either going for some number of tokens or held back for a reason
+      const held = item.going === null || item.going === undefined;
+      const figures =
+        `${item.kind} · ~${item.tokens.toLocaleString()} tokens · ${item.state}` +
+        (held ? "" : ` · ${item.going.toLocaleString()} in the next request`) +
+        (item.uncounted ? ` · ${item.uncounted} unpriced` : "");
+      const el = row(panel, `${item.id} ${item.label}`, figures, item.left_out ?? item.marker);
+      // the row says what the item is; `inspect` is the only way to what it holds, because the
+      // projection names items rather than carrying them
+      el.classList.add("act");
+      const body = document.createElement("div");
+      body.className = "body";
+      el.append(body);
+      el.onclick = () => {
+        el.classList.toggle("open");
+        if (body.textContent) return;
+        body.textContent = "…";
+        // `data-body` rather than `data-item`, which the chat uses for the line that *is* the
+        // item. One `inspect` answer fills both, and a row opened here would otherwise overwrite
+        // the chat's own line with the item's whole rendering
+        body.dataset.body = item.id;
+        send({ do: "inspect", id: item.id });
+      };
+    }
+    return;
+  }
+
+  // the sandbox first, because a confinement that is not there has to say so where the rules are
+  // read, and a rule read as though it were enforced is worse than no rule
+  aside(panel, latest.confinement ?? "no sandbox: the tools reach whatever this user can");
+  // and what is *not* listed, for the reason the terminal's tab gives: rows for subjects nobody
+  // has thought about are not information, and a list that quietly stood for them would be
+  aside(panel, `${latest.undecided} more subject(s) nobody has decided, so each is asked about`);
+  if (!latest.permissions.length) return;
+  for (const rule of latest.permissions) {
+    const covers = rule.tools.length ? rule.tools.join(", ") : "nothing registered needs it";
+    const sometimes = rule.sometimes.length ? ` · sometimes ${rule.sometimes.join(", ")}` : "";
+    const el = row(panel, rule.subject, `${covers}${sometimes}`);
+    const verdict = document.createElement("span");
+    verdict.className =
+      rule.verdict === "allow" ? "allowed" : rule.verdict === "deny" ? "denied" : "asks";
+    verdict.textContent = ` ${rule.verdict}`;
+    el.querySelector(".name").append(verdict);
+  }
+}
+
+/** A line of the panel's own, for when there are no rows to draw. */
+function aside(into, text) {
+  const el = document.createElement("p");
+  el.className = "empty";
+  el.textContent = text;
+  into.append(el);
 }
 
 function showQuestion() {
@@ -225,9 +373,11 @@ function heard(m) {
       // whatever this page had drawn belongs to the conversation it is about to be handed
       pending = [];
       mine.clear();
+      latest = m;
       document.getElementById("session").textContent = m.session;
       document.getElementById("model").textContent = m.model ? m.model.model : "no model";
       budget(m);
+      if (showing !== "chat") draw();
       log.replaceChildren();
       wanted.clear();
       open = null;
@@ -255,11 +405,31 @@ function heard(m) {
       }
       break;
     }
+    // the figures only. The conversation on this page is drawn from the stream and is already
+    // right; taking it from here too would be a second account of one thing
+    case "projected": {
+      latest = m;
+      budget(m);
+      if (showing !== "chat") draw();
+      break;
+    }
     case "said": say(m.speaker === "error" ? "error" : "note", m.text); break;
+    // what `/clear` and `ctrl+l` take off a terminal, taken off this page: the program's own lines
+    // and nothing else. The conversation stays, because it is the context and this did not touch it
+    case "cleared": {
+      for (const el of log.querySelectorAll(".note, .error")) el.remove();
+      break;
+    }
     case "item": {
+      // both places one can be wanted: the chat line that is the item, and a context row somebody
+      // has opened. They are different attributes because they are different things - the line is
+      // the item and the row merely names it - and one answer fills whichever exist
       for (const el of log.querySelectorAll(`[data-item="${m.id}"]`)) {
         el.textContent = m.body;
         el.classList.remove("pending");
+      }
+      for (const el of document.querySelectorAll(`[data-body="${m.id}"]`)) {
+        el.textContent = m.body;
       }
       break;
     }

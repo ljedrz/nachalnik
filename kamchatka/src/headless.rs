@@ -143,6 +143,8 @@ impl<'a> Headless<'a> {
         let mut written = 0;
         // and the same for the lines the program itself has said
         let mut said = 0;
+        // and the generation that mark belongs to, since `/clear` starts the sequence again
+        let mut cleared = app.cleared();
 
         loop {
             // before anything else, and wherever the question came from: a turn that stopped to
@@ -161,7 +163,7 @@ impl<'a> Headless<'a> {
                 self.answer(app)?;
             }
             self.flush(app, &mut written)?;
-            self.echo(app, &mut said)?;
+            self.echo(app, &mut said, &mut cleared)?;
             // note: a session that has spent what it was given would refuse every further line
             // anyway - `App::start_turn` is where that is decided, so a caller cannot get round it
             // by not asking. What this adds is that the refusals are not printed one a line for
@@ -330,7 +332,7 @@ impl<'a> Headless<'a> {
         // records on the stream under a closing line that said seventeen.
         app.kernel.finish();
         self.flush(app, &mut written)?;
-        self.echo(app, &mut said)?;
+        self.echo(app, &mut said, &mut cleared)?;
         // and the last answer's own line, which nothing else is going to end: a model that stops
         // mid-sentence - or on a closing fence, which is where this was found - leaves the caller's
         // parting line stuck to the end of it
@@ -365,7 +367,16 @@ impl<'a> Headless<'a> {
     /// list, are both [`App::notes`]. They moved there when a second loop with no screen - the one
     /// in [`crate::remote`] - needed the same answer, and a watermark rule stated twice is a
     /// watermark rule that will eventually be two.
-    fn echo(&mut self, app: &App, said: &mut usize) -> Result<(), String> {
+    fn echo(&mut self, app: &App, said: &mut usize, cleared: &mut u64) -> Result<(), String> {
+        // `/clear` empties the sequence this is a watermark into rather than shortening it, so the
+        // mark goes back to nothing with it. Nothing is printed to say so: what a pipe has already
+        // been handed cannot be taken back, and the lines that would have said it are the ones
+        // that just went. See `App::cleared`
+        if *cleared != app.cleared() {
+            *cleared = app.cleared();
+            *said = 0;
+        }
+
         let fresh = app
             .notes(*said)
             .map(|entry| entry.text.clone())
