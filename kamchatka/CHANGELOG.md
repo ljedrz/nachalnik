@@ -175,6 +175,22 @@ minor bump may break you.
   The prompt is on the chat and nowhere else, which is where the terminal keeps it - a view that is
   a list of rows has nothing to say to a box that takes a line. A waiting question colours the
   cycler instead of following you about, which is the same thing the tab strip does by going red.
+  The order is `Tab::ALL`, down to the event log sitting where the trace does rather than at the
+  end where it was easiest to put: somebody who knows one of these two should not have to learn the
+  other's habits.
+
+- **The chat follows the context, the way it does at the terminal.** It was append-only, so an item
+  taken out of the request stayed on the page that took it out - the state moved on the context
+  view and the conversation did not. `App::conversation` is what decides that shape, and it is not
+  a rule a page can keep a copy of: an excluded item is gone from the chat and an *elided* one is
+  still there in full, because eliding is about what the model is sent and the marker is for it
+  rather than for the person. So the records that reshape a conversation - a state change, a
+  compaction, an undo, a rewrite - ask for a fresh projection and the chat is drawn from that.
+
+  Not `context.added`, which is the one the page already draws as it arrives; rebuilding on it
+  would take away the bubble a model is writing into every time a turn was recorded. For the same
+  reason a rebuild that falls during a turn is held until the turn ends, rather than done and
+  undone.
 
 - **`App::cycle`, and `cycle` on the wire: the state ring, in one place.** `space` on the context
   tab moves an item from seen, to a marker where it was, to gone, to seen again - and the ring and
