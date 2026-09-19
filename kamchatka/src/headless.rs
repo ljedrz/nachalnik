@@ -134,6 +134,10 @@ impl<'a> Headless<'a> {
         // the driver was built, since a caller may have held it for a while
         let mut ends = self.deadline.map(|after| Instant::now() + after);
         let mut stopping = false;
+        // subscribed once, because a second press arriving while the first is being handled is the
+        // one that means leave; see `crate::stopping`
+        let mut presses = crate::stopping::Stopping::new()
+            .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
         // note: the *last* one rather than any, because a turn that failed and was then carried on
         // from is a session that recovered, and a run that reported it as a failure would have
         // every script treating one provider hiccup as a dead session
@@ -292,7 +296,7 @@ impl<'a> Headless<'a> {
                     writeln!(self.prose, "· out of time; stopping")
                         .map_err(|e| e.to_string())?;
                 }
-                _ = tokio::signal::ctrl_c(), if self.ctrl_c => {
+                () = presses.pressed(), if self.ctrl_c => {
                     match stopping {
                         // the second one: whatever is still running is somebody else's problem now
                         true => break,

@@ -1982,6 +1982,96 @@ async fn a_served_run_says_the_address_it_got_and_a_client_can_reach_it() {
         .expect("the host did not finish");
 }
 
+/// `ctrl+c` at a client stops the turn, and a second one detaches without ending the session.
+///
+/// note: the two stages, and the invariant between them. The first press is for the *turn* and
+/// keeps what arrived; the second is for this process, and the session carries on without it -
+/// which is the one thing a client must never decide for somebody else. There was only ever one
+/// stage: a second press sent another interrupt and printed the same line, and since
+/// `tokio::signal::ctrl_c` does not put the default handler back, there was no way out of a
+/// `--connect` at all short of killing it.
+///
+/// note: a child process, because `ctrl+c` is a *signal* and there is no other way to send one.
+/// `#[cfg(unix)]` for the same reason `ctrl_c_stops_a_headless_run_rather_than_killing_it` is.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn ctrl_c_at_a_client_stops_the_turn_and_then_detaches() {
+    let session = served(vec![ModelResponse::text("an answer to read")], |_| {}).await;
+
+    // stdin is a pipe this test holds open and never writes to, so nothing but the signal can end
+    // this client - which is what makes the assertion about the signal
+    let mut client = tokio::process::Command::new(common::program())
+        .args(["--connect", &session.at])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("the client did not start");
+    let mut read = BufReader::new(client.stderr.take().expect("a pipe")).lines();
+    // note: held rather than left in the `Child`, and this is the trap in writing this test.
+    // `Child::wait` closes stdin before it waits, stdin closing is the *other* way this client
+    // leaves, and a test that reached for `wait` passed with the second stage taken out again
+    let _stdin = client.stdin.take().expect("a pipe");
+
+    // attached, and therefore in the loop with the signal branch armed
+    let mut prose = String::new();
+    while !prose.contains("a line is a message") {
+        let line = tokio::time::timeout(PATIENCE, read.next_line())
+            .await
+            .expect("the client said nothing")
+            .expect("the client's output stopped")
+            .expect("the client ended before it was interrupted");
+        prose.push_str(&line);
+        prose.push('\n');
+    }
+
+    let id = client.id().expect("it is running").to_string();
+    let interrupt = |id: &str| {
+        std::process::Command::new("kill")
+            .args(["-INT", id])
+            .status()
+            .expect("`kill` is on the path")
+    };
+    assert!(interrupt(&id).success());
+    while !prose.contains("asked it to stop") {
+        let line = tokio::time::timeout(PATIENCE, read.next_line())
+            .await
+            .expect("the first press was not heard")
+            .expect("the client's output stopped")
+            .expect("the client left on the first press");
+        prose.push_str(&line);
+        prose.push('\n');
+    }
+    // and it is still attached, which is the whole of what the first stage means
+    assert!(
+        client.try_wait().expect("it was spawned").is_none(),
+        "the first press left: {prose}"
+    );
+
+    assert!(interrupt(&id).success());
+    let status = {
+        let deadline = std::time::Instant::now() + PATIENCE;
+        loop {
+            match client.try_wait().expect("it was spawned") {
+                Some(status) => break status,
+                None if std::time::Instant::now() > deadline => {
+                    panic!("the second press did not detach it: {prose}")
+                }
+                None => tokio::time::sleep(Duration::from_millis(25)).await,
+            }
+        }
+    };
+    assert!(status.success(), "detaching is not a failure: {prose}");
+    drop(_stdin);
+
+    // the session is still there, which is the invariant the whole module is built on
+    let (peer, _) = Peer::attached(&session.at).await;
+    peer.drop_it().await;
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// `/clear` reaches every attached client, not only the one that typed it.
 ///
 /// note: a broadcast rather than an answer, for the reason every other notice is one: the program

@@ -263,6 +263,10 @@ impl Server {
         let mut announced = app.busy;
         let mut stopping = false;
         let mut failed = None;
+        // subscribed once, because a second press arriving while the first is being handled is the
+        // one that means leave; see `crate::stopping`
+        let mut presses = crate::stopping::Stopping::new()
+            .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
 
         loop {
             // before the lines, because it is about the ones already sent: `/clear` takes the
@@ -368,7 +372,7 @@ impl Server {
                     ),
                     Err(broadcast::error::RecvError::Closed) => break,
                 },
-                _ = tokio::signal::ctrl_c() => match stopping {
+                () = presses.pressed() => match stopping {
                     // the second one: whatever is still running is somebody else's problem now
                     true => break,
                     false => {

@@ -934,12 +934,7 @@ fn a_resumed_headless_run_says_both_what_it_picked_up_and_how_it_is_driven() {
 fn ctrl_c_stops_a_headless_run_rather_than_killing_it() {
     use std::io::Read as _;
 
-    let mut program = std::env::current_exe().expect("a test binary has a path");
-    program.pop();
-    if program.ends_with("deps") {
-        program.pop();
-    }
-    program.push("kamchatka");
+    let program = common::program();
 
     // stdin is a pipe this test holds open and never writes to, which is a run waiting for
     // somebody who has not typed anything yet - the state `ctrl+c` is for
