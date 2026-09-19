@@ -392,7 +392,20 @@ impl Drop for Server {
 /// client reading a four-megabyte tool result should not be something the session stops to do.
 async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> {
     match command {
-        Command::Attach { .. } => Some(Message::Attached(Box::new(project(app)))),
+        // note: a resume is answered with a `done` rather than with nothing, and the reason is the
+        // invariant `Message::Done` states: every command gets exactly one answer. A resume that
+        // got none was a client whose count of answers owed never came back down, and the two
+        // things that count on it - stdin closing, and the session going quiet - stopped working
+        // for the rest of the process. It carries `busy` because that is the other thing a
+        // reconnecting client cannot know: a turn may have ended while it was away, and no record
+        // says so
+        Command::Attach { since } => Some(match since {
+            None => Message::Attached(Box::new(project(app))),
+            Some(_) => Message::Done {
+                about: "attach".to_owned(),
+                busy: app.busy,
+            },
+        }),
         // note: the same projection under a name that does not mean "start again", because that is
         // the whole difference a client cares about. See `Message::Projected`
         Command::Project => Some(Message::Projected(Box::new(project(app)))),
@@ -704,13 +717,20 @@ async fn watermark<W: AsyncWrite + Unpin>(
     // It is either a client that has confused two sessions or one that made the number up, and
     // quietly starting it from the end would leave it convinced it held a history it never had
     let last = kernel.last_seq();
-    match since > last {
-        true => Err(format!(
+    if since > last {
+        return Err(format!(
             "this session has {last} record(s) and you say you have {since}; attach with no \
              `since` to start again"
-        )),
-        false => Ok(since),
+        ));
     }
+    // note: refused above without troubling the session, and answered here by the session itself,
+    // because the answer carries `busy` and nothing but the loop driving the kernel knows it
+    let Some(message) = ask(asks, client, Command::Attach { since: Some(since) }).await? else {
+        return Err("the session answered an attach with nothing".to_owned());
+    };
+    protocol::write(write, &message).await?;
+
+    Ok(since)
 }
 
 /// Puts one command to the session loop and waits for what it says.

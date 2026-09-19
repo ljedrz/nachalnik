@@ -334,6 +334,21 @@ minor bump may break you.
   `net:reach` where it was, so a `curl` behind it is still a question and is never swept. It takes
   two calls whose every subject the first answer covered.
 
+- **A resume was the one command a client sent that was answered with nothing.** `Message::Done`
+  states the invariant - every command a client sends gets exactly one answer - and `attach` with a
+  watermark was the exception: the records after it, and nothing else. `Client::say_to` counts
+  every command as owed one, so a client that survived a blip was owed an answer for ever and
+  `Client::resting` was false for the rest of the process. Neither of the two things that wait on
+  it worked after that: stdin closing no longer detached, and nor did the session going quiet.
+  `printf 'a question\n' | kamchatka --connect` over a link that blipped hung instead of leaving
+  with the answer.
+
+  A resume is answered with a `done` now, and it carries `busy` - the other thing a reconnecting
+  client cannot work out for itself, because a turn may have ended while it was away and no record
+  says so. The count is reset per connection as well, for the case the session cannot help with: a
+  command in flight when the socket died is owed an answer nobody is going to send, and the session
+  never saw it.
+
 ## [0.13.0] - 2026-09-19
 
 ### added
