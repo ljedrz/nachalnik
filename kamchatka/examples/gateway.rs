@@ -77,6 +77,15 @@ const MAX_BODY: usize = 1024 * 1024;
 /// Where every attached tab's commands go.
 type Tabs = Arc<Mutex<HashMap<String, mpsc::UnboundedSender<Command>>>>;
 
+/// The session's own name, read off the first projection that goes past.
+///
+/// note: remembered here because a browser's own reconnection opens a *new* connection to the
+/// session, which therefore has no projection of its own to read the name off - and a resume that
+/// cannot say which session it came from is the one `Command::Attach` describes as the quiet
+/// failure. The browser keeps its resume with no client code at all, which is the point of this
+/// being SSE; naming the session is the gateway's half of it.
+type Named = Arc<Mutex<Option<String>>>;
+
 #[tokio::main]
 async fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
@@ -116,20 +125,21 @@ async fn main() -> Result<(), String> {
     }
 
     let tabs: Tabs = Arc::default();
+    let named: Named = Arc::default();
     loop {
         let Ok((browser, _)) = listener.accept().await else {
             continue;
         };
         let _ = browser.set_nodelay(true);
-        let (session, tabs) = (session.clone(), tabs.clone());
+        let (session, tabs, named) = (session.clone(), tabs.clone(), named.clone());
         tokio::spawn(async move {
-            let _ = serve(browser, &session, tabs).await;
+            let _ = serve(browser, &session, tabs, named).await;
         });
     }
 }
 
 /// One browser connection: read a request, answer it, and for a stream stay for as long as it lasts.
-async fn serve(browser: TcpStream, session: &str, tabs: Tabs) -> Result<(), String> {
+async fn serve(browser: TcpStream, session: &str, tabs: Tabs, named: Named) -> Result<(), String> {
     let (read, mut write) = browser.into_split();
     let mut reader = BufReader::new(read);
     let Some(request) = head(&mut reader).await? else {
@@ -150,7 +160,7 @@ async fn serve(browser: TcpStream, session: &str, tabs: Tabs) -> Result<(), Stri
                 .header("last-event-id")
                 .or_else(|| param(query, "since"))
                 .and_then(|it| it.parse().ok());
-            stream(&mut write, session, tabs, tab, since).await
+            stream(&mut write, session, tabs, named, tab, since).await
         }
         ("POST", "/do") => {
             let body = body(&mut reader, &request).await?;
@@ -186,6 +196,7 @@ async fn stream<W: AsyncWrite + Unpin>(
     write: &mut W,
     session: &str,
     tabs: Tabs,
+    named: Named,
     tab: String,
     since: Option<u64>,
 ) -> Result<(), String> {
@@ -208,7 +219,18 @@ async fn stream<W: AsyncWrite + Unpin>(
     let _ = upstream.set_nodelay(true);
     let (up, mut down) = upstream.into_split();
     let mut up = BufReader::new(up).lines();
-    protocol::write(&mut down, &Command::Attach { since }).await?;
+    // taken out of the lock before the write rather than inside the call, because a guard held
+    // across an `await` is a future that cannot be sent between threads
+    let was = named.lock().expect("the name is not poisoned").clone();
+    protocol::write(
+        &mut down,
+        &Command::Attach {
+            since,
+            session: was,
+            version: Some(protocol::VERSION),
+        },
+    )
+    .await?;
 
     // note: no `Content-Length` and no chunking - a response with neither is delimited by the
     // connection closing, which is what a stream is. It is the one thing this saves by not being a
@@ -240,7 +262,7 @@ async fn stream<W: AsyncWrite + Unpin>(
         }
     });
 
-    let relayed = relay(write, &mut up).await;
+    let relayed = relay(write, &mut up, &named).await;
     // the browser has gone, or the session has. Dropping the sender ends the task above, which
     // closes the connection to the session, which is what makes the session say the client left
     tabs.lock().expect("the tabs are not poisoned").remove(&tab);
@@ -252,8 +274,14 @@ async fn stream<W: AsyncWrite + Unpin>(
 async fn relay<W: AsyncWrite + Unpin, R: AsyncBufRead + Unpin>(
     write: &mut W,
     up: &mut tokio::io::Lines<R>,
+    named: &Named,
 ) -> Result<(), String> {
     while let Some(message) = protocol::read::<Message>(up).await? {
+        // the one place the session says what it is called, and what the next stream's resume has
+        // to name; see `Named`
+        if let Message::Attached(attached) = &message {
+            *named.lock().expect("the name is not poisoned") = Some(attached.session.clone());
+        }
         // note: the whole mapping, and it is three lines because the standard already had the
         // shape. An `id:` is what a browser resumes from, so it goes on exactly the messages that
         // *can* be resumed from - which is the numbered ones, which is the ones in the log

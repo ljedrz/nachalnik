@@ -59,6 +59,14 @@ pub struct Client<'a> {
     mid_line: bool,
     /// The last record this client is sure it has.
     last: u64,
+    /// The session those records came from, where this client has attached to one.
+    ///
+    /// note: this is what says whether there is anything to resume, as well as what a resume
+    /// names: `Some` is a client holding a conversation and a watermark, `None` one with nothing,
+    /// and a refused attach puts it back to `None` so that the next attempt is a fresh one. A
+    /// client that kept the watermark through a refusal sent the same impossible resume every
+    /// quarter of a second until it gave up on a session that was there all along.
+    session: Option<String>,
     /// The questions waiting on somebody, oldest first.
     asking: VecDeque<PermissionRequest>,
     /// Whether a turn is running, as of the last thing the session said about that.
@@ -102,6 +110,7 @@ impl<'a> Client<'a> {
             prose,
             mid_line: false,
             last: 0,
+            session: None,
             asking: VecDeque::new(),
             busy: false,
             outstanding: 0,
@@ -187,15 +196,22 @@ impl<'a> Client<'a> {
         // whether `ctrl+c` has already asked the turn to stop on this connection
         let mut stopping = false;
 
-        // note: `since` is `None` only the first time. After that this client has a conversation on
-        // the screen already, and asking for the projection again would print the whole of it a
-        // second time above the records that carry on from it
-        let since = (!first).then_some(self.last);
-        if self
-            .say_to(&mut write, Command::Attach { since })
-            .await
-            .is_err()
-        {
+        // note: `since` is sent only where this client has a session to name it against. After a
+        // first attach it has a conversation on the screen already, and asking for the projection
+        // again would print the whole of it a second time above the records that carry on from it
+        let attach = match &self.session {
+            Some(session) => Command::Attach {
+                since: Some(self.last),
+                session: Some(session.clone()),
+                version: Some(protocol::VERSION),
+            },
+            None => Command::Attach {
+                since: None,
+                session: None,
+                version: Some(protocol::VERSION),
+            },
+        };
+        if self.say_to(&mut write, attach).await.is_err() {
             return Left::Dropped;
         }
 
@@ -361,6 +377,12 @@ impl<'a> Client<'a> {
             }
             Message::Failed { about, error } => {
                 self.answered();
+                // a refused attach is the one failure this client can do something about, and what
+                // it does is put down what it was holding: only a fresh attach can succeed now
+                if about == "attach" {
+                    self.session = None;
+                    self.last = 0;
+                }
                 self.fresh_line()?;
                 self.tell(&format!("{about}: {error}"))
             }
@@ -370,6 +392,7 @@ impl<'a> Client<'a> {
     /// Prints where a session stands, for somebody who has just arrived at it.
     fn arrived(&mut self, attached: &Attached) -> Result<(), String> {
         self.last = attached.seq;
+        self.session = Some(attached.session.clone());
         self.busy = attached.busy;
         self.answered();
         writeln!(
