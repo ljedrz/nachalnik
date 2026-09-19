@@ -394,6 +394,22 @@ minor bump may break you.
   does not say is version 1, which is what everything written against this wire before the field
   existed speaks.
 
+- **`Command` and `Message` each have a variant for what this build has no name for, and the rule
+  is ignore what you do not know.** Without it, one new message on a session's side turned every
+  older client into a parse error, a closed connection, sixty seconds of retries and an exit - for
+  a session that was working perfectly. A client reads the unknown one, prints nothing, and carries
+  on with the records, which are what carry what happened. An unknown *command* is answered with a
+  `failed` rather than by closing the connection, because a client that sent something is owed
+  exactly one answer whether or not this end knows what it was.
+
+  `examples/gateway.rs` reads the wire as JSON and passes it on rather than parsing each message
+  into this build's own enum and writing it out again, which would turn everything a later session
+  said into `unknown` on the way past. What a relay has to understand is the tag and one number.
+
+  The wire types - `Attached`, `Line`, `Listed`, `Stanced`, `Tracing`, `Printed` - are
+  `#[non_exhaustive]`. The convention is that it goes on every struct this workspace answers with
+  and nothing outside it builds, and these are the ones where it pays: a field is what they grow.
+
 ## [0.13.0] - 2026-09-19
 
 ### added

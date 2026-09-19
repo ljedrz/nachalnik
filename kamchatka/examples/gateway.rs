@@ -51,7 +51,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use kamchatka::remote::protocol::{self, Address, Command, Message};
+use kamchatka::remote::protocol::{self, Address, Command};
 use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
@@ -276,25 +276,30 @@ async fn relay<W: AsyncWrite + Unpin, R: AsyncBufRead + Unpin>(
     up: &mut tokio::io::Lines<R>,
     named: &Named,
 ) -> Result<(), String> {
-    while let Some(message) = protocol::read::<Message>(up).await? {
+    // note: read as JSON rather than as a `Message`, and passed on as it arrived. A relay that
+    // parsed each message into this build's own enum and wrote it out again would turn everything
+    // a later session said into `Message::Unknown` on the way past - which is the relay deciding
+    // what the page is allowed to hear. What it has to understand is the tag and one number
+    while let Some(message) = protocol::read::<serde_json::Value>(up).await? {
+        let is = message.get("is").and_then(serde_json::Value::as_str);
         // the one place the session says what it is called, and what the next stream's resume has
         // to name; see `Named`
-        if let Message::Attached(attached) = &message {
-            *named.lock().expect("the name is not poisoned") = Some(attached.session.clone());
+        if is == Some("attached")
+            && let Some(session) = message.get("session").and_then(serde_json::Value::as_str)
+        {
+            *named.lock().expect("the name is not poisoned") = Some(session.to_owned());
         }
         // note: the whole mapping, and it is three lines because the standard already had the
         // shape. An `id:` is what a browser resumes from, so it goes on exactly the messages that
         // *can* be resumed from - which is the numbered ones, which is the ones in the log
         //
-        // note: `Projected` falls to the default and carries a `seq` that would be a valid one,
-        // which is the near miss worth naming. It is an answer to a command rather than a place in
-        // the stream, and a browser resuming from it would be resuming from a message nobody can
-        // ask for again by number. The rule is what can be *re-sent*, not what has a number on it
-        let id = match &message {
-            Message::Record(record) => Some(record.seq),
-            Message::Attached(attached) => Some(attached.seq),
-            _ => None,
-        };
+        // note: `projected` carries a `seq` that would be a valid one, which is the near miss
+        // worth naming. It is an answer to a command rather than a place in the stream, and a
+        // browser resuming from it would be resuming from a message nobody can ask for again by
+        // number. The rule is what can be *re-sent*, not what has a number on it
+        let id = matches!(is, Some("record" | "attached"))
+            .then(|| message.get("seq").and_then(serde_json::Value::as_u64))
+            .flatten();
         let data = serde_json::to_string(&message).map_err(|e| e.to_string())?;
         let event = match id {
             Some(id) => format!("id: {id}\ndata: {data}\n\n"),

@@ -375,6 +375,10 @@ impl<'a> Client<'a> {
                      that happened"
                 ))
             }
+            // note: nothing, which is the rule this variant is for: ignore what you do not know.
+            // A session that has grown a message since this build was made is a session this can
+            // still follow, because the records are what carry what happened
+            Message::Unknown => Ok(()),
             Message::Failed { about, error } => {
                 self.answered();
                 // a refused attach is the one failure this client can do something about, and what
