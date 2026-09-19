@@ -21,14 +21,12 @@
     gateway turns into `attach { since }`. Resume, for free.
   * a permission question takes the prompt's place rather than stacking above it, which is what the
     terminal does and for the same reason: the box the keys are in should be the box on the screen.
-  * the four views are the terminal's tabs, in the terminal's order. Two of them - context and
-    permissions - ask for a fresh projection when they are opened, because `going`, `left_out` and
-    `marker` are answers about the *next request* and no record carries them; see
-    `Command::Project`. The event log asks for nothing: it is the records, which this page is sent
-    anyway, with the gap between them worked out from their own timestamps. It sits where the trace
-    sits and it is not the trace: that renders each record in this program's words, and the one
-    thing this shows differently is the detail, which is the record itself. Putting the trace on
-    the wire would be a second copy of four hundred lines the page already has.
+  * the four views are the terminal's tabs, in the terminal's order, drawn from what the terminal
+    draws them from. Everything but the chat comes from a projection and asks for a fresh one on
+    the way in, because none of it can be worked out from the stream: `going`, `left_out` and
+    `marker` are answers about the *next request*, and the trace is the events in this program's
+    own words with the gaps the pane puts beside them. Writing either here would be a second
+    vocabulary for one session, and it would be the one nobody at the other end can see.
   * the prompt is on the chat and nowhere else, which is where the terminal keeps it. A waiting
     question colours the cycler instead of following you about, the way the tab strip goes red
     upstairs.
@@ -97,6 +95,8 @@
   .empty { color: var(--dim); }
   .seq { color: var(--dim); }
   .detail { font-size: 12px; color: var(--dim); margin-top: 2px; overflow-wrap: anywhere; }
+  /* the figure being looked for, so it keeps the right-hand edge and a colour of its own */
+  .gap { font-size: 12px; color: var(--call); white-space: nowrap; flex: none; }
   .allowed { color: var(--user); } .denied { color: var(--bad); } .asks { color: var(--call); }
   .line { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .line::before { color: var(--dim); }
@@ -176,7 +176,6 @@ let mine = new Set();   // the items those lines turned out to be
 let latest = null;      // the last projection, which is what every view but the chat is drawn from
 let stale = false;      // whether the chat no longer matches the context, and a rebuild is owed
 let showing = "chat";   // which of the four is on screen
-let records = [];       // every record this page has been sent, for the event log
 
 /**
  * The views, in the order the terminal's tab strip has them.
@@ -186,9 +185,6 @@ let records = [];       // every record this page has been sent, for the event l
  * not have to learn the other's habits, and tab order is the cheapest kind of similarity there is.
  */
 const VIEWS = ["chat", "context", "events", "permissions"];
-/** How many records the event log keeps, which is the terminal's own trace depth. */
-const KEPT = 400;
-
 /**
  * The records after which the chat is not what the context says any more.
  *
@@ -311,9 +307,9 @@ function show(next) {
   document.body.className = next;
   document.getElementById("view").textContent = next;
   draw();
-  // the event log is the records and this page has them; only the two views that are *figures*
-  // have to ask, and they have to ask every time - see the note above
-  if (next === "context" || next === "permissions") send({ do: "project" });
+  // every view but the chat is drawn from a projection, so every one of them asks for a fresh one
+  // on the way in. The chat is the exception because the stream keeps it current; see `restale`
+  if (next !== "chat") send({ do: "project" });
 }
 
 document.getElementById("view").onclick = () => {
@@ -403,27 +399,34 @@ function draw() {
     return;
   }
 
-  // the event log: the records, which is what this view is. The terminal's trace is a *rendering*
-  // of them in this program's own words, and a page writing its own second set would be a
-  // vocabulary to keep in step with one nobody can see from here. So the name is the event's own
-  // and the detail is the rest of the record, which is what `jq` would have shown
+  // the trace, which is the trace tab: the session's events in this program's own words, with the
+  // gap beside the ones that took any time. Both are the session's - the wording because a second
+  // set written here would be a vocabulary nobody at the other end could see, and the gap because
+  // when there *is* one is a decision rather than a format
   if (showing === "events") {
-    if (!records.length) return aside(panel, "nothing has happened yet");
-    let previous = null;
-    for (const record of records) {
-      const { event, ...rest } = record.event;
-      const when = new Date(record.at).toLocaleTimeString();
-      // the gap, which is what the trace tab is for: it answers *which step was slow*. Worked out
-      // here from the two timestamps rather than asked for, because a record carries `at` and two
-      // of them are all this needs
-      const gap = previous === null ? "" : ` · +${((record.at - previous) / 1000).toFixed(1)}s`;
-      previous = record.at;
-      const el = row(panel, `${event}`, `#${record.seq} · ${when}${gap}`);
-      const keys = Object.keys(rest);
-      if (keys.length) {
+    if (!latest.trace.length) return aside(panel, "nothing has happened yet");
+    for (const event of latest.trace) {
+      const when = new Date(event.at).toLocaleTimeString();
+      // a line with no name is more of what the one above had to say, so it is drawn under it
+      // rather than as an event of its own
+      if (!event.name) {
+        const more = document.createElement("div");
+        more.className = "detail";
+        more.textContent = event.detail;
+        (panel.lastElementChild ?? panel).append(more);
+        continue;
+      }
+      const el = row(panel, event.name, when, null);
+      if (event.gap) {
+        const gap = document.createElement("div");
+        gap.className = "gap";
+        gap.textContent = event.gap;
+        el.querySelector(".head").append(gap);
+      }
+      if (event.detail) {
         const detail = document.createElement("div");
         detail.className = "detail";
-        detail.textContent = JSON.stringify(rest);
+        detail.textContent = event.detail;
         el.append(detail);
       }
     }
@@ -514,9 +517,6 @@ function heard(m) {
   switch (m.is) {
     case "attached": {
       // whatever this page had drawn belongs to the conversation it is about to be handed
-      // an `attached` is answered with every record after it, so whatever this page had is about
-      // to arrive again - see `Message::Attached`. Keeping them would be every record twice
-      records = [];
       latest = m;
       stale = false;
       document.getElementById("session").textContent = m.session;
@@ -530,17 +530,7 @@ function heard(m) {
       working(m.busy);
       break;
     }
-    case "record": {
-      // note: kept, because the event log view is these and nothing else - and capped, for the
-      // reason the terminal caps its trace: a session runs for hours and a page is not the log.
-      // The log itself is unbounded and is on the session; what is dropped here is only what this
-      // page can draw, and a reload asks for the lot again
-      records.push(m);
-      if (records.length > KEPT) records.shift();
-      if (showing === "events") draw();
-      happened(m.event);
-      break;
-    }
+    case "record": happened(m.event); break;
     case "progress": {
       // note: dropped unless something is actually arriving, and that is not a nicety. A fragment
       // is unnumbered and best-effort, so a connection that has fallen behind is handed one *after*
@@ -608,7 +598,11 @@ function happened(e) {
   // anything that touched the context makes the rows on screen stale, whoever touched it - this
   // page, somebody at the terminal, or the model through its own `context` tool. Asked for rather
   // than patched in, because what the columns say is worked out by projecting
-  if (showing === "context" && e.event.startsWith("context.")) send({ do: "project" });
+  // the context view's figures go stale on anything that touched the context, and the trace on
+  // anything at all - it is the log of everything, so every record is a line of it
+  if (showing === "events" || (showing === "context" && e.event.startsWith("context."))) {
+    send({ do: "project" });
+  }
   // and a subset of those changed the *conversation*, which every view owes a rebuild. Not
   // `context.added`, which is the one the appending below already draws, and not `annotated` or
   // `recounted`, which move a figure and not a line

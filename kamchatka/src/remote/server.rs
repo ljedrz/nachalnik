@@ -30,7 +30,9 @@ use tokio::{
 
 use crate::{
     app::{App, Outcome, Overlay, Speaker, text},
-    remote::protocol::{self, Address, Attached, Command, Line, Listed, Message, Printed, Stanced},
+    remote::protocol::{
+        self, Address, Attached, Command, Line, Listed, Message, Printed, Stanced, Tracing,
+    },
 };
 
 /// How many of the program's own lines a client may fall behind before it starts losing them.
@@ -489,13 +491,18 @@ fn project(app: &App) -> Attached {
         spent: app.spent(),
         spend: app.spend(),
         overspent: app.overspent(),
-        conversation: app.conversation(&items).iter().map(Line::of).collect(),
+        conversation: app
+            .conversation(&items, &going)
+            .iter()
+            .map(Line::of)
+            .collect(),
         // note: every item, rather than `App::listed`, which is the *screen's* list and leaves out
         // what has been pruned when somebody has asked it to. Which rows to show is a decision
         // belonging to whoever is reading, and a projection that had already made it would be one
         // client's view of the context standing in for the context
         items: items.iter().map(|item| Listed::of(item, &going)).collect(),
         asking: app.kernel.pending_permissions(),
+        trace: tracing(app),
         permissions: app.permissions().iter().map(Stanced::of).collect(),
         undecided: app.undecided(),
         queued: app.queued().map(str::to_owned),
@@ -742,6 +749,43 @@ async fn flush<W: AsyncWrite + Unpin>(
     }
 
     Ok(())
+}
+
+/// The trace as the pane draws it, with the gap between lines worked out the pane's way.
+///
+/// note: the whole ring rather than what a search left, because `App::traced` answers for a screen
+/// with a query typed into it and a client's view is its own. A filter is the client's to apply.
+///
+/// note: the gap is computed here rather than sent as two timestamps, because the rule for when
+/// there *is* one is a decision rather than a format: nothing under a tenth of a second, and
+/// nothing after a line that ended a wait for a person - however long somebody took to answer a
+/// question, that is not a step this program spent. A client left to work that out would get a
+/// column whose largest figure is how long the operator was thinking, which is the one number in
+/// there nobody should act on.
+fn tracing(app: &App) -> Vec<Tracing> {
+    let mut before = None;
+    app.trace
+        .iter()
+        .map(|event| {
+            let gap = match before.replace(event.at) {
+                Some(previous) if !event.after_a_person => {
+                    text::waited_since(event.at.saturating_duration_since(previous))
+                }
+                _ => None,
+            };
+
+            Tracing {
+                name: event.name.clone(),
+                detail: event.detail.clone(),
+                gap,
+                at: event
+                    .wall
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|since| since.as_millis() as u64)
+                    .unwrap_or(0),
+            }
+        })
+        .collect()
 }
 
 /// What a command is called, for the message that says it could not be done.
