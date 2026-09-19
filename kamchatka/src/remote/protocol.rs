@@ -29,6 +29,16 @@ use crate::app::{Did, Going, Page, Said, Speaker, Stance};
 /// truncation that would leave the reader parsing the second half of somebody's JSON.
 pub const MAX_LINE: usize = 32 * 1024 * 1024;
 
+/// The version of this wire that this build speaks.
+///
+/// note: here before anybody needs it, because it is the one field that cannot be added once two
+/// ends are deployed. `RUNNING.md` recommends reaching a session with `ssh -L` from another
+/// machine, which is exactly where two installed versions meet - and without this, a session that
+/// grew one [`Message`] variant turned every older client into a parse error, a closed connection
+/// and sixty seconds of retries. The rule is that a session refuses a version it does not know and
+/// serves an older one it does.
+pub const VERSION: u32 = 1;
+
 /// What a client asks a session to do.
 ///
 /// note: seven, and the set is meant to stay about this size. Five of them are things a person at
@@ -43,13 +53,32 @@ pub enum Command {
     /// Begin, or resume, watching the session.
     ///
     /// note: one message rather than an `attach` and a `resume`, because resuming *is* attaching
-    /// with a watermark. `since: None` says "I have nothing", and is answered with a
-    /// [`Attached`] and then every record; `since: Some(n)` says "I have everything through n",
-    /// and is answered with the records after it and no snapshot. A client that lost its process
-    /// sends the first; one that only lost its socket sends the second.
+    /// with a watermark. `since: None` says "I have nothing", and is answered with an
+    /// [`Attached`] and then the records after it; `since: Some(n)` says "I have everything
+    /// through n", and is answered with a [`Message::Done`] and the records after n. A client that
+    /// lost its process sends the first; one that only lost its socket sends the second.
     Attach {
         /// The last record the client is sure it has.
         since: Option<u64>,
+        /// The session those records came from, as [`Attached::session`] named it.
+        ///
+        /// note: what keeps a watermark from landing in the wrong session, and the case it is for
+        /// is the quiet one. A session restarted at the same address has a log of its own, and a
+        /// number from the one before it is either too large - refused, loudly - or perfectly
+        /// plausible, at which point a client draws one session's records under another session's
+        /// conversation and nothing anywhere says so. A name costs one field and makes that a
+        /// sentence.
+        ///
+        /// note: `None` is a client not saying, which is what a resume typed by hand into `nc` is,
+        /// and it is served on the old terms. Anything that keeps a conversation across a
+        /// reconnection should send it.
+        session: Option<String>,
+        /// Which version of this wire the client speaks; see [`VERSION`].
+        ///
+        /// note: `None` is a client written before the field existed, which is version 1 by
+        /// definition. A default of "unknown" would refuse exactly the clients it was added to
+        /// keep working.
+        version: Option<u32>,
     },
     /// Hand in one line, exactly as it would be typed at the prompt: a message, or a command.
     Submit {
@@ -86,10 +115,9 @@ pub enum Command {
     /// Ask for the projection again, as it stands now.
     ///
     /// note: [`Command::Attach`] already answers with one and is deliberately not the way to do
-    /// this: attaching with no watermark is answered with the projection *and then every record
-    /// there has ever been*, because that is what a client with nothing has to be given. A client
-    /// that only wants today's figures would be asking for the whole session to be replayed at it,
-    /// and would have to throw away the conversation it already had in order to take it.
+    /// this. A client takes an `attached` as *start again* - see [`Message::Projected`], which is
+    /// the whole of that argument - so a client that only wants today's figures would be throwing
+    /// away the conversation it already had in order to refresh a token count.
     ///
     /// note: what it is for is the half of a session that is not the conversation - the items, the
     /// budget, what the policy will answer - which a client renders as a second view and which the

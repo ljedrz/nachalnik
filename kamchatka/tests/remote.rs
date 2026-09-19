@@ -65,11 +65,25 @@ impl Served {
 /// A session wired the way the program wires one, with a scripted model behind it and a socket in
 /// front.
 async fn served(script: Vec<ModelResponse>, setup: impl FnOnce(&App)) -> Served {
+    served_as(None, script, setup).await
+}
+
+/// The same, under a name of the test's own, for the two that have to tell one session from
+/// another.
+///
+/// note: named rather than left to the clock, which is what `Session::default` uses. Two sessions
+/// started in the same second have the same name, and a test about telling them apart would be
+/// one that passes when the machine is slow.
+async fn served_as(
+    name: Option<&str>,
+    script: Vec<ModelResponse>,
+    setup: impl FnOnce(&App),
+) -> Served {
     let Wired {
         mut app,
         mut events,
         mut finished,
-    } = wired(script);
+    } = wired_as(name, script);
     setup(&app);
 
     // note: port zero, so the kernel picks one nothing else is using and `Server::address` is what
@@ -90,9 +104,15 @@ async fn served(script: Vec<ModelResponse>, setup: impl FnOnce(&App)) -> Served 
 /// The same `Setup` the headless suite uses, for the same reason: what these want is what
 /// `main.rs` wants, minus the six tools and the child process it takes to ask Landlock anything.
 fn wired(script: Vec<ModelResponse>) -> Wired {
+    wired_as(None, script)
+}
+
+/// The same, under a name of the test's own where it has one.
+fn wired_as(name: Option<&str>, script: Vec<ModelResponse>) -> Wired {
     let wired = Setup {
         tools: Some(Vec::new()),
         compact: None,
+        session_name: name.map(str::to_owned),
         ..Default::default()
     }
     .wire(Arc::new(OpenAiCompatible::new(
@@ -135,7 +155,7 @@ impl Peer {
     /// Connects and attaches, and hands back the projection.
     async fn attached(at: &str) -> (Self, Attached) {
         let mut peer = Self::connect(at).await;
-        peer.send(Command::Attach { since: None }).await;
+        peer.send(attaching(None, None)).await;
         let Message::Attached(attached) = peer.recv().await else {
             panic!("an attach was not answered with a projection");
         };
@@ -213,6 +233,15 @@ impl Peer {
     async fn drop_it(self) {
         drop(self.lines);
         drop(self.write);
+    }
+}
+
+/// An attach, the way a client that speaks this version of the wire writes one.
+fn attaching(since: Option<u64>, session: Option<&str>) -> Command {
+    Command::Attach {
+        since,
+        session: session.map(str::to_owned),
+        version: Some(protocol::VERSION),
     }
 }
 
@@ -377,7 +406,7 @@ async fn the_records_alone_cannot_say_what_was_said() {
 /// Reads the session log the way a second client would, to compare it against a projection.
 async fn app_history(at: &str) -> String {
     let (mut peer, _) = Peer::attached(at).await;
-    peer.send(Command::Attach { since: Some(0) }).await;
+    peer.send(attaching(Some(0), None)).await;
     let mut log = String::new();
     // everything already recorded arrives at once; `session.started` is always the first of them
     for message in peer.until_record("session.started").await {
@@ -411,11 +440,7 @@ async fn resuming_sends_what_was_missed_and_no_projection() {
     // a second connection claiming the same watermark the first one arrived at: everything since
     // is a record, and there is no projection, because it says it already has one
     let mut again = Peer::connect(&session.at).await;
-    again
-        .send(Command::Attach {
-            since: Some(attached.seq),
-        })
-        .await;
+    again.send(attaching(Some(attached.seq), None)).await;
     let heard = again.until_record("model.finished").await;
     assert!(
         !heard
@@ -439,12 +464,82 @@ async fn a_watermark_from_the_future_is_refused() {
     let session = served(vec![], |_| {}).await;
 
     let mut peer = Peer::connect(&session.at).await;
-    peer.send(Command::Attach { since: Some(9_999) }).await;
+    peer.send(attaching(Some(9_999), None)).await;
     let Message::Failed { error, .. } = peer.recv().await else {
         panic!("a watermark from the future was accepted");
     };
     assert!(error.contains("you say you have 9999"), "{error}");
     assert!(peer.next().await.is_none(), "the connection stayed open");
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A watermark from a different session is refused rather than quietly served.
+///
+/// note: the quiet half of the watermark check, and the one a magnitude test cannot reach. A
+/// session restarted at the same address has a log of its own, and a number from the one before it
+/// can be perfectly plausible against it - at which point a client draws one session's records
+/// under another session's conversation, and every figure on its screen is about neither.
+#[tokio::test]
+async fn a_watermark_from_another_session_is_refused() {
+    let session = served_as(Some("a-session-of-its-own"), vec![], |_| {}).await;
+    let (peer, attached) = Peer::attached(&session.at).await;
+    peer.drop_it().await;
+
+    // a number this session really does have, under a name it does not answer to
+    let mut again = Peer::connect(&session.at).await;
+    again
+        .send(attaching(
+            Some(attached.seq),
+            Some("somebody else's session"),
+        ))
+        .await;
+    let Message::Failed { error, .. } = again.recv().await else {
+        panic!("a watermark from another session was accepted");
+    };
+    assert!(error.contains("a-session-of-its-own"), "{error}");
+    assert!(again.next().await.is_none(), "the connection stayed open");
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A client speaking a version this session does not is told which of the two ends is older, and
+/// one that says nothing is served.
+///
+/// note: both halves, because the field is only worth having if the second is true. A default of
+/// "unknown" would refuse exactly the clients the field was added to keep working - everything
+/// written against this wire before it had a version at all.
+#[tokio::test]
+async fn a_client_from_a_later_version_is_refused_and_one_that_says_nothing_is_not() {
+    let session = served(vec![], |_| {}).await;
+
+    let mut ahead = Peer::connect(&session.at).await;
+    ahead
+        .send(Command::Attach {
+            since: None,
+            session: None,
+            version: Some(protocol::VERSION + 1),
+        })
+        .await;
+    let Message::Failed { error, .. } = ahead.recv().await else {
+        panic!("a version this session does not speak was accepted");
+    };
+    assert!(
+        error.contains(&format!("version {}", protocol::VERSION + 1))
+            && error.contains(&format!("speaks {}", protocol::VERSION)),
+        "{error}"
+    );
+
+    // and the wire as it was written before the field existed, by hand, which is the case the
+    // `None` is for
+    let mut quiet = Peer::connect(&session.at).await;
+    quiet.raw(b"{\"do\":\"attach\",\"since\":null}\n").await;
+    assert!(
+        matches!(quiet.recv().await, Message::Attached(_)),
+        "a client that did not say a version was refused"
+    );
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
@@ -498,11 +593,7 @@ async fn a_turn_outlives_the_client_that_started_it() {
 
     // and back, from where it had got to: the rest of the turn is waiting in the log
     let mut again = Peer::connect(&session.at).await;
-    again
-        .send(Command::Attach {
-            since: Some(attached.seq),
-        })
-        .await;
+    again.send(attaching(Some(attached.seq), None)).await;
     let heard = again.until_words("finished with nobody watching").await;
     let names = records(&heard);
     assert!(names.contains(&"tool.finished".to_owned()), "{names:?}");
@@ -1233,6 +1324,107 @@ async fn a_client_that_loses_its_socket_comes_back_and_still_detaches() {
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// A client whose session was replaced under it starts again, rather than retrying a resume that
+/// cannot ever be accepted.
+///
+/// note: the recovery the refusal exists for. Without it, a client that came back to a *different*
+/// session at the same address sent the same impossible watermark every time it reconnected, was
+/// refused identically for a minute, and gave up on a session that was there and would have had
+/// it. The refusal is named `attach` rather than reported as the connection's for exactly this:
+/// it is the one failure a client can do something about.
+#[tokio::test]
+async fn a_resume_the_session_refuses_starts_again_with_nothing() {
+    let before = served_as(Some("the-one-that-went"), vec![], |_| {}).await;
+    let after = served_as(Some("the-one-that-came-back"), vec![], |_| {}).await;
+    let host = |at: &str| match protocol::address(at) {
+        Ok(Address::Tcp(host)) => host.to_owned(),
+        _ => panic!("the suite serves a port"),
+    };
+    let (before_at, after_at) = (host(&before.at), host(&after.at));
+
+    let proxy = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = format!("tcp:{}", proxy.local_addr().expect("its own address"));
+    let (connected, mut reconnected) = tokio::sync::mpsc::unbounded_channel::<u32>();
+    tokio::spawn(async move {
+        let mut nth = 0;
+        while let Ok((down, _)) = proxy.accept().await {
+            nth += 1;
+            // the first connection reaches one session and everything after it the other, which is
+            // what a host restarted under a client looks like from the client
+            let to = match nth {
+                1 => &before_at,
+                _ => &after_at,
+            };
+            let up = TcpStream::connect(to).await.expect("the session went");
+            let _ = connected.send(nth);
+            let (down_r, mut down_w) = down.into_split();
+            let (up_r, mut up_w) = up.into_split();
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(up_r).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if down_w
+                        .write_all(format!("{line}\n").as_bytes())
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                    // the first connection carries the projection through and then dies on it, so
+                    // that the client is holding a session and a watermark when it goes
+                    if nth == 1 && line.contains("\"is\":\"attached\"") {
+                        return;
+                    }
+                }
+            });
+            tokio::spawn(async move {
+                let mut down_r = BufReader::new(down_r);
+                let _ = tokio::io::copy(&mut down_r, &mut up_w).await;
+            });
+        }
+    });
+
+    let (mut feed, input) = tokio::io::duplex(256);
+    tokio::spawn(async move {
+        // the refused resume is the second connection, and the third is the one that works
+        while reconnected.recv().await != Some(3) {}
+        let _ = feed.write_all(b"").await;
+        drop(feed);
+    });
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(&mut records, &mut prose).run(&at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client kept asking for a resume nobody could give it")
+    .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    // refused once, rather than once per attempt for a minute
+    assert_eq!(
+        prose
+            .matches("attach: you are resuming a session this is not")
+            .count(),
+        1,
+        "{prose}"
+    );
+    // and then attached to the session that is there rather than to the one it remembered. The
+    // header is what says it attached; the refusal names the new session too, and asserting on the
+    // name alone passes without the client having got anywhere
+    assert!(
+        prose.contains("--- the-one-that-went ·") && prose.contains("--- the-one-that-came-back ·"),
+        "the client never attached to the session that replaced the first: {prose}"
+    );
+
+    quit(&before.at).await;
+    quit(&after.at).await;
+    before.ended().await.1.expect("the first session failed");
+    after.ended().await.1.expect("the second session failed");
 }
 
 /// A command the socket took with it is an answer that is never coming, and nothing waits for it.

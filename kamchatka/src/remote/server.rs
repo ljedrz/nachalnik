@@ -425,7 +425,7 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
         // for the rest of the process. It carries `busy` because that is the other thing a
         // reconnecting client cannot know: a turn may have ended while it was away, and no record
         // says so
-        Command::Attach { since } => Some(match since {
+        Command::Attach { since, .. } => Some(match since {
             None => Message::Attached(Box::new(project(app))),
             Some(_) => Message::Done {
                 about: "attach".to_owned(),
@@ -605,15 +605,25 @@ where
     // note: a connection says where it stands before it is told anything, and nothing else is
     // accepted first. Streaming at a client that has not said what it already has is how a resume
     // becomes a replay
-    let (mut last, mut voice) = match protocol::read::<Command>(lines).await? {
+    let settled = match protocol::read::<Command>(lines).await? {
         None => return Ok(()),
-        Some(Command::Attach { since }) => watermark(since, kernel, asks, client, write).await?,
+        Some(attach @ Command::Attach { .. }) => {
+            watermark(attach, kernel, asks, client, write).await
+        }
         Some(other) => {
             return Err(format!(
                 "`{}` before `attach`: a connection says where it stands first",
                 name(&other)
             ));
         }
+    };
+    // note: reported as the attach's failure rather than the connection's, because a client that
+    // can tell a refused watermark from a broken socket has something to do about it - come back
+    // with none. Told only that the connection failed, it read the close as a drop and retried the
+    // same impossible resume every time until it gave up
+    let (mut last, mut voice) = match settled {
+        Ok(settled) => settled,
+        Err(error) => return refuse(write, "attach", error).await,
     };
     flush(kernel, &mut last, write).await?;
 
@@ -624,14 +634,19 @@ where
                 // note: re-attaching on a live connection is allowed, and is the cheapest way for a
                 // client that has confused itself to start again: it asks for the projection and
                 // moves its own watermark to whatever that says
-                Some(Command::Attach { since }) => {
-                    let (at, fresh) = watermark(since, kernel, asks, client, write).await?;
+                Some(attach @ Command::Attach { .. }) => {
+                    let since = matches!(attach, Command::Attach { since: None, .. });
+                    let settled = watermark(attach, kernel, asks, client, write).await;
+                    let (at, fresh) = match settled {
+                        Ok(settled) => settled,
+                        Err(error) => return refuse(write, "attach", error).await,
+                    };
                     last = at;
                     // note: the subscription is swapped exactly where a projection is handed over,
                     // because that is what they have to be taken together for. A resume on a live
                     // connection is answered with no projection, so the one it already has is
                     // holding lines nothing else would bring back
-                    if since.is_none() {
+                    if since {
                         voice = fresh;
                     }
                     flush(kernel, &mut last, write).await?;
@@ -730,14 +745,42 @@ where
 /// note: the subscription to the program's own voice comes back with the watermark, because the
 /// session loop is where both are taken and it takes them together. See [`Answered`].
 async fn watermark<W: AsyncWrite + Unpin>(
-    since: Option<u64>,
+    attach: Command,
     kernel: &Kernel,
     asks: &mpsc::UnboundedSender<FromClient>,
     client: u64,
     write: &mut W,
 ) -> Result<(u64, broadcast::Receiver<Arc<Message>>), String> {
+    let Command::Attach {
+        since,
+        session,
+        version,
+    } = attach
+    else {
+        return Err("that is not an attach".to_owned());
+    };
+    // note: a version this session does not know is refused before anything else is read off the
+    // message, because what the rest of it means is the thing in question. An older one it does
+    // know is served - see `protocol::VERSION`
+    let spoken = version.unwrap_or(1);
+    if spoken > protocol::VERSION {
+        return Err(format!(
+            "you speak version {spoken} of this protocol and this session speaks {}; the older \
+             end is this one",
+            protocol::VERSION
+        ));
+    }
     let Some(since) = since else {
-        let answered = ask(asks, client, Command::Attach { since: None }).await?;
+        let answered = ask(
+            asks,
+            client,
+            Command::Attach {
+                since: None,
+                session: None,
+                version: None,
+            },
+        )
+        .await?;
         let (Some(Message::Attached(attached)), Some(voice)) = (answered.message, answered.voice)
         else {
             return Err("the session answered an attach with something else".to_owned());
@@ -748,6 +791,18 @@ async fn watermark<W: AsyncWrite + Unpin>(
         return Ok((seq, voice));
     };
 
+    // note: the loud half of the same check, and it is first because it is the one that catches
+    // the quiet case. A session restarted at this address has a log of its own, and a watermark
+    // from the one before it can be perfectly plausible against it - at which point the client
+    // draws one session's records under another's conversation with nothing anywhere saying so.
+    // A client that does not name a session is not made to; see `Command::Attach`
+    let named = kernel.session_name();
+    if session.is_some_and(|session| session != named) {
+        return Err(format!(
+            "you are resuming a session this is not: this one is `{named}`, and attaching with no \
+             `since` starts again here"
+        ));
+    }
     // note: a client claiming to have seen more than has happened is refused rather than clamped.
     // It is either a client that has confused two sessions or one that made the number up, and
     // quietly starting it from the end would leave it convinced it held a history it never had
@@ -760,13 +815,41 @@ async fn watermark<W: AsyncWrite + Unpin>(
     }
     // note: refused above without troubling the session, and answered here by the session itself,
     // because the answer carries `busy` and nothing but the loop driving the kernel knows it
-    let answered = ask(asks, client, Command::Attach { since: Some(since) }).await?;
+    let answered = ask(
+        asks,
+        client,
+        Command::Attach {
+            since: Some(since),
+            session: None,
+            version: None,
+        },
+    )
+    .await?;
     let (Some(message), Some(voice)) = (answered.message, answered.voice) else {
         return Err("the session answered an attach with nothing".to_owned());
     };
     protocol::write(write, &message).await?;
 
     Ok((since, voice))
+}
+
+/// Says a command could not be done, and ends the connection on it.
+///
+/// note: named rather than reported as the connection's, so that the one failure a client can
+/// recover from reads as itself. See the first attach in [`attend`].
+async fn refuse<W: AsyncWrite + Unpin>(
+    write: &mut W,
+    about: &str,
+    error: String,
+) -> Result<(), String> {
+    protocol::write(
+        write,
+        &Message::Failed {
+            about: about.to_owned(),
+            error,
+        },
+    )
+    .await
 }
 
 /// Puts one command to the session loop and waits for what it says.

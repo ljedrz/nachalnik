@@ -372,6 +372,28 @@ minor bump may break you.
   with no projection, and the subscription it already has is holding lines nothing else would bring
   back.
 
+### changed
+
+- **`attach` says which session it is resuming, and which version of the wire it speaks.** Two
+  fields, both on the one message, and both are here before anybody needs them because neither can
+  be added once two ends are deployed - `RUNNING.md` recommends reaching a session with `ssh -L`
+  from another machine, which is exactly where two installed versions meet.
+
+  `session` is what keeps a watermark out of the wrong session. A session restarted at the same
+  address has a log of its own, and a number from the one before it is either too large - refused
+  already - or perfectly plausible, at which point a client drew one session's records under
+  another session's conversation with nothing anywhere saying so. The refusal is named `attach`
+  rather than reported as the connection's, because it is the one failure a client can do something
+  about: `--connect` puts down what it was holding and comes back with no watermark, where before
+  it sent the same impossible resume every time it reconnected and gave up after a minute on a
+  session that was there. `examples/gateway.rs` remembers the name off the first projection, so the
+  browser keeps its resume with no client code at all.
+
+  `version` is refused when the session does not know it and served when it is older and known, so
+  a mismatch is a sentence rather than a parse error and sixty seconds of retries. A client that
+  does not say is version 1, which is what everything written against this wire before the field
+  existed speaks.
+
 ## [0.13.0] - 2026-09-19
 
 ### added

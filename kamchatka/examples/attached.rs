@@ -78,7 +78,16 @@ async fn main() -> Result<(), String> {
 
     // a connection says where it stands before it is told anything. `since: None` is "I have
     // nothing", which is answered with the projection and then every record after it
-    protocol::write(&mut write, &Command::Attach { since: None }).await?;
+    protocol::write(
+        &mut write,
+        &Command::Attach {
+            since: None,
+            // nothing to name and nothing to resume: this client attaches once and leaves
+            session: None,
+            version: Some(protocol::VERSION),
+        },
+    )
+    .await?;
     let Some(Message::Attached(attached)) = next(&mut lines).await? else {
         return Err("the session did not answer an attach with a projection".to_owned());
     };
