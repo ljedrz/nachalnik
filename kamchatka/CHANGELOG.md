@@ -323,6 +323,17 @@ minor bump may break you.
   a person answers when they answer - so it is closed in `App::on_outcome`, where all three come
   through.
 
+- **A question the `a` sweep let through was decided rather than answered.** `App::decide` answers
+  the one somebody looked at through `App::answer`, and then swept the questions queued behind it
+  straight into `Kernel::decide` - which is every step of an answer except the one that tells the
+  sandbox. A `curl` allowed by a promise about what happens next therefore ran with TCP cut, while
+  the record said allowed and nothing named the confinement as the reason. Both go through
+  `App::answer` now.
+
+  What reaches the sweep is narrower than it looks: `a` on an `ls` remembers `exec:run` and leaves
+  `net:reach` where it was, so a `curl` behind it is still a question and is never swept. It takes
+  two calls whose every subject the first answer covered.
+
 ## [0.13.0] - 2026-09-19
 
 ### added

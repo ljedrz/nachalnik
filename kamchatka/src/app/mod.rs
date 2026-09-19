@@ -1475,10 +1475,16 @@ impl App {
         self.answer(&request, grant)?;
         if remember {
             for waiting in self.kernel.pending_permissions() {
+                // note: `App::answer` rather than `Kernel::decide`, because a swept question is
+                // answered rather than merely decided. A model that asks for `ls` and `curl` in one
+                // breath produces two questions, and `a` on the first is what lets the second
+                // through - so the second has to be let through the same door, network grant and
+                // all. Decided straight into the kernel, it ran with the network cut and nothing
+                // anywhere said why
                 if self.policy.verdict(&waiting) == Verdict::Allow
-                    && let Err(e) = self.kernel.decide(waiting.id, Grant::Allow)
+                    && let Err(e) = self.answer(&waiting, Grant::Allow)
                 {
-                    self.say(Speaker::Error, e.to_string());
+                    self.say(Speaker::Error, e);
                 }
             }
         }

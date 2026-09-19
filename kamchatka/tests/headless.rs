@@ -1628,6 +1628,80 @@ async fn a_networked_command_allowed_here_is_granted_the_network() {
     );
 }
 
+/// A question the `a` sweep lets through is *answered*, and keeps the network with it.
+///
+/// note: the other half of the test above, and the half that was missing. `App::decide` answers
+/// the question somebody looked at through `App::answer` and then sweeps the ones queued behind
+/// it straight into `Kernel::decide` - which is every step of an answer except the one that tells
+/// the sandbox. So a `curl` let through by a promise about what happens next ran with TCP cut,
+/// while the record said allowed and nothing named the confinement as the reason.
+///
+/// note: two networked commands rather than an `ls` and a `curl`, and the difference is what
+/// makes this reachable at all. `a` on an `ls` remembers `exec:run` and leaves `net:reach` where
+/// it was, so the `curl` behind it is still a question and is never swept. What reaches the sweep
+/// is a call whose every subject the first answer covered.
+#[tokio::test]
+async fn a_swept_question_is_granted_the_network_the_way_an_answered_one_is() {
+    let looked_at = ToolCall::new(
+        "c1",
+        "shell",
+        json!({ "call": { "action": "run", "cmd": "curl https://example.com" } }),
+    );
+    let swept = ToolCall::new(
+        "c2",
+        "shell",
+        json!({ "call": { "action": "run", "cmd": "curl https://example.org" } }),
+    );
+
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(vec![
+        ModelResponse::tool_calls(vec![looked_at.clone(), swept.clone()]),
+        ModelResponse::text("done"),
+    ]);
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    app.kernel.add_tool(Arc::new(Watchful {
+        policy: app.policy.clone(),
+        seen: seen.clone(),
+    }));
+
+    app.ask("fetch both");
+    app.start_turn();
+    let outcome = finished
+        .recv()
+        .await
+        .expect("the turn never stopped to ask");
+    while let Ok(event) = events.try_recv() {
+        app.on_event(event);
+    }
+    app.on_outcome(outcome);
+    let waiting = app.kernel.pending_permissions();
+    assert_eq!(waiting.len(), 2, "two calls did not raise two questions");
+
+    // `a` on the first, which is what covers both: `exec:run` and `net:reach` are what the policy
+    // consulted about it, and the second call needs nothing else
+    app.decide(waiting[0].id, Grant::Allow, true)
+        .expect("the answer was refused");
+    assert!(
+        app.kernel.pending_permissions().is_empty(),
+        "the sweep left the second question waiting"
+    );
+
+    let outcome = finished.recv().await.expect("the calls never ran");
+    while let Ok(event) = events.try_recv() {
+        app.on_event(event);
+    }
+    app.on_outcome(outcome);
+
+    let seen = seen.lock().expect("nothing panics holding this").clone();
+    assert!(
+        seen.contains(&(swept.id.0.clone(), true)),
+        "a `curl` the sweep allowed ran with the network cut: {seen:?}"
+    );
+}
+
 /// Every call in a batch keeps the answer it was given, however many of them there are.
 ///
 /// note: the grants were bounded at sixty-four and the oldest went, on the reasoning that one
