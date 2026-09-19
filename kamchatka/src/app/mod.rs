@@ -1798,10 +1798,11 @@ impl App {
                 ContextState::Elided,
                 Some("removed from view by the user".into()),
             ),
-            ContextState::Elided => (
-                ContextState::Excluded,
-                Some("taken out at the terminal".into()),
-            ),
+            // note: no "at the terminal" here either, and for a reason of its own rather than the
+            // one above: this ring is reachable from a socket, a pipe and a browser, so the person
+            // who did it may never have seen one. It is read back in `Projection::skipped`, which
+            // is what a client draws beside the row to say why the item is not in the request
+            ContextState::Elided => (ContextState::Excluded, Some("taken out by the user".into())),
             _ => (ContextState::Active, None),
         };
         self.kernel.set_state([id], to, note);

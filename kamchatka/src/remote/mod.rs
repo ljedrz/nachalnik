@@ -144,6 +144,8 @@ mod tests {
     /// this is the only place they are observable at all.
     #[tokio::test]
     async fn a_port_takes_both_of_the_options_it_is_given() {
+        use socket2::{SockRef, TcpKeepalive};
+
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a port");
@@ -156,6 +158,17 @@ mod tests {
         for stream in [&client, &served] {
             tuned(stream);
             assert!(stream.nodelay().expect("the option was refused"));
+            // note: called again here rather than read back off the socket, and the difference is
+            // what `tuned` does with the answer: it drops it, deliberately, so that a platform
+            // refusing keepalive costs somebody a session rather than a connection. Nothing can
+            // therefore observe it afterwards, and the only way to find out whether this machine
+            // takes the call is to make it
+            assert!(
+                SockRef::from(stream)
+                    .set_tcp_keepalive(&TcpKeepalive::new().with_time(IDLE).with_interval(PROBE))
+                    .is_ok(),
+                "this platform refused the keepalive `tuned` sets"
+            );
         }
     }
 }

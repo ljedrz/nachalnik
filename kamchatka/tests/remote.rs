@@ -2034,11 +2034,11 @@ async fn a_line_said_after_a_clear_is_not_swallowed() {
 
 /// `project` answers with the figures again and leaves the stream where it was.
 ///
-/// note: the distinction the whole command exists for. `attach` would also answer with a
-/// projection and would then replay every record there has ever been, which is what a client with
-/// nothing needs and what a client refreshing a token count must not be given - it would have to
-/// throw away the conversation it already had in order to take it. So what is asserted is the
-/// negative: a `projected`, and no record behind it.
+/// note: the distinction the whole command exists for, and it is about what the answer *means*
+/// rather than about what follows it. A client takes an `attached` as start again - it has just
+/// been handed the conversation and the stream that carries on from it - so one that could not
+/// tell the two apart would wipe its own screen to refresh a token count. So what is asserted is
+/// the negative: a `projected`, and no `attached` behind it.
 #[tokio::test]
 async fn a_projection_can_be_asked_for_again_without_starting_over() {
     let script = vec![ModelResponse::text("the kernel is a state machine")];

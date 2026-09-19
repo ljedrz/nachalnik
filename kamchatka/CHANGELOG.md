@@ -53,9 +53,10 @@ minor bump may break you.
   Newline-delimited JSON rather than a length prefix: `serde_json` escapes every control character
   it writes, so a compact value never contains a literal newline and there is nothing for a
   delimiter to be confused by - and the stream stays readable with `nc` and `jq`, which a frame
-  header would have cost for nothing. `tokio`'s `net` feature is the whole of what remote control
-  added to this crate's dependencies, which is why `remote` is not behind a feature of its own the
-  way `tui` and `mcp` are.
+  header would have cost for nothing. What remote control added to this crate's dependencies is
+  `tokio`'s `net` feature and `socket2`, which is one method on a port and a crate `tokio` already
+  builds for `net` - which is why `remote` is not behind a feature of its own the way `tui` and
+  `mcp` are.
 
 - **`examples/attached.rs`: a client of somebody else's session over a port, in about a hundred
   lines.** It attaches, prints the projection, asks a question, follows the turn, refuses any
@@ -119,9 +120,12 @@ minor bump may break you.
   gives up.
 
   None of the three is observable through the protocol, so the one test about them is about the
-  *platform*: both options are set on a real loopback pair and read back, which is what catches a
-  machine that refuses one - `socket2` gates `with_interval` by operating system, and CI builds on
-  three of them.
+  *platform*: both are set on a real loopback pair, `TCP_NODELAY` is read back off it, and the
+  keepalive is made a second time and its answer asserted. It cannot be read back, because `tuned`
+  drops the result on purpose - a machine that refuses one of these should cost somebody a
+  connection option and not a session - so making the call is the only way to find out whether the
+  machine takes it. `socket2` gates `with_interval` by operating system, and CI builds on three of
+  them.
 
 - **`/clear`, which is `ctrl+l` as a command.** It takes the program's own lines off the chat -
   what it said about what it did, and what it answered a command with - and leaves the
@@ -140,12 +144,12 @@ minor bump may break you.
   which is also what makes a session two people are watching clear for both of them rather than
   one. Measured: breaking either reset fails only the test written for it.
 
-- **`project`, and `Message::Projected` answering it: the projection again, without the replay.**
-  `attach` with no watermark already answers with one and then re-sends every record there has ever
-  been, which is what a client with nothing needs and exactly wrong for a client that wants today's
-  figures - it would have to throw away the conversation it already had to take them. What the new
-  command is for is the half of a session that is not the conversation: the items, the budget, what
-  the policy will answer. Those cannot be added up from the stream, and the reason is worth stating
+- **`project`, and `Message::Projected` answering it: the projection again, and nothing else
+  changes with it.** `attach` answers with one too and is the wrong way to ask, because a client
+  takes an `attached` as *start again*: it has just been handed the conversation and the stream
+  that carries on from it, so whatever it had drawn belongs to a stream it is no longer on. What
+  the new command is for is the half of a session that is not the conversation: the items, the
+  budget, what the policy will answer. Those cannot be added up from the stream, and the reason is worth stating
   because it looks as though they could - `context.added` names an item and says nothing about what
   the *next request* will do with it, and `going`, `left_out` and `marker` are answers to that
   question. They are worked out by projecting, so they are only true as of a moment.

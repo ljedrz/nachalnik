@@ -110,9 +110,10 @@ authentication in the protocol and none is planned**: where it listens is the wh
 boundary, a non-loopback bind is refused rather than documented against, and a token in every
 message would be a scheme to keep in step protecting a channel whose real boundary is the socket.
 
-**No feature gate, alone among the optional-looking things here**, because it brings no crate: one
-`tokio` feature, `net`. `tui` and `mcp` are features to keep six dependencies and a child process
-out of builds that want neither, and that argument does not transfer.
+**No feature gate, alone among the optional-looking things here**, because of what it costs: one
+`tokio` feature, `net`, and one method of `socket2` on a port - a crate `tokio` already builds for
+that same feature. `tui` and `mcp` are features to keep six dependencies and a child process out of
+builds that want neither, and that argument does not transfer to a line in a manifest.
 
 **`tui` is a default feature, and the line it draws is load-bearing.** `ui/`, `app/keys.rs`, the
 prompt (`App::input`) and the two `ListState`s are behind it; `App` and everything else - the
