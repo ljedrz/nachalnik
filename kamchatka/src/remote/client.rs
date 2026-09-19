@@ -179,6 +179,11 @@ impl<'a> Client<'a> {
         };
         let (read, mut write) = tokio::io::split(stream);
         let mut lines = BufReader::new(read).lines();
+        // note: whatever was in flight when the last socket died is owed an answer that is never
+        // coming, and nothing else can ever take the count back down. It is reset per connection
+        // rather than decremented on the way out, because a client cannot tell which of what it
+        // sent the session had already read
+        self.outstanding = 0;
 
         // note: `since` is `None` only the first time. After that this client has a conversation on
         // the screen already, and asking for the projection again would print the whole of it a

@@ -1137,6 +1137,194 @@ async fn the_client_writes_the_records_and_the_prose() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A client whose socket is pulled out from under it picks the session back up, and still leaves
+/// when it is done.
+///
+/// note: the headline claim of `remote::client` and the whole reason `GIVE_UP`, `FIRST_WAIT` and
+/// `LONGEST_WAIT` are there, and nothing drove it: the two tests that mentioned reconnection both
+/// assert that it does *not* happen. What that hid is that a resume was the one command answered
+/// with nothing, so a client that survived a blip was owed an answer for ever - and both the
+/// things that wait on `Client::resting` stopped working. `printf 'a question\n' | kamchatka
+/// --connect` over a flaky link never came back.
+///
+/// note: a socket of this test's own in front of the session's, because what has to go away is
+/// the *connection* and not the session. Restarting the session would be a different test with a
+/// different claim, and would make the resume legitimately refusable.
+///
+/// note: the input is closed only once the client has connected a second time. Closed any earlier
+/// it detaches a client that has not yet noticed anything was wrong, which passes without going
+/// anywhere near the thing under test.
+#[tokio::test]
+async fn a_client_that_loses_its_socket_comes_back_and_still_detaches() {
+    let session = served(vec![ModelResponse::text("an answer to read")], |_| {}).await;
+    let Ok(Address::Tcp(host)) = protocol::address(&session.at) else {
+        panic!("the suite serves a port");
+    };
+    let host = host.to_owned();
+
+    let proxy = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = format!("tcp:{}", proxy.local_addr().expect("its own address"));
+    let (cut, cut_now) = tokio::sync::oneshot::channel::<()>();
+    let (connected, mut reconnected) = tokio::sync::mpsc::unbounded_channel::<u32>();
+    tokio::spawn(async move {
+        let mut cut_now = Some(cut_now);
+        let mut nth = 0;
+        while let Ok((mut down, _)) = proxy.accept().await {
+            let mut up = TcpStream::connect(&host).await.expect("the session went");
+            nth += 1;
+            let _ = connected.send(nth);
+            match cut_now.take() {
+                // the first connection is the one that goes away under the client
+                Some(cut_now) => {
+                    tokio::spawn(async move {
+                        tokio::select! {
+                            _ = tokio::io::copy_bidirectional(&mut down, &mut up) => {}
+                            _ = cut_now => {}
+                        }
+                    });
+                }
+                None => {
+                    tokio::spawn(async move {
+                        let _ = tokio::io::copy_bidirectional(&mut down, &mut up).await;
+                    });
+                }
+            }
+        }
+    });
+
+    let (mut watch, _) = Peer::attached(&session.at).await;
+    let (mut feed, input) = tokio::io::duplex(256);
+    tokio::spawn(async move {
+        feed.write_all(b"ask something\n")
+            .await
+            .expect("could not type");
+        watch.until_words("an answer to read").await;
+        let _ = cut.send(());
+        while reconnected.recv().await != Some(2) {}
+        drop(feed);
+    });
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(&mut records, &mut prose).run(&at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let (records, prose) = (
+        String::from_utf8(records).expect("the records are text"),
+        String::from_utf8(prose).expect("the prose is text"),
+    );
+
+    assert!(
+        prose.contains("the connection went; attaching again from record"),
+        "the socket was cut and the client never noticed: {prose}"
+    );
+    // and it resumed rather than starting again: one header, which is what `Attached` prints
+    assert_eq!(
+        prose.matches("record(s), ").count(),
+        1,
+        "a resume was answered with a second projection: {prose}"
+    );
+    assert!(records.contains("model.finished"), "{records}");
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A command the socket took with it is an answer that is never coming, and nothing waits for it.
+///
+/// note: the other half of the reconnection, and the half the test above cannot reach: there the
+/// only thing owed an answer was the attach. A client counts answers owed so that a piped-in
+/// question is not asked and abandoned - but a `submit` that died in the socket is owed one for
+/// ever, and a count that never came down is a `--connect` in a script that hangs after a blip
+/// instead of leaving. The session cannot help here, because it never saw the command.
+#[tokio::test]
+async fn a_client_does_not_wait_for_an_answer_the_dead_socket_took_with_it() {
+    let session = served(vec![ModelResponse::text("an answer to read")], |_| {}).await;
+    let Ok(Address::Tcp(host)) = protocol::address(&session.at) else {
+        panic!("the suite serves a port");
+    };
+    let host = host.to_owned();
+
+    let proxy = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = format!("tcp:{}", proxy.local_addr().expect("its own address"));
+    let (connected, mut reconnected) = tokio::sync::mpsc::unbounded_channel::<u32>();
+    tokio::spawn(async move {
+        let mut nth = 0;
+        while let Ok((down, _)) = proxy.accept().await {
+            let up = TcpStream::connect(&host).await.expect("the session went");
+            nth += 1;
+            let _ = connected.send(nth);
+            let (down_r, mut down_w) = down.into_split();
+            let (mut up_r, mut up_w) = up.into_split();
+            let (die, dying) = tokio::sync::oneshot::channel::<()>();
+            tokio::spawn(async move {
+                tokio::select! {
+                    _ = tokio::io::copy(&mut up_r, &mut down_w) => {}
+                    _ = dying => {}
+                }
+            });
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(down_r).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    // an attach goes through; on the first connection the line somebody typed is
+                    // taken off the wire and the connection dies holding it
+                    if nth == 1 && !line.contains("\"do\":\"attach\"") {
+                        let _ = die.send(());
+
+                        return;
+                    }
+                    if up_w
+                        .write_all(format!("{line}\n").as_bytes())
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+
+    let (mut feed, input) = tokio::io::duplex(256);
+    tokio::spawn(async move {
+        feed.write_all(b"ask something\n")
+            .await
+            .expect("could not type");
+        while reconnected.recv().await != Some(2) {}
+        drop(feed);
+    });
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(&mut records, &mut prose).run(&at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client waited for an answer nobody was going to send")
+    .expect("the client failed");
+
+    // the session never heard the line, which is what makes the answer one that cannot arrive
+    let (mut watch, attached) = Peer::attached(&session.at).await;
+    assert!(
+        !attached
+            .conversation
+            .iter()
+            .any(|line| line.text.contains("ask something")),
+        "the proxy handed the command on after all"
+    );
+    watch.drop_it().await;
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// The client answers a question with the same three letters the terminal's panel takes.
 #[tokio::test]
 async fn the_client_answers_a_question_with_the_keys_the_panel_uses() {
