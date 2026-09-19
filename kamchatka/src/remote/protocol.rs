@@ -288,6 +288,15 @@ pub struct Attached {
     pub items: Vec<Listed>,
     /// Every question waiting on somebody, in the order they were asked.
     pub asking: Vec<PermissionRequest>,
+    /// What the policy in force is called.
+    pub policy: String,
+    /// What it answers about anything nobody has told it about.
+    ///
+    /// note: the line the permissions tab puts *above* the rules, and it goes with them for the
+    /// reason it is above them there: a list of decisions is not a policy, and a client that drew
+    /// the rows alone would be answering "what will this session allow" with the part of the answer
+    /// somebody happened to have given already.
+    pub untold: nachalnik::Verdict,
     /// What the policy will answer about each capability and path rule somebody has decided.
     pub permissions: Vec<Stanced>,
     /// The trace, as the trace tab draws it: what happened, in this program's words.

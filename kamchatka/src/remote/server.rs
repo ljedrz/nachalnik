@@ -503,6 +503,8 @@ fn project(app: &App) -> Attached {
         items: items.iter().map(|item| Listed::of(item, &going)).collect(),
         asking: app.kernel.pending_permissions(),
         trace: tracing(app),
+        policy: app.policy_name(),
+        untold: crate::tools::Careful::untold(),
         permissions: app.permissions().iter().map(Stanced::of).collect(),
         undecided: app.undecided(),
         queued: app.queued().map(str::to_owned),
