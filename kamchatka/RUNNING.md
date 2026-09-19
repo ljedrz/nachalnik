@@ -210,17 +210,36 @@ client code, and the negative space matches too: an event with no `id:` does not
 `Last-Event-ID`, so records get one and the fragments of a model still typing do not. A browser
 never tries to resume from something that was never recoverable.
 
-The page has the terminal's tabs, minus the trace: the button in the top right corner cycles
-**chat → context → permissions**. The context view is the rows the context tab draws — what each
-item is, what it is estimated to cost, and what the next request will do with it — and tapping one
-fetches the whole of that item, because the projection names items rather than carrying them. The
-permissions view is the rules the policy holds and what each covers, with the confinement over the
-top and a count of the subjects nobody has decided, which are the ones that will be asked about.
+The page has the terminal's four tabs: the button in the top right corner cycles **chat → context
+→ permissions → events**.
 
-Switching to either asks the session for a fresh projection rather than adding up the records,
-because `going`, `left_out` and `marker` are answers about the *next request* and no record carries
-them. That is `project`, which every client has: it is `attach` without the replay, for a client
-that wants today's figures and not the whole session over again.
+The **context** view is the rows the context tab draws — what each item is, what it is estimated to
+cost, and what the next request will do with it. Tapping a row fetches the whole of that item,
+because the projection names items rather than carrying them; the button on the right of a row is
+its state, and tapping *that* moves it to the next one — active, then a marker where it was, then
+out of the request entirely, then active again. It is one button rather than three because the
+middle step is the one worth having: taking a tool result out makes the projector drop the call
+that asked for it, so the model reads a conversation it never had, while an elided one still
+answers its call and only the content is gone. That is <kbd>space</kbd> on the context tab, and it
+is the same function underneath — including the note it writes, which the model reads.
+
+The **permissions** view is the rules the policy holds and what each covers, with the confinement
+over the top and a count of the subjects nobody has decided, which are the ones that will be asked
+about. The **events** view is the session log: every record this page has been sent, newest last,
+by its own name. It is not the terminal's trace — that is a rendering of the records in this
+program's words, and a second set written here would be a vocabulary nobody could see from the
+other end — so what it shows is the record.
+
+Switching to context or permissions asks the session for a fresh projection rather than adding up
+the records, because `going`, `left_out` and `marker` are answers about the *next request* and no
+record carries them. That is `project`, which every client has: it is `attach` without the replay,
+for a client that wants today's figures and not the whole session over again. The events view asks
+for nothing, because the records are what it already has.
+
+The prompt is on the chat and nowhere else, which is where the terminal keeps it; a view that is a
+list of rows has nothing to say to a box that takes a line. A waiting question colours the cycler
+rather than following you about — the same thing the tab strip does by going red, and for the same
+reason: from another view, the question is not what you are looking at.
 
 `/clear` takes this program's own lines off the chat — what it said about what it did, and what it
 answered a command with — and leaves the conversation, which is the context. It is the command form

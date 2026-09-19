@@ -1644,3 +1644,73 @@ async fn a_projection_can_be_asked_for_again_without_starting_over() {
     .await;
     served.ended().await.1.expect("the session failed");
 }
+
+/// `cycle` moves an item through the ring the context tab's `space` key moves it through.
+///
+/// note: the same function, which is the claim worth pinning. The ring and the notes it writes
+/// were in `keys.rs`, and the notes are read by the *model* - so a client that picked its own
+/// words for the same act would put a second account of it into the context. What this asserts is
+/// the order and the fact that the answer carries the new state, not the wording; `App::cycle` is
+/// where the wording is, and `tests/screen/context.rs` is where the key is.
+#[tokio::test]
+async fn an_item_can_be_cycled_through_its_states_from_a_client() {
+    let served = served(vec![], |app| {
+        app.kernel
+            .push(nachalnik::ContextItem::user("what does the kernel do?"));
+    })
+    .await;
+    let (mut peer, first) = Peer::attached(&served.at).await;
+
+    let id = first.items.first().expect("the item was pushed").id;
+    assert_eq!(first.items[0].state, nachalnik::ContextState::Active);
+
+    // seen, then a marker where it was, then nothing at all, then seen again
+    for expected in [
+        nachalnik::ContextState::Elided,
+        nachalnik::ContextState::Excluded,
+        nachalnik::ContextState::Active,
+    ] {
+        peer.send(Command::Cycle { id }).await;
+        let heard = peer.until(|m| matches!(m, Message::Projected(_))).await;
+        let Some(Message::Projected(now)) = heard
+            .into_iter()
+            .find(|m| matches!(m, Message::Projected(_)))
+        else {
+            unreachable!("the loop above only ends on one");
+        };
+        assert_eq!(
+            now.items[0].state, expected,
+            "the ring went somewhere else: {:?}",
+            now.items[0]
+        );
+    }
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    served.ended().await.1.expect("the session failed");
+}
+
+/// And cycling an item that is not there is refused rather than ignored.
+#[tokio::test]
+async fn cycling_an_item_that_is_not_there_says_so() {
+    let served = served(vec![], |_| {}).await;
+    let (mut peer, _) = Peer::attached(&served.at).await;
+
+    peer.send(Command::Cycle { id: ContextId(404) }).await;
+    let heard = peer.until(|m| matches!(m, Message::Failed { .. })).await;
+    let Some(Message::Failed { about, .. }) = heard
+        .into_iter()
+        .find(|m| matches!(m, Message::Failed { .. }))
+    else {
+        unreachable!("the loop above only ends on one");
+    };
+    assert_eq!(about, "cycle");
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    served.ended().await.1.expect("the session failed");
+}

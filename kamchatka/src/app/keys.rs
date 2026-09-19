@@ -310,25 +310,15 @@ impl App {
             // is gone. Which of the two somebody wants is not something this program can guess -
             // hiding a result outright is a fair thing to want - so it is a cycle rather than a
             // decision, the same way the permissions tab cycles a stance through three
+            //
+            // note: the ring itself is [`super::App::cycle`], because the page in
+            // `examples/browser.html` puts a button on every row that does this and the notes it
+            // writes are read by the model. Two callers writing their own words for one act is two
+            // accounts of it in the context
             KeyCode::Char(' ') => {
-                let (to, note) = match picked.state {
-                    // note: this one is read by the model, in the brackets the projector puts
-                    // round it, so it is written for somebody who has never heard of this
-                    // program: no "at the terminal", which is this codebase's own idiom for
-                    // "a person did it here" and reads to a model like a shell or a state. It
-                    // does not invite the model to ask for it back either - the thing hidden may
-                    // be the thing that should not be asked for
-                    ContextState::Active | ContextState::Pinned => (
-                        ContextState::Elided,
-                        Some("removed from view by the user".into()),
-                    ),
-                    ContextState::Elided => (
-                        ContextState::Excluded,
-                        Some("taken out at the terminal".into()),
-                    ),
-                    _ => (ContextState::Active, None),
-                };
-                self.kernel.set_state([picked.id], to, note);
+                if let Err(e) = self.cycle(picked.id) {
+                    self.say(Speaker::Error, e);
+                }
             }
             KeyCode::Char('p') => {
                 let to = match picked.state {

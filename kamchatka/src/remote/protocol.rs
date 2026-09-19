@@ -66,6 +66,22 @@ pub enum Command {
         /// Whether to remember it, so the policy stops asking. This is the `a` key.
         remember: bool,
     },
+    /// Move one item to the next state in the ring: seen, a marker where it was, gone, seen again.
+    ///
+    /// note: a command of its own rather than a [`Command::Submit`] of a line, which is how most
+    /// verbs reach a session from here. There is no line: `space` on the context tab is what does
+    /// this at a terminal, and the three moves are one ring rather than three commands - which is
+    /// the point of it, because the step somebody wants most often is the middle one and it is the
+    /// one with no name a person types.
+    ///
+    /// note: the session decides what the next state is and what to write beside it, not the
+    /// client. The note it leaves is read by the *model*, so a client picking its own words would
+    /// put a second account of one act in front of it - see [`crate::app::App::cycle`], which the
+    /// keys and this both go through.
+    Cycle {
+        /// Which item.
+        id: ContextId,
+    },
     /// Ask for the projection again, as it stands now.
     ///
     /// note: [`Command::Attach`] already answers with one and is deliberately not the way to do

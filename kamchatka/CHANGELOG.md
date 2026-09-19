@@ -159,11 +159,33 @@ minor bump may break you.
   has decided, so a client cannot count what is missing, and one showing two decisions while
   standing for eighteen answers is a different kind of dishonest.
 
-- **The page has the terminal's tabs.** One button in the top right corner cycles chat, context and
-  permissions. The context view is the context tab's rows and tapping one fetches the whole of that
-  item; the permissions view is the rules and what each covers, under the confinement. There is no
-  trace view and there is not going to be one: the trace is the records, and a page fed the records
-  has them already.
+- **The page has the terminal's four tabs.** One button in the top right corner cycles chat,
+  context, permissions and events. The context view is the context tab's rows, with a button on
+  each that moves the item to its next state and a tap on the row itself for the whole of what it
+  holds; the permissions view is the rules and what each covers, under the confinement; the events
+  view is the session log, by each record's own name.
+
+  The event log is deliberately **not** the terminal's trace. That is a rendering of the records in
+  this program's words, and a page writing a second set of them would be a vocabulary to keep in
+  step with one nobody can see from the other end - so what it shows is the record, which is what
+  this page was being sent anyway and the reason the view costs no protocol at all. It keeps the
+  last four hundred, which is the terminal's own trace depth and for its reason: the log is
+  unbounded and is the session's, and what a page can draw is not.
+
+  The prompt is on the chat and nowhere else, which is where the terminal keeps it - a view that is
+  a list of rows has nothing to say to a box that takes a line. A waiting question colours the
+  cycler instead of following you about, which is the same thing the tab strip does by going red.
+
+- **`App::cycle`, and `cycle` on the wire: the state ring, in one place.** `space` on the context
+  tab moves an item from seen, to a marker where it was, to gone, to seen again - and the ring and
+  the notes it writes were in `keys.rs`, where a second client could not reach them. The notes are
+  the reason this is a function rather than three commands and a client that knows the order: they
+  are read by the *model*, in the brackets the projector puts round them, so a page writing its own
+  words for the same act would put two accounts of one thing in front of it.
+
+  Measured, and the answer was not the expected one: reversing the ring fails four tests in the
+  screen suite and one of the two new ones. The ring was already well covered; what was not covered,
+  and is what the new test is for, is that a client can reach it at all.
 
 ### fixed
 
