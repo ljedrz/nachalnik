@@ -128,9 +128,18 @@
   #answers button { flex: 1; }
   .allow { border-color: var(--user); } .deny { border-color: var(--bad); }
   #busy { color: var(--dim); }
+  /* note: the corner a person's eye is already in, because the session name is there and it is the
+     first thing read. A turn can be a minute of nothing arriving - a model thinking, a command
+     running, a provider gone quiet - and a page with no pulse in it is indistinguishable from a
+     page whose connection died */
+  #pulse { color: var(--call); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .15; } }
+  /* a reader who asked for no animation gets a steady dot, which says the same thing */
+  @media (prefers-reduced-motion: reduce) { #pulse { animation: none; } }
 </style>
 
 <header>
+  <span id="pulse" hidden>&#9679;</span>
   <b id="session">connecting…</b>
   <span id="model"></span>
   <span id="budget"></span>
@@ -228,13 +237,18 @@ function restale() {
  * is any change to the *shape* rather than the end of it - this is what answers.
  */
 function conversation(lines) {
+  // note: the same question `say` asks, and for the same reason: somebody who has scrolled up to
+  // read something is reading it, and a rebuild that yanked them back to the newest line would
+  // make every recorded turn take the page away from them
+  const stuck = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+  const was = log.scrollTop;
   log.replaceChildren();
   wanted.clear();
   pending = [];
   mine.clear();
   open = null;
   for (const l of lines) say(l.speaker, l.text, l.item ?? undefined);
-  log.scrollTop = log.scrollHeight;
+  log.scrollTop = stuck ? log.scrollHeight : was;
 }
 
 /** Sends one command. The answer comes back on the stream, not from here. */
@@ -345,8 +359,9 @@ function row(into, name, figures, why) {
   return el;
 }
 
-/** Whichever of the two panels is open, from the last projection. */
+/** Whichever panel is open, from the last projection; the chat is not one of them. */
 function draw() {
+  if (showing === "chat") return;
   const panel = document.getElementById("panel");
   panel.replaceChildren();
   if (!latest) return aside(panel, "nothing yet");
@@ -436,6 +451,10 @@ function draw() {
 
   // the sandbox first, because a confinement that is not there has to say so where the rules are
   // read, and a rule read as though it were enforced is worse than no rule
+  //
+  // note: named rather than left as the fall-through it was. A view this does not know about is a
+  // bug, and drawing the permissions at it is the kind that looks like a feature
+  if (showing !== "permissions") return;
   aside(panel, latest.confinement ?? "no sandbox: the tools reach whatever this user can");
   // and what is *not* listed, for the reason the terminal's tab gives: rows for subjects nobody
   // has thought about are not information, and a list that quietly stood for them would be
@@ -628,13 +647,16 @@ function happened(e) {
       say("note", `${e.tool}: ${e.grant}`);
       break;
     case "model.finished": {
-      // the fragments were the live half and are over; the item is what was kept. The bubble is
-      // tied to it either way, so that anything asked for later lands in the right place - and the
-      // asking only happens where no words arrived, which is a page that was away, or behind
+      // the fragments were the live half and are over; the item is what was kept, and the item is
+      // what the chat shows from here. That is `Entry::transient` upstairs - the terminal drops
+      // every streamed line the moment the turn is recorded and reads the context instead - and
+      // this page used to keep whatever had arrived, which is wrong in two ways a person sees.
+      // A fragment is unnumbered and best-effort, so a page that fell behind kept a *truncated*
+      // answer for good; and the fragments are what the provider sent, byte for byte, so an answer
+      // that began with two blank lines began with two blank lines, where the context trims them
       streaming = false;
-      const caught = open && open.textContent.trim().length > 0;
       if (open) { open.dataset.item = e.item; open = null; }
-      if (!caught) inspect(e.item, "model");
+      restale();
       break;
     }
     case "context.compacted": say("note", "the context was compacted"); break;
@@ -653,6 +675,7 @@ function working(busy) {
   // a rebuild held back while the model was typing is owed the moment it stops. See the
   // `projected` case for why it is held back rather than done and undone
   if (!busy && stale) send({ do: "project" });
+  document.getElementById("pulse").hidden = !busy;
   document.getElementById("busy").textContent = busy ? "working…" : "";
   line.disabled = false; // a line typed into a running turn waits for it, which is the session's job
 }
@@ -663,6 +686,13 @@ function working(busy) {
 // note: anything this page throws goes on the page, because the alternative is what it looked like
 // the first time something did: a blank screen and nothing to go on
 window.onerror = (message, src, line) => { say("error", `${message} (${src}:${line})`); };
+
+// note: the class on `body` is what the stylesheet reads to decide which view is showing, and
+// `show` is the only thing that sets it - so a page that never called it started with no class at
+// all, which `body:not(.chat)` reads as "not the chat": the conversation and the prompt were both
+// hidden until somebody cycled all the way round to chat and set it. The invariant is that
+// `showing` and the class always agree, and this is where it starts being true
+show("chat");
 
 const events = new EventSource(`/events?tab=${tab}`);
 events.onmessage = (e) => heard(JSON.parse(e.data));
