@@ -5,6 +5,18 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [0.4.1] - 2026-09-19
+
+### changed
+
+- `said_or_nothing` is `suite`'s, rather than a copy each in `conflict.rs` and `provenance.rs`.
+  What a record says a copy answered reads the same across experiments, which is the point of the
+  sentence, so it belongs where the other things two experiments share are. Internal; nothing
+  public moved.
+- The note in `handles.rs` says `kamchatka`'s `context` is twelve separately grantable subjects
+  rather than thirteen. It cites that program's split as the reason this crate's own two tools are
+  not one, and the count it cited stopped being true when `archive` went. Documentation only.
+
 ## [0.4.0] - 2026-09-17
 
 ### changed

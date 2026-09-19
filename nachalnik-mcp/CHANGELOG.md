@@ -5,6 +5,18 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [0.6.1] - 2026-09-19
+
+### fixed
+
+- The crate-level example and `tests/foreign.rs` are behind the feature they need. Both call
+  `Server::spawn`, which is what brings `tokio::process` in, so
+  `cargo test -p nachalnik-mcp --no-default-features` did not build - and the configuration that
+  could not be run is the one this crate documents as the real case, a bridge to a server somebody
+  else opened the transport to. The suite is `required-features = ["child-process"]` like
+  `kamchatka`'s three, and the example is under a `cfg_attr` on the same feature and renders where
+  it did. CI checks this crate rather than testing it, so neither was visible there.
+
 ## [0.6.0] - 2026-09-17
 
 ### changed

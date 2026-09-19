@@ -5,9 +5,35 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
-## [unreleased]
+## [0.4.0] - 2026-09-19
 
 ### added
+
+- `typesafe`, a feature and a module of its own: TypeSafe's `jev`, a System One model. It takes a
+  state and a map of typed questions - a claim to weigh, a closed set to pick from, an ordered
+  rubric to place something on - and answers each with probabilities, all of them in one request
+  and each evaluated on its own against the same state. No text, no tool calls, nothing to stream,
+  so what it is for is the decisions a program makes *around* a conversation rather than the
+  conversation: whether to run that command, which of four branches this is, how bad the thing it
+  just read is.
+
+  The accessors on `Answers` refuse a type they were not asked for rather than defaulting. A
+  `choice` read as a `noul` answers `None`, because handing a program a `0.0` nobody sent is worse
+  than making it ask twice. `Answers::model` is the version that actually answered - a request
+  naming `jev-latest` comes back saying `jev-1.13.0` - and is the one worth recording.
+
+  Three things the reference does not say, found by asking the endpoint: a refusal arrives under
+  `detail` rather than the `error` the rest of this crate reads, carrying an `error_type` beside
+  the sentence; an unknown model is a 400 and not the documented 422; and a `score` with one level
+  is documented as invalid and is accepted, coming back `score: 0.0` at `confidence: 1.0`. So a
+  confidence says how concentrated a distribution is and nothing about whether the question was
+  worth asking, which is said on `Answer::Score` where somebody reading one will need it.
+
+  No trait for the System One shape. One vendor speaks it, so it would be a shape written from a
+  specification with a single implementor - the reason `waiting.rs` gives for there being no
+  `input_audio` - and inherent methods on `Jev` will do until a second turns up. `jev` does not
+  touch `waiting` either, which stays gated to the two dialects: `watched` takes a `DeltaSink`, and
+  a client that drives no turn has no business holding one.
 
 - `Jev` speaks to the second service serving `jev`. OpenRouter resells it, takes the same
   `{model, state, questions}` body, and puts it behind `/decisions` on an `/api/alpha` path of its
@@ -43,6 +69,27 @@ minor bump may break you.
   suffix test over the raw address matches that host, and the callers would then name a program,
   shape a request and spend a key against somebody who merely put another name in front of their
   own.
+
+### changed
+
+- **`Endpoint` no longer requires `Provider`**, and the turn-driving half of the crate is
+  `Dialect: Endpoint + Provider`. A model arrived that answers no turns and could not implement the
+  old shape: `respond` hands back a `ModelResponse` with content or tool calls in it, and the only
+  way to satisfy that from a probability distribution is to manufacture an assistant turn nobody
+  said. What `jev` does have is every other half of a provider - an address, a key, a model
+  identifier, a listing, a usage report, something to say when the server is busy - which is the
+  half `Endpoint` was already about, and said it was about in its own docstring before requiring
+  `Provider` anyway.
+
+  Two members move down to `Dialect` with the bound, because both are questions about a *turn* and
+  a model that produces none has no answer to either: `projection`, the shape of a message on the
+  wire, and `lists_every_parameter`, which is about `ModelInfo::parameters` and arrives through
+  `Provider`.
+
+  What it costs a caller is the upcast the supertrait was providing. An `Arc<dyn Endpoint>` on its
+  way to `Kernel::set_provider` is an `Arc<dyn Dialect>` now, which is what it always meant - both
+  dialects in this crate implement it, so the change is at the holder rather than the
+  implementation. A suite bounding on `Provider` directly is untouched.
 
 ## [0.3.0] - 2026-09-17
 
