@@ -316,13 +316,16 @@ impl Listed {
 
 /// One row of the permissions tab.
 ///
-/// note: the subject is its own spelling rather than a structure, and that is deliberate: a
-/// `Subject` reads back out of the same string it prints as, which is what makes
-/// `--deny "$(a row off this list)"` mean what it says. Giving the wire a second shape for it
-/// would be a second thing to keep in step with `Subject::parse`.
+/// note: the subject is its own spelling rather than a structure, and that is deliberate: for the
+/// three a `Subject` can be read back from, it reads back out of the same string it prints as,
+/// which is what makes `--deny "$(a row off this list)"` mean what it says. Giving the wire a
+/// second shape for it would be a second thing to keep in step with `Subject::parse`. A server's
+/// row is the exception, and it is `Subject`'s rather than this one's: it prints as `server files`
+/// and is given back with `--allow-server`, because a server's name and a domain are both bare
+/// words and nothing in either says which.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Stanced {
-    /// What the row is about: `read`, `mcp:files`, `.env*`.
+    /// What the row is about: `fs`, `fs:read`, `.env*`, `server files`.
     pub subject: String,
     /// What the policy answers about it today.
     pub verdict: nachalnik::Verdict,
