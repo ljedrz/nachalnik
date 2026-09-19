@@ -142,7 +142,13 @@ async fn main() -> Result<(), String> {
                         delta: Delta::Text(text),
                     },
                 ..
-            } => print!("{text}"),
+            } => {
+                // flushed, because this is the one thing the example is for: a model's sentence
+                // arriving as it is written. stdout is line-buffered, so without this the
+                // streaming shows up a line at a time, which is what not streaming looks like
+                print!("{text}");
+                let _ = std::io::Write::flush(&mut std::io::stdout());
+            }
             Message::Record(record) => {
                 records += 1;
                 match &record.event {

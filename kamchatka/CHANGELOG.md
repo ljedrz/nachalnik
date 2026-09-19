@@ -414,6 +414,41 @@ minor bump may break you.
   `#[non_exhaustive]`. The convention is that it goes on every struct this workspace answers with
   and nothing outside it builds, and these are the ones where it pays: a field is what they grow.
 
+- **`--connect` silently ignored every other argument.** `kamchatka --connect unix:/x -m "a
+  question"` connected and dropped the message on the floor, and `--headless --connect` took the
+  flag and ignored it. A client assembles nothing - the model, the key, the tools, the sandbox and
+  the context all belong to whoever is serving - so anything else on that command line is a thing
+  that will not happen, and it is named rather than counted. Read off the matches rather than
+  declared as `conflicts_with_all`, because the list would be every argument this program has and
+  two of them are behind features.
+
+- **A refused socket file did not say which kind it was.** `Drop` is the only thing that takes one
+  away, so a session that was killed leaves a path every later `--serve` refuses for ever - and the
+  refusal read the same as the one for a socket a session is using right now. They want opposite
+  things done about them, so it connects and says which it found: attach to that one, remove this
+  one.
+
+- **A line the gateway would not take vanished off the page.** `examples/browser.html` threw the
+  `fetch` response away, so a `409`, a `502` and a dead network all looked like a command that
+  worked - and the typed line was already drawn, with the box already emptied. It says what the
+  gateway answered, takes the drawn line back, and puts the words back in the box, which is what
+  somebody wants after a line that did not send.
+
+- **A browser reconnecting under the same tab id had its stream removed by the old one.**
+  `examples/gateway.rs` dropped its tab from the map when its relay ended, without looking at
+  whether the entry was still that relay's. A half-open TCP - the case the keepalive exists for -
+  meant the new stream's entry went instead, and `POST /do` answered `409 no such tab` to every
+  line typed until the browser reconnected again.
+
+- **The first line of a request had no cap on it.** `MAX_HEAD` was checked against the header lines
+  below it, after each had arrived, so a peer that sent a request line and no newline was read into
+  memory for ever - the shape `MAX_LINE` had in the protocol, in an example.
+
+- **`examples/attached.rs` never flushed a fragment**, so the streaming it exists to demonstrate
+  arrived a line at a time, which is what not streaming looks like. The suites take the binary's
+  path from `CARGO_BIN_EXE_kamchatka`, which cargo sets for exactly this and which knows about
+  extensions and profiles.
+
 ## [0.13.0] - 2026-09-19
 
 ### added

@@ -250,6 +250,7 @@ async fn stream<W: AsyncWrite + Unpin>(
         .map_err(|e| e.to_string())?;
 
     let (to_session, mut commands) = mpsc::unbounded_channel();
+    let mine = to_session.clone();
     tabs.lock()
         .expect("the tabs are not poisoned")
         .insert(tab.clone(), to_session);
@@ -265,7 +266,16 @@ async fn stream<W: AsyncWrite + Unpin>(
     let relayed = relay(write, &mut up, &named).await;
     // the browser has gone, or the session has. Dropping the sender ends the task above, which
     // closes the connection to the session, which is what makes the session say the client left
-    tabs.lock().expect("the tabs are not poisoned").remove(&tab);
+    //
+    // note: removed only where the entry is still *this* stream's. A browser reconnecting under
+    // the same tab id before this relay notices its socket is gone - a half-open TCP, which is the
+    // case the session's own keepalive exists for - puts a live sender in the map, and a blind
+    // `remove` takes that one out instead. `POST /do` then answers `409 no such tab` to every line
+    // typed until the browser reconnects again
+    let mut open = tabs.lock().expect("the tabs are not poisoned");
+    if open.get(&tab).is_some_and(|to| to.same_channel(&mine)) {
+        open.remove(&tab);
+    }
 
     relayed
 }
@@ -334,14 +344,20 @@ impl Request {
 
 /// Reads a request line and its headers, or `None` where the connection just closed.
 async fn head<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Option<Request>, String> {
+    // note: capped while it arrives rather than after, which for the *first* line is the whole of
+    // it: `read_line` grows its buffer until a newline comes, so a peer that never sends one was
+    // read into memory for ever no matter what `MAX_HEAD` said about the lines below
     let mut line = String::new();
-    if reader
+    if tokio::io::AsyncReadExt::take(&mut *reader, MAX_HEAD as u64)
         .read_line(&mut line)
         .await
         .map_err(|e| e.to_string())?
         == 0
     {
         return Ok(None);
+    }
+    if !line.ends_with('\n') {
+        return Err("a request line longer than anybody meant".to_owned());
     }
     let mut parts = line.split_whitespace();
     let (Some(method), Some(target)) = (parts.next(), parts.next()) else {

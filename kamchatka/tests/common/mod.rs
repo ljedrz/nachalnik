@@ -95,13 +95,11 @@ pub async fn endpoint(answers: Vec<String>) -> String {
 }
 
 /// The binary under test.
+///
+/// note: what cargo sets for exactly this, rather than the test binary's own path with `deps`
+/// taken off it. It knows the extension, it knows where the profile put the binary, and it cannot
+/// be wrong about either.
 #[cfg(unix)]
 pub fn program() -> std::path::PathBuf {
-    let mut path = std::env::current_exe().expect("a test binary has a path");
-    path.pop();
-    if path.ends_with("deps") {
-        path.pop();
-    }
-
-    path.join("kamchatka")
+    std::path::PathBuf::from(env!("CARGO_BIN_EXE_kamchatka"))
 }
