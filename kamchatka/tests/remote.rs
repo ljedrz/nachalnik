@@ -1158,6 +1158,51 @@ async fn an_oversized_frame_closes_the_connection() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A command this build has no name for is answered, and the connection carries on.
+///
+/// note: the forward half of the compatibility rule, and the reason it is an answer rather than a
+/// closed connection: a client that sent something is owed exactly one answer whether or not this
+/// end knows what it was - see `Message::Done`. An unknown `do` used to be a parse error, and a
+/// parse error takes the connection with it.
+#[tokio::test]
+async fn a_command_this_build_has_no_name_for_is_answered() {
+    let session = served(vec![], |_| {}).await;
+
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.raw(b"{\"do\":\"something-later\",\"what\":1}\n").await;
+    let Message::Failed { about, error } = peer.recv().await else {
+        panic!("a command from a later version was not answered");
+    };
+    assert_eq!(about, "unknown");
+    assert!(error.contains("no such command"), "{error}");
+
+    // and the connection is still a connection, which is the half that matters
+    peer.send(Command::Project).await;
+    assert!(
+        matches!(peer.recv().await, Message::Projected(_)),
+        "an unknown command took the connection with it"
+    );
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A message this build has no name for reads as one, rather than as a broken connection.
+///
+/// note: the other direction, and it cannot be driven through a socket because both ends of one
+/// are this build. What a session with a message this build has never heard of looks like is a
+/// line on the wire, so that is what this hands to the reader.
+#[test]
+fn a_message_this_build_has_no_name_for_reads_as_one() {
+    let later: Message = serde_json::from_str(r#"{"is":"whatever-comes-next","seq":9,"x":[1]}"#)
+        .expect("a message from a later version closed the connection");
+    assert_eq!(later, Message::Unknown);
+
+    // and the ones it does know still read as themselves
+    let known: Message = serde_json::from_str(r#"{"is":"busy","busy":true}"#).expect("a message");
+    assert_eq!(known, Message::Busy { busy: true });
+}
+
 /// Where a session listens is the whole of its authentication, so it refuses to listen elsewhere.
 #[tokio::test]
 async fn a_session_will_not_listen_where_anybody_could_reach_it() {

@@ -140,6 +140,15 @@ pub enum Command {
         /// Which item.
         id: ContextId,
     },
+    /// Something this build has no name for.
+    ///
+    /// note: a newer client's verb, and it is answered with a [`Message::Failed`] rather than by
+    /// closing the connection - which keeps the invariant [`Message::Done`] states, since a client
+    /// that sent something is owed exactly one answer whether or not this end knows what it was.
+    /// Without it an unknown `do` was a parse error, and a parse error takes the connection with
+    /// it.
+    #[serde(other)]
+    Unknown,
 }
 
 /// What a session says to a client.
@@ -274,6 +283,20 @@ pub enum Message {
         /// What went wrong.
         error: String,
     },
+    /// Something this build has no name for.
+    ///
+    /// note: the rule that goes with it is **ignore what you do not know**, and it is the whole of
+    /// what makes a new variant something other than a break. A client written against version 1
+    /// and attached to a session that has grown a message since reads this, prints nothing, and
+    /// carries on with the records - where before it was a parse error, a closed connection, and
+    /// sixty seconds of trying to get back to a session that was working perfectly.
+    ///
+    /// note: what it cannot do is carry the payload, so a relay - `examples/gateway.rs` - reads
+    /// the wire as JSON and passes it on rather than parsing each message and writing it out
+    /// again. Turning an unknown message into this one and back would be the relay deciding what a
+    /// page is allowed to hear.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Where a session stands, for a client that has just arrived.
@@ -285,6 +308,7 @@ pub enum Message {
 /// item *is*, and what the next request does with it; the whole of any one item is one
 /// [`Command::Inspect`] away.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Attached {
     /// The session's name, which is also what its record is filed under.
     pub session: String,
@@ -349,6 +373,7 @@ pub struct Attached {
 
 /// One line of the conversation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Line {
     /// Who said it.
     pub speaker: Speaker,
@@ -386,6 +411,7 @@ impl Line {
 /// `None` under a tenth of a second, and `None` after a line that ended a wait for a *person*:
 /// however long somebody took to answer a question, it is not a step this program spent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Tracing {
     /// The dotted name, e.g. `model.requested`; empty for a continuation of the line above.
     pub name: String,
@@ -407,6 +433,7 @@ pub struct Tracing {
 /// note: no content. That is the whole point of it being this type rather than a
 /// [`nachalnik::ContextItem`], which is `Serialize` and would have done otherwise.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Listed {
     /// The item's identifier.
     pub id: ContextId,
@@ -463,6 +490,7 @@ impl Listed {
 /// and is given back with `--allow-server`, because a server's name and a domain are both bare
 /// words and nothing in either says which.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Stanced {
     /// What the row is about: `fs`, `fs:read`, `.env*`, `server files`.
     pub subject: String,
@@ -492,6 +520,7 @@ impl Stanced {
 /// a window. Which page is open and how far down it is scrolled belong to whoever is reading, and
 /// a session with three clients attached has three answers to both.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Printed {
     /// What it is.
     pub title: String,

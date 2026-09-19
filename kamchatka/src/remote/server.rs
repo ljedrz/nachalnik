@@ -506,6 +506,16 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
         }
         // answered by the connection, which never sends it here
         Command::Inspect { .. } => None,
+        // note: answered rather than left to close the connection, because a client that sent
+        // something is owed one answer whether or not this end knows what it was - see
+        // `Message::Done`. What reaches here is a client newer than this session
+        Command::Unknown => Some(Message::Failed {
+            about: "unknown".to_owned(),
+            error: format!(
+                "this session speaks version {} of the protocol and has no such command",
+                protocol::VERSION
+            ),
+        }),
     }
 }
 
@@ -939,6 +949,7 @@ fn name(command: &Command) -> &'static str {
         Command::Inspect { .. } => "inspect",
         Command::Project => "project",
         Command::Cycle { .. } => "cycle",
+        Command::Unknown => "unknown",
     }
 }
 
