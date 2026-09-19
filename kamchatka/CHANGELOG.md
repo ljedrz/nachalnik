@@ -474,6 +474,13 @@ minor bump may break you.
   now", and the press that lands in the window is the second one, arriving while the first is still
   being handled. `stopping::Stopping` subscribes once and all three hold one.
 
+- **A hidden turn read as one hidden thing per line it used to have.** `App::conversation` put the
+  marker on every line an elided item produced, so a turn that was a thought, a sentence and two
+  calls became four identical markers. The pane dims the block, so the repeats read as one there
+  and the substitution was a faithful port of what it did - but a client drawing rows has nothing
+  to draw them as but four rows, and the marker stands for the item. It is one line now, in the
+  place and the voice of the first line the item had.
+
 ## [0.13.0] - 2026-09-19
 
 ### added

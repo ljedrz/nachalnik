@@ -2292,6 +2292,15 @@ async fn an_elided_item_reads_as_its_marker_to_a_client() {
     let served = served(vec![], |app| {
         app.kernel
             .push(nachalnik::ContextItem::user("the secret is hunter2"));
+        // a turn that is a sentence and two calls, so that the item is four lines of conversation
+        // rather than one - which is what says the marker stands for the *item*
+        app.kernel.push(nachalnik::ContextItem::assistant(
+            "here is what I will do",
+            vec![
+                call("c1", "peek", json!({ "at": "one" })),
+                call("c2", "peek", json!({ "at": "two" })),
+            ],
+        ));
     })
     .await;
     let (mut peer, first) = Peer::attached(&served.at).await;
@@ -2330,6 +2339,27 @@ async fn an_elided_item_reads_as_its_marker_to_a_client() {
         line.text, marker,
         "the conversation showed something other than the marker: {:?}",
         now.conversation
+    );
+
+    // and the turn below it, which is three lines, reads as one marker rather than three
+    let turn = now.items[1].id;
+    peer.send(Command::Cycle { id: turn }).await;
+    let heard = peer.until(|m| matches!(m, Message::Projected(_))).await;
+    let Some(Message::Projected(now)) = heard
+        .into_iter()
+        .find(|m| matches!(m, Message::Projected(_)))
+    else {
+        unreachable!("the loop above only ends on one");
+    };
+    let lines: Vec<_> = now
+        .conversation
+        .iter()
+        .filter(|line| line.item == Some(turn))
+        .collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "a hidden turn read as one thing per line it used to have: {lines:?}"
     );
 
     peer.send(Command::Submit {
