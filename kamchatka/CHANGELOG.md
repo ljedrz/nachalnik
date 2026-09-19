@@ -246,6 +246,13 @@ minor bump may break you.
   replaces them when it arrives. A rebuild also keeps the reader where they were rather than
   snapping to the newest line, which matters far more now that one happens every turn.
 
+- **The header lost the session's name and found its lines.** The name is a timestamp, which is the
+  one thing up there nobody reads twice and the widest thing on a phone; it is still what the record
+  is filed under, what `/save` writes and what `setup` says. And `--line` - every border on the page,
+  from the header to the box you type in - was two shades off the background, which is a hairline on
+  a good monitor and nothing at all on a phone in daylight. About 2:1 against the background in
+  either scheme now.
+
 - **A blinking mark in the corner while a turn is running.** `working…` was a word at the other end
   of the header, and a turn can be a minute of nothing arriving - a model thinking, a command
   running, a provider gone quiet - which from a phone is indistinguishable from a page whose
