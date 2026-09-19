@@ -31,11 +31,12 @@ pub const MAX_LINE: usize = 32 * 1024 * 1024;
 
 /// What a client asks a session to do.
 ///
-/// note: five, and the set is meant to stay about this size. Four of them are things a person at
-/// the terminal does - hand in a line, stop the turn, answer a question, read an item - and the
-/// fifth is the connection itself. Anything else a client wants is a slash command, which is
-/// [`Command::Submit`]: every verb this program has goes through [`App::submit`], so a protocol
-/// with a message per verb would be a second vocabulary to keep in step with the first.
+/// note: seven, and the set is meant to stay about this size. Five of them are things a person at
+/// the terminal does with a *key* rather than with a line - hand in a line, stop the turn, answer a
+/// question, move an item, read one - and the other two are the connection itself. Anything a
+/// person types is a slash command, which is [`Command::Submit`]: every verb this program has goes
+/// through [`App::submit`], so a protocol with a message per verb would be a second vocabulary to
+/// keep in step with the first. The test for anything new is whether a person could type it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "do", rename_all = "snake_case")]
 pub enum Command {
@@ -289,6 +290,12 @@ pub struct Attached {
     pub asking: Vec<PermissionRequest>,
     /// What the policy will answer about each capability and path rule somebody has decided.
     pub permissions: Vec<Stanced>,
+    /// The trace, as the trace tab draws it: what happened, in this program's words.
+    ///
+    /// note: capped where `App` caps it and not otherwise trimmed. The session log is unbounded
+    /// and is what `Command::Attach` streams; this is the pane, which is a ring of the last few
+    /// hundred lines because that is what a person reads.
+    pub trace: Vec<Tracing>,
     /// How many more it holds an opinion about and will simply ask.
     ///
     /// note: a count rather than rows, which is the same answer the permissions tab gives and for
@@ -327,6 +334,35 @@ impl Line {
             item: said.item.map(|item| item.id),
         }
     }
+}
+
+/// One line of the trace, as the trace tab draws it.
+///
+/// note: the trace rather than the records, and the difference is the point of the tab. A record
+/// says `context.compacted` and carries a `CompactionReport`; the trace line says what that pass
+/// took and what it left, in this program's words, because somebody reading a log wants the
+/// sentence and not the structure. A client that rendered the records itself would be writing a
+/// second vocabulary for the same events, and it would be the one nobody at the other end can see.
+///
+/// note: the gap rather than two timestamps, and it is `app::text::waited_since` - the very
+/// formatter the pane uses, so the column reads the same in a browser as in a terminal. It is
+/// `None` under a tenth of a second, and `None` after a line that ended a wait for a *person*:
+/// however long somebody took to answer a question, it is not a step this program spent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Tracing {
+    /// The dotted name, e.g. `model.requested`; empty for a continuation of the line above.
+    pub name: String,
+    /// The rest of it.
+    pub detail: String,
+    /// How long after the line above this one arrived, where that is worth saying.
+    pub gap: Option<String>,
+    /// When it arrived, in milliseconds since the Unix epoch.
+    ///
+    /// note: the wall clock rather than the monotonic one, because this is the half a reader
+    /// matches against a server log or their own memory of the afternoon - and because an
+    /// `Instant` has no rendering as a time of day. The gap above is the other half, and it is
+    /// worked out from the monotonic clock, which a system clock being set cannot drag backwards.
+    pub at: u64,
 }
 
 /// One context item, as a row: what it is, what it costs, and what the next request does with it.

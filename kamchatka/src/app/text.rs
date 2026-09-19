@@ -673,3 +673,28 @@ pub(crate) fn thousands(n: usize) -> String {
 
     out
 }
+
+/// A gap worth reporting, as a word; `None` when it is too short to be news.
+///
+/// note: the threshold is what keeps this from being a column of numbers. Nearly everything in a
+/// session happens between one frame and the next, and a log that stamped all of it would be
+/// asking somebody to find the slow line by reading every line. What is left is the model
+/// thinking, a command running, and a provider that has gone quiet.
+///
+/// note: here rather than in `ui/tabs.rs`, where it was, under the rule the rest of this module is
+/// here for: a *client* can reach it, so it cannot live behind the feature that draws. The trace
+/// goes out on the wire and the figure beside a line has to read the same in a browser as it does
+/// in a terminal, which is one formatter rather than two that agree today.
+pub fn waited_since(gap: std::time::Duration) -> Option<String> {
+    let millis = gap.as_millis();
+    match millis {
+        0..100 => None,
+        100..1_000 => Some(format!("+{millis}ms")),
+        1_000..60_000 => Some(format!("+{:.1}s", gap.as_secs_f64())),
+        _ => Some(format!(
+            "+{}m{:02}s",
+            gap.as_secs() / 60,
+            gap.as_secs() % 60
+        )),
+    }
+}

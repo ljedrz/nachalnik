@@ -224,18 +224,18 @@ answers its call and only the content is gone. That is <kbd>space</kbd> on the c
 is the same function underneath — including the note it writes, which the model reads.
 
 Moving a state moves the **chat** too, the way it does at the terminal — because the chat is the
-context, read back. An excluded item is gone from the conversation; an elided one is still there in
-full, since eliding is about what the *model* is sent and the marker is for it rather than for you.
-Which is which is `ContextState::is_projected`, and the page asks for a fresh conversation rather
-than working it out, so there is one account of that rule and it is the runtime's.
+context, read back. An excluded item is gone from the conversation; an elided one keeps its place
+and reads as its **marker**, the projector's own words in the brackets it put round them, which is
+exactly what the model reads there. Both of those are the runtime's rules rather than the page's,
+so the page asks for a fresh conversation rather than working them out.
 
-The **events** view is the session log: every record this page has been sent, newest last, by its
-own name, with the gap since the one before it — which is what the trace tab is *for*, since it
-answers which step was slow. It sits where the trace sits and it is not quite the trace: that
-renders each record in this program's own words, and what this shows instead is the record. The
-**permissions** view is the rules the policy holds and what each covers, with the confinement over
-the top and a count of the subjects nobody has decided, which are the ones that will be asked
-about.
+The **events** view is the trace: what happened, in this program's own words, with the gap beside
+the lines that took any time — which is what that tab is *for*, since the question somebody brings
+to a log is which step was slow. Nothing under a tenth of a second gets a figure, and neither does
+a line that ended a wait for a *person*: however long you took to answer a question, it is not a
+step the program spent. The **permissions** view is the rules the policy holds and what each
+covers, with the confinement over the top and a count of the subjects nobody has decided, which are
+the ones that will be asked about.
 
 Switching to context or permissions asks the session for a fresh projection rather than adding up
 the records, because `going`, `left_out` and `marker` are answers about the *next request* and no

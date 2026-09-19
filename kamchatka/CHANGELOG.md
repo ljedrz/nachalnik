@@ -192,6 +192,26 @@ minor bump may break you.
   reason a rebuild that falls during a turn is held until the turn ends, rather than done and
   undone.
 
+- **An elided item was sent to clients as the words it still holds.** The one thing an elision
+  means is that the model no longer has them, and the substitution that says so - the projector's
+  marker, in the brackets it put round it - was in `ui/tabs.rs`. So the screen was right and every
+  client was handed a conversation the model is not having. It is `App::conversation` now, which
+  takes the `Going` it needs, and `ui/` is back to deciding nothing; the screen is unchanged, which
+  the three chat tests that already covered it confirm.
+
+- **`Attached::trace`: the trace tab, for clients that have no trace.** The page had been given the
+  *records* under that name, which was the wrong thing wearing the right label: a record says
+  `context.compacted` and carries a `CompactionReport`, and the trace line says what that pass took
+  and what it left, in this program's words. A client rendering the records itself would be writing
+  a second vocabulary for one session, and it would be the one nobody at the other end can see.
+
+  The gap goes with it, worked out on the session's side, because when there *is* one is a decision
+  rather than a format: nothing under a tenth of a second, and nothing after a line that ended a
+  wait for a person - however long somebody took to answer a question, it is not a step this
+  program spent, and it is reliably the largest figure in the column. `text::waited_since` moved
+  out of `ui/tabs.rs` for it, under the rule the rest of that module is there for: a client can
+  reach it, so it cannot live behind the feature that draws.
+
 - **`App::cycle`, and `cycle` on the wire: the state ring, in one place.** `space` on the context
   tab moves an item from seen, to a marker where it was, to gone, to seen again - and the ring and
   the notes it writes were in `keys.rs`, where a second client could not reach them. The notes are

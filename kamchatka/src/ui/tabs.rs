@@ -12,8 +12,6 @@
 //! a row per undecided thing: `ask` is what this policy does when nobody has told it anything, and
 //! a screenful of it buries the one line that says what can happen without stopping.
 
-use std::{borrow::Cow, time::Duration};
-
 use nachalnik::{ContextId, ContextItem, ContextKind, ContextState, Verdict};
 use ratatui::{
     Frame,
@@ -27,7 +25,7 @@ use tui_markdown::StyleSheet as _;
 
 use crate::{
     app::when::read_off,
-    app::{App, Focus, Going, Speaker},
+    app::{App, Focus, Going, Speaker, text::waited_since},
     tools::{Careful, Exit},
     ui::{
         markdown::{Chunk, Markdown, chunks, highlighted, markdown, rule, separate},
@@ -62,7 +60,7 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         .filter(|item| item.calls().any(|call| waiting.contains(&call.id)))
         .map(|item| item.id)
         .collect();
-    for said in app.conversation(&items) {
+    for said in app.conversation(&items, going) {
         let item = said.item;
 
         // what the model is no longer shown is drawn so that the eye can tell without reading
@@ -86,21 +84,14 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         });
 
         let speaker = said.speaker;
-        // an elided item is in the request as a marker, so the marker is what the conversation
-        // shows - the projector's own words, with the brackets it put round them, which is
-        // exactly the text the model reads there. Drawn with the speaker's own prefix and
-        // dimmed, so a `> ` still says whose turn it was and the dimming says there is nothing
-        // left of it to read
-        //
-        // note: this used to print the *content* behind a rule, which read as the model still
-        // having it. The one thing an elision means is that it does not
-        let said = match item.filter(|item| item.state.is_elided()) {
-            Some(item) => match going.marker.get(&item.id) {
-                Some(marker) => Cow::Borrowed(marker.as_str()),
-                None => said.text,
-            },
-            None => said.text,
-        };
+        // note: an elided item already reads as its marker here - the projector's own words, with
+        // the brackets it put round them, which is exactly the text the model reads there. That
+        // substitution was in this loop and is `App::conversation`'s now, because what an elision
+        // *means* is not a rendering decision and a second client was being handed the content of
+        // an item whose whole point is that the model no longer has it. All that is left here is
+        // drawing it with the speaker's own prefix and dimmed, so a `> ` still says whose turn it
+        // was and the dimming says there is nothing of it left to read
+        let said = said.text;
 
         if let Some(item) = held {
             if marked != Some(item.id) {
@@ -857,26 +848,6 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         position: at,
         total,
         area: inner,
-    }
-}
-
-/// A gap worth reporting, as a word; `None` when it is too short to be news.
-///
-/// note: the threshold is what keeps this from being a column of numbers. Nearly everything in a
-/// session happens between one frame and the next, and a log that stamped all of it would be
-/// asking somebody to find the slow line by reading every line. What is left is the model
-/// thinking, a command running, and a provider that has gone quiet.
-fn waited_since(gap: Duration) -> Option<String> {
-    let millis = gap.as_millis();
-    match millis {
-        0..100 => None,
-        100..1_000 => Some(format!("+{millis}ms")),
-        1_000..60_000 => Some(format!("+{:.1}s", gap.as_secs_f64())),
-        _ => Some(format!(
-            "+{}m{:02}s",
-            gap.as_secs() / 60,
-            gap.as_secs() % 60
-        )),
     }
 }
 

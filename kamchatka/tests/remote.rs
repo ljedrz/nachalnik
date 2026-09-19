@@ -1714,3 +1714,121 @@ async fn cycling_an_item_that_is_not_there_says_so() {
     .await;
     served.ended().await.1.expect("the session failed");
 }
+
+/// An elided item reads as its marker in the conversation, not as the content it still holds.
+///
+/// note: the bug this is here for was invisible from the terminal, which is the shape of thing a
+/// second client finds. The substitution lived in `ui/tabs.rs`, so the screen was right and every
+/// client was handed the words of an item whose whole meaning is that the model no longer has
+/// them - a page drawing that shows a conversation the model is not having.
+///
+/// note: asserted on the *marker* rather than on the absence of the content, because absence
+/// passes for a hundred wrong reasons - a line dropped, an item skipped, a projection that failed.
+/// What is being claimed is that the line is the projector's own words, which is what the model
+/// reads there.
+#[tokio::test]
+async fn an_elided_item_reads_as_its_marker_to_a_client() {
+    let served = served(vec![], |app| {
+        app.kernel
+            .push(nachalnik::ContextItem::user("the secret is hunter2"));
+    })
+    .await;
+    let (mut peer, first) = Peer::attached(&served.at).await;
+
+    let id = first.items[0].id;
+    assert!(
+        first
+            .conversation
+            .iter()
+            .any(|line| line.text.contains("hunter2")),
+        "an active item says what it says: {:?}",
+        first.conversation
+    );
+
+    // one step of the ring is `elided`
+    peer.send(Command::Cycle { id }).await;
+    let heard = peer.until(|m| matches!(m, Message::Projected(_))).await;
+    let Some(Message::Projected(now)) = heard
+        .into_iter()
+        .find(|m| matches!(m, Message::Projected(_)))
+    else {
+        unreachable!("the loop above only ends on one");
+    };
+
+    assert_eq!(now.items[0].state, nachalnik::ContextState::Elided);
+    let marker = now.items[0]
+        .marker
+        .clone()
+        .expect("an elided item is in the request as a marker");
+    let line = now
+        .conversation
+        .iter()
+        .find(|line| line.item == Some(id))
+        .expect("an elided item keeps its place in the conversation");
+    assert_eq!(
+        line.text, marker,
+        "the conversation showed something other than the marker: {:?}",
+        now.conversation
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    served.ended().await.1.expect("the session failed");
+}
+
+/// The trace goes out as the trace tab draws it: this program's words, and the pane's own gaps.
+///
+/// note: what makes it worth a test rather than a glance is the gap, which is a *decision* about
+/// when there is one rather than a format - nothing under a tenth of a second, and nothing after a
+/// line that ended a wait for a person. A client left to work that out from timestamps would draw
+/// a column whose largest figure is how long the operator spent reading, which is the one number
+/// in there nobody should act on.
+#[tokio::test]
+async fn the_trace_goes_out_as_the_pane_draws_it() {
+    let script = vec![ModelResponse::text("a state machine")];
+    let served = served(script, |_| {}).await;
+    let (mut peer, _) = Peer::attached(&served.at).await;
+
+    peer.send(Command::Submit {
+        line: "what does the kernel do?".to_owned(),
+    })
+    .await;
+    peer.until_record("model.finished").await;
+    peer.send(Command::Project).await;
+    let heard = peer.until(|m| matches!(m, Message::Projected(_))).await;
+    let Some(Message::Projected(now)) = heard
+        .into_iter()
+        .find(|m| matches!(m, Message::Projected(_)))
+    else {
+        unreachable!("the loop above only ends on one");
+    };
+
+    // the names are the events', and the detail is this program's account of them - which is the
+    // whole reason this is on the wire rather than left to a client and the records
+    assert!(
+        now.trace.iter().any(|line| line.name == "model.requested"),
+        "the trace is not the trace: {:?}",
+        now.trace
+    );
+    assert!(
+        now.trace
+            .iter()
+            .any(|line| !line.name.is_empty() && !line.detail.is_empty()),
+        "every line came through without its words: {:?}",
+        now.trace
+    );
+    // and a wall clock that is a real one, since it is the half a reader matches against a log
+    assert!(
+        now.trace.iter().all(|line| line.at > 1_600_000_000_000),
+        "a line arrived with no time on it: {:?}",
+        now.trace
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    served.ended().await.1.expect("the session failed");
+}

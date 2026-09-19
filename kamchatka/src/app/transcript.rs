@@ -20,7 +20,7 @@ use std::{
 use nachalnik::{ContextId, ContextItem, ContextKind, Event, Overrun, Record};
 
 use super::{
-    App, HOPS, LIVE_OUTPUT, TRACE_DEPTH, Traced,
+    App, Going, HOPS, LIVE_OUTPUT, TRACE_DEPTH, Traced,
     text::{head, one_line, plural, thousands, unpadded},
 };
 use serde::{Deserialize, Serialize};
@@ -445,16 +445,31 @@ impl App {
     /// and a backwards walk stamping identifiers onto lines so the other two could find them.
     ///
     /// note: `is_projected` and not `sends_content`, so an *elided* item keeps its place. It is
-    /// in the request as a marker, which is what the model reads there; the drawing marks it.
+    /// in the request as a marker, and the marker is what this shows - the projector's own words,
+    /// with the brackets it put round them, which is exactly the text the model reads there.
     /// A turn whose call has not come back yet also stays: the projector repairs one of those
     /// out of the request, and that is a momentary, mechanical absence rather than anything
     /// anybody decided - hiding on it blanked a call out of the conversation at the moment a
     /// permission question was asking about it.
     ///
+    /// note: the marker is substituted here rather than where the lines are drawn, which is where
+    /// it was. That made it a property of *one* screen, so every other client (see
+    /// [`crate::remote`]) was handed the content of an item whose whole meaning is that the model
+    /// no longer has it. What an elision means is not a rendering decision, and `ui/` decides
+    /// nothing.
+    ///
+    /// note: which is why it takes a [`Going`]: the marker belongs to a projection of the *next
+    /// request*, not to the item, because it is what would go out in its place. Both callers have
+    /// one in hand already.
+    ///
     /// note: the items are the caller's, because they are `Arc`s the kernel hands out by clone
     /// and the lines borrow their text rather than copying it. A frame that copied every word it
     /// was about to draw would copy the whole conversation to show what it was already showing.
-    pub fn conversation<'a>(&'a self, items: &'a [Arc<ContextItem>]) -> Vec<Said<'a>> {
+    pub fn conversation<'a>(
+        &'a self,
+        items: &'a [Arc<ContextItem>],
+        going: &'a Going,
+    ) -> Vec<Said<'a>> {
         let mut said = Vec::new();
         let mut loose = self.loose.iter().peekable();
         let loosed = |entry: &'a Entry| Said {
@@ -469,7 +484,22 @@ impl App {
                 said.push(loosed(entry));
             }
             if item.state.is_projected() {
+                let from = said.len();
                 Self::as_conversation(item, &mut said);
+                // note: every line the item produced, not the first. An elided assistant turn can
+                // be a thought, a sentence and two calls, and the marker stands for the whole of
+                // it - so a line of it left as it was would be the one part of a hidden turn still
+                // legible. This is what the chat pane did line by line before it moved here
+                if let Some(marker) = item
+                    .state
+                    .is_elided()
+                    .then(|| going.marker.get(&item.id))
+                    .flatten()
+                {
+                    for line in &mut said[from..] {
+                        line.text = Cow::Borrowed(marker.as_str());
+                    }
+                }
             }
         }
         said.extend(loose.map(loosed));
