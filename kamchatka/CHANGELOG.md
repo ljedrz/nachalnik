@@ -359,6 +359,19 @@ minor bump may break you.
   otherwise a `ctrl+c` pressed an hour ago detaches somebody from the middle of a turn they are
   watching now.
 
+- **Every attach printed `client N attached` twice.** A connection's subscription to the program's
+  own voice was taken when the socket arrived, which is after that line is said and before it is
+  broadcast - while the projection carrying the conversation is taken later still, when the
+  `attach` reaches the session loop. So the line was in `attached.conversation` and arrived again
+  as a `said`, on every attach there has ever been, in `--connect` and in the browser both.
+  `Attached::seq` makes the airtight version of this argument about the records; the voice stream
+  had the opposite overlap and nothing said so.
+
+  The subscription is taken where the projection is, in the session loop, with nothing in between.
+  On a re-attach it is swapped exactly when a fresh projection is handed over: a resume is answered
+  with no projection, and the subscription it already has is holding lines nothing else would bring
+  back.
+
 ## [0.13.0] - 2026-09-19
 
 ### added

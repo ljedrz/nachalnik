@@ -64,6 +64,19 @@ enum Incoming {
     Tcp(tokio::net::TcpStream),
 }
 
+/// What the session loop says back about one command.
+///
+/// note: two things, and only an attach has the second. A subscription to the program's own voice
+/// has to be taken in the same breath as the projection it goes with, and the session loop is the
+/// only place both can happen with nothing in between - see the note on `Attached::seq`, which
+/// makes the same argument about the records and had it right.
+struct Answered {
+    /// The message that answers it, where it has one; `None` means the records will carry it.
+    message: Option<Message>,
+    /// The program's own voice, from this moment on.
+    voice: Option<broadcast::Receiver<Arc<Message>>>,
+}
+
 /// What reaches the session loop from a connection.
 enum FromClient {
     /// It asked for something that needs the session itself.
@@ -72,8 +85,8 @@ enum FromClient {
         client: u64,
         /// What it asked for.
         command: Command,
-        /// Where the answer goes; `None` there means the records will carry it.
-        answer: oneshot::Sender<Option<Message>>,
+        /// Where the answer goes.
+        answer: oneshot::Sender<Answered>,
     },
     /// It has gone.
     Left {
@@ -283,14 +296,19 @@ impl Server {
                         // else can type into it
                         app.say(Speaker::Note, format!("client {clients} attached"));
                         let (kernel, asks) = (app.kernel.clone(), asks.clone());
-                        let voice = voice.subscribe();
+                        // note: **not** subscribed here. The line above is said now and broadcast
+                        // at the top of the next turn round this loop, so a receiver taken here
+                        // catches it - and the projection this client is about to be handed has it
+                        // in the conversation as well. That is one attach note printed twice, on
+                        // every attach there has ever been. The subscription is taken where the
+                        // projection is, which is the only place the two can be taken together
                         match stream {
                             #[cfg(unix)]
                             Incoming::Unix(stream) => {
-                                tokio::spawn(serve(clients, stream, kernel, asks, voice));
+                                tokio::spawn(serve(clients, stream, kernel, asks));
                             }
                             Incoming::Tcp(stream) => {
-                                tokio::spawn(serve(clients, stream, kernel, asks, voice));
+                                tokio::spawn(serve(clients, stream, kernel, asks));
                             }
                         }
                     }
@@ -304,7 +322,15 @@ impl Server {
                         format!("client {client} left; the session carries on"),
                     ),
                     FromClient::Asked { client, command, answer } => {
-                        let _ = answer.send(apply(app, client, command).await);
+                        // taken before the projection rather than after it, so that a line said
+                        // between the two would arrive twice rather than not at all. Nothing runs
+                        // in between today; the order is which way to be wrong if anything ever does
+                        let voice = matches!(command, Command::Attach { .. })
+                            .then(|| voice.subscribe());
+                        let _ = answer.send(Answered {
+                            message: apply(app, client, command).await,
+                            voice,
+                        });
                     }
                 },
                 event = events.recv() => match event {
@@ -531,11 +557,10 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     stream: S,
     kernel: Kernel,
     asks: mpsc::UnboundedSender<FromClient>,
-    voice: broadcast::Receiver<Arc<Message>>,
 ) {
     let (read, mut write) = tokio::io::split(stream);
     let mut lines = BufReader::new(read).lines();
-    if let Err(e) = attend(client, &mut lines, &mut write, &kernel, &asks, voice).await {
+    if let Err(e) = attend(client, &mut lines, &mut write, &kernel, &asks).await {
         // the connection is going either way; this is the last thing it is told, and it is written
         // on a best-effort basis because the usual way to be here is that it stopped listening
         let _ = protocol::write(
@@ -564,7 +589,6 @@ async fn attend<R, W>(
     write: &mut W,
     kernel: &Kernel,
     asks: &mpsc::UnboundedSender<FromClient>,
-    mut voice: broadcast::Receiver<Arc<Message>>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -581,7 +605,7 @@ where
     // note: a connection says where it stands before it is told anything, and nothing else is
     // accepted first. Streaming at a client that has not said what it already has is how a resume
     // becomes a replay
-    let mut last = match protocol::read::<Command>(lines).await? {
+    let (mut last, mut voice) = match protocol::read::<Command>(lines).await? {
         None => return Ok(()),
         Some(Command::Attach { since }) => watermark(since, kernel, asks, client, write).await?,
         Some(other) => {
@@ -601,7 +625,15 @@ where
                 // client that has confused itself to start again: it asks for the projection and
                 // moves its own watermark to whatever that says
                 Some(Command::Attach { since }) => {
-                    last = watermark(since, kernel, asks, client, write).await?;
+                    let (at, fresh) = watermark(since, kernel, asks, client, write).await?;
+                    last = at;
+                    // note: the subscription is swapped exactly where a projection is handed over,
+                    // because that is what they have to be taken together for. A resume on a live
+                    // connection is answered with no projection, so the one it already has is
+                    // holding lines nothing else would bring back
+                    if since.is_none() {
+                        voice = fresh;
+                    }
                     flush(kernel, &mut last, write).await?;
                 }
                 // answered here rather than by the session loop: it needs a `Kernel` and nothing
@@ -618,7 +650,7 @@ where
                 }
                 Some(command) => {
                     let about = name(&command);
-                    match ask(asks, client, command).await {
+                    match ask(asks, client, command).await.map(|it| it.message) {
                         Ok(Some(message)) => protocol::write(write, &message).await?,
                         Ok(None) => {}
                         Err(error) => {
@@ -694,23 +726,26 @@ where
 }
 
 /// Settles where this client's numbered stream starts, and sends the projection if it needs one.
+///
+/// note: the subscription to the program's own voice comes back with the watermark, because the
+/// session loop is where both are taken and it takes them together. See [`Answered`].
 async fn watermark<W: AsyncWrite + Unpin>(
     since: Option<u64>,
     kernel: &Kernel,
     asks: &mpsc::UnboundedSender<FromClient>,
     client: u64,
     write: &mut W,
-) -> Result<u64, String> {
+) -> Result<(u64, broadcast::Receiver<Arc<Message>>), String> {
     let Some(since) = since else {
-        let Some(Message::Attached(attached)) =
-            ask(asks, client, Command::Attach { since: None }).await?
+        let answered = ask(asks, client, Command::Attach { since: None }).await?;
+        let (Some(Message::Attached(attached)), Some(voice)) = (answered.message, answered.voice)
         else {
             return Err("the session answered an attach with something else".to_owned());
         };
         let seq = attached.seq;
         protocol::write(write, &Message::Attached(attached)).await?;
 
-        return Ok(seq);
+        return Ok((seq, voice));
     };
 
     // note: a client claiming to have seen more than has happened is refused rather than clamped.
@@ -725,12 +760,13 @@ async fn watermark<W: AsyncWrite + Unpin>(
     }
     // note: refused above without troubling the session, and answered here by the session itself,
     // because the answer carries `busy` and nothing but the loop driving the kernel knows it
-    let Some(message) = ask(asks, client, Command::Attach { since: Some(since) }).await? else {
+    let answered = ask(asks, client, Command::Attach { since: Some(since) }).await?;
+    let (Some(message), Some(voice)) = (answered.message, answered.voice) else {
         return Err("the session answered an attach with nothing".to_owned());
     };
     protocol::write(write, &message).await?;
 
-    Ok(since)
+    Ok((since, voice))
 }
 
 /// Puts one command to the session loop and waits for what it says.
@@ -738,7 +774,7 @@ async fn ask(
     asks: &mpsc::UnboundedSender<FromClient>,
     client: u64,
     command: Command,
-) -> Result<Option<Message>, String> {
+) -> Result<Answered, String> {
     let (answer, answered) = oneshot::channel();
     asks.send(FromClient::Asked {
         client,

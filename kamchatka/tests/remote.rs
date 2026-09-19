@@ -1311,7 +1311,7 @@ async fn a_client_does_not_wait_for_an_answer_the_dead_socket_took_with_it() {
     .expect("the client failed");
 
     // the session never heard the line, which is what makes the answer one that cannot arrive
-    let (mut watch, attached) = Peer::attached(&session.at).await;
+    let (watch, attached) = Peer::attached(&session.at).await;
     assert!(
         !attached
             .conversation
@@ -1379,25 +1379,45 @@ async fn the_client_answers_a_question_with_the_keys_the_panel_uses() {
 async fn the_program_has_one_voice_and_every_client_hears_it() {
     let session = served(vec![], |_| {}).await;
 
-    let (mut one, _) = Peer::attached(&session.at).await;
+    let (_one, _) = Peer::attached(&session.at).await;
     let (mut two, _) = Peer::attached(&session.at).await;
-    one.send(Command::Submit {
-        line: "/seams".to_owned(),
-    })
-    .await;
+    // note: a line said *after* both are attached, which is the only kind either of them can hear.
+    // What a client was told before it arrived is in the conversation it was handed, and a third
+    // arriving is the cheapest line the session says for itself with nobody having asked for one
+    let (mut three, arriving) = Peer::attached(&session.at).await;
 
-    // the second client ran nothing and hears the first one arrive, and itself
+    // the second client ran nothing and hears the third arrive
     let heard = two
-        .until(|message| matches!(message, Message::Said { text, .. } if text.contains("client 2")))
+        .until(|message| matches!(message, Message::Said { text, .. } if text.contains("client 3")))
         .await;
     assert!(heard.iter().any(
         |message| matches!(message, Message::Said { speaker, .. } if *speaker == Speaker::Note)
     ));
 
-    two.send(Command::Submit {
-        line: "/quit".to_owned(),
-    })
-    .await;
+    // and the client it is about reads it once, in the conversation, rather than there and again
+    // underneath: its subscription starts where its projection was taken
+    assert!(
+        arriving
+            .conversation
+            .iter()
+            .any(|line| line.text.contains("client 3 attached")),
+        "the client that arrived was not told it had"
+    );
+    three
+        .send(Command::Submit {
+            line: "/quit".to_owned(),
+        })
+        .await;
+    let ending = three
+        .until(|message| matches!(message, Message::Replied { .. }))
+        .await;
+    assert!(
+        !ending
+            .iter()
+            .any(|message| matches!(message, Message::Said { text, .. } if text.contains("client 3 attached"))),
+        "the attach note arrived again under the conversation that already had it: {ending:?}"
+    );
+
     session.ended().await.1.expect("the session failed");
 }
 
