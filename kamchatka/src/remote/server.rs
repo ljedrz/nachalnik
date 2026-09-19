@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use nachalnik::{Event, Kernel};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader},
+    io::{AsyncRead, AsyncWrite, BufReader},
     sync::{broadcast, mpsc, oneshot},
 };
 
@@ -335,6 +335,13 @@ impl Server {
                         Speaker::Note,
                         format!("client {client} left; the session carries on"),
                     ),
+                    // note: applied inside this branch, so a command that awaits the endpoint
+                    // holds the whole loop - no connection accepted, no other client answered, no
+                    // kernel event taken, no `ctrl_c` polled. `/models`, `/model`, `/provider` and
+                    // `/compact` all await, and `App::submit` awaits a switch still in flight
+                    // before it reads the line at all. It is the same hole `headless.rs` has and
+                    // the same fix it is waiting on, with a blast radius of everybody attached
+                    // rather than one person; both are in `POSTPONED.md`
                     FromClient::Asked { client, command, answer } => {
                         // taken before the projection rather than after it, so that a line said
                         // between the two would arrive twice rather than not at all. Nothing runs
@@ -583,8 +590,8 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     asks: mpsc::UnboundedSender<FromClient>,
 ) {
     let (read, mut write) = tokio::io::split(stream);
-    let mut lines = BufReader::new(read).lines();
-    if let Err(e) = attend(client, &mut lines, &mut write, &kernel, &asks).await {
+    let mut frames = protocol::Frames::new(BufReader::new(read));
+    if let Err(e) = attend(client, &mut frames, &mut write, &kernel, &asks).await {
         // the connection is going either way; this is the last thing it is told, and it is written
         // on a best-effort basis because the usual way to be here is that it stopped listening
         let _ = protocol::write(
@@ -609,7 +616,7 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 /// fragments - and doubles as the thing that says it is worth looking at the log again.
 async fn attend<R, W>(
     client: u64,
-    lines: &mut tokio::io::Lines<BufReader<R>>,
+    frames: &mut protocol::Frames<BufReader<R>>,
     write: &mut W,
     kernel: &Kernel,
     asks: &mpsc::UnboundedSender<FromClient>,
@@ -629,7 +636,7 @@ where
     // note: a connection says where it stands before it is told anything, and nothing else is
     // accepted first. Streaming at a client that has not said what it already has is how a resume
     // becomes a replay
-    let settled = match protocol::read::<Command>(lines).await? {
+    let settled = match protocol::read::<Command>(frames).await? {
         None => return Ok(()),
         Some(attach @ Command::Attach { .. }) => {
             watermark(attach, kernel, asks, client, write).await
@@ -653,7 +660,7 @@ where
 
     loop {
         tokio::select! {
-            command = protocol::read::<Command>(lines) => match command? {
+            command = protocol::read::<Command>(frames) => match command? {
                 None => return Ok(()),
                 // note: re-attaching on a live connection is allowed, and is the cheapest way for a
                 // client that has confused itself to start again: it asks for the projection and

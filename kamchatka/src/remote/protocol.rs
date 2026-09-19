@@ -13,7 +13,7 @@ use nachalnik::{
     PermissionRequest, Record, State,
 };
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncBufRead, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 
 #[cfg(doc)]
 use crate::app::App;
@@ -25,8 +25,20 @@ use crate::app::{Did, Going, Page, Said, Speaker, Stance};
 /// the session put in its log, and `context.replaced` is the one event that carries content, so a
 /// rewritten tool result goes down the wire at whatever size it was. What this is defending
 /// against is a peer that never sends a newline, which would otherwise be read into memory for
-/// ever; a line over it is a protocol error that closes the connection and says so, rather than a
+/// ever; a frame over it is a protocol error that closes the connection and says so, rather than a
 /// truncation that would leave the reader parsing the second half of somebody's JSON.
+///
+/// note: enforced while the frame arrives rather than once it has, which is what [`Frames`] is for
+/// and why it is not `tokio::io::Lines`. Checked afterwards it is no defence against the case
+/// above at all, because the reading is the thing it was supposed to stop.
+///
+/// note: **the reading side owes this and the writing side does not**, which is a decision rather
+/// than an omission. Nothing caps what the session writes, and it could not: a record is in the
+/// log, the log drops nothing, and a client that resumes by sequence comes back to the same record
+/// every time - so a `context.replaced` over this makes a session unattachable rather than
+/// inconvenient. That hole is real and is in `POSTPONED.md` with what would close it. What is *not*
+/// worth doing about it is raising the number, which moves the size of the thing that breaks
+/// without changing anything else.
 pub const MAX_LINE: usize = 32 * 1024 * 1024;
 
 /// The version of this wire that this build speaks.
@@ -528,6 +540,77 @@ pub struct Printed {
     pub pages: Vec<Page>,
 }
 
+/// A connection, read one frame at a time and no further than [`MAX_LINE`] into any of them.
+///
+/// note: not `tokio::io::Lines`, and the cap is the whole difference. `next_line` grows its own
+/// buffer until a newline arrives, so a limit over it can only ever be checked against a frame
+/// that has already been read - which is no defence against the one case it exists for, a peer
+/// that never sends a newline at all. This holds the part-read frame itself and stops as soon as
+/// there is too much of it.
+///
+/// note: cancel-safe, which is what both loops that read commands need from it: the part-read
+/// frame lives here rather than in the future, and `fill_buf` guarantees that a read dropped
+/// before it resolved consumed nothing. So a `select!` that drops this mid-frame has lost nothing,
+/// which is the property `Lines` had and the reason this can stand in for it.
+pub struct Frames<R> {
+    read: R,
+    held: Vec<u8>,
+}
+
+impl<R: AsyncBufRead + Unpin> Frames<R> {
+    /// One, over whatever this end of the connection reads as.
+    pub fn new(read: R) -> Self {
+        Self {
+            read,
+            held: Vec::new(),
+        }
+    }
+
+    /// The next frame, or `None` where the peer has gone between two of them.
+    async fn next(&mut self) -> Result<Option<String>, String> {
+        loop {
+            let available = self
+                .read
+                .fill_buf()
+                .await
+                .map_err(|e| format!("the connection stopped talking: {e}"))?;
+            if available.is_empty() {
+                return match self.held.is_empty() {
+                    true => Ok(None),
+                    // a peer that went away mid-frame, which is not the same thing as one that
+                    // finished: half a message parses as nothing and says so
+                    false => Err("the connection stopped in the middle of a message".to_owned()),
+                };
+            }
+            let (whole, used) = match available.iter().position(|byte| *byte == b'\n') {
+                Some(at) => {
+                    self.held.extend_from_slice(&available[..at]);
+                    (true, at + 1)
+                }
+                None => {
+                    self.held.extend_from_slice(available);
+                    (false, available.len())
+                }
+            };
+            self.read.consume(used);
+            // `at least`, because what is held is whatever had been buffered when the limit was
+            // passed rather than the whole of what the peer meant to send - and the whole of it is
+            // the number nobody here is ever going to know
+            if self.held.len() > MAX_LINE {
+                return Err(format!(
+                    "a message of at least {} bytes, over the {MAX_LINE}-byte limit",
+                    self.held.len()
+                ));
+            }
+            if whole {
+                return String::from_utf8(std::mem::take(&mut self.held))
+                    .map(Some)
+                    .map_err(|_| "a message that is not text".to_owned());
+            }
+        }
+    }
+}
+
 /// Reads one message off a connection, or `None` where the peer has gone.
 ///
 /// note: newline-delimited JSON, and the argument for it over a length prefix is that
@@ -537,23 +620,11 @@ pub struct Printed {
 /// stops being readable with the tools everybody already has. `nc | jq` is worth more than a
 /// frame header here.
 pub async fn read<T: for<'a> Deserialize<'a>>(
-    lines: &mut tokio::io::Lines<impl AsyncBufRead + Unpin>,
+    frames: &mut Frames<impl AsyncBufRead + Unpin>,
 ) -> Result<Option<T>, String> {
-    // note: the cap is checked against what arrived rather than enforced while arriving, which is
-    // the honest description of what `next_line` does: it has already read the line. What this
-    // catches is a peer sending something absurd, and it catches it before the parse rather than
-    // after - the difference being an error that says which rule was broken
-    let line = match lines.next_line().await {
-        Ok(Some(line)) => line,
-        Ok(None) => return Ok(None),
-        Err(e) => return Err(format!("the connection stopped talking: {e}")),
+    let Some(line) = frames.next().await? else {
+        return Ok(None);
     };
-    if line.len() > MAX_LINE {
-        return Err(format!(
-            "a message of {} bytes, over the {MAX_LINE}-byte limit",
-            line.len()
-        ));
-    }
     if line.trim().is_empty() {
         return Err("an empty message".to_owned());
     }

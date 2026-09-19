@@ -47,10 +47,7 @@ use std::time::Duration;
 
 use kamchatka::remote::protocol::{self, Address, Command, Message};
 use nachalnik::{Delta, Event, Grant};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    net::TcpStream,
-};
+use tokio::{io::BufReader, net::TcpStream};
 
 /// How long to wait for a session that has said nothing at all.
 const PATIENCE: Duration = Duration::from_secs(120);
@@ -74,7 +71,7 @@ async fn main() -> Result<(), String> {
     // written rather than when the last one is acknowledged, and find out when the peer is gone
     let _ = stream.set_nodelay(true);
     let (read, mut write) = tokio::io::split(stream);
-    let mut lines = BufReader::new(read).lines();
+    let mut lines = protocol::Frames::new(BufReader::new(read));
 
     // a connection says where it stands before it is told anything. `since: None` is "I have
     // nothing", which is answered with the projection and then every record after it
@@ -222,7 +219,7 @@ fn mark(speaker: kamchatka::app::Speaker) -> &'static str {
 
 /// The next message, or a failure saying none came.
 async fn next<R: tokio::io::AsyncRead + Unpin>(
-    lines: &mut tokio::io::Lines<BufReader<R>>,
+    lines: &mut protocol::Frames<BufReader<R>>,
 ) -> Result<Option<Message>, String> {
     tokio::time::timeout(PATIENCE, protocol::read(lines))
         .await
