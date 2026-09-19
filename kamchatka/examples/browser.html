@@ -96,7 +96,8 @@
     overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 6px;
   }
   .row.open .body { display: block; }
-  .empty { color: var(--dim); }
+  .empty { color: var(--dim); white-space: pre-wrap; }
+  .policy { margin: 0 0 10px; font-weight: 600; overflow-wrap: anywhere; }
   .seq { color: var(--dim); }
   .detail { font-size: 12px; color: var(--dim); margin-top: 2px; overflow-wrap: anywhere; }
   /* the figure being looked for, so it keeps the right-hand edge and a colour of its own */
@@ -452,28 +453,60 @@ function draw() {
     return;
   }
 
-  // the sandbox first, because a confinement that is not there has to say so where the rules are
-  // read, and a rule read as though it were enforced is worse than no rule
-  //
   // note: named rather than left as the fall-through it was. A view this does not know about is a
   // bug, and drawing the permissions at it is the kind that looks like a feature
   if (showing !== "permissions") return;
-  aside(panel, latest.confinement ?? "no sandbox: the tools reach whatever this user can");
-  // and what is *not* listed, for the reason the terminal's tab gives: rows for subjects nobody
-  // has thought about are not information, and a list that quietly stood for them would be
-  aside(panel, `${latest.undecided} more subject(s) nobody has decided, so each is asked about`);
-  if (!latest.permissions.length) return;
+
+  // what is deciding, and what it does with everything the list does not mention - above the list,
+  // always, which is where the tab puts it. A list of decisions is not a policy, and this page
+  // drew the rows alone: somebody who had allowed one `ls` saw an empty table and no answer to
+  // why the model had just run one
+  const policy = document.createElement("p");
+  policy.className = "policy";
+  policy.append(document.createTextNode(`${latest.policy} · anything it has not been told about: `));
+  const untold = document.createElement("span");
+  untold.className = verdicts[latest.untold] ?? "asks";
+  untold.textContent = latest.untold;
+  policy.append(untold);
+  panel.append(policy);
+
+  if (!latest.permissions.length) {
+    aside(
+      panel,
+      "nothing has been decided yet, which is why this list is empty rather than permissive.\n\n" +
+        "Answer a question `allow` or `deny` and its subject arrives here, where it can be " +
+        "changed. A fresh policy also holds a rule for each of a handful of paths that are " +
+        "credentials by convention, and those are questions too, so they are not rows either - " +
+        "the line along the bottom is what counts them. They begin to earn their keep the moment " +
+        "a capability is answered `always`: the capability opens, the rules stay where they are, " +
+        "and the strictest thing consulted wins - so a rule can only ever tighten what a " +
+        "capability allows. Those rules bind `fs`, and deliberately not `shell`: a command names " +
+        "its files inside a string, so what holds a command to a boundary is the sandbox rather " +
+        "than a rule here.",
+    );
+  }
   for (const rule of latest.permissions) {
     const covers = rule.tools.length ? rule.tools.join(", ") : "nothing registered needs it";
     const sometimes = rule.sometimes.length ? ` · sometimes ${rule.sometimes.join(", ")}` : "";
     const el = row(panel, rule.subject, `${covers}${sometimes}`);
     const verdict = document.createElement("span");
-    verdict.className =
-      rule.verdict === "allow" ? "allowed" : rule.verdict === "deny" ? "denied" : "asks";
+    verdict.className = verdicts[rule.verdict] ?? "asks";
     verdict.textContent = ` ${rule.verdict}`;
     el.querySelector(".name").append(verdict);
   }
+
+  // and the footer the tab has, in the tab's order. The sandbox line comes first because it is the
+  // one thing here that is not negotiable: a registered shell that has not been refused can read,
+  // write and reach the network whatever the rows above say, so a list of verdicts with nothing
+  // about it would be reporting restrictions that are not there. The count is the honest footnote
+  // that the rows are the decisions rather than the whole policy
+  const footer = [latest.confinement ?? "no sandbox: a command reaches whatever this user can"];
+  if (latest.undecided) footer.push(`${latest.undecided} more it will ask about`);
+  aside(panel, footer.join(" · "));
 }
+
+/** The class each verdict is drawn in, so one word is one colour wherever it appears. */
+const verdicts = { allow: "allowed", deny: "denied", ask: "asks" };
 
 /** A line of the panel's own, for when there are no rows to draw. */
 function aside(into, text) {

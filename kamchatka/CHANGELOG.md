@@ -246,6 +246,21 @@ minor bump may break you.
   replaces them when it arrives. A rebuild also keeps the reader where they were rather than
   snapping to the newest line, which matters far more now that one happens every turn.
 
+- **The permissions view drew the rows and left out the policy.** `shell: confined` sat over an
+  empty table, which reads as a claim that nothing can happen - and a model had just run `ls`. Both
+  halves of the answer were missing, and both are on the tab upstairs. Above the rows: `Careful ·
+  anything it has not been told about: ask`, which is what a session actually does and is why the
+  model was asked and somebody allowed it; a one-off answer writes no rule, which is why the table
+  is still empty afterwards. Below them, the tab's own footer, in the tab's order - the sandbox
+  line first, because it is the one thing there that is not negotiable, and then the count of what
+  is not listed. And the tab's empty-state prose, which says in as many words that an empty list is
+  not a permissive one, and that path rules bind `fs` and deliberately not `shell`: a command names
+  its files inside a string, so what holds it to a boundary is the sandbox rather than a rule here.
+
+  `Attached::policy` and `Attached::untold` are what carry it. A list of decisions is not a policy,
+  and a client drawing the rows alone was answering "what will this session allow" with whichever
+  part of the answer somebody happened to have given already.
+
 - **The header lost the session's name and found its lines.** The name is a timestamp, which is the
   one thing up there nobody reads twice and the widest thing on a phone; it is still what the record
   is filed under, what `/save` writes and what `setup` says. And `--line` - every border on the page,
