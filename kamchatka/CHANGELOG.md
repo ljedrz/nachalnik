@@ -349,6 +349,16 @@ minor bump may break you.
   command in flight when the socket died is owed an answer nobody is going to send, and the session
   never saw it.
 
+- **`--connect`'s `ctrl+c` had one stage, and three places said it had two.** It wrote an
+  `interrupt`, printed `asked it to stop; what has arrived is kept, and again detaches`, and then
+  did exactly the same thing the next time - and `tokio::signal::ctrl_c` does not put the default
+  handler back after the first delivery, so the process would not leave on its own either. It has
+  the second stage now, the one `--headless` and the server already carry: the first is for the
+  turn, the second detaches, and the session carries on without it. The flag is the connection's
+  rather than the client's, so a socket that dropped and came back is a fresh pair of stages -
+  otherwise a `ctrl+c` pressed an hour ago detaches somebody from the middle of a turn they are
+  watching now.
+
 ## [0.13.0] - 2026-09-19
 
 ### added
