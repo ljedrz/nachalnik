@@ -35,15 +35,19 @@
 <style>
   :root {
     color-scheme: light dark;
-    --bg: #fbfaf8; --fg: #1c1b19; --dim: #6b6862; --line: #e2ded7;
+    --bg: #fbfaf8; --fg: #1c1b19; --dim: #6b6862; --line: #bdb6a9;
     --user: #2d4f6b; --note: #6b6862; --call: #6b4f2d; --bad: #8c2f22;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #161513; --fg: #e8e4dc; --dim: #8a867e; --line: #2c2a27;
+      --bg: #161513; --fg: #e8e4dc; --dim: #8a867e; --line: #4a443b;
       --user: #8fb8d8; --note: #8a867e; --call: #d0a878; --bad: #e08074;
     }
   }
+  /* note: `--line` is every border on the page - the header, the footer, a row's rule, the box you
+     type in - and it was two shades off the background, which is a hairline on a good monitor and
+     nothing at all on a phone in daylight. About 2:1 against the background in either scheme now,
+     which is a line somebody can find without it reading as a heavy rule */
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--fg);
@@ -140,8 +144,7 @@
 
 <header>
   <span id="pulse" hidden>&#9679;</span>
-  <b id="session">connecting…</b>
-  <span id="model"></span>
+  <b id="model">connecting…</b>
   <span id="budget"></span>
   <span id="busy"></span>
   <button id="view" type="button" title="the next view: chat, context, events, permissions">chat</button>
@@ -538,7 +541,9 @@ function heard(m) {
       // whatever this page had drawn belongs to the conversation it is about to be handed
       latest = m;
       stale = false;
-      document.getElementById("session").textContent = m.session;
+      // note: the session's name is not up here, and it is a timestamp - which is the one thing in
+      // the header nobody reads twice and the widest thing on a phone. It is still what the record
+      // is filed under and what `/save` writes, and `setup` says it
       document.getElementById("model").textContent = m.model ? m.model.model : "no model";
       budget(m);
       if (showing !== "chat") draw();
