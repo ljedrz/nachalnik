@@ -10,19 +10,25 @@
 
   What it does that is worth reading:
 
-  * the conversation comes from `attached`, and can come from nowhere else. The records name things
-    rather than carrying them, so a page fed only the stream can follow a turn as it arrives and
-    cannot render a word of what happened before it connected.
+  * the conversation comes from a projection, and can come from nowhere else. The records name
+    things rather than carrying them, so a page fed only the stream can follow a turn as it arrives
+    and cannot render a word of what happened before it connected. The stream keeps the chat
+    current between projections by appending; anything that changes its *shape* rather than its end
+    - an item excluded, a compaction, an undo - asks for a new one and draws that.
   * anything it finds it has no text for - an item added by somebody else, an answer it missed
     while it was away - it asks for with `inspect`. That is the other half of the same decision.
   * it never reconnects. `EventSource` does that by itself, and sends `Last-Event-ID`, which the
     gateway turns into `attach { since }`. Resume, for free.
   * a permission question takes the prompt's place rather than stacking above it, which is what the
     terminal does and for the same reason: the box the keys are in should be the box on the screen.
-  * the four views are the terminal's tabs. Two of them - context and permissions - ask for a fresh
-    projection when they are opened, because `going`, `left_out` and `marker` are answers about the
-    *next request* and no record carries them; see `Command::Project`. The event log asks for
-    nothing: it is the records, which this page is sent anyway.
+  * the four views are the terminal's tabs, in the terminal's order. Two of them - context and
+    permissions - ask for a fresh projection when they are opened, because `going`, `left_out` and
+    `marker` are answers about the *next request* and no record carries them; see
+    `Command::Project`. The event log asks for nothing: it is the records, which this page is sent
+    anyway, with the gap between them worked out from their own timestamps. It sits where the trace
+    sits and it is not the trace: that renders each record in this program's words, and the one
+    thing this shows differently is the detail, which is the record itself. Putting the trace on
+    the wire would be a second copy of four hundred lines the page already has.
   * the prompt is on the chat and nowhere else, which is where the terminal keeps it. A waiting
     question colours the cycler instead of following you about, the way the tab strip goes red
     upstairs.
@@ -129,7 +135,7 @@
   <span id="model"></span>
   <span id="budget"></span>
   <span id="busy"></span>
-  <button id="view" type="button" title="the next view: chat, context, permissions, events">chat</button>
+  <button id="view" type="button" title="the next view: chat, context, events, permissions">chat</button>
 </header>
 
 <div id="log"></div>
@@ -167,13 +173,73 @@ let streaming = false;  // whether the fragments arriving still belong to anythi
 let wanted = new Set(); // items already asked about, so nothing is asked about twice
 let pending = [];       // lines this page drew on sending, not yet tied to an item
 let mine = new Set();   // the items those lines turned out to be
-let latest = null;      // the last projection, which is what the other two views are drawn from
+let latest = null;      // the last projection, which is what every view but the chat is drawn from
+let stale = false;      // whether the chat no longer matches the context, and a rebuild is owed
 let showing = "chat";   // which of the four is on screen
 let records = [];       // every record this page has been sent, for the event log
 
-const VIEWS = ["chat", "context", "permissions", "events"];
+/**
+ * The views, in the order the terminal's tab strip has them.
+ *
+ * note: the order is `Tab::ALL`, deliberately, down to the event log sitting where the trace does
+ * rather than at the end where it was easiest to add. Somebody who knows one of these two should
+ * not have to learn the other's habits, and tab order is the cheapest kind of similarity there is.
+ */
+const VIEWS = ["chat", "context", "events", "permissions"];
 /** How many records the event log keeps, which is the terminal's own trace depth. */
 const KEPT = 400;
+
+/**
+ * The records after which the chat is not what the context says any more.
+ *
+ * note: named rather than "anything context-shaped", because `context.added` is the one this page
+ * already draws for itself as it arrives, and rebuilding on it would take the bubble a model is
+ * writing into away every time a turn was recorded.
+ */
+const RESHAPES = new Set([
+  "context.changed",
+  "context.replaced",
+  "context.undone",
+  "context.redone",
+  "context.compacted",
+]);
+
+/**
+ * Says the chat no longer matches the context, and asks for what does.
+ *
+ * note: an item that changed state changed the conversation, and not in a way this page can work
+ * out. An excluded item is gone from the chat; an elided one is still there in full, because
+ * eliding is about what the *model* is sent and the marker is for it rather than for the person.
+ * Which of those a given state means is `ContextState::is_projected`, over in the runtime, and a
+ * page that reimplemented it would be a second copy of a rule that has six cases and gains them.
+ *
+ * note: a flag rather than a redraw, because the answer arrives later and may arrive at a bad
+ * moment - see the `projected` case. Asking twice is cheap and rebuilding under a model that is
+ * still typing is not.
+ */
+function restale() {
+  stale = true;
+  send({ do: "project" });
+}
+
+/**
+ * Draws the conversation out of a projection, which is the only thing that knows its shape.
+ *
+ * note: this is what `attached` does and what a rebuild after a state change does, and they are
+ * one function because they are one act. What it is *not* is a second account of the chat beside
+ * the stream: the projection says what the conversation is, and the stream keeps it current
+ * between projections by appending what has just happened. The moment the stream cannot - which
+ * is any change to the *shape* rather than the end of it - this is what answers.
+ */
+function conversation(lines) {
+  log.replaceChildren();
+  wanted.clear();
+  pending = [];
+  mine.clear();
+  open = null;
+  for (const l of lines) say(l.speaker, l.text, l.item ?? undefined);
+  log.scrollTop = log.scrollHeight;
+}
 
 /** Sends one command. The answer comes back on the stream, not from here. */
 async function send(command) {
@@ -343,10 +409,16 @@ function draw() {
   // and the detail is the rest of the record, which is what `jq` would have shown
   if (showing === "events") {
     if (!records.length) return aside(panel, "nothing has happened yet");
+    let previous = null;
     for (const record of records) {
       const { event, ...rest } = record.event;
       const when = new Date(record.at).toLocaleTimeString();
-      const el = row(panel, `${event}`, `#${record.seq} · ${when}`);
+      // the gap, which is what the trace tab is for: it answers *which step was slow*. Worked out
+      // here from the two timestamps rather than asked for, because a record carries `at` and two
+      // of them are all this needs
+      const gap = previous === null ? "" : ` · +${((record.at - previous) / 1000).toFixed(1)}s`;
+      previous = record.at;
+      const el = row(panel, `${event}`, `#${record.seq} · ${when}${gap}`);
       const keys = Object.keys(rest);
       if (keys.length) {
         const detail = document.createElement("div");
@@ -442,22 +514,17 @@ function heard(m) {
   switch (m.is) {
     case "attached": {
       // whatever this page had drawn belongs to the conversation it is about to be handed
-      pending = [];
-      mine.clear();
       // an `attached` is answered with every record after it, so whatever this page had is about
       // to arrive again - see `Message::Attached`. Keeping them would be every record twice
       records = [];
       latest = m;
+      stale = false;
       document.getElementById("session").textContent = m.session;
       document.getElementById("model").textContent = m.model ? m.model.model : "no model";
       budget(m);
       if (showing !== "chat") draw();
-      log.replaceChildren();
-      wanted.clear();
-      open = null;
       streaming = m.busy;
-      for (const l of m.conversation) say(l.speaker, l.text, l.item ?? undefined);
-      log.scrollTop = log.scrollHeight;
+      conversation(m.conversation);
       asking = m.asking;
       showQuestion();
       working(m.busy);
@@ -489,12 +556,19 @@ function heard(m) {
       }
       break;
     }
-    // the figures only. The conversation on this page is drawn from the stream and is already
-    // right; taking it from here too would be a second account of one thing
     case "projected": {
       latest = m;
       budget(m);
       if (showing !== "chat") draw();
+      // and the chat, where something moved and the stream could not say what that did to it.
+      // Held back while a model is typing or a line of this page's own has not become an item
+      // yet, because a rebuild takes both away: the bubble the fragments are going into is
+      // replaced, and a message sent a moment ago is not in any projection until it is recorded.
+      // `stale` stays set, and the end of the turn asks again
+      if (stale && !streaming && !pending.length) {
+        stale = false;
+        conversation(m.conversation);
+      }
       break;
     }
     case "said": say(m.speaker === "error" ? "error" : "note", m.text); break;
@@ -531,10 +605,14 @@ function heard(m) {
 
 /** One thing that happened, out of a record. */
 function happened(e) {
-  // anything that moved an item makes the rows on screen stale, whoever moved it - this page, or
-  // somebody at the terminal, or the model through the `context` tool. Asked for rather than
-  // patched in, because what the columns say is worked out by projecting
+  // anything that touched the context makes the rows on screen stale, whoever touched it - this
+  // page, somebody at the terminal, or the model through its own `context` tool. Asked for rather
+  // than patched in, because what the columns say is worked out by projecting
   if (showing === "context" && e.event.startsWith("context.")) send({ do: "project" });
+  // and a subset of those changed the *conversation*, which every view owes a rebuild. Not
+  // `context.added`, which is the one the appending below already draws, and not `annotated` or
+  // `recounted`, which move a figure and not a line
+  if (RESHAPES.has(e.event)) restale();
   switch (e.event) {
     case "context.added":
       // a message: this page's own, or somebody else's. `claim` answers which - it binds the line
@@ -578,6 +656,9 @@ function budget(m) {
 }
 
 function working(busy) {
+  // a rebuild held back while the model was typing is owed the moment it stops. See the
+  // `projected` case for why it is held back rather than done and undone
+  if (!busy && stale) send({ do: "project" });
   document.getElementById("busy").textContent = busy ? "working…" : "";
   line.disabled = false; // a line typed into a running turn waits for it, which is the session's job
 }

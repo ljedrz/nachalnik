@@ -210,8 +210,8 @@ client code, and the negative space matches too: an event with no `id:` does not
 `Last-Event-ID`, so records get one and the fragments of a model still typing do not. A browser
 never tries to resume from something that was never recoverable.
 
-The page has the terminal's four tabs: the button in the top right corner cycles **chat → context
-→ permissions → events**.
+The page has the terminal's four tabs, in the terminal's order: the button in the top right corner
+cycles **chat → context → events → permissions**.
 
 The **context** view is the rows the context tab draws — what each item is, what it is estimated to
 cost, and what the next request will do with it. Tapping a row fetches the whole of that item,
@@ -223,12 +223,19 @@ that asked for it, so the model reads a conversation it never had, while an elid
 answers its call and only the content is gone. That is <kbd>space</kbd> on the context tab, and it
 is the same function underneath — including the note it writes, which the model reads.
 
-The **permissions** view is the rules the policy holds and what each covers, with the confinement
-over the top and a count of the subjects nobody has decided, which are the ones that will be asked
-about. The **events** view is the session log: every record this page has been sent, newest last,
-by its own name. It is not the terminal's trace — that is a rendering of the records in this
-program's words, and a second set written here would be a vocabulary nobody could see from the
-other end — so what it shows is the record.
+Moving a state moves the **chat** too, the way it does at the terminal — because the chat is the
+context, read back. An excluded item is gone from the conversation; an elided one is still there in
+full, since eliding is about what the *model* is sent and the marker is for it rather than for you.
+Which is which is `ContextState::is_projected`, and the page asks for a fresh conversation rather
+than working it out, so there is one account of that rule and it is the runtime's.
+
+The **events** view is the session log: every record this page has been sent, newest last, by its
+own name, with the gap since the one before it — which is what the trace tab is *for*, since it
+answers which step was slow. It sits where the trace sits and it is not quite the trace: that
+renders each record in this program's own words, and what this shows instead is the record. The
+**permissions** view is the rules the policy holds and what each covers, with the confinement over
+the top and a count of the subjects nobody has decided, which are the ones that will be asked
+about.
 
 Switching to context or permissions asks the session for a fresh projection rather than adding up
 the records, because `going`, `left_out` and `marker` are answers about the *next request* and no
