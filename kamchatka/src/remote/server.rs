@@ -385,7 +385,7 @@ impl Drop for Server {
 
 /// Does one of the things that need the session itself, and says what it did.
 ///
-/// note: five, where the protocol has six. `Inspect` is answered by the connection that asked it,
+/// note: six, where the protocol has seven. `Inspect` is answered by the connection that asked it,
 /// out of a `Kernel` handle of its own, because reading what an item says needs no `App` - and a
 /// client reading a four-megabyte tool result should not be something the session stops to do.
 async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> {
@@ -394,6 +394,17 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
         // note: the same projection under a name that does not mean "start again", because that is
         // the whole difference a client cares about. See `Message::Projected`
         Command::Project => Some(Message::Projected(Box::new(project(app)))),
+        // note: answered with the projection rather than a bare `done`, because the answer to
+        // "move this item" is what the context now says - and the row the client is looking at is
+        // in it. Every *other* client hears about it as a `context.changed` record and asks for
+        // its own, which is the same round trip it would make anyway
+        Command::Cycle { id } => Some(match app.cycle(id) {
+            Ok(_) => Message::Projected(Box::new(project(app))),
+            Err(error) => Message::Failed {
+                about: "cycle".to_owned(),
+                error,
+            },
+        }),
         Command::Submit { line } => {
             // note: read before the line goes in, because handing one in is what replaces it.
             // There is room for exactly one queued message, so a second client typing during a turn
@@ -742,6 +753,7 @@ fn name(command: &Command) -> &'static str {
         Command::Decide { .. } => "decide",
         Command::Inspect { .. } => "inspect",
         Command::Project => "project",
+        Command::Cycle { .. } => "cycle",
     }
 }
 

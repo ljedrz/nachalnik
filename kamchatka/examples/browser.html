@@ -19,10 +19,13 @@
     gateway turns into `attach { since }`. Resume, for free.
   * a permission question takes the prompt's place rather than stacking above it, which is what the
     terminal does and for the same reason: the box the keys are in should be the box on the screen.
-  * the three views are the terminal's tabs, minus the trace, which is the records - and a page fed
-    the records has them already. Switching to one asks for a fresh projection rather than working
-    the figures out of the stream, because `going`, `left_out` and `marker` are answers about the
-    *next request* and no record carries them; see `Command::Project`.
+  * the four views are the terminal's tabs. Two of them - context and permissions - ask for a fresh
+    projection when they are opened, because `going`, `left_out` and `marker` are answers about the
+    *next request* and no record carries them; see `Command::Project`. The event log asks for
+    nothing: it is the records, which this page is sent anyway.
+  * the prompt is on the chat and nowhere else, which is where the terminal keeps it. A waiting
+    question colours the cycler instead of following you about, the way the tab strip goes red
+    upstairs.
 -->
 
 <style>
@@ -56,12 +59,28 @@
   }
   #log, #panel { flex: 1; overflow-y: auto; padding: 12px; overscroll-behavior: contain; }
   #panel { display: none; }
-  body.context #log, body.permissions #log { display: none; }
-  body.context #panel, body.permissions #panel { display: block; }
+  body:not(.chat) #log { display: none; }
+  body:not(.chat) #panel { display: block; }
+  /* note: no prompt anywhere but the chat, which is where the terminal keeps it too. A box that
+     takes a line is a box on the chat, and a view that is a list of rows has nothing to say to one.
+     What a waiting question does instead is colour the cycler, the way the tab strip goes red
+     upstairs: from another view the question is not the thing you are looking at */
+  body:not(.chat) footer { display: none; }
+  #view.asked { border-color: var(--bad); color: var(--bad); }
   /* a row is the same shape on both of them: a name, some figures, and why */
   .row { padding: 8px 0; border-bottom: 1px solid var(--line); }
   .row.act { cursor: pointer; }
-  .name { overflow-wrap: anywhere; }
+  /* the name takes the room and the button keeps its own, so a long path wraps rather than
+     squeezing the one control on the row down to nothing */
+  .head { display: flex; gap: 8px; align-items: flex-start; }
+  .name { overflow-wrap: anywhere; flex: 1; min-width: 0; }
+  .state {
+    font: inherit; font-size: 12px; padding: 2px 8px; min-height: 0; border-radius: 4px;
+    white-space: nowrap; flex: none;
+  }
+  .state.active { border-color: var(--user); color: var(--user); }
+  .state.elided { border-color: var(--call); color: var(--call); }
+  .state.excluded { border-color: var(--bad); color: var(--bad); }
   .figures { font-size: 12px; color: var(--dim); margin-top: 2px; }
   .why { font-size: 12px; color: var(--note); margin-top: 2px; font-style: italic; }
   .body {
@@ -70,6 +89,8 @@
   }
   .row.open .body { display: block; }
   .empty { color: var(--dim); }
+  .seq { color: var(--dim); }
+  .detail { font-size: 12px; color: var(--dim); margin-top: 2px; overflow-wrap: anywhere; }
   .allowed { color: var(--user); } .denied { color: var(--bad); } .asks { color: var(--call); }
   .line { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .line::before { color: var(--dim); }
@@ -108,7 +129,7 @@
   <span id="model"></span>
   <span id="budget"></span>
   <span id="busy"></span>
-  <button id="view" type="button" title="the next view: chat, context, permissions">chat</button>
+  <button id="view" type="button" title="the next view: chat, context, permissions, events">chat</button>
 </header>
 
 <div id="log"></div>
@@ -147,9 +168,12 @@ let wanted = new Set(); // items already asked about, so nothing is asked about 
 let pending = [];       // lines this page drew on sending, not yet tied to an item
 let mine = new Set();   // the items those lines turned out to be
 let latest = null;      // the last projection, which is what the other two views are drawn from
-let showing = "chat";   // which of the three is on screen
+let showing = "chat";   // which of the four is on screen
+let records = [];       // every record this page has been sent, for the event log
 
-const VIEWS = ["chat", "context", "permissions"];
+const VIEWS = ["chat", "context", "permissions", "events"];
+/** How many records the event log keeps, which is the terminal's own trace depth. */
+const KEPT = 400;
 
 /** Sends one command. The answer comes back on the stream, not from here. */
 async function send(command) {
@@ -220,10 +244,10 @@ function show(next) {
   showing = next;
   document.body.className = next;
   document.getElementById("view").textContent = next;
-  if (next !== "chat") {
-    draw();
-    send({ do: "project" });
-  }
+  draw();
+  // the event log is the records and this page has them; only the two views that are *figures*
+  // have to ask, and they have to ask every time - see the note above
+  if (next === "context" || next === "permissions") send({ do: "project" });
 }
 
 document.getElementById("view").onclick = () => {
@@ -234,9 +258,14 @@ document.getElementById("view").onclick = () => {
 function row(into, name, figures, why) {
   const el = document.createElement("div");
   el.className = "row";
+  // the name and whatever control the row carries share a line, so the control keeps its place
+  // when a path wraps to three of them
   const head = document.createElement("div");
-  head.className = "name";
-  head.textContent = name;
+  head.className = "head";
+  const label = document.createElement("div");
+  label.className = "name";
+  label.textContent = name;
+  head.append(label);
   el.append(head);
   if (figures) {
     const sub = document.createElement("div");
@@ -271,6 +300,23 @@ function draw() {
         (held ? "" : ` · ${item.going.toLocaleString()} in the next request`) +
         (item.uncounted ? ` · ${item.uncounted} unpriced` : "");
       const el = row(panel, `${item.id} ${item.label}`, figures, item.left_out ?? item.marker);
+
+      // the state, and the way to change it. One button rather than three, because the session
+      // owns the ring and what it writes beside each step - see `Command::cycle`. What the button
+      // says is where the item *is*, so a row reads as a fact and the tap is what changes it
+      const state = document.createElement("button");
+      state.type = "button";
+      state.className = `state ${item.state}`;
+      state.textContent = item.state;
+      state.title = "the next state: active, elided, excluded";
+      state.onclick = (e) => {
+        // the row toggles its body and this is inside the row, so without this a tap that changes
+        // a state also opens whatever it changed
+        e.stopPropagation();
+        send({ do: "cycle", id: item.id });
+      };
+      el.querySelector(".head").append(state);
+
       // the row says what the item is; `inspect` is the only way to what it holds, because the
       // projection names items rather than carrying them
       el.classList.add("act");
@@ -288,6 +334,28 @@ function draw() {
         send({ do: "inspect", id: item.id });
       };
     }
+    return;
+  }
+
+  // the event log: the records, which is what this view is. The terminal's trace is a *rendering*
+  // of them in this program's own words, and a page writing its own second set would be a
+  // vocabulary to keep in step with one nobody can see from here. So the name is the event's own
+  // and the detail is the rest of the record, which is what `jq` would have shown
+  if (showing === "events") {
+    if (!records.length) return aside(panel, "nothing has happened yet");
+    for (const record of records) {
+      const { event, ...rest } = record.event;
+      const when = new Date(record.at).toLocaleTimeString();
+      const el = row(panel, `${event}`, `#${record.seq} · ${when}`);
+      const keys = Object.keys(rest);
+      if (keys.length) {
+        const detail = document.createElement("div");
+        detail.className = "detail";
+        detail.textContent = JSON.stringify(rest);
+        el.append(detail);
+      }
+    }
+    panel.scrollTop = panel.scrollHeight;
     return;
   }
 
@@ -322,6 +390,9 @@ function showQuestion() {
   const next = asking[0];
   question.classList.toggle("open", !!next);
   prompt.style.display = next ? "none" : "flex";
+  // the tab strip goes red upstairs and this is the same sentence: from another view a question is
+  // not what you are looking at, but it is the thing the session has stopped for
+  document.getElementById("view").classList.toggle("asked", !!next);
   if (next) {
     asked.textContent =
       `${next.tool}(${JSON.stringify(next.args)})\nit declares ` +
@@ -373,6 +444,9 @@ function heard(m) {
       // whatever this page had drawn belongs to the conversation it is about to be handed
       pending = [];
       mine.clear();
+      // an `attached` is answered with every record after it, so whatever this page had is about
+      // to arrive again - see `Message::Attached`. Keeping them would be every record twice
+      records = [];
       latest = m;
       document.getElementById("session").textContent = m.session;
       document.getElementById("model").textContent = m.model ? m.model.model : "no model";
@@ -389,7 +463,17 @@ function heard(m) {
       working(m.busy);
       break;
     }
-    case "record": happened(m.event); break;
+    case "record": {
+      // note: kept, because the event log view is these and nothing else - and capped, for the
+      // reason the terminal caps its trace: a session runs for hours and a page is not the log.
+      // The log itself is unbounded and is on the session; what is dropped here is only what this
+      // page can draw, and a reload asks for the lot again
+      records.push(m);
+      if (records.length > KEPT) records.shift();
+      if (showing === "events") draw();
+      happened(m.event);
+      break;
+    }
     case "progress": {
       // note: dropped unless something is actually arriving, and that is not a nicety. A fragment
       // is unnumbered and best-effort, so a connection that has fallen behind is handed one *after*
@@ -447,6 +531,10 @@ function heard(m) {
 
 /** One thing that happened, out of a record. */
 function happened(e) {
+  // anything that moved an item makes the rows on screen stale, whoever moved it - this page, or
+  // somebody at the terminal, or the model through the `context` tool. Asked for rather than
+  // patched in, because what the columns say is worked out by projecting
+  if (showing === "context" && e.event.startsWith("context.")) send({ do: "project" });
   switch (e.event) {
     case "context.added":
       // a message: this page's own, or somebody else's. `claim` answers which - it binds the line

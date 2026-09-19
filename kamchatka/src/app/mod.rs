@@ -15,8 +15,8 @@ use std::{
 #[cfg(feature = "tui")]
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    Content, ContextId, ContextItem, Delta, Event, Grant, GrantSource, Kernel, PermissionId,
-    PermissionRequest, State, Tool, Usage, Verdict,
+    Content, ContextId, ContextItem, ContextState, Delta, Event, Grant, GrantSource, Kernel,
+    PermissionId, PermissionRequest, State, Tool, Usage, Verdict,
 };
 use nachalnik_providers::Dialect;
 #[cfg(feature = "tui")]
@@ -1758,6 +1758,49 @@ impl App {
         self.loose
             .retain(|entry| entry.open || !matches!(entry.speaker, Speaker::Note | Speaker::Error));
         self.cleared += 1;
+    }
+
+    /// Moves one item to the next state in the ring: seen, then a marker where it was, then
+    /// nothing at all, then seen again.
+    ///
+    /// note: here rather than in `keys.rs`, where it was, for the reason [`App::decide`] is here -
+    /// a second client reached the same fork, and while it lived with the keys it was a ring one
+    /// caller knew the shape of. The two halves that must not be copied are the order and the
+    /// notes: the notes are read by the *model*, in the brackets the projector puts round them, so
+    /// a page writing its own words for the same act would put two accounts of one thing in front
+    /// of it.
+    ///
+    /// note: a cycle rather than three buttons, and the middle step is the one that earns it.
+    /// Taking a tool result out makes the projector drop the call that asked for it, so the model
+    /// reads a conversation it never had; elided, the call keeps its answer and only the content
+    /// is gone. Which of the two somebody wants is not something this program can guess.
+    ///
+    /// note: a pinned item goes to elided like an active one, rather than refusing. Pinning is a
+    /// promise to the *compactor* and not to the person who made it, and somebody who pins
+    /// something and then hides it by hand has not contradicted themselves.
+    pub fn cycle(&mut self, id: ContextId) -> Result<ContextState, String> {
+        let Some(item) = self.kernel.item(id) else {
+            return Err(format!("there is no item {id}"));
+        };
+        let (to, note) = match item.state {
+            // note: this one is read by the model, in the brackets the projector puts round it,
+            // so it is written for somebody who has never heard of this program: no "at the
+            // terminal", which is this codebase's own idiom for "a person did it here" and reads
+            // to a model like a shell or a state. It does not invite the model to ask for it back
+            // either - the thing hidden may be the thing that should not be asked for
+            ContextState::Active | ContextState::Pinned => (
+                ContextState::Elided,
+                Some("removed from view by the user".into()),
+            ),
+            ContextState::Elided => (
+                ContextState::Excluded,
+                Some("taken out at the terminal".into()),
+            ),
+            _ => (ContextState::Active, None),
+        };
+        self.kernel.set_state([id], to, note);
+
+        Ok(to)
     }
 
     /// How many times the program's own lines have been taken off the chat.
