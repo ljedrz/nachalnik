@@ -235,6 +235,13 @@ averaged together. `pool` computes the figures that are about *models* rather th
 the sign test over one run per model, which is honest there and nowhere else in the crate, since
 models are independent of each other in a way that items sharing a dossier never are.
 
+`kamchatka/examples/` has four, and two of them share a module. `attached.rs` is a client of a
+served session written against `remote::protocol` and nothing else that runs one, which is the check
+on the claim that `protocol` is what moves. `gateway.rs` relays a browser to somebody else's
+session; `phone.rs` is a session and a relay in one process, for when there is nobody at the
+machine. The HTTP half of both is `relay/mod.rs` - `mod relay;` from each, the way `tests/common`
+is included, and cargo builds no example out of a directory with no `main.rs` in it.
+
 `kamchatka/examples/recorded.rs` runs a session headless and writes it out four ways - readable,
 as events, as a snapshot, as the raw stream - which is how the first two transcripts under `docs/`
 were produced. The third needed a conversation rather than a task, which `recorded.rs` cannot do:

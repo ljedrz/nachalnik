@@ -205,6 +205,17 @@ $ cargo run --example gateway -- tcp:127.0.0.1:7878 0.0.0.0:8080
 · a browser reaches tcp:127.0.0.1:7878 at port 8080 on every address this machine has
 ```
 
+`examples/phone.rs` is the same thing in one command, for when there is nobody at the machine: it
+wires a session of its own, binds it to a loopback port the kernel picks, and serves the same page
+in front of it. The HTTP half is `examples/relay/`, shared rather than copied, which is why
+`gateway.rs` is still only a relay.
+
+```console
+$ cargo run --example phone -- 0.0.0.0:8080 qwen/qwen3-coder
+· a session of its own at tcp:127.0.0.1:41337
+· a browser reaches tcp:127.0.0.1:41337 at port 8080 on every address this machine has
+```
+
 It is `text/event-stream` rather than a WebSocket because SSE already has this protocol's shape in
 it. An event may carry an `id:`, and a browser that loses the stream reconnects **by itself** and
 sends `Last-Event-ID:` — which is exactly `attach { since }`. So the browser does resume with no
