@@ -1008,6 +1008,46 @@ fn ctrl_c_stops_a_headless_run_rather_than_killing_it() {
     assert_eq!(names.last().map(String::as_str), Some("session.finished"));
 }
 
+/// A run that was not asked to take `ctrl+c` subscribes to nothing.
+///
+/// note: what it costs to subscribe anyway is the thing that cannot be asserted from in here.
+/// Subscribing installs a process-wide handler for the life of the process, so a subscription
+/// taken beside a branch that is switched off is SIGINT quietly disabled for a caller who never
+/// asked for any of it: the handler is in, nothing polls it, and the default that would have killed
+/// the process is gone. A test that pressed it would be a test that killed the runner, or one that
+/// checked a shim.
+///
+/// note: what *is* assertable is the other thing subscribing needs, and it is the half that broke
+/// an embedder rather than a signal. `tokio::signal::unix::signal` needs the runtime's signal
+/// driver, which comes with the io driver - so a host driving this on
+/// `new_current_thread().enable_time()` panicked on a subscription it had asked not to have. The
+/// runtime here is that host, built by hand because `#[tokio::test]` enables everything.
+#[test]
+fn a_run_that_was_not_asked_for_ctrl_c_subscribes_to_nothing() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .expect("a runtime without io is still a runtime");
+
+    let prose = runtime.block_on(async {
+        let Wired {
+            mut app,
+            mut events,
+            mut finished,
+        } = wired(vec![ModelResponse::text("4, and I checked")]);
+
+        let (mut records, mut prose) = (Vec::new(), Vec::new());
+        Headless::new(Grant::Deny, &mut records, &mut prose)
+            .run(&mut app, &mut events, &mut finished, &b"what is 2+2\n"[..])
+            .await
+            .expect("the run failed");
+
+        String::from_utf8(prose).expect("the prose is text")
+    });
+
+    assert!(prose.contains("4, and I checked"), "{prose}");
+}
+
 /// `/quit` ends the session from a line, the way it does from a prompt.
 #[tokio::test]
 async fn quit_ends_it() {

@@ -481,6 +481,18 @@ minor bump may break you.
   to draw them as but four rows, and the marker stands for the item. It is one line now, in the
   place and the voice of the first line the item had.
 
+- **A headless run that was never asked to take <kbd>ctrl+c</kbd> took it away from whoever was.**
+  Subscribing once rather than once per turn round the loop closed the window a press could fall
+  into, and moved the subscription out of the `select!` branch that was gated on
+  `Headless::stops_on_ctrl_c` - so it happened whether or not anybody had asked. A subscription is
+  what installs the process-wide handler, and it installs it for the life of the process: the
+  handler went in, the branch never polled it, and SIGINT reached nothing at all. `cargo run
+  --example recorded` and the suites were ctrl+c-proof. The other half was worse for an embedder,
+  because the driver that subscription needs comes with the io driver: a host on
+  `new_current_thread().enable_time()` could drive `Headless` and now panicked in it, over a flag it
+  had opted out of. The subscription follows the flag again, and a run without one waits on a future
+  that is never ready - which is what the deadline branch beside it already does.
+
 ## [0.13.0] - 2026-09-19
 
 ### added
