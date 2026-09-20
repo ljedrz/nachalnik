@@ -371,6 +371,17 @@ impl<'a> Client<'a> {
 
                 Ok(())
             }
+            // note: said rather than swallowed, because it is the one change to a session that
+            // nothing else here would show. This client prints the conversation and the records,
+            // and a model switch is in neither - so a session that changed model under it read as
+            // one that had not, which is the half of `/model` a second client never saw
+            Message::Model { model } => {
+                self.fresh_line()?;
+                self.tell(&match model {
+                    Some(model) => format!("the model is {}", model.model),
+                    None => "there is no model".to_owned(),
+                })
+            }
             Message::Done { busy, .. } => {
                 self.busy = busy;
                 self.answered();

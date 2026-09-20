@@ -599,7 +599,7 @@ function heard(m) {
       // note: the session's name is not up here, and it is a timestamp - which is the one thing in
       // the header nobody reads twice and the widest thing on a phone. It is still what the record
       // is filed under and what `/save` writes, and `setup` says it
-      document.getElementById("model").textContent = m.model ? m.model.model : "no model";
+      named(m.model);
       budget(m);
       if (showing !== "chat") draw();
       streaming = m.busy;
@@ -627,6 +627,11 @@ function heard(m) {
     }
     case "projected": {
       latest = m;
+      // note: the model as well as the figures, and it is not decoration. A projection is the only
+      // thing that knows what the session is talking to *now*, and for a long time this case read
+      // the budget off it and left the name in the header saying whatever it said when this page
+      // attached
+      named(m.model);
       budget(m);
       if (showing !== "chat") draw();
       // and the chat, where something moved and the stream could not say what that did to it.
@@ -640,6 +645,11 @@ function heard(m) {
       }
       break;
     }
+    // the session is talking to something else now. Broadcast rather than answered to whoever
+    // typed `/model`, because a session two people are watching is one session - and sent at all
+    // because it is in no record: the switch finishes inside the provider the kernel already
+    // holds, so there is nothing on the numbered stream to work it out from
+    case "model": named(m.model); break;
     case "said": say(m.speaker === "error" ? "error" : "note", m.text); break;
     // what `/cleanup` and `ctrl+l` take off a terminal, taken off this page: the program's own lines
     // and nothing else. The conversation stays, because it is the context and this did not touch it
@@ -722,6 +732,11 @@ function happened(e) {
     case "context.compacted": say("note", "the context was compacted"); break;
     case "session.finished": say("note", "the session ended"); break;
   }
+}
+
+/** What the session is talking to, in the corner where it says so. */
+function named(model) {
+  document.getElementById("model").textContent = model ? model.model : "no model";
 }
 
 function budget(m) {

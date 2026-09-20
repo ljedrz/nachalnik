@@ -372,6 +372,9 @@ pub struct Serving {
     cleared: u64,
     /// Whether the session was busy the last time anybody was told.
     announced: bool,
+    /// Which model it was talking to then, for the same reason and a worse one; see
+    /// [`Message::Model`].
+    model: Option<nachalnik::ModelInfo>,
     /// How many connections have arrived, which is what names them.
     clients: u64,
 }
@@ -389,6 +392,7 @@ impl Serving {
             said: 0,
             cleared: app.cleared(),
             announced: app.busy,
+            model: app.kernel.model_info(),
             clients: 0,
         }
     }
@@ -432,6 +436,16 @@ impl Serving {
             self.announced = app.busy;
             let _ = self.voice.send(Arc::new(Message::Busy {
                 busy: self.announced,
+            }));
+        }
+        // and the same rule for the model, which is here because nothing else says it: a switch
+        // finishes inside the provider the kernel already holds, so no record is written and a
+        // client that did not ask for a fresh projection went on naming the model before it. See
+        // `Message::Model`
+        if self.model != app.kernel.model_info() {
+            self.model = app.kernel.model_info();
+            let _ = self.voice.send(Arc::new(Message::Model {
+                model: self.model.clone(),
             }));
         }
     }
