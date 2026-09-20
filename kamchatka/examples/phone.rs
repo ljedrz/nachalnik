@@ -3,8 +3,8 @@
 //! ```console
 //! $ export KAMCHATKA_API_KEY=sk-or-...
 //! $ cargo run --example phone
-//! · a session of its own at tcp:127.0.0.1:7878
-//! · a browser reaches tcp:127.0.0.1:7878 at http://127.0.0.1:8080/
+//! · a session of its own at tcp:127.0.0.1:41337
+//! · a browser reaches tcp:127.0.0.1:41337 at http://127.0.0.1:8080/
 //! ```
 //!
 //! ```console
@@ -102,13 +102,8 @@ async fn main() -> Result<(), String> {
     // note: the session is the task and the relay is what this waits on, rather than the other way
     // round. `Server::run` returns when the session ends - a `/quit` from the page - and the relay
     // never returns at all, so a `select!` over the two leaves by the door that has one
-    let session = tokio::spawn(async move {
-        let outcome = server.run(&mut app, &mut events, &mut finished).await;
-        // the socket file, if this ever grows one, goes with `server` here; a port needs nothing
-        drop(server);
-
-        outcome
-    });
+    let session =
+        tokio::spawn(async move { server.run(&mut app, &mut events, &mut finished).await });
 
     tokio::select! {
         ended = session => match ended {

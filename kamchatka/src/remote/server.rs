@@ -442,11 +442,14 @@ impl Serving {
         // finishes inside the provider the kernel already holds, so no record is written and a
         // client that did not ask for a fresh projection went on naming the model before it. See
         // `Message::Model`
-        if self.model != app.kernel.model_info() {
-            self.model = app.kernel.model_info();
-            let _ = self.voice.send(Arc::new(Message::Model {
-                model: self.model.clone(),
-            }));
+        //
+        // note: asked once rather than once per side of the comparison. `Kernel::model_info` builds
+        // a `ModelInfo` each time it is called - two strings and the list of parameters the model
+        // takes - and the drawn loop pumps on every frame
+        let model = app.kernel.model_info();
+        if self.model != model {
+            self.model = model.clone();
+            let _ = self.voice.send(Arc::new(Message::Model { model }));
         }
     }
 
@@ -535,6 +538,7 @@ impl Serving {
                 text: entry.text.clone(),
             })
             .collect();
+        self.said += last.len();
         for message in last {
             let _ = self.voice.send(Arc::new(message));
         }

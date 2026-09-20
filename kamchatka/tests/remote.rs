@@ -1780,6 +1780,101 @@ async fn a_model_change_reaches_every_client() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A loop that is not `Server::run` can serve the same session, which is what lets one be driven
+/// from a desk and a phone at once.
+///
+/// note: `main.rs`'s drawn loop is the other caller and cannot be tested from here - it wants a
+/// terminal, and every test of this binary pipes its stdout. What *is* testable is the claim
+/// underneath it: that `Serving` is the whole of what a loop needs, so a loop written here can hold
+/// the `App` and answer clients with no `Server::run` anywhere. If this compiles and passes, the
+/// seam is real; if it needed one private thing more, it would not.
+///
+/// note: the loop is the shape of the one in `main.rs` rather than a convenience: `pump` before it
+/// waits, `arrived` and `attend` for a connection, `asked` and `answer` for a command. What it
+/// leaves out is the drawing.
+#[tokio::test]
+async fn a_loop_of_somebody_elses_can_serve_the_session() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(vec![ModelResponse::text(
+        "an answer from somebody else's loop",
+    )]);
+    let server = Server::bind("tcp:127.0.0.1:0")
+        .await
+        .expect("nothing would listen");
+    let at = server.address();
+
+    let loop_ = tokio::spawn(async move {
+        let mut serving = kamchatka::remote::Serving::new(&app);
+        while !app.quit {
+            serving.pump(&app);
+            tokio::select! {
+                arrived = server.arrived() => {
+                    if let Ok(arrived) = arrived {
+                        serving.attend(&mut app, arrived);
+                    }
+                }
+                Some(ask) = serving.asked() => serving.answer(&mut app, ask).await,
+                event = events.recv() => match event {
+                    Ok(event) => app.on_event(event),
+                    Err(_) => break,
+                },
+                Some(outcome) = finished.recv() => {
+                    while let Ok(event) = events.try_recv() {
+                        app.on_event(event);
+                    }
+                    app.on_outcome(outcome);
+                }
+            }
+        }
+        serving.pump(&app);
+        app.kernel.finish();
+        serving.last(&app);
+
+        app
+    });
+
+    // and from the outside it is a session like any other: a projection, a turn, and the answer
+    let (mut peer, _) = Peer::attached(&at).await;
+    peer.send(Command::Submit {
+        line: "ask it something".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until_words("an answer from somebody else's loop")
+        .await;
+    assert!(
+        !records(&heard).is_empty(),
+        "the records never arrived: {heard:?}"
+    );
+    // the arrival is a trace line, and a loop of somebody else's gets that for nothing
+    peer.send(Command::Project).await;
+    let seen = peer.until(|m| matches!(m, Message::Projected(_))).await;
+    let Some(Message::Projected(now)) = seen
+        .into_iter()
+        .find(|m| matches!(m, Message::Projected(_)))
+    else {
+        unreachable!("the loop above only ends on one")
+    };
+    assert!(
+        now.trace.iter().any(|line| line.name == "client.attached"),
+        "{:?}",
+        now.trace
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let app = tokio::time::timeout(PATIENCE, loop_)
+        .await
+        .expect("the loop did not end")
+        .expect("the loop panicked");
+    assert!(app.quit, "a `/quit` from a client did not reach the loop");
+}
+
 /// Ends a session from a connection of its own, for the tests whose own peer has been closed.
 async fn quit(at: &str) {
     let (mut peer, _) = Peer::attached(at).await;
