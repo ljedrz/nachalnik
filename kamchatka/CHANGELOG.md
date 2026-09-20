@@ -329,6 +329,25 @@ minor bump may break you.
   with, a fresh projection, and this - where it only ever read the first. Making it a *record*
   instead is where it belongs and is in `POSTPONED.md`.
 
+- **`busy: false` could overtake the answer it was about**, so a client with its input closed left
+  without it. `Message::Busy` is how a client learns a turn is over and `kamchatka --connect` with
+  a question piped into it leaves when it is told the session has nothing left to do - but the
+  connection wrote the voice and the kernel's events from two arms of one `select!`, and nothing
+  said which went first. A `busy: false` that won the toss said the turn was done while the
+  fragments of it were still queued.
+
+  The records could not stand in for them, which is what makes it the answer that goes missing
+  rather than a detail: the log names what happened and does not copy it, so `context.added` says
+  an assistant turn exists and not one word of what it said. What the model *said* reaches a client
+  as `Message::Progress` and nowhere else. Anything already emitted is now written before any
+  message from the voice, numbered and not - the rule the event arm already followed for the
+  records, applied to the pair of them.
+
+  It was about one run in seven, on every platform. What found it was
+  `the_program_serves_a_socket_and_a_second_one_drives_it` failing on macOS CI, and that test is
+  the one that covers it: the session was never wrong - it recorded the answer and ended the turn -
+  and neither was the client, which left when it was told there was nothing left to wait for.
+
 - **A connection closed on a peer that is still sending may lose the last thing it was told**, and
   the test for the oversized frame was written as though it could not. The session says why and
   closes; the peer is mid-flood, so the receive buffer holds bytes nobody read, and TCP answers a

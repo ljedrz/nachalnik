@@ -887,7 +887,17 @@ where
                 Err(broadcast::error::RecvError::Closed) => return Ok(()),
             },
             said = voice.recv() => match said {
-                Ok(message) => protocol::write(write, &*message).await?,
+                // note: the numbered half first, for the reason the event branch above gives and
+                // for a second one that is sharper. `Message::Busy` is how a client learns a turn
+                // is over, and a client whose input has closed takes that at its word and leaves -
+                // so a `busy: false` written *before* the records of the turn it is about says the
+                // turn is done while the last of it is still in the log. `kamchatka --connect`
+                // with a question piped into it then printed three records of a finished turn and
+                // detached without the answer, for about one run in seven
+                Ok(message) => {
+                    caught_up(&mut events, kernel, &mut last, write, progress_recorded).await?;
+                    protocol::write(write, &*message).await?;
+                }
                 // the program's own lines are in no log either, and the same rule applies to them
                 Err(broadcast::error::RecvError::Lagged(frames)) => {
                     protocol::write(write, &Message::Missed { frames }).await?;
@@ -1077,6 +1087,45 @@ async fn ask(
     answered
         .await
         .map_err(|_| "the session did not answer".to_owned())
+}
+
+/// Writes out everything the session has already emitted, numbered and not.
+///
+/// note: what this is for is `Message::Busy`. A client with its input closed leaves when the
+/// session goes quiet, and `busy: false` is how it finds out - so that message overtaking the
+/// fragments of the turn it is about is a client detaching without the answer. The records cannot
+/// stand in for them: the log names what happened and does not copy it, so `context.added` says an
+/// assistant turn exists and not one word of what it said. What the model actually *said* reaches a
+/// client only as `Message::Progress`, and only if it is written first.
+///
+/// note: `printf 'a question\n' | kamchatka --connect` is what found this, about one run in seven:
+/// three records of a turn that had finished, and no answer under them. The session was never
+/// wrong - it recorded the answer and stopped the turn - and neither was the client, which left
+/// when it was told the session had nothing left to do.
+async fn caught_up<W: AsyncWrite + Unpin>(
+    events: &mut broadcast::Receiver<Event>,
+    kernel: &Kernel,
+    last: &mut u64,
+    write: &mut W,
+    progress_recorded: bool,
+) -> Result<(), String> {
+    loop {
+        match events.try_recv() {
+            Ok(event) => {
+                flush(kernel, last, write).await?;
+                if protocol::is_progress(&event) && !progress_recorded {
+                    let after = *last;
+                    protocol::write(write, &Message::Progress { after, event }).await?;
+                }
+            }
+            Err(broadcast::error::TryRecvError::Lagged(frames)) => {
+                flush(kernel, last, write).await?;
+                protocol::write(write, &Message::Missed { frames }).await?;
+            }
+            // nothing waiting, or the session has ended and the log is the last word either way
+            Err(_) => return flush(kernel, last, write).await,
+        }
+    }
 }
 
 /// Writes out every record the session has grown since this client last saw one.
