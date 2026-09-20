@@ -307,6 +307,18 @@ minor bump may break you.
 
 ### fixed
 
+- **A model change reached nobody.** `/model` and `/provider` finish inside the `Dialect` the kernel
+  already holds rather than by replacing the kernel's provider, so the slot never changes,
+  `model.changed` is never emitted, and the switch is in no record. Every projection was right,
+  because it asks the provider; nothing between two projections was. A browser's header went on
+  naming the model it attached with, and a second client was never told at all.
+
+  `Message::Model` is the fix and it is the rule `Message::Busy` already states: on the wire because
+  it cannot be worked out from the records, broadcast on a change because the program has one voice.
+  The page reads the header from all three places it can learn one now - the projection it attached
+  with, a fresh projection, and this - where it only ever read the first. Making it a *record*
+  instead is where it belongs and is in `POSTPONED.md`.
+
 - **`/help` described a terminal to callers that have none.** Six of its seven pages are key
   bindings for tabs - `ctrl+p` shows the next request, `g` goes to the top of the trace - and both
   a run down a pipe and a browser on a phone were handed all of them, under the title `the keys`.

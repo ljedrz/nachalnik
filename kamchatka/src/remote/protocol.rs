@@ -261,6 +261,23 @@ pub enum Message {
         /// Whether a turn is running.
         busy: bool,
     },
+    /// Which model the requests are going to, sent whenever that changes.
+    ///
+    /// note: on the wire for the reason [`Message::Busy`] is, and it is the same reason twice: it
+    /// cannot be worked out from the records. `/model` and `/provider` finish inside the
+    /// [`Dialect`](nachalnik_providers::Dialect) the kernel already holds rather than by replacing
+    /// the kernel's provider, so the slot never changes and `model.changed` is never emitted - the
+    /// session is talking to something else and the log does not say so. Every projection is
+    /// right, because it asks the provider; nothing between two projections was. See
+    /// `POSTPONED.md` for what it would take to make this a record instead, which is where it
+    /// belongs.
+    ///
+    /// note: broadcast rather than answered to whoever typed it, like every other notice. A
+    /// session two people are watching is one session, and the model is not one of them's.
+    Model {
+        /// The model the requests are going to, or nothing where there is no provider.
+        model: Option<ModelInfo>,
+    },
     /// What one submitted line did.
     ///
     /// note: what it does *not* carry is the lines the program said about it. Those go to every

@@ -48,6 +48,9 @@ const PATIENCE: Duration = Duration::from_secs(5);
 struct Served {
     /// The address, in the spelling a client would type.
     at: String,
+    /// A handle to the session, for the tests that change something under a running loop. It is an
+    /// `Arc`, so this is the same session the loop is driving rather than a copy of it.
+    kernel: nachalnik::Kernel,
     /// The loop, which hands the `App` back when it ends so that a test can read it afterwards.
     loop_: tokio::task::JoinHandle<(App, Result<(), String>)>,
 }
@@ -92,13 +95,14 @@ async fn served_as(
         .await
         .expect("nothing would listen");
     let at = server.address();
+    let kernel = app.kernel.clone();
     let loop_ = tokio::spawn(async move {
         let outcome = server.run(&mut app, &mut events, &mut finished).await;
 
         (app, outcome)
     });
 
-    Served { at, loop_ }
+    Served { at, kernel, loop_ }
 }
 
 /// The same `Setup` the headless suite uses, for the same reason: what these want is what
@@ -1093,12 +1097,13 @@ async fn a_client_can_arrive_in_the_middle_of_an_answer() {
         .await
         .expect("nothing would listen");
     let at = server.address();
+    let kernel = app.kernel.clone();
     let loop_ = tokio::spawn(async move {
         let outcome = server.run(&mut app, &mut events, &mut finished).await;
 
         (app, outcome)
     });
-    let session = Served { at, loop_ };
+    let session = Served { at, kernel, loop_ };
 
     let (mut peer, _) = Peer::attached(&session.at).await;
     peer.send(Command::Submit {
@@ -1697,6 +1702,60 @@ async fn the_program_has_one_voice_and_every_client_hears_it() {
         "the attach note arrived again under the conversation that already had it: {ending:?}"
     );
 
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A model change reaches every client, because nothing else would tell them.
+///
+/// note: the one change to a session that is in no record. `/model` and `/provider` finish inside
+/// the `Dialect` the kernel already holds rather than by replacing the kernel's provider, so the
+/// slot never changes and `model.changed` is never emitted - a client went on naming the model
+/// before it until something happened to make it ask for a fresh projection. A browser's header is
+/// where that showed, and a second client would never have found out at all.
+///
+/// note: driven by replacing the provider rather than by typing `/model`, because the suite's
+/// endpoint is a port nothing listens on and a switch is a round trip to it. What is under test is
+/// the watch in `Serving::pump`, and what it watches is `Kernel::model_info` - which this moves the
+/// honest way.
+#[tokio::test]
+async fn a_model_change_reaches_every_client() {
+    let session = served(vec![], |_| {}).await;
+    // two, because the claim is that it is broadcast: the one that would have asked for a
+    // projection anyway is not the one this is for
+    let (mut one, attached) = Peer::attached(&session.at).await;
+    let (mut two, _) = Peer::attached(&session.at).await;
+    let before = attached.model.expect("the suite wires a provider").model;
+
+    // the session starts talking to something else, which is a thing that happens to a session.
+    // `Trickle` rather than a second `ScriptedProvider`, because those report the same name and a
+    // change nothing can see is not one
+    let now = Arc::new(Trickle { words: Vec::new() });
+    let named = now.info().model.clone();
+    assert_ne!(
+        named, before,
+        "the two providers have to differ to say anything"
+    );
+    session.kernel.set_provider(now);
+
+    for (who, peer) in [
+        ("the client that was here", &mut one),
+        ("the other", &mut two),
+    ] {
+        let heard = peer.until(|m| matches!(m, Message::Model { .. })).await;
+        let Some(Message::Model { model }) = heard.last() else {
+            unreachable!("the loop above only ends on one")
+        };
+        assert_eq!(
+            model.as_ref().map(|it| it.model.as_str()),
+            Some(named.as_str()),
+            "{who} was told the wrong model"
+        );
+    }
+
+    one.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
     session.ended().await.1.expect("the session failed");
 }
 
