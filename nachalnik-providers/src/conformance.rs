@@ -125,6 +125,14 @@ impl Conformance {
                 self.fragmented_arguments().await,
             ),
             (
+                "several calls, each with arguments in fragments, stay apart",
+                self.fragmented_calls().await,
+            ),
+            (
+                "a fragment naming nothing continues the call being written",
+                self.loose_fragment().await,
+            ),
+            (
                 "arguments that are not JSON are handed over as written",
                 self.broken_arguments().await,
             ),
@@ -607,6 +615,116 @@ impl Conformance {
             },
             Err(e) => Outcome::Failed(e),
         }
+    }
+
+    /// Several calls in one turn, each with its arguments in fragments.
+    ///
+    /// note: the two cases above meet here, and the combination is the one a real turn takes:
+    /// `two_calls` sends whole calls and `fragmented_arguments` fragments a single one, so neither
+    /// asks what happens when a second call's fragments follow a first's. What made it worth
+    /// asking is a turn that came back with the first call's arguments a closing brace short and
+    /// the second's whole - which was the endpoint doing it, and could just as easily have been
+    /// this. Nothing here is subtle enough to be interesting until it breaks.
+    ///
+    /// note: the openers carry `"arguments": ""`, because that is how the endpoints that do this
+    /// announce a call, and because an empty fragment is what `loose_fragment` below turns on.
+    async fn fragmented_calls(&self) -> Outcome {
+        let Dialect::OpenAi = self.dialect else {
+            return Outcome::Skipped("this dialect sends whole calls");
+        };
+        let body = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
+            "\"function\":{\"name\":\"read\",\"arguments\":\"\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+            "\"function\":{\"arguments\":\"{\\\"path\\\":\\\"a\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+            "\"function\":{\"arguments\":\".txt\\\"}\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"c2\",",
+            "\"function\":{\"name\":\"read\",\"arguments\":\"\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,",
+            "\"function\":{\"arguments\":\"{\\\"path\\\":\\\"b\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,",
+            "\"function\":{\"arguments\":\".txt\\\"}\"}}]},",
+            "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        );
+
+        let response = match self.ask(body, Delivery::Whole).await {
+            Ok(response) => response,
+            Err(e) => return Outcome::Failed(e),
+        };
+        let calls: Vec<_> = response.calls().collect();
+        if calls.len() != 2 {
+            return Outcome::Failed(format!(
+                "the turn asked for two and {} came back: {:?}",
+                calls.len(),
+                calls.iter().map(|c| &c.tool).collect::<Vec<_>>()
+            ));
+        }
+        for (call, wanted) in calls.iter().zip(["a.txt", "b.txt"]) {
+            if call.args["path"] != wanted {
+                return Outcome::Failed(format!(
+                    "a call meant for {wanted} arrived with {}",
+                    call.args
+                ));
+            }
+        }
+
+        Outcome::Passed
+    }
+
+    /// A fragment carrying neither an index nor an identifier belongs to whatever was being
+    /// written, not to whatever was announced last.
+    ///
+    /// note: the shape is a call still being streamed when the *next* one is announced, and then a
+    /// loose fragment. Read as "the last call in the list", it lands on the new call - so the old
+    /// one is short a brace and the new one carries a stray leading one, and a single misfiled
+    /// character breaks two calls rather than none. That is the one way this end can produce the
+    /// truncation an endpoint produced for real, which is what makes it worth telling apart: the
+    /// fingerprint is the missing character turning up on the next call.
+    ///
+    /// note: the second call's opener carries `"arguments": ""`, and that is load-bearing. An empty
+    /// string announces a call rather than writing to one, so a provider that counted it would put
+    /// "last written to" on a call nothing had been streamed to and fail this exactly as the list
+    /// position did.
+    async fn loose_fragment(&self) -> Outcome {
+        let Dialect::OpenAi = self.dialect else {
+            return Outcome::Skipped("this dialect sends whole calls");
+        };
+        let body = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
+            "\"function\":{\"name\":\"read\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"c2\",",
+            "\"function\":{\"name\":\"read\",\"arguments\":\"\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[",
+            "{\"function\":{\"arguments\":\"}\"}}]}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,",
+            "\"function\":{\"arguments\":\"{\\\"path\\\":\\\"b.txt\\\"}\"}}]},",
+            "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        );
+
+        let response = match self.ask(body, Delivery::Whole).await {
+            Ok(response) => response,
+            Err(e) => return Outcome::Failed(e),
+        };
+        let calls: Vec<_> = response.calls().collect();
+        if calls.len() != 2 {
+            return Outcome::Failed(format!(
+                "the turn asked for two and {} came back",
+                calls.len()
+            ));
+        }
+        // the brace closed the call it was streaming, so both are whole JSON and neither carries
+        // the other's characters
+        for (call, wanted) in calls.iter().zip(["a.txt", "b.txt"]) {
+            if call.args["path"] != wanted {
+                return Outcome::Failed(format!(
+                    "a call meant for {wanted} arrived with {}",
+                    call.args
+                ));
+            }
+        }
+
+        Outcome::Passed
     }
 
     /// A model that writes arguments which are not JSON is shown that it did.

@@ -5,6 +5,29 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A streamed fragment naming no call could land on the wrong one, and break two.** A `tool_calls`
+  entry carrying neither an index nor an identifier is a continuation, and the accumulator gave it
+  to the last call in the list. That is the call most recently *announced*, which stops being the
+  call being *written* the moment an endpoint opens a second one - with `"arguments": ""`, as they
+  do - while the first is still streaming. The next loose fragment then goes to the new call: the
+  old one is short those characters and the new one carries them at the front, so one misfiled
+  brace leaves two calls unparseable where there should have been none.
+
+  It continues the call last written to now, falling back to the last announced where nothing has
+  been written yet, and an empty `arguments` no longer counts as writing - the rule the content and
+  reasoning branches beside it have always followed. Two conformance cases: several calls each
+  fragmented, which nothing asked before, and a loose fragment after a second call has opened.
+
+  No endpoint in this workspace is known to send that shape. What makes it worth closing is that it
+  is the one way *this* end can produce the truncation a real endpoint produced -
+  `inclusionai/ling-3.0-flash-vl:free` through Novita drops the last fragment of every call but the
+  last - and telling the two apart should not depend on knowing that our version leaves the
+  characters on the next call.
+
 ## [0.4.0] - 2026-09-19
 
 ### added

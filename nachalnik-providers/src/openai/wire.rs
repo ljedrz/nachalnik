@@ -389,7 +389,7 @@ impl OpenAiCompatible {
         let mut buffer: Vec<u8> = Vec::new();
         let mut text = String::new();
         let mut reasoning = String::new();
-        let mut calls: Vec<PartialCall> = Vec::new();
+        let mut gathering = Gathering::default();
         let mut finish = None;
         let mut usage = None;
         // every payload the server sent, verbatim
@@ -519,7 +519,7 @@ impl OpenAiCompatible {
                 summarised(&chunk, &mut reasoning, deltas);
 
                 for requested in delta["tool_calls"].as_array().into_iter().flatten() {
-                    gather_call(&mut calls, requested, deltas);
+                    gathering.fold(requested, deltas);
                 }
 
                 chunks.push(chunk);
@@ -532,7 +532,7 @@ impl OpenAiCompatible {
         Ok(Streamed {
             text,
             reasoning,
-            calls,
+            calls: gathering.calls,
             finish,
             usage,
             chunks,
@@ -749,63 +749,97 @@ impl OpenAiCompatible {
     }
 }
 
-/// Folds one `tool_calls` fragment into the calls gathered so far, and streams whatever arguments
-/// came with it.
+/// The calls being assembled, and which of them a fragment that names nothing belongs to.
 ///
-/// note: OpenAI numbers the calls in a message and streams each one's arguments in fragments, so
-/// the index is what says which call a fragment belongs to. Google's compatible endpoint sends no
-/// index at all - one whole call per chunk, each with an identifier of its own - and taking that
-/// for index zero folded three parallel calls into one: the names ran together into
-/// `writewritewrite` and the model was told there was no such tool. So the identifier decides when
-/// there is no index, and a fragment with neither continues whatever came last
-fn gather_call(calls: &mut Vec<PartialCall>, requested: &Value, deltas: &DeltaSink) {
-    let at = match requested["index"].as_u64() {
-        // note: the index says which call a fragment belongs to. It is *not* a position in the
-        // list: minimax numbers its calls from one, and using it as a slot left an unfilled call at
-        // zero, which the kernel then reported as a repaired identifier and a tool with no name - a
-        // wasted round trip and an error the model had to read. So an index is looked up, and a
-        // number never seen before starts a new call at the end
-        Some(index) => match calls.iter().position(|call| call.slot == Some(index)) {
-            Some(at) => at,
-            None => {
-                calls.push(PartialCall {
-                    slot: Some(index),
-                    ..PartialCall::default()
-                });
-                calls.len() - 1
-            }
-        },
-        None => match requested["id"].as_str().filter(|id| !id.is_empty()) {
-            Some(id) => match calls.iter().position(|call| call.id == id) {
+/// note: a struct rather than the `Vec` it was, for `latest` alone. A fragment carrying neither an
+/// index nor an identifier is a *continuation*, and what it continues is whatever was last being
+/// written - which is not the same as the last call in the list the moment a second one has been
+/// announced and has not begun. Read as the last in the list, such a fragment lands on the new call
+/// and is missing from the old one, so a single misfiled brace breaks two calls rather than none.
+#[derive(Default)]
+struct Gathering {
+    /// The calls, in the order they were first seen.
+    calls: Vec<PartialCall>,
+    /// Which call the last argument fragment was written to.
+    latest: Option<usize>,
+}
+
+impl Gathering {
+    /// Folds one `tool_calls` fragment into the calls gathered so far, and streams whatever
+    /// arguments came with it.
+    ///
+    /// note: OpenAI numbers the calls in a message and streams each one's arguments in fragments,
+    /// so the index is what says which call a fragment belongs to. Google's compatible endpoint
+    /// sends no index at all - one whole call per chunk, each with an identifier of its own - and
+    /// taking that for index zero folded three parallel calls into one: the names ran together
+    /// into `writewritewrite` and the model was told there was no such tool. So the identifier
+    /// decides when there is no index, and a fragment with neither continues whatever was last
+    /// written to.
+    fn fold(&mut self, requested: &Value, deltas: &DeltaSink) {
+        let at = match requested["index"].as_u64() {
+            // note: the index says which call a fragment belongs to. It is *not* a position in the
+            // list: minimax numbers its calls from one, and using it as a slot left an unfilled
+            // call at zero, which the kernel then reported as a repaired identifier and a tool
+            // with no name - a wasted round trip and an error the model had to read. So an index
+            // is looked up, and a number never seen before starts a new call at the end
+            Some(index) => match self.calls.iter().position(|call| call.slot == Some(index)) {
                 Some(at) => at,
                 None => {
-                    calls.push(PartialCall::default());
-                    calls.len() - 1
+                    self.calls.push(PartialCall {
+                        slot: Some(index),
+                        ..PartialCall::default()
+                    });
+                    self.calls.len() - 1
                 }
             },
-            None => match calls.is_empty() {
-                true => {
-                    calls.push(PartialCall::default());
-                    0
-                }
-                false => calls.len() - 1,
+            None => match requested["id"].as_str().filter(|id| !id.is_empty()) {
+                Some(id) => match self.calls.iter().position(|call| call.id == id) {
+                    Some(at) => at,
+                    None => {
+                        self.calls.push(PartialCall::default());
+                        self.calls.len() - 1
+                    }
+                },
+                // note: the call last *written to* first, and only then the last announced. The two
+                // differ exactly where this used to be wrong - a call opened with a name and no
+                // arguments, while the one before it is still being streamed - and where nothing
+                // has been written yet there is nothing else the fragment can mean
+                None => match self.latest.or_else(|| self.calls.len().checked_sub(1)) {
+                    Some(at) => at,
+                    None => {
+                        self.calls.push(PartialCall::default());
+                        0
+                    }
+                },
             },
-        },
-    };
-    let call = &mut calls[at];
+        };
 
-    if let Some(id) = requested["id"].as_str() {
-        call.id = id.to_owned();
-    }
-    if let Some(name) = requested["function"]["name"].as_str() {
-        call.name.push_str(name);
-    }
-    if !requested["extra_content"].is_null() {
-        call.extra = requested["extra_content"].clone();
-    }
-    if let Some(fragment) = requested["function"]["arguments"].as_str() {
-        call.args.push_str(fragment);
-        deltas.tool_args(ToolCallId(call.id.clone()), fragment);
+        // note: read before the call is borrowed, and *empty is not a fragment* - which is the rule
+        // the content and reasoning branches upstream have always followed. An opener carrying
+        // `"arguments": ""` announces a call rather than writing to one, so counting it would put
+        // `latest` on a call nothing has been streamed to and hand it the next loose fragment
+        let fragment = requested["function"]["arguments"]
+            .as_str()
+            .filter(|fragment| !fragment.is_empty());
+        let call = &mut self.calls[at];
+
+        if let Some(id) = requested["id"].as_str() {
+            call.id = id.to_owned();
+        }
+        if let Some(name) = requested["function"]["name"].as_str() {
+            call.name.push_str(name);
+        }
+        if !requested["extra_content"].is_null() {
+            call.extra = requested["extra_content"].clone();
+        }
+        let streamed = fragment.map(|fragment| {
+            call.args.push_str(fragment);
+            (ToolCallId(call.id.clone()), fragment)
+        });
+        if let Some((id, fragment)) = streamed {
+            self.latest = Some(at);
+            deltas.tool_args(id, fragment);
+        }
     }
 }
 
