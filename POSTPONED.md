@@ -296,15 +296,18 @@ Referenced from [AGENTS.md](AGENTS.md).
   `App::provider` is shared; the second is API the runtime does not have and should be asked for
   carefully, because "the seam I am holding changed under me" is a door worth opening once.
 
-- **How many clients a session will accept, and what their arrival and departure cost.** Neither is
-  bounded. `client N attached` and `client N left` go through `App::say`, so they are in `App::loose`
-  and therefore in the conversation of every projection handed out afterwards - and a browser
-  reconnecting every second on a flaky link, which `examples/browser.html` asks for with
-  `retry: 1000`, fills the conversation with them until somebody types `/cleanup`.
+- **How many clients a session will accept.** Not bounded, and nothing refuses a connection.
 
-  Saying it through `App` is deliberate and is what makes a session somebody else can type into say
-  so to everybody in it. What would unblock the rest is deciding whether those lines are part of
-  the conversation or part of the *trace*, which is already a ring of the last few hundred lines
-  and is where a thing that happens once a second belongs. That is a small change and a real
-  decision: a client attaching is the one event in here that a person reading the chat later may
-  genuinely want to see.
+  **The half this entry was mostly about is decided and done.** `client N attached` and `client N
+  left` went through `App::say`, so they were in `App::loose` and therefore in the conversation of
+  every projection handed out afterwards - and a browser reconnecting every second on a flaky link,
+  which `examples/browser.html` asks for with `retry: 1000`, filled the conversation with them
+  until somebody typed `/cleanup`. They are trace lines now, which is the ring a thing that happens
+  once a second belongs in, and `Attached::trace` carries them so every client still sees them. The
+  question this entry posed - conversation or trace - has an answer.
+
+  What is left is the count itself. A session will take connections until something else runs out,
+  and there is nothing to say what "too many" is: a phone on a bad link is one client making a
+  hundred connections, and five people watching one agent is five clients making five. Telling
+  those apart is what a bound would have to do, and nothing on the wire carries a client identifier
+  to do it with - which is the same thing the arbitration entry above needs first.

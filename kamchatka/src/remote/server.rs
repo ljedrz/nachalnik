@@ -468,10 +468,12 @@ impl Serving {
     /// radius is now everybody attached *and* whoever is at the screen.
     pub async fn answer(&mut self, app: &mut App, asked: Asked) {
         match asked.0 {
-            FromClient::Left { client } => app.say(
-                Speaker::Note,
-                format!("client {client} left; the session carries on"),
-            ),
+            FromClient::Left { client } => {
+                app.trace(
+                    "client.left",
+                    format!("client {client}; the session carries on"),
+                );
+            }
             FromClient::Asked {
                 client,
                 command,
@@ -493,15 +495,23 @@ impl Serving {
     /// Takes on a connection that has just arrived.
     pub fn attend(&mut self, app: &mut App, arrived: Arrived) {
         self.clients += 1;
-        // said through `App`, so it is in the transcript and every other client sees it. A session
-        // somebody else can type into should say when somebody else can type into it
-        app.say(Speaker::Note, format!("client {} attached", self.clients));
+        // note: the *trace* rather than the conversation, which is where this started. A session
+        // somebody else can type into should say when somebody else can type into it - and said
+        // through `App::say` it went into `App::loose`, which is the conversation, which is in
+        // every projection handed out afterwards. A browser reconnecting on a flaky link opens a
+        // connection a second, and `examples/browser.html` asks for exactly that with `retry:
+        // 1000`, so the chat filled with arrivals and departures until somebody typed `/cleanup`.
+        //
+        // The trace is a ring of the last few hundred lines and is where a thing that happens once
+        // a second belongs. Nothing is lost - `Attached::trace` carries it, so it is a row on the
+        // events tab of every client - and the conversation is the conversation again
+        app.trace("client.attached", format!("client {}", self.clients));
         let (client, kernel, asks) = (self.clients, app.kernel.clone(), self.asks.clone());
-        // note: **not** subscribed here. The line above is said now and broadcast by the next
-        // `pump`, so a receiver taken here catches it - and the projection this client is about to
-        // be handed has it in the conversation as well. That is one attach note printed twice, on
-        // every attach there has ever been. The subscription is taken where the projection is,
-        // which is the only place the two can be taken together
+        // note: **not** subscribed here, and it stays that way now that the line above is not
+        // broadcast at all. The subscription is taken where the projection is, which is the only
+        // place the two can be taken together - see `Answered`. When this was said through
+        // `App::say`, a receiver taken here also caught the line the projection already carried,
+        // which printed one attach note twice on every attach there had ever been
         match arrived.0 {
             #[cfg(unix)]
             Incoming::Unix(stream) => {

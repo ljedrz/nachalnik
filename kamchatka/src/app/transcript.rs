@@ -694,7 +694,13 @@ impl App {
     }
 
     /// Adds an event to the trace pane.
-    pub(super) fn trace(&mut self, name: impl Into<String>, detail: impl Into<String>) {
+    ///
+    /// note: public because a loop has things to record that are not the kernel's - a client
+    /// arriving is the one there is, and it is the trace's rather than the conversation's. `name`
+    /// reads as an event name because everything beside it on that pane is one; what is not the
+    /// kernel's is spelled with a domain of its own, so `client.attached` cannot be mistaken for
+    /// something the runtime emitted.
+    pub fn trace(&mut self, name: impl Into<String>, detail: impl Into<String>) {
         if self.trace.len() == TRACE_DEPTH {
             self.trace.pop_front();
         }

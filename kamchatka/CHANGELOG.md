@@ -343,6 +343,14 @@ minor bump may break you.
   it is the one thing on the row whose length nobody can predict, and the figures and the view
   button keep their places.
 
+- **A client arriving filled the conversation.** `client N attached` and `client N left` were said
+  through `App::say`, which puts them in `App::loose` - the conversation, which is in every
+  projection handed out afterwards. A browser reconnecting on a flaky link opens a connection a
+  second, and `examples/browser.html` asks for exactly that with `retry: 1000`, so the chat filled
+  with arrivals until somebody typed `/cleanup`. They are trace lines now, `client.attached` and
+  `client.left`, which is the ring a thing that happens once a second belongs in. Nothing is lost:
+  `Attached::trace` carries them, so they are rows on the events tab of every client.
+
 - **`/help` described a terminal to callers that have none.** Six of its seven pages are key
   bindings for tabs - `ctrl+p` shows the next request, `g` goes to the top of the trace - and both
   a run down a pipe and a browser on a phone were handed all of them, under the title `the keys`.
