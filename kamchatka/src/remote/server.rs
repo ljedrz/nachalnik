@@ -77,6 +77,19 @@ struct Answered {
     voice: Option<broadcast::Receiver<Arc<Message>>>,
 }
 
+/// One thing a client has asked for, waiting for the loop that owns the [`App`] to do it.
+///
+/// note: opaque, and it is the shape of the seam rather than shyness about the type inside. A
+/// `select!` branch may borrow the receiver or the `App` and not both, so waiting and doing are two
+/// calls - [`Serving::asked`] and [`Serving::answer`] - and this is what passes between them.
+pub struct Asked(FromClient);
+
+/// A connection that has just arrived and has not been taken on yet.
+///
+/// note: the same shape and for the same reason: [`Server::arrived`] borrows the listener and
+/// [`Serving::attend`] borrows the `App`, so they are two calls with this in between.
+pub struct Arrived(Incoming);
+
 /// What reaches the session loop from a connection.
 enum FromClient {
     /// It asked for something that needs the session itself.
@@ -215,6 +228,14 @@ impl Server {
         }
     }
 
+    /// Waits for the next connection, for a loop to hand to [`Serving::attend`].
+    ///
+    /// note: this and `attend` are the pair a loop that is not [`Server::run`] needs, and they are
+    /// two calls because a `select!` branch may borrow the listener or the `App` and not both.
+    pub async fn arrived(&self) -> std::io::Result<Arrived> {
+        self.accept().await.map(Arrived)
+    }
+
     /// Takes whatever connected next.
     ///
     /// note: a port gets the two options a socket file has no use for; see [`super::tuned`]. It is
@@ -244,23 +265,12 @@ impl Server {
         events: &mut broadcast::Receiver<Event>,
         finished: &mut mpsc::UnboundedReceiver<Outcome>,
     ) -> Result<(), String> {
-        // note: a client on the other end of a socket has no keys of this program's to press, and
-        // a browser has none at all - so `/help` gives it the commands. Set here rather than by the
-        // caller for the reason `headless.rs` sets it there: this loop is what knows. See
-        // `App::keys`
-        app.keys = false;
-
-        let (voice, _) = broadcast::channel(VOICE);
-        let (asks, mut asked) = mpsc::unbounded_channel();
-        // how many of the program's own lines have gone out; see `App::notes` for why it counts
-        // the filtered sequence rather than the list
-        let mut said = 0;
-        // and which generation of that sequence, because `/cleanup` starts it again from nothing
-        let mut cleared = app.cleared();
-        let mut clients = 0;
-        // whether the session was busy the last time anybody was told. See `Message::Busy` for why
-        // this is the session saying so rather than a client working it out of the records
-        let mut announced = app.busy;
+        // note: `App::keys` is **not** set here, and it used to be. It says whether whoever just
+        // asked has keys to press, and a client never does whatever the loop has - which `apply`
+        // now settles per command, because a session can be drawn and served at once and the two
+        // audiences want different answers out of one `/help`. A loop with no screen leaves the
+        // flag alone: nothing local ever asks it anything
+        let mut serving = Serving::new(app);
         let mut stopping = false;
         let mut failed = None;
         // subscribed once, because a second press arriving while the first is being handled is the
@@ -269,95 +279,19 @@ impl Server {
             .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
 
         loop {
-            // before the lines, because it is about the ones already sent: `/cleanup` takes the
-            // program's own half of every attached client's screen away, and the watermark below
-            // goes back to nothing with it. Broadcast rather than answered to whoever asked, for
-            // the reason every other notice is - the program has one voice, and a session two
-            // people are watching does not clear for one of them
-            if cleared != app.cleared() {
-                cleared = app.cleared();
-                said = 0;
-                let _ = voice.send(Arc::new(Message::Cleared));
-            }
-            // the program has one voice and every client hears it, which is most of the difference
-            // between a session several people are attached to and several sessions
-            let fresh: Vec<_> = app
-                .notes(said)
-                .map(|entry| Message::Said {
-                    speaker: entry.speaker,
-                    text: entry.text.clone(),
-                })
-                .collect();
-            said += fresh.len();
-            for message in fresh {
-                let _ = voice.send(Arc::new(message));
-            }
-            // note: on a change and nothing else. What closes the gap between a client asking for
-            // something and being told what came of it is the *answer* to its command, which every
-            // command has and which carries this same figure - see `Message::Done`. A broadcast
-            // that also fired per command would reach every other client as news about a session
-            // that had not changed
-            if announced != app.busy {
-                announced = app.busy;
-                let _ = voice.send(Arc::new(Message::Busy { busy: announced }));
-            }
+            serving.pump(app);
             if app.quit || (stopping && !app.busy) {
                 break;
             }
 
             tokio::select! {
-                incoming = self.accept() => match incoming {
-                    Ok(stream) => {
-                        clients += 1;
-                        // said through `App`, so it is in the transcript and every other client
-                        // sees it. A session somebody else can type into should say when somebody
-                        // else can type into it
-                        app.say(Speaker::Note, format!("client {clients} attached"));
-                        let (kernel, asks) = (app.kernel.clone(), asks.clone());
-                        // note: **not** subscribed here. The line above is said now and broadcast
-                        // at the top of the next turn round this loop, so a receiver taken here
-                        // catches it - and the projection this client is about to be handed has it
-                        // in the conversation as well. That is one attach note printed twice, on
-                        // every attach there has ever been. The subscription is taken where the
-                        // projection is, which is the only place the two can be taken together
-                        match stream {
-                            #[cfg(unix)]
-                            Incoming::Unix(stream) => {
-                                tokio::spawn(serve(clients, stream, kernel, asks));
-                            }
-                            Incoming::Tcp(stream) => {
-                                tokio::spawn(serve(clients, stream, kernel, asks));
-                            }
-                        }
-                    }
+                incoming = self.arrived() => match incoming {
+                    Ok(arrived) => serving.attend(app, arrived),
                     // one connection failing to arrive is not a reason to end a session that may
                     // have a turn running in it
                     Err(e) => app.say(Speaker::Error, format!("a client could not connect: {e}")),
                 },
-                Some(ask) = asked.recv() => match ask {
-                    FromClient::Left { client } => app.say(
-                        Speaker::Note,
-                        format!("client {client} left; the session carries on"),
-                    ),
-                    // note: applied inside this branch, so a command that awaits the endpoint
-                    // holds the whole loop - no connection accepted, no other client answered, no
-                    // kernel event taken, no `ctrl_c` polled. `/models`, `/model`, `/provider` and
-                    // `/compact` all await, and `App::submit` awaits a switch still in flight
-                    // before it reads the line at all. It is the same hole `headless.rs` has and
-                    // the same fix it is waiting on, with a blast radius of everybody attached
-                    // rather than one person; both are in `POSTPONED.md`
-                    FromClient::Asked { client, command, answer } => {
-                        // taken before the projection rather than after it, so that a line said
-                        // between the two would arrive twice rather than not at all. Nothing runs
-                        // in between today; the order is which way to be wrong if anything ever does
-                        let voice = matches!(command, Command::Attach { .. })
-                            .then(|| voice.subscribe());
-                        let _ = answer.send(Answered {
-                            message: apply(app, client, command).await,
-                            voice,
-                        });
-                    }
-                },
+                Some(ask) = serving.asked() => serving.answer(app, ask).await,
                 event = events.recv() => match event {
                     Ok(event) => app.on_event(event),
                     // note: nothing a client can see is lost here. What this loop is doing with the
@@ -403,22 +337,182 @@ impl Server {
         // gives: `session.finished` is a record like any other, and a caller that ended it after
         // this returned would have written every record but the last one
         app.kernel.finish();
-        // and the last of the voice, which nothing else is going to send. Whoever is still attached
-        // is about to find the socket closed, and these are the lines that say why
+        serving.last(app);
+
+        match failed {
+            Some(_) => Err("the last turn failed".to_owned()),
+            None => Ok(()),
+        }
+    }
+}
+
+/// The half of a served session that is not a loop.
+///
+/// note: it exists because there are two loops that can own the [`App`] and either of them may be
+/// serving. [`Server::run`] is one - a session with a socket and nothing else - and the terminal's
+/// own loop in `main.rs` is the other, which is what lets a session be driven from the desk it is
+/// running on and from a phone at the same time. What that costs a loop is three calls: [`pump`]
+/// before it waits, [`asked`] as a branch to wait on, and [`attend`] for each connection. The loop
+/// stays the loop, and this stays the part neither should be writing twice.
+///
+/// [`pump`]: Serving::pump
+/// [`asked`]: Serving::asked
+/// [`attend`]: Serving::attend
+pub struct Serving {
+    /// What every attached client hears the program say.
+    voice: broadcast::Sender<Arc<Message>>,
+    /// The end each connection puts its commands into, cloned into every one of them.
+    asks: mpsc::UnboundedSender<FromClient>,
+    /// The end the loop takes them out of.
+    asked: mpsc::UnboundedReceiver<FromClient>,
+    /// How many of the program's own lines have gone out; see [`App::notes`] for why it counts the
+    /// filtered sequence rather than the list.
+    said: usize,
+    /// Which generation of that sequence, because `/cleanup` starts it again from nothing.
+    cleared: u64,
+    /// Whether the session was busy the last time anybody was told.
+    announced: bool,
+    /// How many connections have arrived, which is what names them.
+    clients: u64,
+}
+
+impl Serving {
+    /// One, for a session that is about to start answering clients.
+    pub fn new(app: &App) -> Self {
+        let (voice, _) = broadcast::channel(VOICE);
+        let (asks, asked) = mpsc::unbounded_channel();
+
+        Self {
+            voice,
+            asks,
+            asked,
+            said: 0,
+            cleared: app.cleared(),
+            announced: app.busy,
+            clients: 0,
+        }
+    }
+
+    /// Says whatever the session has said since the last look, and whatever has changed about it.
+    ///
+    /// note: called before the loop waits rather than after something happens, because what it is
+    /// reading is [`App`] and anything at all may have changed it - a key, a client, a tool, the
+    /// model. A loop that broadcast from the places that cause changes would be a list of those
+    /// places to keep complete, and it would be wrong the first time somebody added one.
+    pub fn pump(&mut self, app: &App) {
+        // before the lines, because it is about the ones already sent: `/cleanup` takes the
+        // program's own half of every attached client's screen away, and the watermark below goes
+        // back to nothing with it. Broadcast rather than answered to whoever asked, for the reason
+        // every other notice is - the program has one voice, and a session two people are watching
+        // does not clear for one of them
+        if self.cleared != app.cleared() {
+            self.cleared = app.cleared();
+            self.said = 0;
+            let _ = self.voice.send(Arc::new(Message::Cleared));
+        }
+        // the program has one voice and every client hears it, which is most of the difference
+        // between a session several people are attached to and several sessions
+        let fresh: Vec<_> = app
+            .notes(self.said)
+            .map(|entry| Message::Said {
+                speaker: entry.speaker,
+                text: entry.text.clone(),
+            })
+            .collect();
+        self.said += fresh.len();
+        for message in fresh {
+            let _ = self.voice.send(Arc::new(message));
+        }
+        // note: on a change and nothing else. What closes the gap between a client asking for
+        // something and being told what came of it is the *answer* to its command, which every
+        // command has and which carries this same figure - see `Message::Done`. A broadcast that
+        // also fired per command would reach every other client as news about a session that had
+        // not changed
+        if self.announced != app.busy {
+            self.announced = app.busy;
+            let _ = self.voice.send(Arc::new(Message::Busy {
+                busy: self.announced,
+            }));
+        }
+    }
+
+    /// The next thing a client wants, as a branch to wait on.
+    ///
+    /// note: it borrows this and not the [`App`], which is the whole reason it is not one call with
+    /// [`Serving::answer`]. A `select!` branch holds its borrow for the length of the `select!`, so
+    /// a branch that took the `App` would leave no other branch able to touch it.
+    pub async fn asked(&mut self) -> Option<Asked> {
+        self.asked.recv().await.map(Asked)
+    }
+
+    /// Does one of them, and answers whoever asked.
+    ///
+    /// note: the doing happens here, in the caller's own loop, so a command that awaits the
+    /// endpoint holds that loop - no connection accepted, no other client answered, no kernel event
+    /// taken. `/models`, `/model`, `/provider` and `/compact` all await, and `App::submit` awaits a
+    /// switch still in flight before it reads the line at all. `POSTPONED.md` has it, and the blast
+    /// radius is now everybody attached *and* whoever is at the screen.
+    pub async fn answer(&mut self, app: &mut App, asked: Asked) {
+        match asked.0 {
+            FromClient::Left { client } => app.say(
+                Speaker::Note,
+                format!("client {client} left; the session carries on"),
+            ),
+            FromClient::Asked {
+                client,
+                command,
+                answer,
+            } => {
+                // taken before the projection rather than after it, so that a line said between the
+                // two would arrive twice rather than not at all. Nothing runs in between today; the
+                // order is which way to be wrong if anything ever does
+                let voice =
+                    matches!(command, Command::Attach { .. }).then(|| self.voice.subscribe());
+                let _ = answer.send(Answered {
+                    message: apply(app, client, command).await,
+                    voice,
+                });
+            }
+        }
+    }
+
+    /// Takes on a connection that has just arrived.
+    pub fn attend(&mut self, app: &mut App, arrived: Arrived) {
+        self.clients += 1;
+        // said through `App`, so it is in the transcript and every other client sees it. A session
+        // somebody else can type into should say when somebody else can type into it
+        app.say(Speaker::Note, format!("client {} attached", self.clients));
+        let (client, kernel, asks) = (self.clients, app.kernel.clone(), self.asks.clone());
+        // note: **not** subscribed here. The line above is said now and broadcast by the next
+        // `pump`, so a receiver taken here catches it - and the projection this client is about to
+        // be handed has it in the conversation as well. That is one attach note printed twice, on
+        // every attach there has ever been. The subscription is taken where the projection is,
+        // which is the only place the two can be taken together
+        match arrived.0 {
+            #[cfg(unix)]
+            Incoming::Unix(stream) => {
+                tokio::spawn(serve(client, stream, kernel, asks));
+            }
+            Incoming::Tcp(stream) => {
+                tokio::spawn(serve(client, stream, kernel, asks));
+            }
+        }
+    }
+
+    /// The last of the voice, once the session has ended.
+    ///
+    /// note: nothing else is going to send these. Whoever is still attached is about to find the
+    /// socket closed, and these are the lines that say why.
+    pub fn last(&mut self, app: &App) {
         let last: Vec<_> = app
-            .notes(said)
+            .notes(self.said)
             .map(|entry| Message::Said {
                 speaker: entry.speaker,
                 text: entry.text.clone(),
             })
             .collect();
         for message in last {
-            let _ = voice.send(Arc::new(message));
-        }
-
-        match failed {
-            Some(_) => Err("the last turn failed".to_owned()),
-            None => Ok(()),
+            let _ = self.voice.send(Arc::new(message));
         }
     }
 }
@@ -478,7 +572,15 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
             // can do about it, and it is said to everybody, because the person who lost a line is
             // the one who is not asking
             let replacing = app.queued().map(str::to_owned);
+            // note: a client has no keys of this program's to press whatever the loop driving the
+            // session has, so `App::keys` is set around the one call that reads it rather than once
+            // for the session. It used to be the session's, which was right while a served session
+            // had no screen and wrong the moment one could: a `/help` typed at the desk wants the
+            // key pages and the same `/help` sent from a browser is a reference to a program the
+            // reader is not using. The flag is a fact about whoever just asked. See `App::help`
+            let keys = std::mem::replace(&mut app.keys, false);
             let reply = app.submit(&line).await;
+            app.keys = keys;
             if let Some(lost) = replacing {
                 app.say(
                     Speaker::Note,

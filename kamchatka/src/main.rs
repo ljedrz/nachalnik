@@ -183,9 +183,10 @@ struct Args {
     #[arg(long)]
     headless: bool,
 
-    /// Put a socket in front of the session instead of a screen, so it can be driven from
-    /// elsewhere: `unix:PATH`, or `tcp:127.0.0.1:PORT`. The session is this program's - it carries
-    /// on when a client detaches, and waits when a tool needs an answer.
+    /// Put a socket in front of the session so it can be driven from elsewhere as well as from
+    /// here: `unix:PATH`, or `tcp:127.0.0.1:PORT`. The screen stays where there is one to draw on.
+    /// The session is this program's - it carries on when a client detaches, and waits when a tool
+    /// needs an answer.
     #[arg(long, value_name = "ADDRESS", conflicts_with_all = ["headless", "connect"])]
     serve: Option<String>,
 
@@ -513,7 +514,13 @@ async fn session() -> Result<()> {
     // the decision below is about which of the *local* two is running, and asking it of a run that
     // is neither produced a notice about a pipe nobody had mentioned
     let piped = !std::io::stdout().is_terminal();
-    let headless = server.is_none() && headless(args.headless, piped);
+    // note: asked of a served session too, where it used to be skipped. `--serve` is no longer
+    // "instead of a screen": a session with a socket in front of it draws as well, where there is
+    // anything to draw on, so that the person running it can drive it from the desk it is on and
+    // from a phone in the same breath. What the question decides for a served run is only whether
+    // there is a screen, since `--serve` conflicts with `--headless` and the line driver is not one
+    // of its answers
+    let headless = headless(args.headless, piped);
     if server.is_none() && headless && !args.headless {
         match piped {
             true => eprintln!("· stdout is not a terminal, so this is a headless run"),
@@ -710,10 +717,19 @@ async fn session() -> Result<()> {
         app.start_turn();
     }
 
-    // note: the third loop, and it is picked before the other two rather than beside them, because
-    // `--serve` is not a variety of screen or of pipe: it is a session with neither, driven by
-    // whoever attaches. `conflicts_with_all` on the flag is what keeps this from being an order of
-    // precedence somebody has to know
+    // note: a served session with a screen is the *drawn* loop with a socket beside it, rather than
+    // a fourth loop or a precedence somebody has to know. Only one loop can own the `App`, so the
+    // one with the keys keeps it and `remote::Serving` is what it answers clients through - which is
+    // the same pair of calls `Server::run` makes, from the other side. A served session with no
+    // screen is unchanged: `Server::run` is the loop, and it is the one that ends the session
+    #[cfg(feature = "tui")]
+    if let Some(server) = &mut server
+        && !headless
+    {
+        let outcome = drawn(&mut app, &mut events, &mut finished, Some(server)).await;
+
+        return finish(&app, &args, Ending::Served, outcome);
+    }
     if let Some(server) = &mut server {
         let outcome = server
             .run(&mut app, &mut events, &mut finished)
@@ -744,7 +760,7 @@ async fn session() -> Result<()> {
                 .map_err(|e| anyhow::anyhow!("{e}"))
         }
         #[cfg(feature = "tui")]
-        false => drawn(&mut app, &mut events, &mut finished).await,
+        false => drawn(&mut app, &mut events, &mut finished, None).await,
         #[cfg(not(feature = "tui"))]
         false => unreachable!("there is no screen in this build"),
     };
@@ -769,7 +785,13 @@ enum Ending {
     Logged,
     /// Driven by keys: stdout is free, and nothing has ended the session yet.
     Spoken,
-    /// Driven from a socket: stdout is free, and the server has already ended the session.
+    /// Driven from a socket, and possibly from keys as well: stdout is free, and the loop that just
+    /// returned has already ended the session.
+    ///
+    /// note: the two questions this enum is about are both the same for a served session whether or
+    /// not it also had a screen, which is why there is no fourth. A loop that is serving ends the
+    /// session itself, because the clients still attached are owed `session.finished` and the lines
+    /// under it, and the voice they arrive on is that loop's.
     Served,
 }
 
@@ -905,6 +927,7 @@ async fn drawn(
     app: &mut App,
     events: &mut tokio::sync::broadcast::Receiver<Event>,
     finished: &mut tokio::sync::mpsc::UnboundedReceiver<Outcome>,
+    server: Option<&mut remote::Server>,
 ) -> Result<()> {
     // ratatui installs a hook of its own that restores the terminal and then calls this one
     let previous = std::panic::take_hook();
@@ -913,22 +936,53 @@ async fn drawn(
         previous(info);
     }));
 
+    // taken before the terminal, because it is the `App`'s half rather than the screen's, and kept
+    // here rather than inside `run` so that the last of it can be said once the loop is over
+    let mut serving = server.is_some().then(|| remote::Serving::new(app));
+
     let mut terminal = ratatui::init();
     let _ = execute!(stdout(), EnableBracketedPaste);
-    let outcome = run(&mut terminal, app, events, finished).await;
+    let outcome = run(
+        &mut terminal,
+        app,
+        events,
+        finished,
+        server,
+        serving.as_mut(),
+    )
+    .await;
     let _ = execute!(stdout(), DisableBracketedPaste);
     ratatui::restore();
+
+    // note: a drawn session ends itself only where it was also served, and that is the difference
+    // `Ending::Served` names. `session.finished` is a record like any other, and the clients still
+    // attached are owed it and the lines under it - which `finish` could not send, because the
+    // voice they arrive on is this loop's. A drawn session with no socket leaves it to `finish`,
+    // where it has always been
+    if let Some(serving) = &mut serving {
+        app.kernel.finish();
+        serving.last(app);
+    }
 
     outcome
 }
 
-/// Draws, waits for whichever of the three things happens first, and does it again.
+/// Draws, waits for whichever of the things that can happen happens first, and does it again.
+///
+/// note: `server` is the half that makes this the same session from two places at once. The keys
+/// and the socket are two ways into one [`App`], and only one loop can own it - so this one does,
+/// and `remote::Serving` is how the connections reach it: `pump` says what the session has said,
+/// `arrived` and `attend` take on whoever connected, and `asked` and `answer` do what they ask.
+/// `remote::Server::run` makes the same three calls from the other side, which is the point of
+/// their being three calls rather than a loop.
 #[cfg(feature = "tui")]
 async fn run(
     terminal: &mut ratatui::DefaultTerminal,
     app: &mut App,
     events: &mut tokio::sync::broadcast::Receiver<Event>,
     finished: &mut tokio::sync::mpsc::UnboundedReceiver<Outcome>,
+    server: Option<&mut remote::Server>,
+    mut serving: Option<&mut remote::Serving>,
 ) -> Result<()> {
     use tokio::sync::broadcast::error::RecvError;
     use tokio_stream::StreamExt as _;
@@ -937,6 +991,11 @@ async fn run(
     let mut ticks = tokio::time::interval(TICK);
 
     loop {
+        // before the frame, so that what a client is told and what the screen shows are one look at
+        // the `App` rather than two. Nothing here draws
+        if let Some(serving) = &mut serving {
+            serving.pump(app);
+        }
         terminal.draw(|frame| ui::draw(frame, app))?;
         // after the frame rather than before it, so the line saying what was handed over is on
         // the screen by the time the terminal has it
@@ -977,6 +1036,30 @@ async fn run(
                     app.on_event(event);
                 }
                 app.on_outcome(outcome);
+            }
+            // and the two that are only there where this session is also served. They are the same
+            // pair `remote::Server::run` selects on, in a loop that happens to have a screen
+            arrived = async {
+                match &server {
+                    Some(server) => server.arrived().await,
+                    None => std::future::pending().await,
+                }
+            } => match (arrived, &mut serving) {
+                (Ok(arrived), Some(serving)) => serving.attend(app, arrived),
+                (Ok(_), None) => {}
+                // one connection failing to arrive is not a reason to end a session that may have
+                // a turn running in it, and the person at the screen is the one who can see this
+                (Err(e), _) => app.say(Speaker::Note, format!("a client could not connect: {e}")),
+            },
+            Some(ask) = async {
+                match &mut serving {
+                    Some(serving) => serving.asked().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                if let Some(serving) = &mut serving {
+                    serving.answer(app, ask).await;
+                }
             }
             _ = ticks.tick() => {
                 if let Some(notice) = app.provider.take_notice() {

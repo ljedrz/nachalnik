@@ -67,6 +67,25 @@ minor bump may break you.
   somebody else needs to speak this gets checked rather than asserted. Its header carries the wire
   transcript, because a client in another language needs the JSON and no Rust at all.
 
+- **A served session draws too, so one session is the desk and the phone at once.** `--serve` used
+  to mean *instead of* a screen: the third loop took the `App` and there was nothing left to draw
+  with. It is now the drawn loop with a socket beside it wherever there is a terminal to draw on,
+  which is the shape the fan-out was already built for - a connection is a task holding a `Kernel`
+  and an mpsc sender, and only the four things that need `&mut App` come back to whichever loop has
+  it. `remote::Serving` is that half of `Server::run` extracted: `pump` says what the session has
+  said, `arrived` and `attend` take on a connection, `asked` and `answer` do what it asks. Two
+  branches in the loop that has the keys, and no change to the protocol.
+
+  Three calls rather than one loop because a `select!` branch may borrow the receiver or the `App`
+  and not both, which is what `Asked` and `Arrived` are: the value that passes between waiting and
+  doing.
+
+  **`App::keys` is now a fact about whoever just asked**, not about the session. It says whether
+  `/help` lists the key bindings, and one `App` has two audiences the moment it is drawn and served
+  together - so a client's command sets it around the one call that reads it. A `/help` at the desk
+  has the keys and the same `/help` from a browser does not, which is what the flag was for before
+  a session could be both.
+
 - **`examples/gateway.rs` and `examples/browser.html`: a session in a browser, from a phone.** A
   browser cannot open a TCP connection - not inconveniently, at all - so something has to terminate
   HTTP in front of a session. The gateway is that, in three routes, with no framework, no router

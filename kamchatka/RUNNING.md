@@ -102,7 +102,9 @@ whether or not the flag is given.
 
 ## 🔌 a session you can walk away from
 
-`--serve` puts a socket in front of a session instead of a screen, and `--connect` attaches to one.
+`--serve` puts a socket in front of a session, and `--connect` attaches to one. The screen stays
+where there is one to draw on, so a session started at a desk is the same session a phone picks up
+— keys and clients are two ways into one `App`, and the one loop that owns it answers both.
 
 ```console
 $ kamchatka --serve unix:/run/user/1000/kamchatka.sock -m mercury-2
@@ -666,7 +668,7 @@ kamchatka [OPTIONS] [MESSAGE]...
       --headless            drive the session from lines on stdin: the session log to
                             stdout, one JSON record a line, and what the model says to
                             stderr. Implied when stdout is not a terminal
-      --serve <ADDRESS>     put a socket in front of the session instead of a screen,
+      --serve <ADDRESS>     put a socket in front of the session as well as a screen,
                             as unix:PATH or tcp:127.0.0.1:PORT. The session is this
                             program's: it carries on when a client detaches
       --connect <ADDRESS>   attach to a session somebody else is serving and drive it
