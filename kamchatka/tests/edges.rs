@@ -203,8 +203,15 @@ async fn a_permission_question_draws_at_every_size() {
 
     let kernel = Kernel::new(Config::default());
     let policy = Arc::new(Careful::new());
+    // note: one argument wide as well as one plain. A terminal gives a CJK character two cells, so
+    // a panel measuring its arguments in characters builds rows twice the width it was handed -
+    // and the sizes swept below are where that stops being a clipped line and becomes a panic
     kernel.set_provider(Arc::new(ScriptedProvider::new([
-        ModelResponse::tool_calls(vec![call("1", "read", json!({ "path": ".env" }))]),
+        ModelResponse::tool_calls(vec![call(
+            "1",
+            "read",
+            json!({ "path": ".env", "about": "日本語のとても長い引数ですが" }),
+        )]),
     ])));
     kernel.set_policy(policy.clone());
     kernel.add_tool(Arc::new(ConstTool::new("read", "hello")));

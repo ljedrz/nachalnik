@@ -317,6 +317,26 @@ minor bump may break you.
 
 ### fixed
 
+- **Text a terminal draws two cells wide was measured as one.** Everything deciding what fits -
+  `refit`, `fold`, `split_to_fit`, `clip`, `markdown`'s `fit` and the context pane's label
+  column - counted characters, and a terminal counts columns. So a row of CJK, of fullwidth Latin
+  or of emoji was built twice as wide as the pane it was built for, and a `Paragraph` that does
+  not wrap drops the right-hand end of a row like that. The dropped end is not reachable by
+  scrolling either: it was never put in a row to scroll to. An answer, a code block and the
+  arguments in a permission question were each losing about half of themselves.
+
+  Every measurement now goes through `ui::text::columns`, and splitting moved to grapheme
+  clusters with it, because half of a wide character is not a character and an `é` written as a
+  letter and a combining accent is two characters in one cell. The clip counts the ellipsis as
+  the column it occupies, so what comes back is never wider than what was asked for - and where a
+  box has no room for one grapheme and an ellipsis both, the ellipsis wins, since a reader can act
+  on *something was cut* and cannot act on one character of what.
+
+  The other half is padding, and `{:<width$}` has no idea what a column is: a label of eight wide
+  characters in a column eight wide was given no padding and took sixteen cells, which pushed
+  every column after it along and dropped the last one off the row. `ui::text::pad` builds those
+  cells instead, and the context pane and the permissions pane use it.
+
 - **A model change reached nobody.** `/model` and `/provider` finish inside the `Dialect` the kernel
   already holds rather than by replacing the kernel's provider, so the slot never changes,
   `model.changed` is never emitted, and the switch is in no record. Every projection was right,

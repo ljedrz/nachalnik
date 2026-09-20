@@ -30,7 +30,7 @@ use crate::{
     ui::{
         markdown::{Chunk, Markdown, chunks, highlighted, markdown, rule, separate},
         table::{draw_table, table},
-        text::{clip, fitted, gutter, refit, wrapped},
+        text::{clip, columns, fitted, gutter, pad, refit, wrapped},
     },
 };
 
@@ -206,7 +206,7 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
                     lines.push(Line::styled(text, exit_style(exit)));
                 }
                 if !rest.is_empty() {
-                    for text in wrapped(rest, width, &" ".repeat(prefix.chars().count())) {
+                    for text in wrapped(rest, width, &" ".repeat(columns(prefix))) {
                         lines.push(Line::styled(text, style));
                     }
                 }
@@ -305,7 +305,7 @@ pub(super) fn draw_context(
     // nothing, and the column those twenty belong to is the one saying what an item holds
     let widest = items
         .iter()
-        .map(|item| item.label.chars().count())
+        .map(|item| columns(&item.label))
         .max()
         .unwrap_or(0);
     let label = widest.clamp(5, 26).min(width / 3);
@@ -396,11 +396,7 @@ pub(super) fn draw_context(
 
             ListItem::new(Line::from(vec![
                 Span::styled(
-                    format!(
-                        "{:>3} {mark} {:<label$} ",
-                        item.id.0,
-                        clip(&item.label, label)
-                    ),
+                    format!("{:>3} {mark} {} ", item.id.0, pad(&item.label, label)),
                     style,
                 ),
                 Span::styled(
@@ -623,10 +619,7 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
             };
 
             ListItem::new(Line::from(vec![
-                Span::raw(format!(
-                    "  {:<capability$} ",
-                    clip(&row.subject.to_string(), capability)
-                )),
+                Span::raw(format!("  {} ", pad(&row.subject.to_string(), capability))),
                 Span::styled(format!("{answer:<10}  "), style),
                 Span::styled(
                     clip(&tools, covers),
@@ -795,7 +788,7 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         // front of every line afterwards, so a long one ran off the right edge and was clipped -
         // in the one pane whose promise is that a detail wraps rather than being cut. Every line
         // carries the same prefix here and the wrapping is given what is left
-        let room = width.saturating_sub(under.chars().count() + indent.chars().count());
+        let room = width.saturating_sub(columns(&under) + indent.len());
         let mut detail = wrapped(&event.detail, room, "").into_iter();
         match (event.name.is_empty(), event.detail.is_empty()) {
             // a continuation: something the event before it had more to say about

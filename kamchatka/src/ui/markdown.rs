@@ -15,7 +15,7 @@ use ratatui::{
 use crate::ui::table::is_delimiter;
 
 use super::faint;
-use crate::ui::text::{joints, refit};
+use crate::ui::text::{columns, joints, prefix_within, refit};
 
 /// Puts a blank line in, unless there is one there already or there is nothing to separate from.
 pub(super) fn separate(lines: &mut Vec<Line<'static>>) {
@@ -240,6 +240,12 @@ fn accented(spans: Vec<(String, Style)>, picked: &[(usize, usize)]) -> Vec<(Stri
 /// note: code is not prose and is not wrapped like it. A line that is too long is cut where the
 /// room runs out rather than at a word boundary, because the alternative - reflowing - would be
 /// showing something the model did not write.
+///
+/// note: the room is columns and the cut is between graphemes, so a row of CJK holds half as many
+/// characters as a row of Latin and every one of them arrives. Cutting by character count instead
+/// built rows twice as wide as the pane, and what a `Paragraph` that does not wrap does with those
+/// is drop the right-hand end - out of a block whose whole claim is that it is what the model
+/// wrote.
 fn fit(spans: Vec<(String, Style)>, room: usize) -> Vec<Vec<Span<'static>>> {
     let mut rows = vec![Vec::new()];
     let mut used = 0;
@@ -247,16 +253,22 @@ fn fit(spans: Vec<(String, Style)>, room: usize) -> Vec<Vec<Span<'static>>> {
     for (text, style) in spans {
         let mut rest = text.as_str();
         while !rest.is_empty() {
-            let left = room - used;
-            let taken: String = rest.chars().take(left).collect();
-            let bytes = taken.len();
-            if !taken.is_empty() {
-                used += taken.chars().count();
-                rows.last_mut()
-                    .expect("there is always a row")
-                    .push(Span::styled(taken, style));
+            let left = room.saturating_sub(used);
+            let take = prefix_within(rest, left);
+            // what is left of the row is narrower than the next grapheme, which is not the same
+            // as the row being full: one cell can be free and the character need two. Close the
+            // row rather than let it over-run by a cell
+            if columns(&rest[..take]) > left && used != 0 {
+                rows.push(Vec::new());
+                used = 0;
+                continue;
             }
-            rest = &rest[bytes..];
+            let piece = &rest[..take];
+            used += columns(piece);
+            rows.last_mut()
+                .expect("there is always a row")
+                .push(Span::styled(piece.to_owned(), style));
+            rest = &rest[take..];
             if used >= room && !rest.is_empty() {
                 rows.push(Vec::new());
                 used = 0;

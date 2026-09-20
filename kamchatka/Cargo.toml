@@ -63,6 +63,7 @@ tui = [
     "dep:synoptic",
     "dep:tui-markdown",
     "dep:unicode-segmentation",
+    "dep:unicode-width",
 ]
 
 [dependencies]
@@ -162,6 +163,12 @@ nucleo-matcher = "0.3"
 # the same way means breaking where it breaks: at unicode word bounds, which is why `/` in a long
 # path is a break and a plain search for spaces is not enough
 unicode-segmentation = { version = "1.13", optional = true }
+# a character is not a column. `ui::text::columns` is the one place this is asked, and everything
+# that decides what fits goes through it - a terminal gives a CJK character two cells and an
+# emoji two, so measuring in characters fits twice as much on a row as there is room for and the
+# overflow is clipped at the right edge by a widget that does not wrap. `ratatui` already builds
+# this for `Span::width`, so naming it here costs a line and no compile time
+unicode-width = { version = "0.2", optional = true }
 
 # the sandbox the `shell` tool runs under. Landlock is a Linux LSM a process applies to *itself* -
 # no privileges, no setuid helper, no container - which is what makes it small enough to belong in

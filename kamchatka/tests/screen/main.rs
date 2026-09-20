@@ -29,3 +29,4 @@ mod session;
 mod status;
 mod trace;
 mod turns;
+mod width;

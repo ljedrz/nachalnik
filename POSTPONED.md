@@ -36,22 +36,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   about the one that goes out. That is the only place in this workspace where those two differ
   in a way a figure can see.
 
-- **Wrapping that counts characters where a terminal counts columns.** `ui/text.rs` decides what
-  fits with `chars().count()`, and so do `ui/markdown.rs`'s `fit` and the label column in
-  `ui/tabs.rs`. A character is one column in the alphabets this was written against and two in
-  CJK, so a line of those is measured at half its width, passes the fit, and is clipped at the
-  right edge by a `Paragraph` that does not wrap - which is the one thing wrapping here exists to
-  stop, and the clipped end is not reachable by scrolling either.
-
-  What would unblock it is a dependency and a sweep: `unicode-width` (already in the tree under
-  `ratatui`, so it costs nothing but a line in the manifest and the comment saying why), and then
-  every place that measures - the `chars().count()` sites, of which the ones in `refit`, `fold`,
-  `split_to_fit`, `clip` and `fit` are about width and the rest are about text. Splitting
-  has to move to grapheme clusters at the same time, since half of a wide character is not a
-  character; `unicode-segmentation` is already here for word bounds. What would make it credible
-  is screen tests that recover every character of wide prose, of a code block and of a permission
-  question's arguments across wrapped rows - the suite has the shape for those already.
-
 - **A headless deadline that can cut short a command of the operator's own.** `--deadline` and
   `ctrl+c` are branches of the driver's `select!`, and a line read from the input is submitted
   *inside* the branch that read it - so while `/models` fetches a list, or `/model` and

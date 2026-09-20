@@ -11,9 +11,39 @@ use ratatui::{
 };
 
 use unicode_segmentation::UnicodeSegmentation as _;
+use unicode_width::UnicodeWidthStr as _;
 
 use super::faint;
 use crate::app::text::thousands;
+
+/// How many terminal columns `text` occupies.
+///
+/// note: the one place in this program that answers it, and everything deciding what fits goes
+/// through it. A character is not a column - a CJK character is given two cells and so is an
+/// emoji - so a row measured in characters holds twice what it is told it holds, and the overflow
+/// is clipped at the right edge by a `Paragraph` that does not wrap. That clipped end is not
+/// reachable by scrolling either, which is what makes it worse than a wrong count.
+///
+/// note: it does not follow that everything counting characters here is wrong. A cut made *in*
+/// the text - the first ninety-six characters of a summary, a window into a long line - is about
+/// the text and stays in characters. What belongs here is every question of the form "will this
+/// fit", and the answer to that is columns.
+pub(super) fn columns(text: &str) -> usize {
+    text.width()
+}
+
+/// `text` clipped to `width` columns and padded out to exactly that many.
+///
+/// note: `{:<width$}` is the obvious way and it pads by *characters*, so a label of three CJK
+/// characters in a column ten wide is given seven spaces and takes thirteen cells - which pushes
+/// every column to the right of it off the end of the row. Nothing in `std`'s formatting knows
+/// what a column is, so a padded cell of text somebody else wrote is built here instead.
+pub(super) fn pad(text: &str, width: usize) -> String {
+    let clipped = clip(text, width);
+    let spare = width.saturating_sub(columns(&clipped));
+
+    format!("{clipped}{}", " ".repeat(spare))
+}
 
 /// The rows one logical line takes: fill with whole word-bound chunks, start a new row when the
 /// next one will not fit, and split a chunk that will not fit on a row of its own.
@@ -25,7 +55,7 @@ pub(super) fn rows_for(line: &str, width: usize) -> usize {
     for (_, text) in line.split_word_bound_indices() {
         let mut chunk = text;
         while !chunk.is_empty() {
-            let chunk_width = Span::raw(chunk).width();
+            let chunk_width = columns(chunk);
             if filled + chunk_width <= width {
                 filled += chunk_width;
                 started = true;
@@ -57,7 +87,7 @@ pub(super) fn prefix_within(text: &str, width: usize) -> usize {
     let mut filled = 0;
 
     for (offset, grapheme) in text.grapheme_indices(true) {
-        let next = filled + Span::raw(grapheme).width();
+        let next = filled + columns(grapheme);
         if end != 0 && next > width {
             break;
         }
@@ -78,7 +108,7 @@ pub(super) fn suffix_within(text: &str, width: usize) -> usize {
     let mut filled = 0;
 
     for (offset, grapheme) in text.grapheme_indices(true).rev() {
-        let next = filled + Span::raw(grapheme).width();
+        let next = filled + columns(grapheme);
         if len != 0 && next > width {
             break;
         }
@@ -120,7 +150,7 @@ pub(super) fn refit(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
         .iter()
         .map(|span| span.content.as_ref())
         .collect();
-    if plain.chars().count() <= width {
+    if columns(&plain) <= width {
         return vec![
             Line::from(
                 line.spans
@@ -136,7 +166,7 @@ pub(super) fn refit(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
     // a list item's: `- ` and `1. ` are indentation as far as reading it goes
     let spaces = plain.chars().take_while(|c| *c == ' ').count();
     let hang = " ".repeat(spaces + bullet(&plain[spaces..]));
-    let hang = match hang.chars().count() + 8 < width {
+    let hang = match hang.len() + 8 < width {
         true => hang,
         false => String::new(),
     };
@@ -147,17 +177,17 @@ pub(super) fn refit(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
     for span in &line.spans {
         // `split_inclusive` keeps the spaces, so what is placed is a word and the gap after it
         for word in span.content.split_inclusive(' ') {
-            for piece in split_to_fit(word, width - hang.chars().count()) {
-                let length = piece.trim_end().chars().count();
+            for piece in split_to_fit(word, width - hang.len()) {
+                let length = columns(piece.trim_end());
                 if column != 0 && column + length > width {
                     out.push(Line::from(std::mem::take(&mut current)).style(line.style));
-                    column = hang.chars().count();
+                    column = hang.len();
                     if !hang.is_empty() {
                         current.push(Span::raw(hang.clone()));
                     }
                 }
                 current.push(Span::styled(piece.clone(), span.style));
-                column += piece.chars().count();
+                column += columns(&piece);
             }
         }
     }
@@ -312,16 +342,27 @@ pub(super) fn joints(cmd: &str) -> Vec<(usize, usize)> {
 }
 
 /// Splits a word that is wider than the line into pieces that are not.
+///
+/// note: between graphemes rather than between characters, and by column rather than by count.
+/// Half of a wide character is not a character, and an `é` written as `e` and a combining accent
+/// is two characters and one cell - so a chunking that counted either would put the accent on the
+/// row below the letter it belongs to. [`prefix_within`] answers both, and it never answers
+/// nothing, which is what stops a grapheme wider than the whole box looping here for ever.
 pub(super) fn split_to_fit(word: &str, width: usize) -> Vec<String> {
-    if word.chars().count() <= width {
+    if columns(word) <= width {
         return vec![word.to_owned()];
     }
-    let characters: Vec<char> = word.chars().collect();
 
-    characters
-        .chunks(width.max(1))
-        .map(|piece| piece.iter().collect())
-        .collect()
+    let width = width.max(1);
+    let mut out = Vec::new();
+    let mut rest = word;
+    while !rest.is_empty() {
+        let take = prefix_within(rest, width);
+        out.push(rest[..take].to_owned());
+        rest = &rest[take..];
+    }
+
+    out
 }
 
 /// Breaks text into lines that fit, keeping the newlines it already had, hanging continuations
@@ -331,14 +372,14 @@ pub(super) fn split_to_fit(word: &str, width: usize) -> Vec<String> {
 /// that reflowed every line would turn an indented block into a paragraph. A line that has to be
 /// broken keeps its own indentation on the pieces, so a list stays a list.
 pub(super) fn wrapped(text: &str, width: usize, prefix: &str) -> Vec<String> {
-    let head = prefix.chars().count();
+    let head = columns(prefix);
     let width = width.max(head + 12);
     let hanging = " ".repeat(head);
 
     let mut out: Vec<String> = Vec::new();
     for paragraph in text.split('\n') {
         let lead: String = paragraph.chars().take_while(|c| *c == ' ').collect();
-        let room = (width - head).saturating_sub(lead.chars().count()).max(12);
+        let room = (width - head).saturating_sub(lead.len()).max(12);
 
         for line in fold(paragraph.trim_start(), room) {
             let start = match out.is_empty() {
@@ -360,7 +401,7 @@ pub(super) fn wrapped(text: &str, width: usize, prefix: &str) -> Vec<String> {
 /// re-flowing them away would be quietly answering a different question. It keeps the help's
 /// columns lined up in a narrow pane, too.
 pub(super) fn fold(body: &str, room: usize) -> Vec<String> {
-    if body.chars().count() <= room {
+    if columns(body) <= room {
         return vec![body.to_owned()];
     }
 
@@ -373,20 +414,17 @@ pub(super) fn fold(body: &str, room: usize) -> Vec<String> {
     for word in body.split(' ') {
         // a single word longer than the pane is broken rather than allowed to overflow; the last
         // piece stays open, so that whatever follows can share the line with it
-        if word.chars().count() > room {
+        if columns(word) > room {
             if !fresh {
                 out.push(std::mem::take(&mut line));
             }
-            let characters: Vec<char> = word.chars().collect();
-            for piece in characters.chunks(room) {
-                out.push(piece.iter().collect());
-            }
+            out.extend(split_to_fit(word, room));
             line = out.pop().unwrap_or_default();
             fresh = false;
             continue;
         }
 
-        if !fresh && line.chars().count() + 1 + word.chars().count() > room {
+        if !fresh && columns(&line) + 1 + columns(word) > room {
             out.push(std::mem::take(&mut line));
             fresh = true;
         }
@@ -401,12 +439,26 @@ pub(super) fn fold(body: &str, room: usize) -> Vec<String> {
     out
 }
 
-/// Shortens text to a width, with an ellipsis if it had to.
+/// Shortens text to a width in columns, with an ellipsis if it had to.
+///
+/// note: the ellipsis is a column of its own and is counted as one, so what comes back is never
+/// wider than it was asked for. There is a case with no good answer - one grapheme two cells wide
+/// in a box two cells wide, where the grapheme and the ellipsis do not both fit - and it goes to
+/// the ellipsis: a box this narrow can say *something was cut* or it can say one character of
+/// what, and the first is the one a reader can act on.
 pub(super) fn clip(text: &str, width: usize) -> String {
-    match text.chars().count() > width {
-        true if width > 1 => format!("{}…", text.chars().take(width - 1).collect::<String>()),
-        true => text.chars().take(width).collect(),
-        false => text.to_owned(),
+    if columns(text) <= width {
+        return text.to_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+
+    // the ellipsis takes the last column, so what goes in front of it has the rest
+    let head = &text[..prefix_within(text, width - 1)];
+    match columns(head) < width {
+        true => format!("{head}…"),
+        false => "…".to_owned(),
     }
 }
 
@@ -499,6 +551,54 @@ mod tests {
 
         // and the real one beside a quoted one is still found
         assert_eq!(picked("grep -e '|' file | wc -l"), ["|"]);
+    }
+
+    /// Eight characters and sixteen cells, cut at the cell.
+    ///
+    /// note: the box widths here are the ones a screen cannot be driven to. A pane is never two
+    /// columns wide in practice, and the arithmetic that has to survive it is the same arithmetic
+    /// a narrow one uses - so this is where the case with no good answer is pinned, rather than
+    /// left to be discovered by somebody dragging a window edge.
+    #[test]
+    fn a_clip_counts_cells_rather_than_characters() {
+        assert_eq!(clip("一丁丂七丄丅丆万", 9), "一丁丂七…");
+        assert!(columns(&clip("一丁丂七丄丅丆万", 9)) <= 9);
+
+        // no room for a grapheme and an ellipsis both: the ellipsis is what a reader can act on
+        assert_eq!(clip("一丁", 2), "…");
+        assert_eq!(clip("一丁", 0), "");
+        // and nothing changes for text a cell wide
+        assert_eq!(clip("hello", 4), "hel…");
+        assert_eq!(clip("hi", 5), "hi");
+    }
+
+    /// A padded cell is as many columns as it was asked for, whatever is in it.
+    #[test]
+    fn a_padded_cell_is_the_columns_it_was_given() {
+        for (text, width) in [("一丁", 8), ("ab", 5), ("一丁丂七丄", 6), ("", 3)] {
+            assert_eq!(columns(&pad(text, width)), width, "`{text}` at {width}");
+        }
+        assert_eq!(pad("ab", 5), "ab   ");
+    }
+
+    /// A word too wide for the row is broken between graphemes, and every piece fits.
+    #[test]
+    fn a_long_word_is_split_by_column_and_between_graphemes() {
+        let pieces = split_to_fit("一丁丂七丄丅", 5);
+        assert!(pieces.iter().all(|piece| columns(piece) <= 5), "{pieces:?}");
+        assert_eq!(pieces.concat(), "一丁丂七丄丅");
+
+        // a combining accent is two characters and one cell, and it stays on its letter
+        let pieces = split_to_fit("e\u{0301}e\u{0301}e\u{0301}", 2);
+        assert_eq!(pieces, ["e\u{0301}e\u{0301}", "e\u{0301}"]);
+    }
+
+    /// And a paragraph is folded by the same count, losing nothing.
+    #[test]
+    fn folding_a_paragraph_counts_cells() {
+        let rows = fold("一丁丂七丄丅丆万", 8);
+        assert!(rows.iter().all(|row| columns(row) <= 8), "{rows:?}");
+        assert_eq!(rows.concat(), "一丁丂七丄丅丆万");
     }
 
     /// A command this cannot read to the end has nothing picked out of it.
