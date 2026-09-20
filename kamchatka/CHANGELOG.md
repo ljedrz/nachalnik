@@ -493,7 +493,27 @@ minor bump may break you.
   with no projection, and the subscription it already has is holding lines nothing else would bring
   back.
 
+### breaking
+
+- `endpoint::connect` and `endpoint::gemini::connect` take `Option<&str>` rather than anything that
+  becomes a `String`, because a session may now have no model. `None` builds the client and skips
+  the probe, since there is nothing to ask a context limit about; an embedder that always names one
+  wraps the argument in `Some`.
+
 ### changed
+
+- **A session started without `-m` picks no model, and says so.** There used to be a default -
+  `openai/gpt-4o-mini`, or `gemini-3.6-flash` with `--gemini` - so a first run talked to whatever
+  this program's author had picked, at the person's expense and with nothing saying the choice was
+  not theirs. Now the session starts all the same, with the address and the key settled, and the
+  kernel is handed no provider at all until `/model` picks one.
+
+  That state is the runtime's own, rather than a flag this program keeps: `model_info()` answers
+  `None`, so a turn is `Error::NoProvider` and cannot become a request naming nothing. What the
+  program adds is the three places a person reads it - a line at startup, a placeholder where the
+  name goes in the corner rather than one chunk fewer, and a refusal from `App::start_turn` naming
+  the command that ends it, which is where every way of starting a turn goes through. A message
+  typed before a model is picked stays in the context and is asked of the model picked afterwards.
 
 - **`attach` says which session it is resuming, and which version of the wire it speaks.** Two
   fields, both on the one message, and both are here before anybody needs them because neither can

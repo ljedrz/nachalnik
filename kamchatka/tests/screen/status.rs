@@ -1138,3 +1138,52 @@ async fn the_context_tab_counts_one_item_as_one_item() {
     assert!(packed.contains("1itemnow"), "{packed}");
     assert!(packed.contains("1item,~12,345tokens"), "{packed}");
 }
+
+/// A session that has not picked a model draws a placeholder where the name goes.
+///
+/// note: the corner is the only thing on the screen that says what this session is talking to, so
+/// a session with nothing to talk to has to say that in the same place. Drawing one chunk fewer
+/// reads as a corner that has not caught up yet, which is the one state nobody can act on - and
+/// the address stays, because it is settled and it is what `/models` is about to list.
+#[tokio::test]
+async fn the_corner_names_the_gap_where_no_model_has_been_picked() {
+    let mut harness = Harness::new([ModelResponse::text("never asked for")]);
+    // what `Setup::wire` leaves behind for a session started without `-m`: an address and a key,
+    // and nothing in the kernel to ask
+    harness.app.kernel.clear_provider();
+
+    let flat = harness.flat();
+    assert!(flat.contains("no model @ 127.0.0.1:1"), "{flat}");
+    // and it is not drawn in the colour everything else in that line is, because it is the one
+    // thing there that is asking for something
+    assert_eq!(
+        harness.style_of("no model @").0,
+        ratatui::style::Color::Yellow
+    );
+}
+
+/// And nothing is sent while it says so.
+///
+/// note: the refusal is `App::start_turn`'s rather than a check at the prompt, which is what makes
+/// it the answer to every way of starting a turn. The kernel refuses this too - it holds no
+/// provider at all - and what the line adds is whose move it is.
+#[tokio::test]
+async fn a_message_typed_before_a_model_is_picked_is_not_sent() {
+    let mut harness = Harness::new([ModelResponse::text("never asked for")]);
+    harness.app.kernel.clear_provider();
+
+    harness.send("what is 2+2").await;
+
+    let flat = harness.flat();
+    assert!(
+        flat.contains("nothing is sent until there is a model"),
+        "{flat}"
+    );
+    assert!(flat.contains("`/model ID` picks one"), "{flat}");
+    // the line is kept rather than thrown away: it is in the context, and the model picked a
+    // moment from now is asked it
+    assert_eq!(
+        harness.app.kernel.items()[0].content.to_text(),
+        "what is 2+2"
+    );
+}

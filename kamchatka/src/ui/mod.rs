@@ -489,8 +489,17 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
     // model - `/model` and `/seams` have said so all along, but only when asked, so a session
     // pointed at a local ollama looked exactly like one talking to OpenRouter. The host alone:
     // the rest of the URL is `/provider`'s to show, and there is no room for it here
-    if let Some(info) = app.kernel.model_info() {
-        add(format!("{} @ {}", info.model, app.provider.host()), dim);
+    //
+    // note: a session with no model gets a placeholder in the model's place rather than a corner
+    // with one fewer thing in it, because the gap is the one thing nobody can act on - a corner
+    // that simply leaves the model out reads as a corner that has not caught up yet. The address
+    // is still shown: it is settled, and it is what `/models` is about to list
+    match app.kernel.model_info() {
+        Some(info) => add(format!("{} @ {}", info.model, app.provider.host()), dim),
+        None => add(
+            format!("no model @ {}", app.provider.host()),
+            Style::default().fg(Color::Yellow),
+        ),
     }
 
     // what the next request would cost with the message being typed in it, taken from what the

@@ -660,8 +660,8 @@ setting added later nor a number added here can go unnoticed.
 kamchatka [OPTIONS] [MESSAGE]...
 
   -m, --model <MODEL>       the model to talk to            [env: KAMCHATKA_MODEL]
-                            [default: openai/gpt-4o-mini, or gemini-3.6-flash
-                            with --gemini]
+                            without one the session starts with none and sends
+                            nothing until /model picks one
   -f, --file <PATH>         put a file in the context, pinned; a PDF or an image
                             goes in as itself. May be repeated
   -s, --system <TEXT>       a system instruction; the runtime ships none of its own

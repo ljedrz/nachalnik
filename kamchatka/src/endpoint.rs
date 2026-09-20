@@ -88,9 +88,15 @@ pub fn session_endpoint(gemini: bool) -> String {
 }
 
 /// Builds a provider from the environment, asking the endpoint what the model's limit is.
-pub async fn connect(model: impl Into<String>) -> Result<Arc<OpenAiCompatible>, BoxError> {
-    let mut provider =
-        OpenAiCompatible::new(model, base_url(), api_key()?).with_context_limit(configured_limit());
+///
+/// note: the model is optional, and having none is how a session started without `-m` begins.
+/// Everything that does not depend on which model it is - the address, the key, the attribution,
+/// the listing `/models` reads - is settled here all the same, so that picking one afterwards is a
+/// command rather than a restart. The probe is the one thing skipped: there is no model for it to
+/// ask a limit about, and `set_model` runs it the moment there is.
+pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxError> {
+    let mut provider = OpenAiCompatible::new(model.unwrap_or_default(), base_url(), api_key()?)
+        .with_context_limit(configured_limit());
     if env::var_os("KAMCHATKA_NO_ATTRIBUTION").is_none() {
         provider = provider
             .on_behalf_of(APP_URL, APP_TITLE)
@@ -98,7 +104,9 @@ pub async fn connect(model: impl Into<String>) -> Result<Arc<OpenAiCompatible>, 
     }
 
     let provider = Arc::new(provider);
-    provider.probe().await;
+    if model.is_some() {
+        provider.probe().await;
+    }
 
     Ok(provider)
 }
@@ -345,11 +353,18 @@ pub mod gemini {
     ///
     /// note: no attribution. It is OpenRouter that keeps a ranking of the apps calling it, and
     /// there is nothing to tell Google that it has asked for.
-    pub async fn connect(model: impl Into<String>) -> Result<Arc<Gemini>, BoxError> {
+    ///
+    /// note: the model is optional for the reason it is above, and here the probe is not merely
+    /// pointless without one: it asks for `{base}/models/{model}` by name, so with nothing to put
+    /// there it would be asking the endpoint about a model called nothing.
+    pub async fn connect(model: Option<&str>) -> Result<Arc<Gemini>, BoxError> {
         let provider = Arc::new(
-            Gemini::new(model, base_url(), api_key()?).with_context_limit(configured_limit()),
+            Gemini::new(model.unwrap_or_default(), base_url(), api_key()?)
+                .with_context_limit(configured_limit()),
         );
-        provider.probe().await;
+        if model.is_some() {
+            provider.probe().await;
+        }
 
         Ok(provider)
     }

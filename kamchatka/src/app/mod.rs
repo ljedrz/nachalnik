@@ -889,7 +889,7 @@ impl App {
     /// only half of it: a loop that hands in the next line - a script, a person, an agent driving
     /// this from somewhere else - would start spending again, and every caller goes through here.
     pub fn start_turn(&mut self) {
-        if self.busy || self.broke() {
+        if self.busy || self.broke() || self.no_model() {
             return;
         }
 
@@ -915,7 +915,7 @@ impl App {
     /// what the model has asked for *before* any of it runs - which the kernel documents as a
     /// resting state on purpose, and which a whole turn walks straight through.
     pub fn start_step(&mut self) {
-        if self.busy || self.broke() {
+        if self.busy || self.broke() || self.no_model() {
             return;
         }
 
@@ -1383,6 +1383,30 @@ impl App {
             format!(
                 "nothing more is being sent: {spent} tokens spent of {limit}. `/spend N` \
                      raises the ceiling, and `/spend 0` takes it away"
+            ),
+        );
+
+        true
+    }
+
+    /// Whether a turn is being asked for before anything has been picked to ask, and says so if it
+    /// is.
+    ///
+    /// note: beside [`App::broke`] and for the same reason. A session can start without a model -
+    /// see `Setup::wire` - and the kernel refuses that too, with `no provider is set`, which is
+    /// true and tells nobody whose move it is. What this adds is the sentence, and it adds it in
+    /// the one place every way of starting a turn goes through: a person at the prompt, a line
+    /// down a pipe, the message on the command line, a client on a socket.
+    fn no_model(&mut self) -> bool {
+        if self.kernel.model_info().is_some() {
+            return false;
+        }
+        self.say(
+            Speaker::Error,
+            format!(
+                "nothing is sent until there is a model: `/model ID` picks one, and `/models` \
+                 lists what {} serves",
+                self.provider.host()
             ),
         );
 

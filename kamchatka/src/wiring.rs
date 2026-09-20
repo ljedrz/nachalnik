@@ -282,7 +282,14 @@ impl Setup {
                 policy.set(&subject, verdict);
             }
         }
-        kernel.set_provider(provider.clone());
+        // note: only where the provider names a model, because a session started without `-m` has
+        // an address and a key and nothing to ask - and the runtime already has a state for that.
+        // With no provider, `model_info()` answers `None`, every screen that draws a model draws
+        // the gap instead, and a turn is `Error::NoProvider` rather than a request naming nothing.
+        // `/model` hands it over, which is the moment there is something to hand over
+        if !provider.model().is_empty() {
+            kernel.set_provider(provider.clone());
+        }
 
         // note: the kernel gets the advisor wrapped around the standing rules where there is one,
         // and the rules themselves where there is not. Everything else keeps holding `Careful`

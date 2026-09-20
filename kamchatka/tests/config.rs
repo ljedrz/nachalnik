@@ -440,19 +440,28 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
 /// the one nothing else in this suite would notice. The limit comes from the environment because
 /// no endpoint is going to be asked what it is: the address is a closed port, so a request that
 /// *is* sent fails at the socket, which is how the two outcomes are told apart.
+///
+/// note: the only one in this suite that names a model, and it has to: a session with none sends
+/// nothing at all, so both outcomes would look like the refusal.
 #[test]
 fn a_request_that_looks_too_long_is_sent_when_it_is_asked_to_be() {
     let over = [("KAMCHATKA_CONTEXT_LIMIT", "10")];
 
-    let (_, refused) = run_with(&[], "hello\n", &over);
+    let (_, refused) = run_with(&["-m", "a-model"], "hello\n", &over);
     assert!(
         refused.contains("was not sent"),
         "the default refuses it here: {refused}"
     );
 
     for args in [
-        vec!["--send-oversized".to_owned()],
         vec![
+            "-m".to_owned(),
+            "a-model".to_owned(),
+            "--send-oversized".to_owned(),
+        ],
+        vec![
+            "-m".to_owned(),
+            "a-model".to_owned(),
             "--config-file".to_owned(),
             settings("sending", r#"{"send-oversized": true}"#),
         ],

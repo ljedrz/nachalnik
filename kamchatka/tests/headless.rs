@@ -2011,3 +2011,72 @@ async fn clear_says_which_of_the_two_things_it_could_mean_is_where() {
     // and nothing happened to either of them, which is what an unknown command owes
     assert_eq!(run.app.cleared(), 0, "it cleared the notices anyway");
 }
+
+/// A session started without a model asks nobody anything, and `/model` is what ends that.
+///
+/// note: through `Setup::wire` with a provider that names no model, because that is what `main`
+/// hands over for a run started without `-m` - and what `wire` does with it is the whole of the
+/// mechanism. The kernel is given no provider at all, so "nothing was sent" is a fact about the
+/// runtime rather than a check in the client; what the prose has to add is whose move it is.
+///
+/// note: `/model` twice, either side of the switch. The second one can only name the model if the
+/// kernel was handed the provider at the switch, which is the half of this a screen would not
+/// show.
+#[tokio::test]
+async fn a_session_with_no_model_sends_nothing_until_one_is_picked() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    assert!(
+        app.kernel.model_info().is_none(),
+        "the kernel was handed a provider with nothing to ask"
+    );
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(
+            &mut app,
+            &mut events,
+            &mut finished,
+            "hello\n/model\n/model a-model\n/model\n".as_bytes(),
+        )
+        .await
+        .expect("the run failed");
+    let run = Run {
+        app,
+        records: String::from_utf8(records).expect("the records are text"),
+        prose: String::from_utf8(prose).expect("the prose is text"),
+    };
+
+    assert!(
+        !run.names().contains(&"model.requested".to_owned()),
+        "a request went out with nothing to send it to: {:?}",
+        run.names()
+    );
+    assert!(
+        run.prose.contains("nothing is sent until there is a model"),
+        "{}",
+        run.prose
+    );
+    // the line is kept rather than refused: the model picked a moment later is asked it
+    assert_eq!(run.app.kernel.items()[0].content.to_text(), "hello");
+
+    assert!(run.prose.contains("no model yet"), "{}", run.prose);
+    assert!(
+        run.prose.contains("a-model at http://127.0.0.1:1"),
+        "{}",
+        run.prose
+    );
+}

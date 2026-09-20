@@ -225,8 +225,19 @@ impl App {
                     self.forget_the_last_model();
                     // the new model has a context limit of its own, and finding it out is a round
                     // trip; the screen should not stop for it, and the next line does
-                    self.settling =
-                        Some(tokio::spawn(async move { provider.set_model(model).await }));
+                    let kernel = self.kernel.clone();
+                    self.settling = Some(tokio::spawn(async move {
+                        provider.set_model(model).await;
+                        // a session started without `-m` has held no provider until now, and this
+                        // is what ends that - after the switch rather than before it, so that
+                        // nothing reads a model whose name is still the empty one it was built
+                        // with. Where the kernel has one already it is this same object, so the
+                        // switch is done and setting it again would put a second `model.changed`
+                        // on the trace for one change
+                        if kernel.model_info().is_none() {
+                            kernel.set_provider(provider);
+                        }
+                    }));
 
                     return;
                 }
@@ -243,7 +254,14 @@ impl App {
                                 .unwrap_or_else(|| "an unknown number of".into()),
                         ),
                     ),
-                    None => self.say(Speaker::Error, "there is no provider"),
+                    None => self.say(
+                        Speaker::Error,
+                        format!(
+                            "no model yet: `/model ID` picks one, and `/models` lists what {} \
+                             serves",
+                            self.provider.host()
+                        ),
+                    ),
                 }
             }
             // the ids an endpoint serves are its own - `google/gemini-3.5-flash` at one address
@@ -322,15 +340,19 @@ impl App {
                 let provider = self.provider.clone();
                 self.say(
                     Speaker::Note,
-                    match &model {
-                        Some(model) => format!("{model} at {url}, from now on"),
-                        None => format!(
+                    match (&model, self.kernel.model_info()) {
+                        (Some(model), _) => format!("{model} at {url}, from now on"),
+                        (None, Some(info)) => format!(
                             "requests now go to {url}, still asking for {}; the key is the one \
                              this started with",
-                            self.kernel
-                                .model_info()
-                                .map(|info| info.model)
-                                .unwrap_or_default()
+                            info.model
+                        ),
+                        // a session that has not picked one yet: there is no name to carry over,
+                        // and saying it is "still asking for" nothing reads as a model called
+                        // nothing rather than as the gap it is
+                        (None, None) => format!(
+                            "requests now go to {url}; there is still no model, and `/models` \
+                             lists what this one serves"
                         ),
                     },
                 );
@@ -747,7 +769,7 @@ impl App {
                     self.provider.endpoint(),
                     info.provider
                 ),
-                None => "none set".to_owned(),
+                None => "none until `/model ID` picks one".to_owned(),
             },
             tools.len(),
             match tools.is_empty() {

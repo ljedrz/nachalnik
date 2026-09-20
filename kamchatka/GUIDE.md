@@ -24,6 +24,11 @@ own is the same word whether a request is in flight or the program is wedged, an
 there to tell the two apart. It is absent while the runtime is resting, including when it is
 waiting on **you**: nothing should suggest work is happening while a question sits unanswered.
 
+Next along is the model and the address it is at, both of them, because the same name at a
+different address is a different model. A session started without `-m` has no model yet, and the
+corner says `no model` in its place rather than leaving it out: nothing is sent until `/model`
+picks one, and `/models` lists what the endpoint serves.
+
 **chat** is the conversation, and every terminal agent has one — this one also says which of it
 the model is still being sent, and reads a turn as it now stands rather than as it arrived. Both
 of those are read off the context every frame rather than written down when they happen, so a

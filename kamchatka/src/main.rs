@@ -27,18 +27,15 @@ use nachalnik::Grant;
 use nachalnik_providers::Dialect;
 
 use kamchatka::{
-    app::App,
+    app::{App, Speaker},
     config::Settings,
     endpoint, headless, remote, sandbox,
     tools::Subject,
     wiring::{Setup, Wired},
 };
-// the drawing loop's own: the two channel payloads it has to name in a signature, and the screen
+// the drawing loop's own: the channel payload it has to name in a signature, and the screen
 #[cfg(feature = "tui")]
-use kamchatka::{
-    app::{Outcome, Speaker},
-    ui,
-};
+use kamchatka::{app::Outcome, ui};
 #[cfg(feature = "tui")]
 use nachalnik::Event;
 
@@ -91,7 +88,8 @@ struct Args {
     /// A first message, sent as soon as it starts.
     message: Vec<String>,
 
-    /// The model to talk to. [default: openai/gpt-4o-mini, or gemini-3.6-flash with --gemini]
+    /// The model to talk to. Without one the session starts with none and sends nothing until
+    /// `/model` picks one; `/models` lists what the endpoint serves.
     #[arg(short, long, env = "KAMCHATKA_MODEL")]
     model: Option<String>,
 
@@ -623,18 +621,18 @@ async fn session() -> Result<()> {
     // two wire formats, one trait. `--gemini` is what a person picks, and everything downstream -
     // the kernel, the screen, `/model`, `/provider` - is written against `Endpoint` and never
     // finds out which one it got
-    let model = args.model.clone().unwrap_or_else(|| {
-        match args.gemini {
-            true => "gemini-3.6-flash",
-            false => "openai/gpt-4o-mini",
-        }
-        .to_owned()
-    });
+    //
+    // note: no model unless one was named. A default means that a session started without `-m`
+    // talks to whatever this program's author picked, at the person's expense and with nothing
+    // saying the choice was not theirs. Without one the session still starts - the address and
+    // the key are settled, `/models` lists what is served and `/model` picks one - and until it
+    // is picked the kernel holds no provider, so nothing can be sent. See `Setup::wire`
+    let model = args.model.as_deref();
     let provider: Arc<dyn Dialect> = match args.gemini {
-        true => endpoint::gemini::connect(&model)
+        true => endpoint::gemini::connect(model)
             .await
             .map(|it| it as Arc<dyn Dialect>),
-        false => endpoint::connect(&model)
+        false => endpoint::connect(model)
             .await
             .map(|it| it as Arc<dyn Dialect>),
     }
@@ -711,6 +709,19 @@ async fn session() -> Result<()> {
     #[cfg(feature = "tui")]
     if !headless && server.is_none() && args.resume.is_none() {
         app.say(Speaker::Note, ui::GREETING);
+    }
+    // note: said into the conversation rather than printed, because all three loops read that one
+    // and a session with no model has the same thing to say to each of them. The corner says it
+    // too, for as long as it is true, and `start_turn` says it again to anything that tries to
+    // send - this is the orientation, not the enforcement
+    if app.kernel.model_info().is_none() {
+        app.say(
+            Speaker::Note,
+            format!(
+                "no model yet: `/model ID` picks one, and `/models` lists what {} serves",
+                app.provider.host()
+            ),
+        );
     }
     if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
         app.ask(&message);

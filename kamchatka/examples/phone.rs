@@ -72,7 +72,7 @@ async fn main() -> Result<(), String> {
 
     // the same two variables the program reads, because this is the program's session and a second
     // way to say where the requests go would be a second thing to keep in step
-    let provider: Arc<dyn Dialect> = endpoint::connect(&model)
+    let provider: Arc<dyn Dialect> = endpoint::connect(Some(model.as_str()))
         .await
         .map(|it| it as Arc<dyn Dialect>)
         .map_err(|e| format!("could not reach {model}: {e}"))?;

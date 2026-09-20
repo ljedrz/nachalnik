@@ -81,10 +81,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .to_owned()
     });
     let provider: Arc<dyn Dialect> = match ordered {
-        true => endpoint::gemini::connect(&model)
+        true => endpoint::gemini::connect(Some(model.as_str()))
             .await
             .map(|it| it as Arc<dyn Dialect>),
-        false => endpoint::connect(&model)
+        false => endpoint::connect(Some(model.as_str()))
             .await
             .map(|it| it as Arc<dyn Dialect>),
     }
