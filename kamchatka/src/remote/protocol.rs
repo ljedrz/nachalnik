@@ -32,14 +32,27 @@ use crate::app::{Did, Going, Page, Said, Speaker, Stance};
 /// and why it is not `tokio::io::Lines`. Checked afterwards it is no defence against the case
 /// above at all, because the reading is the thing it was supposed to stop.
 ///
-/// note: **the reading side owes this and the writing side does not**, which is a decision rather
-/// than an omission. Nothing caps what the session writes, and it could not: a record is in the
-/// log, the log drops nothing, and a client that resumes by sequence comes back to the same record
-/// every time - so a `context.replaced` over this makes a session unattachable rather than
-/// inconvenient. That hole is real and is in `POSTPONED.md` with what would close it. What is *not*
-/// worth doing about it is raising the number, which moves the size of the thing that breaks
-/// without changing anything else.
+/// note: the reading side enforces this and the writing side *names* it. Nothing caps what the
+/// session writes into its log and nothing could: a record is in the log, the log drops nothing,
+/// and a client resuming by sequence comes back to the same record every time - so a
+/// `context.replaced` over this used to make a session unattachable rather than inconvenient. One
+/// legitimate record locked everybody out for the rest of the session. What goes out instead is
+/// [`Message::Oversized`], which names the record and its size and lets the client move past it;
+/// [`Command::Inspect`] is how the content is fetched when somebody wants it. Raising the number
+/// was never the fix - it moves the size of the thing that breaks and changes nothing else.
 pub const MAX_LINE: usize = 32 * 1024 * 1024;
+
+/// Whether a framed message is longer than the other end will read, and how long it is.
+///
+/// note: the newline is not part of what the reader measures - [`Frames`] holds the frame
+/// and checks what it holds, which is everything up to the newline and not the newline - so the
+/// byte that ends the line comes off before the comparison. One byte, and it decides whether a
+/// record sitting exactly on the limit goes out or is named instead.
+pub fn overlong(line: &[u8]) -> Option<usize> {
+    let bytes = line.len().saturating_sub(1);
+
+    (bytes > MAX_LINE).then_some(bytes)
+}
 
 /// The version of this wire that this build speaks.
 ///
@@ -202,6 +215,26 @@ pub enum Message {
     Projected(Box<Attached>),
     /// One entry of the session log, verbatim.
     Record(Record),
+    /// One entry of the session log that is longer than the other end will read, named instead of
+    /// sent.
+    ///
+    /// note: the record still exists and is still in the log - this is a gap in what was *sent*,
+    /// not in what happened, and `context.replaced` is the only event that can grow one. Without
+    /// it a session that wrote such a record was unattachable for the rest of its life: a client
+    /// resumes by sequence, so it came back to the same record on every attempt, spent a minute
+    /// retrying and left. One legitimate record, and everybody locked out.
+    ///
+    /// note: numbered, and the number is what makes this a message rather than an apology. A
+    /// client takes the `seq` as seen and resumes after it, which is the whole of getting past.
+    /// What it has is a hole it knows the size and position of, and [`Command::Inspect`] is where
+    /// the content is when somebody wants it - which is already how content is fetched on demand
+    /// rather than streamed.
+    Oversized {
+        /// Which record.
+        seq: u64,
+        /// How many bytes it would have been on the wire.
+        bytes: usize,
+    },
     /// A fragment of something still arriving: a model writing, or a tool talking.
     ///
     /// note: unnumbered on purpose - these are not in the log by default, so there is no sequence
@@ -679,9 +712,25 @@ pub async fn write<T: Serialize>(
     out: &mut (impl AsyncWrite + Unpin),
     message: &T,
 ) -> Result<(), String> {
+    write_frame(out, &framed(message)?).await
+}
+
+/// One message as the bytes it goes out as, newline and all.
+///
+/// note: split out of [`write()`] so that a caller can ask how long a message is before committing
+/// to sending it, which is what `flush` does with a record; see [`overlong`]. Serializing twice to
+/// answer that would be doing the expensive half twice on every record of every connection, and
+/// the records this is about are the large ones.
+pub fn framed<T: Serialize>(message: &T) -> Result<Vec<u8>, String> {
     let mut line = serde_json::to_vec(message).map_err(|e| e.to_string())?;
     line.push(b'\n');
-    out.write_all(&line)
+
+    Ok(line)
+}
+
+/// Sends one already-framed message.
+pub async fn write_frame(out: &mut (impl AsyncWrite + Unpin), line: &[u8]) -> Result<(), String> {
+    out.write_all(line)
         .await
         .map_err(|e| format!("could not write to the connection: {e}"))?;
     out.flush()
@@ -722,4 +771,32 @@ pub enum Address<'a> {
     Unix(&'a str),
     /// A host and a port.
     Tcp(&'a str),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The one byte the reader and the writer have to agree about.
+    ///
+    /// note: [`Frames::next`] checks what it is *holding*, which is the frame without the newline
+    /// that ended it, so a message exactly on the limit is one the other end will read and one
+    /// more than that is not. Measured against the framed bytes here, because that is what the
+    /// caller has in its hand - and getting this off by one would either refuse a record every
+    /// client could have taken or send one none of them can.
+    #[test]
+    fn the_limit_is_the_frame_without_the_newline_that_ends_it() {
+        let framed = |bytes: usize| {
+            let mut line = vec![b'x'; bytes];
+            line.push(b'\n');
+
+            line
+        };
+
+        assert_eq!(overlong(&framed(MAX_LINE)), None);
+        assert_eq!(overlong(&framed(MAX_LINE + 1)), Some(MAX_LINE + 1));
+        assert_eq!(overlong(b"short\n"), None);
+        // and nothing at all is not a frame, but it is not over the limit either
+        assert_eq!(overlong(b""), None);
+    }
 }

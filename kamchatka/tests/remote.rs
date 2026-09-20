@@ -44,6 +44,10 @@ mod common;
 /// twenty minutes later with no output about which assertion never came true.
 const PATIENCE: Duration = Duration::from_secs(5);
 
+/// Where the session's own provider points unless a test says otherwise: a port with nothing on
+/// it, so that anything reaching for the endpoint fails at once rather than waiting.
+const CLOSED: &str = "http://127.0.0.1:1";
+
 /// A served session, and where to find it.
 struct Served {
     /// The address, in the spelling a client would type.
@@ -82,11 +86,22 @@ async fn served_as(
     script: Vec<ModelResponse>,
     setup: impl FnOnce(&App),
 ) -> Served {
+    served_at(name, CLOSED, script, setup).await
+}
+
+/// The same, talking to an endpoint of the test's choosing rather than to a closed port - which is
+/// what it takes to catch a command of a client's own still in flight.
+async fn served_at(
+    name: Option<&str>,
+    at: &str,
+    script: Vec<ModelResponse>,
+    setup: impl FnOnce(&App),
+) -> Served {
     let Wired {
         mut app,
         mut events,
         mut finished,
-    } = wired_as(name, script);
+    } = wired_at(name, at, script);
     setup(&app);
 
     // note: port zero, so the kernel picks one nothing else is using and `Server::address` is what
@@ -113,17 +128,18 @@ fn wired(script: Vec<ModelResponse>) -> Wired {
 
 /// The same, under a name of the test's own where it has one.
 fn wired_as(name: Option<&str>, script: Vec<ModelResponse>) -> Wired {
+    wired_at(name, CLOSED, script)
+}
+
+/// The same, over an endpoint named by the caller.
+fn wired_at(name: Option<&str>, at: &str, script: Vec<ModelResponse>) -> Wired {
     let wired = Setup {
         tools: Some(Vec::new()),
         compact: None,
         session_name: name.map(str::to_owned),
         ..Default::default()
     }
-    .wire(Arc::new(OpenAiCompatible::new(
-        "scripted",
-        "http://127.0.0.1:1",
-        "",
-    )))
+    .wire(Arc::new(OpenAiCompatible::new("scripted", at, "")))
     .expect("the wiring failed");
     wired
         .app
@@ -2791,4 +2807,163 @@ async fn the_trace_goes_out_as_the_pane_draws_it() {
     })
     .await;
     served.ended().await.1.expect("the session failed");
+}
+
+/// An endpoint that takes its time answering, so that a command can be caught in flight.
+///
+/// note: a closed port will not do. A refused connection comes back at once, and what this needs
+/// is a window - the one a `/models` at an endpoint that has gone quiet opens for real.
+async fn slow_endpoint(after: Duration) -> String {
+    use tokio::io::AsyncReadExt as _;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = listener.local_addr().expect("its address");
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let _ = socket.read(&mut buf).await;
+                tokio::time::sleep(after).await;
+                let body = r#"{"data":[{"id":"a-slow-model"}]}"#;
+                let _ = socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \
+                             {}\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+
+    format!("http://{at}/v1")
+}
+
+/// The kernel is still heard while one client's command waits on an endpoint.
+///
+/// note: the loop holds the `App` for the length of a command, because there is one of it and
+/// answering anybody needs it. What it used to stop doing as well was reading the kernel's
+/// broadcast - and that channel *drops* what nobody took rather than queueing it, which no other
+/// channel here does. What this loop reads the stream for is `App::trace`, handed to every client
+/// that attaches afterwards, so one `/models` at an endpoint that had gone quiet left everybody
+/// who arrived later with a trace full of holes and nothing anywhere saying so.
+///
+/// note: more items than the channel is deep, because the failure is a capacity exceeded rather
+/// than an ordering; `Config::event_queue_depth` is 1024. And pushed a moment after the command
+/// goes out, so that they land while it is in flight rather than before the loop has taken it.
+#[tokio::test]
+async fn the_kernel_is_still_heard_while_a_command_waits_on_an_endpoint() {
+    use nachalnik::ContextItem;
+
+    let endpoint = slow_endpoint(Duration::from_millis(400)).await;
+    let session = served_at(None, &endpoint, Vec::new(), |_| {}).await;
+    let (mut peer, _) = Peer::attached(&session.at).await;
+
+    peer.send(Command::Submit {
+        line: "/models".to_owned(),
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    // note: yielding between them, and the test is wrong without it. `Kernel::push` is not async
+    // and `#[tokio::test]` is one thread, so a tight loop of them never lets the session's task run
+    // at all - and a channel that overflowed because nobody was *scheduled* would fail this whether
+    // the loop was listening or not. What is under test is a loop that had stopped listening
+    for n in 0..1500 {
+        session.kernel.push(ContextItem::user(format!("item {n}")));
+        if n % 64 == 0 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    // the answer coming back is what says the command really was in flight for all of that
+    let heard = peer
+        .until(|message| matches!(message, Message::Replied { .. }))
+        .await;
+    assert!(!heard.is_empty());
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, _) = session.ended().await;
+
+    assert!(
+        !app.loose
+            .iter()
+            .any(|entry| entry.text.contains("went by too fast")),
+        "the session stopped listening while it waited"
+    );
+    // and it is not that the events never came: every one of them is in the context the session
+    // hands the next client that attaches
+    assert_eq!(
+        app.kernel.items().len(),
+        1500,
+        "the session's own view of the context is short"
+    );
+}
+
+/// A record too long to send is named, and the session stays attachable.
+///
+/// note: the failure this is about is a lockout rather than a lost line. `context.replaced` is the
+/// one event that carries content, the log drops nothing, and a client resumes by sequence - so
+/// one rewritten tool result over `MAX_LINE` was refused by every client, on every attempt, for
+/// the rest of the session. Raising the number would have moved the size of the thing that breaks.
+///
+/// note: thirty-three megabytes, because the limit is thirty-two and nothing smaller exercises it.
+/// It is the one expensive test in this suite and the cost is the point: the case only exists at
+/// that size.
+///
+/// note: the big one is what the item *used to* hold rather than what it holds, which is the shape
+/// the case actually takes - a rewritten tool result - and the only shape this closes. A context
+/// item that is large *now* makes the projection itself oversized, which is a second door to the
+/// same room and is in `POSTPONED.md`: the projection cannot be skipped, so it wants abridging and
+/// that is a decision about what every client is handed.
+#[tokio::test]
+async fn a_record_too_long_to_send_is_named_rather_than_locking_everybody_out() {
+    use nachalnik::ContextItem;
+
+    let session = served(Vec::new(), |_| {}).await;
+    // attached first, because a client that arrives afterwards is handed a projection and the
+    // records *after* it - the ones it has to be able to read are the ones written while it is here
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    let id = session
+        .kernel
+        .push(ContextItem::user("x".repeat(33 * 1024 * 1024)));
+    session
+        .kernel
+        .replace(id, "and now it is short")
+        .expect("the item is there");
+
+    let heard = peer
+        .until(|message| matches!(message, Message::Oversized { .. }))
+        .await;
+    let Some(Message::Oversized { seq, bytes }) = heard.last() else {
+        panic!("the record was not named");
+    };
+    assert!(*bytes > protocol::MAX_LINE, "{bytes} is not over the limit");
+
+    // and the connection is still there, still numbered, and still carrying what came after it:
+    // before this the frame closed it and the next attempt came back to the same record
+    let seq = *seq;
+    peer.send(Command::Submit {
+        line: "/note the session is still here".to_owned(),
+    })
+    .await;
+    // waited for rather than asserted on what has already arrived: the record goes out on the
+    // stream and the answer on the connection, and which of the two lands first is not this
+    // test's business. Nothing coming at all is the failure, and it fails as a timeout
+    peer.until(|message| matches!(message, Message::Record(record) if record.seq > seq))
+        .await;
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
 }

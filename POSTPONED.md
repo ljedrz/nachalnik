@@ -213,28 +213,42 @@ Referenced from [AGENTS.md](AGENTS.md).
   does not poll `ctrl_c`. One client typing `/models` at an endpoint that has gone quiet freezes
   everybody attached.
 
-  It is the same hole as the headless deadline above rather than a new one, and it wants the same
-  fix - somewhere for a command to run that the loop can outlive - which that entry rejects for a
-  reason that applies here too: `App::submit` takes `&mut App`, so a future dropped mid-command
-  leaves a `/provider` half applied. What is different here is the blast radius, and one thing that
-  is cheap and is not the fix: while the loop is blocked its subscription to the kernel can lag, and
-  `App::trace` is what a lagged loop loses. Clients lose no records - they read the log - but
-  `Attached::trace` is built from `App::trace`, so a session that lagged hands every later client a
-  trace with holes in it, which `protocol::Tracing` describes as capped and not otherwise trimmed.
+  **The half that was losing something is closed, and the paragraph above overstated the rest.**
+  Both loops now read the kernel's broadcast while a command is in flight, because that is the one
+  channel here that *drops* what nobody took: `App::trace` is built from what the loop read, and
+  `Attached::trace` hands it to every client that attaches afterwards, so a lagged session gave
+  everybody who arrived later a trace with holes in it and nothing said so. The other three do not
+  lose anything. A connection waits in the listen backlog, an outcome in an unbounded channel and a
+  `ctrl+c` in its own stream; all of them arrive late, none of them is dropped, and a client cannot
+  tell the difference between the loop taking them early and taking them at the end.
 
-- **A record larger than `protocol::MAX_LINE` makes a session unattachable.** The cap is enforced
-  on what is read, and nothing caps what the session writes. `context.replaced` is the one event
-  that carries content, so a rewritten tool result over 32 MB is written by the session and refused
-  by every client - and because a client resumes by sequence, it comes back to the same record on
-  every attempt, retries for a minute and exits. One legitimate record locks everybody out for the
-  rest of the session.
+  What is left is a client waiting for its turn, and it is not a queue anybody can add out here. It
+  is `App::submit` taking `&mut App` for the length of a round trip, so answering one client while
+  another's command is in flight would need two of the one thing there is one of. The fix is the
+  same one the headless deadline above wants - somewhere for a command to run that the loop can
+  outlive - and it is rejected here for the same reason: a future dropped mid-command leaves a
+  `/provider` half applied. The shape that would work is `App::submit` splitting into what needs
+  the session and what only needs an `Arc`, and the question to settle first is what an interrupt
+  means for the half that is already in flight.
 
-  Raising the number is not the fix: it moves the size of the thing that breaks. What would close
-  it is a way to say *this record is too big to send*, which the protocol has no message for and
-  which has a decision in it - a client that is told is a client that has a gap in a numbered
-  stream, and `Command::Inspect` is the shape of the answer, because it is already how content is
-  fetched on demand rather than streamed. Until then the honest statement is the one on `MAX_LINE`:
-  the reading side owes the limit and the writing side does not.
+- **A projection larger than `protocol::MAX_LINE` makes a session unattachable.** The *record* half
+  of this is closed: a record over the cap goes out as `Message::Oversized`, which names its
+  sequence and its size, and the client takes that sequence as seen and carries on. What is left is
+  the projection, and it was found by writing the test for the other half - a 33 MB context item
+  makes `Message::Attached` itself too long, and unlike a record a projection cannot be skipped. A
+  client with no projection has nothing.
+
+  So it wants abridging rather than naming, and that is the decision: `Line::text` in a projection
+  is the whole of what an item says, and clipping it changes what every client is handed - the
+  browser, the gateway and `--connect` alike. `Message::Item` is already *the whole of what one
+  context item says*, fetched on demand, so there is somewhere for the rest to live and the shape
+  of the answer is not in doubt. What is in doubt is the number: a cap per line has to leave an
+  ordinary conversation untouched and still hold when a session has a thousand lines in it, and a
+  projection is one message however many lines are in it.
+
+  Worth knowing for whoever picks this up: the item does not have to be attached by hand. Anything
+  that puts a large file in the context reaches it, and the tool results that would are already
+  bounded by `tools::CEILING` - so the way in is `/attach`, or an embedder pushing one.
 
 - **Serving a client older than the session, which is half of what `protocol::VERSION` promises.**
   The rule on the constant is that a session refuses a version it does not know and serves an older

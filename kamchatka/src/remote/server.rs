@@ -278,58 +278,59 @@ impl Server {
         let mut presses = crate::stopping::Stopping::new()
             .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
 
+        // set by whichever branch found a reason to stop, rather than each of them breaking where
+        // it stands: one of them is nested inside a second `select!` now, and a `break` there ends
+        // the wrong loop
+        let mut leaving = false;
+
         loop {
             serving.pump(app);
-            if app.quit || (stopping && !app.busy) {
+            if app.quit || leaving || (stopping && !app.busy) {
                 break;
             }
 
             tokio::select! {
-                incoming = self.arrived() => match incoming {
-                    Ok(arrived) => serving.attend(app, arrived),
-                    // one connection failing to arrive is not a reason to end a session that may
-                    // have a turn running in it
-                    Err(e) => app.say(Speaker::Error, format!("a client could not connect: {e}")),
-                },
-                Some(ask) = serving.asked() => serving.answer(app, ask).await,
-                event = events.recv() => match event {
-                    Ok(event) => app.on_event(event),
-                    // note: nothing a client can see is lost here. What this loop is doing with the
-                    // stream is keeping `App` up to date for the projections it hands out; the
-                    // clients read the log for themselves, and the log drops nothing
-                    Err(broadcast::error::RecvError::Lagged(missed)) => app.say(
-                        Speaker::Note,
-                        format!(
-                            "{missed} events went by too fast for this session's own view of \
-                             itself; the records have them all"
-                        ),
-                    ),
-                    Err(broadcast::error::RecvError::Closed) => break,
-                },
-                () = presses.pressed() => match stopping {
-                    // the second one: whatever is still running is somebody else's problem now
-                    true => break,
-                    false => {
-                        stopping = true;
-                        app.interrupt();
-                        app.say(
-                            Speaker::Note,
-                            "stopping; what has arrived is kept, and again leaves at once",
-                        );
+                incoming = self.arrived() => apply_arrival(&mut serving, app, incoming),
+                Some(ask) = serving.asked() => {
+                    // note: the command holds the `App` for as long as it takes - there is one of
+                    // it - so the loop waits. What it keeps doing meanwhile is reading the
+                    // kernel's broadcast, in a second `select!` underneath this one, because that
+                    // is the only thing here that *loses* rather than queues: a subscription that
+                    // falls behind drops what it did not read. What this loop reads the stream for
+                    // is `App::trace`, which is handed to every client that attaches afterwards -
+                    // so a `/models` at an endpoint that had gone quiet gave everybody who arrived
+                    // later a trace with holes in it, and nothing anywhere said so.
+                    //
+                    // note: the events and nothing else, which is the answer to a longer version
+                    // of this that collected four things. A connection waits in the listen
+                    // backlog, an outcome in an unbounded channel and a `ctrl+c` in its own
+                    // stream: all three arrive late either way and none of them is dropped, so
+                    // taking them early buys ordering and no client can tell.
+                    //
+                    // note: what is still *held* is another client's command, because answering
+                    // one needs the `App` and the `App` is lent out. That is not a queue this can
+                    // add; it is `App::submit` being `&mut self` for the length of a round trip,
+                    // and `POSTPONED.md` has what splitting it would take.
+                    let mut held = Vec::new();
+                    // a block of its own, because the future borrows the `App` until it is
+                    // dropped and the drain below is what wants it back
+                    {
+                        let doing = serving.answer(app, ask);
+                        tokio::pin!(doing);
+                        loop {
+                            tokio::select! {
+                                () = &mut doing => break,
+                                event = events.recv() => held.push(event),
+                            }
+                        }
+                    }
+                    for event in held {
+                        leaving |= !apply_event(app, event);
                     }
                 },
-                Some(outcome) = finished.recv() => {
-                    // the turn's last events are still queued behind this one, and `select!` picks
-                    // whichever branch is ready rather than whichever happened first
-                    while let Ok(event) = events.try_recv() {
-                        app.on_event(event);
-                    }
-                    failed = match &outcome {
-                        Outcome::Failed(e) => Some(e.clone()),
-                        _ => None,
-                    };
-                    app.on_outcome(outcome);
-                }
+                event = events.recv() => leaving |= !apply_event(app, event),
+                () = presses.pressed() => leaving |= apply_press(app, &mut stopping),
+                Some(outcome) = finished.recv() => failed = apply_outcome(app, events, outcome),
             }
         }
 
@@ -344,6 +345,77 @@ impl Server {
             None => Ok(()),
         }
     }
+}
+
+/// Takes on a connection, or says why there is not one; one branch of [`Server::run`]'s loop.
+///
+/// note: these four are functions rather than the bodies they were, because one of them - the
+/// events - now has a second caller in the drain that catches up after a command held the `App`,
+/// and because a branch cannot `break` where it stands any more. Out of the loop they read as the
+/// four things that happen to a served session, which is what the loop is.
+fn apply_arrival(serving: &mut Serving, app: &mut App, incoming: std::io::Result<Arrived>) {
+    match incoming {
+        Ok(arrived) => serving.attend(app, arrived),
+        // one connection failing to arrive is not a reason to end a session that may have a turn
+        // running in it
+        Err(e) => app.say(Speaker::Error, format!("a client could not connect: {e}")),
+    }
+}
+
+/// Takes in one thing the kernel said; `false` when the stream has ended and the session with it.
+fn apply_event(app: &mut App, event: Result<Event, broadcast::error::RecvError>) -> bool {
+    match event {
+        Ok(event) => app.on_event(event),
+        // note: nothing a client can see is lost here. What this loop is doing with the stream is
+        // keeping `App` up to date for the projections it hands out; the clients read the log for
+        // themselves, and the log drops nothing
+        Err(broadcast::error::RecvError::Lagged(missed)) => app.say(
+            Speaker::Note,
+            format!(
+                "{missed} events went by too fast for this session's own view of itself; the \
+                 records have them all"
+            ),
+        ),
+        Err(broadcast::error::RecvError::Closed) => return false,
+    }
+
+    true
+}
+
+/// Takes in the end of a turn, and hands back what it failed with if it did.
+fn apply_outcome(
+    app: &mut App,
+    events: &mut broadcast::Receiver<Event>,
+    outcome: Outcome,
+) -> Option<String> {
+    // the turn's last events are still queued behind this one, and `select!` picks whichever
+    // branch is ready rather than whichever happened first
+    while let Ok(event) = events.try_recv() {
+        app.on_event(event);
+    }
+    let failed = match &outcome {
+        Outcome::Failed(e) => Some(e.clone()),
+        _ => None,
+    };
+    app.on_outcome(outcome);
+
+    failed
+}
+
+/// Takes in a `ctrl+c`; `true` when it is the second one and the session leaves at once.
+fn apply_press(app: &mut App, stopping: &mut bool) -> bool {
+    // the second one: whatever is still running is somebody else's problem now
+    if *stopping {
+        return true;
+    }
+    *stopping = true;
+    app.interrupt();
+    app.say(
+        Speaker::Note,
+        "stopping; what has arrived is kept, and again leaves at once",
+    );
+
+    false
 }
 
 /// The half of a served session that is not a loop.
@@ -464,11 +536,21 @@ impl Serving {
 
     /// Does one of them, and answers whoever asked.
     ///
-    /// note: the doing happens here, in the caller's own loop, so a command that awaits the
-    /// endpoint holds that loop - no connection accepted, no other client answered, no kernel event
-    /// taken. `/models`, `/model`, `/provider` and `/compact` all await, and `App::submit` awaits a
-    /// switch still in flight before it reads the line at all. `POSTPONED.md` has it, and the blast
-    /// radius is now everybody attached *and* whoever is at the screen.
+    /// note: the doing happens here, in the caller's own loop, and it takes the [`App`] with it -
+    /// there is one of it, and answering anybody needs it. So a command that awaits an endpoint
+    /// holds the loop: `/models` fetches a listing, `/compact` runs a whole pass, and
+    /// [`App::submit`] awaits a switch still in flight before it reads the line at all. What that
+    /// costs is another client waiting for its turn, and a screen that does not redraw where the
+    /// loop is also drawing one.
+    ///
+    /// note: what it no longer costs is anything *lost*. Both loops that call this read the
+    /// kernel's broadcast while they wait - see the branch in [`Server::run`] - because a
+    /// subscription that falls behind drops what it did not read, and `App::trace` is built from
+    /// what this loop read. Everything else that arrives meanwhile queues: a connection in the
+    /// listen backlog, an outcome in an unbounded channel, a `ctrl+c` in its own stream.
+    ///
+    /// note: the waiting is what `POSTPONED.md` still has, and it is not a queue anybody can add
+    /// out here. It is `App::submit` taking `&mut self` for the length of a round trip.
     pub async fn answer(&mut self, app: &mut App, asked: Asked) {
         match asked.0 {
             FromClient::Left { client } => {
@@ -1142,7 +1224,17 @@ async fn flush<W: AsyncWrite + Unpin>(
 ) -> Result<(), String> {
     for record in kernel.history_since(*last) {
         let seq = record.seq;
-        protocol::write(write, &Message::Record(record)).await?;
+        let line = protocol::framed(&Message::Record(record))?;
+        // note: a record the other end would refuse to read is named rather than sent, and the
+        // naming carries its sequence - so the client takes it as seen and resumes after it. Sent,
+        // it is a frame over `MAX_LINE`, which closes the connection; and because a client resumes
+        // by sequence it came straight back to the same record, retried for a minute and left. One
+        // `context.replaced` over the limit used to lock everybody out for the rest of the
+        // session. See `Message::Oversized`
+        match protocol::overlong(&line) {
+            Some(bytes) => protocol::write(write, &Message::Oversized { seq, bytes }).await?,
+            None => protocol::write_frame(write, &line).await?,
+        }
         *last = seq;
     }
 

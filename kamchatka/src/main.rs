@@ -1104,8 +1104,36 @@ async fn run(
                     None => std::future::pending().await,
                 }
             } => {
+                // note: the same hole `remote::Server::run` has, in the loop that also draws, and
+                // closed the same way: the command holds the `App` and the loop waits, but the
+                // kernel's broadcast is read meanwhile, because it is the one channel here that
+                // drops what nobody took rather than queueing it. The keys are in a stream, the
+                // outcome in an unbounded channel, a connection in the listen backlog; all of
+                // those arrive late. A lagged subscription is a hole in what the screen shows and
+                // in the trace every later client is handed.
+                //
+                // note: the screen does not redraw while it waits, and that is visible and
+                // explains itself. What was not visible is the losing.
+                let mut held = Vec::new();
                 if let Some(serving) = &mut serving {
-                    serving.answer(app, ask).await;
+                    let doing = serving.answer(app, ask);
+                    tokio::pin!(doing);
+                    loop {
+                        tokio::select! {
+                            () = &mut doing => break,
+                            event = events.recv() => held.push(event),
+                        }
+                    }
+                }
+                for event in held {
+                    match event {
+                        Ok(event) => app.on_event(event),
+                        Err(RecvError::Lagged(missed)) => app.say(
+                            Speaker::Note,
+                            format!("{missed} events went by too fast to draw; /save has them all"),
+                        ),
+                        Err(RecvError::Closed) => return Ok(()),
+                    }
                 }
             }
             _ = ticks.tick() => {

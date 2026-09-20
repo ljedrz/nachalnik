@@ -322,6 +322,18 @@ impl<'a> Client<'a> {
 
                 self.happened(&record.event)
             }
+            // note: the watermark moves, which is the whole of getting past it. The record exists
+            // and is in the session's log; what this client cannot have is it *down this wire*,
+            // and a client that left its watermark behind would ask for the same record on every
+            // reconnection for the rest of the session
+            Message::Oversized { seq, bytes } => {
+                self.last = seq;
+                self.fresh_line()?;
+                self.tell(&format!(
+                    "record {seq} is {bytes} bytes, too long to send; it is in the session's log, \
+                     and `inspect` fetches what it is about"
+                ))
+            }
             Message::Progress { event, .. } => self.happened(&event),
             // note: nothing, and the same nothing `--headless` does with it. What this writes is a
             // stream rather than a screen: the lines are already down a pipe and on somebody's

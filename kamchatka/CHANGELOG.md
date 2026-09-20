@@ -334,6 +334,36 @@ minor bump may break you.
 
 ### fixed
 
+- **One oversized record locked every client out of a session for good.** `context.replaced` is
+  the only event that carries content, nothing caps what a session writes into its log, and a
+  client resumes by sequence - so a rewritten tool result over `protocol::MAX_LINE` was refused by
+  every client, on every attempt, for the rest of the session. It came back to the same record,
+  retried for a minute and left.
+
+  A record over the cap now goes out as `Message::Oversized`, carrying its sequence and how many
+  bytes it would have been. The client takes that sequence as seen and carries on, so what it has
+  is a hole it knows the size and position of rather than a closed connection; `Command::Inspect`
+  is where the content is when somebody wants it, which is already how content is fetched on
+  demand. Raising the number was never the fix - it moves the size of the thing that breaks.
+
+  Writing the test for it found the other door, which is not closed: a context item that is large
+  *now* makes the projection itself too long, and a projection cannot be skipped. `POSTPONED.md`
+  has it.
+
+- **A client's command stopped the session hearing its own kernel.** `Server::run` applies a
+  command inside its own `select!`, so while `/models` waited on an endpoint that had gone quiet
+  the loop read nothing from the kernel's broadcast - and that channel drops what nobody took. What
+  this loop reads it for is `App::trace`, which `Attached::trace` hands to every client that
+  attaches afterwards, so one slow command gave everybody who arrived later a trace full of holes
+  and nothing anywhere said so. Both loops that can serve a session - the one with a socket and the
+  one that also draws - now read the stream while they wait.
+
+  Only the events, which is the answer to a longer version of this. A connection waits in the
+  listen backlog, an outcome in an unbounded channel and a `ctrl+c` in its own stream: all of them
+  arrive late either way and none is dropped. What is still true is that one client's command is
+  answered before the next one is, because answering anybody needs the session and there is one of
+  it; `RUNNING.md` says so where somebody running `--serve` will read it.
+
 - **Text a terminal draws two cells wide was measured as one.** Everything deciding what fits -
   `refit`, `fold`, `split_to_fit`, `clip`, `markdown`'s `fit` and the context pane's label
   column - counted characters, and a terminal counts columns. So a row of CJK, of fullwidth Latin
@@ -531,6 +561,12 @@ minor bump may break you.
   back.
 
 ### breaking
+
+- `protocol::Message` has an `Oversized` variant, and `protocol::write` is split into `framed` and
+  `write_frame` - which is what lets a caller ask how long a message is before sending it. Adding
+  the variant is not a break on the wire, because `Message::Unknown` is what an older client reads
+  it as and reads as nothing; it is a break for anything in Rust matching on the enum, which is not
+  `#[non_exhaustive]`.
 
 - `endpoint::connect` and `endpoint::gemini::connect` take `Option<&str>` rather than anything that
   becomes a `String`, because a session may now have no model. `None` builds the client and skips

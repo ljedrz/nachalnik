@@ -176,6 +176,14 @@ yet is arbitration — every attached client may submit, interrupt and answer qu
 room for exactly one message queued into a running turn, and when a second client's line replaces
 a first one's the session says so rather than letting a line disappear.
 
+**A command that reaches for the endpoint is answered before the next one is**, because there is
+one session and answering anybody needs it: `/models` fetches a listing, `/compact` runs a whole
+pass, and a `/model` still settling is waited for before the next line is read. So one client's
+`/models` at an endpoint that has gone quiet is every other client's wait, and where the session is
+also drawn at a desk, the screen there does not redraw until it comes back. What that costs is
+patience and nothing else — the kernel's own stream is read throughout, so nothing that happened
+while it waited is lost to anybody.
+
 The protocol itself is newline-delimited JSON, which is to say `nc` and `jq` read it. It lives in
 [`remote`](https://docs.rs/kamchatka/latest/kamchatka/remote/) rather than in a crate of its own,
 and the module documentation is where the argument is: why the records are the half that cannot be

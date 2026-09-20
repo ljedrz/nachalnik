@@ -198,7 +198,7 @@ pub const SHIPPED: &str = include_str!("../kamchatka.json");
 /// note: `XDG_CONFIG_HOME` and then `~/.config`, on every platform rather than Windows' own
 /// `%APPDATA%`. The variable is the one the people who set it expect to be read, and this program
 /// is a terminal program whose Windows users are in a shell that sets `HOME` - which is the same
-/// reasoning [`home`] is written to, and it errs the same way: somewhere predictable rather than
+/// reasoning `home` below is written to, and it errs the same way: somewhere predictable rather than
 /// somewhere clever.
 pub fn found() -> Option<PathBuf> {
     let beside = PathBuf::from(FILE);
