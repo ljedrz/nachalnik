@@ -249,7 +249,7 @@ pub const EVERYWHERE: &str = "  WHEREVER YOU ARE
 /// Everything that can be typed at the prompt with a `/` in front of it.
 pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /help               this; also /?
-    /clear              take this program's own lines off the chat - what it
+    /cleanup            take this program's own lines off the chat - what it
                         said about what it did, and what it answered a command
                         with. The conversation stays, because it is the
                         context; the record keeps what happened either way.

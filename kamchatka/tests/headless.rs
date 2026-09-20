@@ -1926,10 +1926,10 @@ async fn a_question_answered_inside_the_window_still_carries_the_turn_on() {
     );
 }
 
-/// `/clear` down a pipe says nothing, and does not swallow what is said after it.
+/// `/cleanup` down a pipe says nothing, and does not swallow what is said after it.
 ///
 /// note: two claims and only the second is a bug. A pipe cannot unprint what it has already
-/// written, so `/clear` here is nearly a no-op for whoever is reading - which is right, and is
+/// written, so `/cleanup` here is nearly a no-op for whoever is reading - which is right, and is
 /// why the first assertion is that it is silent rather than that anything vanished. What it is
 /// not a no-op for is the *watermark*: this loop reads the program's lines through `App::notes`,
 /// which counts the filtered sequence, and a clear empties that sequence rather than shortening
@@ -1942,42 +1942,42 @@ async fn a_question_answered_inside_the_window_still_carries_the_turn_on() {
 /// rather than looking for a distinctive one, because a refusal that quoted its argument would be
 /// a different line each time and would not notice a mark that is merely too high by one.
 #[tokio::test]
-async fn a_clear_down_a_pipe_is_silent_and_keeps_saying_things_afterwards() {
+async fn a_cleanup_down_a_pipe_is_silent_and_keeps_saying_things_afterwards() {
     let refused = "is not a number of tokens";
     let run = run(
-        "/limit nonsense\n/spend nonsense\n/clear\n/spend nonsense\n",
+        "/limit nonsense\n/spend nonsense\n/cleanup\n/spend nonsense\n",
         vec![],
         |_| {},
     )
     .await;
 
     assert!(
-        !run.prose.to_lowercase().contains("clear"),
+        !run.prose.to_lowercase().contains("cleanup"),
         "a clear announced itself, which is the one thing it must not do: {}",
         run.prose
     );
     assert_eq!(
         run.prose.matches(refused).count(),
         2,
-        "the line after a clear was swallowed: {}",
+        "the line after a cleanup was swallowed: {}",
         run.prose
     );
 }
 
 /// And the same act through the key and through the command reaches the same place.
 ///
-/// note: `/clear` is `ctrl+l`, and the reason to pin it is that they are two doors onto one
+/// note: `/cleanup` is `ctrl+l`, and the reason to pin it is that they are two doors onto one
 /// function rather than two implementations. `tests/screen/chat.rs` presses the key; this sends
 /// the line, in a build with no keys at all to press.
 #[tokio::test]
-async fn clear_is_a_command_as_well_as_a_key() {
+async fn cleanup_is_a_command_as_well_as_a_key() {
     let Wired { mut app, .. } = wired(vec![]);
     app.say(Speaker::Note, "something the program said");
     app.kernel
         .push(ContextItem::user("something a person said"));
 
     let before = app.cleared();
-    app.submit("/clear").await;
+    app.submit("/cleanup").await;
 
     assert_eq!(app.cleared(), before + 1, "the generation did not move");
     assert!(
@@ -1992,4 +1992,22 @@ async fn clear_is_a_command_as_well_as_a_key() {
             .any(|item| item.content.to_text().contains("something a person said")),
         "the conversation is the context and was not this command's to take"
     );
+}
+
+/// `/clear` is answered with where the two things it could mean actually live.
+///
+/// note: the name this command had, and the one word somebody arriving from any other agent will
+/// type. There it means the conversation; here the thing with that shape is `/exclude all` and the
+/// thing with that name was `/cleanup`, so a line saying only that there is no `/clear` would
+/// leave somebody looking for both of them. It is the same argument `/load` makes about not being
+/// called `/resume`: two things a keystroke apart that differ in what happens to the context you
+/// already have is a trap.
+#[tokio::test]
+async fn clear_says_which_of_the_two_things_it_could_mean_is_where() {
+    let run = run("/clear\n", vec![], |_| {}).await;
+
+    assert!(run.prose.contains("`/cleanup`"), "{}", run.prose);
+    assert!(run.prose.contains("`/exclude all`"), "{}", run.prose);
+    // and nothing happened to either of them, which is what an unknown command owes
+    assert_eq!(run.app.cleared(), 0, "it cleared the notices anyway");
 }

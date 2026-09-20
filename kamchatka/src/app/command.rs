@@ -127,7 +127,14 @@ impl App {
             // rather than a quarter of a tall one. It says nothing when it is done, which is
             // `clear_notices`' own rule and the one place this program is deliberately silent: a
             // line reporting that the lines are gone is the first line of the pile it just cleared
-            "clear" => self.clear_notices(),
+            //
+            // note: **not** `/clear`, which is what it was called. Everywhere else that word is
+            // typed at an agent it means the conversation, and this takes away the program's own
+            // lines and deliberately leaves the conversation alone - so the one thing somebody
+            // would be typing it for is the one thing it does not do. It is the same trap `/load`
+            // declines to set by not calling itself `/resume`, and what the old name is answered
+            // with now is `no_such_command`
+            "cleanup" => self.clear_notices(),
             // with a message, because otherwise the only way to reach the first transition is to
             // send one - which runs the whole turn, and there is nothing left to step through
             "step" => {
@@ -442,10 +449,7 @@ impl App {
             // screen. A line typed at a headless run that is not a command is answered here too,
             // and there is no function key down a pipe - so the one answer that pointed anywhere
             // pointed somewhere that run could not go
-            other => self.say(
-                Speaker::Error,
-                format!("there is no `/{other}`; `/help` lists what there is"),
-            ),
+            other => self.say(Speaker::Error, no_such_command(other)),
         }
     }
 
@@ -1475,6 +1479,29 @@ impl App {
             }
             Err(e) => self.say(Speaker::Error, e),
         }
+    }
+}
+
+/// What a line beginning with `/` that is not a command is answered with.
+///
+/// note: here rather than an arm of its own in the dispatch above, because `/clear` is not a
+/// command and an arm would make it one - `every_command_that_exists_is_in_the_help` reads those
+/// arms and is right to: a name the prompt answers to and `/help` does not list is the shape
+/// `/help` itself was in. These are names the prompt *refuses*, and the whole of the refusal is
+/// saying where the thing went.
+///
+/// note: `/clear` is the one there is, and it is worth a sentence because it is what somebody
+/// arriving from any other agent types. There the word means the conversation; here the thing
+/// with that shape is `/exclude all` and the thing that had that name is `/cleanup`, so a refusal
+/// that said only "there is no `/clear`" would leave them looking for both. It is the trap
+/// `/load` declines to set by not calling itself `/resume`.
+fn no_such_command(name: &str) -> String {
+    match name {
+        "clear" => "there is no `/clear`; `/cleanup` takes this program's own lines off the \
+                    chat, and `/exclude all` takes the conversation out of the next request - \
+                    which is a state change, so it comes back"
+            .to_owned(),
+        other => format!("there is no `/{other}`; `/help` lists what there is"),
     }
 }
 

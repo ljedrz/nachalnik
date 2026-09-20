@@ -213,7 +213,7 @@ pub enum Message {
         /// The fragment, as `model.delta` or `tool.output`.
         event: Event,
     },
-    /// The program's own lines are gone: `/clear`, or `ctrl+l` at a terminal watching the same
+    /// The program's own lines are gone: `/cleanup`, or `ctrl+l` at a terminal watching the same
     /// session.
     ///
     /// note: what a client does with it is drop the [`Message::Said`] lines it has drawn and keep

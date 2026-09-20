@@ -127,13 +127,22 @@ minor bump may break you.
   machine takes it. `socket2` gates `with_interval` by operating system, and CI builds on three of
   them.
 
-- **`/clear`, which is `ctrl+l` as a command.** It takes the program's own lines off the chat -
+- **`/cleanup`, which is `ctrl+l` as a command.** It takes the program's own lines off the chat -
   what it said about what it did, and what it answered a command with - and leaves the
   conversation, which is the context and is not this program's to take away. `clear_notices` was
   reachable only by a key, so the two loops with no keyboard could not reach it at all, and the one
   where a pile of notices is the whole screen rather than a quarter of a tall one is the browser.
   It says nothing when it is done, which is that function's own rule: a line reporting that the
   lines are gone would be the first line of the pile it just cleared.
+
+  **It is not called `/clear`**, and the name is the one decision in it. Everywhere else that word
+  is typed at an agent it means the conversation, and this deliberately leaves the conversation
+  alone - so the one thing somebody would be typing it for is the one thing it does not do. It is
+  the trap `/load` declines to set by not calling itself `/resume`. `/clear` is answered rather
+  than left to the line that says there is no such command, because the two things it could have
+  meant are two different commands here and somebody told only that it does not exist would find
+  neither: it names `/cleanup` and `/exclude all`, and says that the second is a state change and
+  comes back.
 
   **It breaks an invariant two loops were relying on, which is most of what this cost.**
   `App::notes` is a watermark over the Note-and-Error lines and its own note says why that is safe:

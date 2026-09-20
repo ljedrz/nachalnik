@@ -158,7 +158,7 @@ impl<'a> Headless<'a> {
         let mut written = 0;
         // and the same for the lines the program itself has said
         let mut said = 0;
-        // and the generation that mark belongs to, since `/clear` starts the sequence again
+        // and the generation that mark belongs to, since `/cleanup` starts the sequence again
         let mut cleared = app.cleared();
 
         loop {
@@ -393,7 +393,7 @@ impl<'a> Headless<'a> {
     /// in [`crate::remote`] - needed the same answer, and a watermark rule stated twice is a
     /// watermark rule that will eventually be two.
     fn echo(&mut self, app: &App, said: &mut usize, cleared: &mut u64) -> Result<(), String> {
-        // `/clear` empties the sequence this is a watermark into rather than shortening it, so the
+        // `/cleanup` empties the sequence this is a watermark into rather than shortening it, so the
         // mark goes back to nothing with it. Nothing is printed to say so: what a pipe has already
         // been handed cannot be taken back, and the lines that would have said it are the ones
         // that just went. See `App::cleared`

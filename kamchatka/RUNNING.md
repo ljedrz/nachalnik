@@ -258,7 +258,7 @@ behind would otherwise hold a truncated answer for ever with nothing to say so; 
 what the provider sent byte for byte, where the context trims the blank lines some of them like to
 open with.
 
-`/clear` takes this program's own lines off the chat — what it said about what it did, and what it
+`/cleanup` takes this program's own lines off the chat — what it said about what it did, and what it
 answered a command with — and leaves the conversation, which is the context. It is the command form
 of <kbd>ctrl+l</kbd>, so it works at a terminal, down a pipe, through `--connect` and on the page;
 and because a session has one voice, clearing it on one client clears it on all of them.

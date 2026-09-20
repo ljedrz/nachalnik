@@ -1520,7 +1520,7 @@ impl App {
     /// and acted on, and whose only missing reader was the person. What the filtered sequence
     /// *is* is append-only: a note is not something that streams.
     ///
-    /// note: with one exception, and it is `/clear`. [`App::clear_notices`] empties this sequence
+    /// note: with one exception, and it is `/cleanup`. [`App::clear_notices`] empties this sequence
     /// rather than shortening it, so a watermark against it is stale in the one direction that is
     /// silent. [`App::cleared`] is what says so, and every caller of this has to read it.
     pub fn notes(&self, said: usize) -> impl Iterator<Item = &Entry> {
@@ -1813,7 +1813,7 @@ impl App {
     /// How many times the program's own lines have been taken off the chat.
     ///
     /// note: for a caller holding a watermark into [`App::notes`], and it is the whole of what
-    /// such a caller has to do about `/clear`: keep this beside `said`, and when it moves, set
+    /// such a caller has to do about `/cleanup`: keep this beside `said`, and when it moves, set
     /// `said` back to nothing. There is no arithmetic to do, because what a clear leaves behind
     /// is not a shorter sequence but an empty one - everything it removes is exactly what `notes`
     /// filters *for*, and the only survivor is a line still being streamed, which is a model
