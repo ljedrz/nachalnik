@@ -430,7 +430,6 @@ fn headless(asked: bool, piped: bool) -> bool {
     asked || piped || cfg!(not(feature = "tui"))
 }
 
-/// The program proper: wired the same way whichever of the two drives it.
 /// What else was typed on a command line that also has `--connect`.
 ///
 /// note: refused rather than ignored, and named rather than counted. A client assembles nothing,
@@ -458,6 +457,7 @@ fn also_typed(matches: &clap::ArgMatches) -> Vec<String> {
         .collect()
 }
 
+/// The program proper: wired the same way whichever of the two drives it.
 async fn session() -> Result<()> {
     // note: the matches as well as the struct, because the settings file needs to know which
     // arguments were typed and the struct cannot say - a value that equals its default and a value
