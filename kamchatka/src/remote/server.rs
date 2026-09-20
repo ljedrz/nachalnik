@@ -729,6 +729,14 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     if let Err(e) = attend(client, &mut frames, &mut write, &kernel, &asks).await {
         // the connection is going either way; this is the last thing it is told, and it is written
         // on a best-effort basis because the usual way to be here is that it stopped listening
+        //
+        // note: and there is a second way, which is the one the cap exists for. A peer that is
+        // still sending when this closes leaves data in the receive buffer nobody read, and TCP
+        // answers a close like that with a reset - which on some platforms discards what the peer
+        // had already been sent, this sentence among it. Draining first would deliver it and is
+        // exactly what `MAX_LINE` refuses to do: not reading a peer that floods is the point, so
+        // the sentence is the thing that gives. What a client can rely on is that the connection
+        // ends, not that it is told why
         let _ = protocol::write(
             &mut write,
             &Message::Failed {

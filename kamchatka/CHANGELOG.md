@@ -329,6 +329,14 @@ minor bump may break you.
   with, a fresh projection, and this - where it only ever read the first. Making it a *record*
   instead is where it belongs and is in `POSTPONED.md`.
 
+- **A connection closed on a peer that is still sending may lose the last thing it was told**, and
+  the test for the oversized frame was written as though it could not. The session says why and
+  closes; the peer is mid-flood, so the receive buffer holds bytes nobody read, and TCP answers a
+  close like that with a reset - which on Windows discards what the peer had already been sent, the
+  sentence among it. Draining first would deliver it and is exactly what `MAX_LINE` refuses to do,
+  since not reading a peer that floods is the whole point. So the promise is that the connection
+  ends rather than that it is told why, which is now what the test asks and what `serve` says.
+
 - **A test helper's import broke the Windows build.** `tests/common`'s `endpoint` is `#[cfg(unix)]`
   - it wants a socket a child process can be pointed at - and the `Arc` it uses was imported at the
   top of the file, where on Windows nothing reaches it. Under the `RUSTFLAGS` this workspace builds
