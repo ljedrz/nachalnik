@@ -329,6 +329,12 @@ minor bump may break you.
   with, a fresh projection, and this - where it only ever read the first. Making it a *record*
   instead is where it belongs and is in `POSTPONED.md`.
 
+- **A test helper's import broke the Windows build.** `tests/common`'s `endpoint` is `#[cfg(unix)]`
+  - it wants a socket a child process can be pointed at - and the `Arc` it uses was imported at the
+  top of the file, where on Windows nothing reaches it. Under the `RUSTFLAGS` this workspace builds
+  with that is a failed build, on the one platform nobody here runs and the suite is compiled into
+  three ways. The imports are the function's now, beside the ones it already had of its own.
+
 - **The on-screen keyboard covered the prompt.** The page is `height: 100dvh`, and `dvh` is the
   viewport a URL bar grows and shrinks rather than the one a keyboard does - the layout viewport
   does not move when a keyboard opens, so the footer sat underneath it and the box was unreachable
