@@ -339,15 +339,26 @@ async fn attaching_answers_with_a_projection_and_then_the_records() {
             .any(|line| line.text == "what is 2+2"),
         "the conversation did not carry the item"
     );
-    // note: the session says when somebody attaches, through `App::say`, so its own voice is in the
-    // conversation beside the context. That is the point rather than noise: a session two people
-    // can type into should say so where both of them read
+    // note: the session says when somebody attaches, and says it on the *trace*, which is where a
+    // thing that happens once a second belongs. It was in the conversation and that is what a
+    // browser reconnecting on a flaky link filled with arrivals: the chat is the context and the
+    // trace is the ring. What matters is that a session two people can type into still says so
+    // somewhere both of them can read, which every projection carries
     assert!(
-        attached
+        !attached
             .conversation
             .iter()
-            .any(|line| line.speaker == Speaker::Note && line.text.contains("client 1 attached")),
-        "the session did not say a client had arrived"
+            .any(|line| line.text.contains("client 1")),
+        "an arrival is not part of the conversation: {:?}",
+        attached.conversation
+    );
+    assert!(
+        attached
+            .trace
+            .iter()
+            .any(|line| line.name == "client.attached" && line.detail.contains("client 1")),
+        "the session did not say a client had arrived: {:?}",
+        attached.trace
     );
     assert_eq!(attached.items.len(), 1);
     assert!(
@@ -1659,33 +1670,43 @@ async fn the_client_answers_a_question_with_the_keys_the_panel_uses() {
 
 /// What the program says for itself reaches a client, because a command that was silent is a verb
 /// that does nothing visible.
+///
+/// note: a refused command is the cheapest line the program says for itself. It used to be a client
+/// arriving, which said the same thing for nothing - until arrivals moved to the trace, because a
+/// browser reconnecting on a flaky link put one in the conversation every second.
 #[tokio::test]
 async fn the_program_has_one_voice_and_every_client_hears_it() {
+    let refused = "is not a number of tokens";
     let session = served(vec![], |_| {}).await;
 
-    let (_one, _) = Peer::attached(&session.at).await;
+    let (mut one, _) = Peer::attached(&session.at).await;
     let (mut two, _) = Peer::attached(&session.at).await;
-    // note: a line said *after* both are attached, which is the only kind either of them can hear.
-    // What a client was told before it arrived is in the conversation it was handed, and a third
-    // arriving is the cheapest line the session says for itself with nobody having asked for one
-    let (mut three, arriving) = Peer::attached(&session.at).await;
 
-    // the second client ran nothing and hears the third arrive
+    // a line said *after* both are attached, which is the only kind either of them can hear: what a
+    // client was told before it arrived is in the conversation it was handed
+    one.send(Command::Submit {
+        line: "/spend nonsense".to_owned(),
+    })
+    .await;
+
+    // the second client asked for nothing and hears it, which is the whole of the claim
     let heard = two
-        .until(|message| matches!(message, Message::Said { text, .. } if text.contains("client 3")))
+        .until(|message| matches!(message, Message::Said { text, .. } if text.contains(refused)))
         .await;
     assert!(heard.iter().any(
-        |message| matches!(message, Message::Said { speaker, .. } if *speaker == Speaker::Note)
+        |message| matches!(message, Message::Said { speaker, .. } if *speaker == Speaker::Error)
     ));
 
-    // and the client it is about reads it once, in the conversation, rather than there and again
-    // underneath: its subscription starts where its projection was taken
+    // and a client that arrives afterwards reads it once - in the conversation it is handed, rather
+    // than there and again underneath. Its subscription starts where its projection was taken, and
+    // those are taken together for exactly this reason
+    let (mut three, arriving) = Peer::attached(&session.at).await;
     assert!(
         arriving
             .conversation
             .iter()
-            .any(|line| line.text.contains("client 3 attached")),
-        "the client that arrived was not told it had"
+            .any(|line| line.text.contains(refused)),
+        "a line said before it arrived is not in the conversation it was handed"
     );
     three
         .send(Command::Submit {
@@ -1698,8 +1719,8 @@ async fn the_program_has_one_voice_and_every_client_hears_it() {
     assert!(
         !ending
             .iter()
-            .any(|message| matches!(message, Message::Said { text, .. } if text.contains("client 3 attached"))),
-        "the attach note arrived again under the conversation that already had it: {ending:?}"
+            .any(|message| matches!(message, Message::Said { text, .. } if text.contains(refused))),
+        "a line the projection already carried arrived again underneath it: {ending:?}"
     );
 
     session.ended().await.1.expect("the session failed");
