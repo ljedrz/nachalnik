@@ -154,9 +154,15 @@ Referenced from [AGENTS.md](AGENTS.md).
   deliberately.
 
   `tests/sandbox.rs` is `#![cfg(target_os = "linux")]` at the file level, so the `macos-latest`
-  column in CI is green while checking none of this. Splitting it is the first step: the claims
-  about the program - a command cannot write outside the working directory, a `curl` is refused -
-  run on both, and only the ones naming a mechanism stay gated.
+  column in CI is green while checking none of this. Splitting it is the first step, and this
+  entry used to say the portable half included *a command cannot write outside the working
+  directory* and *a `curl` is refused*. It does not: both of those are a spawned process being
+  stopped, which off Linux nothing does - they are the whole of what is left here. What runs on
+  both is everything up to the spawn, which is seven of the twenty-three: the `Reach` rules the
+  file tools obey, what a refusal names, the `~` refused in words rather than expanded, the
+  arguments a confinement travels as, and what `shell` says about itself before anything runs.
+  Those want `#![cfg(unix)]` rather than nothing at all, because they are written against `/usr`
+  and `/etc` and a root with no drive letter is not absolute on Windows.
 
   **The Mac binary is separable and is not blocked by any of it.** It is one matrix entry on
   `macos-latest` for `aarch64-apple-darwin` in the `upload-rust-binary-action` the Linux job
