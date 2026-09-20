@@ -1200,10 +1200,22 @@ async fn an_oversized_frame_closes_the_connection() {
     let read = tokio::time::timeout(PATIENCE, protocol::read::<Message>(&mut lines))
         .await
         .expect("a frame with no end to it was read for ever");
-    let Ok(Some(Message::Failed { error, .. })) = read else {
-        panic!("an oversized frame was accepted: {read:?}");
-    };
-    assert!(error.contains("over the"), "{error}");
+    // note: two endings and the claim is about neither of them on its own. The session writes why
+    // and closes, and this peer is still sending when it does - so the receive buffer holds bytes
+    // nobody read, and TCP answers that close with a reset. Where the reset wins it takes the
+    // sentence with it, which is what Windows does and what Linux does when the timing goes that
+    // way; the session will not drain the flood to deliver it, because not reading a peer that
+    // floods is the thing under test. What is promised is that the connection ends
+    match read {
+        Ok(Some(Message::Failed { error, .. })) => {
+            assert!(error.contains("over the"), "{error}");
+        }
+        Err(reset) => assert!(
+            reset.starts_with("the connection stopped"),
+            "the connection ended, but not as a connection ending: {reset}"
+        ),
+        other => panic!("an oversized frame was accepted: {other:?}"),
+    }
     // and it was stopped while it arrived: what got in is the cap and whatever was in flight
     // behind it, rather than however much this was willing to send
     let sent = writing.await.expect("the writer panicked");
