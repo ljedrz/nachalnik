@@ -550,6 +550,7 @@ fn project(app: &App) -> Attached {
     let going = app.going();
 
     Attached {
+        version: protocol::VERSION,
         // note: taken here, in the same synchronous stretch as everything below it, and that is
         // what makes the seam airtight rather than nearly so. Nothing else can be driving the
         // session while this runs, so every record up to this number is described by what follows
@@ -658,7 +659,7 @@ where
     // same impossible resume every time until it gave up
     let (mut last, mut voice) = match settled {
         Ok(settled) => settled,
-        Err(error) => return refuse(write, "attach", error).await,
+        Err(refused) => return refuse(write, refused.about, refused.error).await,
     };
     flush(kernel, &mut last, write).await?;
 
@@ -674,7 +675,7 @@ where
                     let settled = watermark(attach, kernel, asks, client, write).await;
                     let (at, fresh) = match settled {
                         Ok(settled) => settled,
-                        Err(error) => return refuse(write, "attach", error).await,
+                        Err(refused) => return refuse(write, refused.about, refused.error).await,
                     };
                     last = at;
                     // note: the subscription is swapped exactly where a projection is handed over,
@@ -775,6 +776,30 @@ where
     }
 }
 
+/// A refusal, and which of the client's commands to name it as.
+///
+/// note: two names for what one function refuses, because the two are not the same news. An
+/// `attach` refusal is mended by attaching afresh, which is what a client does with it; a `version`
+/// refusal is not mended by anything, and a client that treated it the same way reattached, was
+/// refused identically, and gave up a minute later saying the session had not answered - which is
+/// the one thing that did not happen. See [`crate::remote::Client`].
+struct Refused {
+    /// The command to name it as: `attach`, or `version`.
+    about: &'static str,
+    /// What went wrong.
+    error: String,
+}
+
+impl From<String> for Refused {
+    /// Anything else that stops an attach is the attach's, which is where all of it was before.
+    fn from(error: String) -> Self {
+        Self {
+            about: "attach",
+            error,
+        }
+    }
+}
+
 /// Settles where this client's numbered stream starts, and sends the projection if it needs one.
 ///
 /// note: the subscription to the program's own voice comes back with the watermark, because the
@@ -785,25 +810,28 @@ async fn watermark<W: AsyncWrite + Unpin>(
     asks: &mpsc::UnboundedSender<FromClient>,
     client: u64,
     write: &mut W,
-) -> Result<(u64, broadcast::Receiver<Arc<Message>>), String> {
+) -> Result<(u64, broadcast::Receiver<Arc<Message>>), Refused> {
     let Command::Attach {
         since,
         session,
         version,
     } = attach
     else {
-        return Err("that is not an attach".to_owned());
+        return Err("that is not an attach".to_owned().into());
     };
     // note: a version this session does not know is refused before anything else is read off the
     // message, because what the rest of it means is the thing in question. An older one it does
     // know is served - see `protocol::VERSION`
     let spoken = version.unwrap_or(1);
     if spoken > protocol::VERSION {
-        return Err(format!(
-            "you speak version {spoken} of this protocol and this session speaks {}; the older \
-             end is this one",
-            protocol::VERSION
-        ));
+        return Err(Refused {
+            about: "version",
+            error: format!(
+                "you speak version {spoken} of this protocol and this session speaks {}; the \
+                 older end is this one",
+                protocol::VERSION
+            ),
+        });
     }
     let Some(since) = since else {
         let answered = ask(
@@ -818,7 +846,9 @@ async fn watermark<W: AsyncWrite + Unpin>(
         .await?;
         let (Some(Message::Attached(attached)), Some(voice)) = (answered.message, answered.voice)
         else {
-            return Err("the session answered an attach with something else".to_owned());
+            return Err("the session answered an attach with something else"
+                .to_owned()
+                .into());
         };
         let seq = attached.seq;
         protocol::write(write, &Message::Attached(attached)).await?;
@@ -836,7 +866,8 @@ async fn watermark<W: AsyncWrite + Unpin>(
         return Err(format!(
             "you are resuming a session this is not: this one is `{named}`, and attaching with no \
              `since` starts again here"
-        ));
+        )
+        .into());
     }
     // note: a client claiming to have seen more than has happened is refused rather than clamped.
     // It is either a client that has confused two sessions or one that made the number up, and
@@ -846,7 +877,8 @@ async fn watermark<W: AsyncWrite + Unpin>(
         return Err(format!(
             "this session has {last} record(s) and you say you have {since}; attach with no \
              `since` to start again"
-        ));
+        )
+        .into());
     }
     // note: refused above without troubling the session, and answered here by the session itself,
     // because the answer carries `busy` and nothing but the loop driving the kernel knows it
@@ -861,7 +893,9 @@ async fn watermark<W: AsyncWrite + Unpin>(
     )
     .await?;
     let (Some(message), Some(voice)) = (answered.message, answered.voice) else {
-        return Err("the session answered an attach with nothing".to_owned());
+        return Err("the session answered an attach with nothing"
+            .to_owned()
+            .into());
     };
     protocol::write(write, &message).await?;
 
@@ -870,8 +904,9 @@ async fn watermark<W: AsyncWrite + Unpin>(
 
 /// Says a command could not be done, and ends the connection on it.
 ///
-/// note: named rather than reported as the connection's, so that the one failure a client can
-/// recover from reads as itself. See the first attach in [`attend`].
+/// note: named rather than reported as the connection's, so that a failure a client can do
+/// something about reads as itself - and named one of two ways, because what there is to do about
+/// the two differs. See [`Refused`] and the first attach in [`attend`].
 async fn refuse<W: AsyncWrite + Unpin>(
     write: &mut W,
     about: &str,

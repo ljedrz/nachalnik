@@ -49,6 +49,13 @@ pub const MAX_LINE: usize = 32 * 1024 * 1024;
 /// grew one [`Message`] variant turned every older client into a parse error, a closed connection
 /// and sixty seconds of retries. The rule is that a session refuses a version it does not know and
 /// serves an older one it does.
+///
+/// note: the second half of that rule is not machinery yet, and there is nothing for it to do
+/// while this is `1`. Serving an older client means not sending it a message its version lacks,
+/// which needs the number kept per connection and every write asking about it; what stands in
+/// meanwhile is [`Message::Unknown`], which makes an unrecognised message something a client
+/// survives rather than something that ends it. The day this moves, both ends want the whole rule
+/// - `POSTPONED.md` says what that costs.
 pub const VERSION: u32 = 1;
 
 /// What a client asks a session to do.
@@ -322,6 +329,14 @@ pub enum Message {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Attached {
+    /// Which version of this wire the session speaks; see [`VERSION`].
+    ///
+    /// note: the other half of [`Command::Attach`]'s `version`, and it is here now because it
+    /// cannot be added later on the same terms. A client learns what the session speaks from the
+    /// first thing it is sent, which is what tells it whether a command this build knows is worth
+    /// sending at all - and a field added once two ends are deployed is one a client can only read
+    /// as `Option`, which is the shape that means "and it might be anything".
+    pub version: u32,
     /// The session's name, which is also what its record is filed under.
     pub session: String,
     /// The last record this reflects. Everything after it arrives as a [`Message::Record`].
@@ -603,6 +618,14 @@ impl<R: AsyncBufRead + Unpin> Frames<R> {
                 ));
             }
             if whole {
+                // the `\r` of a `\r\n`, dropped where `Lines` drops it. Nothing here would notice
+                // it - JSON reads it as whitespace either way - but this stands in for that reader,
+                // and a stand-in that hands back a different string is a difference somebody finds
+                // rather than one they read
+                if self.held.last() == Some(&b'\r') {
+                    self.held.pop();
+                }
+
                 return String::from_utf8(std::mem::take(&mut self.held))
                     .map(Some)
                     .map_err(|_| "a message that is not text".to_owned());
