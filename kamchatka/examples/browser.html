@@ -49,17 +49,29 @@
      nothing at all on a phone in daylight. About 2:1 against the background in either scheme now,
      which is a line somebody can find without it reading as a heavy rule */
   * { box-sizing: border-box; }
+  /* note: `--tall` is the *visual* viewport's height, set from script, and `100dvh` is the fallback
+     for a browser without one. They are not the same viewport and the difference is the on-screen
+     keyboard: `dvh` is the one the URL bar grows and shrinks, and a keyboard does not resize it at
+     all - so a footer pinned to the bottom of `100dvh` sits underneath the keyboard, which is where
+     the prompt was on a phone the moment anybody tried to type into it */
   body {
     margin: 0; background: var(--bg); color: var(--fg);
     font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    height: 100dvh; display: flex; flex-direction: column;
+    height: var(--tall, 100dvh); display: flex; flex-direction: column;
   }
+  /* note: one row, always. It used to wrap, and a model whose name is long - or a word like
+     `reconnecting…` beside it - took a second row, which grew the header and pushed the chat and
+     the prompt down the page. A bar that moves the thing under it is worse than a bar that says
+     less: what gives here is the model's name, which ellipsizes, because it is the one thing on the
+     row that has no length anybody can predict */
   header {
     padding: 8px 12px; border-bottom: 1px solid var(--line);
-    display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline;
+    display: flex; gap: 12px; flex-wrap: nowrap; align-items: baseline;
     font-size: 12px; color: var(--dim);
   }
   header b { color: var(--fg); font-weight: 600; }
+  #model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 3em; }
+  #budget { white-space: nowrap; flex: none; }
   /* the cycler sits in the corner the tab strip is in upstairs, and takes the space left over */
   #view {
     margin-left: auto; font-size: 12px; padding: 4px 10px; min-height: 0;
@@ -132,12 +144,17 @@
   #answers { display: flex; gap: 8px; flex-wrap: wrap; }
   #answers button { flex: 1; }
   .allow { border-color: var(--user); } .deny { border-color: var(--bad); }
-  #busy { color: var(--dim); }
   /* note: the corner a person's eye is already in, because the session name is there and it is the
      first thing read. A turn can be a minute of nothing arriving - a model thinking, a command
      running, a provider gone quiet - and a page with no pulse in it is indistinguishable from a
-     page whose connection died */
+     page whose connection died.
+     note: and it is the whole of what the bar says about both, where there used to be a word beside
+     it as well. `working…` and `reconnecting…` said what the dot was already saying, and cost the
+     row the width that made it wrap. The two states are told apart by colour rather than by text:
+     the colour a call is drawn in for a turn that is running, and the colour a refusal is drawn in
+     for a stream that has gone */
   #pulse { color: var(--call); animation: pulse 1.2s ease-in-out infinite; }
+  #pulse.down { color: var(--bad); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .15; } }
   /* a reader who asked for no animation gets a steady dot, which says the same thing */
   @media (prefers-reduced-motion: reduce) { #pulse { animation: none; } }
@@ -147,7 +164,6 @@
   <span id="pulse" hidden>&#9679;</span>
   <b id="model">connecting…</b>
   <span id="budget"></span>
-  <span id="busy"></span>
   <button id="view" type="button" title="the next view: chat, context, events, permissions">chat</button>
 </header>
 
@@ -189,6 +205,8 @@ let mine = new Set();   // the items those lines turned out to be
 let latest = null;      // the last projection, which is what every view but the chat is drawn from
 let stale = false;      // whether the chat no longer matches the context, and a rebuild is owed
 let showing = "chat";   // which of the four is on screen
+let turning = false;    // whether a turn is running, which is half of what the one dot says
+let adrift = false;     // and whether the stream has gone, which is the other half
 
 /**
  * The views, in the order the terminal's tab strip has them.
@@ -750,9 +768,24 @@ function working(busy) {
   // a rebuild held back while the model was typing is owed the moment it stops. See the
   // `projected` case for why it is held back rather than done and undone
   if (!busy && stale) send({ do: "project" });
-  document.getElementById("pulse").hidden = !busy;
-  document.getElementById("busy").textContent = busy ? "working…" : "";
+  turning = busy;
+  indicator();
   line.disabled = false; // a line typed into a running turn waits for it, which is the session's job
+}
+
+/**
+ * Draws the one indicator there is.
+ *
+ * note: two states and one dot, told apart by colour rather than by a word beside it. A word is
+ * what made the header wrap, and it never said anything the dot was not already saying - see the
+ * note on `#pulse`. A stream that has gone shows whether or not a turn is running, because it is
+ * the more urgent of the two and the turn carries on at the session either way.
+ */
+function indicator() {
+  const dot = document.getElementById("pulse");
+  dot.hidden = !turning && !adrift;
+  dot.classList.toggle("down", adrift);
+  dot.title = adrift ? "the stream went; picking it back up" : "working";
 }
 
 // note: no reconnection anywhere in this file. `EventSource` does it, and sends `Last-Event-ID` -
@@ -771,7 +804,34 @@ show("chat");
 
 const events = new EventSource(`/events?tab=${tab}`);
 events.onmessage = (e) => heard(JSON.parse(e.data));
+// note: `EventSource` reconnects by itself and sends `Last-Event-ID`, so there is nothing to do
+// here but say so - and the saying is the dot going red, because a page that looks exactly the same
+// whether or not it is still attached is the thing the indicator exists to stop
 events.onerror = () => {
-  document.getElementById("busy").textContent = "reconnecting…";
+  adrift = true;
+  indicator();
 };
+events.onopen = () => {
+  adrift = false;
+  indicator();
+};
+
+// note: the visual viewport, which is the one the on-screen keyboard shrinks. `100dvh` does not
+// move when a keyboard opens, so the footer went under it and the prompt was unreachable on the one
+// device this page is for. A browser without `visualViewport` keeps the `100dvh` in the stylesheet
+if (window.visualViewport) {
+  const fit = () => {
+    // pinned before the height changes and restored after, because a shorter log keeps the scroll
+    // offset it had - which on a conversation somebody was reading the end of is the end scrolling
+    // away the moment they tap the box
+    const pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 4;
+    document.documentElement.style.setProperty(
+      "--tall",
+      `${Math.round(window.visualViewport.height)}px`,
+    );
+    if (pinned) log.scrollTop = log.scrollHeight;
+  };
+  window.visualViewport.addEventListener("resize", fit);
+  fit();
+}
 </script>
