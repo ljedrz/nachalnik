@@ -33,20 +33,6 @@ pub fn scratch(name: &str) -> PathBuf {
     dir
 }
 
-/// A workspace of its own, with something already in it, so that nothing a sandbox test does can
-/// touch the repository.
-///
-/// note: here rather than in one of the two suites that want it, because both of them are about
-/// the same boundary from different sides - `sandbox` asks what the program's own rules say about
-/// a path, `landlock` asks what the kernel does with one - and a second copy of the directory
-/// they agree to work in is a second thing to keep in step.
-pub fn workdir(name: &str) -> PathBuf {
-    let dir = scratch(name);
-    std::fs::write(dir.join("inside.txt"), "hello").expect("a file in it");
-
-    dir
-}
-
 /// An endpoint the program can be pointed at, which answers the model listing and then hands out
 /// these bodies, one per request, as a stream.
 ///

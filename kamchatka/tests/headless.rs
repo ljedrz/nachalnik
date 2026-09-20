@@ -1613,7 +1613,7 @@ impl Tool for Watchful {
 ///
 /// note: asserted on the policy rather than on a command's output, because what the sandbox
 /// actually does needs a sandbox and this needs to run anywhere. `Sandbox::of` reads exactly this
-/// and `tests/landlock.rs` covers the other half.
+/// and `tests/sandbox.rs` covers the other half.
 #[tokio::test]
 async fn a_networked_command_allowed_here_is_granted_the_network() {
     let reaching = ToolCall::new(
