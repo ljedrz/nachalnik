@@ -40,7 +40,10 @@ the wiring, and `introspect::install` hands back a handle the caller has to keep
 `headless.rs` (the other loop: a line of stdin where the
 terminal has a key, the session log on stdout and what a person reads on stderr), `remote/` (the
 *third* loop, and a client for it: `protocol.rs` is the wire, `server.rs` is a session with a
-socket in front of it and `client.rs` is `--connect`), `help.rs` (the
+socket in front of it and `client.rs` is `--connect`. `server::Serving` is the half of that loop
+which is not a loop - the voice, the questions and the bookkeeping - because the drawn loop in
+`main.rs` can serve as well, and a session driven from a desk and a phone at once is one `App` with
+two things selecting on it), `help.rs` (the
 key listing and the selector listing, which `/help` and the `context` tool print), `config.rs`
 (`Settings`: the JSON `--config-file` takes, one field per argument it stands in for - the merge
 itself is `Args::under` in `main.rs`, because only clap can say which arguments were typed, and

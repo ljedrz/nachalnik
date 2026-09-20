@@ -96,7 +96,7 @@ pub mod protocol;
 pub mod server;
 
 pub use client::Client;
-pub use server::{Server, opening};
+pub use server::{Server, Serving, opening};
 
 use std::time::Duration;
 

@@ -996,10 +996,14 @@ async fn a_fragment_can_arrive_after_the_record_that_ended_it() {
 /// not using. The greeting had the same shape and was fixed the same afternoon; both came of a
 /// question that had only ever had two answers, screen or pipe, being asked by a third thing.
 ///
-/// note: the loop sets it rather than the caller, which is why this is a test of the *server*
-/// rather than of `main.rs`: a host embedding `Server::run` has no keys either.
+/// note: and it is settled per command rather than per session, which is what the second half
+/// below is about. A session can be drawn and served at once - `--serve` no longer means "instead
+/// of a screen" - so one `App` has two audiences for one `/help`, and the flag saying which is a
+/// fact about whoever just asked. The session here has keys and the client asking still gets none.
 #[tokio::test]
 async fn help_from_a_client_is_the_commands() {
+    // `App::keys` is `true` here, as it is in any session nothing has said otherwise about -
+    // which is what a drawn-and-served one looks like. The client asking still gets none
     let session = served(vec![], |_| {}).await;
 
     let (mut peer, _) = Peer::attached(&session.at).await;
@@ -1023,12 +1027,18 @@ async fn help_from_a_client_is_the_commands() {
         !body.contains("ctrl+p"),
         "a client was told about keys: {body}"
     );
-
     peer.send(Command::Submit {
         line: "/quit".to_owned(),
     })
     .await;
-    session.ended().await.1.expect("the session failed");
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    // and the session's own answer is untouched, which is the half that makes it per-caller rather
+    // than a flag a client turns off for everybody: a `/help` at the screen still has the keys
+    assert!(
+        app.keys,
+        "answering a client took the keys off the session it was attached to"
+    );
 }
 
 /// A client can stop a turn somebody else started.
