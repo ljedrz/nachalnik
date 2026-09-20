@@ -307,10 +307,13 @@ minor bump may break you.
   a good monitor and nothing at all on a phone in daylight. About 2:1 against the background in
   either scheme now.
 
-- **A blinking mark in the corner while a turn is running.** `working…` was a word at the other end
-  of the header, and a turn can be a minute of nothing arriving - a model thinking, a command
-  running, a provider gone quiet - which from a phone is indistinguishable from a page whose
-  connection died. It honours `prefers-reduced-motion` by holding still, which says the same thing.
+- **A blinking mark in the corner, and it is the whole of what the bar says about a turn.** A turn
+  can be a minute of nothing arriving - a model thinking, a command running, a provider gone quiet -
+  which from a phone is indistinguishable from a page whose connection died. `working…` and
+  `reconnecting…` were words beside it that said what the dot was already saying, and cost the row
+  the width that made it wrap; the two states are a colour on the one dot now, the colour a call is
+  drawn in and the colour a refusal is. It honours `prefers-reduced-motion` by holding still, which
+  says the same thing.
 
 ### fixed
 
@@ -325,6 +328,20 @@ minor bump may break you.
   The page reads the header from all three places it can learn one now - the projection it attached
   with, a fresh projection, and this - where it only ever read the first. Making it a *record*
   instead is where it belongs and is in `POSTPONED.md`.
+
+- **The on-screen keyboard covered the prompt.** The page is `height: 100dvh`, and `dvh` is the
+  viewport a URL bar grows and shrinks rather than the one a keyboard does - the layout viewport
+  does not move when a keyboard opens, so the footer sat underneath it and the box was unreachable
+  on the one device this page is for. It reads `window.visualViewport` now and sets the height from
+  that, keeping `100dvh` as the fallback where there is no such thing. A log that was scrolled to
+  the end stays there across the resize, since a shorter log otherwise keeps the offset it had and
+  the last line somebody was reading scrolls away as they tap the box.
+
+- **The header wrapped, and a second row pushed the page down.** A long model name - or a word
+  beside it - took the bar to two lines, which moved the chat and the prompt every time the session
+  was reconnecting or working. It is one row that never wraps: the model's name ellipsizes, because
+  it is the one thing on the row whose length nobody can predict, and the figures and the view
+  button keep their places.
 
 - **`/help` described a terminal to callers that have none.** Six of its seven pages are key
   bindings for tabs - `ctrl+p` shows the next request, `g` goes to the top of the trace - and both
