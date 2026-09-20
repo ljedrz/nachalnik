@@ -229,9 +229,15 @@ struct Args {
     spend: Option<u64>,
 
     /// A JSON file of settings, for the ones you would otherwise type every time. Anything given
-    /// here on the command line wins over what it says.
+    /// here on the command line wins over what it says. Given none, `./kamchatka.json` is read if
+    /// it is there, and the one under your config directory if it is not.
     #[arg(long, value_name = "PATH")]
     config_file: Option<std::path::PathBuf>,
+
+    /// Print the settings file this program ships with and stop, for editing into one of your
+    /// own: `kamchatka --print-config > kamchatka.json`.
+    #[arg(long)]
+    print_config: bool,
 
     /// The frame's colour, which only a settings file can say; see `Settings::border`.
     ///
@@ -465,7 +471,26 @@ async fn session() -> Result<()> {
     let mut args = Args::from_arg_matches(&matches)
         .map_err(|e| e.exit())
         .unwrap();
-    if let Some(path) = args.config_file.clone() {
+    if args.print_config {
+        print!("{}", kamchatka::config::SHIPPED);
+
+        return Ok(());
+    }
+    // note: a path that was typed is not announced and a path that was found is, which is the
+    // whole of what the second one costs. Somebody who wrote `--config-file` knows; somebody who
+    // walked into a directory with one in it does not, and a file that applies because of where
+    // you are standing has to say so rather than be discovered later by its effects.
+    //
+    // note: nothing is looked for under `--connect`, which takes nothing else on principle: the
+    // model, the key, the tools and the sandbox all belong to whoever is serving, and a file
+    // picked up here would be a set of settings for a session this process is not assembling
+    let found = args
+        .config_file
+        .is_none()
+        .then(|| args.connect.is_none().then(kamchatka::config::found))
+        .flatten()
+        .flatten();
+    if let Some(path) = args.config_file.clone().or_else(|| found.clone()) {
         let settings = Settings::read(&path).map_err(|e| anyhow::anyhow!("{e}"))?;
         args = args.under(settings, &matches)?;
     }
@@ -709,6 +734,14 @@ async fn session() -> Result<()> {
     #[cfg(feature = "tui")]
     if !headless && server.is_none() && args.resume.is_none() {
         app.say(Speaker::Note, ui::GREETING);
+    }
+    // said here rather than where it was read, because there is no screen at that point and this
+    // is the one line a person needs before they wonder where a setting came from
+    if let Some(path) = &found {
+        app.say(
+            Speaker::Note,
+            format!("settings read from {}", path.display()),
+        );
     }
     // note: said into the conversation rather than printed, because all three loops read that one
     // and a session with no model has the same thing to say to each of them. The corner says it

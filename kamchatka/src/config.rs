@@ -166,6 +166,55 @@ impl Settings {
     }
 }
 
+/// What a settings file is called wherever this program looks for one without being told.
+pub const FILE: &str = "kamchatka.json";
+
+/// The settings file this crate ships, built into the binary so that `--print-config` can hand it
+/// over.
+///
+/// note: `cargo install` copies no files. Before this, the starting point reached whoever cloned
+/// the repository, unpacked the `.crate` or downloaded a release archive, and nobody who took the
+/// road the readme recommends. Two kilobytes in the binary is the whole cost of closing that.
+///
+/// note: the same bytes the file has rather than a copy written out from [`Settings::default`],
+/// which would drop every comment-shaped key and every default the file states on purpose. The
+/// suite already holds that file to naming every field of the struct, so this is exactly what the
+/// repository ships and stays so.
+pub const SHIPPED: &str = include_str!("../kamchatka.json");
+
+/// The settings file to read when the command line named none: the working directory's, then the
+/// one under this person's config directory.
+///
+/// note: the working directory first, because a file that sits next to the thing it describes is
+/// the one somebody means. Nothing walks *up* from there - `.gitignore` does and a settings file
+/// should not, because the surprise grows with the distance and the cost of typing
+/// `--config-file` is one flag.
+///
+/// note: a file that applies because of where you are standing is a file that can surprise you,
+/// and the answer to that is not to hide it: what is read is said out loud, into the conversation
+/// every projection carries, before anything else happens. A session that picked something up is
+/// a session that says which file and where from.
+///
+/// note: `XDG_CONFIG_HOME` and then `~/.config`, on every platform rather than Windows' own
+/// `%APPDATA%`. The variable is the one the people who set it expect to be read, and this program
+/// is a terminal program whose Windows users are in a shell that sets `HOME` - which is the same
+/// reasoning [`home`] is written to, and it errs the same way: somewhere predictable rather than
+/// somewhere clever.
+pub fn found() -> Option<PathBuf> {
+    let beside = PathBuf::from(FILE);
+    if beside.is_file() {
+        return Some(beside);
+    }
+
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home().map(|home| home.join(".config")))?
+        .join(env!("CARGO_PKG_NAME"))
+        .join(FILE);
+
+    config.is_file().then_some(config)
+}
+
 /// Where the home directory is, according to the environment and nothing else.
 ///
 /// note: `USERPROFILE` as well, because on Windows that is the variable with the answer in it and

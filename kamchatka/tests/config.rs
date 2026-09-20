@@ -9,7 +9,12 @@
 //! `shell`'s description, and `/spend` says the ceiling. Three settings of three different shapes,
 //! each visible without a request being made.
 
-use std::{io::Write, process::Command};
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::OnceLock,
+};
 
 use kamchatka::config::Settings;
 use serde_json::json;
@@ -24,9 +29,32 @@ fn program() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_BIN_EXE_kamchatka"))
 }
 
+/// A directory with no settings file in it, which is where every run below is started from.
+///
+/// note: this suite's own working directory is the crate root, and the crate root is where the
+/// shipped `kamchatka.json` lives - so once the program learned to read `./kamchatka.json`
+/// without being told, every test in here was quietly running under it. What is under test is
+/// which file wins, and a test standing somewhere with a file underfoot has a second answer
+/// nobody wrote.
+///
+/// note: made once rather than per call, because `common::scratch` empties what it hands back and
+/// these tests run in parallel: a shared directory wiped on the way into each of them is a race
+/// between one test's file and another's.
+fn elsewhere() -> &'static Path {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+
+    DIR.get_or_init(|| common::scratch("cwd")).as_path()
+}
+
 /// Runs it with these arguments and these lines typed at it, and hands back what a person read.
 fn run(args: &[&str], lines: &str) -> (bool, String) {
     run_with(args, lines, &[])
+}
+
+/// The same, standing in a directory of the test's choosing - which is what decides whether a
+/// settings file is found underfoot.
+fn run_from(dir: &Path, args: &[&str], lines: &str) -> (bool, String) {
+    spawn(dir, args, lines, &[], true)
 }
 
 /// The same with no API key anywhere, which is what somebody trying this for the first time has.
@@ -34,19 +62,48 @@ fn run(args: &[&str], lines: &str) -> (bool, String) {
 /// note: removed rather than set empty, because an empty variable is a variable: `endpoint::connect`
 /// reads one and only fails where there is none, which is the case this is about.
 fn run_keyless(args: &[&str], lines: &str) -> (bool, String) {
-    let mut child = Command::new(program())
+    spawn(elsewhere(), args, lines, &[], false)
+}
+
+/// The same, with these environment variables set over the top.
+fn run_with(args: &[&str], lines: &str, env: &[(&str, &str)]) -> (bool, String) {
+    spawn(elsewhere(), args, lines, env, true)
+}
+
+/// One run of the program: where it stands, what it was given, and what a person read.
+///
+/// note: one function rather than three that had drifted. The cases differ in a directory, a key
+/// and an environment, and every other line of them was the same three pipes and the same wait -
+/// which is how the two of them came to disagree about which streams a caller gets back.
+fn spawn(
+    dir: &Path,
+    args: &[&str],
+    lines: &str,
+    env: &[(&str, &str)],
+    keyed: bool,
+) -> (bool, String) {
+    let mut command = Command::new(program());
+    command
+        .current_dir(dir)
         .args(["--no-record"])
         .args(args)
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        // or the model is whatever somebody running the suite has in their environment, and the
+        // settings file under test would be overridden by it
         .env_remove("KAMCHATKA_MODEL")
-        .env_remove("KAMCHATKA_API_KEY")
-        .env_remove("OPENROUTER_API_KEY")
-        .env_remove("OPENAI_API_KEY")
+        .envs(env.iter().copied())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("the binary under test is built");
+        .stderr(std::process::Stdio::piped());
+    match keyed {
+        true => command.env("KAMCHATKA_API_KEY", "not-a-key"),
+        false => command
+            .env_remove("KAMCHATKA_API_KEY")
+            .env_remove("OPENROUTER_API_KEY")
+            .env_remove("OPENAI_API_KEY"),
+    };
+
+    let mut child = command.spawn().expect("the binary under test is built");
     child
         .stdin
         .take()
@@ -55,6 +112,9 @@ fn run_keyless(args: &[&str], lines: &str) -> (bool, String) {
         .expect("the lines were not sent");
     let out = child.wait_with_output().expect("the program never ended");
 
+    // note: both streams, because a keyless run fails before the session starts and says so on
+    // stdout. Everything else a caller looks for is on stderr, which is where a headless run puts
+    // what a person reads
     (
         out.status.success(),
         format!(
@@ -62,36 +122,6 @@ fn run_keyless(args: &[&str], lines: &str) -> (bool, String) {
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr)
         ),
-    )
-}
-
-/// The same, with these environment variables set over the top.
-fn run_with(args: &[&str], lines: &str, env: &[(&str, &str)]) -> (bool, String) {
-    let mut child = Command::new(program())
-        .args(["--no-record"])
-        .args(args)
-        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
-        .env("KAMCHATKA_API_KEY", "not-a-key")
-        // or the model is whatever somebody running the suite has in their environment, and the
-        // settings file under test would be overridden by it
-        .env_remove("KAMCHATKA_MODEL")
-        .envs(env.iter().copied())
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("the binary under test is built");
-    child
-        .stdin
-        .take()
-        .expect("stdin is a pipe")
-        .write_all(lines.as_bytes())
-        .expect("the lines were not sent");
-    let out = child.wait_with_output().expect("the program never ended");
-
-    (
-        out.status.success(),
-        String::from_utf8_lossy(&out.stderr).into_owned(),
     )
 }
 
@@ -506,4 +536,94 @@ fn a_missing_file_says_which() {
 
     assert!(!ok);
     assert!(said.contains("/nowhere/kamchatka.json"), "{said}");
+}
+
+/// A file in the working directory is read without being named, and the session says it was.
+///
+/// note: the pair is the point. `cargo install` copies no files, so the shipped starting point
+/// reached everybody except the people who installed this the way the readme tells them to - and
+/// a file that applies because of where you are standing is a file that can surprise you. The
+/// first half of that is closed by looking; the second by saying out loud what was found, into
+/// the conversation rather than onto a stream a screen is about to cover.
+#[test]
+fn a_file_underfoot_is_read_without_being_named_and_is_said() {
+    let dir = common::scratch("underfoot");
+    std::fs::write(
+        dir.join("kamchatka.json"),
+        r#"{ "model": "a-model-from-underfoot", "spend": 4321 }"#,
+    )
+    .expect("a settings file where the program will stand");
+
+    let (ok, said) = run_from(&dir, &[], "/model\n/spend\n");
+
+    assert!(ok, "{said}");
+    assert!(said.contains("a-model-from-underfoot"), "{said}");
+    assert!(said.contains("of 4,321"), "{said}");
+    assert!(
+        said.contains("settings read from kamchatka.json"),
+        "a file nobody asked for has to say it was read: {said}"
+    );
+}
+
+/// A named file beats the one underfoot, and saying so is not needed for a path somebody typed.
+#[test]
+fn a_named_file_beats_the_one_underfoot() {
+    let dir = common::scratch("both");
+    std::fs::write(
+        dir.join("kamchatka.json"),
+        r#"{ "model": "the-one-underfoot" }"#,
+    )
+    .expect("a settings file to be beaten");
+    let named = settings("named-over-underfoot", r#"{ "model": "the-one-named" }"#);
+
+    let (ok, said) = run_from(&dir, &["--config-file", &named], "/model\n");
+
+    assert!(ok, "{said}");
+    assert!(said.contains("the-one-named"), "{said}");
+    assert!(!said.contains("the-one-underfoot"), "{said}");
+    // nothing is announced: somebody who typed the path already knows which file it was
+    assert!(!said.contains("settings read from"), "{said}");
+}
+
+/// Standing nowhere in particular, nothing is read and nothing is said.
+#[test]
+fn a_directory_with_no_file_in_it_reads_none() {
+    let dir = common::scratch("bare");
+
+    let (ok, said) = run_from(&dir, &[], "/spend\n");
+
+    assert!(ok, "{said}");
+    assert!(!said.contains("settings read from"), "{said}");
+    assert!(said.contains("no ceiling"), "{said}");
+}
+
+/// `--print-config` hands over the file this crate ships, and it is a file this program accepts.
+///
+/// note: the round trip rather than a byte comparison alone, because what makes the flag worth
+/// having is that its output is a *starting point* - something to redirect into `kamchatka.json`
+/// and edit. A copy of the shipped file that this program would then refuse would be worse than
+/// no flag at all.
+#[test]
+fn print_config_hands_over_a_file_this_program_would_accept() {
+    let out = Command::new(program())
+        .arg("--print-config")
+        .output()
+        .expect("the binary under test is built");
+    assert!(out.status.success());
+    let printed = String::from_utf8(out.stdout).expect("a settings file is text");
+
+    assert_eq!(
+        printed,
+        std::fs::read_to_string("kamchatka.json").expect("the shipped file"),
+        "what is printed is what the repository ships"
+    );
+
+    let dir = common::scratch("printed");
+    let path = dir.join("kamchatka.json");
+    std::fs::write(&path, &printed).expect("written back out");
+    Settings::read(&path).expect("and read back in");
+
+    let (ok, said) = run_from(&dir, &[], "/spend\n");
+    assert!(ok, "{said}");
+    assert!(said.contains("settings read from kamchatka.json"), "{said}");
 }

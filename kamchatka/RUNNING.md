@@ -634,12 +634,27 @@ Error: kamchatka.json: unknown field `modle`, expected one of `model`, `gemini`,
 
 What it deliberately does not carry is anything belonging to one invocation rather than to the
 project: a message, `-r`, `-f`, and `--headless`, which decides for itself from whether stdout is a
-terminal. There is no search for a file either — a settings file that applies because of where you
-are standing is one that surprises you, so it is named or it is not read.
+terminal.
+
+**Given no `--config-file`, two places are looked in**: `./kamchatka.json`, and then
+`kamchatka/kamchatka.json` under `XDG_CONFIG_HOME` or `~/.config`. The working directory first,
+because a file sitting next to the thing it describes is the one you mean; nothing walks *up* from
+there, because the surprise grows with the distance and typing the flag costs one flag. A file that
+applies because of where you are standing is one that can surprise you, and the answer to that is
+not to hide it — a session that picked one up says so, in the conversation, before anything else
+happens:
+
+```console
+· settings read from kamchatka.json
+```
+
+A path you typed is not announced: you already know which file it was.
 
 **A starting point ships with the crate**, as `kamchatka.json` beside this readme, and in the
 archive a release attaches, beside the binary: every setting there is, so you edit rather than
-remember, and every one of them at the program's own default. Copying it wholesale changes
+remember, and every one of them at the program's own default. `cargo install` copies no files, so
+the binary carries a copy too — `kamchatka --print-config > kamchatka.json` is the same bytes,
+wherever you installed from. Copying it wholesale changes
 nothing at all: it is the program you already have, written down. It grants nothing — `allow` is
 empty, both sandbox lists are empty, `on-ask` is `deny` — and none of that is an oversight. A
 default that pre-granted `read`, or opened up `~/.cargo` so that `cargo` works, would be this
@@ -707,7 +722,10 @@ kamchatka [OPTIONS] [MESSAGE]...
       --send-oversized      send a request that looks too long for the model anyway,
                             and let the endpoint be the one that says no
       --config-file <PATH>  a JSON file of settings, for the ones you would otherwise
-                            type every time; anything given here wins over it
+                            type every time; anything given here wins over it.
+                            Given none, ./kamchatka.json and then the one under
+                            your config directory
+      --print-config        print the settings file this program ships with and stop
       --no-record           do not write the session out when it ends; it goes to a
                             temporary directory otherwise, named on the way out
 

@@ -9,6 +9,23 @@ minor bump may break you.
 
 ### added
 
+- **A settings file is found where you are standing, and `--print-config` hands you one to start
+  from.** `kamchatka.json` ships in the crate and in the release archive, and `cargo install`
+  copies no files - so the starting point reached everybody except the people who installed this
+  the way the readme tells them to. The binary carries a copy now, and
+  `kamchatka --print-config > kamchatka.json` is the same bytes wherever it came from.
+
+  Given no `--config-file`, two places are looked in: `./kamchatka.json`, then
+  `kamchatka/kamchatka.json` under `XDG_CONFIG_HOME` or `~/.config`. The working directory first,
+  because a file next to the thing it describes is the one somebody means, and nothing walks up
+  from there - the surprise grows with the distance, and typing the flag costs one flag. A file
+  that applies because of where you are standing is one that can surprise you, so a session that
+  picked one up says `settings read from <path>` into the conversation, which is what every
+  projection carries. A path somebody typed is not announced, because they know which file it was.
+
+  Nothing is looked for under `--connect`, which takes nothing else on principle: the model, the
+  key, the tools and the sandbox all belong to whoever is serving.
+
 - **`--serve` and `--connect`: a session with a socket in front of it.** The third loop over the
   same `App`, beside the one that draws and the one that reads lines. `kamchatka --serve
   unix:/run/k.sock` runs a session nobody is looking at; `kamchatka --connect unix:/run/k.sock`
