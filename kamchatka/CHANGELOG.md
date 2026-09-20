@@ -337,6 +337,18 @@ minor bump may break you.
   the end stays there across the resize, since a shorter log otherwise keeps the offset it had and
   the last line somebody was reading scrolls away as they tap the box.
 
+  Three more places were measuring the wrong viewport or the wrong thing, and any of them puts the
+  box back under the keyboard on its own. The prompt's ceiling was `30vh` in the stylesheet and
+  `innerHeight * 0.3` in the script, both of which are the layout viewport - so a box allowed to
+  grow to a third of the whole phone grew inside a third of a phone's worth of room; it is a third
+  of what is *visible* now, and scrolls inside itself past that. The log needed `min-height: 0`,
+  because a flex item does not shrink below its content without it and the log is the one thing
+  here that must: room for a growing box comes out of the conversation, never out of the half of
+  the page somebody is touching. And the page puts itself back to the top on every resize, because
+  a browser bringing a focused box into view scrolls the *layout* viewport - the one that did not
+  change - which walks the header off the top and everything under it back down behind the
+  keyboard.
+
 - **The header wrapped, and a second row pushed the page down.** A long model name - or a word
   beside it - took the bar to two lines, which moved the chat and the prompt every time the session
   was reconnecting or working. It is one row that never wraps: the model's name ellipsizes, because

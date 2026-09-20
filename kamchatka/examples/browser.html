@@ -58,6 +58,9 @@
     margin: 0; background: var(--bg); color: var(--fg);
     font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     height: var(--tall, 100dvh); display: flex; flex-direction: column;
+    /* the page is exactly the viewport and scrolls inside itself, so there is nothing out here for
+       a browser to scroll when it decides to bring a focused box into view */
+    overflow: hidden;
   }
   /* note: one row, always. It used to wrap, and a model whose name is long - or a word like
      `reconnecting…` beside it - took a second row, which grew the header and pushed the chat and
@@ -77,7 +80,13 @@
     margin-left: auto; font-size: 12px; padding: 4px 10px; min-height: 0;
     color: var(--dim); white-space: nowrap;
   }
-  #log, #panel { flex: 1; overflow-y: auto; padding: 12px; overscroll-behavior: contain; }
+  /* note: `min-height: 0` because a flex item will not shrink below its content without it, and
+     the log is the one thing here that must: when the box grows to three lines the room comes out
+     of the conversation, never out of the footer, which is the half of the page somebody is
+     touching */
+  #log, #panel {
+    flex: 1; min-height: 0; overflow-y: auto; padding: 12px; overscroll-behavior: contain;
+  }
   #panel { display: none; }
   body:not(.chat) #log { display: none; }
   body:not(.chat) #panel { display: block; }
@@ -125,13 +134,20 @@
   .note { color: var(--note); } .note::before { content: "\00b7 "; }
   .error { color: var(--bad); } .error::before { content: "! "; }
   .pending { opacity: .45; }
-  footer { border-top: 1px solid var(--line); padding: 8px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+  footer {
+    flex: none; border-top: 1px solid var(--line); padding: 8px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
   form { display: flex; gap: 8px; }
   /* 16px or iOS zooms the whole page when the box is focused */
   textarea {
     flex: 1; resize: none; font: inherit; font-size: 16px; padding: 8px;
     background: transparent; color: inherit;
-    border: 1px solid var(--line); border-radius: 6px; min-height: 42px; max-height: 30vh;
+    border: 1px solid var(--line); border-radius: 6px; min-height: 42px;
+    /* a third of what is *visible*, not of the screen: `vh` is the layout viewport, which a
+       keyboard does not shrink, so this said a third of the whole phone while a third of the phone
+       was all there was */
+    max-height: calc(var(--tall, 100dvh) * 0.3);
   }
   button {
     font: inherit; font-size: 15px; padding: 8px 14px; border-radius: 6px; cursor: pointer;
@@ -604,7 +620,7 @@ line.addEventListener("keydown", (e) => {
 });
 line.addEventListener("input", () => {
   line.style.height = "auto";
-  line.style.height = Math.min(line.scrollHeight, window.innerHeight * 0.3) + "px";
+  line.style.height = Math.min(line.scrollHeight, visible() * 0.3) + "px";
 });
 
 /** Everything the session says, one message at a time. */
@@ -816,22 +832,39 @@ events.onopen = () => {
   indicator();
 };
 
-// note: the visual viewport, which is the one the on-screen keyboard shrinks. `100dvh` does not
-// move when a keyboard opens, so the footer went under it and the prompt was unreachable on the one
-// device this page is for. A browser without `visualViewport` keeps the `100dvh` in the stylesheet
+/**
+ * How much of the page a person can actually see, in pixels.
+ *
+ * note: the *visual* viewport where there is one. `innerHeight` and `vh` are the layout viewport,
+ * which a keyboard does not shrink - so both of them answer "the whole phone" while a third of the
+ * phone is all there is, and anything sized from them grows off the bottom of the screen.
+ */
+function visible() {
+  return window.visualViewport ? window.visualViewport.height : window.innerHeight;
+}
+
+// note: this is what put the prompt back above the keyboard. A browser without `visualViewport`
+// keeps the `100dvh` in the stylesheet and the old behaviour with it
 if (window.visualViewport) {
   const fit = () => {
     // pinned before the height changes and restored after, because a shorter log keeps the scroll
     // offset it had - which on a conversation somebody was reading the end of is the end scrolling
     // away the moment they tap the box
     const pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 4;
-    document.documentElement.style.setProperty(
-      "--tall",
-      `${Math.round(window.visualViewport.height)}px`,
-    );
+    document.documentElement.style.setProperty("--tall", `${Math.round(visible())}px`);
+    // note: and the page is put back to the top. A browser bringing a focused box into view scrolls
+    // the *layout* viewport, which is the one that did not change - so the header goes off the top
+    // and everything below it is that much further down, under the keyboard again. The page is
+    // exactly the viewport and scrolls inside itself, so there is never anything out here to see
+    window.scrollTo(0, 0);
+    // the box's own ceiling is a share of what is visible, so a resize has to re-ask for it
+    line.dispatchEvent(new Event("input"));
     if (pinned) log.scrollTop = log.scrollHeight;
   };
+  // note: `scroll` as well as `resize`, because the two ways a keyboard can arrive are the viewport
+  // getting shorter and the viewport being moved up the page, and a phone does whichever it likes
   window.visualViewport.addEventListener("resize", fit);
+  window.visualViewport.addEventListener("scroll", fit);
   fit();
 }
 </script>

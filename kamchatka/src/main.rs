@@ -1046,6 +1046,9 @@ async fn run(
                 }
             } => match (arrived, &mut serving) {
                 (Ok(arrived), Some(serving)) => serving.attend(app, arrived),
+                // the two are made together and there is no listener without one, so this is a
+                // shape the types ask for and nothing reaches. Dropping the connection is what it
+                // would mean if anything ever did
                 (Ok(_), None) => {}
                 // one connection failing to arrive is not a reason to end a session that may have
                 // a turn running in it, and the person at the screen is the one who can see this
