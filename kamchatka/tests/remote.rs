@@ -1340,7 +1340,7 @@ async fn the_client_writes_the_records_and_the_prose() {
     });
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    kamchatka::remote::Client::new(&mut records, &mut prose)
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
         .run(&session.at, BufReader::new(input))
         .await
         .expect("the client failed");
@@ -1431,7 +1431,8 @@ async fn a_client_that_loses_its_socket_comes_back_and_still_detaches() {
     let (mut records, mut prose) = (Vec::new(), Vec::new());
     tokio::time::timeout(
         PATIENCE,
-        kamchatka::remote::Client::new(&mut records, &mut prose).run(&at, BufReader::new(input)),
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&at, BufReader::new(input)),
     )
     .await
     .expect("the client never left")
@@ -1529,7 +1530,8 @@ async fn a_resume_the_session_refuses_starts_again_with_nothing() {
     let (mut records, mut prose) = (Vec::new(), Vec::new());
     tokio::time::timeout(
         PATIENCE,
-        kamchatka::remote::Client::new(&mut records, &mut prose).run(&at, BufReader::new(input)),
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&at, BufReader::new(input)),
     )
     .await
     .expect("the client kept asking for a resume nobody could give it")
@@ -1627,7 +1629,8 @@ async fn a_client_does_not_wait_for_an_answer_the_dead_socket_took_with_it() {
     let (mut records, mut prose) = (Vec::new(), Vec::new());
     tokio::time::timeout(
         PATIENCE,
-        kamchatka::remote::Client::new(&mut records, &mut prose).run(&at, BufReader::new(input)),
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&at, BufReader::new(input)),
     )
     .await
     .expect("the client waited for an answer nobody was going to send")
@@ -1677,7 +1680,7 @@ async fn the_client_answers_a_question_with_the_keys_the_panel_uses() {
     });
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    kamchatka::remote::Client::new(&mut records, &mut prose)
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
         .run(&session.at, BufReader::new(input))
         .await
         .expect("the client failed");
@@ -2054,7 +2057,7 @@ fn answer(text: &str) -> String {
 #[tokio::test]
 async fn a_client_that_finds_nothing_there_says_so_at_once() {
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    let refused = kamchatka::remote::Client::new(&mut records, &mut prose)
+    let refused = kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
         .run("tcp:127.0.0.1:1", "".as_bytes())
         .await
         .expect_err("it connected to nothing");
@@ -2085,12 +2088,69 @@ async fn a_question_piped_in_waits_for_its_answer_and_leaves_the_session() {
     drop(feed);
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    kamchatka::remote::Client::new(&mut records, &mut prose)
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
         .run(&session.at, BufReader::new(input))
         .await
         .expect("the client failed");
     let prose = String::from_utf8(prose).expect("the prose is text");
     assert!(prose.contains("the whole answer"), "{prose}");
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A question the piped-in line raised is answered on the way out rather than abandoned.
+///
+/// note: the hole the test above could not see, because its model asks for no tools. A turn paused
+/// on a permission question is not *running*, so `busy` comes back false while the kernel sits in
+/// `Deciding` - and a client reading that alone took it for the end of the turn, printed the
+/// question, and exited `0`. What it left behind is the half that matters: a served session
+/// waiting on an answer that no longer had anywhere to come from, for as long as the process
+/// lived. So the two halves here are that the answer is given and said out loud, and that the turn
+/// it was blocking reaches its end.
+///
+/// note: `deny` rather than `allow`, and the assertion names the refusal, because the default is
+/// the load-bearing half: a run nobody is watching should not be able to do a thing nobody
+/// allowed. `--on-ask allow` is one flag away for anybody who means it, and it is the same flag
+/// and the same word `--headless` has always taken.
+#[tokio::test]
+async fn a_question_nobody_is_left_to_answer_is_answered_on_the_way_out() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("it would not let me"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+
+    let (mut feed, input) = tokio::io::duplex(256);
+    feed.write_all(b"go\n").await.expect("could not type");
+    drop(feed);
+
+    // note: under `PATIENCE`, because the two ways to get this wrong fail in opposite directions.
+    // Leaving the question unanswered ends the client early and trips the assertions below; not
+    // letting it leave at all is a client waiting on an answer it is itself supposed to give, and
+    // that one hangs rather than fails
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        prose.contains("nobody is here to answer for `peek`"),
+        "it left without saying what it did with the question: {prose}"
+    );
+    // and the turn the question was holding up got to the other side of it
+    assert!(prose.contains("it would not let me"), "{prose}");
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
@@ -2123,7 +2183,8 @@ async fn a_version_the_session_refuses_is_not_attached_to_again() {
     let (mut records, mut prose) = (Vec::new(), Vec::new());
     let left = tokio::time::timeout(
         PATIENCE,
-        kamchatka::remote::Client::new(&mut records, &mut prose).run(&at, BufReader::new(input)),
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&at, BufReader::new(input)),
     )
     .await
     .expect("the client kept reattaching to a session that had already answered");
@@ -2174,7 +2235,8 @@ async fn an_answer_this_build_cannot_read_still_counts_as_one() {
     let (mut records, mut prose) = (Vec::new(), Vec::new());
     tokio::time::timeout(
         PATIENCE,
-        kamchatka::remote::Client::new(&mut records, &mut prose).run(&at, BufReader::new(input)),
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&at, BufReader::new(input)),
     )
     .await
     .expect("the client waited for an answer it had already been handed")
@@ -2264,7 +2326,7 @@ async fn quitting_from_a_client_reads_as_an_ending() {
     feed.write_all(b"/quit\n").await.expect("could not type");
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    kamchatka::remote::Client::new(&mut records, &mut prose)
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
         .run(&session.at, BufReader::new(input))
         .await
         .expect("quitting was read as a failure");

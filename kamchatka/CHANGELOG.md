@@ -334,6 +334,20 @@ minor bump may break you.
 
 ### fixed
 
+- **A piped `--connect` left the question it raised unanswered, and the session waiting on it.** A
+  turn paused on a permission question is not running, so the session reports `busy: false` while
+  the kernel sits in `Deciding` - and the client read that as the end of the turn. `printf 'run
+  ls\n' | kamchatka --connect` printed the question, detached, and exited `0` after two seconds,
+  leaving a served session blocked on an answer that could no longer come from anywhere for as long
+  as the process lived. From the other end it read as the client freezing mid-turn.
+
+  A question is not rest, so the client waits for one; and once its input has closed there is
+  nobody left to ask, so it answers what is still open itself and says which question it answered
+  and how. That is `--on-ask`, the same flag and the same two words `--headless` has always taken,
+  and it defaults to `deny` for the reason it does there: a run nobody is watching should not be
+  able to do a thing nobody allowed. It is the one argument `--connect` now takes beside the
+  address, because it is the one that is not a fact about somebody else's session.
+
 - **One oversized record locked every client out of a session for good.** `context.replaced` is
   the only event that carries content, nothing caps what a session writes into its log, and a
   client resumes by sequence - so a rewritten tool result over `protocol::MAX_LINE` was refused by

@@ -69,6 +69,14 @@ pub struct Client<'a> {
     session: Option<String>,
     /// The questions waiting on somebody, oldest first.
     asking: VecDeque<PermissionRequest>,
+    /// What a question is answered with once there is nobody left here to answer it.
+    ///
+    /// note: the same flag `--headless` reads, and it reaches the same two states for the same
+    /// reason: an input that has closed cannot be asked anything. It is this client's rather than
+    /// the session's - `--connect` takes nothing else on the command line precisely because
+    /// everything else belongs to whoever is serving, and what a *detaching* client does with an
+    /// open question does not.
+    on_ask: Grant,
     /// Whether a turn is running, as of the last thing the session said about that.
     busy: bool,
     /// How many commands this has sent and not yet been answered about.
@@ -104,8 +112,9 @@ enum Left {
 
 impl<'a> Client<'a> {
     /// One, writing the records to `records` and everything a person reads to `prose`.
-    pub fn new(records: &'a mut dyn Write, prose: &'a mut dyn Write) -> Self {
+    pub fn new(on_ask: Grant, records: &'a mut dyn Write, prose: &'a mut dyn Write) -> Self {
         Self {
+            on_ask,
             records,
             prose,
             mid_line: false,
@@ -234,12 +243,18 @@ impl<'a> Client<'a> {
                 biased;
 
                 message = protocol::read::<Message>(&mut frames) => match message {
+                    // note: settled before the rest is read, because a question that arrived after
+                    // the input closed is the case this exists for - the turn goes on producing
+                    // them, and each one has to be answered by somebody or the session stops here
                     Ok(Some(message)) => match self.heard(message) {
-                        // note: a session that has said it is finished closing its socket is not a
-                        // connection that dropped, and the difference is five reconnection attempts
-                        // at something that did what it was told
-                        Ok(()) if self.detaching && self.resting() => Some(Left::Done),
-                        Ok(()) => None,
+                        Ok(()) => match self.settle(&mut write).await {
+                            // note: a session that has said it is finished closing its socket is
+                            // not a connection that dropped, and the difference is five
+                            // reconnection attempts at something that did what it was told
+                            Ok(()) if self.detaching && self.resting() => Some(Left::Done),
+                            Ok(()) => None,
+                            Err(e) => Some(Left::Failed(e)),
+                        },
                         Err(e) => Some(Left::Failed(e)),
                     },
                     Ok(None) => match self.over {
@@ -272,7 +287,10 @@ impl<'a> Client<'a> {
                     // What it waits on is `state.changed`, which is a record rather than a guess
                     Ok(None) => {
                         self.detaching = true;
-                        self.resting().then_some(Left::Done)
+                        match self.settle(&mut write).await {
+                            Ok(()) => self.resting().then_some(Left::Done),
+                            Err(e) => Some(Left::Failed(e)),
+                        }
                     }
                     Err(e) => Some(Left::Failed(format!("could not read the input: {e}"))),
                 },
@@ -655,8 +673,53 @@ impl<'a> Client<'a> {
     /// for the answer, not for the question to be asked and abandoned - the same rule
     /// `--headless` follows, and it was bought the same way, by a piped question whose answer
     /// nobody ever read.
+    ///
+    /// note: **a question is not rest**, and reading `busy` alone for it was a session left
+    /// wedged. A turn paused on a permission question is not running, so `busy` is false while the
+    /// kernel sits in `Deciding` - and a client that took that for the end of the turn printed the
+    /// question, detached, and exited `0`, leaving a served session waiting on an answer that
+    /// could no longer come from anywhere. What ends the wait is [`Client::settle`]; this is only
+    /// the half that stops it being called rest.
     fn resting(&self) -> bool {
-        !self.busy && self.outstanding == 0
+        !self.busy && self.outstanding == 0 && self.asking.is_empty()
+    }
+
+    /// Answers whatever is still being asked, once there is nobody here to ask.
+    ///
+    /// note: nothing at all until the input has closed, which is what makes this safe to call on
+    /// every message: a client with somebody at it answers with `y`, `n` and `a`, and a question
+    /// settled from under them would be this deciding what they were about to.
+    ///
+    /// note: taken off the queue as it is answered rather than when the session says so. The
+    /// answer comes back as a `permission.decided` record and clears it there too, but that record
+    /// arrives after the next pass through this - which would send a second `Decide` for a
+    /// question already answered, and a third, for as long as the session took to reply.
+    async fn settle<W: AsyncWrite + Unpin>(&mut self, write: &mut W) -> Result<(), String> {
+        if !self.detaching {
+            return Ok(());
+        }
+
+        while let Some(request) = self.asking.pop_front() {
+            self.fresh_line()?;
+            self.tell(&format!(
+                "nobody is here to answer for `{}`, so it is answered `{}`",
+                request.tool, self.on_ask
+            ))?;
+            self.say_to(
+                write,
+                Command::Decide {
+                    id: request.id,
+                    grant: self.on_ask,
+                    // note: never. A standing rule outlives this client and this turn, and a rule
+                    // nobody typed is the one kind the policy should not learn from - least of all
+                    // from a run whose whole distinguishing feature is that nobody was watching it
+                    remember: false,
+                },
+            )
+            .await?;
+        }
+
+        Ok(())
     }
 
     /// Ends whatever half-written line the model left, so a whole one can follow it.

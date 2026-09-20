@@ -189,8 +189,9 @@ struct Args {
     serve: Option<String>,
 
     /// Attach to a session somebody else is serving and drive it from lines on stdin, in the same
-    /// two streams `--headless` writes. Nothing else on this command line applies: the model, the
-    /// key, the tools and the sandbox are all the host's.
+    /// two streams `--headless` writes. Nothing else on this command line applies except
+    /// `--on-ask`: the model, the key, the tools and the sandbox are all the host's, and what a
+    /// detaching client does with a question still open is not.
     #[arg(long, value_name = "ADDRESS")]
     connect: Option<String>,
 
@@ -214,7 +215,8 @@ struct Args {
     #[arg(long, value_name = "NAME", value_delimiter = ',')]
     deny_server: Vec<String>,
 
-    /// What to do with a question nobody is there to answer, in a headless run.
+    /// What to do with a question nobody is there to answer: in a headless run, and in a
+    /// `--connect` one once its input has closed.
     #[arg(long, value_name = "ANSWER", default_value = "deny")]
     on_ask: OnAsk,
 
@@ -379,6 +381,16 @@ enum OnAsk {
     Allow,
 }
 
+impl OnAsk {
+    /// The answer itself, as the kernel spells it.
+    fn grant(self) -> Grant {
+        match self {
+            Self::Deny => Grant::Deny,
+            Self::Allow => Grant::Allow,
+        }
+    }
+}
+
 fn main() -> Result<()> {
     // before anything else, and before a runtime exists: this is the mode the `shell` tool
     // re-executes this program in, and its whole job is to confine itself and run one command.
@@ -451,8 +463,12 @@ fn also_typed(matches: &clap::ArgMatches) -> Vec<String> {
     Args::command()
         .get_arguments()
         .map(|arg| arg.get_id().as_str().to_owned())
+        // note: `on_ask` is the one exception, and it is one because it is not an argument a
+        // client would have dropped on the floor. Everything else here assembles a session that
+        // belongs to whoever is serving; this says what *this* client does with a question left
+        // open when its input closes, which is nobody else's business. See `Client::settle`
         .filter(|id| {
-            id != "connect"
+            !matches!(id.as_str(), "connect" | "on_ask")
                 && matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
         })
         .map(|id| match id.as_str() {
@@ -504,13 +520,13 @@ async fn session() -> Result<()> {
         let ignored = also_typed(&matches);
         if !ignored.is_empty() {
             return Err(anyhow::anyhow!(
-                "`--connect` takes nothing else: the model, the key, the tools, the sandbox and \
-                 the context all belong to whoever is serving. Drop {}",
+                "`--connect` takes nothing else but `--on-ask`: the model, the key, the tools, \
+                 the sandbox and the context all belong to whoever is serving. Drop {}",
                 ignored.join(", ")
             ));
         }
         let (mut records, mut prose) = (stdout(), std::io::stderr());
-        return remote::Client::new(&mut records, &mut prose)
+        return remote::Client::new(args.on_ask.grant(), &mut records, &mut prose)
             .run(&address, tokio::io::BufReader::new(tokio::io::stdin()))
             .await
             .map_err(|e| anyhow::anyhow!("{e}"));
@@ -693,10 +709,7 @@ async fn session() -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let on_ask = match args.on_ask {
-        OnAsk::Deny => Grant::Deny,
-        OnAsk::Allow => Grant::Allow,
-    };
+    let on_ask = args.on_ask.grant();
     // note: three statements rather than one match over the pair, because a resumed headless run
     // wants both of the first two and the match gave it one. The replay line says what was picked
     // up; the opening says how this run is driven and what a question nobody can answer gets,
