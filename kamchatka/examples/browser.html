@@ -641,7 +641,7 @@ function heard(m) {
       break;
     }
     case "said": say(m.speaker === "error" ? "error" : "note", m.text); break;
-    // what `/clear` and `ctrl+l` take off a terminal, taken off this page: the program's own lines
+    // what `/cleanup` and `ctrl+l` take off a terminal, taken off this page: the program's own lines
     // and nothing else. The conversation stays, because it is the context and this did not touch it
     case "cleared": {
       for (const el of log.querySelectorAll(".note, .error")) el.remove();

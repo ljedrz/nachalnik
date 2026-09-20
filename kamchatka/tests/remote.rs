@@ -2227,7 +2227,7 @@ async fn ctrl_c_at_a_client_stops_the_turn_and_then_detaches() {
     session.ended().await.1.expect("the session failed");
 }
 
-/// `/clear` reaches every attached client, not only the one that typed it.
+/// `/cleanup` reaches every attached client, not only the one that typed it.
 ///
 /// note: a broadcast rather than an answer, for the reason every other notice is one: the program
 /// has one voice, and a session two people are watching does not have half of it cleared. The
@@ -2241,7 +2241,7 @@ async fn clearing_the_notices_is_said_to_everybody() {
     // something for it to take away, said by a command rather than invented: `/seams` answers with
     // a page, and the arrival of a second client is a note in its own right
     one.send(Command::Submit {
-        line: "/clear".to_owned(),
+        line: "/cleanup".to_owned(),
     })
     .await;
 
@@ -2260,20 +2260,21 @@ async fn clearing_the_notices_is_said_to_everybody() {
     served.ended().await.1.expect("the session failed");
 }
 
-/// And a line said after a clear still reaches a client, which is the half that breaks quietly.
+/// And a line said after a cleanup still reaches a client, which is the half that breaks
+/// quietly.
 ///
 /// note: this is the test that is worth having and the one above is the feature. The server reads
 /// the program's lines through `App::notes`, which is a watermark over the filtered sequence -
-/// safe only while that sequence grows, and `/clear` empties it. A server that did not notice
+/// safe only while that sequence grows, and `/cleanup` empties it. A server that did not notice
 /// would hold a mark of three against a sequence of nothing and swallow the next three lines,
 /// silently, for the rest of the session. Two lines are cleared here so that the mark is high
 /// enough for the swallowing to be visible.
 #[tokio::test]
-async fn a_line_said_after_a_clear_is_not_swallowed() {
+async fn a_line_said_after_a_cleanup_is_not_swallowed() {
     let served = served(vec![], |_| {}).await;
     let (mut peer, _) = Peer::attached(&served.at).await;
 
-    for line in ["/seams", "/budget", "/clear"] {
+    for line in ["/seams", "/budget", "/cleanup"] {
         peer.send(Command::Submit {
             line: line.to_owned(),
         })
@@ -2293,7 +2294,7 @@ async fn a_line_said_after_a_clear_is_not_swallowed() {
         .await;
     assert!(
         heard.iter().any(|m| matches!(m, Message::Said { .. })),
-        "the line after a clear was swallowed: {heard:?}"
+        "the line after a cleanup was swallowed: {heard:?}"
     );
 
     peer.send(Command::Submit {

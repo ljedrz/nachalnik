@@ -255,7 +255,7 @@ impl Server {
         // how many of the program's own lines have gone out; see `App::notes` for why it counts
         // the filtered sequence rather than the list
         let mut said = 0;
-        // and which generation of that sequence, because `/clear` starts it again from nothing
+        // and which generation of that sequence, because `/cleanup` starts it again from nothing
         let mut cleared = app.cleared();
         let mut clients = 0;
         // whether the session was busy the last time anybody was told. See `Message::Busy` for why
@@ -269,7 +269,7 @@ impl Server {
             .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
 
         loop {
-            // before the lines, because it is about the ones already sent: `/clear` takes the
+            // before the lines, because it is about the ones already sent: `/cleanup` takes the
             // program's own half of every attached client's screen away, and the watermark below
             // goes back to nothing with it. Broadcast rather than answered to whoever asked, for
             // the reason every other notice is - the program has one voice, and a session two

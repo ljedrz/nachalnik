@@ -281,7 +281,7 @@ Referenced from [AGENTS.md](AGENTS.md).
   bounded. `client N attached` and `client N left` go through `App::say`, so they are in `App::loose`
   and therefore in the conversation of every projection handed out afterwards - and a browser
   reconnecting every second on a flaky link, which `examples/browser.html` asks for with
-  `retry: 1000`, fills the conversation with them until somebody types `/clear`.
+  `retry: 1000`, fills the conversation with them until somebody types `/cleanup`.
 
   Saying it through `App` is deliberate and is what makes a session somebody else can type into say
   so to everybody in it. What would unblock the rest is deciding whether those lines are part of
