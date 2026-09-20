@@ -332,6 +332,26 @@ minor bump may break you.
   drawn in and the colour a refusal is. It honours `prefers-reduced-motion` by holding still, which
   says the same thing.
 
+### changed
+
+- **`examples/phone.rs` takes the program's own arguments, every one of them.** The session it
+  assembles is the program's session, and it was assembled from two positional words: a listen
+  address and a model, which it defaulted to `openai/gpt-4o-mini` — the thing `--model` stopped
+  doing this release, still being done one directory away. There was no way to ask it for
+  `--advise`, a system instruction, a tool, a path rule or a settings file.
+
+  `Args` moves out of `main.rs` into `kamchatka::args`, with the three steps that turn one into a
+  session beside it: `Args::given` reads the command line and fills it in from a settings file,
+  `Args::setup` is the `Setup` it describes, and `Args::provider` is where its requests go. What
+  stays in `main.rs` is what is genuinely the program's — which loop drives the session, where the
+  record is written, and the refusal that `--connect` assembles nothing. Anybody building a session
+  of their own on this crate gets the same three.
+
+  Where the *page* listens is the one thing that is not an argument: the positional is the first
+  message now, and `--serve` already names the session's own socket. It is `KAMCHATKA_PHONE_LISTEN`,
+  loopback unless it says otherwise, and `--serve` or `--connect` on that command line is refused
+  rather than ignored.
+
 ### fixed
 
 - **A piped `--connect` left the question it raised unanswered, and the session waiting on it.** A

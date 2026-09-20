@@ -85,6 +85,7 @@
 #![deny(unsafe_code)]
 
 pub mod app;
+pub mod args;
 pub mod attach;
 pub mod clipboard;
 pub mod config;

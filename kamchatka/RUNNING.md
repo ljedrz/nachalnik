@@ -219,10 +219,16 @@ in front of it. The HTTP half is `examples/relay/`, shared rather than copied, w
 `gateway.rs` is still only a relay.
 
 ```console
-$ cargo run --example phone -- 0.0.0.0:8080 qwen/qwen3-coder
+$ KAMCHATKA_PHONE_LISTEN=0.0.0.0:8080 cargo run --example phone -- -m qwen/qwen3-coder
 · a session of its own at tcp:127.0.0.1:41337
 · a browser reaches tcp:127.0.0.1:41337 at port 8080 on every address this machine has
 ```
+
+It takes the program's own arguments, all of them, because the session it assembles is the
+program's: `-m`, `--advise`, `--allow`, `-s`, a first message, a settings file found where you are
+standing. Where the *page* listens is the one thing that is not one of them — the positional is the
+first message, and `--serve` already means the session's own socket — so it is
+`KAMCHATKA_PHONE_LISTEN`, loopback unless it says otherwise.
 
 It is `text/event-stream` rather than a WebSocket because SSE already has this protocol's shape in
 it. An event may carry an `id:`, and a browser that loses the stream reconnects **by itself** and

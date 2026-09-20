@@ -13,25 +13,21 @@
 use std::{
     io::{IsTerminal as _, stdout},
     path::Path,
-    sync::Arc,
 };
 
 use anyhow::{Context as _, Result};
-use clap::{CommandFactory as _, FromArgMatches as _, Parser, ValueEnum as _};
+use clap::CommandFactory as _;
 #[cfg(feature = "tui")]
 use crossterm::{
     event::{DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent, EventStream},
     execute,
 };
-use nachalnik::Grant;
-use nachalnik_providers::Dialect;
 
 use kamchatka::{
     app::{App, Speaker},
-    config::Settings,
-    endpoint, headless, remote, sandbox,
-    tools::Subject,
-    wiring::{Setup, Wired},
+    args::{Args, Given},
+    headless, remote, sandbox,
+    wiring::Wired,
 };
 // the drawing loop's own: the channel payload it has to name in a signature, and the screen
 #[cfg(feature = "tui")]
@@ -42,354 +38,6 @@ use nachalnik::Event;
 /// How often the screen is redrawn when nothing at all is happening.
 #[cfg(feature = "tui")]
 const TICK: std::time::Duration = std::time::Duration::from_millis(120);
-
-/// A terminal agent that shows you its context.
-///
-/// note: the three environment variables below are read by [`provider`] rather than declared as
-/// arguments, so clap cannot list them the way it lists `KAMCHATKA_MODEL` beside `--model`. A
-/// setting nothing on the screen mentions is a setting nobody finds, and `--help` is where a
-/// person looks for the list.
-/// The variables `--help` lists, and what each of them is for.
-///
-/// note: a function rather than the literal it was, so that the advisor's three are listed by a
-/// build that has an `--advise` to use them and by no other. A variable named in the help of a
-/// program that reads it nowhere is the same failure as a settings key nothing consults.
-fn environment() -> String {
-    /// The advisor's three, listed by a build that has an `--advise` and empty in one that does
-    /// not.
-    #[cfg(feature = "advise")]
-    const ADVISOR: &str = "
-
-The advisor, which is only ever asked when --advise is given:
-  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. Without one it borrows
-                              KAMCHATKA_API_KEY, but only where this session already
-                              talks to OpenRouter, which serves jev too
-  KAMCHATKA_TYPESAFE_BASE_URL where its questions go; the endpoint of whichever of
-                              those two keys was found
-  KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest at TypeSafe,
-                              typesafe/jev-1.13 through OpenRouter";
-    #[cfg(not(feature = "advise"))]
-    const ADVISOR: &str = "";
-
-    format!(
-        "\
-Environment:
-  KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY
-  KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
-                           OpenRouter by default, or Google's own v1beta with --gemini
-  KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
-  KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter{ADVISOR}"
-    )
-}
-
-#[derive(Parser)]
-#[command(version, about, long_about = None, after_help = environment())]
-struct Args {
-    /// A first message, sent as soon as it starts.
-    message: Vec<String>,
-
-    /// The model to talk to. Without one the session starts with none and sends nothing until
-    /// `/model` picks one; `/models` lists what the endpoint serves.
-    #[arg(short, long, env = "KAMCHATKA_MODEL")]
-    model: Option<String>,
-
-    /// Talk to Google's own API rather than an OpenAI-compatible one, so that a turn keeps the
-    /// order it was produced in: thinking, a sentence, a tool call, more thinking.
-    #[arg(long)]
-    gemini: bool,
-
-    /// Ask a second model about every tool call the rules were going to allow, and take the
-    /// stricter of the two answers. It can refuse a call and never permit one. Sends the call's
-    /// tool name, capabilities and arguments to TypeSafe, or to OpenRouter where that is whose
-    /// key paid; see KAMCHATKA_TYPESAFE_API_KEY.
-    #[cfg(all(feature = "advise", not(feature = "assisted-shell")))]
-    #[arg(long)]
-    advise: bool,
-
-    /// The same, and this build also asks it where each command a question is about lands on a
-    /// three-level rubric, and colours the question by the answer. The rating decides nothing.
-    /// That sends every command the model writes to the same service, and not only the allowed
-    /// ones: TypeSafe, or OpenRouter where that is whose key paid.
-    #[cfg(feature = "assisted-shell")]
-    #[arg(long)]
-    advise: bool,
-
-    /// A file to put in the context, pinned; a PDF or an image goes in as itself. May be
-    /// repeated, and `/attach` is the same thing at the prompt.
-    #[arg(short, long, value_name = "PATH")]
-    file: Vec<String>,
-
-    /// A system instruction. The runtime ships none of its own.
-    #[arg(short, long, value_name = "TEXT")]
-    system: Option<String>,
-
-    /// Carry on from a session written by `/save`.
-    #[arg(short, long, value_name = "PATH")]
-    resume: Option<String>,
-
-    /// An MCP server to run, and offer the tools of, as `[name=]command`. May be repeated.
-    #[cfg(feature = "mcp")]
-    #[arg(long, value_name = "COMMAND")]
-    mcp: Vec<String>,
-
-    /// How many requests one turn may make before it stops and asks; `0` is no limit at all.
-    #[arg(long, value_name = "N", default_value_t = 8)]
-    requests: usize,
-
-    /// How full the context may get before the oldest tool results are elided to a marker they
-    /// can be restored from; `1` never does.
-    #[arg(long, value_name = "FRACTION", default_value_t = 0.8)]
-    compact: f64,
-
-    /// Let the model's tool calls run at the same time, instead of in the order it asked.
-    #[arg(long)]
-    parallel: bool,
-
-    /// Run with no confinement at all: the shell reaches whatever the user running this can, and
-    /// `fs`, which is not a process, stops holding itself to the working directory.
-    #[arg(long)]
-    no_sandbox: bool,
-
-    /// Do not write the session out when it ends. It is written to a temporary directory
-    /// otherwise, and the path is the last thing printed.
-    #[arg(long)]
-    no_record: bool,
-
-    /// A path outside the working directory the tools may also read and write. May be repeated,
-    /// and takes a comma-separated list.
-    #[arg(long, value_name = "PATH", value_delimiter = ',')]
-    sandbox_allow: Vec<std::path::PathBuf>,
-
-    /// A path outside the working directory the tools may read but not change. The same, and a
-    /// toolchain is the usual one: `cargo` cannot start without `~/.rustup`.
-    #[arg(long, value_name = "PATH", value_delimiter = ',')]
-    sandbox_read: Vec<std::path::PathBuf>,
-
-    /// Drop the whole of a tool's output once it has been shortened, rather than keeping it as an
-    /// archived item that can still be read.
-    #[arg(long)]
-    forget_truncated: bool,
-
-    /// Send a request the counter puts over the model's context anyway, and let the endpoint be
-    /// the one that says no. For a limit that is advertised wrongly, or a counter that is.
-    #[arg(long)]
-    send_oversized: bool,
-
-    /// Drive the session from lines on stdin instead of from a screen: the session log goes to
-    /// stdout, one JSON record per line, and what the model says goes to stderr. Implied when
-    /// stdout is not a terminal.
-    #[arg(long)]
-    headless: bool,
-
-    /// Put a socket in front of the session so it can be driven from elsewhere as well as from
-    /// here: `unix:PATH`, or `tcp:127.0.0.1:PORT`. The screen stays where there is one to draw on.
-    /// The session is this program's - it carries on when a client detaches, and waits when a tool
-    /// needs an answer.
-    #[arg(long, value_name = "ADDRESS", conflicts_with_all = ["headless", "connect"])]
-    serve: Option<String>,
-
-    /// Attach to a session somebody else is serving and drive it from lines on stdin, in the same
-    /// two streams `--headless` writes. Nothing else on this command line applies except
-    /// `--on-ask`: the model, the key, the tools and the sandbox are all the host's, and what a
-    /// detaching client does with a question still open is not.
-    #[arg(long, value_name = "ADDRESS")]
-    connect: Option<String>,
-
-    /// Allow a whole domain, one operation in one, or a path, as `fs`, `fs:read`, `exec:run`,
-    /// `.env*`. May be repeated, and takes a comma-separated list. Answering at the prompt writes
-    /// the same table.
-    #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
-    allow: Vec<String>,
-
-    /// Refuse one, the same way. The strictest of everything consulted wins, so this beats
-    /// `--allow`.
-    #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
-    deny: Vec<String>,
-
-    /// Allow every tool an MCP server offers, by the name it was given. Its own argument because
-    /// a server name and a domain are both bare words and nothing in either says which it is.
-    #[arg(long, value_name = "NAME", value_delimiter = ',')]
-    allow_server: Vec<String>,
-
-    /// Refuse one, the same way.
-    #[arg(long, value_name = "NAME", value_delimiter = ',')]
-    deny_server: Vec<String>,
-
-    /// What to do with a question nobody is there to answer: in a headless run, and in a
-    /// `--connect` one once its input has closed.
-    #[arg(long, value_name = "ANSWER", default_value = "deny")]
-    on_ask: OnAsk,
-
-    /// Stop a headless run after this many seconds, however far it has got. What has arrived is
-    /// kept and the session is written out as usual.
-    #[arg(long, value_name = "SECONDS")]
-    deadline: Option<u64>,
-
-    /// Stop the session once the provider has charged this many tokens for it, in and out. Time is
-    /// not the only thing a run nobody is watching can spend; `/spend` changes it while it runs.
-    #[arg(long, value_name = "TOKENS")]
-    spend: Option<u64>,
-
-    /// A JSON file of settings, for the ones you would otherwise type every time. Anything given
-    /// here on the command line wins over what it says. Given none, `./kamchatka.json` is read if
-    /// it is there, and the one under your config directory if it is not.
-    #[arg(long, value_name = "PATH")]
-    config_file: Option<std::path::PathBuf>,
-
-    /// Print the settings file this program ships with and stop, for editing into one of your
-    /// own: `kamchatka --print-config > kamchatka.json`.
-    #[arg(long)]
-    print_config: bool,
-
-    /// The frame's colour, which only a settings file can say; see `Settings::border`.
-    ///
-    /// note: `skip` rather than an argument nobody would type twice, and it lives on `Args` all
-    /// the same so that the one merge in `under` stays the one place the file meets the command
-    /// line. A second path from a settings file to the program is a second set of rules about
-    /// which wins.
-    #[arg(skip)]
-    border: Option<String>,
-
-    /// Which tools to offer at startup, which only a settings file can say; see `Settings::tools`.
-    ///
-    /// note: `skip` for the reason above, and for one of its own. This was `--introspect`, a flag
-    /// for four of the tools, and what it was really being used for was a project where those four
-    /// were worth the tokens - which is a fact about the project and belongs in the file beside it
-    /// rather than in front of somebody's hands. What it was *also* used for was turning them off
-    /// for one session, and that is `/tools toggle` now, at the moment somebody wants it rather
-    /// than before the session starts.
-    #[arg(skip)]
-    tools: Option<Vec<String>>,
-}
-
-impl Args {
-    /// Fills in everything the command line did not say from a settings file.
-    ///
-    /// note: it asks clap which arguments were *typed*, rather than comparing against the
-    /// defaults, because those are not the same question: `--requests 8` is the default value and
-    /// somebody meant it, and a merge that could not tell them apart would let a file quietly
-    /// override what was asked for. `ValueSource::CommandLine` is the only answer that counts, and
-    /// it is why `session` parses the matches as well as the struct.
-    ///
-    /// note: a list from the command line *replaces* the file's rather than adding to it. One rule
-    /// for every key is the only kind anybody can predict, and the other way round there is no way
-    /// to ask for fewer than the file says.
-    fn under(mut self, settings: Settings, matches: &clap::ArgMatches) -> Result<Self> {
-        let typed =
-            |name: &str| matches.value_source(name) == Some(clap::parser::ValueSource::CommandLine);
-        // one macro rather than eighteen `if`s, and it names the argument once: the string clap
-        // knows it by is the field's own name, so a field renamed without its entry here stops
-        // compiling rather than stopping working
-        macro_rules! fill {
-            ($($field:ident),* $(,)?) => {$(
-                if !typed(stringify!($field)) && let Some(value) = settings.$field {
-                    self.$field = value.into();
-                }
-            )*};
-        }
-
-        fill!(
-            gemini,
-            requests,
-            compact,
-            parallel,
-            no_sandbox,
-            sandbox_allow,
-            sandbox_read,
-            allow,
-            deny,
-            allow_server,
-            deny_server,
-            deadline,
-            spend,
-            forget_truncated,
-            send_oversized,
-            no_record,
-        );
-        // the four that are not a plain assignment: two are already `Option`, one is a list this
-        // build may not have, and one is a word that has to be a `ValueEnum`
-        //
-        // note: these two ask whether the field is empty rather than whether it was typed, and for
-        // `model` that is a decision rather than a shorthand. It is the one argument with an
-        // environment variable behind it, so "not typed" and "not set" differ - and a set
-        // `KAMCHATKA_MODEL` should beat a file the way a typed `-m` does. Command line, then
-        // environment, then file, which is the order everything else in this workspace reads in
-        if self.model.is_none() {
-            self.model = settings.model;
-        }
-        if self.system.is_none() {
-            self.system = settings.system;
-        }
-        // read here rather than where it is drawn, so that a colour nobody can parse is a startup
-        // error naming the file rather than a frame that is quietly still yellow. There is no
-        // argument to lose to, so there is nothing to ask `typed` about
-        if let Some(border) = &settings.border {
-            kamchatka::config::rgb(border)
-                .map_err(|e| anyhow::anyhow!("`border` in the settings file: {e}"))?;
-            self.border = settings.border;
-        }
-        // the other one with no argument to lose to. Checking the names is `Setup::wire`'s, since
-        // the tools it would be checking against are the ones it is about to build
-        self.tools = settings.tools;
-        if let Some(on_ask) = settings.on_ask.filter(|_| !typed("on_ask")) {
-            self.on_ask = OnAsk::from_str(&on_ask, true)
-                .map_err(|e| anyhow::anyhow!("`on-ask` in the settings file: {e}"))?;
-        }
-        match settings.mcp {
-            #[cfg(feature = "mcp")]
-            Some(mcp) if !typed("mcp") => self.mcp = mcp,
-            // note: a *server* that cannot be run is worth refusing over; an empty list asks for
-            // nothing and is honoured by doing nothing. The crate's own `kamchatka.json` carries
-            // every key, `mcp` among them, so the stricter rule made the shipped starting point
-            // unusable in the one build that has no MCP - which is how this was found
-            #[cfg(not(feature = "mcp"))]
-            Some(mcp) if !mcp.is_empty() => anyhow::bail!(
-                "this build has no MCP support, so `mcp` in the settings file cannot be honoured"
-            ),
-            _ => {}
-        }
-
-        // the same rule for the same reason, and it matters more here: a settings file that asked
-        // for a second opinion on every tool call, in a build with no advisor in it, would run
-        // the session with its permissions decided by the heuristic alone and say nothing
-        match settings.advise {
-            #[cfg(feature = "advise")]
-            Some(advise) if !typed("advise") => self.advise = advise,
-            #[cfg(not(feature = "advise"))]
-            Some(true) => anyhow::bail!(
-                "this build has no advisor in it, so `advise` in the settings file cannot be \
-                 honoured"
-            ),
-            _ => {}
-        }
-
-        Ok(self)
-    }
-}
-
-/// What an unanswerable question is answered with.
-///
-/// note: `deny` is the default, and it is the whole of the difference between this and
-/// `examples/recorded.rs`, which grants every question it is asked. That is right for a recording
-/// somebody is watching and wrong for a program: a run nobody is watching should not be able to do
-/// a thing nobody has allowed, and `--allow exec` is one flag away for anyone who means it.
-#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-enum OnAsk {
-    /// Refuse it. The model is told, and told that it was this call rather than a standing rule.
-    Deny,
-    /// Grant it.
-    Allow,
-}
-
-impl OnAsk {
-    /// The answer itself, as the kernel spells it.
-    fn grant(self) -> Grant {
-        match self {
-            Self::Deny => Grant::Deny,
-            Self::Allow => Grant::Allow,
-        }
-    }
-}
 
 fn main() -> Result<()> {
     // before anything else, and before a runtime exists: this is the mode the `shell` tool
@@ -480,35 +128,15 @@ fn also_typed(matches: &clap::ArgMatches) -> Vec<String> {
 
 /// The program proper: wired the same way whichever of the two drives it.
 async fn session() -> Result<()> {
-    // note: the matches as well as the struct, because the settings file needs to know which
-    // arguments were typed and the struct cannot say - a value that equals its default and a value
-    // somebody wrote out are the same field. See `Args::under`
-    let matches = Args::command().get_matches();
-    let mut args = Args::from_arg_matches(&matches)
-        .map_err(|e| e.exit())
-        .unwrap();
+    let Given {
+        args,
+        matches,
+        found,
+    } = Args::given()?;
     if args.print_config {
         print!("{}", kamchatka::config::SHIPPED);
 
         return Ok(());
-    }
-    // note: a path that was typed is not announced and a path that was found is, which is the
-    // whole of what the second one costs. Somebody who wrote `--config-file` knows; somebody who
-    // walked into a directory with one in it does not, and a file that applies because of where
-    // you are standing has to say so rather than be discovered later by its effects.
-    //
-    // note: nothing is looked for under `--connect`, which takes nothing else on principle: the
-    // model, the key, the tools and the sandbox all belong to whoever is serving, and a file
-    // picked up here would be a set of settings for a session this process is not assembling
-    let found = args
-        .config_file
-        .is_none()
-        .then(|| args.connect.is_none().then(kamchatka::config::found))
-        .flatten()
-        .flatten();
-    if let Some(path) = args.config_file.clone().or_else(|| found.clone()) {
-        let settings = Settings::read(&path).map_err(|e| anyhow::anyhow!("{e}"))?;
-        args = args.under(settings, &matches)?;
     }
 
     // note: before any of the wiring below, and that is the whole reason it is here rather than
@@ -567,64 +195,7 @@ async fn session() -> Result<()> {
         }
     }
 
-    // note: the reading of the file is here rather than in `Setup`, because the two error
-    // messages worth writing - which path, and whether it was a session at all - belong to
-    // whoever was handed the path
-    let resume = match &args.resume {
-        Some(path) => Some(
-            serde_json::from_slice(
-                &std::fs::read(path).with_context(|| format!("could not read {path}"))?,
-            )
-            .with_context(|| format!("{path} is not a session"))?,
-        ),
-        None => None,
-    };
-
-    let setup = Setup {
-        resume,
-        // the runtime's own default is a counter that restarts at 1 with the process, which is
-        // fine as an identity and useless as a filename: every session would write over the last
-        // one's record. A resumed session keeps the name in its snapshot, so carrying on appends
-        // to the same session rather than starting a second one that looks unrelated
-        session_name: args.resume.is_none().then(|| {
-            let started = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|since| since.as_secs())
-                .unwrap_or_default();
-
-            App::session_stamp(started)
-        }),
-        requests: (args.requests > 0).then_some(args.requests),
-        parallel: args.parallel,
-        // what the runtime keeps is a decision about retention, and retention here is a file
-        // somebody has to store: `/save` writes the snapshot, and an archived output goes into it
-        // whole. One `grep` that wandered into `./target/` is 11MB of build noise nobody will
-        // read, and it is in every save of that session from then on
-        keep_truncated: !args.forget_truncated,
-        refuse_oversized: !args.send_oversized,
-        compact: Some(args.compact),
-        spend: args.spend,
-        confine: !args.no_sandbox,
-        reachable: args.sandbox_allow.clone(),
-        readable: args.sandbox_read.clone(),
-        allow: args
-            .allow
-            .iter()
-            .map(|it| Subject::parse(it))
-            .chain(args.allow_server.iter().cloned().map(Subject::Server))
-            .collect(),
-        deny: args
-            .deny
-            .iter()
-            .map(|it| Subject::parse(it))
-            .chain(args.deny_server.iter().cloned().map(Subject::Server))
-            .collect(),
-        tools: args.tools.clone(),
-        system: args.system.clone(),
-        files: args.file.clone(),
-        #[cfg(feature = "advise")]
-        advisor: None,
-    };
+    let setup = args.setup()?;
 
     // note: before the provider, which is a round trip and an API key away. Everything `check`
     // answers is answerable from the arguments alone - a tool nobody offers, a path rule nothing
@@ -632,53 +203,10 @@ async fn session() -> Result<()> {
     // told about the wrong thing. `wire` asks it again for whoever is not `main`
     setup.check().map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    // note: after `check` and before the provider, and the order is the point. A missing advisor
-    // key is a fact about the arguments and should not cost a round trip to the *other* endpoint
-    // to find out about; and a session that was asked for with `--advise` and could not reach an
-    // advisor is refused rather than quietly run with its permissions decided by the heuristic
-    // alone. Somebody who turned this on is entitled to have it on or be told it is not
     #[cfg(feature = "advise")]
-    let setup = match args.advise {
-        false => setup,
-        true => {
-            let jev = endpoint::advise::connect(&endpoint::session_endpoint(args.gemini))
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))
-                .context("could not reach the advisor")?;
-            // what the probe had to say about the model it was asked for - a name the endpoint
-            // does not serve, most likely. On stderr because there is no screen yet and this is
-            // the last moment it can be read before one covers it
-            if let Some(notice) = jev.take_notice() {
-                eprintln!("advisor: {notice}");
-            }
+    let setup = args.advised(setup).await?;
 
-            Setup {
-                advisor: Some(jev),
-                ..setup
-            }
-        }
-    };
-
-    // two wire formats, one trait. `--gemini` is what a person picks, and everything downstream -
-    // the kernel, the screen, `/model`, `/provider` - is written against `Endpoint` and never
-    // finds out which one it got
-    //
-    // note: no model unless one was named. A default means that a session started without `-m`
-    // talks to whatever this program's author picked, at the person's expense and with nothing
-    // saying the choice was not theirs. Without one the session still starts - the address and
-    // the key are settled, `/models` lists what is served and `/model` picks one - and until it
-    // is picked the kernel holds no provider, so nothing can be sent. See `Setup::wire`
-    let model = args.model.as_deref();
-    let provider: Arc<dyn Dialect> = match args.gemini {
-        true => endpoint::gemini::connect(model)
-            .await
-            .map(|it| it as Arc<dyn Dialect>),
-        false => endpoint::connect(model)
-            .await
-            .map(|it| it as Arc<dyn Dialect>),
-    }
-    .map_err(|e| anyhow::anyhow!("{e}"))
-    .context("could not reach the model")?;
+    let provider = args.provider().await?;
 
     let Wired {
         mut app,

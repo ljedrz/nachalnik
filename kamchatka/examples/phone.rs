@@ -2,14 +2,27 @@
 //!
 //! ```console
 //! $ export KAMCHATKA_API_KEY=sk-or-...
-//! $ cargo run --example phone
+//! $ cargo run --example phone -- -m qwen/qwen3-coder
 //! · a session of its own at tcp:127.0.0.1:41337
 //! · a browser reaches tcp:127.0.0.1:41337 at http://127.0.0.1:8080/
 //! ```
 //!
 //! ```console
-//! $ cargo run --example phone -- 0.0.0.0:8080 qwen/qwen3-coder
+//! $ KAMCHATKA_PHONE_LISTEN=0.0.0.0:8080 cargo run --example phone -- \
+//!     --advise --allow fs:read "have a look around"
 //! ```
+//!
+//! note: **the program's own arguments**, every one of them, because this assembles the program's
+//! own session - see [`kamchatka::args`]. It took two positional words and defaulted the model to
+//! one somebody else had picked, which is the thing `--model` stopped doing, and it had no way to
+//! ask for `--advise`, a system instruction, a tool, or a path rule. A second, smaller vocabulary
+//! in an example is two sets of flags to keep in step and one of them always behind.
+//!
+//! note: where the *page* listens is the one thing that is not an argument, and it is a variable
+//! rather than a positional because the positional is the first message now. `--serve` is not it
+//! either: that is the session's own socket, which this one holds on loopback and a port nothing
+//! else is using, and giving the flag a second meaning here would be the kind of overload a reader
+//! has to be told about.
 //!
 //! What `gateway.rs` is missing is a session: it relays to one somebody else started, which is the
 //! honest shape for a relay and two commands for a person. This is the two in one process - a
@@ -30,15 +43,20 @@
 //! the `shell` tool as whoever ran this. The listen address is asked for outright rather than
 //! defaulted to a wildcard, and a non-loopback one says what it means.
 
-use std::sync::Arc;
-
 use kamchatka::{
-    endpoint, remote,
-    wiring::{Setup, Wired},
+    app::Speaker,
+    args::{Args, Given},
+    remote,
+    wiring::Wired,
 };
-use nachalnik_providers::Dialect;
 
 mod relay;
+
+/// Where the page listens, for whoever is not standing at this machine.
+///
+/// note: loopback by default, and a wildcard has to be asked for outright. See the note about
+/// authentication at the top: whatever reaches the page runs the `shell` tool as whoever ran this.
+const LISTEN: &str = "KAMCHATKA_PHONE_LISTEN";
 
 /// Where the session listens, which is nobody's business but this process's.
 ///
@@ -63,41 +81,70 @@ async fn main() -> Result<(), String> {
         std::process::exit(code);
     }
 
-    let mut args = std::env::args().skip(1);
-    let listen = args.next().unwrap_or_else(|| "127.0.0.1:8080".to_owned());
-    let model = args
-        .next()
-        .or_else(|| std::env::var("KAMCHATKA_MODEL").ok())
-        .unwrap_or_else(|| "openai/gpt-4o-mini".to_owned());
+    let listen = std::env::var(LISTEN).unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
+    // the program's own, settings file and all, so that every flag means here what it means there
+    let Given { args, found, .. } = Args::given().map_err(|e| format!("{e:#}"))?;
+    if args.print_config {
+        print!("{}", kamchatka::config::SHIPPED);
 
-    // the same two variables the program reads, because this is the program's session and a second
-    // way to say where the requests go would be a second thing to keep in step
-    let provider: Arc<dyn Dialect> = endpoint::connect(Some(model.as_str()))
-        .await
-        .map(|it| it as Arc<dyn Dialect>)
-        .map_err(|e| format!("could not reach {model}: {e}"))?;
+        return Ok(());
+    }
+    // note: refused rather than ignored, which is the rule `--connect` follows in the program. This
+    // starts a session and puts a socket in front of it, so a second address is not a setting it
+    // can honour - and an example that quietly did nothing with one somebody typed would be worse
+    // than one that stops
+    for (given, flag) in [
+        (args.serve.is_some(), "--serve"),
+        (args.connect.is_some(), "--connect"),
+    ] {
+        if given {
+            return Err(format!(
+                "`{flag}` is not this example's to take: it serves a session of its own on \
+                 loopback and puts the page in front of it. {LISTEN} says where the page listens"
+            ));
+        }
+    }
+
+    let provider = args.provider().await.map_err(|e| format!("{e:#}"))?;
+    let setup = args.setup().map_err(|e| format!("{e:#}"))?;
+    setup.check()?;
+    #[cfg(feature = "advise")]
+    let setup = args.advised(setup).await.map_err(|e| format!("{e:#}"))?;
+
     let Wired {
         mut app,
         mut events,
         mut finished,
-    } = Setup {
-        // note: the runtime's own default is a counter that restarts with the process, which is an
-        // identity and not a filename - and `/save` from the page files the session under this. The
-        // program picks a timestamp for that reason and so does this
-        session_name: Some(kamchatka::app::App::session_stamp(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|since| since.as_secs())
-                .unwrap_or_default(),
-        )),
-        ..Default::default()
-    }
-    .wire(provider)?;
+    } = setup.wire(provider)?;
 
     let mut server = remote::Server::bind(SESSION).await?;
     let at = server.address();
     println!("· a session of its own at {at}");
     remote::opening(&mut app, &at);
+
+    // the three lines the program says into a session before anything is driving it, for the same
+    // reasons it says them: where a setting nobody typed came from, that there is no model yet, and
+    // the message that was handed in on the command line. Every one of them reaches the page,
+    // because the conversation is what a projection carries
+    if let Some(path) = &found {
+        app.say(
+            Speaker::Note,
+            format!("settings read from {}", path.display()),
+        );
+    }
+    if app.kernel.model_info().is_none() {
+        app.say(
+            Speaker::Note,
+            format!(
+                "no model yet: `/model ID` picks one, and `/models` lists what {} serves",
+                app.provider.host()
+            ),
+        );
+    }
+    if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
+        app.ask(&message);
+        app.start_turn();
+    }
 
     // note: the session is the task and the relay is what this waits on, rather than the other way
     // round. `Server::run` returns when the session ends - a `/quit` from the page - and the relay
