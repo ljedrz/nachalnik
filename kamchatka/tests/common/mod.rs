@@ -9,7 +9,7 @@
 
 #![allow(dead_code)]
 
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
 /// A directory of this test's own, emptied first, under the one cargo hands the test binaries.
 ///
@@ -44,9 +44,17 @@ pub fn scratch(name: &str) -> PathBuf {
 /// note: the bodies are SSE because the provider asks for a stream unless told not to, and the
 /// point of these tests is the path the program actually takes. `[DONE]` is appended here so that
 /// a case reads as what the model said rather than as protocol.
+///
+/// note: the imports are the function's rather than the file's, because the function is. Everything
+/// under this `cfg` is gone on Windows, and a `use` at the top that only this reaches is an unused
+/// import there - which under the `RUSTFLAGS` this workspace builds with is a failed build on the
+/// one platform nobody here runs.
 #[cfg(unix)]
 pub async fn endpoint(answers: Vec<String>) -> String {
-    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering::SeqCst},
+    };
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
