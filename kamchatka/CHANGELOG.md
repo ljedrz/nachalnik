@@ -86,6 +86,13 @@ minor bump may break you.
   has the keys and the same `/help` from a browser does not, which is what the flag was for before
   a session could be both.
 
+- **`examples/phone.rs`: a session in a browser, from one command.** `gateway.rs` relays to a
+  session somebody else started, which is the honest shape for a relay and two commands for a
+  person. `cargo run --example phone` wires a session of its own, binds it to a loopback port the
+  kernel picks, and serves the same page in front of it. The HTTP half moved to `examples/relay/`
+  and is included by both with `mod relay;` - the way `tests/common` is - so `gateway.rs` is still
+  only a relay and neither example restates the other.
+
 - **`examples/gateway.rs` and `examples/browser.html`: a session in a browser, from a phone.** A
   browser cannot open a TCP connection - not inconveniently, at all - so something has to terminate
   HTTP in front of a session. The gateway is that, in three routes, with no framework, no router
