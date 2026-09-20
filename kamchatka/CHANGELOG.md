@@ -396,7 +396,11 @@ minor bump may break you.
   `version` is refused when the session does not know it and served when it is older and known, so
   a mismatch is a sentence rather than a parse error and sixty seconds of retries. A client that
   does not say is version 1, which is what everything written against this wire before the field
-  existed speaks.
+  existed speaks. The refusal is named `version` rather than `attach`, because attaching afresh
+  cannot mend it. `Attached` carries the number back the other way for the same "before anybody
+  needs it" reason: a client learns what the session speaks from the first thing it is handed,
+  rather than by being refused to find out. Serving an older client is the half that is not
+  machinery yet and is in `POSTPONED.md`, since nothing can exercise it while the number is 1.
 
 - **`Command` and `Message` each have a variant for what this build has no name for, and the rule
   is ignore what you do not know.** Without it, one new message on a session's side turned every
@@ -501,6 +505,25 @@ minor bump may break you.
   ever - the same bug, in the same function, and the note above the fix said it was finished. Every
   line of the head is read through what is left of `MAX_HEAD` now, and the question after each read
   is the same one: whether a newline arrived, or the allowance ran out.
+
+- **A refused version was retried until the client gave up, and then blamed the silence.**
+  `--connect` treats a refused attach as something to start afresh from, which is right for the
+  watermark it was written for and wrong for a version: the next attempt says the same thing and is
+  refused for the same reason, so the client spent a minute on it and exited with `the session has
+  not answered for 60s` - which is the one thing that had not happened. It answered immediately,
+  with a sentence saying which end was older. The refusal is named `version` rather than `attach`,
+  and the client leaves on it with the session's own words.
+
+- **A message this build had no name for did not count as an answer.** `Message::Unknown` is the
+  rule "ignore what you do not know", and a client that ignored it entirely was one whose count of
+  answers owed never came back down - so the first time a newer session answered a command with a
+  variant this build lacks, stdin closing stopped detaching and the session going quiet stopped
+  ending it, for the rest of that connection. That is the exact hole the forward-compatibility work
+  was for, with the new escape hatch around it. An unknown message is counted as an answer now, on
+  the grounds that a client owed one and handed something it cannot read has, as far as it can tell,
+  been answered: `Unknown` carries no payload, so there is nothing else to go on. It is a decision
+  about which way to be wrong, and the cost is a client that leaves a beat early on a message it
+  could not have printed.
 
 ## [0.13.0] - 2026-09-19
 

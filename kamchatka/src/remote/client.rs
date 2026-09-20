@@ -222,7 +222,10 @@ impl<'a> Client<'a> {
         }
 
         loop {
-            let stopping = tokio::select! {
+            // named for what it holds rather than for the branch that usually fills it: `stopping`
+            // above is this connection's two-stage `ctrl+c`, and a second binding of that name here
+            // reads as the same flag being reassigned
+            let ended = tokio::select! {
                 // note: biased, and the order is the point rather than a tuning knob. What the
                 // session has already said is read before anything else is decided - so a client
                 // whose input closes while a socket full of answers is still unread reads them
@@ -299,7 +302,7 @@ impl<'a> Client<'a> {
                     },
                 }
             };
-            if let Some(left) = stopping {
+            if let Some(left) = ended {
                 let _ = self.fresh_line();
 
                 return left;
@@ -381,12 +384,34 @@ impl<'a> Client<'a> {
                      that happened"
                 ))
             }
-            // note: nothing, which is the rule this variant is for: ignore what you do not know.
-            // A session that has grown a message since this build was made is a session this can
-            // still follow, because the records are what carry what happened
-            Message::Unknown => Ok(()),
+            // note: printed as nothing, which is the rule this variant is for: ignore what you do
+            // not know. A session that has grown a message since this build was made is a session
+            // this can still follow, because the records are what carry what happened
+            //
+            // note: but counted as an answer, because it may be one and this end cannot tell.
+            // `Unknown` carries no payload - `#[serde(other)]` takes a unit variant - so a client
+            // owed an answer and handed something it cannot read has, as far as it can tell, been
+            // answered. The two ways to be wrong are not the same size: counting it leaves this
+            // client early off the end of a command whose answer it could not have printed anyway,
+            // and not counting it leaves `outstanding` up for the rest of the connection, which is
+            // stdin closing never detaching and the session going quiet never ending it
+            Message::Unknown => {
+                self.answered();
+
+                Ok(())
+            }
             Message::Failed { about, error } => {
                 self.answered();
+                // note: a version refusal is the one failure nothing here can mend. Attaching
+                // afresh says the same thing and is refused for the same reason, so a client that
+                // retried it spent a minute on it and left saying the session had not answered -
+                // which is the one thing that did not happen. It answered, immediately, with the
+                // sentence below
+                if about == "version" {
+                    self.fresh_line()?;
+
+                    return Err(format!("{about}: {error}"));
+                }
                 // a refused attach is the one failure this client can do something about, and what
                 // it does is put down what it was holding: only a fresh attach can succeed now
                 if about == "attach" {

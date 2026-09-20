@@ -258,6 +258,25 @@ Referenced from [AGENTS.md](AGENTS.md).
   fetched on demand rather than streamed. Until then the honest statement is the one on `MAX_LINE`:
   the reading side owes the limit and the writing side does not.
 
+- **Serving a client older than the session, which is half of what `protocol::VERSION` promises.**
+  The rule on the constant is that a session refuses a version it does not know and serves an older
+  one it does. The first half is machinery - an attach naming a later version is refused, by that
+  name, before anything else in the message is read. The second is not: `watermark` checks the
+  number and does not keep it, so the moment `VERSION` is `2` nothing in a connection knows it is
+  talking to a version-1 client and nothing can stop it being sent a version-2 message.
+
+  There is nothing to unblock and nothing to do while this is `1`, which is exactly why it is
+  written down: the day the number moves is the day it is needed, and it is not the day anybody
+  will be thinking about it. What it costs is the number kept per connection and every write in
+  `remote::server::attend` asking about it - which is more than a field, because "a message this
+  version lacks" is a fact about each variant that nothing declares today.
+
+  What stands in meanwhile is `Message::Unknown` at the client, which makes an unrecognised message
+  something a client survives rather than something that ends it, and `Attached::version`, which is
+  how a client finds out what the other end speaks without being refused first. Both are honest and
+  neither is the rule: an unknown message is *counted* as an answer, because a client cannot tell
+  one from a broadcast, and a client that leaves a beat early is the cost of that guess.
+
 - **How many clients a session will accept, and what their arrival and departure cost.** Neither is
   bounded. `client N attached` and `client N left` go through `App::say`, so they are in `App::loose`
   and therefore in the conversation of every projection handed out afterwards - and a browser

@@ -523,7 +523,7 @@ async fn a_client_from_a_later_version_is_refused_and_one_that_says_nothing_is_n
             version: Some(protocol::VERSION + 1),
         })
         .await;
-    let Message::Failed { error, .. } = ahead.recv().await else {
+    let Message::Failed { about, error } = ahead.recv().await else {
         panic!("a version this session does not speak was accepted");
     };
     assert!(
@@ -531,15 +531,21 @@ async fn a_client_from_a_later_version_is_refused_and_one_that_says_nothing_is_n
             && error.contains(&format!("speaks {}", protocol::VERSION)),
         "{error}"
     );
+    // named for itself rather than as the attach it arrived on, because the two want opposite
+    // things done about them: an attach refusal is mended by attaching afresh and this is mended
+    // by nothing. See `a_version_the_session_refuses_is_not_attached_to_again`
+    assert_eq!(about, "version");
 
     // and the wire as it was written before the field existed, by hand, which is the case the
     // `None` is for
     let mut quiet = Peer::connect(&session.at).await;
     quiet.raw(b"{\"do\":\"attach\",\"since\":null}\n").await;
-    assert!(
-        matches!(quiet.recv().await, Message::Attached(_)),
-        "a client that did not say a version was refused"
-    );
+    let Message::Attached(attached) = quiet.recv().await else {
+        panic!("a client that did not say a version was refused");
+    };
+    // and the projection says which version answered it, which is how a client learns what the
+    // other end speaks without having to be refused to find out
+    assert_eq!(attached.version, protocol::VERSION);
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
@@ -1875,6 +1881,155 @@ async fn a_question_piped_in_waits_for_its_answer_and_leaves_the_session() {
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// A session speaking a version this client does not is left rather than attached to again.
+///
+/// note: the client sends the version this build speaks, so the only way to be refused for one is
+/// to be a different build - and both ends of a connection here are this one. What stands in is a
+/// relay that says one word differently on the way past, which is cheaper than a second
+/// implementation of the protocol for the sake of one number.
+///
+/// note: what it is pinning is that a refusal a fresh attach cannot mend ends the client on the
+/// session's own sentence. Treated like the watermark refusal beside it, the client reattached, was
+/// refused identically, and left a minute later saying the session had not answered for sixty
+/// seconds - which is the one thing that had not happened. The input is held open throughout, so
+/// nothing but the refusal can be what ended it.
+#[tokio::test]
+async fn a_version_the_session_refuses_is_not_attached_to_again() {
+    let session = served(vec![], |_| {}).await;
+    let ahead = format!("\"version\":{}", protocol::VERSION + 1);
+    let at = rewriting(
+        &session.at,
+        move |line| line.replace(&format!("\"version\":{}", protocol::VERSION), &ahead),
+        |line| line,
+    )
+    .await;
+
+    let (_feed, input) = tokio::io::duplex(256);
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    let left = tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(&mut records, &mut prose).run(&at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client kept reattaching to a session that had already answered");
+
+    let refused = left.expect_err("a refused version read as a session worth carrying on with");
+    assert!(refused.contains("the older end is this one"), "{refused}");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        !prose.contains("attaching again"),
+        "it went back for more of the same answer: {prose}"
+    );
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// An answer in a name this build has never heard of is still an answer, and is not waited for.
+///
+/// note: the hole the forward-compatibility work would otherwise have left open with its own
+/// escape hatch in it. `Message::Unknown` carries no payload - `#[serde(other)]` takes a unit
+/// variant - so a client owed an answer and handed one it cannot read cannot tell it from a
+/// broadcast. A count that never came back down was stdin closing that never detached and a
+/// session going quiet that never ended it, for the rest of the connection: `printf 'a question\n'
+/// | kamchatka --connect` against a session one version ahead hung.
+///
+/// note: what this deliberately does **not** assert is that the answer arrives. Counting an
+/// unrecognised message as an answer is a decision about which way to be wrong, and this is the
+/// cost of it: the client leaves on a message it could not have printed, where it used to wait for
+/// one that had already come and was never coming again. The relay renames the one message that is
+/// this client's answer, which is a session a version ahead answering an older client, and the
+/// claim is that it survives it rather than that it understood it.
+#[tokio::test]
+async fn an_answer_this_build_cannot_read_still_counts_as_one() {
+    let session = served(vec![ModelResponse::text("an answer to read")], |_| {}).await;
+    let at = rewriting(
+        &session.at,
+        |line| line,
+        |line| line.replace("\"is\":\"replied\"", "\"is\":\"replied-and-then-some\""),
+    )
+    .await;
+
+    let (mut feed, input) = tokio::io::duplex(256);
+    feed.write_all(b"ask something\n")
+        .await
+        .expect("could not type");
+    drop(feed);
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(&mut records, &mut prose).run(&at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client waited for an answer it had already been handed")
+    .expect("the client failed");
+
+    // and the session is still a session, which is what the client leaving is not allowed to cost
+    let (watch, attached) = Peer::attached(&session.at).await;
+    assert!(
+        attached
+            .conversation
+            .iter()
+            .any(|line| line.text.contains("ask something")),
+        "the line never reached the session: {:?}",
+        attached.conversation
+    );
+    watch.drop_it().await;
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A socket in front of a session, with every line said differently on the way past.
+///
+/// note: what the two tests above need is a session that speaks something this build does not, and
+/// both ends of a connection here are this build. One word rewritten on the wire is how a version
+/// that does not exist gets said out loud.
+async fn rewriting(
+    at: &str,
+    to_session: impl Fn(String) -> String + Clone + Send + 'static,
+    to_client: impl Fn(String) -> String + Clone + Send + 'static,
+) -> String {
+    let Ok(Address::Tcp(host)) = protocol::address(at) else {
+        panic!("the suite serves a port");
+    };
+    let host = host.to_owned();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = format!("tcp:{}", listener.local_addr().expect("its own address"));
+    tokio::spawn(async move {
+        while let Ok((down, _)) = listener.accept().await {
+            let up = TcpStream::connect(&host).await.expect("the session went");
+            let (down_r, down_w) = down.into_split();
+            let (up_r, up_w) = up.into_split();
+            tokio::spawn(relaying(down_r, up_w, to_session.clone()));
+            tokio::spawn(relaying(up_r, down_w, to_client.clone()));
+        }
+    });
+
+    at
+}
+
+/// Copies one direction of a connection, a line at a time.
+async fn relaying(
+    read: tokio::net::tcp::OwnedReadHalf,
+    mut write: tokio::net::tcp::OwnedWriteHalf,
+    say: impl Fn(String) -> String,
+) {
+    let mut lines = BufReader::new(read).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        if write
+            .write_all(format!("{}\n", say(line)).as_bytes())
+            .await
+            .is_err()
+        {
+            return;
+        }
+    }
 }
 
 /// `/quit` from a client ends the session, and reads as an ending rather than as a dropped socket.
