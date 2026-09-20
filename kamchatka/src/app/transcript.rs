@@ -492,6 +492,13 @@ impl App {
                 // part of a hidden turn still legible, and repeating the marker over all four says
                 // four things were hidden where one was. The pane dims the block so the repeats
                 // read as one; a client drawing rows has nothing to draw them as but four rows
+                //
+                // note: and in the voice of the *item* rather than of the first line it happened
+                // to produce, which is not the same thing for the one item that produces several.
+                // An assistant turn that opened with a thought put its `Reasoning` line first, so
+                // the marker for the whole of it was drawn as a hidden thought - and what was
+                // hidden was a thought, a sentence and two calls. The terminal dims it either way;
+                // a client drawing rows shows it as whatever the speaker says it is
                 if let Some(marker) = item
                     .state
                     .is_elided()
@@ -499,6 +506,7 @@ impl App {
                     .flatten()
                     && let Some(line) = said.get_mut(from)
                 {
+                    line.speaker = Self::speaks(item);
                     line.text = Cow::Borrowed(marker.as_str());
                     said.truncate(from + 1);
                 }
@@ -583,6 +591,20 @@ impl App {
         placed.sort_by_key(|(at, _)| *at);
 
         placed
+    }
+
+    /// Whose turn an item is, for a line that stands for the whole of it rather than for a part.
+    ///
+    /// note: the speaker [`App::as_conversation`] gives it, which for everything but an assistant
+    /// turn is the only line there is. A turn is a thought, a sentence and its calls, so which of
+    /// those came first is a fact about the turn rather than about whose it was.
+    fn speaks(item: &ContextItem) -> Speaker {
+        match &item.kind {
+            ContextKind::UserMessage => Speaker::User,
+            ContextKind::AssistantMessage { .. } => Speaker::Model,
+            ContextKind::ToolResult { .. } => Speaker::Result,
+            _ => Speaker::Note,
+        }
     }
 
     /// Turns one context item into the lines it reads as.
