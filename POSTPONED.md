@@ -284,6 +284,11 @@ Referenced from [AGENTS.md](AGENTS.md).
   it cannot say when the model changed either, and neither can anything reading the records
   afterwards.
 
+  One case is now on the record and it is the first pick rather than a switch: a session started
+  without `-m` is wired with no provider at all, so the `/model` that ends that calls
+  `Kernel::set_provider` and the event says `from` nothing, `to` the model. Every switch after it
+  is the paragraph above, unchanged.
+
   `Message::Model` covers the clients, which was the visible half: it is broadcast on a change, like
   `Message::Busy`, and for the same stated reason. What it does not do is make this a *state change*
   in the runtime's sense, which is the invariant the workspace holds itself to.
