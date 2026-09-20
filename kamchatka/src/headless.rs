@@ -136,7 +136,18 @@ impl<'a> Headless<'a> {
         let mut stopping = false;
         // subscribed once, because a second press arriving while the first is being handled is the
         // one that means leave; see `crate::stopping`
-        let mut presses = crate::stopping::Stopping::new()
+        //
+        // note: and only where it was asked for, which is the half `stops_on_ctrl_c` is about.
+        // Subscribing is what installs the process-wide handler, and it installs it for the life of
+        // the process - so a subscription taken beside a branch that is switched off takes SIGINT
+        // away from a caller who never asked for any of it: the handler is in, the branch never
+        // polls it, and the signal goes nowhere at all. It also needs the runtime's signal driver,
+        // which comes with the io driver, so subscribing unasked panics a host that built its
+        // runtime with `enable_time` alone
+        let mut presses = self
+            .ctrl_c
+            .then(crate::stopping::Stopping::new)
+            .transpose()
             .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
         // note: the *last* one rather than any, because a turn that failed and was then carried on
         // from is a session that recovered, and a run that reported it as a failure would have
@@ -296,7 +307,17 @@ impl<'a> Headless<'a> {
                     writeln!(self.prose, "· out of time; stopping")
                         .map_err(|e| e.to_string())?;
                 }
-                () = presses.pressed(), if self.ctrl_c => {
+                // note: a run that was not told to take `ctrl+c` waits here on a future that is
+                // never ready, which is what the deadline above does with a deadline nobody set and
+                // for the same reason. A disabled branch would not do: `select!` evaluates the
+                // expression whether or not the branch is enabled, and the expression is where the
+                // subscription would be
+                () = async {
+                    match presses.as_mut() {
+                        Some(presses) => presses.pressed().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
                     match stopping {
                         // the second one: whatever is still running is somebody else's problem now
                         true => break,
