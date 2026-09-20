@@ -2292,14 +2292,21 @@ async fn an_elided_item_reads_as_its_marker_to_a_client() {
     let served = served(vec![], |app| {
         app.kernel
             .push(nachalnik::ContextItem::user("the secret is hunter2"));
-        // a turn that is a sentence and two calls, so that the item is four lines of conversation
-        // rather than one - which is what says the marker stands for the *item*
-        app.kernel.push(nachalnik::ContextItem::assistant(
+        // a turn that is a thought, a sentence and two calls, so that the item is four lines of
+        // conversation rather than one - which is what says the marker stands for the *item*. The
+        // thought is first because that is the order a turn happens in, and it is what makes the
+        // speaker worth asserting below
+        app.kernel.push(nachalnik::ContextItem::new(
+            nachalnik::ContextKind::AssistantMessage {
+                tool_calls: vec![
+                    call("c1", "peek", json!({ "at": "one" })),
+                    call("c2", "peek", json!({ "at": "two" })),
+                ],
+                reasoning: Some("weighing it up".into()),
+            },
+            "model",
+            "assistant",
             "here is what I will do",
-            vec![
-                call("c1", "peek", json!({ "at": "one" })),
-                call("c2", "peek", json!({ "at": "two" })),
-            ],
         ));
     })
     .await;
@@ -2360,6 +2367,15 @@ async fn an_elided_item_reads_as_its_marker_to_a_client() {
         lines.len(),
         1,
         "a hidden turn read as one thing per line it used to have: {lines:?}"
+    );
+    // and in the voice of whoever's turn it was, rather than of whichever of its four lines came
+    // first. A marker under `~` says a *thought* was hidden, where what went was a thought, a
+    // sentence and two calls - which the terminal dims either way and a client drawing rows draws
+    // as what the speaker says it is
+    assert_eq!(
+        lines[0].speaker,
+        Speaker::Model,
+        "a hidden turn read as a hidden thought: {lines:?}"
     );
 
     peer.send(Command::Submit {

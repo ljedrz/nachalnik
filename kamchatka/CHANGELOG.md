@@ -479,7 +479,9 @@ minor bump may break you.
   calls became four identical markers. The pane dims the block, so the repeats read as one there
   and the substitution was a faithful port of what it did - but a client drawing rows has nothing
   to draw them as but four rows, and the marker stands for the item. It is one line now, in the
-  place and the voice of the first line the item had.
+  item's own place and the item's own voice: a turn that opened with a thought put its `reasoning`
+  line first, so taking that line's speaker drew the marker for the whole turn as a hidden
+  *thought*, where what went was a thought, a sentence and two calls.
 
 - **A headless run that was never asked to take <kbd>ctrl+c</kbd> took it away from whoever was.**
   Subscribing once rather than once per turn round the loop closed the window a press could fall
