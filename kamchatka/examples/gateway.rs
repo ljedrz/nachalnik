@@ -344,9 +344,11 @@ impl Request {
 
 /// Reads a request line and its headers, or `None` where the connection just closed.
 async fn head<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Option<Request>, String> {
-    // note: capped while it arrives rather than after, which for the *first* line is the whole of
-    // it: `read_line` grows its buffer until a newline comes, so a peer that never sends one was
-    // read into memory for ever no matter what `MAX_HEAD` said about the lines below
+    // note: capped while each line arrives rather than once it has, for every line of the head and
+    // not only the first. `read_line` grows its buffer until a newline comes, so a limit checked
+    // against what it handed back is no defence against the case it is there for - a peer that
+    // never sends one. `take` stops at the limit whether or not a newline arrived, which is why
+    // each read is followed by the question of which of the two happened
     let mut line = String::new();
     if tokio::io::AsyncReadExt::take(&mut *reader, MAX_HEAD as u64)
         .read_line(&mut line)
@@ -368,8 +370,13 @@ async fn head<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Option<Request>
     let mut headers = Vec::new();
     let mut read = line.len();
     loop {
+        // the allowance is spent, which is its own answer: a `take(0)` reads nothing and nothing
+        // is what the end of a head looks like
+        if read >= MAX_HEAD {
+            return Err("a request head longer than anybody meant".to_owned());
+        }
         let mut line = String::new();
-        if reader
+        if tokio::io::AsyncReadExt::take(&mut *reader, (MAX_HEAD - read) as u64)
             .read_line(&mut line)
             .await
             .map_err(|e| e.to_string())?
@@ -378,7 +385,7 @@ async fn head<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Option<Request>
             break;
         }
         read += line.len();
-        if read > MAX_HEAD {
+        if !line.ends_with('\n') {
             return Err("a request head longer than anybody meant".to_owned());
         }
         let line = line.trim_end();
