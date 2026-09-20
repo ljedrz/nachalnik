@@ -763,10 +763,16 @@ async fn a_result_recorded_after_a_later_turn_still_reaches_the_api() {
     kernel.push(ContextItem::user("What was the code word?"));
 
     // said before anything is sent, which is the half a mock can check
-    let repairs = kernel.project().repairs;
+    //
+    // note: `reordered` rather than `repairs`, which is where this looked until the two were
+    // split. A move takes nothing out of the request, so it stopped being a repair - and this test
+    // went on asking the losses list whether anything had been moved, which it answers `[]` to for
+    // ever. It failed on every endpoint and every model from that day, and only for whoever had a
+    // key: the offline suites were brought along and this one was not
+    let reordered = kernel.project().reordered;
     assert!(
-        repairs.iter().any(|said| said.contains("moved item")),
-        "the projector should say it moved the result: {repairs:?}"
+        reordered.iter().any(|said| said.contains("moved item")),
+        "the projector should say it moved the result: {reordered:?}"
     );
 
     let state = turn!(kernel);

@@ -44,6 +44,14 @@ The live suite is the only thing that can check that a real API accepts what thi
 $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --nocapture
 ```
 
+**Rename a field and these are the tests that do not tell you.** A keyless run compiles them and
+then skips them, so the compiler catches a field that is *gone* and nothing at all catches an
+assertion that still reads the wrong one of two. Splitting `Projection::reordered` out of
+`Projection::repairs` left `a_result_recorded_after_a_later_turn_still_reaches_the_api` asking the
+losses list whether anything had been moved: it answers `[]` for ever, and the failure sat there
+for three days and a release, invisible to everybody without a key. When a change brings the
+offline suites along, grep `tests/live.rs` for the same name before believing it is done.
+
 It reads `OPENROUTER_API_KEY` or `NACHALNIK_API_KEY` (never a stray `OPENAI_API_KEY`), with
 `NACHALNIK_BASE_URL`, `NACHALNIK_TEST_MODEL` and `NACHALNIK_CONTEXT_LIMIT` to point it elsewhere -
 Google AI Studio's OpenAI-compatible endpoint and a local ollama both work, and the whole of it
@@ -118,6 +126,18 @@ away plants `APRICOT` - so a model that picks the wrong one of two plausible wor
 about *projection*. It passed and failed three times running on the same model and the same commit.
 Attribute a live failure to the model before attributing it to the code: re-run it, run it on a
 second model, and `git worktree add` the last tag and run it there before believing anything.
+
+**An endpoint can truncate a tool call and the turn will look like the model's fault.** Measured
+2026-09-20 against `inclusionai/ling-3.0-flash-vl:free`, which OpenRouter routes to Novita: a
+message asking for two tool calls arrives with the *first* one's arguments a closing `}` short and
+the second one whole. Three calls, and the first two are short. It reads as a model writing invalid
+JSON - the turn comes back with `_unparsed`, the model is told, and it burns a request retrying -
+and the shape gives it away: it is always every call but the last, always exactly one brace, and
+the missing braces are nowhere else in the turn. `/raw` is what settles it, and it settled this:
+the last `arguments` fragment for each non-final call is never sent. The accumulator in
+`openai/wire.rs` has one way to misfile a fragment - a tail carrying neither an index nor an
+identifier lands on whatever call came last - and that leaves the brace on the *next* call, which
+is the fingerprint to look for before blaming this end.
 
 **Pointing both halves at Google**, which is one key and covers everything except the `file` part:
 
