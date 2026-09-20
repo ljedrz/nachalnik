@@ -493,6 +493,13 @@ minor bump may break you.
   had opted out of. The subscription follows the flag again, and a run without one waits on a future
   that is never ready - which is what the deadline branch beside it already does.
 
+- **The gateway capped its request line and not the header lines under it.** `examples/gateway.rs`
+  read the first line through a `take` and went back to a bare `read_line` ten lines down, so a peer
+  that sent a well-formed request line and then a header with no end to it was read into memory for
+  ever - the same bug, in the same function, and the note above the fix said it was finished. Every
+  line of the head is read through what is left of `MAX_HEAD` now, and the question after each read
+  is the same one: whether a newline arrived, or the allowance ran out.
+
 ## [0.13.0] - 2026-09-19
 
 ### added
