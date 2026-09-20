@@ -614,7 +614,7 @@ const SYSTEM: &[&str] = &[
 /// paper over it by handing the command a `TMPDIR` that is not there. The rule for it is dropped
 /// either way: `path_beneath_rules` leaves out a path it cannot open rather than failing, so a
 /// directory that has gone away costs its own rule and nothing else - which is a fact about
-/// `landlock` rather than about this program, and `tests/sandbox.rs` holds the version to it.
+/// `landlock` rather than about this program, and `tests/landlock.rs` holds the version to it.
 ///
 /// note: `/dev` gets reading and writing of files and nothing else, because `/dev/null` is not
 /// optional and creating things in `/dev` is not something a shell command needs to do.

@@ -163,10 +163,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   restriction leaks past the spawn, which is the opposite of the re-execution this program does
   deliberately.
 
-  `tests/sandbox.rs` is `#![cfg(target_os = "linux")]` at the file level, so the `macos-latest`
-  column in CI is green while checking none of this. Splitting it is the first step: the claims
-  about the program - a command cannot write outside the working directory, a `curl` is refused -
-  run on both, and only the ones naming a mechanism stay gated.
+  **The suite is split and the first step is done.** `tests/landlock.rs` is the mechanism and is
+  `#![cfg(target_os = "linux")]`; `tests/sandbox.rs` is what this program holds a path to on its
+  own - the `Reach` rules `fs` obeys, what a refusal names, the arguments a confinement travels
+  as, what `shell` says about itself - and is `#![cfg(unix)]`, so the `macos-latest` column builds
+  and runs it. The entry used to say the portable half included *a command cannot write outside
+  the working directory*, and that was wrong: off Linux nothing stops a spawned command, which is
+  the whole of what is left here. What a Mac checks now is everything up to the point where a
+  process is spawned.
 
   **The Mac binary is separable and is not blocked by any of it.** It is one matrix entry on
   `macos-latest` for `aarch64-apple-darwin` in the `upload-rust-binary-action` the Linux job
