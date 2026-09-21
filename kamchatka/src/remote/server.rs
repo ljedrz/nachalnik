@@ -433,20 +433,6 @@ fn apply_press(app: &mut App, stopping: &mut bool) -> bool {
 pub struct Serving {
     /// What every attached client hears the program say.
     voice: broadcast::Sender<Arc<Message>>,
-    /// Held for as long as this session is the one being served, and nothing is ever sent on it.
-    ///
-    /// note: the *drop* is the signal, which is why it carries nothing. Every connection holds a
-    /// `Kernel` of its own, so a session being replaced does not close anything on its own - the
-    /// old kernel stays alive in the tasks reading it, and a client would go on being served a
-    /// session nobody is in any more, for ever. What ends them is this going away with the
-    /// `Serving` that owned it.
-    ///
-    /// note: dropping the connection rather than moving it is what `/restart` costs a served
-    /// session, and it is the honest shape: a client's watermark is a record number in a log that
-    /// no longer exists, so there is nothing to carry over. `examples/browser.html` asks for
-    /// `retry: 1000` and comes back into the new session by itself; anything else reconnects the
-    /// way it would after the host's network dropped.
-    closing: broadcast::Sender<()>,
     /// The end each connection puts its commands into, cloned into every one of them.
     asks: mpsc::UnboundedSender<FromClient>,
     /// The end the loop takes them out of.
@@ -469,12 +455,10 @@ impl Serving {
     /// One, for a session that is about to start answering clients.
     pub fn new(app: &App) -> Self {
         let (voice, _) = broadcast::channel(VOICE);
-        let (closing, _) = broadcast::channel(1);
         let (asks, asked) = mpsc::unbounded_channel();
 
         Self {
             voice,
-            closing,
             asks,
             asked,
             said: 0,
@@ -608,7 +592,6 @@ impl Serving {
         // events tab of every client - and the conversation is the conversation again
         app.trace("client.attached", format!("client {}", self.clients));
         let (client, kernel, asks) = (self.clients, app.kernel.clone(), self.asks.clone());
-        let closing = self.closing.subscribe();
         // note: **not** subscribed here, and it stays that way now that the line above is not
         // broadcast at all. The subscription is taken where the projection is, which is the only
         // place the two can be taken together - see `Answered`. When this was said through
@@ -617,10 +600,10 @@ impl Serving {
         match arrived.0 {
             #[cfg(unix)]
             Incoming::Unix(stream) => {
-                tokio::spawn(serve(client, stream, kernel, asks, closing));
+                tokio::spawn(serve(client, stream, kernel, asks));
             }
             Incoming::Tcp(stream) => {
-                tokio::spawn(serve(client, stream, kernel, asks, closing));
+                tokio::spawn(serve(client, stream, kernel, asks));
             }
         }
     }
@@ -889,11 +872,10 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     stream: S,
     kernel: Kernel,
     asks: mpsc::UnboundedSender<FromClient>,
-    closing: broadcast::Receiver<()>,
 ) {
     let (read, mut write) = tokio::io::split(stream);
     let mut frames = protocol::Frames::new(BufReader::new(read));
-    if let Err(e) = attend(client, &mut frames, &mut write, &kernel, &asks, closing).await {
+    if let Err(e) = attend(client, &mut frames, &mut write, &kernel, &asks).await {
         // the connection is going either way; this is the last thing it is told, and it is written
         // on a best-effort basis because the usual way to be here is that it stopped listening
         //
@@ -930,7 +912,6 @@ async fn attend<R, W>(
     write: &mut W,
     kernel: &Kernel,
     asks: &mpsc::UnboundedSender<FromClient>,
-    mut closing: broadcast::Receiver<()>,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -971,12 +952,6 @@ where
 
     loop {
         tokio::select! {
-            // note: first, and it is the one branch that ends a connection the client did not end.
-            // The session this was reading is over and a replacement is already being served, so
-            // the numbers in every later frame would belong to a log that is not there any more
-            _ = closing.recv() => {
-                return Err("the session was restarted; attach again for the new one".to_owned());
-            }
             command = protocol::read::<Command>(frames) => match command? {
                 None => return Ok(()),
                 // note: re-attaching on a live connection is allowed, and is the cheapest way for a

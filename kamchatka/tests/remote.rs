@@ -1910,6 +1910,68 @@ async fn a_loop_of_somebody_elses_can_serve_the_session() {
     assert!(app.quit, "a `/quit` from a client did not reach the loop");
 }
 
+/// A restart from a client hands the session back to be built again, and lets go of everybody.
+///
+/// note: two claims, and they are the two halves `main` leans on. The loop returning with
+/// `restart` set and `quit` clear is what tells it to wire a second session rather than stop; and
+/// every connection ending is what stops a client reading a session nobody is in any more. Neither
+/// is visible from the other side - a client sees a socket close, and the loop sees a flag - so
+/// this is the one place both are true at once.
+///
+/// note: the connections are let go of by the `Serving` going away with the loop, which closes the
+/// voice every one of them is reading - the same mechanism, and the same last flush, that ends
+/// them on `/quit`. It is worth a test rather than an assumption because nothing else would close
+/// them: every connection owns a `Kernel` handle, so the session being replaced leaves the old one
+/// alive inside the task reading it, and a client would go on being served a session that had been
+/// written out and abandoned.
+///
+/// note: two clients, because one would not catch a parting that reached only whoever spoke last.
+/// The second says nothing at all and is let go of on the same terms.
+#[tokio::test]
+async fn a_restart_from_a_client_ends_the_session_and_lets_go_of_everybody() {
+    let session = served(vec![ModelResponse::text("unused")], |_| {}).await;
+    let (mut asked, _) = Peer::attached(&session.at).await;
+    let (mut watching, _) = Peer::attached(&session.at).await;
+
+    asked
+        .send(Command::Submit {
+            line: "/restart".to_owned(),
+        })
+        .await;
+
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert!(
+        app.restart,
+        "a `/restart` from a client did not reach the loop"
+    );
+    assert!(app.leaving(), "the loop was told to let go of the session");
+    assert!(
+        !app.quit,
+        "a restart is not a quit: `main` wires another session rather than stopping"
+    );
+
+    for (which, peer) in [
+        ("the one that asked", &mut asked),
+        ("the other", &mut watching),
+    ] {
+        // note: drained to the close rather than read once. What the session has to say on the way
+        // out goes first, and the connection ending is the message this is about - a `while let`
+        // that never ends is the failure, and `Peer::next` is what bounds it
+        let mut heard = Vec::new();
+        while let Some(message) = peer.next().await {
+            heard.push(message);
+        }
+        assert!(
+            heard.iter().any(|message| matches!(
+                message,
+                Message::Record(record) if record.event.name() == "session.finished"
+            )),
+            "{which} was cut off without being told the session had ended: {heard:?}"
+        );
+    }
+}
+
 /// Ends a session from a connection of its own, for the tests whose own peer has been closed.
 async fn quit(at: &str) {
     let (mut peer, _) = Peer::attached(at).await;
