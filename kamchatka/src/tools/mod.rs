@@ -30,7 +30,7 @@ mod shell;
 mod trim;
 
 #[cfg(feature = "advise")]
-pub use crate::tools::advice::{Advised, Asked};
+pub use crate::tools::advice::Advised;
 #[cfg(feature = "shell-advisor")]
 pub use crate::tools::advice::{Rated, Rating};
 pub use crate::tools::{

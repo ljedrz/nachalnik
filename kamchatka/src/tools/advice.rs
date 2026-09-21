@@ -285,43 +285,6 @@ impl Rated {
     }
 }
 
-/// Which of the two questions the advisor is put, and they are two separate decisions.
-///
-/// note: two flags rather than one, because they are two different disclosures. `--advise` asks
-/// about a call the standing rules were going to *allow*, which in a default session is not one
-/// command - `exec:run` is a question by default. `--shell-advisor` asks about every command the
-/// model writes. A person who agreed to the first has not thereby agreed to the second, and
-/// while that was a *build* feature it was a decision nobody downloading a binary could make.
-///
-/// note: and they are independent in both directions. The rating decides nothing, so asking for
-/// it alone is the configuration that shows a colour and changes no verdict anywhere - which is
-/// a reasonable thing to want, and was unreachable while one flag turned on both.
-/// note: **not** `#[non_exhaustive]`, alone among the structs this crate hands out, and the
-/// convention is what says so: that attribute is for a struct this workspace answers with and
-/// nothing outside it builds. This one is built outside - it is how an embedder says what it
-/// wants its advisor asked - and a caller cannot write a struct literal for a non-exhaustive
-/// type at all, `..Default::default()` included. So a third question here is a break, and the
-/// version number is where that is said.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Asked {
-    /// Fold a verdict into the gate, for calls the standing rules would allow: `--advise`.
-    pub verdict: bool,
-    /// Place a shell command on the rubric for the question to draw: `--shell-advisor`.
-    ///
-    /// note: not behind the feature, though only a build carrying it has a flag that sets this.
-    /// A `cfg` on a public field is a struct with two shapes - one of which will not compile
-    /// against a caller written for the other - and the branch that reads this is gated already.
-    /// So what a build without the feature does with a `true` here is ignore it.
-    pub rating: bool,
-}
-
-impl Asked {
-    /// Whether anything at all is asked, which is what decides if an advisor is built.
-    pub fn anything(self) -> bool {
-        self.verdict || self.rating
-    }
-}
-
 /// [`Careful`], with a model asked about whatever it was going to allow.
 pub struct Advised {
     /// The standing rules, which decide first and decide alone whenever this cannot reach a
@@ -330,8 +293,6 @@ pub struct Advised {
     /// The engine asked for the second opinion: a service over HTTP, or a process on this
     /// machine. Nothing in here finds out which - see [`SystemOne`].
     jev: Arc<dyn SystemOne>,
-    /// Which of the two questions it is put.
-    asked: Asked,
     /// What it said about each call, for [`Advised::said`] and for the refusal the model reads.
     said: Mutex<VecDeque<(ToolCallId, String)>>,
     /// And where it put each command it was asked to rate, for the question to draw.
@@ -345,16 +306,11 @@ pub struct Advised {
 }
 
 impl Advised {
-    /// Wraps a policy in a second opinion, asked for whichever of the two questions.
-    ///
-    /// note: a call neither question is about costs nothing - `evaluate` returns the standing
-    /// verdict without a request, which is what makes `--shell-advisor` on its own free for
-    /// every call that is not a command.
-    pub fn new(careful: Arc<Careful>, jev: Arc<dyn SystemOne>, asked: Asked) -> Self {
+    /// Wraps a policy in a second opinion.
+    pub fn new(careful: Arc<Careful>, jev: Arc<dyn SystemOne>) -> Self {
         Self {
             careful,
             jev,
-            asked,
             said: Mutex::new(VecDeque::new()),
             #[cfg(feature = "shell-advisor")]
             rated: Mutex::new(VecDeque::new()),
@@ -660,10 +616,7 @@ impl PermissionPolicy for Advised {
         // declares the capability is asking for the same thing whatever it calls itself, and one
         // that does not is not what `shell-advisor` was turned on for
         #[cfg(feature = "shell-advisor")]
-        if self.asked.rating
-            && standing == Verdict::Ask
-            && request.capabilities.contains(&Capability::exec("run"))
-        {
+        if standing == Verdict::Ask && request.capabilities.contains(&Capability::exec("run")) {
             self.rate(request).await;
         }
 
@@ -671,11 +624,7 @@ impl PermissionPolicy for Advised {
         // `Deny` cannot be made stricter by anything the model says, so asking would spend a
         // round trip and somebody's money to learn nothing - and would put a network request in
         // front of the refusal a person is waiting to see
-        //
-        // note: and only where a verdict was asked for at all. `--shell-advisor` alone draws a
-        // colour and decides nothing, so the gate is `Careful`'s from end to end and no call's
-        // arguments go out for a question nobody put
-        if !self.asked.verdict || standing != Verdict::Allow {
+        if standing != Verdict::Allow {
             return standing;
         }
 
@@ -769,14 +718,6 @@ mod tests {
     use super::*;
     use crate::tools::Subject;
 
-    /// Both questions asked, which is what every test in here is about unless it says otherwise.
-    fn both() -> Asked {
-        Asked {
-            verdict: true,
-            rating: true,
-        }
-    }
-
     /// An address nothing is listening on, so the advisor fails the way an outage makes it fail.
     ///
     /// note: port 1, which is refused rather than filtered - the same distinction
@@ -813,7 +754,7 @@ mod tests {
         let careful = Arc::new(Careful::new());
         careful.set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
 
-        let advised = Advised::new(careful, unreachable(), both());
+        let advised = Advised::new(careful, unreachable());
         let request = asking("read", Capability::fs("read"));
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Allow);
@@ -837,7 +778,7 @@ mod tests {
         careful.set(&Subject::Capability(Capability::fs("read")), Verdict::Deny);
 
         let jev = unreachable();
-        let advised = Advised::new(careful, jev.clone(), both());
+        let advised = Advised::new(careful, jev.clone());
         let request = asking("read", Capability::fs("read"));
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Deny);
@@ -854,7 +795,7 @@ mod tests {
         // nothing set, so `fs:read` is `ask` - which is already stricter than `allow` and cannot
         // be made stricter still by anything a model says
         let jev = unreachable();
-        let advised = Advised::new(Arc::new(Careful::new()), jev.clone(), both());
+        let advised = Advised::new(Arc::new(Careful::new()), jev.clone());
         let request = asking("read", Capability::fs("read"));
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
@@ -933,7 +874,7 @@ mod tests {
         careful.set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
 
         let jev = unreachable();
-        let advised = Advised::new(careful, jev.clone(), both());
+        let advised = Advised::new(careful, jev.clone());
         let request = asking("shell", Capability::exec("run"));
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Deny);
@@ -951,7 +892,7 @@ mod tests {
     #[tokio::test]
     async fn a_command_somebody_is_about_to_be_asked_about_is_rated() {
         let jev = unreachable();
-        let advised = Advised::new(Arc::new(Careful::new()), jev.clone(), both());
+        let advised = Advised::new(Arc::new(Careful::new()), jev.clone());
         let request = asking("shell", Capability::exec("run"));
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
@@ -974,7 +915,7 @@ mod tests {
     #[tokio::test]
     async fn every_stage_of_a_command_is_asked_about_in_one_request() {
         let jev = unreachable();
-        let advised = Advised::new(Arc::new(Careful::new()), jev.clone(), both());
+        let advised = Advised::new(Arc::new(Careful::new()), jev.clone());
 
         let mut request = asking("shell", Capability::exec("run"));
         let cmd = ["true"; STAGES].join(" && ");
@@ -1116,61 +1057,6 @@ mod tests {
         let chain = |n: usize| vec!["true"; n].join(" && ");
         assert_eq!(stages(&chain(STAGES)).len(), STAGES);
         assert!(stages(&chain(STAGES + 1)).is_empty());
-    }
-
-    /// The rubric on its own never reaches the gate, and never sends a verdict question.
-    ///
-    /// note: the property the two flags exist to create. `--shell-advisor` decides nothing - it
-    /// draws a colour - so a session with it and without `--advise` allows and refuses exactly
-    /// what the same session with no advisor at all would, and pays for no question about a call
-    /// that was going to run. While one flag turned on both there was no way to ask for that.
-    #[cfg(feature = "shell-advisor")]
-    #[tokio::test]
-    async fn the_rubric_alone_decides_nothing_and_asks_nothing_about_what_would_run() {
-        let careful = Arc::new(Careful::new());
-        careful.set(
-            &Subject::Capability(Capability::exec("run")),
-            Verdict::Allow,
-        );
-
-        let jev = unreachable();
-        let advised = Advised::new(
-            careful,
-            jev.clone(),
-            Asked {
-                verdict: false,
-                rating: true,
-            },
-        );
-
-        // a command the rules allow runs, and nothing was asked about it: no verdict question,
-        // and no rating either, since a call nobody is being asked about has no panel to colour
-        let request = asking("shell", Capability::exec("run"));
-        assert_eq!(advised.evaluate(&request).await, Verdict::Allow);
-        assert_eq!(jev.attempts(), 0, "nothing should have left the machine");
-        assert!(advised.said(&request.call).is_none());
-    }
-
-    /// And the verdict on its own never rates, which is the same line from the other side.
-    #[cfg(feature = "shell-advisor")]
-    #[tokio::test]
-    async fn a_verdict_asked_for_alone_rates_nothing() {
-        let jev = unreachable();
-        let advised = Advised::new(
-            Arc::new(Careful::new()),
-            jev.clone(),
-            Asked {
-                verdict: true,
-                rating: false,
-            },
-        );
-
-        // nothing set, so `exec:run` is a question - which is the branch a rating is asked on,
-        // and the one this build is not asking
-        let request = asking("shell", Capability::exec("run"));
-        assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
-        assert_eq!(jev.attempts(), 0, "a question is not a verdict to tighten");
-        assert!(advised.rating(&request.call).is_none());
     }
 
     /// An option nobody offered is read as nothing having been said.

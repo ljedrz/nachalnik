@@ -1836,11 +1836,6 @@ async fn a_wired_session_draws_the_rating_the_kernel_asked_for() {
             format!("http://{address}"),
             "k",
         ))),
-        // the rating is its own flag now, so a `Setup` that wants one has to say so
-        asked: kamchatka::tools::Asked {
-            verdict: true,
-            rating: true,
-        },
         ..Default::default()
     }
     .wire(Arc::new(OpenAiCompatible::new(

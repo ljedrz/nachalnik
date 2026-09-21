@@ -3,7 +3,7 @@
 
     $ pip install laya
     $ export SYSTEM1_ADVISOR_COMMAND="$HOME/ai/venv/bin/python path/to/laya_advisor.py"
-    $ kamchatka --advise --shell-advisor
+    $ kamchatka --advise
 
 note: this exists because laya ships no interface to point a base URL at - no HTTP server, no
 CLI, no `python -m laya`. It is a library, so reaching it from another process means a process,

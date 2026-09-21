@@ -10,9 +10,9 @@
 //! changes. Everything `tools::advice` says about disclosure is about a third party reading a
 //! tool's arguments, which for a write is the text being written and for a shell call is the
 //! command line. Pointed at a local engine there is no third party: the arguments go to a
-//! process the person running this started, under their own user, and come back as numbers. The
-//! flags still say what they say, because what a flag turns on should not depend on an
-//! environment variable - but the thing they were careful about is not happening.
+//! process the person running this started, under their own user, and come back as numbers.
+//! `--advise` still says what it says, because what a flag turns on should not depend on an
+//! environment variable - but the thing it is careful about is not happening.
 //!
 //! note: one long-lived process rather than one per question, which is the only shape that
 //! works. `laya` loads a 421M-parameter checkpoint, and `Router(preload=True)` exists because

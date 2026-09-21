@@ -751,7 +751,7 @@ Environment:
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
   KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter
 
-The advisor, which is only ever asked when --advise or --shell-advisor is given:
+The advisor, which is only ever asked when --advise is given:
   SYSTEM1_ADVISOR_COMMAND     an engine to run on this machine, as a command line.
                               Takes precedence over the three below, and nothing
                               leaves the machine when it is set
@@ -825,7 +825,7 @@ process you started, under your own user, and come back as numbers.
 ```console
 $ pip install laya
 $ export SYSTEM1_ADVISOR_COMMAND="$HOME/ai/venv/bin/python kamchatka/contrib/laya_advisor.py"
-$ kamchatka --advise --shell-advisor -m qwen/qwen3-coder
+$ kamchatka --advise -m qwen/qwen3-coder
 ```
 
 [`laya`](https://github.com/NandhaKishorM/laya) is a library rather than a service — no HTTP, no

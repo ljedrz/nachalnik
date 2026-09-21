@@ -39,7 +39,7 @@ pub fn environment() -> String {
     #[cfg(feature = "advise")]
     const ADVISOR: &str = "
 
-The advisor, which is only ever asked when --advise or --shell-advisor is given:
+The advisor, which is only ever asked when --advise is given:
   SYSTEM1_ADVISOR_COMMAND     an engine to run on this machine, as a command line.
                               Takes precedence over the three below, and nothing
                               leaves the machine when it is set
@@ -89,18 +89,20 @@ pub struct Args {
 
     /// Ask a second model about every tool call the rules were going to allow, and take the
     /// stricter of the two answers. It can refuse a call and never permit one. Sends the call's
-    /// tool name, capabilities and arguments to the advisor; see KAMCHATKA_SYSTEM1_API_KEY.
-    #[cfg(feature = "advise")]
+    /// tool name, capabilities and arguments to the advisor; see SYSTEM1_ADVISOR_COMMAND for one
+    /// on this machine, and KAMCHATKA_SYSTEM1_API_KEY for the hosted default.
+    #[cfg(all(feature = "advise", not(feature = "shell-advisor")))]
     #[arg(long)]
     pub advise: bool,
 
-    /// Ask the same advisor where each command a question is about lands on a three-level rubric,
-    /// and colour the question by the answer - a command joined at its `|`, `&&` or `;` is asked
-    /// about stage by stage and rated by its worst one, which is underlined. It decides nothing,
-    /// and it is asked about every command the model writes rather than only the allowed ones.
+    /// The same, and this build also asks it where each command a question is about lands on a
+    /// three-level rubric, and colours the question by the answer - a command joined at its `|`,
+    /// `&&` or `;` is asked about stage by stage and rated by its worst one, which is underlined.
+    /// The rating decides nothing. Where the advisor is a hosted one that sends every command
+    /// the model writes, and not only the allowed ones; where it is local, nothing is sent.
     #[cfg(feature = "shell-advisor")]
     #[arg(long)]
-    pub shell_advisor: bool,
+    pub advise: bool,
 
     /// A file to put in the context, pinned; a PDF or an image goes in as itself. May be
     /// repeated, and `/attach` is the same thing at the prompt.
@@ -351,18 +353,6 @@ impl Args {
             _ => {}
         }
 
-        // and the rubric separately, because it is a separate flag and a separate disclosure
-        match settings.shell_advisor {
-            #[cfg(feature = "shell-advisor")]
-            Some(rate) if !typed("shell_advisor") => self.shell_advisor = rate,
-            #[cfg(not(feature = "shell-advisor"))]
-            Some(true) => anyhow::bail!(
-                "this build cannot rate commands, so `shell_advisor` in the settings file cannot \
-                 be honoured"
-            ),
-            _ => {}
-        }
-
         Ok(self)
     }
 
@@ -465,33 +455,10 @@ impl Args {
             files: self.file.clone(),
             #[cfg(feature = "advise")]
             advisor: None,
-            #[cfg(feature = "advise")]
-            asked: self.asked(),
         })
     }
 
-    /// Which of the two questions the flags asked the advisor.
-    ///
-    /// note: one per flag, and the second is only a field in a build that has one. What decides
-    /// whether an advisor is built at all is whether *either* was given - see [`Args::advised`] -
-    /// so `--shell-advisor` on its own is a session with an advisor drawing a colour and a gate
-    /// that is `Careful`'s from end to end.
-    #[cfg(feature = "advise")]
-    pub fn asked(&self) -> crate::tools::Asked {
-        #[allow(unused_mut)]
-        let mut asked = crate::tools::Asked {
-            verdict: self.advise,
-            ..crate::tools::Asked::default()
-        };
-        #[cfg(feature = "shell-advisor")]
-        {
-            asked.rating = self.shell_advisor;
-        }
-
-        asked
-    }
-
-    /// The same, with the advisor attached where either flag asked for one.
+    /// The same, with the advisor attached where `--advise` asked for one.
     ///
     /// note: after [`Setup::check`] and before the provider, and the order is the point. A missing
     /// advisor key is a fact about the arguments and should not cost a round trip to the *other*
@@ -503,8 +470,7 @@ impl Args {
     /// the last moment it can be read before one covers it.
     #[cfg(feature = "advise")]
     pub async fn advised(&self, setup: Setup) -> Result<Setup> {
-        let asked = self.asked();
-        if !asked.anything() {
+        if !self.advise {
             return Ok(setup);
         }
 
@@ -518,7 +484,6 @@ impl Args {
 
         Ok(Setup {
             advisor: Some(jev),
-            asked,
             ..setup
         })
     }

@@ -9,37 +9,12 @@ minor bump may break you.
 
 ### breaking
 
-- **The rating has its own flag, `--shell-advisor`, and the feature is renamed to match.** It was
-  `assisted-shell`, and in a build carrying it `--advise` turned on the verdict *and* the rating.
-  That was a two-step opt-in only for people who compile: the feature gate was the second step,
-  and somebody downloading a binary could not take it. Now the two steps are two flags, and the
-  released binary can carry both without deciding for anybody which they wanted.
+- **The `assisted-shell` feature is `shell-advisor`.** The last of the "assist" spelling, which
+  is a word about the other kind of model. One mechanism with two names is a bug by this
+  repository's own rules, and the advisor is what this one is called everywhere else.
 
-  They are independent in both directions. `--advise` alone folds a verdict into the gate and
-  never rates. `--shell-advisor` alone draws a colour and sends no verdict question at all - the
-  gate is `Careful`'s from end to end, and a call the rules would allow costs nothing, which is
-  a configuration that could not be asked for before. The *Cargo* feature `shell-advisor` still
-  implies `advise`, because that is what brings the client in; the independence is at the
-  command line, where the disclosure is.
-
-  `tools::Advised::new` takes a third argument, `tools::Asked`, saying which of the two
-  questions to put; `wiring::Setup` has an `asked` field beside `advisor`; and the settings file
-  has a `shell-advisor` key beside `advise`, refused by name in a build that cannot honour it.
-  `Asked` is deliberately not `#[non_exhaustive]` - it is built by callers rather than only
-  answered with, and the convention is about which of those a struct is.
-
-  The word is "advisor" throughout now. `assisted-shell` was the last of the "assist" spelling,
-  and one mechanism with two names is the thing the conventions call a bug.
-
-- `protocol::Command` has a `Revise` variant, and `Command::Inspect` and `Message::Item` each
-  carry a `raw` flag and a `version`. None of them is a break on the wire - `Command::Unknown` is
-  what an older session reads the variant as, and every new field defaults when it is absent -
-  and all of them are a break for anything in Rust matching on the enums, which are not
-  `#[non_exhaustive]`.
-
-- `protocol::Attached` has a `rated` field, and `protocol::Listed` a `beyond` and a `versions`.
-  Both structs are `#[non_exhaustive]`, so this is a break only for a caller building one by
-  hand.
+  Nothing about what it does moved: `--advise` in a build carrying it still asks for the verdict
+  and the rating both.
 
 - **The advisor's three variables are `KAMCHATKA_SYSTEM1_*`**, where they were
   `KAMCHATKA_TYPESAFE_*`: `KAMCHATKA_SYSTEM1_API_KEY`, `KAMCHATKA_SYSTEM1_BASE_URL` and
@@ -72,14 +47,14 @@ minor bump may break you.
   ```console
   $ pip install laya
   $ export SYSTEM1_ADVISOR_COMMAND="$HOME/ai/venv/bin/python kamchatka/contrib/laya_advisor.py"
-  $ kamchatka --advise --shell-advisor
+  $ kamchatka --advise
   ```
 
-  This is the honest fix for the disclosure the two flags are careful about. Everything
+  This is the honest fix for the disclosure `--advise` is careful about. Everything
   `tools::advice` says is about a third party reading a tool's arguments - which for a write is
   the text being written and for a shell call is the command line - and pointed at a local
   engine there is no third party. The flags still say what they say, because what a flag turns
-  on must not depend on an environment variable, but the thing they were guarding against is not
+  on must not depend on an environment variable, but the thing it guards against is not
   happening.
 
   It is a *command* and not a path because [`laya`](https://github.com/NandhaKishorM/laya) ships

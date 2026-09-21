@@ -132,16 +132,6 @@ pub struct Setup {
     /// business to say out loud.
     #[cfg(feature = "advise")]
     pub advisor: Option<Arc<dyn nachalnik_providers::system1::SystemOne>>,
-
-    /// Which of the two questions that advisor is put: a verdict folded into the gate, a rating
-    /// drawn in the question, or both.
-    ///
-    /// note: beside the advisor rather than inside it, because one of them is *whose* second
-    /// opinion and the other is *what it is asked*. A caller handing over an advisor and asking
-    /// it nothing gets one that is built and never consulted, which is what `--advise` without
-    /// `--shell-advisor` used to be impossible to express.
-    #[cfg(feature = "advise")]
-    pub asked: tools::Asked,
 }
 
 impl Default for Setup {
@@ -165,8 +155,6 @@ impl Default for Setup {
             files: Vec::new(),
             #[cfg(feature = "advise")]
             advisor: None,
-            #[cfg(feature = "advise")]
-            asked: tools::Asked::default(),
         }
     }
 }
@@ -314,11 +302,9 @@ impl Setup {
         // one. Two of them would be two memories of what the advisor said, one of them always
         // empty - and the empty one is the one the panel would be holding
         #[cfg(feature = "advise")]
-        let asked = self.asked;
-        #[cfg(feature = "advise")]
         let advisor = self
             .advisor
-            .map(|jev| Arc::new(tools::Advised::new(policy.clone(), jev, asked)));
+            .map(|jev| Arc::new(tools::Advised::new(policy.clone(), jev)));
         #[cfg(feature = "advise")]
         let decides: Arc<dyn nachalnik::PermissionPolicy> = match &advisor {
             Some(advised) => advised.clone(),

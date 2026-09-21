@@ -49,16 +49,6 @@ pub struct Settings {
     /// anywhere else in this file, because what it would silently not be doing is checking
     /// permissions.
     pub advise: Option<bool>,
-    /// Whether to ask that same model where each command a question is about lands on the rubric.
-    ///
-    /// note: its own key rather than a mode of `advise`, because it is its own flag and its own
-    /// disclosure - the one above is asked about calls the rules would allow, and this one about
-    /// every command the model writes. A file that turned on the second by asking for the first
-    /// would be the collapsed opt-in written down.
-    ///
-    /// note: not behind the feature either, and refused by name in a build that cannot honour it,
-    /// for the reason given above.
-    pub shell_advisor: Option<bool>,
     /// A system instruction, pinned.
     pub system: Option<String>,
     /// MCP servers to run, as `[name=]command`.

@@ -2,7 +2,6 @@
   "model": null,
   "gemini": false,
   "advise": false,
-  "shell-advisor": false,
   "system": null,
   "mcp": [],
 

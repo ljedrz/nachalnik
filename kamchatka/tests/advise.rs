@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use kamchatka::{
     endpoint,
-    tools::{Advised, Asked, Careful, Subject},
+    tools::{Advised, Careful, Subject},
 };
 use nachalnik::{
     Capability, PermissionId, PermissionPolicy, PermissionRequest, ToolCallId, Verdict,
@@ -63,14 +63,7 @@ macro_rules! advised {
             .await
             .expect("the advisor connects");
 
-        Advised::new(
-            careful,
-            jev,
-            Asked {
-                verdict: true,
-                rating: false,
-            },
-        )
+        Advised::new(careful, jev)
     }};
 }
 
@@ -211,14 +204,7 @@ mod rating {
                 .await
                 .expect("the advisor connects");
 
-            Advised::new(
-                Arc::new(Careful::new()),
-                jev,
-                Asked {
-                    verdict: false,
-                    rating: true,
-                },
-            )
+            Advised::new(Arc::new(Careful::new()), jev)
         }};
     }
 

@@ -1770,7 +1770,7 @@ async fn a_separator_inside_a_quote_is_not_coloured_as_a_joint() {
 mod rated {
     use super::*;
 
-    use kamchatka::tools::{Advised, Asked};
+    use kamchatka::tools::Advised;
     use nachalnik::PermissionPolicy;
     use nachalnik_providers::system1::Jev;
     use ratatui::style::Modifier;
@@ -1847,14 +1847,7 @@ mod rated {
         // the advisor wrapped around the harness's own standing rules, and held by both the
         // kernel and the screen - which is what `wiring` does, and the reason it builds one
         let jev = Arc::new(Jev::new("jev-latest", endpoint, "k"));
-        let advised = Arc::new(Advised::new(
-            harness.app.policy.clone(),
-            jev,
-            Asked {
-                verdict: true,
-                rating: true,
-            },
-        ));
+        let advised = Arc::new(Advised::new(harness.app.policy.clone(), jev));
         harness
             .app
             .kernel
