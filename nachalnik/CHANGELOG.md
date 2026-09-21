@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- `tests/live.rs`'s `a_result_recorded_after_a_later_turn_still_reaches_the_api` reads the move
+  it asserts on from `Projection::reordered`. It went on reading `repairs` after 0.6.0 split the
+  two, and a move takes nothing out of the request, so `repairs` answers `[]` to it for ever: the
+  test failed on every endpoint and every model before a request was sent, and only for whoever
+  had a key, because a keyless run compiles the suite and skips it.
+
 ## [0.6.1] - 2026-09-19
 
 ### fixed
