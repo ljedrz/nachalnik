@@ -1460,6 +1460,19 @@ fn the_chat_is_the_conversation_the_model_is_in() {
                     let kernel = &harness.app.kernel;
                     let mut tally = reached.borrow_mut();
                     match *move_ {
+                        Move::Undo => {
+                            if kernel.undo() {
+                                tally.undid_something += 1;
+                            }
+                        }
+                        Move::Redo => {
+                            kernel.redo();
+                        }
+                        // enough undos take back both questions and both answers, and then
+                        // the context tab has no row to press a key on: a move aimed at an
+                        // item does nothing, and the empty chat it leaves is checked like
+                        // any other
+                        _ if ids.is_empty() => {}
                         Move::Exclude(k) => {
                             kernel.set_state([at(k)], ContextState::Excluded, None);
                             tally.excluded += 1;
@@ -1490,14 +1503,6 @@ fn the_chat_is_the_conversation_the_model_is_in() {
                             edits += 1;
                             let _ = kernel.supersede(at(k), ContextItem::user(said));
                             tally.superseded += 1;
-                        }
-                        Move::Undo => {
-                            if kernel.undo() {
-                                tally.undid_something += 1;
-                            }
-                        }
-                        Move::Redo => {
-                            kernel.redo();
                         }
                     }
                     drop(tally);

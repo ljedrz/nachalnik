@@ -600,6 +600,12 @@ minor bump may break you.
   it points the child at a `TMPDIR` of its own and counts what landed there, and Windows reads
   `TMP` and `TEMP` instead.
 
+- **The chat property survives a sequence that undoes the whole conversation.** Four undos take
+  back both questions and both answers, and the next move aimed at an item picked one out of an
+  empty context by remainder - a division by zero, and a panic the macOS job drew. The seed is
+  random by design, so any job could have. With no row on the context tab to press a key on, a
+  move aimed at an item now does nothing, and the empty chat it leaves is checked like any other.
+
 - **Every question the advisor is asked now names the part of the state it is about.** A System
   One engine is handed the state as one object and the question as another, and nothing tells it
   which part of the state the question concerns unless the question says so - the open engines'
