@@ -577,6 +577,14 @@ minor bump may break you.
 
 ### fixed
 
+- **The pty test for the drawn restart is gated on `tui` as well as on the platform.**
+  `a_restart_on_the_drawn_loop_lets_go_of_its_clients_too` asked for `target_os = "linux"` and
+  nothing else, so a screenless build ran it against a program with no `drawn` loop in it: the pty
+  landed on `Server::run` and the guard written for exactly that case failed the run. Both
+  configurations CI builds without a screen went red on it, and a whole-workspace run with every
+  feature on - which is what a release is checked with - cannot see either of them. The rest of
+  `tests/remote.rs` still runs in all three.
+
 - **Every question the advisor is asked now names the part of the state it is about.** A System
   One engine is handed the state as one object and the question as another, and nothing tells it
   which part of the state the question concerns unless the question says so - the open engines'

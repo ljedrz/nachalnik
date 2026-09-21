@@ -3609,7 +3609,12 @@ async fn an_item_rewritten_twice_can_be_read_back_at_either_version() {
 /// note: linux only, for `script`'s flags - macOS spells it `script -q /dev/null cmd` and windows
 /// has no such thing. The claim is about a loop rather than a platform, and it is the same loop
 /// everywhere.
-#[cfg(target_os = "linux")]
+///
+/// note: and `tui`, which is the third of the disjuncts above. A screenless build has no `drawn`
+/// to reach, so the pty lands on `Server::run` and the guard for exactly that fires - a test
+/// about a loop that is not in the build, failing to find it. CI builds this crate twice without
+/// a screen, and the rest of this file runs in both.
+#[cfg(all(target_os = "linux", feature = "tui"))]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_restart_on_the_drawn_loop_lets_go_of_its_clients_too() {
     use std::io::Write as _;
