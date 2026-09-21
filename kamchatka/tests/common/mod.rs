@@ -111,3 +111,18 @@ pub async fn endpoint(answers: Vec<String>) -> String {
 pub fn program() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_BIN_EXE_kamchatka"))
 }
+
+/// An example built beside the binary, by name.
+///
+/// note: cargo sets no variable for an example the way it does for a binary, so this is the one
+/// path in here that is derived: a build's examples are in `examples/` under the directory its
+/// binary is in. `cargo test -p kamchatka` builds them; a run of one suite alone may not, which is
+/// for the caller to say before spawning.
+#[cfg(unix)]
+pub fn example(name: &str) -> std::path::PathBuf {
+    program()
+        .parent()
+        .expect("the binary is in a directory")
+        .join("examples")
+        .join(name)
+}

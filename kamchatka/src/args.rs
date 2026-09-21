@@ -433,6 +433,7 @@ impl Args {
             // will read, and it is in every save of that session from then on
             keep_truncated: !self.forget_truncated,
             refuse_oversized: !self.send_oversized,
+            record: !self.no_record,
             compact: Some(self.compact),
             spend: self.spend,
             confine: !self.no_sandbox,

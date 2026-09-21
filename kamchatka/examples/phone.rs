@@ -29,6 +29,12 @@
 //! session wired the way `main.rs` wires one, a socket in front of it, and the same relay serving
 //! the same page.
 //!
+//! A session here ends the way the program's does. `/quit` from the page writes it out under the
+//! temporary directory and says where, and `/restart` writes it out and wires another from the
+//! same arguments behind the same socket, which the page comes back into by itself. Both are
+//! [`kamchatka::wiring`]'s, and this returned when the first session did before they were - so
+//! either command ended the process with the session in memory and nothing on disk.
+//!
 //! note: the relay is `relay/mod.rs` and is shared rather than copied, which is the whole reason
 //! this is a second example instead of a flag on the first. `gateway.rs` says what a relay is for
 //! and does nothing else; this says what it is like to have one, and does not restate a word of it.
@@ -47,7 +53,7 @@ use kamchatka::{
     app::Speaker,
     args::{Args, Given},
     remote,
-    wiring::Wired,
+    wiring::{self, Wired},
 };
 
 mod relay;
@@ -111,46 +117,95 @@ async fn main() -> Result<(), String> {
     #[cfg(feature = "advise")]
     let setup = args.advised(setup).await.map_err(|e| format!("{e:#}"))?;
 
-    let Wired {
-        mut app,
-        mut events,
-        mut finished,
-    } = setup.wire(provider)?;
-
     let mut server = remote::Server::bind(SESSION).await?;
     let at = server.address();
     println!("· a session of its own at {at}");
-    remote::opening(&mut app, &at);
-
-    // the three lines the program says into a session before anything is driving it, for the same
-    // reasons it says them: where a setting nobody typed came from, that there is no model yet, and
-    // the message that was handed in on the command line. Every one of them reaches the page,
-    // because the conversation is what a projection carries
-    if let Some(path) = &found {
-        app.say(
-            Speaker::Note,
-            format!("settings read from {}", path.display()),
-        );
-    }
-    if app.kernel.model_info().is_none() {
-        app.say(
-            Speaker::Note,
-            format!(
-                "no model yet: `/model ID` picks one, and `/models` lists what {} serves",
-                app.provider.host()
-            ),
-        );
-    }
-    if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
-        app.ask(&message);
-        app.start_turn();
-    }
 
     // note: the session is the task and the relay is what this waits on, rather than the other way
-    // round. `Server::run` returns when the session ends - a `/quit` from the page - and the relay
-    // never returns at all, so a `select!` over the two leaves by the door that has one
-    let session =
-        tokio::spawn(async move { server.run(&mut app, &mut events, &mut finished).await });
+    // round. `Server::run` returns when the session ends - a `/quit` or a `/restart` from the page -
+    // and the relay never returns at all, so a `select!` over the two leaves by the door that has
+    // one
+    //
+    // note: a loop inside the task, for the reason `main.rs` has one: `/restart` writes this
+    // session out and asks for another, built from the arguments this run started with rather
+    // than from where the first one had got to. The task owns the `App`, so the loop and the
+    // record at the end of it have to be in here with it
+    let message = (!args.message.is_empty()).then(|| args.message.join(" "));
+    let bound = at.clone();
+    let session = tokio::spawn(async move {
+        let base = setup.clone();
+        let Wired {
+            mut app,
+            mut events,
+            mut finished,
+        } = setup.wire(provider.clone())?;
+
+        let mut first = true;
+        let outcome = loop {
+            remote::opening(&mut app, &bound);
+            // the three lines the program says into a session before anything is driving it, for
+            // the same reasons it says them: where a setting nobody typed came from, that there
+            // is no model yet, and the message that was handed in on the command line. Every one
+            // of them reaches the page, because the conversation is what a projection carries
+            if let Some(path) = &found {
+                app.say(
+                    Speaker::Note,
+                    format!("settings read from {}", path.display()),
+                );
+            }
+            if app.kernel.model_info().is_none() {
+                app.say(
+                    Speaker::Note,
+                    format!(
+                        "no model yet: `/model ID` picks one, and `/models` lists what {} serves",
+                        app.provider.host()
+                    ),
+                );
+            }
+            // the first session only: a message asked again on every restart would make
+            // `/restart` a way of putting the same question to the model for ever
+            if first && let Some(message) = &message {
+                app.ask(message);
+                app.start_turn();
+            }
+            first = false;
+
+            let outcome = server.run(&mut app, &mut events, &mut finished).await;
+            if !app.restart {
+                break outcome;
+            }
+
+            let (wired, said) = base.relaunch(&app, provider.clone())?;
+            let Wired {
+                app: fresh,
+                events: replaced,
+                finished: reported,
+            } = wired;
+            (app, events, finished) = (fresh, replaced, reported);
+            // the first thing the new session says, because it is the only place the old one's
+            // name and the file it went to are still written down
+            app.say(Speaker::Note, said);
+        };
+
+        // the last session of the run, written out the way every one before it was.
+        // `Server::run` has ended it already, so the record's last line is `session.finished`
+        println!(
+            "{} · {} events recorded",
+            app.kernel.session_name(),
+            app.kernel.history().len()
+        );
+        if base.record {
+            match wiring::record(&app) {
+                Ok(written) => println!(
+                    "{written}\n`kamchatka -r {}` carries on from it",
+                    written.state
+                ),
+                Err(e) => eprintln!("the session was not written: {e}"),
+            }
+        }
+
+        outcome
+    });
 
     tokio::select! {
         ended = session => match ended {

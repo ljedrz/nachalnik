@@ -36,7 +36,9 @@ the clock a trace line is stamped with - the last two are here rather than in `u
 that searched one string and drew another would find nothing where it says there is something),
 `wiring.rs` (`Setup`: the nine steps
 a session is assembled in, two of which are not guessable - the subscription has to come before
-the wiring, and `introspect::install` hands back a handle the caller has to keep),
+the wiring, and `introspect::install` hands back a handle the caller has to keep; and `record` and
+`Setup::relaunch`, where a session goes when it is over and what `/restart` is, because an example
+driving a session with a loop of its own had neither and lost every session it ran),
 `headless.rs` (the other loop: a line of stdin where the
 terminal has a key, the session log on stdout and what a person reads on stderr), `remote/` (the
 *third* loop, and a client for it: `protocol.rs` is the wire, `server.rs` is a session with a

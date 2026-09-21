@@ -2157,10 +2157,10 @@ async fn a_session_with_no_model_sends_nothing_until_one_is_picked() {
 
 /// `/restart` writes the session out and carries on in a new one, in the program proper.
 ///
-/// note: the binary rather than a driver, because the half worth testing is the half that is not
-/// in the library: writing the record, wiring a second session out of the same settings, and
-/// putting it where the loop was holding the first. `App::restart` is a `bool` and the test above
-/// is all there is to say about it here.
+/// note: the binary rather than a driver, because the half worth testing is the loop around
+/// `Setup::relaunch`: reading the flag, putting the new session where the loop was holding the
+/// first, and one reader for the whole run. `App::restart` is a `bool` and the test above is all
+/// there is to say about it here.
 ///
 /// note: `TMPDIR` is the whole isolation. `record` writes under the temporary directory, so a run
 /// pointed at one of its own leaves exactly the files this counts and nothing else's turn up in it.

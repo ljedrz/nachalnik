@@ -15,6 +15,14 @@
 //! [`Setup::wire`] takes the provider already connected, because where the requests go, which key
 //! pays for them and what dialect they speak are the caller's to decide - `endpoint::connect` is
 //! one line and `tests` hand in a scripted one.
+//!
+//! note: and where a session goes when it is over, because that was private to `main.rs` and an
+//! embedder with a loop of its own had none of it. [`record`] writes a session out where nobody
+//! has to have asked for it, and [`Setup::relaunch`] is `/restart`: the same settings wired a
+//! second time, with the first session written out on the way. `examples/phone.rs` drove a
+//! session with a socket in front of it and neither, so `/quit` and `/restart` from the page each
+//! ended the process with the session in memory and nothing on disk. A loop that ends a session
+//! owes it the same safety net the program's loops give one, and gets it from here.
 
 use std::sync::Arc;
 
@@ -52,6 +60,15 @@ pub struct Setup {
     /// fine as an identity and useless as a filename. A resumed session keeps the name in its
     /// snapshot, so this is left empty when resuming.
     pub session_name: Option<String>,
+    /// Whether the session is written out when it is over: a log and a snapshot under the
+    /// temporary directory, by [`record`], which [`Setup::relaunch`] does for the session a
+    /// restart replaces. `--no-record` is this, off.
+    ///
+    /// note: [`Setup::wire`] does not read it. A session is written when it ends, and the loop
+    /// that ends it is the caller's - so this is the setting and [`record`] is the act, and a
+    /// caller driving an [`App`] with a loop of its own honours the one with the other, the way
+    /// `main.rs` and `examples/phone.rs` do at the end of a run.
+    pub record: bool,
     /// How many requests one turn may make before it stops; `None` is no limit.
     pub requests: Option<usize>,
     /// Whether a model's tool calls may run at the same time rather than in the order it asked.
@@ -144,6 +161,7 @@ impl Default for Setup {
         Self {
             resume: None,
             session_name: None,
+            record: true,
             requests: Some(8),
             parallel: false,
             keep_truncated: true,
@@ -432,5 +450,205 @@ impl Setup {
             events,
             finished,
         })
+    }
+
+    /// Writes a session out and wires the one that takes its place, out of these settings.
+    ///
+    /// note: what `/restart` is. The session handed in is ended here rather than left to whoever
+    /// writes it, because a record whose last line is not `session.finished` reads as a run that
+    /// was killed, and this one was asked to stop. Its record is the same one the end of a run
+    /// writes, and deliberately: a session somebody restarted is a session that ended, and a run
+    /// abandoned halfway is the case that safety net is most for.
+    ///
+    /// note: it hands back the sentence rather than saying it, because the thing to say it to
+    /// does not exist until this returns. The old [`App`] is about to be dropped and is the only
+    /// place the name and the paths are written down; the caller says it into the new one.
+    ///
+    /// note: `resume` and `session_name` are the two settings not taken at their word. A snapshot
+    /// is where the *run* started and a restart is somebody leaving it; and a name carried over
+    /// would give two sessions of one run the same identity, while `None` would fall back to the
+    /// runtime's counter, which is fine as an identity and useless as a filename. So a fresh
+    /// session is stamped fresh, the way the first one was, and [`record`] settles two of them
+    /// landing in the same second.
+    pub fn relaunch(
+        &self,
+        app: &App,
+        provider: Arc<dyn Dialect>,
+    ) -> Result<(Wired, String), String> {
+        app.kernel.finish();
+
+        let name = app.kernel.session_name();
+        let said = match self.record {
+            false => format!("{name} ended; `--no-record`, so nothing was written"),
+            true => match record(app) {
+                Ok(written) => format!(
+                    "{name} ended: {written} (`kamchatka -r {}` carries on from it)",
+                    written.state
+                ),
+                // the restart still happens: a session nobody could write down is a worse reason
+                // to refuse somebody a fresh one than it is to carry on with the old
+                Err(e) => format!("{name} ended, and could not be written down: {e}"),
+            },
+        };
+
+        let started = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|since| since.as_secs())
+            .unwrap_or_default();
+        let fresh = Setup {
+            resume: None,
+            session_name: Some(App::session_stamp(started)),
+            ..self.clone()
+        };
+        let wired = fresh.wire(provider)?;
+
+        Ok((wired, said))
+    }
+}
+
+/// Where a session went when it was written out: how many records, and the two files.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct Recorded {
+    /// How many records the log holds.
+    pub records: usize,
+    /// The event log, one record per line.
+    pub log: String,
+    /// The snapshot `kamchatka -r` starts from.
+    pub state: String,
+}
+
+impl std::fmt::Display for Recorded {
+    // the line every run ends with, and the one `/save` says
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} records in {}, and a session in {}",
+            self.records, self.log, self.state
+        )
+    }
+}
+
+/// Writes the session where nobody has to have asked for it, and says where that was.
+///
+/// note: a temporary directory, because this is a safety net rather than an archive - `/save`
+/// remains the way to put a session somewhere it will still be next week. [`Setup::record`] is
+/// the setting that turns it off, and the caller is what reads it: this writes.
+///
+/// note: and the directory is the user's own, `0700`. What goes in it is a whole conversation and
+/// every byte of output every tool produced, written without anybody asking for it; under the
+/// default umask that is a world-readable file in a directory everyone on the machine can list.
+/// Nobody would type `/save /tmp/everyone/notes.jsonl`, and this should not do it for them.
+pub fn record(app: &App) -> Result<Recorded, String> {
+    let mut dir = std::env::temp_dir();
+    dir.push("kamchatka");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not make {}: {e}", dir.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        // it may already exist from an earlier run, made before this did it; either way, this is
+        // the run that is about to write a transcript into it
+        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+    }
+
+    let (log, state) = unclaimed(&dir.join(app.kernel.session_name()))?;
+    let records = app.write_session(&log, &state)?;
+
+    Ok(Recorded {
+        records,
+        log,
+        state,
+    })
+}
+
+/// A `.jsonl` and `.json` pair under `stem` that no other session has written.
+///
+/// note: the name is a session's own, and a session's own name is not unique enough to be a
+/// filename. Two of them collide in two ways, and both were silent. Two runs started inside one
+/// second share a stamp, so the second to finish wrote over the first - the case this was written
+/// for, found by starting two and reading one back. And **a resumed session keeps the name of the
+/// session it resumed**, which is right for what a name is for and means `-r` wrote over the very
+/// file it had just read: a hundred and twelve records of what happened replaced by the twelve of
+/// a sitting that did nothing. The snapshot survived that one by luck, because a resumed context
+/// renders to nearly the same bytes; the log did not, and the log is the half that says what
+/// happened rather than where things ended up.
+///
+/// note: so the name stays what it is and the *file* moves - `…Z-2.jsonl` beside `…Z.jsonl`,
+/// which sorts next to its sibling and reads as the second sitting of one session. Renaming the
+/// session instead would put a process identifier in every filename to fix something rare, and
+/// the name is what `#fork` derives from and what the trace shows.
+///
+/// note: `create_new` rather than asking whether the file is there, because between asking and
+/// writing is exactly where the first of those two collisions lives. The `.json` is checked
+/// before the `.jsonl` is claimed, so a suffix this passes over leaves nothing of its own behind.
+fn unclaimed(stem: &std::path::Path) -> Result<(String, String), String> {
+    // bounded, so that a directory nothing can be written in is an error rather than a loop
+    (1..1_000)
+        .find_map(|nth| {
+            let stem = match nth {
+                1 => stem.display().to_string(),
+                nth => format!("{}-{nth}", stem.display()),
+            };
+            let (log, state) = (format!("{stem}.jsonl"), format!("{stem}.json"));
+            if std::path::Path::new(&state).exists() {
+                return None;
+            }
+
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&log)
+                .ok()
+                .map(|_| (log, state))
+        })
+        .ok_or_else(|| {
+            format!(
+                "could not find an unused name for the record beside {}",
+                stem.display()
+            )
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A session writes beside a record rather than over it, however it came by the same name.
+    ///
+    /// note: the second half is the case that matters, and it is not the exotic one: `-r` is the
+    /// line this program prints at the end of every run, and a resumed session keeps the name of
+    /// the session it resumed. Every resume wrote over the log it had just read.
+    #[test]
+    fn a_record_never_writes_over_one_that_is_already_there() {
+        // note: not `tests/common`'s `scratch`, which builds under `CARGO_TARGET_TMPDIR` -
+        // cargo hands that to integration tests and not to a unit test. One fixed name, emptied
+        // on the way in, so nothing accumulates either
+        let dir = std::env::temp_dir().join("kamchatka-unclaimed");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a directory to work in");
+        let stem = dir.join("2026-09-15T13-34-29Z");
+
+        let (log, state) = unclaimed(&stem).expect("nothing is there yet");
+        assert!(log.ends_with("2026-09-15T13-34-29Z.jsonl"), "{log}");
+        assert!(state.ends_with("2026-09-15T13-34-29Z.json"), "{state}");
+        // what a session that got this far would leave behind
+        std::fs::write(&log, "one").expect("written");
+        std::fs::write(&state, "{}").expect("written");
+
+        // the same name again - two runs in one second, or a resume - lands beside it
+        let (again, beside) = unclaimed(&stem).expect("a second name");
+        assert!(again.ends_with("2026-09-15T13-34-29Z-2.jsonl"), "{again}");
+        assert!(beside.ends_with("2026-09-15T13-34-29Z-2.json"), "{beside}");
+        assert_eq!(
+            std::fs::read_to_string(&log).expect("still there"),
+            "one",
+            "the first record is untouched"
+        );
+
+        // and the claim is the file itself, so a third does not get the second's name back
+        std::fs::write(&beside, "{}").expect("written");
+        let (third, _) = unclaimed(&stem).expect("a third name");
+        assert!(third.ends_with("2026-09-15T13-34-29Z-3.jsonl"), "{third}");
     }
 }

@@ -49,7 +49,20 @@ minor bump may break you.
   the probe, since there is nothing to ask a context limit about; an embedder that always names one
   wraps the argument in `Some`.
 
+- `wiring::Setup` has a `record` field, `true` by default, which is what `--no-record` turns off.
+  A `Setup` built with `..Default::default()`, the shape its own docs give, is unchanged; one
+  written out field by field names it now.
+
 ### added
+
+- **`wiring::record` and `Setup::relaunch`: the safety net is the library's.** Every run of the
+  program writes its session out when it ends, and `/restart` writes the old one out on the way to
+  the new one. Both were private to `main.rs`, so an embedder driving an `App` with a loop of its
+  own had neither, `examples/phone.rs` included. `record` writes the log and the snapshot under
+  the temporary directory, `0700`, beside rather than over a session of the same name, and says
+  where; `Setup::relaunch` ends the session it is handed, records it unless `Setup::record` is
+  off, and wires a fresh one out of the same settings under a fresh name. `main.rs` calls both
+  where it used to have its own.
 
 - **`/restart` writes the session out and puts a fresh one in its place**, which is what quitting
   and running the program again would do, without quitting. The old session's record is the same
@@ -747,6 +760,13 @@ minor bump may break you.
   could not have printed.
 
 ### fixed
+
+- **`examples/phone.rs` lost the session on `/restart` and on `/quit`.** It wired a session and
+  waited for `Server::run` to return, which it does on either, and the process ended with the
+  session in memory and nothing on disk: the record every run of the program writes was
+  `main.rs`'s and not the library's. It loops the way `main.rs` does now. `/restart` writes the
+  session out and puts a fresh one behind the same socket, which the page comes back into by
+  itself, and `/quit` writes the last one out and says where.
 
 - **The two advisor tests that read the engine's stderr wait for the lines they assert on.**
   `what_the_engine_says_about_itself_is_captured_rather_than_printed` waited for the first line

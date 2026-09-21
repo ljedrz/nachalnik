@@ -2077,6 +2077,177 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
     assert!(!socket.exists(), "the socket file was left behind");
 }
 
+/// `examples/phone.rs` writes every session it ran out, the way the program does.
+///
+/// note: the example rather than a driver, because the bug was the example's and nothing
+/// exercised it. It wired a session and waited for `Server::run`, which returns on `/quit` and on
+/// `/restart` alike, so either command from the page ended the process with the session in memory
+/// and nothing on disk. Driven the way a browser drives it: an event stream opens a tab, and
+/// `POST /do` puts a line into the session through it.
+///
+/// note: `TMPDIR` is the whole isolation, as in `restart_writes_the_session_out_and_starts_another`:
+/// the record goes under the temporary directory, so a run pointed at one of its own leaves
+/// exactly the files this counts. No `-m`, so nothing is sent anywhere; what this is about is
+/// which files are there afterwards.
+///
+/// note: `cargo test -p kamchatka` builds the example beside the binary and a run of this suite
+/// alone may not, so the first assertion names that rather than leaving it to a spawn error.
+#[cfg(unix)]
+#[test]
+fn the_phone_example_writes_every_session_out() {
+    use std::io::{BufRead as _, Read as _, Write as _};
+
+    let example = common::example("phone");
+    assert!(
+        example.exists(),
+        "{} is not built: `cargo test -p kamchatka` builds the examples, `--test remote` alone \
+         does not",
+        example.display()
+    );
+    let dir = common::scratch("phone-record");
+    let mut child = std::process::Command::new(example)
+        .env("TMPDIR", &dir)
+        .env("KAMCHATKA_PHONE_LISTEN", "127.0.0.1:0")
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the example did not start");
+
+    // the page's address is the second line it prints, and everything after that is the ending
+    let mut out = std::io::BufReader::new(child.stdout.take().expect("stdout is a pipe")).lines();
+    let page = loop {
+        let line = out
+            .next()
+            .expect("the example stopped before saying where the page is")
+            .expect("stdout is readable");
+        if let Some((_, at)) = line.split_once(" at http://") {
+            break at.trim_end_matches('/').to_owned();
+        }
+    };
+
+    // a tab is a stream that is open, and it is open once its `retry:` has arrived
+    let tab = |name: &str| -> std::net::TcpStream {
+        let mut stream = std::net::TcpStream::connect(&page).expect("the page is reachable");
+        stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
+        write!(
+            stream,
+            "GET /events?tab={name} HTTP/1.1\r\nHost: {page}\r\n\r\n"
+        )
+        .expect("the request goes out");
+        let mut seen = Vec::new();
+        let mut chunk = [0u8; 1024];
+        while !String::from_utf8_lossy(&seen).contains("retry: ") {
+            let n = stream.read(&mut chunk).expect("the stream opens");
+            assert!(
+                n > 0,
+                "the stream closed before it opened: {}",
+                String::from_utf8_lossy(&seen)
+            );
+            seen.extend_from_slice(&chunk[..n]);
+        }
+        stream
+    };
+    // a line goes in through the tab. The relay hands a tab its channel just after the `retry:`
+    // above, so a line posted in between is answered `409` and is posted again
+    let post = |name: &str, line: &str| {
+        let body = json!({ "do": "submit", "line": line }).to_string();
+        for _ in 0..100 {
+            let mut stream = std::net::TcpStream::connect(&page).expect("the page is reachable");
+            stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
+            write!(
+                stream,
+                "POST /do?tab={name} HTTP/1.1\r\nHost: {page}\r\nContent-Type: application/json\r\n\
+                 Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .expect("the request goes out");
+            let mut answer = String::new();
+            let _ = stream.read_to_string(&mut answer);
+            if answer.starts_with("HTTP/1.1 202") {
+                return;
+            }
+            assert!(
+                answer.starts_with("HTTP/1.1 409"),
+                "the page refused `{line}`: {answer}"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("the tab `{name}` never opened");
+    };
+
+    let mut first = tab("first");
+    post("first", "/restart");
+    // the restart lets go of every client, which is this stream ending. The page comes back into
+    // the new session by itself; this does the same by hand, under another name
+    let mut rest = Vec::new();
+    first
+        .read_to_end(&mut rest)
+        .expect("the stream ends when the session restarts");
+    let _second = tab("second");
+    post("second", "/quit");
+
+    // the run ends on its own, and says what it wrote
+    let deadline = std::time::Instant::now() + PATIENCE;
+    let status = loop {
+        match child.try_wait().expect("the child can be waited on") {
+            Some(status) => break status,
+            None if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            None => {
+                let _ = child.kill();
+                let mut said = String::new();
+                let _ = child
+                    .stderr
+                    .take()
+                    .expect("stderr is a pipe")
+                    .read_to_string(&mut said);
+                panic!("the example did not end after `/quit`: {said}");
+            }
+        }
+    };
+    let mut said = String::new();
+    child
+        .stderr
+        .take()
+        .expect("stderr is a pipe")
+        .read_to_string(&mut said)
+        .expect("stderr is readable");
+    assert!(status.success(), "{said}");
+    let ending = out
+        .map(|line| line.expect("stdout is readable"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        ending.contains("records in"),
+        "the run did not say where the last session went: {ending}\n{said}"
+    );
+
+    // two sessions, two records: the one `/restart` wrote and the one `/quit` did, and the second
+    // is a session of its own rather than the first one's log written twice
+    let logs: Vec<String> = std::fs::read_dir(dir.join("kamchatka"))
+        .expect("the record directory")
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".jsonl"))
+        .collect();
+    assert_eq!(
+        logs.len(),
+        2,
+        "one record per session: {logs:?}\n{ending}\n{said}"
+    );
+    let mut names: Vec<&str> = logs
+        .iter()
+        .map(|it| it.trim_end_matches(".jsonl"))
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    assert_eq!(names.len(), 2, "both records have the same name: {logs:?}");
+}
+
 /// Runs `--connect` against a socket with these lines typed at it, and waits for it.
 ///
 /// note: no model, no key and no endpoint. A client wires nothing up, and the day this needs one
