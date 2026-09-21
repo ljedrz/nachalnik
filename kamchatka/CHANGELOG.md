@@ -7,6 +7,16 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- `protocol::Command` has a `Revise` variant, and `Command::Inspect` and `Message::Item` each
+  carry a `raw` flag. None of the three is a break on the wire - `Command::Unknown` is what an
+  older session reads the variant as, and both flags default when the field is absent - and all
+  three are a break for anything in Rust matching on the enums, which are not `#[non_exhaustive]`.
+
+- `protocol::Attached` has a `rated` field and `protocol::Listed` a `beyond` field. Both are
+  `#[non_exhaustive]`, so this is a break only for a caller building one by hand.
+
 ### added
 
 - **A turn can be stopped by typing `/stop`, which is the only way a browser can stop one.**
@@ -19,6 +29,18 @@ minor bump may break you.
   not running - resting is what lets anybody answer it - and an interrupt reaches nothing, so the
   question would still be there afterwards. What ends that turn is denying it, and `/stop` says
   so rather than reporting that nothing is running.
+
+- **A context item can be edited in a browser, where `e` edits one at a terminal.** A row's body
+  opens as a box holding what the item says; typing in it and letting go puts that back through
+  the same `App::revise` the keys commit through, so the item keeps its identifier, its kind, its
+  state and its place in the conversation, and what it said before becomes a version page. The
+  row is still what expands and collapses it - a tap on the text is somebody reaching for the
+  keyboard, not somebody closing the row.
+
+  The three shapes no edit can reach - a picture, a turn recorded in blocks, and a turn that is
+  nothing but a call - say so on the row rather than only when an edit is refused, which is
+  `protocol::Listed::beyond`. A box let go of unchanged writes nothing at all: no record, no
+  version page, and no checkpoint, because an operation that changes nothing takes none.
 
 - **A settings file is found where you are standing, and `--print-config` hands you one to start
   from.** `kamchatka.json` ships in the crate and in the release archive, and `cargo install`
@@ -364,6 +386,18 @@ minor bump may break you.
   rather than ignored.
 
 ### fixed
+
+- **The advisor's rating reaches a browser, where it used to stop inside the process.** A build
+  with `assisted-shell` in it, started with `--advise`, served a page exactly what a build without
+  it served: the advisor ran, tightened the verdicts it was there to tighten, and the green,
+  yellow or red band that is the whole point of the feature was drawn only by the terminal's own
+  overlay. It travels beside the questions now, as `protocol::Attached::rated`, and the page draws
+  the same three colours from it.
+
+  The band is `Rated::shown` rather than the score, so a browser and a terminal cannot disagree
+  about a command; the words come down the wire with it rather than being reworded at the other
+  end; and the confidence goes beside it, because a yellow that means "this changes something" and
+  a yellow that means "nobody could tell" are not the same warning.
 
 - **A piped `--connect` left the question it raised unanswered, and the session waiting on it.** A
   turn paused on a permission question is not running, so the session reports `busy: false` while

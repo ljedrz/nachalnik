@@ -8,7 +8,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nachalnik::{ContextItem, ContextState, Grant, Verdict};
 use ratatui_textarea::CursorMove;
-use serde_json::json;
 
 use super::{
     App, Focus, Overlay, Page, Search, Speaker, Tab,
@@ -158,42 +157,21 @@ impl App {
     /// [`super::App::in_order`] still places an item that carries the hint, and why a session
     /// saved before this changed still draws in the order the request has. It is not the shape of
     /// a person fixing a sentence.
+    /// note: the whole of the act is [`App::revise`], which a client over [`crate::remote`] also
+    /// commits through. What is left here is the half that belongs to the keys: taking the item
+    /// out of `editing`, giving the focus back, and saying what happened on the chat - because a
+    /// person who pressed `enter` is owed a sentence and a protocol is owed a return value.
     fn commit_edit(&mut self, text: &str) {
         let Some(id) = self.editing.take() else {
             return;
         };
         self.focus = Focus::Body;
 
-        let Some(old) = self.kernel.item(id) else {
-            self.say(Speaker::Error, format!("[{id}] is no longer there"));
-            return;
-        };
-        if old.content.to_text() == text {
-            self.say(Speaker::Note, format!("[{id}] is unchanged"));
-            return;
+        match self.revise(id, text, "edited at the terminal") {
+            Ok(true) => {}
+            Ok(false) => self.say(Speaker::Note, format!("[{id}] is unchanged")),
+            Err(e) => self.say(Speaker::Error, e),
         }
-
-        // note: nothing here keeps what it used to say. `Kernel::replace` emits the one event
-        // that carries content and `App::remember` is already listening for it, so the version
-        // pages fill themselves - which is also why an `undo` of this reaches the screen with
-        // nothing here keeping a second account of what to put back
-        if let Err(e) = self.kernel.replace(id, text.to_owned()) {
-            self.say(Speaker::Error, e.to_string());
-            return;
-        }
-
-        // whose hand it was, on the item itself. The content is now the only content, so a
-        // reader of the row - the person here, and the model through `context` - would
-        // otherwise have nothing saying it was ever anything else. `context` writes this same
-        // key with `by: context`, and the one thing the two paths must not do is look alike: a model
-        // reading its own metadata should never find its own tool credited with a sentence a
-        // person rewrote
-        let mut meta = match old.meta.is_object() {
-            true => old.meta.clone(),
-            false => json!({}),
-        };
-        meta["revised"] = json!({ "by": "user", "reason": "edited at the terminal" });
-        let _ = self.kernel.annotate(id, meta);
     }
 
     /// Keys that belong to the context pane.

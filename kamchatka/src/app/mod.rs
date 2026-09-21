@@ -1456,6 +1456,62 @@ impl App {
         self.kernel.interrupt();
     }
 
+    /// Puts an edited item into the context in place of the one it came from, and says whether
+    /// that changed anything.
+    ///
+    /// note: `pub` and not gated on `tui` for the reason [`App::submit`] and [`App::interrupt`]
+    /// are. The terminal's `e` was the only way to rewrite an item for as long as the only editor
+    /// was a prompt; a browser has a box on the screen that is already showing what the item says,
+    /// and what it was missing was somewhere to commit it to. Both go through here, so neither
+    /// invents a second account of what an edit is.
+    ///
+    /// note: it asks `text::beyond_a_prompt` itself rather than trusting the caller to have
+    /// asked. Both callers do ask first, because refusing after somebody has typed is worse than
+    /// refusing before - the terminal before it opens the editor, a client off
+    /// [`Listed::beyond`](crate::remote::protocol::Listed::beyond) before it offers one - and
+    /// neither of those is a decision. A row is a moment old by the time anybody acts on it, and
+    /// a guard that lives at the operation is the one that holds for every caller that ever
+    /// arrives.
+    ///
+    /// note: `Ok(false)` where the text is what the item already said, which is not an error and
+    /// is not silent either. Nothing is written - no `context.replaced`, no version page, no undo
+    /// checkpoint, because an operation that changes nothing takes none - and the caller is told
+    /// so it can say as much rather than report an edit that did not happen.
+    ///
+    /// note: `reason` is how the item's metadata says where the hand was, and `by` is `user` in
+    /// every case because a person is a person wherever they are standing. The `context` tool
+    /// writes this same key with `by: context`, and the one thing the two must not do is look
+    /// alike: a model reading its own metadata should never find its own tool credited with a
+    /// sentence a person rewrote.
+    pub fn revise(&mut self, id: ContextId, text: &str, reason: &str) -> Result<bool, String> {
+        let Some(old) = self.kernel.item(id) else {
+            return Err(format!("[{id}] is no longer there"));
+        };
+        if let Some(why) = text::beyond_a_prompt(&old) {
+            return Err(why.to_owned());
+        }
+        if old.content.to_text() == text {
+            return Ok(false);
+        }
+
+        // note: nothing here keeps what it used to say. `Kernel::replace` emits the one event
+        // that carries content and `App::remember` is already listening for it, so the version
+        // pages fill themselves - which is also why an `undo` of this reaches the screen with
+        // nothing here keeping a second account of what to put back
+        self.kernel
+            .replace(id, text.to_owned())
+            .map_err(|e| e.to_string())?;
+
+        let mut meta = match old.meta.is_object() {
+            true => old.meta.clone(),
+            false => serde_json::json!({}),
+        };
+        meta["revised"] = serde_json::json!({ "by": "user", "reason": reason });
+        let _ = self.kernel.annotate(id, meta);
+
+        Ok(true)
+    }
+
     /// Answers one of the questions the kernel is waiting on, and carries the turn on if that was
     /// the last of them.
     ///

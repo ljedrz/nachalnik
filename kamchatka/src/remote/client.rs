@@ -390,7 +390,7 @@ impl<'a> Client<'a> {
                 }
                 self.prose.flush().map_err(|e| e.to_string())
             }
-            Message::Item { id, body } => {
+            Message::Item { id, body, .. } => {
                 self.answered();
                 self.fresh_line()?;
                 writeln!(self.prose, "--- item {id} ---\n{body}").map_err(|e| e.to_string())?;
@@ -634,7 +634,15 @@ impl<'a> Client<'a> {
         }
         if let Some(id) = line.strip_prefix('?').and_then(|n| n.trim().parse().ok()) {
             return self
-                .say_to(write, Command::Inspect { id: ContextId(id) })
+                // the reading rather than the text: `?N` at this client prints an item for
+                // somebody to look at, and there is nothing here that edits one
+                .say_to(
+                    write,
+                    Command::Inspect {
+                        id: ContextId(id),
+                        raw: false,
+                    },
+                )
                 .await;
         }
 

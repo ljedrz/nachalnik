@@ -37,11 +37,15 @@
     color-scheme: light dark;
     --bg: #fbfaf8; --fg: #1c1b19; --dim: #6b6862; --line: #bdb6a9;
     --user: #2d4f6b; --note: #6b6862; --call: #6b4f2d; --bad: #8c2f22;
+    /* the advisor's two lower bands; the top one is `--bad`, which is the page's one red and is
+       the colour the terminal draws a grave command in too */
+    --reads: #2f6b3d; --changes: #7a5512;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #161513; --fg: #e8e4dc; --dim: #8a867e; --line: #4a443b;
       --user: #8fb8d8; --note: #8a867e; --call: #d0a878; --bad: #e08074;
+      --reads: #86c396; --changes: #d8b45c;
     }
   }
   /* note: `--line` is every border on the page - the header, the footer, a row's rule, the box you
@@ -112,11 +116,18 @@
   .state.excluded { border-color: var(--bad); color: var(--bad); }
   .figures { font-size: 12px; color: var(--dim); margin-top: 2px; }
   .why { font-size: 12px; color: var(--note); margin-top: 2px; font-style: italic; }
+  /* note: a `textarea` rather than a `div`, which is the whole of making an item editable. The box
+     already showed what the item said and already read as something you could type into; what it
+     was missing was somewhere for the typing to go. See `Command::Revise` */
   .body {
     display: none; margin-top: 8px; padding: 8px; white-space: pre-wrap;
     overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 6px;
+    width: 100%; font: inherit; background: transparent; color: inherit; resize: vertical;
   }
   .row.open .body { display: block; }
+  /* the three shapes an edit cannot reach still open and still read - what they do not do is take
+     typing they were never going to keep. `Listed::beyond` is what says which, and says why */
+  .body[readonly] { color: var(--dim); }
   .empty { color: var(--dim); white-space: pre-wrap; }
   .policy { margin: 0 0 10px; font-weight: 600; overflow-wrap: anywhere; }
   .seq { color: var(--dim); }
@@ -157,6 +168,13 @@
   #question { display: none; }
   #question.open { display: block; }
   #question p { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* note: the band goes above the command rather than below it, which is where the terminal puts
+     it and for the same reason: what it buys is the half-second before somebody reads the command,
+     and a warning under the thing it is about is one that arrives after the reading it was meant
+     to aim */
+  #rating { font-weight: 600; }
+  #rating .sure { font-weight: 400; color: var(--dim); }
+  .reads { color: var(--reads); } .changes { color: var(--changes); } .grave { color: var(--bad); }
   #answers { display: flex; gap: 8px; flex-wrap: wrap; }
   #answers button { flex: 1; }
   .allow { border-color: var(--user); } .deny { border-color: var(--bad); }
@@ -192,6 +210,7 @@
     <button type="submit">send</button>
   </form>
   <div id="question">
+    <p id="rating" hidden></p>
     <p id="asked"></p>
     <div id="answers">
       <button class="allow" data-grant="allow">allow</button>
@@ -211,6 +230,7 @@ const prompt = document.getElementById("prompt");
 const line = document.getElementById("line");
 const question = document.getElementById("question");
 const asked = document.getElementById("asked");
+const rating = document.getElementById("rating");
 
 let asking = [];        // the questions waiting on somebody, oldest first
 let open = null;        // the bubble a model is still writing into
@@ -220,6 +240,8 @@ let pending = [];       // lines this page drew on sending, not yet tied to an i
 let mine = new Set();   // the items those lines turned out to be
 let latest = null;      // the last projection, which is what every view but the chat is drawn from
 let stale = false;      // whether the chat no longer matches the context, and a rebuild is owed
+let opened = new Set(); // the context rows the reader has expanded, which survive a rebuild
+let owed = false;       // a rebuild held back because somebody is typing into an item
 let showing = "chat";   // which of the four is on screen
 let turning = false;    // whether a turn is running, which is half of what the one dot says
 let adrift = false;     // and whether the stream has gone, which is the other half
@@ -410,9 +432,23 @@ function row(into, name, figures, why) {
   return el;
 }
 
-/** Whichever panel is open, from the last projection; the chat is not one of them. */
+/**
+ * Whichever panel is open, from the last projection; the chat is not one of them.
+ *
+ * note: held back while somebody is typing into an item, because the rebuild replaces every row
+ * and would take the box with it - mid-sentence, and mid-edit. It is the bargain the chat already
+ * strikes with a model that is still writing, and letting go of the box is what pays it. A
+ * projection arrives for every state change in the session, so without this an edit on a phone
+ * lasted until the next one.
+ */
 function draw() {
   if (showing === "chat") return;
+  const typing = document.activeElement;
+  if (typing && typing.classList.contains("body")) {
+    owed = true;
+    return;
+  }
+  owed = false;
   const panel = document.getElementById("panel");
   panel.replaceChildren();
   if (!latest) return aside(panel, "nothing yet");
@@ -448,18 +484,66 @@ function draw() {
       // the row says what the item is; `inspect` is the only way to what it holds, because the
       // projection names items rather than carrying them
       el.classList.add("act");
-      const body = document.createElement("div");
+      const body = document.createElement("textarea");
       body.className = "body";
+      body.rows = 8;
+      // what cannot be rewritten says so where somebody is about to type, rather than answering a
+      // commit nobody was going to be allowed to make
+      if (item.beyond) {
+        body.readOnly = true;
+        body.title = item.beyond;
+      }
       el.append(body);
-      el.onclick = () => {
-        el.classList.toggle("open");
-        if (body.textContent) return;
-        body.textContent = "…";
-        // `data-body` rather than `data-item`, which the chat uses for the line that *is* the
-        // item. One `inspect` answer fills both, and a row opened here would otherwise overwrite
-        // the chat's own line with the item's whole rendering
+      // note: `data-body` rather than `data-item`, which the chat uses for the line that *is* the
+      // item. One `inspect` answer fills both, and a row opened here would otherwise overwrite
+      // the chat's own line with the item's whole rendering
+      // note: `raw`, because this box is the editor. What the chat asks for is the *reading* of
+      // an item - the content with why it is here, what the turn was thinking and the calls it
+      // carries above it - and committing that back would write `it is here because: …` into the
+      // item it describes. See `Command::Inspect`
+      const fill = () => {
+        body.value = "…";
         body.dataset.body = item.id;
-        send({ do: "inspect", id: item.id });
+        send({ do: "inspect", id: item.id, raw: true });
+      };
+      // a row the reader had open is drawn open, and asked about again. Every projection rebuilds
+      // this panel - an edit produces one itself - so a row that did not survive the rebuild was a
+      // row that closed the moment it was saved, over the text it had just been given
+      if (opened.has(item.id)) {
+        el.classList.add("open");
+        fill();
+      }
+      el.onclick = (e) => {
+        // the row is the toggle and the box inside it is not: a tap on the text is somebody
+        // reaching for the keyboard, and a row that collapsed under it would be a row nobody
+        // could edit. Everything else about the row opens and closes it, which is the gesture
+        // that was already there
+        if (body.contains(e.target)) return;
+        if (el.classList.toggle("open")) opened.add(item.id);
+        else opened.delete(item.id);
+        if (body.value) return;
+        fill();
+      };
+      // note: committed when the box is let go of rather than on every keystroke or behind a
+      // button. A keystroke is not an edit - it would put a `context.replaced` in the log for
+      // every letter - and a button is a control this page would have to find room for on a
+      // phone, beside a box whose whole point is that it already looks like the thing it is.
+      // Letting go is what the terminal's `enter` is: the moment somebody stopped typing
+      //
+      // note: against what arrived rather than against what is there now, because a session with
+      // two clients can have rewritten this item while somebody was reading it. Sending what the
+      // box holds when nothing in it was touched is how one client's stale copy quietly puts back
+      // what the other just changed
+      body.onblur = () => {
+        const was = body.dataset.was;
+        if (!body.readOnly && was !== undefined && body.value !== was) {
+          body.dataset.was = body.value;
+          send({ do: "revise", id: item.id, text: body.value });
+        }
+        // whatever the page held back while this had the focus. An edit answers with a projection
+        // of its own, but a box let go of unchanged answers with nothing, and the rebuild it was
+        // standing in front of is still owed
+        if (owed) draw();
       };
     }
     return;
@@ -575,6 +659,32 @@ function showQuestion() {
       `${next.tool}(${JSON.stringify(next.args)})\nit declares ` +
       (next.capabilities.length ? next.capabilities.join(", ") : "nothing");
   }
+  band(next);
+}
+
+/**
+ * What the advisor made of the command, above the command.
+ *
+ * note: the words come down the wire and this picks a colour, which is the division the terminal
+ * draws too - the page does not know where the thresholds are, does not see the score, and cannot
+ * end up disagreeing with the sentence it is printing. A session with no advisor sends no rows and
+ * this draws nothing, which is the same absence a terminal shows.
+ *
+ * note: the percentage is on the line because the band is not a fact about the command. An unsure
+ * reading is never sent green, so a yellow one may be yellow because the command changes something
+ * or yellow because nothing could be told - and those are not the same warning.
+ */
+function band(next) {
+  const seen = next && (latest?.rated ?? []).find((it) => it.id === next.id);
+  rating.hidden = !seen;
+  if (!seen) return;
+
+  rating.className = seen.band;
+  rating.textContent = `the advisor reads this as: ${seen.said}`;
+  const sure = document.createElement("span");
+  sure.className = "sure";
+  sure.textContent = ` · ${Math.round(seen.confidence * 100)}% sure`;
+  rating.append(sure);
 }
 
 document.getElementById("answers").onclick = (e) => {
@@ -677,6 +787,10 @@ function heard(m) {
         stale = false;
         conversation(m.conversation);
       }
+      // the ratings ride on a projection, so a question drawn before this arrived is a question
+      // drawn without the one line it was waiting for. Only the band: the question itself came off
+      // the stream and has not changed
+      if (asking.length) band(asking[0]);
       break;
     }
     // the session is talking to something else now. Broadcast rather than answered to whoever
@@ -695,12 +809,24 @@ function heard(m) {
       // both places one can be wanted: the chat line that is the item, and a context row somebody
       // has opened. They are different attributes because they are different things - the line is
       // the item and the row merely names it - and one answer fills whichever exist
-      for (const el of log.querySelectorAll(`[data-item="${m.id}"]`)) {
-        el.textContent = m.body;
-        el.classList.remove("pending");
+      // note: routed by which question this answers, not only by which item it is about. Both
+      // places are found by the same identifier and they want different readings - the chat wants
+      // the item laid out, the context row wants the text an edit is made of - so an answer that
+      // filled whichever it matched would put one in the other's place
+      if (!m.raw) {
+        for (const el of log.querySelectorAll(`[data-item="${m.id}"]`)) {
+          el.textContent = m.body;
+          el.classList.remove("pending");
+        }
       }
-      for (const el of document.querySelectorAll(`[data-body="${m.id}"]`)) {
-        el.textContent = m.body;
+      // `value`, because a context row's body is the box an edit is typed into. `dataset.was` is
+      // what arrived: an edit is what differs from it, so letting go of a box nobody touched
+      // sends nothing, and a box still holding `…` is one that cannot be committed at all
+      if (m.raw) {
+        for (const el of document.querySelectorAll(`[data-body="${m.id}"]`)) {
+          el.value = m.body;
+          el.dataset.was = m.body;
+        }
       }
       break;
     }
@@ -744,7 +870,17 @@ function happened(e) {
     case "tool.finished":
       say("result", `${e.tool}: ${e.tokens} tokens${e.is_error ? ", an error" : ""}`);
       break;
-    case "permission.requested": asking.push(e.request); showQuestion(); break;
+    // note: and a projection asked for on the spot, which is the one thing a record cannot carry.
+    // The advisor's reading of the command is not in the session log - it is not an event, because
+    // it decided nothing - so it travels beside the questions in a projection, and a question that
+    // arrived on the stream is a question this page holds without one. Asked for here rather than
+    // waited for: `stale` is settled at the end of a turn, and a turn is exactly what this has
+    // stopped in the middle of
+    case "permission.requested":
+      asking.push(e.request);
+      showQuestion();
+      send({ do: "project" });
+      break;
     case "permission.decided":
       asking = asking.filter((q) => q.id !== e.id);
       showQuestion();

@@ -31,7 +31,7 @@ use tokio::{
 use crate::{
     app::{App, Outcome, Overlay, Speaker, text},
     remote::protocol::{
-        self, Address, Attached, Command, Line, Listed, Message, Printed, Stanced, Tracing,
+        self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Stanced, Tracing,
     },
 };
 
@@ -675,6 +675,26 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
                 error,
             },
         }),
+        // note: answered with a projection, which is what `cycle` answers with and for its reason.
+        // An edit changes what the item says, what it costs, and therefore what the next request
+        // comes to - and none of that is anything a client could work out from the `context.replaced`
+        // the stream is about to carry. The other clients get the record and ask for their own.
+        //
+        // note: a text that changes nothing is a `Done` rather than a projection, because nothing
+        // moved: no record, no version page, no checkpoint. Saying so plainly is better than a
+        // projection identical to the one the client already had, which reads as an edit that
+        // silently did not take
+        Command::Revise { id, text } => Some(match app.revise(id, &text, "edited from a client") {
+            Ok(true) => Message::Projected(Box::new(project(app))),
+            Ok(false) => Message::Done {
+                about: "revise".to_owned(),
+                busy: app.busy,
+            },
+            Err(error) => Message::Failed {
+                about: "revise".to_owned(),
+                error,
+            },
+        }),
         Command::Submit { line } => {
             // note: read before the line goes in, because handing one in is what replaces it.
             // There is room for exactly one queued message, so a second client typing during a turn
@@ -756,12 +776,35 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
     }
 }
 
+/// What the advisor made of the questions waiting, for the client that has to draw them.
+///
+/// note: read at projection time out of what the advisor wrote down while the verdict was being
+/// worked out, which is the same moment and the same reading the terminal's panel takes - see
+/// [`App::rating`]. The kernel awaits the policy before it raises a question, so by the time a
+/// question is in a projection its rating is either already there or was never coming, and nothing
+/// on the wire has to describe a request in flight.
+#[cfg(feature = "assisted-shell")]
+fn rated(app: &App, asking: &[nachalnik::PermissionRequest]) -> Vec<Judged> {
+    asking
+        .iter()
+        .filter_map(|request| Some(Judged::of(request.id, app.rating(request)?)))
+        .collect()
+}
+
+/// The same where the ratings are not in the build, which is nothing to send.
+#[cfg(not(feature = "assisted-shell"))]
+fn rated(_: &App, _: &[nachalnik::PermissionRequest]) -> Vec<Judged> {
+    Vec::new()
+}
+
 /// Where the session stands, in the form a client can start rendering from.
 fn project(app: &App) -> Attached {
     let items = app.kernel.items();
     let going = app.going();
+    let asking = app.kernel.pending_permissions();
 
     Attached {
+        rated: rated(app, &asking),
         version: protocol::VERSION,
         // note: taken here, in the same synchronous stretch as everything below it, and that is
         // what makes the seam airtight rather than nearly so. Nothing else can be driving the
@@ -788,7 +831,7 @@ fn project(app: &App) -> Attached {
         // belonging to whoever is reading, and a projection that had already made it would be one
         // client's view of the context standing in for the context
         items: items.iter().map(|item| Listed::of(item, &going)).collect(),
-        asking: app.kernel.pending_permissions(),
+        asking,
         trace: tracing(app),
         policy: app.policy_name(),
         untold: crate::tools::Careful::untold(),
@@ -909,9 +952,20 @@ where
                 }
                 // answered here rather than by the session loop: it needs a `Kernel` and nothing
                 // else, and the session has better things to be doing
-                Some(Command::Inspect { id }) => {
+                Some(Command::Inspect { id, raw }) => {
                     let message = match kernel.items().iter().find(|item| item.id == id) {
-                        Some(item) => Message::Item { id, body: text::stored(item) },
+                        // the item's own text where a client is about to put it in front of
+                        // somebody to edit, and the reading of it where somebody is going to read
+                        // it. `Kernel::replace` writes content, so the reading is the one thing
+                        // that must never come back as an edit
+                        Some(item) => Message::Item {
+                            id,
+                            body: match raw {
+                                true => item.content.to_text().into_owned(),
+                                false => text::stored(item),
+                            },
+                            raw,
+                        },
                         None => Message::Failed {
                             about: "inspect".to_owned(),
                             error: format!("there is no item {id} in the context"),
@@ -1288,6 +1342,7 @@ fn name(command: &Command) -> &'static str {
         Command::Inspect { .. } => "inspect",
         Command::Project => "project",
         Command::Cycle { .. } => "cycle",
+        Command::Revise { .. } => "revise",
         Command::Unknown => "unknown",
     }
 }

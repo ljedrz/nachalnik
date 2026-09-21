@@ -515,8 +515,13 @@ pub(crate) fn whole(content: &Content) -> String {
 /// Why a prompt could not hold this item, if it could not, written for the person who pressed
 /// the key.
 ///
-/// note: `e` shows `Content::to_text` and commits what comes back as `Content::text`, so it is
-/// faithful exactly where those two are the whole of the item. [`stored`] is the function that
+/// note: not gated on `tui`, because the terminal's `e` is no longer the only way in. A client
+/// editing an item over [`crate::remote`] reaches [`super::App::revise`], which asks this the same
+/// question before it writes - so the three shapes that cannot be rewritten are refused wherever
+/// the edit came from, and are refused in one place rather than two that drift.
+///
+/// note: an editor shows `Content::to_text` and commits what comes back as `Content::text`, so it
+/// is faithful exactly where those two are the whole of the item. [`stored`] is the function that
 /// already knows where they are not - it exists because reading the content alone showed an empty
 /// box for a turn that was nothing but tool calls - and this is the same reading, answered as a
 /// reason rather than as a page.
@@ -535,22 +540,21 @@ pub(crate) fn whole(content: &Content) -> String {
 /// the three shapes are refused for three different reasons and a shared sentence could only say
 /// the vague part of any of them. The keys that *do* work are appended where this is shown,
 /// since those are the same whichever shape it is.
-#[cfg(feature = "tui")]
-pub(super) fn beyond_a_prompt(item: &ContextItem) -> Option<&'static str> {
+pub(crate) fn beyond_a_prompt(item: &ContextItem) -> Option<&'static str> {
     if item.content.as_blob().is_some() {
         return Some(
-            "This item is a picture, and `e` changes what an item says.\n\nThere is no text \
-             here to put back. The prompt would open holding the line that stands in for a \
+            "This item is a picture, and editing changes what an item says.\n\nThere is no text \
+             here to put back. What an editor opens holding is the line that stands in for a \
              picture on a screen - `[image/png, 12.05kB]` - and committing it would write that \
              sentence over the picture itself.",
         );
     }
     if item.content.as_blocks().is_some() {
         return Some(
-            "This turn was recorded in the order it was produced, and `e` changes what an item \
-             says.\n\nWhat it says is the text among its blocks; the thinking and the tool calls \
-             between them are not said, and a prompt holding only the text would write that text \
-             over the whole of it.",
+            "This turn was recorded in the order it was produced, and editing changes what an \
+             item says.\n\nWhat it says is the text among its blocks; the thinking and the tool \
+             calls between them are not said, and putting back only the text would write that \
+             text over the whole of it.",
         );
     }
 
@@ -559,9 +563,9 @@ pub(super) fn beyond_a_prompt(item: &ContextItem) -> Option<&'static str> {
             if !tool_calls.is_empty() && item.content.to_text().trim().is_empty() =>
         {
             Some(
-                "This turn is a tool call and nothing else, and `e` changes what an item \
+                "This turn is a tool call and nothing else, and editing changes what an item \
                  says.\n\nA call is not something a turn said: it is held beside the content, \
-                 and this key writes content. So there is nothing here for a prompt to hold, \
+                 and editing writes content. So there is nothing here for an editor to hold, \
                  and committing into one would write a sentence onto a turn whose call it had \
                  not touched.",
             )

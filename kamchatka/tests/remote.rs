@@ -897,6 +897,7 @@ async fn inspect_answers_with_the_whole_of_an_item() {
     let (mut peer, attached) = Peer::attached(&session.at).await;
     peer.send(Command::Inspect {
         id: attached.items[0].id,
+        raw: false,
     })
     .await;
     // note: `until` rather than the next message, because the session's own voice is on this
@@ -912,6 +913,7 @@ async fn inspect_answers_with_the_whole_of_an_item() {
 
     peer.send(Command::Inspect {
         id: ContextId(9_999),
+        raw: false,
     })
     .await;
     let heard = peer
@@ -3159,4 +3161,223 @@ async fn a_turn_resting_on_a_question_is_told_what_ends_it() {
     })
     .await;
     session.ended().await.1.expect("the session failed");
+}
+
+// --------------------------------------------------------------- an item, edited from elsewhere
+
+/// An item edited from a client is the item, and says whose hand it was.
+///
+/// note: `Kernel::replace` rather than a new item, which is the whole of why this is one command
+/// and not a `/exclude` and a fresh message: the identifier, the kind, the state and the place in
+/// the conversation are all the same afterwards, and what it used to say is a version page. The
+/// terminal's `e` has worked this way for a while; what this pins is that the wire reaches the
+/// same operation rather than a second one written beside it.
+#[tokio::test]
+async fn an_item_edited_from_a_client_keeps_its_place_and_says_who_edited_it() {
+    let session = served(vec![], |app| {
+        app.kernel
+            .push(nachalnik::ContextItem::user("what it said before"));
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let id = attached.items[0].id;
+    assert_eq!(attached.items[0].beyond, None, "this one can be edited");
+
+    peer.send(Command::Revise {
+        id,
+        text: "what it says now".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    let Some(Message::Projected(projected)) = heard.last() else {
+        unreachable!("just matched")
+    };
+    // the same row, not a second one: an edit is not a way to grow the context
+    assert_eq!(projected.items.len(), 1);
+    assert_eq!(projected.items[0].id, id);
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    let item = app.kernel.item(id).expect("the item is still there");
+    assert_eq!(item.content.to_text(), "what it says now");
+    // a person's hand, and never the `context` tool's - a model reading its own metadata should
+    // not find its own tool credited with a sentence somebody else wrote
+    assert_eq!(item.meta["revised"]["by"], "user");
+}
+
+/// An edit that changes nothing is answered, and writes nothing.
+///
+/// note: one operation is one undo, and an operation that changes nothing takes no checkpoint -
+/// so the thing that must not happen here is a `context.replaced` in the log for a box somebody
+/// opened, read and closed. A browser commits when the box is let go of, which is a gesture
+/// somebody makes without having typed a thing.
+#[tokio::test]
+async fn an_edit_that_changes_nothing_is_not_an_edit() {
+    let session = served(vec![], |app| {
+        app.kernel.push(nachalnik::ContextItem::user("unchanged"));
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let (id, seq) = (attached.items[0].id, attached.seq);
+    peer.send(Command::Revise {
+        id,
+        text: "unchanged".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Done { .. } | Message::Projected(..)))
+        .await;
+    let Some(Message::Done { about, .. }) = heard.last() else {
+        panic!("an edit that changed nothing should not answer with a projection");
+    };
+    assert_eq!(about, "revise");
+
+    // asked for rather than read off the session afterwards, because leaving is itself recorded -
+    // the log this is about is the one as it stands now, with the edit behind it and the `/quit`
+    // still to come
+    peer.send(Command::Project).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    let Some(Message::Projected(projected)) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(projected.seq, seq, "nothing should have been recorded");
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// The three shapes an edit cannot reach say so on the row, and refuse it if asked anyway.
+///
+/// note: both halves, because either alone is the wrong answer. A row that did not say would let
+/// somebody type a paragraph into a picture and find out at the end; a session that only said,
+/// and took the edit when it came, would write `[image/png, 12.05kB]` over the picture itself.
+#[tokio::test]
+async fn an_item_no_edit_can_reach_says_so_and_refuses() {
+    let session = served(vec![], |app| {
+        app.kernel
+            .push(nachalnik::ContextItem::user(nachalnik::Content::blob(
+                "image/png",
+                "A".repeat(64),
+            )));
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let id = attached.items[0].id;
+    let why = attached.items[0]
+        .beyond
+        .as_deref()
+        .expect("a picture cannot be edited, and the row should say so");
+    assert!(why.contains("picture"), "{why}");
+
+    peer.send(Command::Revise {
+        id,
+        text: "a sentence over a picture".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Failed { .. }))
+        .await;
+    let Some(Message::Failed { about, error }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(about, "revise");
+    assert!(error.contains("picture"), "{error}");
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert!(
+        app.kernel
+            .item(id)
+            .expect("the item is still there")
+            .content
+            .as_blob()
+            .is_some(),
+        "the picture was written over"
+    );
+}
+
+/// The reading of an item and the text of it are two answers, and only one of them is an edit.
+///
+/// note: what this is about went wrong in a browser before it was written down. A row's body is
+/// the box somebody types into, and it was being filled with `text::stored` - the content with
+/// why the item is here above it - so letting go of the box committed `it is here because: named
+/// on the command line` *into* the item it was describing. The reading is for reading.
+#[tokio::test]
+async fn the_reading_of_an_item_is_not_the_text_an_edit_is_made_of() {
+    let session = served(vec![], |app| {
+        app.kernel.push(
+            nachalnik::ContextItem::user("the text and nothing else")
+                .because("a reason that is not part of what it says"),
+        );
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let id = attached.items[0].id;
+
+    peer.send(Command::Inspect { id, raw: false }).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Item { .. }))
+        .await;
+    let Some(Message::Item { body, raw, .. }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert!(!raw);
+    assert!(
+        body.contains("a reason that is not part of what it says"),
+        "{body}"
+    );
+
+    peer.send(Command::Inspect { id, raw: true }).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Item { raw: true, .. }))
+        .await;
+    let Some(Message::Item { body, .. }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(body, "the text and nothing else");
+
+    // and committing what the raw answer gave back changes nothing, which is the property that
+    // makes a box safe to let go of: a client that round-trips is not an edit
+    peer.send(Command::Revise {
+        id,
+        text: body.clone(),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Done { .. } | Message::Projected(..)))
+        .await;
+    assert!(
+        matches!(heard.last(), Some(Message::Done { about, .. }) if about == "revise"),
+        "a round trip should not be an edit"
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert_eq!(
+        app.kernel.item(id).expect("still there").content.to_text(),
+        "the text and nothing else"
+    );
 }

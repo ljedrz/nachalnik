@@ -178,7 +178,16 @@ async fn main() -> Result<(), String> {
     // and the whole of what any one item holds is one command away, which is the other half of the
     // records naming things rather than carrying them
     if let Some(item) = answer {
-        protocol::write(&mut write, &Command::Inspect { id: item }).await?;
+        // the reading of it rather than its text: this prints an item for somebody to look at,
+        // which is what `raw` is false for
+        protocol::write(
+            &mut write,
+            &Command::Inspect {
+                id: item,
+                raw: false,
+            },
+        )
+        .await?;
         if let Some(Message::Item { body, .. }) = next(&mut lines).await? {
             // note: the same words twice, on purpose. Above they were fragments of a model still
             // writing, which are in no log and are gone once they have gone past; this is the item

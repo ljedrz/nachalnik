@@ -73,12 +73,13 @@ pub const VERSION: u32 = 1;
 
 /// What a client asks a session to do.
 ///
-/// note: seven, and the set is meant to stay about this size. Five of them are things a person at
-/// the terminal does with a *key* rather than with a line - hand in a line, stop the turn, answer a
-/// question, move an item, read one - and the other two are the connection itself. Anything a
-/// person types is a slash command, which is [`Command::Submit`]: every verb this program has goes
-/// through [`App::submit`], so a protocol with a message per verb would be a second vocabulary to
-/// keep in step with the first. The test for anything new is whether a person could type it.
+/// note: eight, and the set is meant to stay about this size. Six of them are things a person at
+/// the terminal does with a *key* rather than with a line - hand in a line, stop the turn, answer
+/// a question, move an item, read one, rewrite one - and the other two are the connection itself.
+/// Anything a person types is a slash command, which is [`Command::Submit`]: every verb this
+/// program has goes through [`App::submit`], so a protocol with a message per verb would be a
+/// second vocabulary to keep in step with the first. The test for anything new is whether a person
+/// could type it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "do", rename_all = "snake_case")]
 pub enum Command {
@@ -144,6 +145,25 @@ pub enum Command {
         /// Which item.
         id: ContextId,
     },
+    /// Put an edited item into the context in place of the one it came from.
+    ///
+    /// note: a command of its own rather than a [`Command::Submit`] of a line, on the same
+    /// grounds as [`Command::Cycle`]: there is no line. `e` on the context tab is what does this
+    /// at a terminal, and what it opens is an editor holding the item - so the thing being handed
+    /// over is a body of text somebody has been editing, which is not something a person types at
+    /// a prompt in one go and not something a slash command could carry without quoting rules
+    /// nobody wants.
+    ///
+    /// note: the session decides whether the item can be rewritten at all, not the client. Three
+    /// shapes cannot be - a picture, a turn recorded in blocks, and a turn that is nothing but a
+    /// call - and the reason is about the item rather than about who is asking; see
+    /// [`crate::app::App::revise`], which the keys and this both go through.
+    Revise {
+        /// Which item.
+        id: ContextId,
+        /// What it should say now.
+        text: String,
+    },
     /// Ask for the projection again, as it stands now.
     ///
     /// note: [`Command::Attach`] already answers with one and is deliberately not the way to do
@@ -171,6 +191,20 @@ pub enum Command {
     Inspect {
         /// Which item.
         id: ContextId,
+        /// Ask for the item's own text rather than the reading of it.
+        ///
+        /// note: two questions about one item, and they are not the same answer. The reading is
+        /// what the context tab shows - the content, and above it why the item is here, what the
+        /// turn was thinking, and the calls it carries - which is what somebody wants in front of
+        /// them. What [`Command::Revise`] takes is the content and nothing else, because that is
+        /// what `Kernel::replace` writes: a client that committed the reading back would put `it
+        /// is here because: …` inside the item it was describing.
+        ///
+        /// note: a flag rather than a second field on [`Message::Item`] carrying both. An inspect
+        /// is the one message that exists to be large - it is how the whole of a four-hundred-line
+        /// tool result is fetched - and a client wants one of these per row, never both.
+        #[serde(default)]
+        raw: bool,
     },
     /// Something this build has no name for.
     ///
@@ -333,8 +367,18 @@ pub enum Message {
     Item {
         /// Which item.
         id: ContextId,
-        /// What it says, laid out the way the context tab lays it out.
+        /// What it says: laid out the way the context tab lays it out, or the item's own text
+        /// where [`Command::Inspect`]'s `raw` asked for that instead.
         body: String,
+        /// Which of the two this is.
+        ///
+        /// note: carried back rather than remembered by the client, because both answers are
+        /// found by the same identifier and a client holding two places to put one - a line on
+        /// the chat and a box on the context tab - would otherwise fill the wrong one with the
+        /// wrong reading. It is the question echoed, which is the cheapest way to tell them
+        /// apart and the only one that survives two inspects crossing.
+        #[serde(default)]
+        raw: bool,
     },
     /// How many fragments went past while this client was not keeping up.
     ///
@@ -417,6 +461,15 @@ pub struct Attached {
     pub items: Vec<Listed>,
     /// Every question waiting on somebody, in the order they were asked.
     pub asking: Vec<PermissionRequest>,
+    /// What the advisor made of the ones it was asked about; see [`Judged`].
+    ///
+    /// note: a list beside the questions rather than a field on them, and empty in every session
+    /// that did not start with an advisor. It is here because the rating used to exist only inside
+    /// the terminal's own drawing code, which meant a build with `assisted-shell` in it served a
+    /// browser exactly what a build without it served - the advisor ran, tightened the verdict it
+    /// was there to tighten, and the one thing a person was supposed to see never left the
+    /// process.
+    pub rated: Vec<Judged>,
     /// What the policy in force is called.
     pub policy: String,
     /// What it answers about anything nobody has told it about.
@@ -446,6 +499,83 @@ pub struct Attached {
     pub queued: Option<String>,
     /// What the shell tool's sandbox came to, or nothing where there is none.
     pub confinement: Option<String>,
+}
+
+/// What the advisor made of the command one waiting question is about.
+///
+/// note: beside [`Attached::asking`] rather than on a question, because a question is a
+/// [`PermissionRequest`] and that is the runtime's type. The runtime has no advisor and is not
+/// going to grow a field for one - see the module note on carrying runtime types verbatim - so the
+/// second opinion travels as its own row, named by the question it is about.
+///
+/// note: only for the questions something rated, which is `shell` commands in a build that has
+/// `assisted-shell` in it and a session started with `--advise`. A client draws the band where
+/// there is a row for the question it is drawing and draws nothing where there is not, which is
+/// the same thing the panel at a terminal does with the same absence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Judged {
+    /// Which question.
+    pub id: PermissionId,
+    /// The band it is drawn as.
+    pub band: Band,
+    /// What that band is called, in the advisor's own words.
+    ///
+    /// note: carried rather than left for the client to word from `band`, so that the sentence a
+    /// browser prints and the sentence a terminal prints are one string with one author. A client
+    /// that wrote its own would be a second account of a rubric it cannot see.
+    pub said: String,
+    /// How sure the advisor was, from 0 to 1.
+    ///
+    /// note: sent beside the band and not folded into it, for the reason the terminal prints it:
+    /// a band that went yellow because nothing could be told apart is not the same warning as one
+    /// that went yellow because the command changes something, and a client that could not tell
+    /// them apart has been told the advisor was sure when it was not.
+    pub confidence: f64,
+}
+
+#[cfg(feature = "assisted-shell")]
+impl Judged {
+    /// Reads one off what the advisor wrote down while the verdict was being worked out.
+    ///
+    /// note: [`Rated::shown`](crate::tools::Rated::shown) rather than the score, so that a browser
+    /// and a terminal cannot land on two different colours for one command. Where the thresholds
+    /// are, and what an unsure reading is drawn as, stay in `tools::advice` and are asked rather
+    /// than reimplemented.
+    pub(super) fn of(id: PermissionId, rated: crate::tools::Rated) -> Self {
+        use crate::tools::Rating;
+
+        let shown = rated.shown();
+
+        Self {
+            id,
+            band: match shown {
+                Rating::Reads => Band::Reads,
+                Rating::Changes => Band::Changes,
+                Rating::Grave => Band::Grave,
+            },
+            said: shown.said().to_owned(),
+            confidence: rated.confidence,
+        }
+    }
+}
+
+/// The three bands a rated command is drawn as.
+///
+/// note: what the advisor's rating is *shown* as rather than what it scored, which is a
+/// distinction [`crate::tools::Rated::shown`] owns and nothing on this side of the wire repeats.
+/// An uncertain reading is never sent as [`Band::Reads`], because green is the one colour that
+/// would say a command is safe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Band {
+    /// It looks and reports; nothing changes and nothing goes out.
+    Reads,
+    /// It changes something on this machine, and what it changes could be put back.
+    Changes,
+    /// It destroys something that cannot be got back, or sends something off this machine.
+    Grave,
 }
 
 /// One line of the conversation.
@@ -532,6 +662,14 @@ pub struct Listed {
     pub left_out: Option<String>,
     /// What the model reads in its place, where it is in the request as a marker.
     pub marker: Option<String>,
+    /// Why this one cannot be rewritten, where it cannot be.
+    ///
+    /// note: on the row rather than found out by trying, so that a client can say so before
+    /// somebody has typed rather than after. [`Command::Revise`] asks the same question again and
+    /// is the one that decides - a row is a moment old by the time anybody acts on it - but a
+    /// client that only learns from the refusal is one that takes an edit it was never going to
+    /// keep, which is the worse half of the same answer.
+    pub beyond: Option<String>,
 }
 
 impl Listed {
@@ -553,6 +691,7 @@ impl Listed {
                 .flatten(),
             left_out: going.left_out.get(&item.id).cloned(),
             marker: going.marker.get(&item.id).cloned(),
+            beyond: crate::app::text::beyond_a_prompt(item).map(str::to_owned),
         }
     }
 }
@@ -776,6 +915,37 @@ pub enum Address<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The one thing a client must not be able to disagree with the terminal about.
+    ///
+    /// note: an unsure reading is never sent as [`Band::Reads`], because green is the colour that
+    /// says a command is safe and a spread distribution over a safety rubric is not evidence that
+    /// it is. That rule lives in [`crate::tools::Rated::shown`] and this asks it rather than
+    /// restating where the threshold is - what is under test is that the wire goes through
+    /// `shown` at all, which is what stops a browser drawing green where a terminal drew yellow.
+    ///
+    /// note: the words travel with the band for the same reason. A client wording the band itself
+    /// would be a second account of a rubric it cannot see, and the first rewording of the rubric
+    /// is where the two would part.
+    #[cfg(feature = "assisted-shell")]
+    #[test]
+    fn a_rating_reaches_the_wire_as_the_band_it_is_drawn_as() {
+        use crate::tools::{Rated, Rating};
+
+        let judged = |scored, confidence| Judged::of(PermissionId(1), Rated { scored, confidence });
+
+        let sure = judged(Rating::Reads, 0.95);
+        assert_eq!(sure.band, Band::Reads);
+        assert_eq!(sure.said, Rating::Reads.said());
+        assert_eq!(sure.confidence, 0.95);
+
+        // the same score, and not the same band: nobody could tell, so it is not drawn green
+        assert_eq!(judged(Rating::Reads, 0.3).band, Band::Changes);
+        assert_eq!(judged(Rating::Reads, 0.3).said, Rating::Changes.said());
+        // and what was already worth looking at is never softened by confidence either way
+        assert_eq!(judged(Rating::Grave, 0.3).band, Band::Grave);
+        assert_eq!(judged(Rating::Grave, 0.95).band, Band::Grave);
+    }
 
     /// The one byte the reader and the writer have to agree about.
     ///
