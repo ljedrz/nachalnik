@@ -91,6 +91,22 @@ const VERDICT: &str = "verdict";
 /// And the one whose answer is only ever read out in a sentence.
 const IRREVERSIBLE: &str = "irreversible";
 
+/// What a permission gate should do, put to the model.
+///
+/// note: it names `arguments`, and so does every other question here. A System One engine is
+/// handed the state as one object and the question as another; nothing tells it which part of the
+/// state the question is about unless the question says so, and the open engines' own presets all
+/// name the field they are asking about. Measured against `laya`, which is the one that needs it:
+/// on thirty destructive commands the answer went from 7 `deny` to 15, and from one clearing
+/// [`SURE`] to three, with ordinary work answered exactly as before. `jev` was already reading it
+/// right and is unmoved.
+pub(crate) const DECIDE: &str = "A tool is about to run on the user's machine. What should a permission gate \
+                      do with the call shown in `arguments`?";
+
+/// And whether what it does can be undone.
+pub(crate) const DESTROYS: &str =
+    "Would running the call in `arguments` destroy something that cannot be got back?";
+
 /// The rubric a command is placed on for the person about to answer for it.
 #[cfg(feature = "shell-advisor")]
 const RATING: &str = "rating";
@@ -155,17 +171,17 @@ pub enum Rating {
 /// placed whole. A `cd` used to be a clause inside a reading of a longer command line and is now
 /// a stage put on the rubric on its own, so a level that misplaces it misplaces it visibly.
 ///
-/// note: **short, and the length was measured rather than judged.** These said the same thing in
-/// three long sentences, naming the operations and repeating "once it has finished". Against the
-/// smaller of the two engines the difference is not subtle: `ls` came back with its distribution
-/// spread across all three levels at 0.39 on the top one, and against these it is 0.84 on the
-/// level it belongs to. The score was right either way - what a long rubric cost was the
-/// *confidence*, and an answer nobody is sure of is one this program will not draw green.
+/// note: **short, because what a model pays for every request is a toll**, and the levels are the
+/// part of it a small model has to hold in mind while reading a command. These said the same
+/// thing in three long sentences, naming the operations and repeating "once it has finished".
 ///
-/// note: so this is the convention about length doing real work rather than being a matter of
-/// taste. What a model pays for every request is a toll, and the levels are the part of it a
-/// small model has to hold in mind while reading a command. Anything added here should be
-/// measured the same way - `contrib/laya_advisor.py --probe` is what measures it.
+/// note: the 0.39-against-0.84 that was once written here as the measurement for that is
+/// withdrawn, and it is worth saying why rather than deleting it. The two figures came from two
+/// runs that differed in the *state* as well as the rubric - one through `--probe`, which sent a
+/// bare command, and one through the program, which sends the call - and the state is what moves
+/// that number. So the length is a toll argument and nothing is claimed for it beyond that.
+/// Anything added here should be measured against what the program sends, which is what
+/// `contrib/laya_advisor.py --probe` now does.
 #[cfg(feature = "shell-advisor")]
 pub(crate) const LEVELS: [&str; 3] = [
     "it only looks, or moves about, and leaves nothing changed",
@@ -460,8 +476,9 @@ impl Advised {
 
 /// What the rubric is put to the model as, for a command taken as one thing.
 #[cfg(feature = "shell-advisor")]
-const PLACE: &str = "A command is about to be run on the user's machine, and a person is about to \
-                     be asked whether to let it. Place it on this rubric by what it would do.";
+pub(crate) const PLACE: &str = "A command is about to be run on the user's machine, and a person is about to \
+                     be asked whether to let it. Place the command in `cmd` on this rubric by \
+                     what it would do.";
 
 /// And for one stage of one, which is placed with the whole command in the state beside it.
 ///
@@ -470,9 +487,9 @@ const PLACE: &str = "A command is about to be run on the user's machine, and a p
 /// own, and a rubric answered about a fragment with no context is answered about a different
 /// command. What the question asks for is a reading of the part, taken in view of the whole.
 #[cfg(feature = "shell-advisor")]
-const PLACE_STAGE: &str = "A command is about to be run on the user's machine, and a person is \
-                           about to be asked whether to let it. The whole command is in the \
-                           state. Place only the stage below on this rubric, by what that stage \
+pub(crate) const PLACE_STAGE: &str = "A command is about to be run on the user's machine, and a person is \
+                           about to be asked whether to let it. The whole command is in `cmd`. \
+                           Place only the stage in `stage` on this rubric, by what that stage \
                            would do as part of that command.";
 
 /// One stage of a command line, put on [`LEVELS`].
@@ -543,7 +560,7 @@ fn tight(cmd: &str, from: usize, to: usize) -> Option<(usize, usize)> {
 /// note: an object rather than a sentence built out of these. The endpoint takes one, the shape
 /// says which part is the tool and which part is its arguments without a phrasing having to carry
 /// that, and a path with a newline in it cannot rearrange the question it is inside of.
-fn state(request: &PermissionRequest) -> Value {
+pub(crate) fn state(request: &PermissionRequest) -> Value {
     json!({
         "tool": request.tool,
         "capabilities": request
@@ -658,8 +675,7 @@ impl PermissionPolicy for Advised {
                     (
                         VERDICT.to_owned(),
                         Question::between_described(
-                            "A tool is about to run on the user's machine with the arguments \
-                             shown. What should a permission gate do with it?",
+                            DECIDE,
                             [
                                 ("allow", "ordinary work, and safe to run unattended"),
                                 ("ask", "a person should look at this one first"),
@@ -673,10 +689,7 @@ impl PermissionPolicy for Advised {
                     ),
                     (
                         IRREVERSIBLE.to_owned(),
-                        Question::noul(
-                            "Would running this destroy something that cannot be got back?",
-                        )
-                        .between(
+                        Question::noul(DESTROYS).between(
                             "it deletes, overwrites or sends data that cannot be recovered",
                             "it only reads, or anything it changes can be undone",
                         ),

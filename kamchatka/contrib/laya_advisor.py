@@ -45,22 +45,70 @@ caller already handles on every other failure.
 import json
 import sys
 
-# The rubric kamchatka actually sends, copied from `LEVELS` in `kamchatka/src/tools/advice.rs`.
+# The questions kamchatka actually sends, copied from `kamchatka/src/tools/advice.rs`.
 #
-# note: a copy, and the hazard is obvious - two texts that have to agree, in two languages. What
+# note: a copy, and the hazard is obvious - texts that have to agree, in two languages. What
 # stops them drifting is a test: `the_probe_asks_the_question_the_program_asks` in `advisor.rs`
-# reads this file and fails if a level the program sends is not in it.
+# reads this file and fails if anything the program sends is not in it.
 #
 # note: worth the copy rather than probing with something illustrative, and that is the lesson
-# this constant exists because of. The first `--probe` made up a short rubric of its own,
-# reported `ls` at 0.84, and the running session reported 0.39 for the same command - because
-# the two were asking different questions. A probe that does not ask what the program asks
-# measures something nobody runs, and reads as evidence while doing it.
+# these constants exist because of. The first `--probe` made up a short rubric of its own and
+# reported a different number than the running session did for the same command; the second one
+# copied the rubric and still sent a bare command as the state, where the program sends the call.
+# Both times the probe measured something nobody runs, and read as evidence while doing it.
 LEVELS = [
     "it only looks, or moves about, and leaves nothing changed",
     "it leaves something changed that could be put back",
     "it destroys something that cannot be got back, or sends something off this machine",
 ]
+#
+# note: each of these is one literal on one line, however long, because the test that pins them
+# reads this file as text and looks for the sentence the program sends. Wrapped across two
+# literals the way Python would rather have them, the sentence is not in here to find, and the
+# pin quietly stops pinning anything.
+DECIDE = "A tool is about to run on the user's machine. What should a permission gate do with the call shown in `arguments`?"  # noqa: E501
+DECIDE_CRITERIA = {
+    "allow": "ordinary work, and safe to run unattended",
+    "ask": "a person should look at this one first",
+    "deny": "destructive, or reaches something it has no business reaching",
+}
+DESTROYS = "Would running the call in `arguments` destroy something that cannot be got back?"
+DESTROYS_CRITERIA = {
+    "true": "it deletes, overwrites or sends data that cannot be recovered",
+    "false": "it only reads, or anything it changes can be undone",
+}
+PLACE = "A command is about to be run on the user's machine, and a person is about to be asked whether to let it. Place the command in `cmd` on this rubric by what it would do."  # noqa: E501
+
+
+def call(cmd):
+    """The state kamchatka puts a shell call to an advisor as: `advice::state`, exactly.
+
+    note: the call and not the command, which is the thing this got wrong. kamchatka never sends
+    a bare command line - it sends what is about to run, with the tool that would run it and the
+    capabilities it declared, and the command two levels down under `arguments`. A probe that
+    sends `{"cmd": ...}` is asking an easier question than the program asks, and the gap between
+    the two answers is large enough to be mistaken for a bug in the rubric.
+    """
+    return {"tool": "shell", "capabilities": ["exec:run"], "arguments": {"cmd": cmd}}
+
+
+def gate_questions():
+    """What the program asks about a call the standing rules were going to allow."""
+    return {
+        "verdict": {"type": "choice", "instructions": DECIDE, "criteria": DECIDE_CRITERIA},
+        "irreversible": {"type": "noul", "instructions": DESTROYS, "criteria": DESTROYS_CRITERIA},
+    }
+
+
+def rating_questions():
+    """And about one the rules were going to ask about, which is what the colour is read off.
+
+    note: the whole command only. The program also puts this rubric to each stage of a command
+    line, and where the stages fall is `tools::joints`' business - a second copy of that here
+    would be a copy that drifts. A stage is this question with a fragment in the instructions,
+    so what this shows is the reading the stages are folded into.
+    """
+    return {"rating": {"type": "score", "instructions": PLACE, "criteria": LEVELS}}
 
 
 def number(value, fallback=0.0):
@@ -164,29 +212,26 @@ def probe(command):
     what kamchatka would be handed. A `score` in the right place under a flat distribution is
     the rubric being hard to read; a good distribution translated into a bad `confidence` is
     this file.
+
+    note: both requests, because the program makes two and they are not interchangeable. The
+    gate's pair decides whether a call runs and is asked about a call the rules would have
+    allowed; the rubric is only ever drawn and is asked about one they would have queried. An
+    advisor can be useless at one and fine at the other, and a probe that showed one of them
+    would say so about both.
     """
     from laya import Router
 
-    asked = {
-        "rating": {
-            "type": "score",
-            "instructions": (
-                "A command is about to be run on the user's machine, and a person is about to "
-                "be asked whether to let it. Place it on this rubric by what it would do."
-            ),
-            "criteria": LEVELS,
-        },
-        "irreversible": {
-            "type": "noul",
-            "instructions": "Would running this destroy something that cannot be got back?",
-        },
-    }
+    router = Router(preload=True)
+    state = call(command)
+    print("--- the state kamchatka sends ---")
+    print(json.dumps(state, indent=2))
 
-    result = Router(preload=True).predict({"cmd": command}, asked)
-    print("--- what laya answered, verbatim ---")
-    print(json.dumps(result, indent=2, default=str))
-    print("--- what this shim would send on ---")
-    print(json.dumps(translated(asked, result), indent=2))
+    for what, asked in (("the gate", gate_questions()), ("the rubric", rating_questions())):
+        result = router.predict(state, asked)
+        print("--- %s: what laya answered, verbatim ---" % what)
+        print(json.dumps(result, indent=2, default=str))
+        print("--- %s: what this shim would send on ---" % what)
+        print(json.dumps(translated(asked, result), indent=2))
 
     return 0
 

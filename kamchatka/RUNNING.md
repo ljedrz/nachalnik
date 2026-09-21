@@ -850,18 +850,29 @@ If your `laya` answers under keys this does not expect, `--probe` says so withou
 
 ```console
 $ ~/ai/venv/bin/python kamchatka/contrib/laya_advisor.py --probe "ls -la"
---- what laya answered, verbatim ---
+--- the state kamchatka sends ---
 ...
---- what this shim would send on ---
+--- the gate: what laya answered, verbatim ---
+...
+--- the gate: what this shim would send on ---
+...
+--- the rubric: what laya answered, verbatim ---
 ...
 ```
 
-It asks the rubric the program asks, word for word — a probe that makes up its own measures
-something nobody runs, which is a mistake this made once. An empty second block is the
-translation not recognising what laya sent; a `score` in the right place under a flat
-distribution is the rubric being hard for the engine to read, which is a different problem and
-is fixed by shortening it rather than by touching this file. `--selftest` checks the translation
-against laya's own recorded answer and needs no checkpoint; `cargo test` runs it.
+It asks the program's questions, word for word, of the state the program sends — a probe that
+makes up its own measures something nobody runs, which is a mistake this made twice: once with a
+rubric of its own, and once with the rubric copied and a bare command line where the program
+sends the whole call. The second one matters more than it sounds, because the gap between the two
+answers is wide enough to be mistaken for a fact about the rubric. Both blocks now come from the
+same constants the program sends, and a test fails if either drifts.
+
+Both requests are shown because the program makes two: the gate's pair, which decides whether a
+call runs, and the rubric, which is only ever drawn. An advisor can be useless at one and fine at
+the other. An empty second block is the translation not recognising what laya sent; a `score` in
+the right place under a flat distribution is the engine finding the question hard, which is a
+different problem and not one this file can fix. `--selftest` checks the translation against a
+recorded answer and needs no checkpoint; `cargo test` runs it.
 
 **Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
 matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child

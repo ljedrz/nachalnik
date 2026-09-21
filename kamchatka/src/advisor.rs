@@ -454,28 +454,60 @@ mod tests {
         );
     }
 
-    /// The shim's probe asks the question the program asks, word for word.
+    /// The shim's probe asks the questions the program asks, word for word, of the state the
+    /// program sends.
     ///
-    /// note: the trap this closes, which cost a round of guessing. `--probe` made up a short
-    /// rubric of its own; it reported `ls` at 0.84 and the running session reported 0.39 for
-    /// the same command, and the difference was the two asking different questions. A probe
-    /// that does not ask what the program asks measures something nobody runs, and reads as
-    /// evidence while doing it.
+    /// note: the trap this closes, which has cost two rounds of guessing. `--probe` first made up
+    /// a short rubric of its own and reported a different number than the running session did for
+    /// the same command. The rubric was then copied and the *state* was not: the probe sent a bare
+    /// command where the program sends the call, which is a different and easier question, and the
+    /// gap between the two answers was large enough to be written down as a fact about the rubric.
+    /// A probe that does not ask what the program asks measures something nobody runs, and reads
+    /// as evidence while doing it.
     ///
-    /// note: the levels live in two files and two languages because one of them is a Python
-    /// script somebody runs by hand. This is what stops that being a drift: the copy has to
-    /// contain every level the program sends, checked against the constant rather than against
-    /// a second copy of it.
+    /// note: the texts live in two files and two languages because one of them is a Python script
+    /// somebody runs by hand. This is what stops that being a drift: the copy has to contain
+    /// everything the program sends, checked against the constants rather than against a second
+    /// copy of them.
+    ///
+    /// note: the state is checked by its keys rather than by its rendering, because what the probe
+    /// has to get right is which parts of a call the advisor is shown. A key added to
+    /// [`state`](crate::tools::advice::state) and not to the probe is the drift that already
+    /// happened once, and it is what this fails on.
     #[cfg(feature = "shell-advisor")]
     #[test]
     fn the_probe_asks_the_question_the_program_asks() {
+        use nachalnik::{Capability, PermissionId, PermissionRequest, ToolCallId};
+
+        use crate::tools::advice;
+
         let shim = include_str!("../contrib/laya_advisor.py");
 
-        for level in crate::tools::advice::LEVELS {
+        let sent =
+            advice::LEVELS
+                .iter()
+                .copied()
+                .chain([advice::DECIDE, advice::DESTROYS, advice::PLACE]);
+        for text in sent {
             assert!(
-                shim.contains(level),
-                "`contrib/laya_advisor.py` does not send this level, so its probe is about a \
-                 different rubric than the program: {level:?}"
+                shim.contains(text),
+                "`contrib/laya_advisor.py` does not send this, so its probe is about a different \
+                 question than the program: {text:?}"
+            );
+        }
+
+        let state = advice::state(&PermissionRequest {
+            id: PermissionId(1),
+            call: ToolCallId::from("call-1"),
+            tool: "shell".to_owned(),
+            capabilities: vec![Capability::exec("run")],
+            args: Arc::new(json!({ "cmd": "ls" })),
+        });
+        for key in state.as_object().expect("the state is an object").keys() {
+            assert!(
+                shim.contains(&format!("\"{key}\"")),
+                "the probe's state has no `{key}`, so it shows the advisor less than the program \
+                 does"
             );
         }
     }

@@ -553,6 +553,34 @@ minor bump may break you.
 
 ### fixed
 
+- **Every question the advisor is asked now names the part of the state it is about.** A System
+  One engine is handed the state as one object and the question as another, and nothing tells it
+  which part of the state the question concerns unless the question says so - the open engines'
+  own presets all name their field, and these named none. So the verdict and the irreversibility
+  question name `arguments`, and the rubric names `cmd` and `stage`.
+
+  Measured against `laya`, which is the one that needed it: over thirty destructive commands the
+  verdict went from 7 `deny` to 15, and from one answer clearing the confidence threshold to
+  three, with ordinary work answered exactly as before. Against `jev` it is a wash in the same
+  direction - it was already reading the state right. Neither engine got worse at anything
+  measured.
+
+  The state itself is unchanged, and deliberately: flattening it so the command sits at the top
+  level helps `laya` further and makes `jev` slightly worse, and `jev` is the engine the feature
+  is written for. What leaves the machine is exactly what left it before.
+
+- **`--probe` sends the state the program sends, and both of the requests it makes.** The rubric
+  was copied into the shim and pinned by a test; the *state* was not, so the probe put a bare
+  command line to the engine where the program puts the whole call. That is an easier question,
+  and the gap between the two answers was wide enough to be written down in `advice.rs` as a
+  measurement about the rubric's length. That note is withdrawn - the length stands on the toll a
+  model pays for every request, which needs no measurement.
+
+  The probe now builds its state through the same shape `advice::state` does and asks both the
+  gate's pair and the rubric, so a report from it is about the session somebody is actually
+  running. `the_probe_asks_the_question_the_program_asks` checks the instructions and the state's
+  keys against the constants rather than against a second copy, and fails on either drifting.
+
 - **The advisor's first notice reached a terminal the screen then cleared.** `Args::advised`
   drained the queue at startup and printed it with `eprintln!`, on the reasoning that there was
   no screen yet - but the screen arrives at once and clears it, so the line went where nobody
