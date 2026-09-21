@@ -47,7 +47,7 @@ use std::{collections::VecDeque, sync::Arc};
 #[cfg(feature = "assisted-shell")]
 use nachalnik::Capability;
 use nachalnik::{PermissionPolicy, PermissionRequest, ToolCallId, Verdict, async_trait};
-use nachalnik_providers::typesafe::{Jev, Question};
+use nachalnik_providers::system1::{Jev, Question};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 

@@ -20,9 +20,10 @@
 //! An `Endpoint` that is not a `Dialect` answers something other than a turn, and there is no
 //! kernel in its path at all:
 //!
-//! - [`typesafe`] - TypeSafe's `jev`, a System One model. Typed questions put to a state and
-//!   answered with probabilities: no text, no tool calls, nothing to stream. What it is for is
-//!   the decisions a program makes *around* a conversation rather than the conversation.
+//! - [`system1`] - System One models, of which this speaks to TypeSafe's `jev`. Typed questions
+//!   put to a state and answered with probabilities: no text, no tool calls, nothing to stream.
+//!   What it is for is the decisions a program makes *around* a conversation rather than the
+//!   conversation.
 //!
 //! ```no_run
 //! # use std::sync::Arc;
@@ -70,8 +71,8 @@ pub mod conformance;
 pub mod gemini;
 #[cfg(feature = "openai")]
 pub mod openai;
-#[cfg(feature = "typesafe")]
-pub mod typesafe;
+#[cfg(feature = "system1")]
+pub mod system1;
 #[cfg(any(feature = "gemini", feature = "openai"))]
 pub(crate) mod waiting;
 
@@ -80,8 +81,8 @@ pub use crate::endpoint::{Dialect, Endpoint};
 pub use crate::gemini::Gemini;
 #[cfg(feature = "openai")]
 pub use crate::openai::OpenAiCompatible;
-#[cfg(feature = "typesafe")]
-pub use crate::typesafe::Jev;
+#[cfg(feature = "system1")]
+pub use crate::system1::Jev;
 
 /// Whether an error means an account is out of free requests for the day, rather than having hit
 /// a momentary upstream limit.

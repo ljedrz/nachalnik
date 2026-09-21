@@ -3,7 +3,7 @@
 //! They are skipped unless a key is in the environment:
 //!
 //! ```text
-//! TYPESAFE_API_KEY=apikey_... cargo test -p nachalnik-providers --features typesafe --test typesafe -- --nocapture
+//! TYPESAFE_API_KEY=apikey_... cargo test -p nachalnik-providers --features system1 --test system1 -- --nocapture
 //! ```
 //!
 //! note: live rather than over a socket serving a recorded body, which is what the unit tests in
@@ -19,13 +19,13 @@
 //! asserted is that a distribution sums to one, that a score lands inside its own rubric, and
 //! that the three types come back as the three types.
 
-#![cfg(feature = "typesafe")]
+#![cfg(feature = "system1")]
 
 use std::env;
 
 use nachalnik_providers::{
     Endpoint,
-    typesafe::{Answer, DEFAULT_MODEL, Jev, Question},
+    system1::{Answer, DEFAULT_MODEL, Jev, Question},
 };
 
 /// Live tests take turns, so that a rate limit is never what is being measured.

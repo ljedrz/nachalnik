@@ -131,7 +131,7 @@ pub struct Setup {
     /// to have an advisor at all - and which endpoint it is - is the caller's to decide and its
     /// business to say out loud.
     #[cfg(feature = "advise")]
-    pub advisor: Option<Arc<nachalnik_providers::typesafe::Jev>>,
+    pub advisor: Option<Arc<nachalnik_providers::system1::Jev>>,
 }
 
 impl Default for Setup {

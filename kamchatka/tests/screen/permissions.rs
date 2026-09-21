@@ -1772,7 +1772,7 @@ mod rated {
 
     use kamchatka::tools::Advised;
     use nachalnik::PermissionPolicy;
-    use nachalnik_providers::typesafe::Jev;
+    use nachalnik_providers::system1::Jev;
     use ratatui::style::Modifier;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},

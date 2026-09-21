@@ -7,6 +7,26 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **The `typesafe` module and feature are `system1`.** `nachalnik_providers::typesafe::Jev` is
+  `nachalnik_providers::system1::Jev`, `features = ["typesafe"]` is `features = ["system1"]`, and
+  the live suite is `--test system1`. Nothing else moved: `Jev` keeps its name, because that is
+  the model's name, and every type, constant and method in the module is where it was.
+
+  A System One model is a category rather than a product - a claim to weigh, a closed set to pick
+  from, an ordered rubric to place something on, under those three names - and the open engines
+  arriving now have the same three. A module named for the company selling one of them was
+  naming the shop rather than the goods, and it would have had to be renamed the first time a
+  second client went in beside `Jev`.
+
+  What did **not** happen is a trait. The module holds one client, a second engine would be a
+  second struct in it, and a `SystemOne` trait with one implementor would be a seam shaped around
+  the only thing that fits it. What a third service takes today is an address:
+  `Service::of` reads anything it does not recognise as keeping TypeSafe's paths, so a proxy or a
+  self-hosted engine answering `state` and `questions` there works through `Jev` unchanged. See
+  POSTPONED.md on `laya`, which is the candidate and is a Python library with no HTTP API at all.
+
 ### fixed
 
 - **A streamed fragment naming no call could land on the wrong one, and break two.** A `tool_calls`

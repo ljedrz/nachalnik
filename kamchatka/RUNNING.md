@@ -752,12 +752,13 @@ Environment:
   KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter
 
 The advisor, which is only ever asked when --advise is given:
-  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. Without one it borrows
+  KAMCHATKA_SYSTEM1_API_KEY   its key; or TYPESAFE_API_KEY. Without one it borrows
                               KAMCHATKA_API_KEY, but only where this session already
                               talks to OpenRouter, which serves jev too
-  KAMCHATKA_TYPESAFE_BASE_URL where its questions go; the endpoint of whichever of
-                              those two keys was found
-  KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest at TypeSafe,
+  KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; the endpoint of whichever of
+                              those two keys was found, or any other service that
+                              answers the same typed questions
+  KAMCHATKA_SYSTEM1_MODEL     which model answers them; jev-latest at TypeSafe,
                               typesafe/jev-1.13 through OpenRouter
 ```
 
@@ -773,7 +774,7 @@ a model that answers typed questions rather than writing text — about every to
 rules were going to **allow**:
 
 ```console
-$ export KAMCHATKA_TYPESAFE_API_KEY=apikey_...
+$ export KAMCHATKA_SYSTEM1_API_KEY=apikey_...
 $ kamchatka --advise --allow exec:run "tidy up the build artifacts"
 ```
 
@@ -791,12 +792,12 @@ Any other session is refused and told why. A key is an OpenRouter key because it
 OpenRouter, not because of the variable it was read from — so a session pointed at ollama, at
 Google with `--gemini`, or at a gateway of your own holds a key that service issued, and spending
 it here would hand a third party a credential with no business with them. Those still need
-`KAMCHATKA_TYPESAFE_API_KEY`, exactly as before:
+`KAMCHATKA_SYSTEM1_API_KEY`, exactly as before:
 
 ```console
 $ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka --advise "…"
 error: could not reach the advisor
-caused by: --advise needs a key: set KAMCHATKA_TYPESAFE_API_KEY (or TYPESAFE_API_KEY). This
+caused by: --advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY (or TYPESAFE_API_KEY). This
 session talks to http://localhost:11434/v1, so its own key is not OpenRouter's to borrow
 ```
 
@@ -804,11 +805,18 @@ The dedicated key is checked first, so setting it is what moves the questions to
 from anywhere. What the fallback changes is who is told: the arguments below go to OpenRouter as
 well as to the model behind it.
 
-The two settings underneath follow whichever key was found, and `KAMCHATKA_TYPESAFE_BASE_URL` moves
+The two settings underneath follow whichever key was found, and `KAMCHATKA_SYSTEM1_BASE_URL` moves
 the address without moving the account — pointing it at the other service means naming that
-service's model with `KAMCHATKA_TYPESAFE_MODEL` as well. TypeSafe resolves `jev-latest` to whatever
+service's model with `KAMCHATKA_SYSTEM1_MODEL` as well. TypeSafe resolves `jev-latest` to whatever
 version is current; OpenRouter serves versions under their own names, which is why the identifier
 this program sends there names one.
+
+Those two are also the whole of what a *third* service takes. The variables say `SYSTEM1` rather
+than naming a company because the three question types are the category's — a claim to weigh, a
+closed set, an ordered rubric — and an address this program does not recognise is read as keeping
+TypeSafe's paths, which is the shape a self-hosted one has. So anything answering a `state` and a
+map of typed questions there is reachable with those two set and nothing built. A service with a
+*different* request shape is not, and is not planned; see [POSTPONED.md](../POSTPONED.md).
 
 It can only ever **tighten**. It is asked only about calls the rules already allow, its answer is
 folded in with the strictest-wins rule the rest of the permissions use, and every way of not
@@ -842,7 +850,7 @@ no ratings at all. The permissions tab says so when that is the case, rather tha
 work it out from your own build flags:
 
 ```console
-$ export KAMCHATKA_TYPESAFE_API_KEY=apikey_...
+$ export KAMCHATKA_SYSTEM1_API_KEY=apikey_...
 $ kamchatka --advise "tidy up the build artifacts"
 ```
 

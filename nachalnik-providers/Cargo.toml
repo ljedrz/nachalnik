@@ -1,7 +1,7 @@
 [package]
 name = "nachalnik-providers"
 version = "0.4.0"
-description = "Providers for the nachalnik agent runtime: the OpenAI chat-completions and Gemini dialects, streamed, retried and interruptible - and TypeSafe's jev, which answers typed questions instead of turns."
+description = "Providers for the nachalnik agent runtime: the OpenAI chat-completions and Gemini dialects, streamed, retried and interruptible - and a System One client for TypeSafe's jev, which answers typed questions instead of turns."
 documentation = "https://docs.rs/nachalnik-providers"
 readme = "README.md"
 # `web-programming::http-client` because that is the whole of what this is: somebody else's HTTP
@@ -26,10 +26,12 @@ openai = []
 # Google's own `generateContent`: `candidates[].content.parts`, whole calls, and ordered
 # `thought` parts - the dialect `nachalnik`'s `Content::Blocks` was built for.
 gemini = []
-# TypeSafe's `jev`: `POST /systemone`, typed questions put to a state and answered with
-# probabilities. The one thing in here that is not a `Dialect`, because it generates no text and
-# calls no tools - so it implements no `Provider` and nothing it returns reaches a kernel.
-typesafe = []
+# System One models - typed questions put to a state, answered with probabilities - of which
+# this speaks to TypeSafe's `jev` at `POST /systemone`. The one thing in here that is not a
+# `Dialect`, because it generates no text and calls no tools - so it implements no `Provider` and
+# nothing it returns reaches a kernel. Named for the category rather than the vendor: the three
+# question types are the category's, and a second engine would be a second struct in the module.
+system1 = []
 # The suite the two above are held to, for anyone writing a third. It stands up real sockets and
 # wants `nachalnik/test`, so it is off unless asked for - a dev-dependency's feature, not a
 # dependency's.

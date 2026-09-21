@@ -136,7 +136,7 @@ pub mod advise {
 
     use nachalnik_providers::{
         is_openrouter,
-        typesafe::{self, Jev},
+        system1::{self, Jev},
     };
 
     use super::*;
@@ -144,21 +144,28 @@ pub mod advise {
     /// Which account pays for the advice, and the key that proves it.
     ///
     /// note: a key and a service together, because the three settings have to agree and three
-    /// variables read on their own would not. A TypeSafe key sent to OpenRouter is a 401,
-    /// `jev-latest` asked of OpenRouter is a name it does not serve, and the address decides which
-    /// of the two shapes the request even has. So the choice is made once - is there a key of
-    /// TypeSafe's own - and the endpoint and the model follow from it.
+    /// variables read on their own would not. A key for the decision service sent to OpenRouter
+    /// is a 401, `jev-latest` asked of OpenRouter is a name it does not serve, and the address
+    /// decides which of the two shapes the request even has. So the choice is made once - is
+    /// there a key of the service's own - and the endpoint and the model follow from it.
+    ///
+    /// note: named for *whose key it is* rather than for which company issued it, which is what
+    /// the variables underneath were renamed for. `KAMCHATKA_SYSTEM1_BASE_URL` may point at
+    /// anything that answers a System One question, so a variant called `TypeSafe` would have
+    /// been naming the default rather than the case. What the two cases actually are is a key
+    /// held for this and a key borrowed from the conversation, and only the second one carries a
+    /// rule about where it may go.
     ///
     /// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries. A
     /// third service serving the same model is exactly the kind of thing that happened once
     /// already, and it should be a patch rather than a break.
     #[non_exhaustive]
     pub enum Account {
-        /// TypeSafe's own, under either of the documented names.
-        TypeSafe(String),
+        /// A key held for the decision service itself, under either of the documented names.
+        Dedicated(String),
         /// The key that already pays for the conversation, which pays for this too. A session that
         /// was not given a second key is not thereby a session that cannot have an advisor.
-        OpenRouter(String),
+        Borrowed(String),
     }
 
     /// Which account, and never the key.
@@ -169,12 +176,12 @@ pub mod advise {
     /// purpose is deciding where a key may go should not be the thing that spills it.
     impl fmt::Debug for Account {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            let service = match self {
-                Self::TypeSafe(_) => "TypeSafe",
-                Self::OpenRouter(_) => "OpenRouter",
+            let held = match self {
+                Self::Dedicated(_) => "Dedicated",
+                Self::Borrowed(_) => "Borrowed",
             };
 
-            write!(f, "Account::{service}(<key>)")
+            write!(f, "Account::{held}(<key>)")
         }
     }
 
@@ -182,21 +189,29 @@ pub mod advise {
         /// The key itself.
         pub fn api_key(&self) -> &str {
             match self {
-                Self::TypeSafe(key) | Self::OpenRouter(key) => key,
+                Self::Dedicated(key) | Self::Borrowed(key) => key,
             }
         }
 
         /// The endpoint to talk to; the one this account is with unless told otherwise.
         ///
-        /// note: `KAMCHATKA_TYPESAFE_BASE_URL` moves the address and does not move the account.
+        /// note: `KAMCHATKA_SYSTEM1_BASE_URL` moves the address and does not move the account.
         /// It is for a proxy in front of one of the two, and somebody pointing it at the *other*
         /// service is setting the model by hand as well - which is the same bargain the variable
         /// made before there were two.
+        ///
+        /// note: and it is the whole of what a *third* service takes, which is why the variables
+        /// are named for the kind of model rather than for the company that sells one. Anything
+        /// answering a `state` and a map of typed questions at the path
+        /// [`Jev`] posts to is reachable from here with these
+        /// two set and no code at all - an address this program does not recognise is read as
+        /// keeping TypeSafe's paths, because that is the shape a self-hosted thing has. What it
+        /// does not buy is a *different* wire format; see POSTPONED.md on `laya`.
         pub fn base_url(&self) -> String {
-            env::var("KAMCHATKA_TYPESAFE_BASE_URL").unwrap_or_else(|_| {
+            env::var("KAMCHATKA_SYSTEM1_BASE_URL").unwrap_or_else(|_| {
                 match self {
-                    Self::TypeSafe(_) => typesafe::DEFAULT_BASE_URL,
-                    Self::OpenRouter(_) => typesafe::OPENROUTER_BASE_URL,
+                    Self::Dedicated(_) => system1::DEFAULT_BASE_URL,
+                    Self::Borrowed(_) => system1::OPENROUTER_BASE_URL,
                 }
                 .to_owned()
             })
@@ -208,10 +223,10 @@ pub mod advise {
         /// version is current; OpenRouter lists the versions it serves and has no moving name
         /// among them, so what goes there names one version.
         pub fn model(&self) -> String {
-            env::var("KAMCHATKA_TYPESAFE_MODEL").unwrap_or_else(|_| {
+            env::var("KAMCHATKA_SYSTEM1_MODEL").unwrap_or_else(|_| {
                 match self {
-                    Self::TypeSafe(_) => typesafe::DEFAULT_MODEL,
-                    Self::OpenRouter(_) => typesafe::OPENROUTER_MODEL,
+                    Self::Dedicated(_) => system1::DEFAULT_MODEL,
+                    Self::Borrowed(_) => system1::OPENROUTER_MODEL,
                 }
                 .to_owned()
             })
@@ -226,7 +241,7 @@ pub mod advise {
     /// accident: the answer decides whether somebody's credential is sent to a third party.
     pub fn account(session_endpoint: &str) -> Result<Account, BoxError> {
         chosen(
-            env::var("KAMCHATKA_TYPESAFE_API_KEY")
+            env::var("KAMCHATKA_SYSTEM1_API_KEY")
                 .or_else(|_| env::var("TYPESAFE_API_KEY"))
                 .ok(),
             api_key().ok(),
@@ -246,19 +261,19 @@ pub mod advise {
         session_endpoint: &str,
     ) -> Result<Account, BoxError> {
         if let Some(key) = dedicated {
-            return Ok(Account::TypeSafe(key));
+            return Ok(Account::Dedicated(key));
         }
 
         if !is_openrouter(session_endpoint) {
             return Err(format!(
-                "--advise needs a key: set KAMCHATKA_TYPESAFE_API_KEY (or TYPESAFE_API_KEY). This \
+                "--advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY (or TYPESAFE_API_KEY). This \
                  session talks to {session_endpoint}, so its own key is not OpenRouter's to borrow"
             )
             .into());
         }
 
-        own.map(Account::OpenRouter).ok_or_else(|| {
-            "--advise needs a key: set KAMCHATKA_TYPESAFE_API_KEY (or TYPESAFE_API_KEY) for \
+        own.map(Account::Borrowed).ok_or_else(|| {
+            "--advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY (or TYPESAFE_API_KEY) for \
              TypeSafe's own API, or KAMCHATKA_API_KEY to ask the same model through OpenRouter"
                 .into()
         })
@@ -305,14 +320,14 @@ pub mod advise {
             // reaches TypeSafe at all
             for anywhere in ["https://openrouter.ai/api/v1", "http://localhost:11434/v1"] {
                 let account = chosen(dedicated(), own(), anywhere).expect("a dedicated key pays");
-                assert!(matches!(&account, Account::TypeSafe(_)), "{anywhere}");
+                assert!(matches!(&account, Account::Dedicated(_)), "{anywhere}");
                 assert_eq!(account.api_key(), "apikey_typesafe");
             }
 
             // without one, the session's own key pays where it is already being sent
             let borrowed = chosen(None, own(), "https://openrouter.ai/api/v1")
                 .expect("an OpenRouter session may spend its own key at OpenRouter");
-            assert!(matches!(&borrowed, Account::OpenRouter(_)));
+            assert!(matches!(&borrowed, Account::Borrowed(_)));
             assert_eq!(borrowed.api_key(), "sk-the-session-key");
 
             // and nowhere else. Each of these holds a key somebody other than OpenRouter issued,
@@ -327,7 +342,7 @@ pub mod advise {
                 let refused = chosen(None, own(), elsewhere)
                     .expect_err("a key that is not OpenRouter's is not spent there");
                 let said = refused.to_string();
-                assert!(said.contains("KAMCHATKA_TYPESAFE_API_KEY"), "{said}");
+                assert!(said.contains("KAMCHATKA_SYSTEM1_API_KEY"), "{said}");
                 // and it names the address it refused over, since the alternative is somebody
                 // reading "needs a key" while holding one
                 assert!(said.contains(elsewhere), "{said}");

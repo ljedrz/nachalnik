@@ -19,6 +19,23 @@ minor bump may break you.
   Both structs are `#[non_exhaustive]`, so this is a break only for a caller building one by
   hand.
 
+- **The advisor's three variables are `KAMCHATKA_SYSTEM1_*`**, where they were
+  `KAMCHATKA_TYPESAFE_*`: `KAMCHATKA_SYSTEM1_API_KEY`, `KAMCHATKA_SYSTEM1_BASE_URL` and
+  `KAMCHATKA_SYSTEM1_MODEL`. A session exporting the old names loses its advisor with the message
+  that asks for a key, rather than failing quietly.
+
+  `TYPESAFE_API_KEY`, without the prefix, is unchanged and still read - it is TypeSafe's own
+  documented variable and not this program's to rename. The three that moved are the ones this
+  program invented, and they name the kind of model rather than the company selling one: the
+  question types a System One engine answers are the category's, the open ones arriving now have
+  the same three, and `KAMCHATKA_SYSTEM1_BASE_URL` has always been able to point somewhere else.
+
+  `endpoint::advise::Account` follows, with `TypeSafe` and `OpenRouter` becoming `Dedicated` and
+  `Borrowed` - which is what the two cases were about all along. One is a key held for the
+  decision service, wherever that is pointed; the other is the conversation's own key, and it is
+  the only one carrying a rule about where it may go. That rule is unchanged, and so is the test
+  that holds it.
+
 - `tools::Rated` has a `worst` field and is `#[non_exhaustive]`, which it should have been from
   the start - it is a struct this crate answers with and nothing outside it builds. Reading it is
   unchanged; building one by hand is what stops compiling, and `protocol::Judged` grew the same

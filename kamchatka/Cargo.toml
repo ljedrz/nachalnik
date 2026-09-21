@@ -35,7 +35,7 @@ default = ["mcp", "tui"]
 # sends a tool's *arguments* to a third party - which for a write is the text being written -
 # and that is a decision somebody has to make rather than inherit from a build. See
 # `tools::advice`, which is where the whole of what leaves the machine is written down.
-advise = ["nachalnik-providers/typesafe"]
+advise = ["nachalnik-providers/system1"]
 # the same advisor, asked a different question: where a `shell` command lands on a three-level
 # rubric, drawn in the permission question in green, yellow or red so that somebody deciding
 # whether to press `y` can see at a glance what they are being asked about. A command joined at

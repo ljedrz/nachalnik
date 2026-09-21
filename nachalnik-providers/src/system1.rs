@@ -1,10 +1,25 @@
-//! TypeSafe's `jev`, a System One model: typed questions put to a state, answered with numbers.
+//! System One models: typed questions put to a state, answered with numbers. [`Jev`] is the one
+//! this crate speaks to.
 //!
 //! note: the one thing in this crate that is not a [`Dialect`](crate::Dialect). It generates no
 //! text, calls no tools and streams nothing, so there is no turn for it to drive and no
 //! [`nachalnik::Provider`] for it to implement - a kernel never sees any of this. What it answers
 //! is the question a program asks *around* a conversation: whether to run that command, which of
 //! four branches this is, how bad the thing it just read is.
+//!
+//! note: named for the kind of model rather than for the company selling one, and it holds
+//! exactly one client. What makes that a name rather than a promise is that there is no trait
+//! here and no indirection: a second engine would be a second struct beside [`Jev`], and until
+//! there is one this is a module with a client in it. The three question types are the category's
+//! and not this vendor's - `laya`, the open one, has the same three under the same names - so a
+//! module called `typesafe` was naming the shop rather than the goods.
+//!
+//! note: what a *third* service takes today is an address, and nothing else. Anything answering
+//! a `state` and a map of typed questions at the path below works through [`Jev`] with
+//! [`crate::Endpoint::set_endpoint`] and a model name, because an address
+//! this does not recognise is read as keeping TypeSafe's paths - which is the shape a self-hosted
+//! one has. What it does not reach is a different *wire format*, and that is where a second
+//! struct would start.
 //!
 //! note: three question types and they are asked together in one request. Each is evaluated on
 //! its own against the same state, which is the reason to ask them that way rather than in one
@@ -17,7 +32,7 @@
 //! key that belong together - [`Jev::latest`] and [`Jev::through_openrouter`] are the pairs.
 //!
 //! ```no_run
-//! # use nachalnik_providers::typesafe::{Jev, Question};
+//! # use nachalnik_providers::system1::{Jev, Question};
 //! # async fn go() -> Result<(), nachalnik::BoxError> {
 //! let jev = Jev::latest(std::env::var("TYPESAFE_API_KEY")?);
 //! let answers = jev

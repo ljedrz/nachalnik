@@ -40,12 +40,13 @@ pub fn environment() -> String {
     const ADVISOR: &str = "
 
 The advisor, which is only ever asked when --advise is given:
-  KAMCHATKA_TYPESAFE_API_KEY  its key; or TYPESAFE_API_KEY. Without one it borrows
+  KAMCHATKA_SYSTEM1_API_KEY   its key; or TYPESAFE_API_KEY. Without one it borrows
                               KAMCHATKA_API_KEY, but only where this session already
                               talks to OpenRouter, which serves jev too
-  KAMCHATKA_TYPESAFE_BASE_URL where its questions go; the endpoint of whichever of
-                              those two keys was found
-  KAMCHATKA_TYPESAFE_MODEL    which model answers them; jev-latest at TypeSafe,
+  KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; the endpoint of whichever of
+                              those two keys was found, or any other service that
+                              answers the same typed questions
+  KAMCHATKA_SYSTEM1_MODEL     which model answers them; jev-latest at TypeSafe,
                               typesafe/jev-1.13 through OpenRouter";
     #[cfg(not(feature = "advise"))]
     const ADVISOR: &str = "";
@@ -86,7 +87,7 @@ pub struct Args {
     /// Ask a second model about every tool call the rules were going to allow, and take the
     /// stricter of the two answers. It can refuse a call and never permit one. Sends the call's
     /// tool name, capabilities and arguments to TypeSafe, or to OpenRouter where that is whose
-    /// key paid; see KAMCHATKA_TYPESAFE_API_KEY.
+    /// key paid; see KAMCHATKA_SYSTEM1_API_KEY.
     #[cfg(all(feature = "advise", not(feature = "assisted-shell")))]
     #[arg(long)]
     pub advise: bool,

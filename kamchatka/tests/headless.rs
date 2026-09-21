@@ -1799,7 +1799,7 @@ async fn a_batch_of_answers_is_not_forgotten_before_its_calls_run() {
 async fn a_wired_session_draws_the_rating_the_kernel_asked_for() {
     use kamchatka::tools::Rating;
     use nachalnik::ContextItem;
-    use nachalnik_providers::typesafe::Jev;
+    use nachalnik_providers::system1::Jev;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,

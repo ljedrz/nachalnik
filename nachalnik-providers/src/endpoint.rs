@@ -13,7 +13,7 @@ use nachalnik::{LinearProjector, Provider, async_trait};
 /// business knowing that one exists.
 ///
 /// note: [`Provider`] is deliberately *not* a supertrait, which it was until a model arrived that
-/// answers none of the questions a turn is made of. TypeSafe's [`Jev`](crate::typesafe::Jev) has
+/// answers none of the questions a turn is made of. TypeSafe's [`Jev`](crate::system1::Jev) has
 /// an address, a key, a model identifier, a listing and a usage report - every question below -
 /// and it generates no text and calls no tools, so there is no turn for it to drive. Requiring
 /// one of everything in here would have meant either shutting it out of the crate or handing the

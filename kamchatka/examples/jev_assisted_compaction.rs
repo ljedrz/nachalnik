@@ -46,7 +46,7 @@ use nachalnik::{
     BoxError, Compactor, Config, ContextItem, ContextKind, ContextState, Kernel, ModelInfo,
     test::{ScriptedProvider, call},
 };
-use nachalnik_providers::{Endpoint, typesafe::Question};
+use nachalnik_providers::{Endpoint, system1::Question};
 use serde_json::json;
 
 /// The rubric each candidate is placed on, least worth keeping first.
@@ -261,7 +261,7 @@ fn excerpt(text: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
     // the program's own path to an advisor, so that a key this feature accepts is a key this
-    // example accepts. It reads `KAMCHATKA_TYPESAFE_API_KEY`, `TYPESAFE_API_KEY` and
+    // example accepts. It reads `KAMCHATKA_SYSTEM1_API_KEY`, `TYPESAFE_API_KEY` and
     // `KAMCHATKA_API_KEY` in that order and picks the endpoint and the model to match
     let jev = endpoint::advise::connect(&endpoint::session_endpoint(false)).await?;
     if let Some(notice) = jev.take_notice() {

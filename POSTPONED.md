@@ -170,6 +170,34 @@ Referenced from [AGENTS.md](AGENTS.md).
   until `xattr -d com.apple.quarantine`, and signing and notarising needs a paid Apple Developer
   account and two secrets in CI. A Homebrew tap avoids quarantine.
 
+- **A second System One engine, `laya` among them.** The module is
+  `nachalnik-providers::system1` and the variables are `KAMCHATKA_SYSTEM1_*` because the three
+  question types are the *category's* rather than TypeSafe's - a claim to weigh, a closed set, an
+  ordered rubric, under those names. What the module holds is still one client, `Jev`, and there
+  is deliberately no trait: a second engine would be a second struct beside it, and a trait with
+  one implementor is a seam invented for a caller that does not exist.
+
+  The obvious candidate is [`laya`](https://github.com/NandhaKishorM/laya), which is open, has the
+  same three primitives under the same names, answers in ~33ms, and benchmarks itself against
+  `jev-1.13.0` directly. **It is not a service.** It is a Python library - `pip install laya`, a
+  `Router` with a `predict(state, questions)` method - and it publishes no HTTP API at all. So
+  there is nothing to write a client against: the request shape a client would post does not
+  exist yet, and inventing one here would be guessing at somebody else's interface and then
+  shipping the guess.
+
+  What is already there for it, and is the whole of what a third service takes today: an address.
+  `Service::of` reads anything it does not recognise as keeping TypeSafe's paths, because that is
+  the shape a self-hosted one has - so a shim in front of `laya` that answers `state` and
+  `questions` at `/systemone` works through `Jev` with `KAMCHATKA_SYSTEM1_BASE_URL` and
+  `KAMCHATKA_SYSTEM1_MODEL` set and no Rust written at all. Anybody wanting this before the
+  upstream has a wire format should write that shim rather than a client.
+
+  What would unblock a real one is `laya` publishing an HTTP interface, or somebody deciding to
+  standardise the body this workspace already sends. Only then is there a second struct worth
+  having, and only then is a trait a description of two things rather than a prediction about
+  one. The thing to resist meanwhile is a `SystemOne` trait shaped around `Jev`, which would
+  make the second engine's job fitting somebody else's client rather than being one.
+
 - **Naming this program to OpenRouter when the *advisor* is what is calling it.** `Jev` sends no
   app headers, so a session that borrows its own key for `--advise` is attributed for the
   conversation and anonymous for the advice, out of the same account on the same service. The

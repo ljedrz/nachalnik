@@ -152,7 +152,7 @@ can never permit one: an advisor that is unreachable, out of quota or unparseabl
 verdict exactly where the rules left it. It is off by default and behind a flag as well as a
 feature because it is the one thing in this program that sends a tool's *arguments* to a third
 party — for a write, that is the text being written — and that is a decision to make rather than
-inherit. `KAMCHATKA_TYPESAFE_API_KEY` is its key; a session whose requests already go to OpenRouter
+inherit. `KAMCHATKA_SYSTEM1_API_KEY` is its key; a session whose requests already go to OpenRouter
 can borrow the one paying for the conversation instead, since `jev` is served there too. Any other
 session still needs the dedicated key — a key belongs to the endpoint that issued it, and one
 pointed at ollama or at Google is not OpenRouter's to spend.
