@@ -1289,6 +1289,37 @@ impl App {
         }
     }
 
+    /// How many earlier versions of an item are still there to read.
+    ///
+    /// note: the current content is not one of them, so an item nobody has rewritten answers `0`
+    /// and an item rewritten once answers `1` - which is `v1`, with what it says now as `v2`.
+    ///
+    /// note: an undo is why this is not `Vec::len`. Putting an old content back makes the newest
+    /// remembered version the current one as well, and two identical faces side by side say the
+    /// same thing twice - so the last is dropped when it matches. The terminal's strip of faces
+    /// drew that rule and this is where it lives now, because a client counting versions for a
+    /// button and a terminal counting them for a page have to reach the same number.
+    pub fn versions(&self, id: ContextId) -> usize {
+        let history = self.versions.get(&id).map(Vec::as_slice).unwrap_or(&[]);
+        let same = self
+            .kernel
+            .item(id)
+            .is_some_and(|now| history.last() == Some(&now.content));
+
+        history.len() - usize::from(same)
+    }
+
+    /// What one of them said, counting from `1` as the oldest.
+    ///
+    /// note: `None` for `0`, for anything past [`App::versions`], and for an item that has none -
+    /// which is one answer for "there is no such version" rather than three ways of saying it.
+    /// The number is the one on the face: `v1` is `at = 1`.
+    pub fn version(&self, id: ContextId, at: usize) -> Option<Content> {
+        (at >= 1 && at <= self.versions(id))
+            .then(|| self.versions.get(&id)?.get(at - 1).cloned())
+            .flatten()
+    }
+
     /// Adds what a response cost to the session's total, and stops the session if that was the
     /// last of what it was given.
     ///

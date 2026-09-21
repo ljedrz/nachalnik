@@ -761,8 +761,29 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
                 }),
             }
         }
-        // answered by the connection, which never sends it here
-        Command::Inspect { .. } => None,
+        // note: only a question about an *earlier* version reaches here. What an item says now
+        // is answered by the connection off the kernel, without troubling this loop at all - so
+        // `None` here is that one, already answered. The viewer is what keeps the earlier
+        // versions, and the viewer is this side of the channel
+        Command::Inspect { id, raw, version } => version.map(|at| match app.version(id, at) {
+            // note: the text, and no `stored` reading of it. What `stored` puts above an item is
+            // why it is here and what its turn was thinking, which are facts about the item as
+            // it stands rather than about what it used to say - printed over an old version they
+            // would be dated wrongly, and confidently
+            Some(was) => Message::Item {
+                id,
+                body: was.to_text().into_owned(),
+                raw,
+                version,
+            },
+            None => Message::Failed {
+                about: "inspect".to_owned(),
+                error: match app.versions(id) {
+                    0 => format!("item {id} has not been rewritten, so it has no version {at}"),
+                    kept => format!("item {id} has {kept} earlier version(s), not {at}"),
+                },
+            },
+        }),
         // note: answered rather than left to close the connection, because a client that sent
         // something is owed one answer whether or not this end knows what it was - see
         // `Message::Done`. What reaches here is a client newer than this session
@@ -830,7 +851,10 @@ fn project(app: &App) -> Attached {
         // what has been pruned when somebody has asked it to. Which rows to show is a decision
         // belonging to whoever is reading, and a projection that had already made it would be one
         // client's view of the context standing in for the context
-        items: items.iter().map(|item| Listed::of(item, &going)).collect(),
+        items: items
+            .iter()
+            .map(|item| Listed::of(item, &going, app.versions(item.id)))
+            .collect(),
         asking,
         trace: tracing(app),
         policy: app.policy_name(),
@@ -952,7 +976,16 @@ where
                 }
                 // answered here rather than by the session loop: it needs a `Kernel` and nothing
                 // else, and the session has better things to be doing
-                Some(Command::Inspect { id, raw }) => {
+                //
+                // note: what an item says *now*, which is the kernel's. An earlier version is not
+                // - the viewer keeps those, and the viewer is the `App` - so a question about one
+                // falls through to the branch below and is answered where they are. Reading them
+                // here would mean the session holding what it has already given away
+                Some(Command::Inspect {
+                    id,
+                    raw,
+                    version: None,
+                }) => {
                     let message = match kernel.items().iter().find(|item| item.id == id) {
                         // the item's own text where a client is about to put it in front of
                         // somebody to edit, and the reading of it where somebody is going to read
@@ -965,6 +998,7 @@ where
                                 false => text::stored(item),
                             },
                             raw,
+                            version: None,
                         },
                         None => Message::Failed {
                             about: "inspect".to_owned(),

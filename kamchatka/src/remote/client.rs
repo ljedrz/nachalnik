@@ -641,6 +641,7 @@ impl<'a> Client<'a> {
                     Command::Inspect {
                         id: ContextId(id),
                         raw: false,
+                        version: None,
                     },
                 )
                 .await;

@@ -898,6 +898,7 @@ async fn inspect_answers_with_the_whole_of_an_item() {
     peer.send(Command::Inspect {
         id: attached.items[0].id,
         raw: false,
+        version: None,
     })
     .await;
     // note: `until` rather than the next message, because the session's own voice is on this
@@ -914,6 +915,7 @@ async fn inspect_answers_with_the_whole_of_an_item() {
     peer.send(Command::Inspect {
         id: ContextId(9_999),
         raw: false,
+        version: None,
     })
     .await;
     let heard = peer
@@ -3333,7 +3335,12 @@ async fn the_reading_of_an_item_is_not_the_text_an_edit_is_made_of() {
     let (mut peer, attached) = Peer::attached(&session.at).await;
     let id = attached.items[0].id;
 
-    peer.send(Command::Inspect { id, raw: false }).await;
+    peer.send(Command::Inspect {
+        id,
+        raw: false,
+        version: None,
+    })
+    .await;
     let heard = peer
         .until(|message| matches!(message, Message::Item { .. }))
         .await;
@@ -3346,7 +3353,12 @@ async fn the_reading_of_an_item_is_not_the_text_an_edit_is_made_of() {
         "{body}"
     );
 
-    peer.send(Command::Inspect { id, raw: true }).await;
+    peer.send(Command::Inspect {
+        id,
+        raw: true,
+        version: None,
+    })
+    .await;
     let heard = peer
         .until(|message| matches!(message, Message::Item { raw: true, .. }))
         .await;
@@ -3380,4 +3392,142 @@ async fn the_reading_of_an_item_is_not_the_text_an_edit_is_made_of() {
         app.kernel.item(id).expect("still there").content.to_text(),
         "the text and nothing else"
     );
+}
+
+/// An item that has been rewritten says how many versions of it there are, and hands them back.
+///
+/// note: the count is what a client draws a control from, so it has to mean the same thing as the
+/// terminal's strip of faces - `v1` is the oldest kept, and what the item says now is one past
+/// the last and has no number of its own, because editing moves it.
+#[tokio::test]
+async fn an_item_rewritten_twice_can_be_read_back_at_either_version() {
+    let session = served(vec![], |app| {
+        app.kernel
+            .push(nachalnik::ContextItem::user("the first thing"));
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let id = attached.items[0].id;
+    assert_eq!(
+        attached.items[0].versions, 0,
+        "nothing has rewritten it yet"
+    );
+
+    for text in ["the second thing", "the third thing"] {
+        peer.send(Command::Revise {
+            id,
+            text: text.to_owned(),
+        })
+        .await;
+        peer.until(|message| matches!(message, Message::Projected(..)))
+            .await;
+    }
+
+    peer.send(Command::Project).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    let Some(Message::Projected(now)) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(
+        now.items[0].versions, 2,
+        "two rewrites, two earlier versions"
+    );
+
+    // each of them, by the number the row counts to
+    for (at, expected) in [(1, "the first thing"), (2, "the second thing")] {
+        peer.send(Command::Inspect {
+            id,
+            raw: true,
+            version: Some(at),
+        })
+        .await;
+        let heard = peer
+            .until(|message| {
+                matches!(
+                    message,
+                    Message::Item {
+                        version: Some(_),
+                        ..
+                    }
+                )
+            })
+            .await;
+        let Some(Message::Item { body, version, .. }) = heard.last() else {
+            unreachable!("just matched")
+        };
+        assert_eq!(*version, Some(at));
+        assert_eq!(body, expected);
+    }
+
+    // and what it says now, which is the one with no number
+    peer.send(Command::Inspect {
+        id,
+        raw: true,
+        version: None,
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Item { version: None, .. }))
+        .await;
+    let Some(Message::Item { body, .. }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(body, "the third thing");
+
+    // note: and an undo is why the count is not simply how many are kept. Putting an old content
+    // back makes the newest remembered version the current one as well, and a client offering
+    // both would be offering the same words twice under two labels
+    assert!(session.kernel.undo(), "there was something to undo");
+    peer.until_record("context.undone").await;
+    peer.send(Command::Project).await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Projected(..)))
+        .await;
+    let Some(Message::Projected(undone)) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(
+        undone.items[0].versions, 1,
+        "the version an undo restored is the current one, and is not also an earlier one"
+    );
+
+    // so the one it stopped counting is refused, even though it is still kept
+    peer.send(Command::Inspect {
+        id,
+        raw: true,
+        version: Some(2),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Failed { .. }))
+        .await;
+    let Some(Message::Failed { error, .. }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert!(error.contains("1 earlier version"), "{error}");
+
+    // a version that was never there is refused rather than answered with the nearest one
+    peer.send(Command::Inspect {
+        id,
+        raw: true,
+        version: Some(9),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Failed { .. }))
+        .await;
+    let Some(Message::Failed { about, error }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(about, "inspect");
+    assert!(error.contains("1 earlier version"), "{error}");
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
 }

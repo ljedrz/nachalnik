@@ -10,12 +10,14 @@ minor bump may break you.
 ### breaking
 
 - `protocol::Command` has a `Revise` variant, and `Command::Inspect` and `Message::Item` each
-  carry a `raw` flag. None of the three is a break on the wire - `Command::Unknown` is what an
-  older session reads the variant as, and both flags default when the field is absent - and all
-  three are a break for anything in Rust matching on the enums, which are not `#[non_exhaustive]`.
+  carry a `raw` flag and a `version`. None of them is a break on the wire - `Command::Unknown` is
+  what an older session reads the variant as, and every new field defaults when it is absent -
+  and all of them are a break for anything in Rust matching on the enums, which are not
+  `#[non_exhaustive]`.
 
-- `protocol::Attached` has a `rated` field and `protocol::Listed` a `beyond` field. Both are
-  `#[non_exhaustive]`, so this is a break only for a caller building one by hand.
+- `protocol::Attached` has a `rated` field, and `protocol::Listed` a `beyond` and a `versions`.
+  Both structs are `#[non_exhaustive]`, so this is a break only for a caller building one by
+  hand.
 
 ### added
 
@@ -36,6 +38,13 @@ minor bump may break you.
   state and its place in the conversation, and what it said before becomes a version page. The
   row is still what expands and collapses it - a tap on the text is somebody reaching for the
   keyboard, not somebody closing the row.
+
+  An item that has been rewritten carries a second control, left of the state one, saying which
+  of its versions the box is showing - `v3/3` for what it says now. Tapping cycles back through
+  what it used to say, which is the same history the terminal reads with `enter` and the same
+  numbering: `v1` is the oldest still kept. An older version is read-only, because putting one
+  back is a *restore* and somebody looking at what a message used to say has not asked for it to
+  say that again.
 
   The three shapes no edit can reach - a picture, a turn recorded in blocks, and a turn that is
   nothing but a call - say so on the row rather than only when an edit is refused, which is

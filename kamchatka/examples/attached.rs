@@ -185,6 +185,7 @@ async fn main() -> Result<(), String> {
             &Command::Inspect {
                 id: item,
                 raw: false,
+                version: None,
             },
         )
         .await?;

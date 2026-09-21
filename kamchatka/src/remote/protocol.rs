@@ -205,6 +205,14 @@ pub enum Command {
         /// tool result is fetched - and a client wants one of these per row, never both.
         #[serde(default)]
         raw: bool,
+        /// Which version to answer with: `None` for what the item says now, or `1` for the oldest
+        /// one still kept, counting up to [`Listed::versions`].
+        ///
+        /// note: the numbering the terminal's own strip of faces uses, so `v1` means the same
+        /// thing on a screen and on a phone. What the item says *now* has no number here because
+        /// it has no fixed one: it is one past the last, and that moves every time somebody edits.
+        #[serde(default)]
+        version: Option<usize>,
     },
     /// Something this build has no name for.
     ///
@@ -379,6 +387,9 @@ pub enum Message {
         /// apart and the only one that survives two inspects crossing.
         #[serde(default)]
         raw: bool,
+        /// Which version this is, echoed from [`Command::Inspect`]; `None` is what it says now.
+        #[serde(default)]
+        version: Option<usize>,
     },
     /// How many fragments went past while this client was not keeping up.
     ///
@@ -662,6 +673,13 @@ pub struct Listed {
     pub left_out: Option<String>,
     /// What the model reads in its place, where it is in the request as a marker.
     pub marker: Option<String>,
+    /// How many earlier versions of it are still there to read.
+    ///
+    /// note: `0` for everything nobody has rewritten, which is nearly every row - so a client
+    /// draws the way back through an item's history only where there is one. What it says now is
+    /// not counted, because it has no fixed number: it is one past the last, and editing moves
+    /// it. The cap is the viewer's, and the oldest goes first when it is reached.
+    pub versions: usize,
     /// Why this one cannot be rewritten, where it cannot be.
     ///
     /// note: on the row rather than found out by trying, so that a client can say so before
@@ -674,7 +692,7 @@ pub struct Listed {
 
 impl Listed {
     /// Reads one row off an item and the projection it is about to take part in.
-    pub(super) fn of(item: &ContextItem, going: &Going) -> Self {
+    pub(super) fn of(item: &ContextItem, going: &Going, versions: usize) -> Self {
         Self {
             id: item.id,
             kind: item.kind.name().to_owned(),
@@ -691,6 +709,7 @@ impl Listed {
                 .flatten(),
             left_out: going.left_out.get(&item.id).cloned(),
             marker: going.marker.get(&item.id).cloned(),
+            versions,
             beyond: crate::app::text::beyond_a_prompt(item).map(str::to_owned),
         }
     }

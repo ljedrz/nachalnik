@@ -133,6 +133,15 @@
   .state.active { border-color: var(--user); color: var(--user); }
   .state.elided { border-color: var(--call); color: var(--call); }
   .state.excluded { border-color: var(--bad); color: var(--bad); }
+  /* the same shape as the state button beside it, and quieter: the state is a control somebody
+     reaches for and this is a label that happens to be one */
+  .versions {
+    font: inherit; font-size: 12px; padding: 2px 8px; min-height: 0; border-radius: 4px;
+    white-space: nowrap; flex: none; color: var(--dim);
+  }
+  /* anything but the current text, which is worth saying in the one colour the page keeps for
+     "this is not what the next request sends" */
+  .versions.past { border-color: var(--call); color: var(--call); }
   .figures { font-size: 12px; color: var(--dim); margin-top: 2px; }
   .why { font-size: 12px; color: var(--note); margin-top: 2px; font-style: italic; }
   /* note: a `textarea` rather than a `div`, which is the whole of making an item editable. The box
@@ -520,11 +529,52 @@ function draw() {
       // an item - the content with why it is here, what the turn was thinking and the calls it
       // carries above it - and committing that back would write `it is here because: …` into the
       // item it describes. See `Command::Inspect`
+      //
+      // note: which version the box is holding travels on the box, because two inspects can be
+      // in flight at once - a thumb on the version button is faster than a round trip - and an
+      // answer for `v1` filling a box that has moved on to `v2` would be the wrong words under
+      // the right label. `data-at` is the question and the answer echoes it
+      const total = item.versions + 1;
+      let at = total;
       const fill = () => {
+        const wire = at === total ? null : at;
         body.value = "…";
         body.dataset.body = item.id;
-        send({ do: "inspect", id: item.id, raw: true });
+        body.dataset.at = wire === null ? "" : String(wire);
+        // an old version is read-only. Committing one would be a *restore* - a perfectly
+        // reasonable thing to want, and not this button: somebody cycling to see what a message
+        // used to say has not asked for it to say that again
+        body.readOnly = !!item.beyond || at !== total;
+        send({ do: "inspect", id: item.id, raw: true, version: wire });
       };
+
+      // note: the way back through what an item used to say, and only on the items that have
+      // one. `versions` counts the earlier ones, so what it says now is one past the last -
+      // which is where this starts, because the current text is what somebody opening a row
+      // means. Left of the state button: the state is what the row *is* and this is what it
+      // *was*, so they read in the order the sentence has them
+      if (item.versions) {
+        const versions = document.createElement("button");
+        versions.type = "button";
+        versions.title = `${item.versions} earlier version(s); the last is what it says now`;
+        const relabel = () => {
+          versions.className = `versions${at === total ? "" : " past"}`;
+          versions.textContent = `v${at}/${total}`;
+        };
+        relabel();
+        versions.onclick = (e) => {
+          // the row toggles its body and this is inside the row, the same as the state button
+          e.stopPropagation();
+          at = (at % total) + 1;
+          relabel();
+          // cycling is a thing to *read*, so it opens the row rather than leaving somebody to
+          // open it themselves to find out what they just asked for
+          el.classList.add("open");
+          opened.add(item.id);
+          fill();
+        };
+        el.querySelector(".head").insertBefore(versions, state);
+      }
       // a row the reader had open is drawn open, and asked about again. Every projection rebuilds
       // this panel - an edit produces one itself - so a row that did not survive the rebuild was a
       // row that closed the moment it was saved, over the text it had just been given
@@ -852,8 +902,14 @@ function heard(m) {
       // sends nothing, and a box still holding `…` is one that cannot be committed at all
       if (m.raw) {
         for (const el of document.querySelectorAll(`[data-body="${m.id}"]`)) {
+          // the box that asked this question, which is not every box showing this item: a
+          // version answer belongs to the box that is on that version
+          if (String(el.dataset.at ?? "") !== String(m.version ?? "")) continue;
           el.value = m.body;
-          el.dataset.was = m.body;
+          // and a baseline only for the version an edit can be made of. An old one is read-only,
+          // so letting go of it has nothing to compare against and nothing to send
+          if (m.version === null || m.version === undefined) el.dataset.was = m.body;
+          else delete el.dataset.was;
         }
       }
       break;

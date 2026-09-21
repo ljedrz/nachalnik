@@ -390,9 +390,10 @@ impl App {
             .get(&item.id)
             .map(Vec::as_slice)
             .unwrap_or(&[]);
-        // an undo puts an old content back, and the version it restored is then the current one
-        // too; two identical pages side by side would be saying nothing twice
-        let keep = history.len() - usize::from(history.last() == Some(&item.content));
+        // note: asked rather than worked out again. An undo puts an old content back and the
+        // version it restored is then the current one too, so the last is dropped - and a browser
+        // drawing a button that counts these has to reach the same number as the strip up here
+        let keep = self.versions(item.id);
         for (n, was) in history.iter().enumerate().take(keep).rev() {
             pages.push(Page {
                 name: format!("v{}", n + 1),
