@@ -65,6 +65,13 @@ minor bump may break you.
   protocol is therefore not a new one: it is the body `Jev::render` builds, one JSON object per
   line, read back by the same `Answers` the HTTP path uses.
 
+  Both of the child's streams are held rather than inherited, which matters most on a first run:
+  `laya` downloads a checkpoint and says so at length, and a child sharing the terminal writes
+  over the screen `ratatui` is drawing. Piping it is not enough on its own - a pipe nobody reads
+  fills and blocks the writer, so the engine would stop answering while writing its own
+  diagnostics - so stderr is drained for the life of the child and the last twenty lines are
+  kept, hung on the end of whatever failure they explain.
+
   The process is started once and kept. A 421M-parameter checkpoint costs seconds to load and
   milliseconds to run, so loading one per question would put that wait in front of somebody
   deciding whether to press `y` - which is the one thing this kind of model was chosen for not

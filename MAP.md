@@ -89,7 +89,9 @@ milliseconds. It is here rather than in `nachalnik-providers` because that crate
 does not spawn processes, which is the line `nachalnik-mcp` is on the other side of; and it exists
 because `laya` ships no interface to point a base URL at, so `contrib/laya_advisor.py` is the
 script `SYSTEM1_ADVISOR_COMMAND` names. Every failure closes the pipe, because the next read off a
-doubtful stream is the answer to the question before it), `main.rs` (arguments, and the loop that draws). It is
+doubtful stream is the answer to the question before it - and both of the child's streams are
+held rather than inherited, because a child sharing the terminal writes over the frame, while a
+pipe nobody reads fills and blocks the child writing to it), `main.rs` (arguments, and the loop that draws). It is
 a library plus a binary so the screen can be drawn against a `TestBackend` in tests, and because
 the screen is not the program.
 

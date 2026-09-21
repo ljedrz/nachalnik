@@ -42,8 +42,9 @@ def main() -> int:
         return 1
 
     router = Router(preload=True)
-    # note: to stderr, which kamchatka inherits rather than pipes, so this lands on the terminal
-    # the session was started from. It is the only sign the checkpoint has finished loading
+    # note: to stderr, which kamchatka holds rather than inheriting - it would otherwise be
+    # written over the screen. Kept all the same: it is the last line before the first question,
+    # so it is what a failure to load shows up underneath
     print("laya: ready", file=sys.stderr, flush=True)
 
     for line in sys.stdin:

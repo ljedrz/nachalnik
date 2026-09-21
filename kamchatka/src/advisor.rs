@@ -14,6 +14,20 @@
 //! `--advise` still says what it says, because what a flag turns on should not depend on an
 //! environment variable - but the thing it is careful about is not happening.
 //!
+//! note: **the child's output is this program's to hold, not the terminal's.** Both streams are
+//! piped: stdout because it is the answers, and stderr because a session with a screen is a
+//! session whose terminal is being drawn on. An engine that inherits it writes over the frame -
+//! a checkpoint downloading says so at length, and `laya` pulls one on first use - and what
+//! lands is a session nobody can read. Inheriting it was the first thing tried here and is
+//! exactly that bug.
+//!
+//! note: piped is not enough on its own, which is the other half and the reason inheriting
+//! looked attractive. A pipe nobody reads fills and the child blocks writing to it, so the
+//! advisor stops answering and nothing says why. So stderr is *drained* - a task reads it for
+//! the life of the child - and the last few lines are kept. They are attached to whatever
+//! failure they explain rather than printed, because the moment a traceback is worth reading is
+//! the moment a question comes back with nothing in it.
+//!
 //! note: one long-lived process rather than one per question, which is the only shape that
 //! works. `laya` loads a 421M-parameter checkpoint, and `Router(preload=True)` exists because
 //! that is the cost you pay once. Paying it per permission question would put seconds in front
@@ -27,7 +41,7 @@
 //! is a loop around `predict`, and the two engines cannot drift into two request shapes. What a
 //! local engine does with `model` is its own business; `laya`'s router picks a checkpoint.
 
-use std::{process::Stdio, sync::Arc, time::Duration};
+use std::{collections::VecDeque, process::Stdio, sync::Arc, time::Duration};
 
 use nachalnik::BoxError;
 use nachalnik_providers::system1::{Answers, Question, SystemOne};
@@ -46,6 +60,20 @@ use tokio::{
 /// answered in half a minute has hung rather than thought. What a timeout costs here is the
 /// second opinion on one call - see the failure note on [`Local::ask`].
 const PATIENCE: Duration = Duration::from_secs(30);
+
+/// How many lines of whatever the engine says about itself are kept.
+///
+/// note: a ring rather than everything, because the first thing a local engine does is download
+/// a checkpoint and say so, at length. What these are for is explaining one failure, and the
+/// lines that explain one are the last ones.
+const REMEMBERED: usize = 20;
+
+/// And how much of one line, in bytes.
+///
+/// note: a progress bar redraws itself with a carriage return and no newline, so a downloader's
+/// whole output can arrive as one line megabytes long. Reading it by lines is right and keeping
+/// all of one is not.
+const LINE: usize = 200;
 
 /// What the child is told this is, since a local engine has no model to name.
 ///
@@ -70,6 +98,43 @@ pub struct Local {
     pipe: Mutex<Option<Pipe>>,
     /// Whatever it last wanted to say for itself.
     notice: Sync<Option<String>>,
+    /// The last few lines the engine wrote to its own stderr, drained as they arrive.
+    said: Arc<Sync<VecDeque<String>>>,
+}
+
+/// Reads the child's stderr for as long as it has one, keeping the last [`REMEMBERED`] lines.
+///
+/// note: a task rather than a read at the point of failure, because the reason to read it at all
+/// is that an unread pipe fills and blocks the writer. What would block is the engine, on its own
+/// diagnostics, and the symptom would be an advisor that stopped answering for a reason nothing
+/// could report.
+///
+/// note: it ends when the child closes the stream, which is when the child ends, so there is
+/// nothing to cancel. [`Local`] kills the child on drop and this sees the close.
+fn drain(errors: tokio::process::ChildStderr, said: Arc<Sync<VecDeque<String>>>) {
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(errors).lines();
+        while let Ok(Some(mut line)) = lines.next_line().await {
+            if line.trim().is_empty() {
+                continue;
+            }
+            if line.len() > LINE {
+                // on a character boundary, since this is somebody else's output
+                let mut room = LINE;
+                while room > 0 && !line.is_char_boundary(room) {
+                    room -= 1;
+                }
+                line.truncate(room);
+                line.push('…');
+            }
+
+            let mut said = said.lock();
+            if said.len() == REMEMBERED {
+                said.pop_front();
+            }
+            said.push_back(line);
+        }
+    });
 }
 
 /// The half of a running child this talks through.
@@ -105,17 +170,21 @@ impl Local {
             .args(words)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            // note: inherited rather than piped, so whatever the engine says about itself - a
-            // checkpoint downloading, a warning, a traceback - reaches the terminal it was
-            // started from. Piped and unread it would fill a buffer and wedge the child, which
-            // is a hang with no explanation anywhere
-            .stderr(Stdio::inherit())
+            // note: piped and drained below, never inherited. A session with a screen is one
+            // whose terminal is being drawn on, and a child writing to the same terminal writes
+            // over the frame - which a checkpoint downloading does at length
+            .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
             .map_err(|e| format!("could not start the advisor `{program}`: {e}"))?;
 
         let writes = child.stdin.take().ok_or("the advisor has no stdin")?;
         let reads = BufReader::new(child.stdout.take().ok_or("the advisor has no stdout")?);
+
+        let said = Arc::new(Sync::new(VecDeque::new()));
+        if let Some(errors) = child.stderr.take() {
+            drain(errors, said.clone());
+        }
 
         Ok(Self {
             command: command.to_owned(),
@@ -125,7 +194,24 @@ impl Local {
                 reads,
             })),
             notice: Sync::new(None),
+            said,
         })
+    }
+
+    /// The last few lines the engine wrote about itself, as one, or nothing where it wrote none.
+    ///
+    /// note: for hanging on the end of a failure rather than for printing. A local engine that
+    /// answered nothing has usually said why on its stderr, and that sentence is the difference
+    /// between "the advisor stopped answering" and a traceback naming the line.
+    fn complaint(&self) -> String {
+        let said = self.said.lock();
+        match said.is_empty() {
+            true => String::new(),
+            false => format!(
+                "; it last said: {}",
+                said.iter().cloned().collect::<Vec<_>>().join(" / ")
+            ),
+        }
     }
 
     /// What was run, which is what the setup tab and the status line name.
@@ -162,16 +248,19 @@ impl Local {
             Ok(Ok(answer)) => Ok(answer),
             Ok(Err(e)) => {
                 *held = None;
-                *self.notice.lock() = Some(format!("the advisor failed and was closed: {e}"));
-                Err(e)
+                let said = format!("the advisor failed and was closed: {e}{}", self.complaint());
+                *self.notice.lock() = Some(said.clone());
+                Err(said.into())
             }
             Err(_) => {
                 *held = None;
-                *self.notice.lock() = Some(format!(
-                    "the advisor did not answer in {}s and was closed",
-                    PATIENCE.as_secs()
-                ));
-                Err("the advisor timed out".into())
+                let said = format!(
+                    "the advisor did not answer in {}s and was closed{}",
+                    PATIENCE.as_secs(),
+                    self.complaint()
+                );
+                *self.notice.lock() = Some(said.clone());
+                Err(said.into())
             }
         }
     }
@@ -323,6 +412,71 @@ for line in sys.stdin:
             .expect("the same child answered twice");
         assert_eq!(again.noul("verdict"), Some(0.75));
         assert!(local.notice().is_none(), "nothing went wrong");
+
+        let _ = std::fs::remove_file(&at);
+    }
+
+    /// Whatever the engine says about itself is captured, not printed.
+    ///
+    /// note: the bug this is here for, which a screen makes obvious and a test does not: stderr
+    /// inherited puts the child's output on the terminal `ratatui` is drawing, so a checkpoint
+    /// downloading writes over the session. What the test can check is the other side of the
+    /// same fact - the lines went somewhere this program can produce them from - and a line
+    /// that reached the ring is a line that did not reach the frame.
+    ///
+    /// note: it also pins that stderr being read at all does not depend on a failure. The pipe
+    /// is drained for the life of the child, because an unread one fills and blocks the engine
+    /// writing to it - which would be an advisor that stopped answering with nothing saying why.
+    #[tokio::test]
+    async fn what_the_engine_says_about_itself_is_captured_rather_than_printed() {
+        let shim = "\
+import sys
+print('laya: fetching a checkpoint', file=sys.stderr, flush=True)
+print('x' * 4000, file=sys.stderr, flush=True)
+for line in sys.stdin:
+    print('{\"model\": \"stub\", \"answers\": {}}', flush=True)
+";
+        let at = std::env::temp_dir().join(format!("kamchatka-noisy-{}.py", std::process::id()));
+        if std::fs::write(&at, shim).is_err() {
+            return;
+        }
+        let Ok(local) = Local::new(&format!("python3 {}", at.display())) else {
+            let _ = std::fs::remove_file(&at);
+            return;
+        };
+
+        local
+            .ask(
+                json!({ "cmd": "ls" }),
+                vec![("q".to_owned(), Question::noul("is it?"))],
+            )
+            .await
+            .expect("it answered");
+
+        // the child wrote before it answered, but the task reading it is its own, so this waits
+        // for the line rather than assuming a scheduling order
+        let mut complaint = String::new();
+        for _ in 0..40 {
+            complaint = local.complaint();
+            if complaint.contains("fetching a checkpoint") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+
+        assert!(
+            complaint.contains("fetching a checkpoint"),
+            "the engine's own output should be held here: {complaint}"
+        );
+        // and a line long enough to be a progress bar redrawing itself is cut rather than kept
+        assert!(
+            !complaint.contains(&"x".repeat(LINE + 1)),
+            "a very long line is kept at {LINE} bytes"
+        );
+        assert!(
+            complaint.contains('…'),
+            "and the cut is marked: {complaint}"
+        );
 
         let _ = std::fs::remove_file(&at);
     }

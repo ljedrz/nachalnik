@@ -837,8 +837,14 @@ under the same names.
 
 The process is started once and kept, because a 421M-parameter checkpoint costs seconds to load
 and milliseconds to run — loading it per question would put that wait in front of you every time
-you were asked to press `y`. It is killed when the session ends. Whatever it prints to stderr
-reaches your terminal, which is where `laya: ready` comes from and where a traceback would.
+you were asked to press `y`. It is killed when the session ends.
+
+**Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
+matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child
+sharing your terminal would be writing over the screen ratatui is drawing. The last twenty lines
+of whatever it says about itself are kept instead, and hung on the end of whatever failure they
+explain — so a traceback shows up in the permission panel that went unanswered, where it is
+worth reading, rather than scrolling past at startup.
 
 If it fails — the command is not there, it stops answering, a line does not parse, a question
 takes longer than 30s — the pipe is closed and every later question says the advisor is gone,
