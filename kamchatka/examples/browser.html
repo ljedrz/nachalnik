@@ -1,6 +1,18 @@
 <!doctype html>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--
+  `interactive-widget=resizes-content` is the half of the keyboard problem a browser can solve on
+  its own: it asks for the on-screen keyboard to shrink the *layout* viewport as well as the
+  visual one, which is what makes `100dvh` and ordinary flow put a footer above the keyboard
+  rather than under it. The default is `resizes-visual`, where only the visual viewport moves and
+  every viewport unit keeps answering "the whole phone".
+
+  Chrome 108+ and Firefox 132+ honour it. Safari ignores it, and iOS Safari resizes neither the
+  layout viewport nor `dvh` when the keyboard opens, so the script at the bottom is not redundant
+  with this - it is the other half, and it is the half iOS needs.
+-->
+<meta name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>kamchatka</title>
 
 <!--
@@ -62,6 +74,13 @@
     margin: 0; background: var(--bg); color: var(--fg);
     font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     height: var(--tall, 100dvh); display: flex; flex-direction: column;
+    /* note: the *other* thing a keyboard does, and the one a height alone does not answer. A
+       visual viewport can be moved down the page as well as made shorter - iOS scrolls one to
+       bring the focused box into view - and `--lift` is how far. Without it the page is the right
+       height and in the wrong place, which on a phone is the footer back under the keyboard.
+       `position: relative` rather than a transform, which would make this the containing block
+       for anything fixed later on */
+    position: relative; top: var(--lift, 0px);
     /* the page is exactly the viewport and scrolls inside itself, so there is nothing out here for
        a browser to scroll when it decides to bring a focused box into view */
     overflow: hidden;
@@ -988,6 +1007,16 @@ if (window.visualViewport) {
     // away the moment they tap the box
     const pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 4;
     document.documentElement.style.setProperty("--tall", `${Math.round(visible())}px`);
+    // note: where the visible part *starts*, which is the half a height cannot say. A keyboard
+    // shortens the visual viewport on Android and on iOS also slides it down the layout viewport,
+    // and `window.scrollTo` below does not move that: it is an offset within the layout viewport
+    // rather than a scroll of it. Left out, the page ends up exactly the right height and that
+    // many pixels too high, with the prompt under the keyboard again - which is the whole
+    // symptom this is about
+    document.documentElement.style.setProperty(
+      "--lift",
+      `${Math.round(window.visualViewport.offsetTop)}px`,
+    );
     // note: and the page is put back to the top. A browser bringing a focused box into view scrolls
     // the *layout* viewport, which is the one that did not change - so the header goes off the top
     // and everything below it is that much further down, under the keyboard again. The page is
@@ -1001,6 +1030,15 @@ if (window.visualViewport) {
   // getting shorter and the viewport being moved up the page, and a phone does whichever it likes
   window.visualViewport.addEventListener("resize", fit);
   window.visualViewport.addEventListener("scroll", fit);
+  // note: and again after a box takes the focus, because a keyboard *animates* in. The first
+  // resize a browser reports is measured part of the way through it, so a page that trusted it
+  // sized itself to a keyboard half the height of the one that arrived - which is the prompt
+  // ending up under it by the difference. Three re-measures over half a second cost nothing and
+  // catch whichever frame the animation settles on; `fit` only ever writes two numbers, so
+  // running it again when nothing moved changes nothing
+  document.addEventListener("focusin", () => {
+    for (const after of [150, 350, 600]) setTimeout(fit, after);
+  });
   fit();
 }
 </script>

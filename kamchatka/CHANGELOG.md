@@ -387,6 +387,24 @@ minor bump may break you.
 
 ### fixed
 
+- **The on-screen keyboard stops landing on top of the prompt.** Two things were missing, one on
+  each side of the problem. `interactive-widget=resizes-content` in the viewport meta asks the
+  browser to shrink the *layout* viewport as well as the visual one, which is what makes ordinary
+  flow put a footer above the keyboard rather than under it; the default, `resizes-visual`, leaves
+  every viewport unit answering "the whole phone". Chrome 108+ and Firefox 132+ honour it, and
+  Safari ignores it - iOS resizes neither the layout viewport nor `dvh`, which is why the script
+  is still there.
+
+  The script was reading only how *tall* the visual viewport is, and a keyboard also slides it
+  down the layout viewport. `--lift` is how far, and without it the page came out the right
+  height in the wrong place: measured on a 390×844 phone with a 336px keyboard and a 120px
+  offset, the prompt sat at 508 with the visible part ending at 628, so the header was cut off
+  the top and there was a strip of nothing under the prompt. It sits at 628 now.
+
+  A keyboard also *animates*, and the first size a browser reports is measured part of the way
+  through it - which is the prompt ending up under the keyboard by the difference. The fit is
+  re-taken three times over half a second after a box takes the focus.
+
 - **The advisor's rating reaches a browser, where it used to stop inside the process.** A build
   with `assisted-shell` in it, started with `--advise`, served a page exactly what a build without
   it served: the advisor ran, tightened the verdicts it was there to tighten, and the green,
