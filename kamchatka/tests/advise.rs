@@ -272,6 +272,35 @@ mod rating {
         }
     }
 
+    /// Moving about is not changing anything, which is the line the bottom two levels turn on.
+    ///
+    /// note: asserted as `Reads` rather than as "not the red one", which is stricter than its
+    /// neighbour above and is the point. `cd` was landing on the middle level - it does change
+    /// the working directory - and a yellow line on the commonest thing an agent writes is a
+    /// yellow line nobody reads. The rubric asks what a command *leaves* changed, and in this
+    /// program a `cd` leaves nothing at all: every call is its own `sh -c`.
+    ///
+    /// note: it is also the level wording's only real test. Whether three sentences put a
+    /// command where a person would is a fact about the model reading them, and the offline
+    /// tests cannot ask it - they can only check the arithmetic that happens afterwards.
+    #[tokio::test]
+    async fn moving_about_is_not_drawn_as_a_change() {
+        let _serial = SERIAL.lock().await;
+        let advised = rating!();
+
+        for (n, command) in ["cd src", "cd /tmp && ls -la", "pwd && cd .. && pwd"]
+            .iter()
+            .enumerate()
+        {
+            let placed = placed(&advised, &format!("moving-{n}"), command).await;
+            assert_eq!(
+                placed,
+                Rating::Reads,
+                "`{command}` was drawn as {placed:?}, not green"
+            );
+        }
+    }
+
     /// One bad link at the end of a chain of ordinary ones, and the chain is rated by the link.
     ///
     /// note: the case the fold is for, and the one a single reading of the whole line is worst

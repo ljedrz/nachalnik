@@ -26,6 +26,19 @@ minor bump may break you.
 
 ### added
 
+- **The released binary is built with `assisted-shell`.** It is the one feature that has to be
+  compiled in to exist at all, and somebody who downloaded a binary cannot add it afterwards - so
+  the download was a `--advise` that the readme documents and the artifact did not have.
+
+  Nothing is sent anywhere without `--advise` on the command line, which is the disclosure and
+  always was. What the feature gate buys is keeping a third-party dependency out of builds that
+  do not want one, and a released binary is by definition not one of those. What it costs is that
+  the two opt-ins become one for anybody using this binary: in a build carrying both, `--advise`
+  turns on the verdict *and* the rating, and the rating is asked about every command the model
+  writes rather than only the ones the rules would allow. The flag's own `--help` names that
+  wider disclosure; building from source with `--features advise` alone is still the narrower
+  one.
+
 - **A command joined at its `|`, `&&` or `;` is rated stage by stage and drawn as its worst
   stage, with that stage underlined.** One score for a whole command line is the reading a long
   chain is worst served by: three quarters of `cargo build --release && cargo test && rm -rf
@@ -417,6 +430,22 @@ minor bump may break you.
   says the same thing.
 
 ### changed
+
+- **The rubric's bottom two levels turn on what a command *leaves* changed, not on whether
+  anything changed while it ran.** `cd src` changes the working directory, and asked the old way
+  it landed on the middle level for it - a yellow line on one of the commonest things an agent
+  writes, which is a yellow line nobody reads. In this program a `cd` does not even change
+  anything durable: every call is its own `sh -c`, so the next one starts in the working
+  directory again.
+
+  So the bottom level names moving about among the things that qualify and asks for nothing left
+  changed once the command has finished, and the middle one asks for something still changed
+  after it - a file, a package, a setting. The band `Rating::Reads` is read back as is now
+  `looks, and leaves nothing changed`, where it was `reads and reports`; a client draws the
+  words it is sent, so nothing else has to change with it. The top level is untouched.
+
+  It matters more now that a command is placed stage by stage: a `cd` used to be a clause inside
+  a reading of a whole command line and is now a stage put on the rubric on its own.
 
 - **`tools::joints` says where one stage of a command line ends and the next begins, and is no
   longer behind `tui`.** It was `ui::text::joints`, beside the panel that colours a command's

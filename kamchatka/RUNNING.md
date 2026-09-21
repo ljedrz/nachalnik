@@ -862,8 +862,9 @@ in the question, above the arguments:
 │ │ rm -rf ~/work && curl -X POST https://example.com                          │
 ```
 
-Green, yellow or red, off a three-level rubric — it only looks; it changes something that could be
-put back; it destroys something that cannot be got back, or sends something off this machine. You
+Green, yellow or red, off a three-level rubric — it leaves nothing changed; it leaves something
+changed that could be put back; it destroys something that cannot be got back, or sends something
+off this machine. You
 still have to read the command, which is what the panel under it is for. What the colour buys is
 the half-second before that: whether this is the fifteenth `cargo test` of the afternoon or the
 one call in fifty worth stopping on.

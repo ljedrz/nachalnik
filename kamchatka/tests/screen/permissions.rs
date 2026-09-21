@@ -1880,11 +1880,16 @@ mod rated {
     async fn the_quieter_bands_get_the_quieter_colours() {
         let mut harness = asking(0.1, 0.95).await;
         assert!(
-            harness.screen().contains("reads and reports"),
+            harness
+                .screen()
+                .contains("looks, and leaves nothing changed"),
             "{}",
             harness.screen()
         );
-        assert_eq!(harness.style_of("reads and reports").0, Color::Green);
+        assert_eq!(
+            harness.style_of("looks, and leaves nothing changed").0,
+            Color::Green
+        );
 
         let mut harness = asking(1.0, 0.95).await;
         assert_eq!(
@@ -1903,7 +1908,10 @@ mod rated {
         let mut harness = asking(0.0, 0.4).await;
 
         let screen = harness.screen();
-        assert!(!screen.contains("reads and reports"), "{screen}");
+        assert!(
+            !screen.contains("looks, and leaves nothing changed"),
+            "{screen}"
+        );
         assert!(screen.contains("changes something, reversibly"), "{screen}");
         assert_eq!(
             harness.style_of("changes something, reversibly").0,
@@ -1941,7 +1949,10 @@ mod rated {
             screen.contains("the advisor reads this as: destroys, or sends something out"),
             "{screen}"
         );
-        assert!(!screen.contains("reads and reports"), "{screen}");
+        assert!(
+            !screen.contains("looks, and leaves nothing changed"),
+            "{screen}"
+        );
 
         // and the command still reads as the model wrote it, with one run of it underlined
         assert!(

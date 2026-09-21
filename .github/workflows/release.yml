@@ -85,6 +85,23 @@ jobs:
           build-tool: cargo
           locked: true
           checksum: sha256
+          # on top of the defaults, and it is the one feature that has to be *built* in to be
+          # available at all: somebody who downloaded a binary cannot add it later. A build
+          # without it is a `--advise` that does not exist, which is a flag the readme documents
+          # and the download does not have.
+          #
+          # note: what this ships is the *ability*, and nothing is sent anywhere without
+          # `--advise` on the command line. That flag is the disclosure and always was; the
+          # feature gate is what keeps a third-party dependency out of builds that do not want
+          # one, and a released binary is by definition not one of those.
+          #
+          # note: it does collapse the two opt-ins into one for anybody using this binary.
+          # `assisted-shell` is a second feature because it widens what leaves the machine - the
+          # verdict goes only for calls the rules would allow, the rating for every command the
+          # model writes - and in a build carrying both, `--advise` turns on both. What still
+          # says so is the flag's own `--help`, which names the wider disclosure in as many
+          # words. See `tools::advice`.
+          features: assisted-shell
           # the one file that is worth more beside the binary than it is on a web page. Every
           # setting the program has, named and at its default, for somebody who wants to stop
           # typing the same four arguments: `kamchatka --config-file kamchatka.json` and edit it.

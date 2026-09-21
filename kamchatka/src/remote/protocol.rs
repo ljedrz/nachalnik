@@ -600,9 +600,9 @@ impl Judged {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Band {
-    /// It looks and reports; nothing changes and nothing goes out.
+    /// It looks, or moves about; nothing is left changed and nothing goes out.
     Reads,
-    /// It changes something on this machine, and what it changes could be put back.
+    /// It leaves something on this machine changed, and what it changed could be put back.
     Changes,
     /// It destroys something that cannot be got back, or sends something off this machine.
     Grave,

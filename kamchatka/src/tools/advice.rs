@@ -111,11 +111,11 @@ const STAGES: usize = 8;
 
 /// Where a command lands on that rubric: what a colour in the question means.
 ///
-/// note: three, and ordered, because the question a colour answers is coarse - does this only
-/// look, does it change something that could be put back, or is it the kind of thing there is no
-/// undo for. A fourth band would be a distinction nobody makes at a glance, which is the only
-/// moment this is read; and the three map onto the green, yellow and red a terminal has had since
-/// before anyone had to be told what they meant.
+/// note: three, and ordered, because the question a colour answers is coarse - does this leave
+/// nothing behind, does it leave something that could be put back, or is it the kind of thing
+/// there is no undo for. A fourth band would be a distinction nobody makes at a glance, which is
+/// the only moment this is read; and the three map onto the green, yellow and red a terminal has
+/// had since before anyone had to be told what they meant.
 ///
 /// note: here rather than where it is drawn, for the reason [`Exit`](crate::tools::Exit) is: the
 /// band is worked out from an answer this module owns, and a colour worked out at the other end
@@ -127,9 +127,9 @@ const STAGES: usize = 8;
 #[cfg(feature = "assisted-shell")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Rating {
-    /// It looks and reports; nothing here changes and nothing goes out.
+    /// It looks, or moves about; nothing is left changed and nothing goes out.
     Reads,
-    /// It changes something on this machine, and what it changes could be put back.
+    /// It leaves something on this machine changed, and what it changed could be put back.
     Changes,
     /// It destroys something that cannot be got back, or sends something off this machine.
     Grave,
@@ -142,10 +142,24 @@ pub enum Rating {
 /// being asked to place a command and not to agree with a label. A rubric whose levels are
 /// adjectives is answered from how the command feels; one whose levels are outcomes is answered
 /// from what the command says.
+///
+/// note: the line between the first two levels is what a command **leaves behind**, and not
+/// whether anything changed while it ran. `cd src` changes the working directory, and asked the
+/// second way it lands on the middle level - which made a yellow line mean nothing, since moving
+/// about is among the commonest things an agent writes. In this program it does not even change
+/// anything durable: every call is its own `sh -c`, so the next one starts in the working
+/// directory again. So the bottom level names moving about among the things that qualify, and
+/// the middle one asks for something *still* changed once the command has finished.
+///
+/// note: which matters more since a command is placed stage by stage than it did when one was
+/// placed whole. A `cd` used to be a clause inside a reading of a longer command line and is now
+/// a stage put on the rubric on its own, so a level that misplaces it misplaces it visibly.
 #[cfg(feature = "assisted-shell")]
 const LEVELS: [&str; 3] = [
-    "it only looks: it reads, lists, searches or reports, and changes nothing anywhere",
-    "it changes something on this machine, and what it changes could be put back",
+    "it only looks, or moves about: it reads, lists, searches, reports or changes directory, and \
+     leaves nothing on this machine changed once it has finished",
+    "it leaves something on this machine changed once it has finished - a file, a package, a \
+     setting - and what it changed could be put back",
     "it destroys something that cannot be got back, or sends something off this machine",
 ];
 
@@ -154,7 +168,7 @@ impl Rating {
     /// What the band is called in the question.
     pub fn said(self) -> &'static str {
         match self {
-            Self::Reads => "reads and reports",
+            Self::Reads => "looks, and leaves nothing changed",
             Self::Changes => "changes something, reversibly",
             Self::Grave => "destroys, or sends something out",
         }

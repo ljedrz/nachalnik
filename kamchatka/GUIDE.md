@@ -599,8 +599,9 @@ above the arguments and inside the part that does not scroll:
 │ the advisor reads this as: destroys, or sends something out · 93% sure│
 ```
 
-Green, yellow or red, off a three-level rubric — it only looks; it changes something that could be
-put back; it destroys something that cannot be got back or sends something off this machine. It
+Green, yellow or red, off a three-level rubric — it leaves nothing changed; it leaves something
+changed that could be put back; it destroys something that cannot be got back or sends something
+off this machine. It
 decides nothing: the verdict is the same one the rules would have given, and an advisor that is
 down costs the line and nothing else. A rating nobody was sure of is never drawn green, which is
 why the percentage is on the line — a yellow you cannot explain is a yellow the advisor could not
