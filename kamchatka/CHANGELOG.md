@@ -38,6 +38,17 @@ minor bump may break you.
   unchanged; building one by hand is what stops compiling, and `protocol::Judged` grew the same
   field under the same rule.
 
+- `protocol::Message` has an `Oversized` variant, and `protocol::write` is split into `framed` and
+  `write_frame` - which is what lets a caller ask how long a message is before sending it. Adding
+  the variant is not a break on the wire, because `Message::Unknown` is what an older client reads
+  it as and reads as nothing; it is a break for anything in Rust matching on the enum, which is not
+  `#[non_exhaustive]`.
+
+- `endpoint::connect` and `endpoint::gemini::connect` take `Option<&str>` rather than anything that
+  becomes a `String`, because a session may now have no model. `None` builds the client and skips
+  the probe, since there is nothing to ask a context limit about; an embedder that always names one
+  wraps the argument in `Some`.
+
 ### added
 
 - **`/restart` writes the session out and puts a fresh one in its place**, which is what quitting
@@ -575,6 +586,166 @@ minor bump may break you.
   loopback unless it says otherwise, and `--serve` or `--connect` on that command line is refused
   rather than ignored.
 
+- **A session started without `-m` picks no model, and says so.** There used to be a default -
+  `openai/gpt-4o-mini`, or `gemini-3.6-flash` with `--gemini` - so a first run talked to whatever
+  this program's author had picked, at the person's expense and with nothing saying the choice was
+  not theirs. Now the session starts all the same, with the address and the key settled, and the
+  kernel is handed no provider at all until `/model` picks one.
+
+  That state is the runtime's own, rather than a flag this program keeps: `model_info()` answers
+  `None`, so a turn is `Error::NoProvider` and cannot become a request naming nothing. What the
+  program adds is the three places a person reads it - a line at startup, a placeholder where the
+  name goes in the corner rather than one chunk fewer, and a refusal from `App::start_turn` naming
+  the command that ends it, which is where every way of starting a turn goes through. A message
+  typed before a model is picked stays in the context and is asked of the model picked afterwards.
+
+- **`attach` says which session it is resuming, and which version of the wire it speaks.** Two
+  fields, both on the one message, and both are here before anybody needs them because neither can
+  be added once two ends are deployed - `RUNNING.md` recommends reaching a session with `ssh -L`
+  from another machine, which is exactly where two installed versions meet.
+
+  `session` is what keeps a watermark out of the wrong session. A session restarted at the same
+  address has a log of its own, and a number from the one before it is either too large - refused
+  already - or perfectly plausible, at which point a client drew one session's records under
+  another session's conversation with nothing anywhere saying so. The refusal is named `attach`
+  rather than reported as the connection's, because it is the one failure a client can do something
+  about: `--connect` puts down what it was holding and comes back with no watermark, where before
+  it sent the same impossible resume every time it reconnected and gave up after a minute on a
+  session that was there. `examples/gateway.rs` remembers the name off the first projection, so the
+  browser keeps its resume with no client code at all.
+
+  `version` is refused when the session does not know it and served when it is older and known, so
+  a mismatch is a sentence rather than a parse error and sixty seconds of retries. A client that
+  does not say is version 1, which is what everything written against this wire before the field
+  existed speaks. The refusal is named `version` rather than `attach`, because attaching afresh
+  cannot mend it. `Attached` carries the number back the other way for the same "before anybody
+  needs it" reason: a client learns what the session speaks from the first thing it is handed,
+  rather than by being refused to find out. Serving an older client is the half that is not
+  machinery yet and is in `POSTPONED.md`, since nothing can exercise it while the number is 1.
+
+- **`Command` and `Message` each have a variant for what this build has no name for, and the rule
+  is ignore what you do not know.** Without it, one new message on a session's side turned every
+  older client into a parse error, a closed connection, sixty seconds of retries and an exit - for
+  a session that was working perfectly. A client reads the unknown one, prints nothing, and carries
+  on with the records, which are what carry what happened. An unknown *command* is answered with a
+  `failed` rather than by closing the connection, because a client that sent something is owed
+  exactly one answer whether or not this end knows what it was.
+
+  `examples/gateway.rs` reads the wire as JSON and passes it on rather than parsing each message
+  into this build's own enum and writing it out again, which would turn everything a later session
+  said into `unknown` on the way past. What a relay has to understand is the tag and one number.
+
+  The wire types - `Attached`, `Line`, `Listed`, `Stanced`, `Tracing`, `Printed` - are
+  `#[non_exhaustive]`. The convention is that it goes on every struct this workspace answers with
+  and nothing outside it builds, and these are the ones where it pays: a field is what they grow.
+
+- **`--connect` silently ignored every other argument.** `kamchatka --connect unix:/x -m "a
+  question"` connected and dropped the message on the floor, and `--headless --connect` took the
+  flag and ignored it. A client assembles nothing - the model, the key, the tools, the sandbox and
+  the context all belong to whoever is serving - so anything else on that command line is a thing
+  that will not happen, and it is named rather than counted. Read off the matches rather than
+  declared as `conflicts_with_all`, because the list would be every argument this program has and
+  two of them are behind features.
+
+- **A refused socket file did not say which kind it was.** `Drop` is the only thing that takes one
+  away, so a session that was killed leaves a path every later `--serve` refuses for ever - and the
+  refusal read the same as the one for a socket a session is using right now. They want opposite
+  things done about them, so it connects and says which it found: attach to that one, remove this
+  one.
+
+- **A line the gateway would not take vanished off the page.** `examples/browser.html` threw the
+  `fetch` response away, so a `409`, a `502` and a dead network all looked like a command that
+  worked - and the typed line was already drawn, with the box already emptied. It says what the
+  gateway answered, takes the drawn line back, and puts the words back in the box, which is what
+  somebody wants after a line that did not send.
+
+- **A browser reconnecting under the same tab id had its stream removed by the old one.**
+  `examples/gateway.rs` dropped its tab from the map when its relay ended, without looking at
+  whether the entry was still that relay's. A half-open TCP - the case the keepalive exists for -
+  meant the new stream's entry went instead, and `POST /do` answered `409 no such tab` to every
+  line typed until the browser reconnected again.
+
+- **The first line of a request had no cap on it.** `MAX_HEAD` was checked against the header lines
+  below it, after each had arrived, so a peer that sent a request line and no newline was read into
+  memory for ever - the shape `MAX_LINE` had in the protocol, in an example.
+
+- **`examples/attached.rs` never flushed a fragment**, so the streaming it exists to demonstrate
+  arrived a line at a time, which is what not streaming looks like. The suites take the binary's
+  path from `CARGO_BIN_EXE_kamchatka`, which cargo sets for exactly this and which knows about
+  extensions and profiles.
+
+- **`MAX_LINE` was checked after the frame had been read, against the one case it names.** Its own
+  doc says what it defends against is a peer that never sends a newline, which would otherwise be
+  read into memory for ever - and that was the case it could not catch, because
+  `Lines::next_line` grows its buffer until a newline arrives and the check ran on what came back.
+  `protocol::Frames` holds the part-read frame itself and stops as soon as there is too much of it.
+  It is cancel-safe for the same reason `Lines` is, which both loops that read commands need: the
+  part-read frame lives in the reader rather than in the future.
+
+  **The reading side owes the limit and the writing side does not**, which is now said where the
+  constant is. Nothing caps what a session writes, so one `context.replaced` over 32 MB is written
+  by the session, refused by every client, and met again on every resume - which locks everybody
+  out for the rest of the session. That is in `POSTPONED.md` with what would close it, along with
+  arbitration between clients, and a client command that awaits the endpoint holding the whole
+  session loop.
+
+- **<kbd>ctrl+c</kbd> was subscribed to once per turn round each loop, and deaf between them.**
+  `tokio::signal::ctrl_c()` is an `async fn`, so naming it in a `select!` builds a new subscription
+  every iteration and drops it with the future - and its own documentation says the future
+  completes on the first press *after* the initial poll. A signal delivered between one iteration
+  finishing and the next poll is not late, it is gone: the handler sets a flag, the driver
+  broadcasts to whoever is listening, and a receiver made afterwards starts from the present. What
+  makes it worth closing rather than noting is that all three loops read a *second* press as "leave
+  now", and the press that lands in the window is the second one, arriving while the first is still
+  being handled. `stopping::Stopping` subscribes once and all three hold one.
+
+- **A hidden turn read as one hidden thing per line it used to have.** `App::conversation` put the
+  marker on every line an elided item produced, so a turn that was a thought, a sentence and two
+  calls became four identical markers. The pane dims the block, so the repeats read as one there
+  and the substitution was a faithful port of what it did - but a client drawing rows has nothing
+  to draw them as but four rows, and the marker stands for the item. It is one line now, in the
+  item's own place and the item's own voice: a turn that opened with a thought put its `reasoning`
+  line first, so taking that line's speaker drew the marker for the whole turn as a hidden
+  *thought*, where what went was a thought, a sentence and two calls.
+
+- **A headless run that was never asked to take <kbd>ctrl+c</kbd> took it away from whoever was.**
+  Subscribing once rather than once per turn round the loop closed the window a press could fall
+  into, and moved the subscription out of the `select!` branch that was gated on
+  `Headless::stops_on_ctrl_c` - so it happened whether or not anybody had asked. A subscription is
+  what installs the process-wide handler, and it installs it for the life of the process: the
+  handler went in, the branch never polled it, and SIGINT reached nothing at all. `cargo run
+  --example recorded` and the suites were ctrl+c-proof. The other half was worse for an embedder,
+  because the driver that subscription needs comes with the io driver: a host on
+  `new_current_thread().enable_time()` could drive `Headless` and now panicked in it, over a flag it
+  had opted out of. The subscription follows the flag again, and a run without one waits on a future
+  that is never ready - which is what the deadline branch beside it already does.
+
+- **The gateway capped its request line and not the header lines under it.** `examples/gateway.rs`
+  read the first line through a `take` and went back to a bare `read_line` ten lines down, so a peer
+  that sent a well-formed request line and then a header with no end to it was read into memory for
+  ever - the same bug, in the same function, and the note above the fix said it was finished. Every
+  line of the head is read through what is left of `MAX_HEAD` now, and the question after each read
+  is the same one: whether a newline arrived, or the allowance ran out.
+
+- **A refused version was retried until the client gave up, and then blamed the silence.**
+  `--connect` treats a refused attach as something to start afresh from, which is right for the
+  watermark it was written for and wrong for a version: the next attempt says the same thing and is
+  refused for the same reason, so the client spent a minute on it and exited with `the session has
+  not answered for 60s` - which is the one thing that had not happened. It answered immediately,
+  with a sentence saying which end was older. The refusal is named `version` rather than `attach`,
+  and the client leaves on it with the session's own words.
+
+- **A message this build had no name for did not count as an answer.** `Message::Unknown` is the
+  rule "ignore what you do not know", and a client that ignored it entirely was one whose count of
+  answers owed never came back down - so the first time a newer session answered a command with a
+  variant this build lacks, stdin closing stopped detaching and the session going quiet stopped
+  ending it, for the rest of that connection. That is the exact hole the forward-compatibility work
+  was for, with the new escape hatch around it. An unknown message is counted as an answer now, on
+  the grounds that a client owed one and handed something it cannot read has, as far as it can tell,
+  been answered: `Unknown` carries no payload, so there is nothing else to go on. It is a decision
+  about which way to be wrong, and the cost is a client that leaves a beat early on a message it
+  could not have printed.
+
 ### fixed
 
 - **The two advisor tests that read the engine's stderr wait for the lines they assert on.**
@@ -1011,181 +1182,6 @@ minor bump may break you.
   On a re-attach it is swapped exactly when a fresh projection is handed over: a resume is answered
   with no projection, and the subscription it already has is holding lines nothing else would bring
   back.
-
-### breaking
-
-- `protocol::Message` has an `Oversized` variant, and `protocol::write` is split into `framed` and
-  `write_frame` - which is what lets a caller ask how long a message is before sending it. Adding
-  the variant is not a break on the wire, because `Message::Unknown` is what an older client reads
-  it as and reads as nothing; it is a break for anything in Rust matching on the enum, which is not
-  `#[non_exhaustive]`.
-
-- `endpoint::connect` and `endpoint::gemini::connect` take `Option<&str>` rather than anything that
-  becomes a `String`, because a session may now have no model. `None` builds the client and skips
-  the probe, since there is nothing to ask a context limit about; an embedder that always names one
-  wraps the argument in `Some`.
-
-### changed
-
-- **A session started without `-m` picks no model, and says so.** There used to be a default -
-  `openai/gpt-4o-mini`, or `gemini-3.6-flash` with `--gemini` - so a first run talked to whatever
-  this program's author had picked, at the person's expense and with nothing saying the choice was
-  not theirs. Now the session starts all the same, with the address and the key settled, and the
-  kernel is handed no provider at all until `/model` picks one.
-
-  That state is the runtime's own, rather than a flag this program keeps: `model_info()` answers
-  `None`, so a turn is `Error::NoProvider` and cannot become a request naming nothing. What the
-  program adds is the three places a person reads it - a line at startup, a placeholder where the
-  name goes in the corner rather than one chunk fewer, and a refusal from `App::start_turn` naming
-  the command that ends it, which is where every way of starting a turn goes through. A message
-  typed before a model is picked stays in the context and is asked of the model picked afterwards.
-
-- **`attach` says which session it is resuming, and which version of the wire it speaks.** Two
-  fields, both on the one message, and both are here before anybody needs them because neither can
-  be added once two ends are deployed - `RUNNING.md` recommends reaching a session with `ssh -L`
-  from another machine, which is exactly where two installed versions meet.
-
-  `session` is what keeps a watermark out of the wrong session. A session restarted at the same
-  address has a log of its own, and a number from the one before it is either too large - refused
-  already - or perfectly plausible, at which point a client drew one session's records under
-  another session's conversation with nothing anywhere saying so. The refusal is named `attach`
-  rather than reported as the connection's, because it is the one failure a client can do something
-  about: `--connect` puts down what it was holding and comes back with no watermark, where before
-  it sent the same impossible resume every time it reconnected and gave up after a minute on a
-  session that was there. `examples/gateway.rs` remembers the name off the first projection, so the
-  browser keeps its resume with no client code at all.
-
-  `version` is refused when the session does not know it and served when it is older and known, so
-  a mismatch is a sentence rather than a parse error and sixty seconds of retries. A client that
-  does not say is version 1, which is what everything written against this wire before the field
-  existed speaks. The refusal is named `version` rather than `attach`, because attaching afresh
-  cannot mend it. `Attached` carries the number back the other way for the same "before anybody
-  needs it" reason: a client learns what the session speaks from the first thing it is handed,
-  rather than by being refused to find out. Serving an older client is the half that is not
-  machinery yet and is in `POSTPONED.md`, since nothing can exercise it while the number is 1.
-
-- **`Command` and `Message` each have a variant for what this build has no name for, and the rule
-  is ignore what you do not know.** Without it, one new message on a session's side turned every
-  older client into a parse error, a closed connection, sixty seconds of retries and an exit - for
-  a session that was working perfectly. A client reads the unknown one, prints nothing, and carries
-  on with the records, which are what carry what happened. An unknown *command* is answered with a
-  `failed` rather than by closing the connection, because a client that sent something is owed
-  exactly one answer whether or not this end knows what it was.
-
-  `examples/gateway.rs` reads the wire as JSON and passes it on rather than parsing each message
-  into this build's own enum and writing it out again, which would turn everything a later session
-  said into `unknown` on the way past. What a relay has to understand is the tag and one number.
-
-  The wire types - `Attached`, `Line`, `Listed`, `Stanced`, `Tracing`, `Printed` - are
-  `#[non_exhaustive]`. The convention is that it goes on every struct this workspace answers with
-  and nothing outside it builds, and these are the ones where it pays: a field is what they grow.
-
-- **`--connect` silently ignored every other argument.** `kamchatka --connect unix:/x -m "a
-  question"` connected and dropped the message on the floor, and `--headless --connect` took the
-  flag and ignored it. A client assembles nothing - the model, the key, the tools, the sandbox and
-  the context all belong to whoever is serving - so anything else on that command line is a thing
-  that will not happen, and it is named rather than counted. Read off the matches rather than
-  declared as `conflicts_with_all`, because the list would be every argument this program has and
-  two of them are behind features.
-
-- **A refused socket file did not say which kind it was.** `Drop` is the only thing that takes one
-  away, so a session that was killed leaves a path every later `--serve` refuses for ever - and the
-  refusal read the same as the one for a socket a session is using right now. They want opposite
-  things done about them, so it connects and says which it found: attach to that one, remove this
-  one.
-
-- **A line the gateway would not take vanished off the page.** `examples/browser.html` threw the
-  `fetch` response away, so a `409`, a `502` and a dead network all looked like a command that
-  worked - and the typed line was already drawn, with the box already emptied. It says what the
-  gateway answered, takes the drawn line back, and puts the words back in the box, which is what
-  somebody wants after a line that did not send.
-
-- **A browser reconnecting under the same tab id had its stream removed by the old one.**
-  `examples/gateway.rs` dropped its tab from the map when its relay ended, without looking at
-  whether the entry was still that relay's. A half-open TCP - the case the keepalive exists for -
-  meant the new stream's entry went instead, and `POST /do` answered `409 no such tab` to every
-  line typed until the browser reconnected again.
-
-- **The first line of a request had no cap on it.** `MAX_HEAD` was checked against the header lines
-  below it, after each had arrived, so a peer that sent a request line and no newline was read into
-  memory for ever - the shape `MAX_LINE` had in the protocol, in an example.
-
-- **`examples/attached.rs` never flushed a fragment**, so the streaming it exists to demonstrate
-  arrived a line at a time, which is what not streaming looks like. The suites take the binary's
-  path from `CARGO_BIN_EXE_kamchatka`, which cargo sets for exactly this and which knows about
-  extensions and profiles.
-
-- **`MAX_LINE` was checked after the frame had been read, against the one case it names.** Its own
-  doc says what it defends against is a peer that never sends a newline, which would otherwise be
-  read into memory for ever - and that was the case it could not catch, because
-  `Lines::next_line` grows its buffer until a newline arrives and the check ran on what came back.
-  `protocol::Frames` holds the part-read frame itself and stops as soon as there is too much of it.
-  It is cancel-safe for the same reason `Lines` is, which both loops that read commands need: the
-  part-read frame lives in the reader rather than in the future.
-
-  **The reading side owes the limit and the writing side does not**, which is now said where the
-  constant is. Nothing caps what a session writes, so one `context.replaced` over 32 MB is written
-  by the session, refused by every client, and met again on every resume - which locks everybody
-  out for the rest of the session. That is in `POSTPONED.md` with what would close it, along with
-  arbitration between clients, and a client command that awaits the endpoint holding the whole
-  session loop.
-
-- **<kbd>ctrl+c</kbd> was subscribed to once per turn round each loop, and deaf between them.**
-  `tokio::signal::ctrl_c()` is an `async fn`, so naming it in a `select!` builds a new subscription
-  every iteration and drops it with the future - and its own documentation says the future
-  completes on the first press *after* the initial poll. A signal delivered between one iteration
-  finishing and the next poll is not late, it is gone: the handler sets a flag, the driver
-  broadcasts to whoever is listening, and a receiver made afterwards starts from the present. What
-  makes it worth closing rather than noting is that all three loops read a *second* press as "leave
-  now", and the press that lands in the window is the second one, arriving while the first is still
-  being handled. `stopping::Stopping` subscribes once and all three hold one.
-
-- **A hidden turn read as one hidden thing per line it used to have.** `App::conversation` put the
-  marker on every line an elided item produced, so a turn that was a thought, a sentence and two
-  calls became four identical markers. The pane dims the block, so the repeats read as one there
-  and the substitution was a faithful port of what it did - but a client drawing rows has nothing
-  to draw them as but four rows, and the marker stands for the item. It is one line now, in the
-  item's own place and the item's own voice: a turn that opened with a thought put its `reasoning`
-  line first, so taking that line's speaker drew the marker for the whole turn as a hidden
-  *thought*, where what went was a thought, a sentence and two calls.
-
-- **A headless run that was never asked to take <kbd>ctrl+c</kbd> took it away from whoever was.**
-  Subscribing once rather than once per turn round the loop closed the window a press could fall
-  into, and moved the subscription out of the `select!` branch that was gated on
-  `Headless::stops_on_ctrl_c` - so it happened whether or not anybody had asked. A subscription is
-  what installs the process-wide handler, and it installs it for the life of the process: the
-  handler went in, the branch never polled it, and SIGINT reached nothing at all. `cargo run
-  --example recorded` and the suites were ctrl+c-proof. The other half was worse for an embedder,
-  because the driver that subscription needs comes with the io driver: a host on
-  `new_current_thread().enable_time()` could drive `Headless` and now panicked in it, over a flag it
-  had opted out of. The subscription follows the flag again, and a run without one waits on a future
-  that is never ready - which is what the deadline branch beside it already does.
-
-- **The gateway capped its request line and not the header lines under it.** `examples/gateway.rs`
-  read the first line through a `take` and went back to a bare `read_line` ten lines down, so a peer
-  that sent a well-formed request line and then a header with no end to it was read into memory for
-  ever - the same bug, in the same function, and the note above the fix said it was finished. Every
-  line of the head is read through what is left of `MAX_HEAD` now, and the question after each read
-  is the same one: whether a newline arrived, or the allowance ran out.
-
-- **A refused version was retried until the client gave up, and then blamed the silence.**
-  `--connect` treats a refused attach as something to start afresh from, which is right for the
-  watermark it was written for and wrong for a version: the next attempt says the same thing and is
-  refused for the same reason, so the client spent a minute on it and exited with `the session has
-  not answered for 60s` - which is the one thing that had not happened. It answered immediately,
-  with a sentence saying which end was older. The refusal is named `version` rather than `attach`,
-  and the client leaves on it with the session's own words.
-
-- **A message this build had no name for did not count as an answer.** `Message::Unknown` is the
-  rule "ignore what you do not know", and a client that ignored it entirely was one whose count of
-  answers owed never came back down - so the first time a newer session answered a command with a
-  variant this build lacks, stdin closing stopped detaching and the session going quiet stopped
-  ending it, for the rest of that connection. That is the exact hole the forward-compatibility work
-  was for, with the new escape hatch around it. An unknown message is counted as an answer now, on
-  the grounds that a client owed one and handed something it cannot read has, as far as it can tell,
-  been answered: `Unknown` carries no payload, so there is nothing else to go on. It is a decision
-  about which way to be wrong, and the cost is a client that leaves a beat early on a message it
-  could not have printed.
 
 ## [0.13.0] - 2026-09-19
 
