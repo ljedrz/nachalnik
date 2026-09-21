@@ -728,13 +728,22 @@ prompt.onsubmit = async (e) => {
   // running turn is queued, and would be invisible until that turn ended. `claim` is what stops
   // it being drawn again when it does become an item
   const drawn = say("user", text);
-  pending.push(drawn);
+  // note: a *message* is waiting to become an item and a command never will, which is the whole
+  // of why this asks. `claim` empties this list one entry per `context.added`, so a command left
+  // in it is an entry nothing is ever going to take out - and the chat rebuild is held back
+  // while anything is in here, so the first `/` anybody typed stopped the chat following the
+  // context for the rest of the session. `conversation` is what empties the list, and it was the
+  // one thing the list was blocking: only a reload got out of it
+  const waiting = !text.startsWith("/");
+  if (waiting) pending.push(drawn);
   // and taken back where the gateway would not take it. A line drawn optimistically is a promise
   // this page can keep or break in one round trip, and the reader's own words are the one thing
   // they will assume arrived. It goes back in the box, because what somebody wants after a line
   // that did not send is to send it again
   if (!(await send({ do: "submit", line: text }))) {
-    pending.splice(pending.indexOf(drawn), 1);
+    // guarded, because `indexOf` answers -1 for a command and `splice(-1, 1)` would take away
+    // somebody else's line - the last one waiting, which is the one most likely to be theirs
+    if (waiting) pending.splice(pending.indexOf(drawn), 1);
     drawn.remove();
     if (!line.value) line.value = text;
   }

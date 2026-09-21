@@ -387,6 +387,15 @@ minor bump may break you.
 
 ### fixed
 
+- **The chat in a browser follows the context again after a command has been typed.** A line
+  handed in from the page is drawn at once and put on a list of lines waiting to become context
+  items, which the `context.added` record then claims one at a time. A slash command never
+  becomes an item, so every `/` anybody typed left an entry on that list for good - and the chat
+  rebuild is held back while anything is on it, because a rebuild would take away a message that
+  is not in any projection yet. So the chat stopped following the context from the first command
+  of the session: an item edited afterwards read as it used to until the page was reloaded, which
+  is what emptied the list. Only messages go on it now.
+
 - **The on-screen keyboard stops landing on top of the prompt.** Two things were missing, one on
   each side of the problem. `interactive-widget=resizes-content` in the viewport meta asks the
   browser to shrink the *layout* viewport as well as the visual one, which is what makes ordinary
