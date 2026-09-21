@@ -751,7 +751,7 @@ Environment:
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
   KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter
 
-The advisor, which is only ever asked when --advise is given:
+The advisor, which is only ever asked when --advise or --shell-advisor is given:
   KAMCHATKA_SYSTEM1_API_KEY   its key; or TYPESAFE_API_KEY. Without one it borrows
                               KAMCHATKA_API_KEY, but only where this session already
                               talks to OpenRouter, which serves jev too
@@ -841,11 +841,11 @@ a feature and a flag rather than on for anyone with a key in their environment.
 
 ### a colour on the question
 
-`--features assisted-shell` adds one more question, and it is the only part of the advisor a
+`--features shell-advisor` adds one more question, and it is the only part of the advisor a
 person rather than the gate is meant to read.
 
 **It still needs `--advise`.** The feature puts the advisor in the binary and the flag is what
-starts one, so a build with `assisted-shell` and a key in the environment but no `--advise` draws
+starts one, so a build with `shell-advisor` and a key in the environment but no `--advise` draws
 no ratings at all. The permissions tab says so when that is the case, rather than leaving you to
 work it out from your own build flags:
 

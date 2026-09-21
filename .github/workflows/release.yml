@@ -96,12 +96,12 @@ jobs:
           # one, and a released binary is by definition not one of those.
           #
           # note: it does collapse the two opt-ins into one for anybody using this binary.
-          # `assisted-shell` is a second feature because it widens what leaves the machine - the
+          # `shell-advisor` is a second feature because it widens what leaves the machine - the
           # verdict goes only for calls the rules would allow, the rating for every command the
           # model writes - and in a build carrying both, `--advise` turns on both. What still
           # says so is the flag's own `--help`, which names the wider disclosure in as many
           # words. See `tools::advice`.
-          features: assisted-shell
+          features: shell-advisor
           # the one file that is worth more beside the binary than it is on a web page. Every
           # setting the program has, named and at its default, for somebody who wants to stop
           # typing the same four arguments: `kamchatka --config-file kamchatka.json` and edit it.

@@ -1766,11 +1766,11 @@ async fn a_separator_inside_a_quote_is_not_coloured_as_a_joint() {
 /// a score off the wire, into the advisor's memory, onto the pinned half of the panel, in the
 /// right colour. Whether the real model puts `rm -rf ~` on the top level is a fact about the
 /// model and is asked in `tests/advise.rs`, where a missing key skips it.
-#[cfg(feature = "assisted-shell")]
+#[cfg(feature = "shell-advisor")]
 mod rated {
     use super::*;
 
-    use kamchatka::tools::Advised;
+    use kamchatka::tools::{Advised, Asked};
     use nachalnik::PermissionPolicy;
     use nachalnik_providers::system1::Jev;
     use ratatui::style::Modifier;
@@ -1847,7 +1847,14 @@ mod rated {
         // the advisor wrapped around the harness's own standing rules, and held by both the
         // kernel and the screen - which is what `wiring` does, and the reason it builds one
         let jev = Arc::new(Jev::new("jev-latest", endpoint, "k"));
-        let advised = Arc::new(Advised::new(harness.app.policy.clone(), jev));
+        let advised = Arc::new(Advised::new(
+            harness.app.policy.clone(),
+            jev,
+            Asked {
+                verdict: true,
+                rating: true,
+            },
+        ));
         harness
             .app
             .kernel
@@ -2031,7 +2038,7 @@ mod rated {
 /// existed - no rating, and nothing anywhere accounting for the absence. The feature puts the
 /// advisor in the binary and the flag starts one, and a screen that does not say so leaves
 /// somebody reading their own build flags to find out.
-#[cfg(feature = "assisted-shell")]
+#[cfg(feature = "shell-advisor")]
 #[tokio::test]
 async fn a_build_that_can_rate_commands_says_when_nothing_is_rating_them() {
     let mut harness = Harness::new([]);

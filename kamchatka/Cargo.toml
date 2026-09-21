@@ -50,7 +50,7 @@ advise = ["nachalnik-providers/system1"]
 #
 # note: it decides nothing. The rating is drawn and is never folded into a verdict, so a session
 # with this on refuses and allows exactly what the same session without it would.
-assisted-shell = ["advise"]
+shell-advisor = ["advise"]
 # `--mcp 'cmd args'` puts somebody else's MCP server's tools in the same list as the built-in
 # ones. Optional because the runtime does not need it and neither does the terminal.
 mcp = ["dep:nachalnik-mcp"]

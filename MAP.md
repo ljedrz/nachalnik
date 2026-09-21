@@ -61,7 +61,7 @@ beside that one caller, and where a command comes apart is a fact about the comm
 about drawing it, so it could not stay behind `tui` - with `policy.rs` for `Careful`, `trim.rs` for
 the compactor, `advice.rs` for the two things a model is asked about a call and the one file
 where what leaves this machine is written down (feature `advise` is the verdict, which is folded
-into the gate; feature `assisted-shell` is `Rating`, which is drawn in the question and folded
+into the gate; feature `shell-advisor` is `Rating`, which is drawn in the question and folded
 into nothing - and is a second opt-in because it is asked on far more calls. A command with
 joints in it is placed stage by stage, every stage a question in the one request, and rated by
 `Rated::worst_of` - which folds what each stage is *shown* as rather than what it scored, because

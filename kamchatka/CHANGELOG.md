@@ -9,6 +9,28 @@ minor bump may break you.
 
 ### breaking
 
+- **The rating has its own flag, `--shell-advisor`, and the feature is renamed to match.** It was
+  `assisted-shell`, and in a build carrying it `--advise` turned on the verdict *and* the rating.
+  That was a two-step opt-in only for people who compile: the feature gate was the second step,
+  and somebody downloading a binary could not take it. Now the two steps are two flags, and the
+  released binary can carry both without deciding for anybody which they wanted.
+
+  They are independent in both directions. `--advise` alone folds a verdict into the gate and
+  never rates. `--shell-advisor` alone draws a colour and sends no verdict question at all - the
+  gate is `Careful`'s from end to end, and a call the rules would allow costs nothing, which is
+  a configuration that could not be asked for before. The *Cargo* feature `shell-advisor` still
+  implies `advise`, because that is what brings the client in; the independence is at the
+  command line, where the disclosure is.
+
+  `tools::Advised::new` takes a third argument, `tools::Asked`, saying which of the two
+  questions to put; `wiring::Setup` has an `asked` field beside `advisor`; and the settings file
+  has a `shell-advisor` key beside `advise`, refused by name in a build that cannot honour it.
+  `Asked` is deliberately not `#[non_exhaustive]` - it is built by callers rather than only
+  answered with, and the convention is about which of those a struct is.
+
+  The word is "advisor" throughout now. `assisted-shell` was the last of the "assist" spelling,
+  and one mechanism with two names is the thing the conventions call a bug.
+
 - `protocol::Command` has a `Revise` variant, and `Command::Inspect` and `Message::Item` each
   carry a `raw` flag and a `version`. None of them is a break on the wire - `Command::Unknown` is
   what an older session reads the variant as, and every new field defaults when it is absent -
@@ -43,7 +65,7 @@ minor bump may break you.
 
 ### added
 
-- **The released binary is built with `assisted-shell`.** It is the one feature that has to be
+- **The released binary is built with `shell-advisor`.** It is the one feature that has to be
   compiled in to exist at all, and somebody who downloaded a binary cannot add it afterwards - so
   the download was a `--advise` that the readme documents and the artifact did not have.
 
@@ -532,7 +554,7 @@ minor bump may break you.
   re-taken three times over half a second after a box takes the focus.
 
 - **The advisor's rating reaches a browser, where it used to stop inside the process.** A build
-  with `assisted-shell` in it, started with `--advise`, served a page exactly what a build without
+  with `shell-advisor` in it, started with `--advise`, served a page exactly what a build without
   it served: the advisor ran, tightened the verdicts it was there to tighten, and the green,
   yellow or red band that is the whole point of the feature was drawn only by the terminal's own
   overlay. It travels beside the questions now, as `protocol::Attached::rated`, and the page draws

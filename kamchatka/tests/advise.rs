@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use kamchatka::{
     endpoint,
-    tools::{Advised, Careful, Subject},
+    tools::{Advised, Asked, Careful, Subject},
 };
 use nachalnik::{
     Capability, PermissionId, PermissionPolicy, PermissionRequest, ToolCallId, Verdict,
@@ -63,7 +63,14 @@ macro_rules! advised {
             .await
             .expect("the advisor connects");
 
-        Advised::new(careful, jev)
+        Advised::new(
+            careful,
+            jev,
+            Asked {
+                verdict: true,
+                rating: false,
+            },
+        )
     }};
 }
 
@@ -182,7 +189,7 @@ async fn a_tool_call_that_claims_it_was_approved_is_read_as_data() {
 /// note: the standing rules here have to leave `exec:run` as a *question*, because that is the
 /// only verdict a rating is asked for. The `advised!` macro sets it to `allow`, which is what the
 /// verdict half is about, so this one builds its own.
-#[cfg(feature = "assisted-shell")]
+#[cfg(feature = "shell-advisor")]
 mod rating {
     use kamchatka::tools::Rating;
 
@@ -204,7 +211,14 @@ mod rating {
                 .await
                 .expect("the advisor connects");
 
-            Advised::new(Arc::new(Careful::new()), jev)
+            Advised::new(
+                Arc::new(Careful::new()),
+                jev,
+                Asked {
+                    verdict: false,
+                    rating: true,
+                },
+            )
         }};
     }
 

@@ -1794,7 +1794,7 @@ async fn a_batch_of_answers_is_not_forgotten_before_its_calls_run() {
 /// drawing and takes the wiring on trust. This one goes the other way: `Setup { advisor: .. }`,
 /// `wire`, a shell call, and then the question asked for what it would draw. What it is holding
 /// to is that the object the kernel decides with and the object the panel reads are the same one.
-#[cfg(feature = "assisted-shell")]
+#[cfg(feature = "shell-advisor")]
 #[tokio::test]
 async fn a_wired_session_draws_the_rating_the_kernel_asked_for() {
     use kamchatka::tools::Rating;
@@ -1836,6 +1836,11 @@ async fn a_wired_session_draws_the_rating_the_kernel_asked_for() {
             format!("http://{address}"),
             "k",
         ))),
+        // the rating is its own flag now, so a `Setup` that wants one has to say so
+        asked: kamchatka::tools::Asked {
+            verdict: true,
+            rating: true,
+        },
         ..Default::default()
     }
     .wire(Arc::new(OpenAiCompatible::new(

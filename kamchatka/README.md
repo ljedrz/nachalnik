@@ -157,7 +157,7 @@ can borrow the one paying for the conversation instead, since `jev` is served th
 session still needs the dedicated key — a key belongs to the endpoint that issued it, and one
 pointed at ollama or at Google is not OpenRouter's to spend.
 
-`assisted-shell` is the fourth, also **off**, and sits on top of `advise` — it needs `--advise`
+`shell-advisor` is the fourth, also **off**, and sits on top of `advise` — it needs `--advise`
 at runtime too, and the permissions tab says so when it has not got it. It asks the same model
 where each command you are being asked about lands on a three-level rubric, and colours the
 question green, yellow or red by the answer, so that the fifteenth `cargo test` of the afternoon

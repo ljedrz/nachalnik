@@ -208,7 +208,7 @@ impl App {
     /// kernel awaits the policy before it raises a question, so by the time there is a panel to
     /// draw the answer is either already there or is never coming, and nothing on the screen has
     /// to know about a request in flight.
-    #[cfg(feature = "assisted-shell")]
+    #[cfg(feature = "shell-advisor")]
     pub fn rating(&self, request: &PermissionRequest) -> Option<crate::tools::Rated> {
         self.advisor.as_ref()?.rating(&request.call)
     }

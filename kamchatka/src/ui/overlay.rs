@@ -166,7 +166,7 @@ fn question_parts(
 /// command. `Rated::shown` will not draw an unsure rating green, so an uncertain reading arrives
 /// yellow - and a person who cannot tell that from a confident yellow has been told the advisor
 /// was sure when it was not.
-#[cfg(feature = "assisted-shell")]
+#[cfg(feature = "shell-advisor")]
 fn rating(app: &App, request: &nachalnik::PermissionRequest, columns: usize) -> Vec<Line<'static>> {
     use crate::tools::Rating;
 
@@ -191,7 +191,7 @@ fn rating(app: &App, request: &nachalnik::PermissionRequest, columns: usize) -> 
 }
 
 /// The same where the advisor is not in the build, which is every line of it.
-#[cfg(not(feature = "assisted-shell"))]
+#[cfg(not(feature = "shell-advisor"))]
 fn rating(_: &App, _: &nachalnik::PermissionRequest, _: usize) -> Vec<Line<'static>> {
     Vec::new()
 }
@@ -208,13 +208,13 @@ fn rating(_: &App, _: &nachalnik::PermissionRequest, _: usize) -> Vec<Line<'stat
 /// advisor, a command with no joints, one the advisor declined to take apart - the same way
 /// [`App::rating`] answers for the band. What it means on the screen is the same in each case:
 /// nothing underlined, and a command to read as a whole.
-#[cfg(feature = "assisted-shell")]
+#[cfg(feature = "shell-advisor")]
 fn worst(app: &App, request: &nachalnik::PermissionRequest) -> Option<(usize, usize)> {
     app.rating(request)?.worst
 }
 
 /// The same where the advisor is not in the build.
-#[cfg(not(feature = "assisted-shell"))]
+#[cfg(not(feature = "shell-advisor"))]
 fn worst(_: &App, _: &nachalnik::PermissionRequest) -> Option<(usize, usize)> {
     None
 }

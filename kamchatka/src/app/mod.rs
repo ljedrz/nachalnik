@@ -491,8 +491,8 @@ pub struct App {
     /// it for.
     ///
     /// note: `None` in a session started without `--advise`, which is the default, and the whole
-    /// of what `assisted-shell` off means at this end.
-    #[cfg(feature = "assisted-shell")]
+    /// of what `shell-advisor` off means at this end.
+    #[cfg(feature = "shell-advisor")]
     pub advisor: Option<Arc<crate::tools::Advised>>,
     /// The provider, for switching models - whichever dialect it speaks.
     pub provider: Arc<dyn Dialect>,
@@ -812,7 +812,7 @@ impl App {
         Self {
             kernel,
             policy,
-            #[cfg(feature = "assisted-shell")]
+            #[cfg(feature = "shell-advisor")]
             advisor: None,
             provider,
             limits,

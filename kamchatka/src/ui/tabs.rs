@@ -495,7 +495,7 @@ fn verdict_word(verdict: Verdict) -> (&'static str, Style) {
 /// existed - no rating, and nothing anywhere accounting for the absence. That is the failure this
 /// program is least for, and the tab that answers "what is deciding" is where somebody wondering
 /// will already be.
-#[cfg(feature = "assisted-shell")]
+#[cfg(feature = "shell-advisor")]
 fn unrated(app: &App) -> Vec<Line<'static>> {
     match app.advisor.is_none() {
         true => vec![Line::styled(
@@ -507,7 +507,7 @@ fn unrated(app: &App) -> Vec<Line<'static>> {
 }
 
 /// The same where the ratings are not in the build, which is nothing to say.
-#[cfg(not(feature = "assisted-shell"))]
+#[cfg(not(feature = "shell-advisor"))]
 fn unrated(_: &App) -> Vec<Line<'static>> {
     Vec::new()
 }

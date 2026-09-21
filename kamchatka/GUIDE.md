@@ -591,7 +591,7 @@ unclosed `$(` — is drawn with nothing picked out rather than guessed at. <kbd>
 byte-exact view, and stays the thing to reach for when the question is what *precisely* would
 run.
 
-A build with `--features assisted-shell`, run with `--advise`, puts one more line in the header,
+A build with `--features shell-advisor`, run with `--advise`, puts one more line in the header,
 above the arguments and inside the part that does not scroll:
 
 ```text

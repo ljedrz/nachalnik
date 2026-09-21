@@ -132,6 +132,16 @@ pub struct Setup {
     /// business to say out loud.
     #[cfg(feature = "advise")]
     pub advisor: Option<Arc<nachalnik_providers::system1::Jev>>,
+
+    /// Which of the two questions that advisor is put: a verdict folded into the gate, a rating
+    /// drawn in the question, or both.
+    ///
+    /// note: beside the advisor rather than inside it, because one of them is *whose* second
+    /// opinion and the other is *what it is asked*. A caller handing over an advisor and asking
+    /// it nothing gets one that is built and never consulted, which is what `--advise` without
+    /// `--shell-advisor` used to be impossible to express.
+    #[cfg(feature = "advise")]
+    pub asked: tools::Asked,
 }
 
 impl Default for Setup {
@@ -155,6 +165,8 @@ impl Default for Setup {
             files: Vec::new(),
             #[cfg(feature = "advise")]
             advisor: None,
+            #[cfg(feature = "advise")]
+            asked: tools::Asked::default(),
         }
     }
 }
@@ -297,14 +309,16 @@ impl Setup {
         // its stances, and `/allow` changes them - because those are all about the standing rules
         // and a second opinion has none to show. What the wrapper owns is one call's verdict
         //
-        // note: built once and kept as itself as well as handed over, because `assisted-shell`
+        // note: built once and kept as itself as well as handed over, because `shell-advisor`
         // has the screen read a rating off it and `Arc<dyn PermissionPolicy>` cannot be asked for
         // one. Two of them would be two memories of what the advisor said, one of them always
         // empty - and the empty one is the one the panel would be holding
         #[cfg(feature = "advise")]
+        let asked = self.asked;
+        #[cfg(feature = "advise")]
         let advisor = self
             .advisor
-            .map(|jev| Arc::new(tools::Advised::new(policy.clone(), jev)));
+            .map(|jev| Arc::new(tools::Advised::new(policy.clone(), jev, asked)));
         #[cfg(feature = "advise")]
         let decides: Arc<dyn nachalnik::PermissionPolicy> = match &advisor {
             Some(advised) => advised.clone(),
@@ -390,7 +404,7 @@ impl Setup {
 
         let (outcomes, finished) = mpsc::unbounded_channel();
         let mut app = App::new(kernel, policy, provider, limits, outcomes);
-        #[cfg(feature = "assisted-shell")]
+        #[cfg(feature = "shell-advisor")]
         {
             app.advisor = advisor;
         }

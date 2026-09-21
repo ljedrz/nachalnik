@@ -476,7 +476,7 @@ pub struct Attached {
     ///
     /// note: a list beside the questions rather than a field on them, and empty in every session
     /// that did not start with an advisor. It is here because the rating used to exist only inside
-    /// the terminal's own drawing code, which meant a build with `assisted-shell` in it served a
+    /// the terminal's own drawing code, which meant a build with `shell-advisor` in it served a
     /// browser exactly what a build without it served - the advisor ran, tightened the verdict it
     /// was there to tighten, and the one thing a person was supposed to see never left the
     /// process.
@@ -520,7 +520,7 @@ pub struct Attached {
 /// second opinion travels as its own row, named by the question it is about.
 ///
 /// note: only for the questions something rated, which is `shell` commands in a build that has
-/// `assisted-shell` in it and a session started with `--advise`. A client draws the band where
+/// `shell-advisor` in it and a session started with `--advise`. A client draws the band where
 /// there is a row for the question it is drawing and draws nothing where there is not, which is
 /// the same thing the panel at a terminal does with the same absence.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -563,7 +563,7 @@ pub struct Judged {
     pub worst: Option<(usize, usize)>,
 }
 
-#[cfg(feature = "assisted-shell")]
+#[cfg(feature = "shell-advisor")]
 impl Judged {
     /// Reads one off what the advisor wrote down while the verdict was being worked out.
     ///
@@ -965,7 +965,7 @@ mod tests {
     /// note: the words travel with the band for the same reason. A client wording the band itself
     /// would be a second account of a rubric it cannot see, and the first rewording of the rubric
     /// is where the two would part.
-    #[cfg(feature = "assisted-shell")]
+    #[cfg(feature = "shell-advisor")]
     #[test]
     fn a_rating_reaches_the_wire_as_the_band_it_is_drawn_as() {
         use crate::tools::{Rated, Rating};
@@ -1000,7 +1000,7 @@ mod tests {
     /// on, so a client built against this version reads a record written before the field
     /// existed, and it has to arrive as *nothing to point at* rather than as a message that will
     /// not parse - which for a projection is a client with no session at all.
-    #[cfg(feature = "assisted-shell")]
+    #[cfg(feature = "shell-advisor")]
     #[test]
     fn the_stage_that_earned_a_band_travels_with_it_and_is_optional() {
         use crate::tools::{Rated, Rating};

@@ -804,7 +804,7 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
 /// [`App::rating`]. The kernel awaits the policy before it raises a question, so by the time a
 /// question is in a projection its rating is either already there or was never coming, and nothing
 /// on the wire has to describe a request in flight.
-#[cfg(feature = "assisted-shell")]
+#[cfg(feature = "shell-advisor")]
 fn rated(app: &App, asking: &[nachalnik::PermissionRequest]) -> Vec<Judged> {
     asking
         .iter()
@@ -813,7 +813,7 @@ fn rated(app: &App, asking: &[nachalnik::PermissionRequest]) -> Vec<Judged> {
 }
 
 /// The same where the ratings are not in the build, which is nothing to send.
-#[cfg(not(feature = "assisted-shell"))]
+#[cfg(not(feature = "shell-advisor"))]
 fn rated(_: &App, _: &[nachalnik::PermissionRequest]) -> Vec<Judged> {
     Vec::new()
 }
