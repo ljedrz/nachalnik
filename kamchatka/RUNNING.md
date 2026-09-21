@@ -1052,6 +1052,41 @@ That makes a checkpoint out of a file. `/save good`, let the agent go somewhere 
 good`, and carry on from where it was still working — without losing the detour, which is sitting
 in the context marked `▫` if you want to read it.
 
+### starting again
+
+`/restart` is the other end of that. Where `/load` brings a file into the session you are in,
+this writes the session out and puts a brand new one in its place — the same thing that would
+happen if you quit and ran the program again, without quitting:
+
+```text
+· 2026-09-21T14-22-09Z ended: 148 records in /tmp/kamchatka/2026-09-21T14-22-09Z.jsonl, and a
+  session in /tmp/kamchatka/2026-09-21T14-22-09Z.json (`kamchatka -r …` carries on from it)
+```
+
+That line is the first thing the new session says, and it is the only place the old one's name
+and files are still written down — so the run you just abandoned is a `-r` away for as long as
+the temporary directory lasts. `--no-record` says so instead and writes nothing, as it does at
+the end of a run.
+
+**It goes back to the flags, not to where the session had got to.** The model is whatever `--model`
+said, the permissions are `--allow` and `--deny` again, every tool `/tools toggle` switched off is
+back, `--system` and `--files` are re-read, and the context is empty. What carries over is only
+what cannot be rebuilt cheaply or at all: the connection to the provider, the MCP servers — whose
+tools are installed into the new session rather than their processes being spawned again — and the
+sandbox, which is a ruleset that cannot be lifted once it has been applied. A session started with
+`-r` restarts into an *empty* one rather than back into the snapshot: the snapshot is where you
+began, and this is you saying you are done with it.
+
+A turn that is running is stopped to do it, rather than the command refusing until it finishes —
+a model that has found a loop is the commonest reason to want a fresh session, and being told
+*not while busy* is being told to wait for the thing you are escaping.
+
+It works wherever a line does: at the prompt, down a pipe, and from a browser. A piped run
+carries on reading the same input, so `do this` / `/restart` / `do that` runs the second half in
+the new session. Clients attached over a socket are **disconnected** — their place in the log is
+a record number in a log that no longer exists, so there is nothing to carry across — and they
+reconnect into the new session by themselves if they retry, which `examples/browser.html` does.
+
 ## 🧪 the tests
 
 They draw the screen and read it back, against a scripted model:

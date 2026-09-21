@@ -309,6 +309,10 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         What is here is archived unless it is pinned, and u
                         twice puts it back (kamchatka -r PATH is the other
                         answer to the same file: a fresh session from it)
+    /restart            write this session out and start a fresh one, as if the
+                        program had just been run: a new log, an empty context,
+                        and the flags back the way they were. Stops a running
+                        turn to do it
     /quit               also /exit, /q";
 
 /// The selector language, shown by `/exclude` with nothing to exclude.

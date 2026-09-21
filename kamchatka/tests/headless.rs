@@ -1065,6 +1065,30 @@ async fn quit_ends_it() {
     );
 }
 
+/// `/restart` hands the session back the same way `/quit` does, and is not the same answer.
+///
+/// note: the pair with the test above, and the half worth having a test for is the second
+/// assertion. Both words end the loop - `App::leaving` is what it asks - and what the loop does
+/// next turns entirely on which flag is set. A restart that also set `quit` would write the
+/// session out and then stop the program, which is the one outcome neither word means.
+#[tokio::test]
+async fn restart_ends_it_without_ending_the_program() {
+    let run = run(
+        "/restart\nnever asked\n",
+        vec![ModelResponse::text("unused")],
+        |_| {},
+    )
+    .await;
+
+    assert!(run.app.restart);
+    assert!(!run.app.quit, "a restart is not a quit");
+    assert!(run.app.leaving(), "the loop is told to let go either way");
+    assert!(
+        run.app.kernel.items().is_empty(),
+        "the line after /restart was read anyway"
+    );
+}
+
 // ------------------------------------------------------------------- the program, and a socket
 
 /// `ctrl+c` stops a command that is running, and what arrived is kept.
@@ -2129,4 +2153,102 @@ async fn a_session_with_no_model_sends_nothing_until_one_is_picked() {
         "{}",
         run.prose
     );
+}
+
+/// `/restart` writes the session out and carries on in a new one, in the program proper.
+///
+/// note: the binary rather than a driver, because the half worth testing is the half that is not
+/// in the library: writing the record, wiring a second session out of the same settings, and
+/// putting it where the loop was holding the first. `App::restart` is a `bool` and the test above
+/// is all there is to say about it here.
+///
+/// note: `TMPDIR` is the whole isolation. `record` writes under the temporary directory, so a run
+/// pointed at one of its own leaves exactly the files this counts and nothing else's turn up in it.
+#[test]
+fn restart_writes_the_session_out_and_starts_another() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-restart-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a directory to record into");
+
+    let mut child = std::process::Command::new(common::program())
+        // note: no `-m`, so a message is put in the context and nothing is sent. What this is
+        // about is which session a line lands in, and a turn against an endpoint that is not there
+        // would be the run failing about something else
+        .args(["--headless"])
+        .env("TMPDIR", &dir)
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+
+    use std::io::Write as _;
+    let mut stdin = child.stdin.take().expect("stdin is a pipe");
+    // note: a message either side of the restart, because two of the three things this is about
+    // are what happens to them. The first belongs to a session that is over and must not be in the
+    // second; the second is a line *after* the restart and must be read at all - a session built
+    // around a second `BufReader` drops whatever the first had read ahead into its buffer, which
+    // is this command's own shape of the bug and is silent
+    stdin
+        .write_all(b"before the restart\n/restart\nafter the restart\n/quit\n")
+        .expect("the lines go in");
+    drop(stdin);
+
+    let out = child.wait_with_output().expect("it ran");
+    let said = String::from_utf8_lossy(&out.stderr).into_owned();
+
+    assert!(out.status.success(), "{said}");
+    // the old session named itself, said where it went, and said it into the new session rather
+    // than onto the terminal on its own
+    assert!(
+        said.contains("ended:") && said.contains("records in"),
+        "the restart did not report the session it wrote out: {said}"
+    );
+
+    // two sessions, two records: the one `/restart` wrote and the one `/quit` did
+    let logs: Vec<_> = std::fs::read_dir(dir.join("kamchatka"))
+        .expect("the record directory")
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".jsonl"))
+        .collect();
+    assert_eq!(logs.len(), 2, "one record per session: {logs:?}");
+
+    // and the second session is a session of its own rather than the first one's log written twice
+    let mut names: Vec<String> = logs.iter().map(|it| it.replace(".jsonl", "")).collect();
+    names.sort();
+    names.dedup();
+    assert_eq!(names.len(), 2, "both records have the same name: {logs:?}");
+
+    // the line after the restart was read, and it went into the session that came after it
+    let mut snapshots: Vec<(std::time::SystemTime, String)> = names
+        .iter()
+        .map(|name| {
+            let at = dir.join("kamchatka").join(format!("{name}.json"));
+            let when = std::fs::metadata(&at)
+                .and_then(|it| it.modified())
+                .expect("a snapshot beside every log");
+
+            (when, std::fs::read_to_string(&at).expect("it is readable"))
+        })
+        .collect();
+    snapshots.sort_by_key(|(when, _)| *when);
+    let (first, second) = (&snapshots[0].1, &snapshots[1].1);
+
+    assert!(
+        first.contains("before the restart"),
+        "the session that was restarted did not keep what was said in it"
+    );
+    assert!(
+        second.contains("after the restart"),
+        "the line after /restart was swallowed with the old reader's buffer"
+    );
+    assert!(
+        !second.contains("before the restart"),
+        "the fresh session carried the old one's conversation into it"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -34,6 +34,11 @@ use crate::{
 /// [`nachalnik::Config`] is. `Setup { confine: false, ..Default::default() }` is the shape, and
 /// the defaults below are the ones the program uses - so a caller who wants what `kamchatka` does
 /// writes almost nothing, and a caller who wants something else changes the field that says so.
+///
+/// note: `Clone`, because [`Setup::wire`] consumes one and a session can be asked to start again.
+/// `/restart` is the same settings wired a second time - which is what makes the second session
+/// the one the flags describe rather than a copy of the first session's drift.
+#[derive(Clone)]
 pub struct Setup {
     /// A session to carry on from, read and parsed by whoever has the file.
     ///

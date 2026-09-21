@@ -208,154 +208,286 @@ async fn session() -> Result<()> {
 
     let provider = args.provider().await?;
 
+    // note: kept so that `/restart` can wire a second session out of the same settings. That is
+    // what makes the new one the session the *flags* describe rather than a copy of this one's
+    // drift - a model switched with `/model`, a capability answered `always`, a tool toggled off
+    // are all this session's, and none of them survive being started again
+    let base = setup.clone();
+
     let Wired {
         mut app,
         mut events,
         mut finished,
-    } = setup.wire(provider).map_err(|e| anyhow::anyhow!("{e}"))?;
+    } = setup
+        .wire(provider.clone())
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    // note: after the wiring rather than a field in `Setup`, because `Setup` is what an embedder
-    // fills in to get a session and this is a fact about a window. Somebody embedding `App` draws
-    // it themselves and sets this themselves, the way they already set `App::accent`'s neighbours
-    //
-    // note: parsed again rather than carried through as three bytes, and it cannot fail here -
-    // `under` refused the file if it would. Doing it there is what makes a bad colour an error
-    // about a settings file instead of a frame that is silently still yellow
-    #[cfg(feature = "tui")]
-    if let Some((r, g, b)) = args
-        .border
-        .as_deref()
-        .and_then(|it| kamchatka::config::rgb(it).ok())
-    {
-        app.accent = ratatui::style::Color::Rgb(r, g, b);
-    }
-
-    // the servers have to outlive this scope: dropping one takes its child process, and its
-    // tools, with it
+    // the servers have to outlive every session this run has, not just the first: dropping one
+    // takes its child process, and its tools, with it. A restart installs the tools they already
+    // offer into the new kernel rather than spawning them again - the handshake is a round trip
+    // and a `npx` server is seconds of it
     #[cfg(feature = "mcp")]
-    let _servers = kamchatka::mcp::attach(&app.kernel, &app.policy, &args.mcp)
+    let servers = kamchatka::mcp::attach(&app.kernel, &app.policy, &args.mcp)
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let on_ask = args.on_ask.grant();
-    // note: three statements rather than one match over the pair, because a resumed headless run
-    // wants both of the first two and the match gave it one. The replay line says what was picked
-    // up; the opening says how this run is driven and what a question nobody can answer gets,
-    // which a session carried on from a file needs to know exactly as much as a fresh one
-    if headless {
-        headless::opening(&mut app, on_ask);
-    }
+    // note: one reader for the whole run rather than one per session, which is what `/restart` in
+    // a piped run turns from a detail into a bug. A `BufReader` has read ahead by the time a line
+    // is handed over, so building a second one for the second session drops whatever was already
+    // in the first one's buffer - `do this / restart / do that` ran the restart and then silently
+    // never saw the third line. The reader is the *run's* input; the sessions take turns on it
+    let mut input = tokio::io::BufReader::new(tokio::io::stdin());
+
     if let Some(server) = &server {
-        remote::opening(&mut app, &server.address());
-        // note: said here *as well*, and the two are addressed to different people. The one above
-        // goes into the conversation through `App::say`, which is how a client attaching an hour
-        // later finds out what it has joined; this one is for whoever typed the flag, and without
-        // it a served run is a terminal that prints nothing at all between starting and being
-        // stopped - including on the interesting case, `tcp:127.0.0.1:0`, where the port is the
-        // one thing the person does not already know
+        // note: printed once for the whole run rather than said into each session, and the two
+        // halves of that pair are addressed to different people. `remote::opening` goes into the
+        // conversation through `App::say`, which is how a client attaching an hour later finds
+        // out what it has joined, and a restarted session owes a newcomer that as much as the
+        // first one did. This is for whoever typed the flag, and the address does not move
         println!("· serving on {}", server.address());
     }
-    // a resumed session has a conversation in it already, and it would be strange to have to read
-    // it out of the context pane one item at a time
-    //
-    // note: the record first, because what the items used to say is not in the snapshot - it is
-    // in the log `/save` wrote beside it, which `App::recall` goes looking for and `App::replay`
-    // then says the size of. The path is the one the person typed, so the log it finds is the
-    // one belonging to the session they asked for
-    if let Some(path) = &args.resume {
-        app.recall(Path::new(path));
-        app.replay();
-    }
-    // note: `server.is_none()` as well as `!headless`, because those are two different questions
-    // and this greeting is about the third answer to neither. `headless` says the session is driven
-    // by lines *here*; a served one is driven by neither lines nor keys, and told every client that
-    // `ctrl+p` shows the next request and `F1` lists the keys - into a browser, which has no keys of
-    // this program's to press. It said it once per session and then to everybody who ever attached,
-    // because the greeting goes into the conversation and the conversation is in every projection
-    #[cfg(feature = "tui")]
-    if !headless && server.is_none() && args.resume.is_none() {
-        app.say(Speaker::Note, ui::GREETING);
-    }
-    // said here rather than where it was read, because there is no screen at that point and this
-    // is the one line a person needs before they wonder where a setting came from
-    if let Some(path) = &found {
-        app.say(
-            Speaker::Note,
-            format!("settings read from {}", path.display()),
-        );
-    }
-    // note: said into the conversation rather than printed, because all three loops read that one
-    // and a session with no model has the same thing to say to each of them. The corner says it
-    // too, for as long as it is true, and `start_turn` says it again to anything that tries to
-    // send - this is the orientation, not the enforcement
-    if app.kernel.model_info().is_none() {
-        app.say(
-            Speaker::Note,
-            format!(
-                "no model yet: `/model ID` picks one, and `/models` lists what {} serves",
-                app.provider.host()
-            ),
-        );
-    }
-    if let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
-        app.ask(&message);
-        app.start_turn();
-    }
 
-    // note: a served session with a screen is the *drawn* loop with a socket beside it, rather than
-    // a fourth loop or a precedence somebody has to know. Only one loop can own the `App`, so the
-    // one with the keys keeps it and `remote::Serving` is what it answers clients through - which is
-    // the same pair of calls `Server::run` makes, from the other side. A served session with no
-    // screen is unchanged: `Server::run` is the loop, and it is the one that ends the session
-    #[cfg(feature = "tui")]
-    if let Some(server) = &mut server
-        && !headless
-    {
-        let outcome = drawn(&mut app, &mut events, &mut finished, Some(server)).await;
-
-        return finish(&app, &args, Ending::Served, outcome);
-    }
-    if let Some(server) = &mut server {
-        let outcome = server
-            .run(&mut app, &mut events, &mut finished)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"));
-
-        return finish(&app, &args, Ending::Served, outcome);
-    }
-
-    let outcome = match headless {
-        true => {
-            let (mut records, mut prose) = (stdout(), std::io::stderr());
-            let mut driver = headless::Headless::new(on_ask, &mut records, &mut prose)
-                // here rather than in the library's default: taking a process-wide signal is the
-                // program's decision, and here this *is* the program
-                .stops_on_ctrl_c();
-            if let Some(seconds) = args.deadline {
-                driver = driver.deadline(std::time::Duration::from_secs(seconds));
-            }
-            driver
-                .run(
-                    &mut app,
-                    &mut events,
-                    &mut finished,
-                    tokio::io::BufReader::new(tokio::io::stdin()),
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))
-        }
+    // note: a loop because `/restart` writes this session out and asks for another. What is inside
+    // it is everything a *session* is - the opening lines, the driving, and the ending - and what
+    // is above it is everything the *run* is: the socket, the servers, the provider and the
+    // settings the next one is built from
+    let mut first = true;
+    let (ending, outcome) = loop {
+        // note: after the wiring rather than a field in `Setup`, because `Setup` is what an
+        // embedder fills in to get a session and this is a fact about a window. Somebody embedding
+        // `App` draws it themselves and sets this themselves, the way they already set
+        // `App::accent`'s neighbours
+        //
+        // note: parsed again rather than carried through as three bytes, and it cannot fail here -
+        // `under` refused the file if it would. Doing it there is what makes a bad colour an error
+        // about a settings file instead of a frame that is silently still yellow
         #[cfg(feature = "tui")]
-        false => drawn(&mut app, &mut events, &mut finished, None).await,
-        #[cfg(not(feature = "tui"))]
-        false => unreachable!("there is no screen in this build"),
-    };
+        if let Some((r, g, b)) = args
+            .border
+            .as_deref()
+            .and_then(|it| kamchatka::config::rgb(it).ok())
+        {
+            app.accent = ratatui::style::Color::Rgb(r, g, b);
+        }
 
-    let ending = match headless {
-        true => Ending::Logged,
-        false => Ending::Spoken,
+        // note: three statements rather than one match over the pair, because a resumed headless
+        // run wants both of the first two and the match gave it one. The replay line says what was
+        // picked up; the opening says how this run is driven and what a question nobody can answer
+        // gets, which a session carried on from a file needs to know exactly as much as a fresh one
+        if headless {
+            headless::opening(&mut app, on_ask);
+        }
+        if let Some(server) = &server {
+            remote::opening(&mut app, &server.address());
+        }
+        // a resumed session has a conversation in it already, and it would be strange to have to
+        // read it out of the context pane one item at a time
+        //
+        // note: the record first, because what the items used to say is not in the snapshot - it
+        // is in the log `/save` wrote beside it, which `App::recall` goes looking for and
+        // `App::replay` then says the size of. The path is the one the person typed, so the log it
+        // finds is the one belonging to the session they asked for
+        //
+        // note: the first session of the run only. A snapshot is where somebody asked to *start*,
+        // and `/restart` is them saying they are done with where they started - a restart that
+        // read it back in would be a command with no way to reach an empty session from a resumed
+        // one, which is most of what it is for
+        if first && let Some(path) = &args.resume {
+            app.recall(Path::new(path));
+            app.replay();
+        }
+        // note: `server.is_none()` as well as `!headless`, because those are two different
+        // questions and this greeting is about the third answer to neither. `headless` says the
+        // session is driven by lines *here*; a served one is driven by neither lines nor keys, and
+        // told every client that `ctrl+p` shows the next request and `F1` lists the keys - into a
+        // browser, which has no keys of this program's to press. It said it once per session and
+        // then to everybody who ever attached, because the greeting goes into the conversation and
+        // the conversation is in every projection
+        #[cfg(feature = "tui")]
+        if !headless && server.is_none() && !(first && args.resume.is_some()) {
+            app.say(Speaker::Note, ui::GREETING);
+        }
+        // said here rather than where it was read, because there is no screen at that point and
+        // this is the one line a person needs before they wonder where a setting came from
+        if let Some(path) = &found {
+            app.say(
+                Speaker::Note,
+                format!("settings read from {}", path.display()),
+            );
+        }
+        // note: said into the conversation rather than printed, because all three loops read that
+        // one and a session with no model has the same thing to say to each of them. The corner
+        // says it too, for as long as it is true, and `start_turn` says it again to anything that
+        // tries to send - this is the orientation, not the enforcement
+        if app.kernel.model_info().is_none() {
+            app.say(
+                Speaker::Note,
+                format!(
+                    "no model yet: `/model ID` picks one, and `/models` lists what {} serves",
+                    app.provider.host()
+                ),
+            );
+        }
+        // note: the first session only, and this is the one where saying so matters. A `--message`
+        // asked again on every restart would make `/restart` a way of putting the same question
+        // to the model for ever, which is the opposite of what somebody types it to escape
+        if first && let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
+            app.ask(&message);
+            app.start_turn();
+        }
+        first = false;
+
+        // note: a served session with a screen is the *drawn* loop with a socket beside it, rather
+        // than a fourth loop or a precedence somebody has to know. Only one loop can own the
+        // `App`, so the one with the keys keeps it and `remote::Serving` is what it answers
+        // clients through - which is the same pair of calls `Server::run` makes, from the other
+        // side. A served session with no screen is unchanged: `Server::run` is the loop, and it is
+        // the one that ends the session
+        let ran = match &mut server {
+            Some(server) => {
+                let outcome = match headless {
+                    #[cfg(feature = "tui")]
+                    false => drawn(&mut app, &mut events, &mut finished, Some(server)).await,
+                    #[cfg(not(feature = "tui"))]
+                    false => unreachable!("there is no screen in this build"),
+                    true => server
+                        .run(&mut app, &mut events, &mut finished)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("{e}")),
+                };
+
+                (Ending::Served, outcome)
+            }
+            None => {
+                let outcome = match headless {
+                    true => {
+                        let (mut records, mut prose) = (stdout(), std::io::stderr());
+                        let mut driver = headless::Headless::new(on_ask, &mut records, &mut prose)
+                            // here rather than in the library's default: taking a process-wide
+                            // signal is the program's decision, and here this *is* the program
+                            .stops_on_ctrl_c();
+                        if let Some(seconds) = args.deadline {
+                            driver = driver.deadline(std::time::Duration::from_secs(seconds));
+                        }
+                        driver
+                            .run(&mut app, &mut events, &mut finished, &mut input)
+                            .await
+                            .map_err(|e| anyhow::anyhow!("{e}"))
+                    }
+                    #[cfg(feature = "tui")]
+                    false => drawn(&mut app, &mut events, &mut finished, None).await,
+                    #[cfg(not(feature = "tui"))]
+                    false => unreachable!("there is no screen in this build"),
+                };
+                let ending = match headless {
+                    true => Ending::Logged,
+                    false => Ending::Spoken,
+                };
+
+                (ending, outcome)
+            }
+        };
+
+        if !app.restart {
+            break ran;
+        }
+
+        // note: the loop that just returned went round once more than it needed to for a session
+        // that is over. That is the price of `App::leaving` being one question: what it answers is
+        // *stop holding this*, and which of the two reasons it was is read here, where there is
+        // somewhere to go with the answer
+        let (wired, said) = relaunch(&app, &args, &base, provider.clone())?;
+        let Wired {
+            app: fresh,
+            events: replaced,
+            finished: reported,
+        } = wired;
+        (app, events, finished) = (fresh, replaced, reported);
+
+        // note: the servers keep running and their tools are installed into the new kernel, which
+        // is why `attach` is above the loop and this is not it. Re-spawning them would be seconds
+        // of handshake for a set of tools the process is already holding open
+        #[cfg(feature = "mcp")]
+        for server in &servers {
+            match server.install(&app.kernel).await {
+                Ok(installed) => {
+                    for tool in &installed.added {
+                        app.policy.came_from(tool, server.name());
+                    }
+                }
+                // not fatal: a server that will not list its tools twice leaves a session without
+                // them, which is worth saying and is not worth ending a run over
+                Err(e) => app.say(
+                    Speaker::Error,
+                    format!("`{}` would not list its tools again: {e}", server.name()),
+                ),
+            }
+        }
+
+        // the first thing the new session says, because it is the only place the old one's name
+        // and the file it went to are still written down
+        app.say(Speaker::Note, said);
     };
 
     finish(&app, &args, ending, outcome)
+}
+
+/// Writes a session out and builds the one that takes its place, out of the settings the run
+/// started with.
+///
+/// note: the same record `finish` writes on the way out, and deliberately the same one. A session
+/// somebody restarted is a session that ended, and the reason to keep the transcript of a run that
+/// went wrong does not depend on whether the program stopped afterwards - `/restart` is *how* a
+/// run goes wrong and gets abandoned, so it is the case the safety net is most for.
+///
+/// note: it hands back the sentence rather than saying it, because the thing to say it to does not
+/// exist until this returns. The old `App` is about to be dropped and is the only place the name
+/// and the paths are written down.
+fn relaunch(
+    app: &App,
+    args: &Args,
+    base: &kamchatka::wiring::Setup,
+    provider: std::sync::Arc<dyn nachalnik_providers::Dialect>,
+) -> Result<(Wired, String)> {
+    // note: ended here rather than left to `finish`, which is not going to see this one. A record
+    // whose last line is not `session.finished` reads as a run that was killed, and this one was
+    // not - somebody asked for it to stop
+    app.kernel.finish();
+
+    let name = app.kernel.session_name();
+    let said = match args.no_record {
+        true => format!("{name} ended; `--no-record`, so nothing was written"),
+        false => match record(app) {
+            Ok((records, log, state)) => format!(
+                "{name} ended: {records} records in {log}, and a session in {state} \
+                 (`kamchatka -r {state}` carries on from it)"
+            ),
+            // the restart still happens: a session nobody could write down is a worse reason to
+            // refuse somebody a fresh one than it is to carry on with the old
+            Err(e) => format!("{name} ended, and could not be written down: {e}"),
+        },
+    };
+
+    // note: `resume` and `session_name` are the two the settings cannot be taken at their word on.
+    // A snapshot is where the *run* started and a restart is somebody leaving it; and a name
+    // carried over would give two sessions of one run the same identity, while `None` would fall
+    // back to the runtime's counter - which `Args::setup` says in as many words is fine as an
+    // identity and useless as a filename. So a fresh session is stamped fresh, the way the first
+    // one was, and `unclaimed` settles two of them landing in the same second
+    let started = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or_default();
+    let setup = kamchatka::wiring::Setup {
+        resume: None,
+        session_name: Some(App::session_stamp(started)),
+        ..base.clone()
+    };
+
+    let wired = setup.wire(provider).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    Ok((wired, said))
 }
 
 /// How a run that is over says so.
@@ -589,7 +721,7 @@ async fn run(
         {
             app.say(Speaker::Note, why);
         }
-        if app.quit {
+        if app.leaving() {
             return Ok(());
         }
 

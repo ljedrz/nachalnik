@@ -188,7 +188,7 @@ impl<'a> Headless<'a> {
             }
             // a session that is not going to be given anything else to do, and is not doing
             // anything, is over. `quit` is `/quit`, which means the same here as at a prompt
-            if app.quit || (!reading && !app.busy) {
+            if app.leaving() || (!reading && !app.busy) {
                 break;
             }
 

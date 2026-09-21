@@ -40,6 +40,30 @@ minor bump may break you.
 
 ### added
 
+- **`/restart` writes the session out and puts a fresh one in its place**, which is what quitting
+  and running the program again would do, without quitting. The old session's record is the same
+  one the end of a run writes - a session somebody restarted is a session that ended, and a run
+  abandoned halfway is the case that safety net is most for - and the line naming it is the first
+  thing the new session says, because the new one is the only place left to say it in.
+
+  It goes back to the **flags**, not to where the session had got to: the model is `--model`
+  again, the permissions are `--allow` and `--deny`, a tool `/tools toggle` switched off is back,
+  `--system` and `--files` are re-read, and the context is empty. What carries over is what cannot
+  be rebuilt cheaply or at all - the provider connection, the MCP servers, whose tools are
+  installed into the new session rather than their processes respawned, and the sandbox, which is
+  a ruleset that cannot be lifted once applied. A session started with `-r` restarts into an empty
+  one: the snapshot is where the run began, and the command is somebody saying they are done
+  with it.
+
+  A running turn is stopped rather than the command refusing until it ends, because a model that
+  has found a loop is the commonest reason to type it.
+
+  It works in all three loops. A piped run keeps reading the same input, so the lines after it run
+  in the new session - one reader for the run rather than one per session, or whatever the old one
+  had read ahead goes with it. Clients attached over a socket are disconnected, since a watermark
+  is a record number in a log that is gone; `examples/browser.html` retries and comes back into
+  the new session by itself.
+
 - **`SYSTEM1_ADVISOR_COMMAND`: an advisor running on this machine, and nothing leaves it.** Set
   it to a command line and it is used instead of the three `KAMCHATKA_SYSTEM1_*` variables,
   which are then not read at all. `kamchatka/contrib/laya_advisor.py` is the one to point it at:

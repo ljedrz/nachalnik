@@ -120,6 +120,11 @@ impl App {
 
         match command {
             "quit" | "exit" | "q" => self.quit = true,
+            // note: a flag and not the work, for the reason `quit` is one. What a restart rebuilds
+            // is the `App` this is a method on - a kernel, a policy, the tools and the handle they
+            // reach it through - and a method cannot replace the thing it was called on. The loop
+            // owns it and the loop puts the new one in its place; see `App::restart`
+            "restart" => self.restart(),
             "help" | "?" => self.help(),
             "continue" => self.start_turn(),
             // note: the same act as `esc` and `ctrl+c`, reached by typing, which is the only way

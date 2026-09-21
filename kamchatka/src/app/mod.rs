@@ -649,6 +649,16 @@ pub struct App {
     acted: bool,
     /// Whether it is time to leave.
     pub quit: bool,
+    /// Whether the session is to be written out and started again from nothing.
+    ///
+    /// note: beside [`App::quit`] and read the same way, by the loop rather than here, because
+    /// what a restart replaces is this whole object. A method cannot hand back the thing it was
+    /// called on, and every loop already has the one branch that ends it - so a restart is that
+    /// branch with somewhere to go afterwards. [`App::restart`] is what sets it.
+    ///
+    /// note: it outranks `quit` nowhere. A session asked to do both leaves, because leaving is the
+    /// one of the two that cannot be got back to by typing the other word again.
+    pub restart: bool,
     /// Text the loop has been asked to hand the terminal, for its clipboard, and has not yet.
     ///
     /// note: a field rather than a write, because a screen belongs to whoever owns it. The two
@@ -852,6 +862,7 @@ impl App {
             busy: false,
             acted: false,
             quit: false,
+            restart: false,
             clipboard: None,
             spend: None,
             rendered: 0,
@@ -1486,6 +1497,34 @@ impl App {
     pub fn set_spend(&mut self, limit: Option<u64>) {
         self.spend = limit;
         self.overspent = limit.is_some_and(|limit| self.spent >= limit);
+    }
+
+    /// Whether the loop driving this session should let go of it.
+    ///
+    /// note: the two reasons are not the same thing, and no loop here cares which it is. One ends
+    /// the program and the other hands the session back to be built again; both are *stop holding
+    /// this `App`*. Which of the two it was is read once, outside, where there is somewhere to go
+    /// with the answer.
+    pub fn leaving(&self) -> bool {
+        self.quit || self.restart
+    }
+
+    /// Asks for this session to be written out and a fresh one put in its place.
+    ///
+    /// note: it stops a running turn on the way rather than refusing while one is running. The
+    /// alternative was a command that works most of the time and says *not while busy* the rest,
+    /// which is the shape somebody types `/restart` to get out of - a turn that has found a loop
+    /// is the commonest reason to want one. What the kernel is asked for is the same stop `esc`
+    /// asks for, so the turn ends the way an interrupted turn ends and the record has it.
+    ///
+    /// note: what actually happens is the loop's, not this object's - see [`App::restart`] the
+    /// field. This sets the flag and says nothing: the line worth reading is the one naming the
+    /// file the old session went to, and there is nothing to name until it has been written.
+    pub fn restart(&mut self) {
+        if self.busy {
+            self.interrupt();
+        }
+        self.restart = true;
     }
 
     /// Asks the running turn to stop at the next opportunity.
