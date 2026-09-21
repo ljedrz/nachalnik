@@ -136,7 +136,7 @@ pub mod advise {
 
     use nachalnik_providers::{
         is_openrouter,
-        system1::{self, Jev},
+        system1::{self, Jev, SystemOne},
     };
 
     use super::*;
@@ -287,7 +287,16 @@ pub mod advise {
     /// a permission question depends on it. OpenRouter publishes no listing for this model, so a
     /// session paying through it gets no such warning - which is why the identifier this program
     /// sends there is a constant rather than something a person types.
-    pub async fn connect(session_endpoint: &str) -> Result<Arc<Jev>, BoxError> {
+    pub async fn connect(session_endpoint: &str) -> Result<Arc<dyn SystemOne>, BoxError> {
+        // note: before the key, which is what `SYSTEM1_ADVISOR_COMMAND` taking precedence means.
+        // A machine with an engine of its own running and a key it would otherwise spend should
+        // use the engine: it is faster, it costs nothing, and - the part that actually matters -
+        // no tool's arguments leave it. Somebody who wants the remote one anyway unsets the
+        // variable, which is a decision they can see themselves making
+        if let Some(local) = crate::advisor::configured() {
+            return local;
+        }
+
         let account = account(session_endpoint)?;
         let jev = Arc::new(Jev::new(
             account.model(),

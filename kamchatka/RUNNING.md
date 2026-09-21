@@ -752,6 +752,9 @@ Environment:
   KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter
 
 The advisor, which is only ever asked when --advise or --shell-advisor is given:
+  SYSTEM1_ADVISOR_COMMAND     an engine to run on this machine, as a command line.
+                              Takes precedence over the three below, and nothing
+                              leaves the machine when it is set
   KAMCHATKA_SYSTEM1_API_KEY   its key; or TYPESAFE_API_KEY. Without one it borrows
                               KAMCHATKA_API_KEY, but only where this session already
                               talks to OpenRouter, which serves jev too
@@ -810,6 +813,37 @@ the address without moving the account — pointing it at the other service mean
 service's model with `KAMCHATKA_SYSTEM1_MODEL` as well. TypeSafe resolves `jev-latest` to whatever
 version is current; OpenRouter serves versions under their own names, which is why the identifier
 this program sends there names one.
+
+### an advisor on this machine
+
+`SYSTEM1_ADVISOR_COMMAND` points at a System One engine running here, and it is checked **before**
+the key — set it and the three variables below are not read at all. The point is not that it is
+free, though it is: **nothing leaves the machine**. Everything the advisor section above says
+about a third party reading a tool's arguments stops applying, because the arguments go to a
+process you started, under your own user, and come back as numbers.
+
+```console
+$ pip install laya
+$ export SYSTEM1_ADVISOR_COMMAND="$HOME/ai/venv/bin/python kamchatka/contrib/laya_advisor.py"
+$ kamchatka --advise --shell-advisor -m qwen/qwen3-coder
+```
+
+[`laya`](https://github.com/NandhaKishorM/laya) is a library rather than a service — no HTTP, no
+CLI, nothing to point a base URL at — so the command is an interpreter and a script, and
+`contrib/laya_advisor.py` is the script. It is about forty lines and most of them are comments:
+the protocol is one JSON object per line in and one per line out, in the body kamchatka already
+builds for the hosted engine, because laya's question dicts and answers use the same three types
+under the same names.
+
+The process is started once and kept, because a 421M-parameter checkpoint costs seconds to load
+and milliseconds to run — loading it per question would put that wait in front of you every time
+you were asked to press `y`. It is killed when the session ends. Whatever it prints to stderr
+reaches your terminal, which is where `laya: ready` comes from and where a traceback would.
+
+If it fails — the command is not there, it stops answering, a line does not parse, a question
+takes longer than 30s — the pipe is closed and every later question says the advisor is gone,
+rather than risking an answer being paired with the question before it. The standing rules decide
+alone from then on, which is what happens when the hosted one is unreachable too.
 
 Those two are also the whole of what a *third* service takes. The variables say `SYSTEM1` rather
 than naming a company because the three question types are the category's — a claim to weigh, a

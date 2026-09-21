@@ -80,9 +80,16 @@ in-process tools will open, and `Confinement` for every way the first of those c
 there - see [SECURITY.md](SECURITY.md) before changing any of it), `attach.rs` (one file into the
 context: the short table of media types this program is prepared to name, and text for everything
 else),
-`endpoint.rs` (where the requests go: the four environment variables this program reads, and the
+`endpoint.rs` (where the requests go: the environment variables this program reads, and the
 two `connect` functions that turn them into a provider - it was `provider.rs` while the dialects
-were files in this crate), `main.rs` (arguments, and the loop that draws). It is
+were files in this crate), `advisor.rs` (feature `advise`: a System One engine running on *this*
+machine, spoken to over a pipe in the body `Jev` already sends - one long-lived child rather than
+one per question, because the open engines load a checkpoint that costs seconds and answers in
+milliseconds. It is here rather than in `nachalnik-providers` because that crate opens sockets and
+does not spawn processes, which is the line `nachalnik-mcp` is on the other side of; and it exists
+because `laya` ships no interface to point a base URL at, so `contrib/laya_advisor.py` is the
+script `SYSTEM1_ADVISOR_COMMAND` names. Every failure closes the pipe, because the next read off a
+doubtful stream is the answer to the question before it), `main.rs` (arguments, and the loop that draws). It is
 a library plus a binary so the screen can be drawn against a `TestBackend` in tests, and because
 the screen is not the program.
 

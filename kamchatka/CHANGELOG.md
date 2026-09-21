@@ -65,6 +65,44 @@ minor bump may break you.
 
 ### added
 
+- **`SYSTEM1_ADVISOR_COMMAND`: an advisor running on this machine, and nothing leaves it.** Set
+  it to a command line and it is used instead of the three `KAMCHATKA_SYSTEM1_*` variables,
+  which are then not read at all. `kamchatka/contrib/laya_advisor.py` is the one to point it at:
+
+  ```console
+  $ pip install laya
+  $ export SYSTEM1_ADVISOR_COMMAND="$HOME/ai/venv/bin/python kamchatka/contrib/laya_advisor.py"
+  $ kamchatka --advise --shell-advisor
+  ```
+
+  This is the honest fix for the disclosure the two flags are careful about. Everything
+  `tools::advice` says is about a third party reading a tool's arguments - which for a write is
+  the text being written and for a shell call is the command line - and pointed at a local
+  engine there is no third party. The flags still say what they say, because what a flag turns
+  on must not depend on an environment variable, but the thing they were guarding against is not
+  happening.
+
+  It is a *command* and not a path because [`laya`](https://github.com/NandhaKishorM/laya) ships
+  no executable: no HTTP server, no CLI, no `python -m laya`. It is a library, so the smallest
+  thing that reaches it from another process is an interpreter and a script, and the shim is
+  that script - about forty lines, most of them comments, because laya's question dicts and
+  answers already use the same three types under the same names as the hosted engine. The
+  protocol is therefore not a new one: it is the body `Jev::render` builds, one JSON object per
+  line, read back by the same `Answers` the HTTP path uses.
+
+  The process is started once and kept. A 421M-parameter checkpoint costs seconds to load and
+  milliseconds to run, so loading one per question would put that wait in front of somebody
+  deciding whether to press `y` - which is the one thing this kind of model was chosen for not
+  doing. It is killed with the session, and its stderr is inherited rather than piped, so what
+  it says about itself reaches the terminal instead of filling a buffer nobody reads.
+
+  Every failure closes the pipe: a command that is not there, a child that stopped answering, a
+  line that did not parse, a question that took longer than 30s. Not because one lost question
+  matters, but because the *next* read off a doubtful stream is the answer to the question
+  before it - an advisor confidently rating the wrong command is worse than no advisor. After
+  that the standing rules decide alone, which is what an unreachable hosted advisor already did.
+
+
 - **The released binary is built with `shell-advisor`.** It is the one feature that has to be
   compiled in to exist at all, and somebody who downloaded a binary cannot add it afterwards - so
   the download was a `--advise` that the readme documents and the artifact did not have.

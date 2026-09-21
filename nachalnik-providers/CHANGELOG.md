@@ -7,6 +7,24 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`system1::SystemOne`, the trait a caller holds.** One method - put these questions to this
+  state - plus a name and a notice for a screen. `Jev` implements it, and so does anything else
+  that answers typed questions.
+
+  POSTPONED.md said a trait here would be a seam shaped around the only thing that fits it, and
+  that was right until the second implementation turned out not to be a second *service*. The
+  open engines ship as libraries, so reaching one means spawning a process, and this crate does
+  not spawn processes - the line `nachalnik-mcp` exists on the other side of. So the trait is
+  here, the local implementation is in the crate that already spawns things, and a caller holds
+  `dyn SystemOne` without learning which it got.
+
+  `Question::to_wire` and `Answers::read` are public with it, and `Jev::ask` now goes through
+  the latter rather than parsing inline. One reader and one renderer for a documented format
+  that two processes have to agree about - the argument `Jev::render` already carried, now with
+  a second caller to make it true.
+
 ### breaking
 
 - **The `typesafe` module and feature are `system1`.** `nachalnik_providers::typesafe::Jev` is
@@ -20,12 +38,10 @@ minor bump may break you.
   naming the shop rather than the goods, and it would have had to be renamed the first time a
   second client went in beside `Jev`.
 
-  What did **not** happen is a trait. The module holds one client, a second engine would be a
-  second struct in it, and a `SystemOne` trait with one implementor would be a seam shaped around
-  the only thing that fits it. What a third service takes today is an address:
+  What a third *service* takes, as against a second engine, is still only an address:
   `Service::of` reads anything it does not recognise as keeping TypeSafe's paths, so a proxy or a
-  self-hosted engine answering `state` and `questions` there works through `Jev` unchanged. See
-  POSTPONED.md on `laya`, which is the candidate and is a Python library with no HTTP API at all.
+  self-hosted one answering `state` and `questions` there works through `Jev` unchanged. A second
+  engine is what `SystemOne` above is for.
 
 ### fixed
 

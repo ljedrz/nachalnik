@@ -192,11 +192,19 @@ Referenced from [AGENTS.md](AGENTS.md).
   `KAMCHATKA_SYSTEM1_MODEL` set and no Rust written at all. Anybody wanting this before the
   upstream has a wire format should write that shim rather than a client.
 
-  What would unblock a real one is `laya` publishing an HTTP interface, or somebody deciding to
-  standardise the body this workspace already sends. Only then is there a second struct worth
-  having, and only then is a trait a description of two things rather than a prediction about
-  one. The thing to resist meanwhile is a `SystemOne` trait shaped around `Jev`, which would
-  make the second engine's job fitting somebody else's client rather than being one.
+  **The trait this entry argued against now exists, and the reason it was wrong is worth
+  keeping.** It said a second engine would be a second struct beside `Jev` and that a trait
+  would be a seam shaped around the only thing that fits it. What it missed is that the second
+  engine is not a second *service*: a library is reached by spawning a process, this crate does
+  not spawn processes, and so the second implementation could never have sat beside `Jev` at
+  all. `system1::SystemOne` is the seam it needs instead, and `kamchatka::advisor::Local` is on
+  the other end of it, talking to `contrib/laya_advisor.py` over a pipe in the body `Jev`
+  already sends.
+
+  What is still not built is a laya *client* - there is nothing to write one against, and a
+  shim somebody runs is the honest answer while that is true. What would unblock one is `laya`
+  publishing an HTTP interface, or somebody standardising the body this workspace already
+  sends.
 
 - **Naming this program to OpenRouter when the *advisor* is what is calling it.** `Jev` sends no
   app headers, so a session that borrows its own key for `--advise` is attributed for the

@@ -46,7 +46,7 @@ use nachalnik::{
     BoxError, Compactor, Config, ContextItem, ContextKind, ContextState, Kernel, ModelInfo,
     test::{ScriptedProvider, call},
 };
-use nachalnik_providers::{Endpoint, system1::Question};
+use nachalnik_providers::system1::Question;
 use serde_json::json;
 
 /// The rubric each candidate is placed on, least worth keeping first.
@@ -264,7 +264,7 @@ async fn main() -> Result<(), BoxError> {
     // example accepts. It reads `KAMCHATKA_SYSTEM1_API_KEY`, `TYPESAFE_API_KEY` and
     // `KAMCHATKA_API_KEY` in that order and picks the endpoint and the model to match
     let jev = endpoint::advise::connect(&endpoint::session_endpoint(false)).await?;
-    if let Some(notice) = jev.take_notice() {
+    if let Some(notice) = jev.notice() {
         eprintln!("advisor: {notice}");
     }
 
@@ -440,7 +440,7 @@ async fn main() -> Result<(), BoxError> {
              context to keep — a different endpoint, and a different bill.",
             usage.input_tokens.unwrap_or_default(),
             usage.output_tokens.unwrap_or_default(),
-            jev.host(),
+            jev.named(),
             budget.used(),
         );
     }

@@ -7,19 +7,23 @@
 //! is the question a program asks *around* a conversation: whether to run that command, which of
 //! four branches this is, how bad the thing it just read is.
 //!
-//! note: named for the kind of model rather than for the company selling one, and it holds
-//! exactly one client. What makes that a name rather than a promise is that there is no trait
-//! here and no indirection: a second engine would be a second struct beside [`Jev`], and until
-//! there is one this is a module with a client in it. The three question types are the category's
-//! and not this vendor's - `laya`, the open one, has the same three under the same names - so a
-//! module called `typesafe` was naming the shop rather than the goods.
+//! note: named for the kind of model rather than for the company selling one. The three question
+//! types are the category's and not this vendor's - `laya`, the open one, has the same three
+//! under the same names - so a module called `typesafe` was naming the shop rather than the
+//! goods.
 //!
-//! note: what a *third* service takes today is an address, and nothing else. Anything answering
-//! a `state` and a map of typed questions at the path below works through [`Jev`] with
-//! [`crate::Endpoint::set_endpoint`] and a model name, because an address
+//! note: [`SystemOne`] is the seam, and it earned its place rather than being laid down for a
+//! caller that might arrive. The open engines ship as *libraries* rather than services, so the
+//! second implementation is a local process - and this crate does not spawn processes, which is
+//! the line `nachalnik-mcp` exists on the other side of. So the trait is here, [`Jev`] implements
+//! it, and the local one lives in whichever crate is already spawning things. A caller holds
+//! `dyn SystemOne` and never learns which it got.
+//!
+//! note: what a third *service* takes, as against a second engine, is an address and nothing
+//! else. Anything answering a `state` and a map of typed questions at the path below works
+//! through [`Jev`] with [`crate::Endpoint::set_endpoint`] and a model name, because an address
 //! this does not recognise is read as keeping TypeSafe's paths - which is the shape a self-hosted
-//! one has. What it does not reach is a different *wire format*, and that is where a second
-//! struct would start.
+//! one has.
 //!
 //! note: three question types and they are asked together in one request. Each is evaluated on
 //! its own against the same state, which is the reason to ask them that way rather than in one
@@ -288,8 +292,13 @@ impl Question {
         }
     }
 
-    /// The payload for this one question.
-    fn to_wire(&self) -> Value {
+    /// The payload for this one question, as the documented request shape has it.
+    ///
+    /// note: public because [`Jev`] is not the only thing that builds one of these bodies - a
+    /// local engine is spoken to over a pipe in the same shape, by a caller in another crate,
+    /// and two renderers for one documented format eventually disagree. [`Jev::render`] is the
+    /// whole body; this is one question of it.
+    pub fn to_wire(&self) -> Value {
         match self {
             Self::Noul {
                 instructions,
@@ -449,6 +458,35 @@ pub struct Answers {
 }
 
 impl Answers {
+    /// Reads a whole response back, in the shape the documented API answers in.
+    ///
+    /// note: the answers are read by the name they were asked under, and a name that did not
+    /// come back is simply absent rather than an error. One question failing to arrive is not a
+    /// reason to throw away the others - which is the whole argument for asking several at once
+    /// - and every accessor below already answers `None` for a question nobody answered.
+    ///
+    /// note: public, and one reader for both engines. A local one answers over a pipe rather
+    /// than a socket and is parsed by a caller in another crate; a second reader written there
+    /// would be a second opinion about what `confidence` means the first time either moved.
+    pub fn read(raw: Value) -> Self {
+        let answers = raw["answers"]
+            .as_object()
+            .map(|answered| {
+                answered
+                    .iter()
+                    .filter_map(|(name, answer)| Some((name.clone(), Answer::from_wire(answer)?)))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Self {
+            model: raw["model"].as_str().unwrap_or_default().to_owned(),
+            answers,
+            usage: read_usage(&raw["usage"]),
+            raw,
+        }
+    }
+
     /// How true the named claim is, if it was asked and came back a `noul`.
     pub fn noul(&self, name: &str) -> Option<f64> {
         match self.answers.get(name)? {
@@ -476,6 +514,69 @@ impl Answers {
     /// How sure the model was about the named question.
     pub fn confidence(&self, name: &str) -> Option<f64> {
         self.answers.get(name)?.confidence()
+    }
+}
+
+/// Anything that answers typed questions put to a state.
+///
+/// note: one method, and it is the whole of what a caller of this module does. [`Jev`] is the
+/// implementation here; the reason there is a trait at all is that the other kind of System One
+/// engine is a *local* one - the open ones ship as libraries rather than services, so a caller
+/// reaching one is spawning a process rather than opening a socket, and this crate does not spawn
+/// processes. So the second implementation lives above this crate rather than in it, and this is
+/// the seam it fits.
+///
+/// note: concrete argument types where [`Jev::ask`] takes `impl Into<Value>` and an iterator,
+/// because a trait with generic methods is not one a caller can hold as `dyn`. Holding one as
+/// `dyn` is the entire point: what decides which engine answers is an environment variable read
+/// at startup, and every caller downstream of that is written against this and finds out nothing.
+///
+/// note: it does *not* extend [`Endpoint`]. Three of that trait's four methods are about an
+/// address and a listing, and a local engine has neither - so a local one implementing it would
+/// be answering four questions with nothing in order to be asked one. [`SystemOne::notice`] is
+/// the one thing out of `Endpoint` worth having here, because a caller that has quietly stopped
+/// getting answers should be able to see why.
+#[async_trait]
+pub trait SystemOne: Send + Sync {
+    /// Puts the questions to the state, and answers all of them in one request.
+    async fn ask(
+        &self,
+        state: Value,
+        questions: Vec<(String, Question)>,
+    ) -> Result<Answers, BoxError>;
+
+    /// Whatever it last wanted to say for itself, if anything.
+    ///
+    /// note: defaulted to nothing, so that an implementation with no story to tell - no retries,
+    /// no listing to be missing from - does not have to write one.
+    fn notice(&self) -> Option<String> {
+        None
+    }
+
+    /// What to call this engine on a screen, or in a line saying what the advice cost.
+    ///
+    /// note: a sentence for a person rather than an address, because a local engine has no
+    /// address - what identifies one is the command somebody started it with. Not for matching
+    /// on, which is the same rule the four `name()` seams in the runtime carry.
+    fn named(&self) -> String;
+}
+
+#[async_trait]
+impl SystemOne for Jev {
+    async fn ask(
+        &self,
+        state: Value,
+        questions: Vec<(String, Question)>,
+    ) -> Result<Answers, BoxError> {
+        Jev::ask(self, state, questions).await
+    }
+
+    fn notice(&self) -> Option<String> {
+        self.take_notice()
+    }
+
+    fn named(&self) -> String {
+        self.host()
     }
 }
 
@@ -592,27 +693,7 @@ impl Jev {
         let body = self.render(&state, &questions);
         let raw = self.send(&body).await?;
 
-        // note: the answers are read by the name they were asked under, and a name that did not
-        // come back is simply absent rather than an error. One question failing to arrive is not
-        // a reason to throw away the others - which is the whole argument for asking several at
-        // once - and every accessor on `Answers` already answers `None` for a question nobody
-        // answered
-        let answers = raw["answers"]
-            .as_object()
-            .map(|answered| {
-                answered
-                    .iter()
-                    .filter_map(|(name, answer)| Some((name.clone(), Answer::from_wire(answer)?)))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        Ok(Answers {
-            model: raw["model"].as_str().unwrap_or_default().to_owned(),
-            answers,
-            usage: read_usage(&raw["usage"]),
-            raw,
-        })
+        Ok(Answers::read(raw))
     }
 
     /// Sends one rendered payload, waiting out a server that says it is busy.

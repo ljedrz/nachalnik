@@ -82,7 +82,7 @@ pub use crate::gemini::Gemini;
 #[cfg(feature = "openai")]
 pub use crate::openai::OpenAiCompatible;
 #[cfg(feature = "system1")]
-pub use crate::system1::Jev;
+pub use crate::system1::{Jev, SystemOne};
 
 /// Whether an error means an account is out of free requests for the day, rather than having hit
 /// a momentary upstream limit.

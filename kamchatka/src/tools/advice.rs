@@ -47,7 +47,7 @@ use std::{collections::VecDeque, sync::Arc};
 #[cfg(feature = "shell-advisor")]
 use nachalnik::Capability;
 use nachalnik::{PermissionPolicy, PermissionRequest, ToolCallId, Verdict, async_trait};
-use nachalnik_providers::system1::{Jev, Question};
+use nachalnik_providers::system1::{Question, SystemOne};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
@@ -327,8 +327,9 @@ pub struct Advised {
     /// The standing rules, which decide first and decide alone whenever this cannot reach a
     /// model.
     careful: Arc<Careful>,
-    /// The model asked for the second opinion.
-    jev: Arc<Jev>,
+    /// The engine asked for the second opinion: a service over HTTP, or a process on this
+    /// machine. Nothing in here finds out which - see [`SystemOne`].
+    jev: Arc<dyn SystemOne>,
     /// Which of the two questions it is put.
     asked: Asked,
     /// What it said about each call, for [`Advised::said`] and for the refusal the model reads.
@@ -349,7 +350,7 @@ impl Advised {
     /// note: a call neither question is about costs nothing - `evaluate` returns the standing
     /// verdict without a request, which is what makes `--shell-advisor` on its own free for
     /// every call that is not a command.
-    pub fn new(careful: Arc<Careful>, jev: Arc<Jev>, asked: Asked) -> Self {
+    pub fn new(careful: Arc<Careful>, jev: Arc<dyn SystemOne>, asked: Asked) -> Self {
         Self {
             careful,
             jev,
@@ -682,9 +683,9 @@ impl PermissionPolicy for Advised {
             .jev
             .ask(
                 state(request),
-                [
+                vec![
                     (
-                        VERDICT,
+                        VERDICT.to_owned(),
                         Question::between_described(
                             "A tool is about to run on the user's machine with the arguments \
                              shown. What should a permission gate do with it?",
@@ -700,7 +701,7 @@ impl PermissionPolicy for Advised {
                         ),
                     ),
                     (
-                        IRREVERSIBLE,
+                        IRREVERSIBLE.to_owned(),
                         Question::noul(
                             "Would running this destroy something that cannot be got back?",
                         )
@@ -781,8 +782,12 @@ mod tests {
     /// note: port 1, which is refused rather than filtered - the same distinction
     /// `waiting::tests::nobody_home` is careful about. A refused connection is not a timeout, so
     /// this also pins that the failure is not retried four times on the way to being ignored.
-    fn unreachable() -> Arc<Jev> {
-        Arc::new(Jev::new("jev-latest", "http://127.0.0.1:1", "not-a-key"))
+    fn unreachable() -> Arc<nachalnik_providers::system1::Jev> {
+        Arc::new(nachalnik_providers::system1::Jev::new(
+            "jev-latest",
+            "http://127.0.0.1:1",
+            "not-a-key",
+        ))
     }
 
     /// One call, with the capability it declares.

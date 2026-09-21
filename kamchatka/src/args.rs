@@ -40,6 +40,9 @@ pub fn environment() -> String {
     const ADVISOR: &str = "
 
 The advisor, which is only ever asked when --advise or --shell-advisor is given:
+  SYSTEM1_ADVISOR_COMMAND     an engine to run on this machine, as a command line.
+                              Takes precedence over the three below, and nothing
+                              leaves the machine when it is set
   KAMCHATKA_SYSTEM1_API_KEY   its key; or TYPESAFE_API_KEY. Without one it borrows
                               KAMCHATKA_API_KEY, but only where this session already
                               talks to OpenRouter, which serves jev too
@@ -509,7 +512,7 @@ impl Args {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
             .context("could not reach the advisor")?;
-        if let Some(notice) = jev.take_notice() {
+        if let Some(notice) = jev.notice() {
             eprintln!("advisor: {notice}");
         }
 

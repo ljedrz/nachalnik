@@ -131,7 +131,7 @@ pub struct Setup {
     /// to have an advisor at all - and which endpoint it is - is the caller's to decide and its
     /// business to say out loud.
     #[cfg(feature = "advise")]
-    pub advisor: Option<Arc<nachalnik_providers::system1::Jev>>,
+    pub advisor: Option<Arc<dyn nachalnik_providers::system1::SystemOne>>,
 
     /// Which of the two questions that advisor is put: a verdict folded into the gate, a rating
     /// drawn in the question, or both.
