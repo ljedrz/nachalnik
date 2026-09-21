@@ -483,11 +483,14 @@ mod tests {
 
         let shim = include_str!("../contrib/laya_advisor.py");
 
-        let sent =
-            advice::LEVELS
-                .iter()
-                .copied()
-                .chain([advice::DECIDE, advice::DESTROYS, advice::PLACE]);
+        let sent = advice::LEVELS.iter().copied().chain([
+            advice::DECIDE,
+            advice::DESTROYS,
+            advice::PLACE,
+            advice::RUIN,
+            advice::RUINED,
+            advice::INTACT,
+        ]);
         for text in sent {
             assert!(
                 shim.contains(text),

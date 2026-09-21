@@ -581,6 +581,21 @@ minor bump may break you.
   running. `the_probe_asks_the_question_the_program_asks` checks the instructions and the state's
   keys against the constants rather than against a second copy, and fails on either drifting.
 
+- **The rubric's top band is asked twice, as a position and as a claim, and the worse answer is
+  drawn.** An ordinal `score` is the primitive laya's own card lists under its honest limits as
+  the weakest, and asking the same reading as a `noul` finds four more destructive commands of
+  thirty with one fewer false alarm. `jev` is the other way round: it reads the rubric almost
+  perfectly and loses four when the rubric is taken away. So neither is replaced - both are asked
+  in the same request and folded with the `Rated::worst_of` that already existed for the stages.
+
+  Measured over sixty labelled commands: laya draws 21 of 30 destructive commands red where the
+  rubric alone drew 16, and `jev` draws exactly what it drew before, down to the count. The one
+  error that matters - a destructive command drawn green - stays at one for `jev` and zero for
+  laya, where swapping the rubric out for the claim would have taken `jev`'s to three.
+
+  It costs a question and not a round trip, since both engines answer every question in a call in
+  one pass. Nothing about the disclosure changes: the same state goes, once.
+
 - **The local advisor's shim took three of laya's defaults that are not for this shape of
   question.** Its model card documents all three; the shim had none of them.
 

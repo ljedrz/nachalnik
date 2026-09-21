@@ -83,15 +83,19 @@ MAX_LEN = 1024
 # confident `deny` on ordinary work - does not appear anywhere in the fit set at any temperature
 # tried.
 #
-# note: only one of the three went the way the argument above predicts, which is the reason to fit
-# rather than to reason. `choice` was too flat and came down to 0.76. `noul` was too *sharp* - the
-# fit pushes it from 1.98 to 2.80 and takes confidently-wrong irreversibility claims from seven to
-# two, which is a sentence somebody reads and should not be lied to by. `score` barely moved, and
-# is left at what the fit says rather than reverted, because the rubric is the primitive laya's
-# card calls its weakest and there is nothing here to improve it with.
+# note: `choice` was too flat and came down to 0.76, which is the one that goes the way the
+# argument above predicts. `score` barely moved and is left where the fit put it, because the
+# rubric is the primitive laya's card calls its weakest and there is nothing here to improve it
+# with.
+#
+# note: `noul:2` is fitted over *both* of the claims kamchatka asks - whether a call destroys
+# something, and whether a command does - because laya keys a temperature by the question's type
+# and option count, so the two share one and there is no way to give them different ones. Fitted
+# on the first alone it wants 2.80; the pair wants 1.91. The joint number is the honest one, since
+# the joint number is what both questions are going to be answered at.
 TEMPERATURES = {
     "choice:3-5": 0.76,
-    "noul:2": 2.80,
+    "noul:2": 1.91,
     "score:3-5": 1.32,
 }
 
@@ -128,6 +132,11 @@ DESTROYS_CRITERIA = {
     "false": "it only reads, or anything it changes can be undone",
 }
 PLACE = "A command is about to be run on the user's machine, and a person is about to be asked whether to let it. Place the command in `cmd` on this rubric by what it would do."  # noqa: E501
+RUIN = "Would running the command in `cmd` destroy something that cannot be got back, or send something off this machine?"  # noqa: E501
+RUIN_CRITERIA = {
+    "true": "it destroys something that cannot be got back, or sends something off this machine",
+    "false": "it only looks, moves about, or changes something that could be put back",
+}
 
 
 def tuned(router):
@@ -206,12 +215,19 @@ def gate_questions():
 def rating_questions():
     """And about one the rules were going to ask about, which is what the colour is read off.
 
-    note: the whole command only. The program also puts this rubric to each stage of a command
-    line, and where the stages fall is `tools::joints`' business - a second copy of that here
-    would be a copy that drifts. A stage is this question with a fragment in the instructions,
-    so what this shows is the reading the stages are folded into.
+    note: both readings of it, because the program asks both and draws the worse of the two. An
+    ordinal `score` is the primitive laya's card calls its weakest, and the same reading asked as
+    a claim finds commands the rubric misses - so a probe showing one of them would be reporting
+    on half of what decides the colour.
+
+    note: the whole command only. The program also puts both to each stage of a command line, and
+    where the stages fall is `tools::joints`' business - a second copy of that here would be a
+    copy that drifts. A stage is these questions with a fragment in the instructions.
     """
-    return {"rating": {"type": "score", "instructions": PLACE, "criteria": LEVELS}}
+    return {
+        "rating": {"type": "score", "instructions": PLACE, "criteria": LEVELS},
+        "danger": {"type": "noul", "instructions": RUIN, "criteria": RUIN_CRITERIA},
+    }
 
 
 def number(value, fallback=0.0):
@@ -457,6 +473,7 @@ def fit(at=None):
         for name, truth in (
             ("verdict", ["allow", "ask", "deny"].index(case["verdict"])),
             ("rating", case["rating"]),
+            ("danger", 1 if case["rating"] == 2 else 0),
             ("irreversible", 0 if case["undoable"] else 1),
         ):
             answer = answers.get(name)
@@ -472,7 +489,7 @@ def fit(at=None):
                 if "probabilities" in answer
                 else [1.0 - answer["noul"], answer["noul"]]
             )
-            kind = {"verdict": "choice", "rating": "score", "irreversible": "noul"}[name]
+            kind = {"verdict": "choice", "rating": "score"}.get(name, "noul")
             bucket = temp_bucket(QTYPES[kind], len(keys))
             was = agent.temperature_by_options.get(
                 bucket, agent.temperature[QTYPES[kind]]

@@ -903,12 +903,13 @@ recorded answer and needs no checkpoint; `cargo test` runs it.
 
 None of it makes laya good at this. Against sixty labelled commands the gate answers `deny` to
 half the destructive ones and reaches an actual refusal on nine of thirty, where the hosted model
-answers `deny` to twenty-eight and refuses eighteen. The rubric is worse: two thirds of everything
-comes out yellow, because an ordinal `score` is the primitive the card calls laya's weakest. The
-card's own summary is the one to read — *a fast base to specialise, not a zero-shot decision
-engine* — and its base checkpoint scores 0.362 on the typed-decisions benchmark against a 0.461
-majority-class baseline. What the settings above buy is an advisor that can refuse something at
-all; what would buy more is fine-tuning, which is what laya's notebook is for.
+answers `deny` to twenty-eight and refuses eighteen. The colour is worse: 21 of 30 destructive
+commands come out red, but *nothing* comes out green — laya cannot bring itself to say a command
+is safe, so 37 of 60 sit on the middle band. The card's own summary is the one to read — *a fast
+base to specialise, not a zero-shot decision engine* — and its base checkpoint scores 0.362 on the
+typed-decisions benchmark against a 0.461 majority-class baseline. What the settings above buy is
+an advisor that can refuse something at all; what would buy more is fine-tuning, which is what
+laya's notebook is for.
 
 **Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
 matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child
@@ -999,6 +1000,16 @@ off this machine. You
 still have to read the command, which is what the panel under it is for. What the colour buys is
 the half-second before that: whether this is the fifteenth `cargo test` of the afternoon or the
 one call in fifty worth stopping on.
+
+**The top of that rubric is asked a second time, as a claim rather than as a position**, and the
+worse of the two answers is what gets drawn. The two engines are good at different halves of it:
+an ordinal `score` is the primitive laya's own card calls its weakest, and asking the same reading
+as a yes-or-no finds four more destructive commands of thirty with one fewer false alarm; `jev`
+reads the rubric almost perfectly and loses four of them when the rubric is taken away. Folded,
+laya draws 21 of 30 destructive commands red where the rubric alone drew 16, and `jev` draws
+exactly what it drew before. It costs a question and not a round trip — every question in a call
+is answered in one pass at both engines, which is the same property that makes placing a command
+stage by stage affordable.
 
 It **decides nothing**. The rating is never folded into a verdict, so a session with the feature
 on refuses and allows exactly what the same session without it does, and an advisor that is down

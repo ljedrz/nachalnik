@@ -115,6 +115,21 @@ const RATING: &str = "rating";
 #[cfg(feature = "shell-advisor")]
 const STAGE: &str = "stage";
 
+/// The top of that rubric, asked again as a claim rather than as a position on it.
+///
+/// note: both, and folded, because the two engines are good at different halves of it. An ordinal
+/// `score` is the primitive laya's own card calls its weakest, and asking the same reading as a
+/// `noul` finds four more of thirty destructive commands with one fewer false alarm; `jev` reads
+/// the rubric almost perfectly and loses four of them when the rubric is taken away. Folded with
+/// [`Rated::worst_of`], the one that is right about a command carries it, and neither engine is
+/// asked to answer in the shape it is worse at.
+///
+/// note: it costs a question and not a round trip. Every question in a call is answered in one
+/// pass at both engines - which is the property that made placing a command stage by stage worth
+/// doing here - so what doubling them buys is measured in milliseconds rather than in waits.
+#[cfg(feature = "shell-advisor")]
+const DANGER: &str = "danger";
+
 /// The most stages one command line is taken apart into before it is judged whole instead.
 ///
 /// note: a limit rather than a prefix. Placing the first eight of twelve and folding those would
@@ -250,6 +265,31 @@ impl Rated {
         Self {
             scored,
             confidence,
+            worst: None,
+        }
+    }
+
+    /// And reads the same reading back off the claim, where it was asked as one.
+    ///
+    /// note: a claim answers the top band and nothing else, so the bottom one is what is left when
+    /// it is confidently false rather than something the question said. What that costs is the
+    /// difference between `ls` and `mkdir`, which no colour here was ever drawing - the middle band
+    /// is what a reading nobody is sure of lands on either way.
+    ///
+    /// note: a `noul`'s number *is* its confidence, which is why this takes one argument where
+    /// [`Rated::of`] takes two. How sure the model is of a claim it puts at 0.9 is 0.9, and of one
+    /// it puts at 0.1 is also 0.9 - of the claim being false. Between the two it is sure of
+    /// nothing, and the band says so rather than picking the nearer side of a coin toss.
+    fn claimed(danger: f64) -> Self {
+        let scored = match danger {
+            it if it >= SURE => Rating::Grave,
+            it if it <= 1.0 - SURE => Rating::Reads,
+            _ => Rating::Changes,
+        };
+
+        Self {
+            scored,
+            confidence: danger.max(1.0 - danger),
             worst: None,
         }
     }
@@ -404,13 +444,17 @@ impl Advised {
         // apart at all here. Each is evaluated on its own against the same state, so no stage's
         // answer can be moved by another's, and a twelve-stage pipeline costs the round trip a
         // one-stage command costs
-        let mut questions = vec![(RATING.to_owned(), Question::score(PLACE, LEVELS))];
-        questions.extend(
-            stages
-                .iter()
-                .enumerate()
-                .map(|(n, (from, to))| (format!("{STAGE}-{n}"), placing(&cmd[*from..*to]))),
-        );
+        let mut questions = vec![
+            (RATING.to_owned(), Question::score(PLACE, LEVELS)),
+            (
+                DANGER.to_owned(),
+                Question::noul(RUIN).between(RUINED, INTACT),
+            ),
+        ];
+        for (n, (from, to)) in stages.iter().enumerate() {
+            questions.push((format!("{STAGE}-{n}"), placing(&cmd[*from..*to])));
+            questions.push((format!("{DANGER}-{n}"), claiming(&cmd[*from..*to])));
+        }
 
         let Ok(answers) = self.jev.ask(state(request), questions).await else {
             return;
@@ -426,21 +470,37 @@ impl Advised {
             ))
         };
 
-        // note: the whole command is what decides whether anything was said at all. A stage that
-        // did not come back is one fewer chance to tighten - see `worst_of` - but an answer with
-        // no reading of the whole command in it is half an answer, and the safe reading of one is
-        // the same here as it is above
-        let Some(whole) = read(RATING) else {
+        // note: a `noul`'s number is its own confidence, so there is no second field to pair it
+        // with and no half-answer to guard against - see `Rated::claimed`
+        let claim = |name: &str| Some(Rated::claimed(answers.noul(name)?));
+
+        // note: the whole command is what decides whether anything was said at all, and it now has
+        // two ways of saying it. Either will do; neither is half an answer, because each is a
+        // reading of the whole command on its own. Nothing at all is still nothing, and the safe
+        // reading of that is the same here as it is above
+        let whole: Vec<Rated> = [read(RATING), claim(DANGER)]
+            .into_iter()
+            .flatten()
+            .collect();
+        if whole.is_empty() {
             return;
-        };
-        let placed = stages.iter().enumerate().filter_map(|(n, span)| {
-            Some(Rated {
+        }
+
+        let placed = stages.iter().enumerate().flat_map(|(n, span)| {
+            [
+                read(&format!("{STAGE}-{n}")),
+                claim(&format!("{DANGER}-{n}")),
+            ]
+            .into_iter()
+            .flatten()
+            .map(|part| Rated {
                 worst: Some(*span),
-                ..read(&format!("{STAGE}-{n}"))?
+                ..part
             })
+            .collect::<Vec<_>>()
         });
 
-        let Some(rated) = Rated::worst_of(std::iter::once(whole).chain(placed)) else {
+        let Some(rated) = Rated::worst_of(whole.into_iter().chain(placed)) else {
             return;
         };
 
@@ -491,6 +551,34 @@ pub(crate) const PLACE_STAGE: &str = "A command is about to be run on the user's
                            about to be asked whether to let it. The whole command is in `cmd`. \
                            Place only the stage in `stage` on this rubric, by what that stage \
                            would do as part of that command.";
+
+/// [`LEVELS`]' top band as a claim, for the whole command.
+#[cfg(feature = "shell-advisor")]
+pub(crate) const RUIN: &str = "Would running the command in `cmd` destroy something that cannot be got back, or send something off this machine?";
+
+/// And for one stage of it, read in view of the whole the way [`PLACE_STAGE`] is.
+#[cfg(feature = "shell-advisor")]
+pub(crate) const RUIN_STAGE: &str = "A command is about to be run on the user's machine, and a person is about to be asked whether to let it. The whole command is in `cmd`. Would the stage in `stage` destroy something that cannot be got back, or send something off this machine?";
+
+/// What each side of that claim means, in the words the rubric's own bands use.
+#[cfg(feature = "shell-advisor")]
+pub(crate) const RUINED: &str =
+    "it destroys something that cannot be got back, or sends something off this machine";
+
+/// note: it names both of the lower bands, because a claim has one false side and the rubric has
+/// two - and a `false` described as only the bottom one would be read as denying that a command
+/// changes anything, which is not what is being asked.
+#[cfg(feature = "shell-advisor")]
+pub(crate) const INTACT: &str =
+    "it only looks, moves about, or changes something that could be put back";
+
+/// The claim put to one stage, carrying the stage the way [`placing`] does.
+#[cfg(feature = "shell-advisor")]
+fn claiming(stage: &str) -> Question {
+    Question::noul(RUIN_STAGE)
+        .between(RUINED, INTACT)
+        .structured(json!({ "asked": RUIN_STAGE, "stage": stage }))
+}
 
 /// One stage of a command line, put on [`LEVELS`].
 ///
@@ -873,6 +961,60 @@ mod tests {
         assert_eq!(sure(1.5), Rating::Grave);
         assert_eq!(sure(1.8), Rating::Grave);
         assert_eq!(sure(2.0), Rating::Grave);
+    }
+
+    /// A claim lands on the top band when it holds, the bottom when it is confidently false, and
+    /// the middle the rest of the time.
+    ///
+    /// note: the pair with `a_score_lands_on_the_band_it_is_nearest`, and the case worth having it
+    /// for is the middle. A `noul` at 0.51 is the advisor saying it could not tell, and reading it
+    /// by which side of a half it fell on would draw a coin toss in red - the same mistake
+    /// `Rated::shown` exists to stop one primitive along, made here instead where `shown` could
+    /// not undo it, because that rule only ever raises a band.
+    #[cfg(feature = "shell-advisor")]
+    #[test]
+    fn a_claim_lands_on_the_top_band_only_when_it_holds() {
+        let band = |danger| Rated::claimed(danger).shown();
+
+        // it holds, and the advisor is sure of it
+        assert_eq!(band(1.0), Rating::Grave);
+        assert_eq!(band(SURE), Rating::Grave);
+        // it does not hold, and the advisor is equally sure of that
+        assert_eq!(band(0.0), Rating::Reads);
+        assert_eq!(band(1.0 - SURE), Rating::Reads);
+
+        // and in between there is no answer, whichever side of a half it happens to fall
+        for unsure in [0.31, 0.49, 0.5, 0.51, 0.69] {
+            assert_eq!(band(unsure), Rating::Changes, "{unsure}");
+        }
+
+        // the confidence is the claim's own distance from a half, which is what makes the band
+        // above and `shown`'s rule agree rather than fight
+        assert_eq!(Rated::claimed(0.9).confidence, 0.9);
+        assert_eq!(Rated::claimed(0.1).confidence, 0.9);
+        assert!(Rated::claimed(0.5).confidence < SURE);
+    }
+
+    /// The two readings of one command fold, and either alone is enough to draw a line.
+    ///
+    /// note: the property the second question was added for. `jev` reads the rubric and loses four
+    /// destructive commands of thirty when it is taken away; `laya` finds four more by the claim
+    /// than by the rubric. Folding them means a command either is right about carries it, and the
+    /// fold is over `shown` for the reason `worst_of` already documents.
+    #[cfg(feature = "shell-advisor")]
+    #[test]
+    fn a_command_is_drawn_by_whichever_reading_of_it_is_worse() {
+        // the rubric saw nothing and the claim did
+        let folded = Rated::worst_of([Rated::of(0.1, 0.99), Rated::claimed(0.95)]);
+        assert_eq!(folded.expect("it folds").shown(), Rating::Grave);
+
+        // and the other way round, which is the case that keeps `jev` where it was
+        let folded = Rated::worst_of([Rated::of(2.0, 0.99), Rated::claimed(0.05)]);
+        assert_eq!(folded.expect("it folds").shown(), Rating::Grave);
+
+        // neither of them sure of anything is still a question rather than a clean bill
+        let folded = Rated::worst_of([Rated::of(0.0, 0.1), Rated::claimed(0.5)]);
+        assert_eq!(folded.expect("it folds").shown(), Rating::Changes);
     }
 
     /// A rating nobody is sure of is never drawn green, and is never drawn safer than it scored.
