@@ -1788,6 +1788,56 @@ async fn a_batch_of_answers_is_not_forgotten_before_its_calls_run() {
     );
 }
 
+/// What the advisor has to say reaches the session, rather than a terminal nobody is reading.
+///
+/// note: the bug this is here for. `Args::advised` drained the queue at startup and printed it
+/// with `eprintln!`, on the reasoning that there was no screen yet - but the screen arrives at
+/// once and clears it, so the line went where nobody could read it *and* was gone from the queue
+/// the session reports from. What was lost was a local advisor's first notice, which is the one
+/// saying it is not ready yet.
+///
+/// note: driven through `App::on_outcome`, which is where the provider's own notice is read and
+/// is a door all three loops come through - so what this pins holds for the headless loop and a
+/// served session as well as the drawn one. The drawn loop also polls on its tick, which is what
+/// gets a starting advisor onto the screen before anybody has sent anything.
+#[cfg(feature = "advise")]
+#[tokio::test]
+async fn the_advisor_says_what_it_has_to_say_to_the_session() {
+    // a child that answers nothing: what it reports is the notice it wrote on starting, which
+    // is the one that used to be eaten before the session could read it
+    let Ok(local) = kamchatka::advisor::Local::new("true") else {
+        return;
+    };
+
+    let wired = Setup {
+        advisor: Some(std::sync::Arc::new(local)),
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+
+    let mut app = wired.app;
+    let mut finished = wired.finished;
+    app.kernel
+        .set_provider(Arc::new(ScriptedProvider::new(vec![ModelResponse::text(
+            "nothing to do",
+        )])));
+    app.ask("hello");
+    app.start_turn();
+    let outcome = finished.recv().await.expect("the turn never ended");
+    app.on_outcome(outcome);
+
+    let said: Vec<String> = app.notes(0).map(|note| note.text.to_string()).collect();
+    assert!(
+        said.iter().any(|line| line.contains("not ready yet")),
+        "the advisor's own first line should be in the session: {said:?}"
+    );
+}
+
 /// The rating reaches the screen through the wiring a real session is built by.
 ///
 /// note: the screen tests build an `App` and hand it an advisor directly, which checks the

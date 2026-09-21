@@ -466,8 +466,15 @@ impl Args {
     /// reach an advisor is refused rather than quietly run with its permissions decided by the
     /// heuristic alone. Somebody who turned this on is entitled to have it on or be told it is not.
     ///
-    /// note: what the probe had to say goes to stderr, because there is no screen yet and this is
-    /// the last moment it can be read before one covers it.
+    /// note: nothing is drained here, and it used to be. What the probe had to say went to
+    /// stderr on the reasoning that there was no screen yet - but the screen arrives immediately
+    /// and clears it, so the line was printed where nobody could read it *and* taken out of the
+    /// queue the session reports from. A local advisor's first notice is that it is not ready
+    /// yet, which is exactly the line that went missing.
+    ///
+    /// note: so the session reports all of them, through `App::on_event` and the drawn loop's
+    /// tick. That is newer than this drain was and makes it redundant; what it is not is
+    /// harmless, because a queue somebody else popped is a queue missing its first line.
     #[cfg(feature = "advise")]
     pub async fn advised(&self, setup: Setup) -> Result<Setup> {
         if !self.advise {
@@ -478,10 +485,6 @@ impl Args {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
             .context("could not reach the advisor")?;
-        if let Some(notice) = jev.notice() {
-            eprintln!("advisor: {notice}");
-        }
-
         Ok(Setup {
             advisor: Some(jev),
             ..setup

@@ -539,6 +539,15 @@ minor bump may break you.
 
 ### fixed
 
+- **The advisor's first notice reached a terminal the screen then cleared.** `Args::advised`
+  drained the queue at startup and printed it with `eprintln!`, on the reasoning that there was
+  no screen yet - but the screen arrives at once and clears it, so the line went where nobody
+  could read it *and* was gone from the queue the session reports from. What was lost was
+  exactly a local advisor's first notice, which is the one saying it is not ready yet.
+
+  The drain is gone; the session reports all of them. That polling is newer than the drain was,
+  which is how the two came to overlap.
+
 - **The advisor's own notices reach the session, and a local one says when it is ready.** Only
   `Args::advised` ever asked for one, at startup, so an advisor that started failing mid-session
   failed silently - true of the hosted one since it existed. `App::on_event` and the drawn
