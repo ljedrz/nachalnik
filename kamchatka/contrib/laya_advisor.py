@@ -66,6 +66,35 @@ os.environ.setdefault("USE_TF", "0")
 HEAD_MAX_LEN = 512
 MAX_LEN = 1024
 
+# One softmax temperature per (question type, option count), refitted for the questions kamchatka
+# asks. Anything not named here keeps the checkpoint's own.
+#
+# note: laya's card says the checkpoint ships over-confident and that refitting these on your own
+# data is what makes the probabilities mean anything. The numbers it ships were fitted on its
+# domain and are about twice too flat for this one: a three-option `choice` came out at 1.76, and
+# a refusal that could not clear the 0.7 the caller compares against is a refusal the caller turns
+# into a question. Fitted by minimising NLL over `laya_fit.json` - `--fit` is what recomputes them
+# and prints the working.
+#
+# note: this moves confidence and not decisions. A softmax temperature is monotonic, so which
+# option the model picks is identical at any of these; what changes is whether the caller is
+# allowed to act on it. That is also why the change is a safe one to make in this direction: the
+# advice can only ever tighten, an `allow` decides nothing, and the one harmful error - a
+# confident `deny` on ordinary work - does not appear anywhere in the fit set at any temperature
+# tried.
+#
+# note: only one of the three went the way the argument above predicts, which is the reason to fit
+# rather than to reason. `choice` was too flat and came down to 0.76. `noul` was too *sharp* - the
+# fit pushes it from 1.98 to 2.80 and takes confidently-wrong irreversibility claims from seven to
+# two, which is a sentence somebody reads and should not be lied to by. `score` barely moved, and
+# is left at what the fit says rather than reverted, because the rubric is the primitive laya's
+# card calls its weakest and there is nothing here to improve it with.
+TEMPERATURES = {
+    "choice:3-5": 0.76,
+    "noul:2": 2.80,
+    "score:3-5": 1.32,
+}
+
 # The questions kamchatka actually sends, copied from `kamchatka/src/tools/advice.rs`.
 #
 # note: a copy, and the hazard is obvious - texts that have to agree, in two languages. What
@@ -101,22 +130,57 @@ DESTROYS_CRITERIA = {
 PLACE = "A command is about to be run on the user's machine, and a person is about to be asked whether to let it. Place the command in `cmd` on this rubric by what it would do."  # noqa: E501
 
 
-def budgeted(router):
-    """Gives every checkpoint the router holds the budget above, and hands the router back.
+def tuned(router):
+    """Gives every checkpoint the router holds the budget and the temperatures above.
 
-    note: after `preload`, because the numbers live on each built agent's `cfg` and are read at
-    the moment a question is answered. A checkpoint the router loads later keeps its own default,
-    which is the one case this misses and is why `preload=True` is not only about latency here.
+    note: after `preload`, because both live on each built agent and are read at the moment a
+    question is answered. A checkpoint the router loads later keeps its own defaults, which is the
+    one case this misses and is why `preload=True` is not only about latency here.
 
-    note: laya's own card is where the knob comes from - it raises these for questions whose
-    options do not fit, and the same budget is what a stage travels in.
+    note: both knobs are laya's own - it documents raising the budget for questions whose options
+    do not fit, and asks for the temperatures to be refitted per domain.
     """
     for name in router.loaded:
-        cfg = router.load(name).cfg
-        cfg["head_max_len"] = max(cfg.get("head_max_len", 0), HEAD_MAX_LEN)
-        cfg["max_len"] = max(cfg.get("max_len", 0), MAX_LEN)
+        agent = router.load(name)
+        agent.cfg["head_max_len"] = max(agent.cfg.get("head_max_len", 0), HEAD_MAX_LEN)
+        agent.cfg["max_len"] = max(agent.cfg.get("max_len", 0), MAX_LEN)
+        agent.temperature_by_options = dict(agent.temperature_by_options, **TEMPERATURES)
 
     return router
+
+
+def checkpoint(state):
+    """Which checkpoint answers about this state: the exact signal, not the best-effort one.
+
+    note: laya's router picks by script *and*, within Latin, by a stopword guess at the language -
+    and its own card calls the first exact and the second explicitly best-effort. On what this
+    program sends, the second is worse than useless: a state is a tool call, so the words it
+    guesses from are flags and paths and package names rather than prose. `python -c 'import os,
+    sys'` reads as Portuguese, because `os` is a Portuguese stopword and appears twice, and goes
+    to a checkpoint the card's own table puts at 0.657 against 0.783 on English.
+
+    note: the script half is kept rather than pinning English outright, because the state is not
+    always a command line. `fs:write` carries the text being written, and the card is blunt about
+    what the English checkpoint does with a script it cannot read - 0.000 accuracy at 0.952
+    confidence, which confidence gating cannot save anybody from. What this gives up is a write of
+    French or German prose, which the guess would have routed better.
+
+    note: the script signal is counted over the *whole* state, so the twenty-odd Latin letters a
+    call's own wrapper contributes - `write`, `fs:write`, the path - outvote a line or two of
+    another script and lose it to the English checkpoint. A paragraph wins; a sentence may not.
+    That is laya's own reckoning and not something this changes, and it is written down here
+    because it is the case a reader of the note above would otherwise assume is covered.
+    """
+    from laya import detect_language
+
+    latin = detect_language(state)["script"] in ("latin", "unknown")
+
+    return "english" if latin else "multilingual"
+
+
+def predict(router, state, asked):
+    """One request, on the checkpoint this program picks rather than the one the guess picks."""
+    return router.predict(state, asked, model=checkpoint(state))
 
 
 def call(cmd):
@@ -260,13 +324,13 @@ def probe(command):
     """
     from laya import Router
 
-    router = budgeted(Router(preload=True))
+    router = tuned(Router(preload=True))
     state = call(command)
     print("--- the state kamchatka sends ---")
     print(json.dumps(state, indent=2))
 
     for what, asked in (("the gate", gate_questions()), ("the rubric", rating_questions())):
-        result = router.predict(state, asked)
+        result = predict(router, state, asked)
         print("--- %s: what laya answered, verbatim ---" % what)
         print(json.dumps(result, indent=2, default=str))
         print("--- %s: what this shim would send on ---" % what)
@@ -350,11 +414,127 @@ def selftest() -> int:
     return 0
 
 
+def fit(at=None):
+    """Refits one temperature per (question type, option count) over the labelled commands.
+
+    note: this is what `TEMPERATURES` is, and running it is how to replace those numbers with
+    ones fitted on traffic of your own - point it at a file shaped like `laya_fit.json`. laya's
+    card asks for exactly this and is explicit that the shipped numbers are its domain's.
+
+    note: the fit is over the *raw* scores, recovered by undoing whatever temperature the agent
+    applied, so it does not compound with a previous run of itself. Minimising NLL rather than
+    ECE, because NLL is what a proper scoring rule reads and ECE on fifty points is bin noise -
+    the ECE is printed beside it so a fit that improved one and wrecked the other is visible.
+
+    note: it prints the misfire count, which is the number to read before trusting any of this.
+    A lower temperature makes the model surer of everything, wrong answers included; the only
+    one that costs anything here is a confident `deny` on ordinary work, because the advice can
+    only ever tighten and an `allow` decides nothing.
+    """
+    import math
+    import os.path
+
+    from laya import Router
+    from laya.common import QTYPES, temp_bucket
+
+    at = at or os.path.join(os.path.dirname(os.path.abspath(__file__)), "laya_fit.json")
+    with open(at) as f:
+        cases = json.load(f)["commands"]
+
+    # the shipped temperatures are undone below, so the router is built without them
+    router = Router(preload=True)
+    for name in router.loaded:
+        agent = router.load(name)
+        agent.cfg["head_max_len"] = max(agent.cfg.get("head_max_len", 0), HEAD_MAX_LEN)
+        agent.cfg["max_len"] = max(agent.cfg.get("max_len", 0), MAX_LEN)
+
+    asked = dict(gate_questions(), **rating_questions())
+    # (bucket, [raw log-probabilities], index of the true option)
+    seen = []
+    for case in cases:
+        answers = predict(router, call(case["cmd"]), asked)["answers"]
+        agent = router.load(checkpoint(call(case["cmd"])))
+        for name, truth in (
+            ("verdict", ["allow", "ask", "deny"].index(case["verdict"])),
+            ("rating", case["rating"]),
+            ("irreversible", 0 if case["undoable"] else 1),
+        ):
+            answer = answers.get(name)
+            if not answer:
+                continue
+            keys = (
+                list(answer["probabilities"])
+                if "probabilities" in answer
+                else ["false", "true"]
+            )
+            spread = (
+                [answer["probabilities"][k] for k in keys]
+                if "probabilities" in answer
+                else [1.0 - answer["noul"], answer["noul"]]
+            )
+            kind = {"verdict": "choice", "rating": "score", "irreversible": "noul"}[name]
+            bucket = temp_bucket(QTYPES[kind], len(keys))
+            was = agent.temperature_by_options.get(
+                bucket, agent.temperature[QTYPES[kind]]
+            )
+            raw = [math.log(max(p, 1e-9)) * was for p in spread]
+            seen.append((bucket, raw, truth))
+
+    def spread_at(raw, t):
+        top = max(raw)
+        out = [math.exp((z - top) / t) for z in raw]
+        total = sum(out)
+        return [p / total for p in out]
+
+    print("fitted over %d commands from %s\n" % (len(cases), at))
+    # note: `gap` is the mean distance between how sure the model was and whether it was right -
+    # not ECE, which bins and needs more than this many points to mean anything
+    print(
+        "%-12s %-8s %6s %7s %7s %9s %9s"
+        % ("bucket", "", "T", "NLL", "gap", "accuracy", "misfires")
+    )
+    fitted = {}
+    shipped_all = router.load("english").temperature_by_options
+    for bucket in sorted({b for b, _, _ in seen}):
+        rows = [(raw, truth) for b, raw, truth in seen if b == bucket]
+
+        def cost(t, rows=rows):
+            return -sum(
+                math.log(max(spread_at(raw, t)[truth], 1e-12)) for raw, truth in rows
+            ) / len(rows)
+
+        def scored(t, rows=rows):
+            gap = hit = misfires = 0.0
+            for raw, truth in rows:
+                p = spread_at(raw, t)
+                right = p.index(max(p)) == truth
+                hit += right
+                gap += abs(max(p) - (1.0 if right else 0.0))
+                # a confident answer that is not the safe one: the only error that costs anything
+                if not right and max(p) >= 0.7 and p.index(max(p)) > truth:
+                    misfires += 1
+            return gap / len(rows), hit / len(rows), int(misfires)
+
+        best = min((round(0.2 + 0.01 * n, 2) for n in range(281)), key=cost)
+        fitted[bucket] = best
+        for label, t in (("shipped", shipped_all[bucket]), ("fitted", best)):
+            gap, hit, misfires = scored(t)
+            print(
+                "%-12s %-8s %6.2f %7.3f %7.3f %9.3f %9d"
+                % (bucket if label == "shipped" else "", label, t, cost(t), gap, hit, misfires)
+            )
+
+    print("\nTEMPERATURES = %s" % json.dumps(fitted, indent=4))
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
         return selftest()
     if len(sys.argv) > 1 and sys.argv[1] == "--probe":
         return probe(sys.argv[2] if len(sys.argv) > 2 else "ls -la")
+    if len(sys.argv) > 1 and sys.argv[1] == "--fit":
+        return fit(sys.argv[2] if len(sys.argv) > 2 else None)
 
     try:
         from laya import Router
@@ -365,7 +545,7 @@ def main() -> int:
         )
         return 1
 
-    router = budgeted(Router(preload=True))
+    router = tuned(Router(preload=True))
     # note: to stderr, which kamchatka holds rather than inheriting - it would otherwise be
     # written over the screen - and reports as it arrives. It is the line that says the
     # checkpoint has finished loading, which is the one thing somebody waiting wants
@@ -379,7 +559,7 @@ def main() -> int:
         try:
             request = json.loads(line)
             asked = request["questions"]
-            answers = translated(asked, router.predict(request["state"], asked))
+            answers = translated(asked, predict(router, request["state"], asked))
         except Exception as e:  # noqa: BLE001 - see the note on answering every line
             print(f"{type(e).__name__}: {e}", file=sys.stderr, flush=True)
             answers = {}

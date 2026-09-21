@@ -874,6 +874,42 @@ the right place under a flat distribution is the engine finding the question har
 different problem and not one this file can fix. `--selftest` checks the translation against a
 recorded answer and needs no checkpoint; `cargo test` runs it.
 
+**Three of laya's own settings are not the ones it ships with**, because its model card says so:
+
+- **The temperatures are refitted.** The card is explicit that the checkpoint ships over-confident
+  and that one temperature per question type and option count has to be refitted on your own data
+  before the probabilities mean anything — the shipped numbers were fitted on its domain, not this
+  one. `contrib/laya_fit.json` is sixty labelled commands and `--fit` is what recomputes them from
+  it, printing the working. Point it at a file of your own traffic if you have one:
+
+  ```console
+  $ python3 laya_advisor.py --fit           # or --fit path/to/your-own.json
+  bucket                     T     NLL     gap  accuracy  misfires
+  choice:3-5   shipped    1.76   0.721   0.448     0.717         0
+               fitted     0.76   0.603   0.347     0.717         0
+  ```
+
+  A temperature moves confidence and never the answer — accuracy is identical at every value — so
+  what this changes is only whether the gate is allowed to act on what the model already said.
+  Only one of the three went the way you would guess: `choice` was too flat, `noul` was too
+  *sharp* and the fit pushes it the other way, and the rubric barely moved.
+- **The token budget is raised** to 512 for the question and 1024 for the whole sequence. A stage
+  of a command line travels in the question rather than in the state, and at the shipped 192 a
+  long one is cut there — silently, unlike the `(cut; …)` the state's own cap leaves.
+- **The checkpoint is chosen by script alone.** laya's router also guesses the language of Latin
+  text from stopwords, which its card calls best-effort and which is meaningless on a command
+  line: `python -c 'import os, sys'` reads as Portuguese, because `os` is a Portuguese stopword,
+  and goes to a checkpoint the card's own table rates worse on English.
+
+None of it makes laya good at this. Against sixty labelled commands the gate answers `deny` to
+half the destructive ones and reaches an actual refusal on nine of thirty, where the hosted model
+answers `deny` to twenty-eight and refuses eighteen. The rubric is worse: two thirds of everything
+comes out yellow, because an ordinal `score` is the primitive the card calls laya's weakest. The
+card's own summary is the one to read — *a fast base to specialise, not a zero-shot decision
+engine* — and its base checkpoint scores 0.362 on the typed-decisions benchmark against a 0.461
+majority-class baseline. What the settings above buy is an advisor that can refuse something at
+all; what would buy more is fine-tuning, which is what laya's notebook is for.
+
 **Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
 matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child
 sharing your terminal would be writing over the screen ratatui is drawing. What the session is told instead is two lines
