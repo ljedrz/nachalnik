@@ -585,6 +585,12 @@ minor bump may break you.
   feature on - which is what a release is checked with - cannot see either of them. The rest of
   `tests/remote.rs` still runs in all three.
 
+- **`restart_writes_the_session_out_and_starts_another` is `#[cfg(unix)]`,** like every other
+  test that spawns the binary. It was not, and `common::program` is - so the Windows job did not
+  compile `tests/headless.rs` at all. The gate is the test's own isolation as much as the helper:
+  it points the child at a `TMPDIR` of its own and counts what landed there, and Windows reads
+  `TMP` and `TEMP` instead.
+
 - **Every question the advisor is asked now names the part of the state it is about.** A System
   One engine is handed the state as one object and the question as another, and nothing tells it
   which part of the state the question concerns unless the question says so - the open engines'

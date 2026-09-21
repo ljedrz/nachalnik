@@ -2164,6 +2164,11 @@ async fn a_session_with_no_model_sends_nothing_until_one_is_picked() {
 ///
 /// note: `TMPDIR` is the whole isolation. `record` writes under the temporary directory, so a run
 /// pointed at one of its own leaves exactly the files this counts and nothing else's turn up in it.
+///
+/// note: and `#[cfg(unix)]` is that sentence's other half, alongside `common::program` being
+/// gated the same way. Windows reads `TMP` and `TEMP` and not `TMPDIR`, so the child would record
+/// into the real temporary directory and this would count somebody else's sessions - or none.
+#[cfg(unix)]
 #[test]
 fn restart_writes_the_session_out_and_starts_another() {
     let dir = std::env::temp_dir().join(format!("kamchatka-restart-{}", std::process::id()));
