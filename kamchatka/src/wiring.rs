@@ -390,7 +390,7 @@ impl Setup {
 
         let (outcomes, finished) = mpsc::unbounded_channel();
         let mut app = App::new(kernel, policy, provider, limits, outcomes);
-        #[cfg(feature = "shell-advisor")]
+        #[cfg(feature = "advise")]
         {
             app.advisor = advisor;
         }

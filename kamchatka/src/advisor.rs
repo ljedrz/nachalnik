@@ -96,9 +96,22 @@ pub struct Local {
     ///
     /// note: `tokio`'s rather than `parking_lot`'s, because it is held across an `.await`.
     pipe: Mutex<Option<Pipe>>,
-    /// Whatever it last wanted to say for itself.
-    notice: Sync<Option<String>>,
+    /// What is worth saying and has not been said yet, oldest first.
+    ///
+    /// note: a queue rather than the single slot the HTTP client keeps, because the lines worth
+    /// reporting here arrive on their own schedule rather than one per request. A local engine
+    /// loads a checkpoint before it can answer anything, and the only account of how that is
+    /// going is what the engine writes about itself - so those lines are reported as they come
+    /// instead of being kept for a failure that may never happen.
+    ///
+    /// note: bounded, for the reason the ring below is. Nobody is obliged to read these and a
+    /// session that never does should not grow a queue.
+    notice: Arc<Sync<VecDeque<String>>>,
     /// The last few lines the engine wrote to its own stderr, drained as they arrive.
+    ///
+    /// note: kept as well as reported, because the two are read at different moments. A line
+    /// reported at the tick it arrived has scrolled past by the time a question goes unanswered;
+    /// this is what gets hung on that failure.
     said: Arc<Sync<VecDeque<String>>>,
 }
 
@@ -111,7 +124,11 @@ pub struct Local {
 ///
 /// note: it ends when the child closes the stream, which is when the child ends, so there is
 /// nothing to cancel. [`Local`] kills the child on drop and this sees the close.
-fn drain(errors: tokio::process::ChildStderr, said: Arc<Sync<VecDeque<String>>>) {
+fn drain(
+    errors: tokio::process::ChildStderr,
+    said: Arc<Sync<VecDeque<String>>>,
+    notice: Arc<Sync<VecDeque<String>>>,
+) {
     tokio::spawn(async move {
         let mut lines = BufReader::new(errors).lines();
         while let Ok(Some(mut line)) = lines.next_line().await {
@@ -128,6 +145,8 @@ fn drain(errors: tokio::process::ChildStderr, said: Arc<Sync<VecDeque<String>>>)
                 line.push('…');
             }
 
+            remark(&notice, format!("advisor: {line}"));
+
             let mut said = said.lock();
             if said.len() == REMEMBERED {
                 said.pop_front();
@@ -135,6 +154,19 @@ fn drain(errors: tokio::process::ChildStderr, said: Arc<Sync<VecDeque<String>>>)
             said.push_back(line);
         }
     });
+}
+
+/// Adds something worth saying, keeping the queue bounded.
+///
+/// note: the *oldest* is dropped when it is full, which is the opposite of what a queue nobody
+/// reads usually wants. What fills this is an engine talking about itself while it starts, and
+/// the line that matters is the last one - `ready`, or whatever it failed with.
+fn remark(notice: &Sync<VecDeque<String>>, line: String) {
+    let mut notice = notice.lock();
+    if notice.len() == REMEMBERED {
+        notice.pop_front();
+    }
+    notice.push_back(line);
 }
 
 /// The half of a running child this talks through.
@@ -182,9 +214,14 @@ impl Local {
         let reads = BufReader::new(child.stdout.take().ok_or("the advisor has no stdout")?);
 
         let said = Arc::new(Sync::new(VecDeque::new()));
+        let notice = Arc::new(Sync::new(VecDeque::new()));
         if let Some(errors) = child.stderr.take() {
-            drain(errors, said.clone());
+            drain(errors, said.clone(), notice.clone());
         }
+        remark(
+            &notice,
+            format!("the advisor `{program}` is starting; the first question waits for it"),
+        );
 
         Ok(Self {
             command: command.to_owned(),
@@ -193,7 +230,7 @@ impl Local {
                 writes,
                 reads,
             })),
-            notice: Sync::new(None),
+            notice,
             said,
         })
     }
@@ -249,7 +286,7 @@ impl Local {
             Ok(Err(e)) => {
                 *held = None;
                 let said = format!("the advisor failed and was closed: {e}{}", self.complaint());
-                *self.notice.lock() = Some(said.clone());
+                remark(&self.notice, said.clone());
                 Err(said.into())
             }
             Err(_) => {
@@ -259,7 +296,7 @@ impl Local {
                     PATIENCE.as_secs(),
                     self.complaint()
                 );
-                *self.notice.lock() = Some(said.clone());
+                remark(&self.notice, said.clone());
                 Err(said.into())
             }
         }
@@ -293,7 +330,7 @@ impl SystemOne for Local {
     }
 
     fn notice(&self) -> Option<String> {
-        self.notice.lock().take()
+        self.notice.lock().pop_front()
     }
 
     fn named(&self) -> String {
@@ -319,6 +356,43 @@ pub fn configured() -> Option<Result<Arc<dyn SystemOne>, BoxError>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Everything the advisor has to say, drained, so a test can look for one line among them.
+    ///
+    /// note: `notice` is a queue now rather than a slot, and the first thing in it is always the
+    /// engine starting - which is the point of it and is in the way of every assertion below.
+    fn everything(local: &Local) -> Vec<String> {
+        std::iter::from_fn(|| local.notice()).collect()
+    }
+
+    /// The shipped shim's own translation, checked by `cargo test` rather than by hand.
+    ///
+    /// note: `contrib/laya_advisor.py` is the other half of this feature and is the half that
+    /// can be wrong on a machine with no checkpoint on it. Its `--selftest` runs the translation
+    /// over a recorded laya-shaped answer and needs no `laya` installed, so there is no reason
+    /// for it not to be run here - and the failure it guards against is the one that shipped:
+    /// laya's `confidence` is not the caller's, and passed through it turns every command
+    /// yellow.
+    ///
+    /// note: skipped where there is no `python3`, like every other test in this file that needs
+    /// one. What the suite loses on such a machine is a check on a file it also cannot run.
+    #[test]
+    fn the_shipped_shim_translates_what_laya_answers() {
+        let shim = concat!(env!("CARGO_MANIFEST_DIR"), "/contrib/laya_advisor.py");
+        let Ok(out) = std::process::Command::new("python3")
+            .args([shim, "--selftest"])
+            .output()
+        else {
+            return;
+        };
+
+        assert!(
+            out.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
 
     /// A command that is not there is a refusal naming it, rather than a panic or a hang.
     #[tokio::test]
@@ -411,7 +485,12 @@ for line in sys.stdin:
             .await
             .expect("the same child answered twice");
         assert_eq!(again.noul("verdict"), Some(0.75));
-        assert!(local.notice().is_none(), "nothing went wrong");
+        assert!(
+            !everything(&local)
+                .iter()
+                .any(|line| line.contains("closed")),
+            "nothing went wrong"
+        );
 
         let _ = std::fs::remove_file(&at);
     }
@@ -504,8 +583,14 @@ for line in sys.stdin:
             asking().await.is_err(),
             "a child that exited answers nothing"
         );
-        let said = local.notice().expect("it wrote down what happened");
-        assert!(said.contains("closed"), "{said}");
+        let said = everything(&local);
+        assert!(
+            said.iter().any(|line| line.contains("closed")),
+            "it wrote down what happened: {said:?}"
+        );
+        // and the first thing it said was that it was starting, which is what a person waiting
+        // on a checkpoint is owed
+        assert!(said[0].contains("is starting"), "{said:?}");
 
         // and the second question is refused by the pipe rather than by the child
         let again = asking().await.expect_err("the advisor is gone");

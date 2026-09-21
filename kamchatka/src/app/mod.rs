@@ -490,9 +490,13 @@ pub struct App {
     /// advisor's own memory of what it said about a command, which nothing else has a way to ask
     /// it for.
     ///
-    /// note: `None` in a session started without `--advise`, which is the default, and the whole
-    /// of what `shell-advisor` off means at this end.
-    #[cfg(feature = "shell-advisor")]
+    /// note: `None` in a session started without `--advise`, which is the default.
+    ///
+    /// note: `advise` rather than `shell-advisor`, though the rating is the older reason to hold
+    /// one. Whether the advisor is *working* is not a rating concern - a build that only folds
+    /// verdicts still has an engine that can be starting, backing off or gone - and gating the
+    /// field on the rubric left that build with no way to say so.
+    #[cfg(feature = "advise")]
     pub advisor: Option<Arc<crate::tools::Advised>>,
     /// The provider, for switching models - whichever dialect it speaks.
     pub provider: Arc<dyn Dialect>,
@@ -812,7 +816,7 @@ impl App {
         Self {
             kernel,
             policy,
-            #[cfg(feature = "shell-advisor")]
+            #[cfg(feature = "advise")]
             advisor: None,
             provider,
             limits,
@@ -977,6 +981,13 @@ impl App {
         // this was written to close, and it took a test driving `App` directly to see that it
         // could still happen.
         if let Some(notice) = self.provider.take_notice() {
+            self.say(Speaker::Note, notice);
+        }
+        // note: the advisor's beside the provider's, for the same reason and in the same place.
+        // It is a second thing this session depends on and cannot see, and until this was here
+        // the only moment anything asked it was startup
+        #[cfg(feature = "advise")]
+        if let Some(notice) = self.advisor.as_ref().and_then(|advised| advised.notice()) {
             self.say(Speaker::Note, notice);
         }
 

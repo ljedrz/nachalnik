@@ -681,6 +681,13 @@ async fn run(
                 if let Some(notice) = app.provider.take_notice() {
                     app.say(Speaker::Note, notice);
                 }
+                // note: on the tick as well as on an event, because an advisor has things to say
+                // when nothing is happening - a checkpoint loading is the whole of what a local
+                // one does before the first question, and no event is coming to carry it
+                #[cfg(feature = "advise")]
+                if let Some(notice) = app.advisor.as_ref().and_then(|advised| advised.notice()) {
+                    app.say(Speaker::Note, notice);
+                }
             }
         }
     }

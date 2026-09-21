@@ -539,6 +539,37 @@ minor bump may break you.
 
 ### fixed
 
+- **The advisor's own notices reach the session, and a local one says when it is ready.** Only
+  `Args::advised` ever asked for one, at startup, so an advisor that started failing mid-session
+  failed silently - true of the hosted one since it existed. `App::on_event` and the drawn
+  loop's tick now poll it beside the provider's, and `App::advisor` is held whenever there is an
+  advisor rather than only in a build that rates commands: whether the thing is *working* is not
+  a rating concern.
+
+  What that surfaces first is a local engine starting. It reports that it is, and then reports
+  what the engine writes about itself as it arrives - `advisor: ready` is the shim saying the
+  checkpoint has finished loading, which is the one thing worth knowing while the first question
+  waits on it.
+
+- **A local advisor rated every command yellow, `ls` included, at 1% confidence.** The rule that
+  produced it is right: kamchatka will not draw a reading nobody is sure of green, because a
+  spread distribution over a safety rubric is not evidence that a command is safe. The input was
+  wrong. laya's `confidence` is its own quantity rather than how concentrated the distribution
+  is, so `ls` - correctly scored near zero, "it only looks" - arrived with a confidence of about
+  the same number and was lifted off green for it.
+
+  The fix is in `contrib/laya_advisor.py`, which is the adapter and was behaving like a pipe.
+  The two engines agree on the question shape and not on the answer: laya keys its answers by
+  the primitive and sends no `type` at all, which the documented shape requires. So the shim now
+  builds each answer from the question it asked - which is the authoritative source for the type
+  - and computes confidence from the distribution, which is what the caller means by the word.
+  `ls` comes back at 0.97 and is green.
+
+  `--probe "<command>"` prints what laya answers verbatim beside what the shim makes of it, for
+  a version whose keys differ; `--selftest` checks the translation against a recorded answer
+  with no checkpoint needed, and `cargo test` runs it.
+
+
 - **`examples/jev_assisted_compaction` runs on the key the advisor actually accepts.** It asked
   for `TYPESAFE_API_KEY` and built its own `Jev::latest`, while `--advise` and the advise suite
   both go through `endpoint::advise::connect`, which takes TypeSafe's key *or* `KAMCHATKA_API_KEY`

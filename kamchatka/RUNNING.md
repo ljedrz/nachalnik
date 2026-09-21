@@ -839,12 +839,35 @@ The process is started once and kept, because a 421M-parameter checkpoint costs 
 and milliseconds to run — loading it per question would put that wait in front of you every time
 you were asked to press `y`. It is killed when the session ends.
 
+The shim is an adapter and not a pipe. The two engines agree on the *question* shape and not on
+the answer: laya keys its answers by the primitive with no `type`, and its `confidence` is its own
+quantity rather than how concentrated the distribution is. Passed through, that is what turns `ls`
+into a yellow line at 1% — kamchatka will not draw a reading nobody is sure of green, so a number
+that is not a confidence makes every command yellow whatever it scored. The shim computes the
+field the caller means and stamps the type from the question it asked.
+
+If your `laya` answers under keys this does not expect, `--probe` says so without guessing:
+
+```console
+$ ~/ai/venv/bin/python kamchatka/contrib/laya_advisor.py --probe "ls -la"
+--- what laya answered, verbatim ---
+...
+--- what this shim would send on ---
+...
+```
+
+An empty second block, or a `confidence` that matches the `score`, is the translation needing one
+more key name — they are three tuples at the top of the file. `--selftest` runs the translation
+over a recorded answer and needs no checkpoint; `cargo test` runs it.
+
 **Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
 matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child
-sharing your terminal would be writing over the screen ratatui is drawing. The last twenty lines
-of whatever it says about itself are kept instead, and hung on the end of whatever failure they
-explain — so a traceback shows up in the permission panel that went unanswered, where it is
-worth reading, rather than scrolling past at startup.
+sharing your terminal would be writing over the screen ratatui is drawing. What it says about itself is reported to the
+session instead, as trace lines, as it arrives: `advisor: ready` is the shim saying the
+checkpoint has finished loading, which is the one thing worth knowing while the first question
+waits. The last twenty lines are also kept and hung on the end of whatever failure they
+explain, so a traceback shows up in the permission panel that went unanswered rather than
+having scrolled past.
 
 If it fails — the command is not there, it stops answering, a line does not parse, a question
 takes longer than 30s — the pipe is closed and every later question says the advisor is gone,

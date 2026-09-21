@@ -317,6 +317,18 @@ impl Advised {
         }
     }
 
+    /// Whatever the engine last wanted to say for itself, if anything.
+    ///
+    /// note: passed through rather than kept here, because the thing with something to say is
+    /// the engine and this is the only handle a caller has on one. A local engine loads a
+    /// checkpoint before it can answer anything and says so as it goes; a hosted one says when
+    /// it is backing off. Neither was reaching a screen, because the only caller asking was
+    /// `Args::advised` at startup - so an advisor that stopped working mid-session stopped
+    /// silently, which is the failure `Advised::said` exists to prevent one call at a time.
+    pub fn notice(&self) -> Option<String> {
+        self.jev.notice()
+    }
+
     /// The standing rules underneath, which the tools and the permissions tab hold directly.
     pub fn careful(&self) -> &Arc<Careful> {
         &self.careful
