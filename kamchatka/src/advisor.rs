@@ -454,6 +454,32 @@ mod tests {
         );
     }
 
+    /// The shim's probe asks the question the program asks, word for word.
+    ///
+    /// note: the trap this closes, which cost a round of guessing. `--probe` made up a short
+    /// rubric of its own; it reported `ls` at 0.84 and the running session reported 0.39 for
+    /// the same command, and the difference was the two asking different questions. A probe
+    /// that does not ask what the program asks measures something nobody runs, and reads as
+    /// evidence while doing it.
+    ///
+    /// note: the levels live in two files and two languages because one of them is a Python
+    /// script somebody runs by hand. This is what stops that being a drift: the copy has to
+    /// contain every level the program sends, checked against the constant rather than against
+    /// a second copy of it.
+    #[cfg(feature = "shell-advisor")]
+    #[test]
+    fn the_probe_asks_the_question_the_program_asks() {
+        let shim = include_str!("../contrib/laya_advisor.py");
+
+        for level in crate::tools::advice::LEVELS {
+            assert!(
+                shim.contains(level),
+                "`contrib/laya_advisor.py` does not send this level, so its probe is about a \
+                 different rubric than the program: {level:?}"
+            );
+        }
+    }
+
     /// A command that is not there is a refusal naming it, rather than a panic or a hang.
     #[tokio::test]
     async fn an_advisor_that_cannot_be_started_says_which_one() {

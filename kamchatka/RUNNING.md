@@ -856,9 +856,12 @@ $ ~/ai/venv/bin/python kamchatka/contrib/laya_advisor.py --probe "ls -la"
 ...
 ```
 
-An empty second block, or a `confidence` that matches the `score`, is the translation needing one
-more key name — they are three tuples at the top of the file. `--selftest` runs the translation
-over a recorded answer and needs no checkpoint; `cargo test` runs it.
+It asks the rubric the program asks, word for word — a probe that makes up its own measures
+something nobody runs, which is a mistake this made once. An empty second block is the
+translation not recognising what laya sent; a `score` in the right place under a flat
+distribution is the rubric being hard for the engine to read, which is a different problem and
+is fixed by shortening it rather than by touching this file. `--selftest` checks the translation
+against laya's own recorded answer and needs no checkpoint; `cargo test` runs it.
 
 **Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
 matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child

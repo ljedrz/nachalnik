@@ -490,6 +490,20 @@ minor bump may break you.
 
 ### changed
 
+- **The rubric's three levels are short again, and the length was measured rather than judged.**
+  They had grown into three long sentences naming the operations and repeating "once it has
+  finished". Against the smaller of the two engines that is not a subtle cost: `ls` came back
+  with its distribution spread across all three levels, 0.39 on the top one, where against the
+  short levels it is 0.84 on the level it belongs to. The *score* was right either way - what a
+  long rubric cost was the confidence, and an answer nobody is sure of is one this program will
+  not draw green, so every command came out yellow.
+
+  The `cd` fix is kept whole: the bottom level still names moving about and still asks for
+  nothing left changed. What went is the elaboration around it. This is the convention about
+  length doing real work rather than being a matter of taste, and anything added back should be
+  measured the same way - `contrib/laya_advisor.py --probe` is what measures it.
+
+
 - **The rubric's bottom two levels turn on what a command *leaves* changed, not on whether
   anything changed while it ran.** `cd src` changes the working directory, and asked the old way
   it landed on the middle level for it - a yellow line on one of the commonest things an agent
@@ -582,9 +596,9 @@ minor bump may break you.
   - and computes confidence from the distribution, which is what the caller means by the word.
   `ls` comes back at 0.97 and is green.
 
-  `--probe "<command>"` prints what laya answers verbatim beside what the shim makes of it, for
-  a version whose keys differ; `--selftest` checks the translation against a recorded answer
-  with no checkpoint needed, and `cargo test` runs it.
+  `--probe "<command>"` prints what laya answers verbatim beside what the shim makes of it;
+  `--selftest` checks the translation against laya's own recorded answer for `ls` with no
+  checkpoint needed, and `cargo test` runs it.
 
 
 - **`examples/jev_assisted_compaction` runs on the key the advisor actually accepts.** It asked

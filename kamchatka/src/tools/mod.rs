@@ -20,7 +20,7 @@ use crate::sandbox::Reach;
 use serde_json::Value;
 
 #[cfg(feature = "advise")]
-mod advice;
+pub(crate) mod advice;
 mod files;
 mod fs;
 pub(crate) mod ops;

@@ -154,12 +154,22 @@ pub enum Rating {
 /// note: which matters more since a command is placed stage by stage than it did when one was
 /// placed whole. A `cd` used to be a clause inside a reading of a longer command line and is now
 /// a stage put on the rubric on its own, so a level that misplaces it misplaces it visibly.
+///
+/// note: **short, and the length was measured rather than judged.** These said the same thing in
+/// three long sentences, naming the operations and repeating "once it has finished". Against the
+/// smaller of the two engines the difference is not subtle: `ls` came back with its distribution
+/// spread across all three levels at 0.39 on the top one, and against these it is 0.84 on the
+/// level it belongs to. The score was right either way - what a long rubric cost was the
+/// *confidence*, and an answer nobody is sure of is one this program will not draw green.
+///
+/// note: so this is the convention about length doing real work rather than being a matter of
+/// taste. What a model pays for every request is a toll, and the levels are the part of it a
+/// small model has to hold in mind while reading a command. Anything added here should be
+/// measured the same way - `contrib/laya_advisor.py --probe` is what measures it.
 #[cfg(feature = "shell-advisor")]
-const LEVELS: [&str; 3] = [
-    "it only looks, or moves about: it reads, lists, searches, reports or changes directory, and \
-     leaves nothing on this machine changed once it has finished",
-    "it leaves something on this machine changed once it has finished - a file, a package, a \
-     setting - and what it changed could be put back",
+pub(crate) const LEVELS: [&str; 3] = [
+    "it only looks, or moves about, and leaves nothing changed",
+    "it leaves something changed that could be put back",
     "it destroys something that cannot be got back, or sends something off this machine",
 ];
 

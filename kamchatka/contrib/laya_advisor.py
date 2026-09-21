@@ -45,28 +45,32 @@ caller already handles on every other failure.
 import json
 import sys
 
-# The keys laya might carry each of these under, most likely first.
+# The rubric kamchatka actually sends, copied from `LEVELS` in `kamchatka/src/tools/advice.rs`.
 #
-# note: several rather than one, because this is written against laya's README rather than a
-# specification: it shows `{"choice": ..., "confidence": ...}` and does not say what an ordinal
-# answer's fields are called. Trying the plausible names and saying nothing when none is there is
-# honest about that. `--probe` is how to find out which it really uses and cut these to the one.
-SCORES = ("score", "expected", "expected_level", "value")
-SPREADS = ("probabilities", "distribution", "probs", "scores")
-NOULS = ("noul", "probability", "p", "true")
+# note: a copy, and the hazard is obvious - two texts that have to agree, in two languages. What
+# stops them drifting is a test: `the_probe_asks_the_question_the_program_asks` in `advisor.rs`
+# reads this file and fails if a level the program sends is not in it.
+#
+# note: worth the copy rather than probing with something illustrative, and that is the lesson
+# this constant exists because of. The first `--probe` made up a short rubric of its own,
+# reported `ls` at 0.84, and the running session reported 0.39 for the same command - because
+# the two were asking different questions. A probe that does not ask what the program asks
+# measures something nobody runs, and reads as evidence while doing it.
+LEVELS = [
+    "it only looks, or moves about, and leaves nothing changed",
+    "it leaves something changed that could be put back",
+    "it destroys something that cannot be got back, or sends something off this machine",
+]
 
 
-def pick(answer, names, fallback=None):
-    """The first of `names` this answer carries, or `fallback`."""
-    for name in names:
-        if isinstance(answer, dict) and name in answer:
-            return answer[name]
-    return fallback
+def number(value, fallback=0.0):
+    """`value` as a float where it is one, and `fallback` where it is not."""
+    return float(value) if isinstance(value, (int, float)) else fallback
 
 
 def spread(answer):
     """The distribution as a list of probabilities, or nothing where there is none."""
-    found = pick(answer, SPREADS)
+    found = answer.get("probabilities")
     if isinstance(found, dict):
         return [v for v in found.values() if isinstance(v, (int, float))]
     if isinstance(found, (list, tuple)):
@@ -77,53 +81,64 @@ def spread(answer):
 def confidence(answer):
     """How concentrated the distribution is, which is what the caller means by the word.
 
-    note: the largest probability. What a caller comparing this against a threshold is asking is
-    whether the model settled on one answer or spread itself over several, and that is the
-    quantity that says so. Where laya reports no distribution this falls back to its own
-    `confidence`; where it reports neither, the answer goes out at 0.0, which the caller reads as
-    "could not tell" rather than as a clean bill.
+    note: the largest probability, and not laya's own `confidence`, which is a different
+    quantity. Measured: `ls` comes back `{"0": 0.84, "1": 0.08, "2": 0.08}` with a `confidence`
+    of 0.49 beside it. What a caller comparing against a threshold is asking is whether the
+    model settled on one level or spread itself over several, and 0.84 answers that; 0.49 read
+    as one is a model that could not tell, which is how `ls` came to be drawn as a command that
+    changes something.
+
+    note: where there is no distribution this falls back to whatever laya called confidence,
+    which is better than nothing, and where there is neither the answer goes out at 0.0 - read
+    by the caller as "could not tell" rather than as a clean bill.
     """
     probabilities = spread(answer)
     if probabilities:
         return float(max(probabilities))
 
-    own = pick(answer, ("confidence",), 0.0)
-    return float(own) if isinstance(own, (int, float)) else 0.0
+    return number(answer.get("confidence"))
 
 
 def answered(kind, answer):
-    """One of laya's answers, in the shape the documented API answers in."""
+    """One of laya's answers, in the shape the documented API answers in.
+
+    note: built rather than forwarded, and the type comes from the *question* - the
+    authoritative source for it, since this is what sent it. laya carries a `type` of its own
+    and it has always agreed; trusting the question costs nothing and cannot disagree.
+
+    note: an answer this cannot read is left out rather than guessed at. The caller reads a
+    missing answer as nothing having been said about that question, which is an outcome it
+    already handles; a fabricated one is a number nobody sent.
+    """
     if not isinstance(answer, dict):
         return None
 
     if kind == "noul":
-        # note: a noul's number *is* its confidence, so there is no second field to compute
-        value = pick(answer, NOULS)
-        if not isinstance(value, (int, float)):
-            value = confidence(answer)
-        return {"type": "noul", "noul": float(value)}
+        # note: a noul's number *is* its confidence, so there is no second field to compute -
+        # and laya agrees, sending the same number twice
+        if not isinstance(answer.get("noul"), (int, float)):
+            return None
+        return {"type": "noul", "noul": number(answer["noul"])}
 
     if kind == "choice":
-        chosen = pick(answer, ("choice", "label", "answer"))
-        if not isinstance(chosen, str):
+        if not isinstance(answer.get("choice"), str):
             return None
         return {
             "type": "choice",
-            "choice": chosen,
+            "choice": answer["choice"],
             "confidence": confidence(answer),
-            "probabilities": pick(answer, SPREADS, {}),
+            "probabilities": answer.get("probabilities", {}),
         }
 
     if kind == "score":
-        value = pick(answer, SCORES)
-        if not isinstance(value, (int, float)):
+        if not isinstance(answer.get("score"), (int, float)):
             return None
         return {
             "type": "score",
-            "score": float(value),
+            "score": number(answer["score"]),
             "confidence": confidence(answer),
-            "legend": pick(answer, ("legend",), {}),
-            "probabilities": pick(answer, SPREADS, {}),
+            "legend": answer.get("legend", {}),
+            "probabilities": answer.get("probabilities", {}),
         }
 
     return None
@@ -144,21 +159,22 @@ def translated(asked, result):
 def probe(command):
     """Prints what laya answers about one command, verbatim and translated.
 
-    note: the reason this mode exists is that the translation above is written against a README.
-    Run it once against the engine actually installed and the guessing stops: whichever keys are
-    really there are in the first block, and whether this shim reads them is the second.
+    note: what this is for is the difference between an engine that cannot place a command and
+    one whose answer is being read wrongly. The first block is what laya said; the second is
+    what kamchatka would be handed. A `score` in the right place under a flat distribution is
+    the rubric being hard to read; a good distribution translated into a bad `confidence` is
+    this file.
     """
     from laya import Router
 
     asked = {
         "rating": {
             "type": "score",
-            "instructions": "Place this command by what it would do.",
-            "criteria": [
-                "it only looks, or moves about, and leaves nothing changed",
-                "it leaves something changed that could be put back",
-                "it destroys something, or sends something off this machine",
-            ],
+            "instructions": (
+                "A command is about to be run on the user's machine, and a person is about to "
+                "be asked whether to let it. Place it on this rubric by what it would do."
+            ),
+            "criteria": LEVELS,
         },
         "irreversible": {
             "type": "noul",
@@ -192,20 +208,30 @@ def selftest() -> int:
         "verdict": {"type": "choice", "instructions": "x", "criteria": {"allow": None}},
         "irreversible": {"type": "noul", "instructions": "x"},
     }
+    # note: laya's own answer for `ls`, kept verbatim rather than invented - which is the
+    # difference between a test about this translation and a test about what I imagined it
+    # translates. The `confidence: 0.4932` beside a distribution that is 84% on one level is
+    # the whole reason this file computes its own.
     recorded = {
+        "model": "laya-rl-agent",
         "answers": {
             "rating": {
-                "score": 0.01,
-                "confidence": 0.01,
-                "probabilities": {"0": 0.97, "1": 0.02, "2": 0.01},
+                "type": "score",
+                "score": 0.2461,
+                "legend": {"0": "…", "1": "…", "2": "…"},
+                "probabilities": {"0": 0.8373, "1": 0.0792, "2": 0.0835},
+                "confidence": 0.4932,
+                "action": {"act_probability": 1.0},
             },
             "verdict": {
+                "type": "choice",
                 "choice": "allow",
                 "confidence": 0.94,
                 "probabilities": {"allow": 0.94, "deny": 0.06},
             },
-            "irreversible": {"noul": 0.02},
-        }
+            "irreversible": {"type": "noul", "noul": 0.7399, "confidence": 0.7399},
+        },
+        "usage": {"input_tokens": 112, "output_tokens": 0},
     }
 
     out = translated(asked, recorded)
@@ -215,15 +241,21 @@ def selftest() -> int:
     assert out["verdict"]["type"] == "choice", out
     assert out["irreversible"]["type"] == "noul", out
 
-    # the score is laya's own and the confidence is not: 0.01 is where the command landed, and
-    # 0.97 is how sure it was of landing there
-    assert out["rating"]["score"] == 0.01, out
-    assert out["rating"]["confidence"] == 0.97, out
+    # the score is laya's own and the confidence is not. 0.2461 is where `ls` landed - the
+    # bottom level, correctly - and 0.8373 is how sure it was of landing there. laya's own
+    # `confidence` for the same answer is 0.4932, which read as one puts `ls` under every
+    # threshold the caller has and draws it as a command that changes something
+    assert out["rating"]["score"] == 0.2461, out
+    assert out["rating"]["confidence"] == 0.8373, out
+    assert out["rating"]["confidence"] != recorded["answers"]["rating"]["confidence"], out
     assert out["verdict"]["confidence"] == 0.94, out
 
     # a noul's number is its confidence, so there is no second field to invent
-    assert out["irreversible"]["noul"] == 0.02, out
+    assert out["irreversible"]["noul"] == 0.7399, out
     assert "confidence" not in out["irreversible"], out
+
+    # and nothing laya sends that the documented shape has no room for comes along
+    assert "action" not in out["rating"], out
 
     # an answer this cannot read is left out rather than guessed at, which the caller reads as
     # nothing having been said about that question
