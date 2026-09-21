@@ -35,6 +35,22 @@ codegen-units = 1
 lto = "fat"
 strip = true
 
+# note: no debuginfo in a dev build. A panic still names every frame; what goes is the
+# `at src/foo.rs:12` line under each one, and nothing in here is read through a debugger - a
+# failing test is read off its assertion, and a session off this program's own trace, which is
+# the same reason a release is stripped. Measured 2026-09-21 on a `--workspace --all-features
+# --tests --examples` build: 2.6GB of `target` against 9.5GB at the default `debug = 2`, and a
+# touched file in `nachalnik` rebuilding the workspace in 2.5s rather than 3.9s. Both halves go
+# the same way, which is why this is `0` rather than `"line-tables-only"` - that keeps the line
+# numbers and costs 4.5GB.
+#
+# note: `incremental` stays on and `strip` stays off, which is where the saving stops. Turning
+# incremental off is another 1GB and takes that rebuild to 6.9s, the wrong side of the one trade
+# a dev profile exists to make. Stripping saves 0.3GB and takes away the function names, which
+# are what `debug = 0` leaves a panic to be read by.
+[profile.dev]
+debug = 0
+
 # what every crate in here agrees on; a member opts in with `edition.workspace = true`
 [workspace.package]
 authors = ["ljedrz <ljedrz@gmail.com>"]
