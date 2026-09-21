@@ -256,6 +256,9 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         ctrl+l where there are keys to press
     /step [MESSAGE]     one transition of the state machine, and stop
     /continue           run the rest of the turn
+    /stop               stop what is running, keeping whatever arrived. esc and
+                        ctrl+c where there are keys to press; typing it is how
+                        a client with no keys - a browser - reaches the same act
     /request            the request that would go next
     /payload            the provider's own rendering of it, byte for byte
     /raw                the provider's own last answer

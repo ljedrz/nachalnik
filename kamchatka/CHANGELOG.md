@@ -9,6 +9,17 @@ minor bump may break you.
 
 ### added
 
+- **A turn can be stopped by typing `/stop`, which is the only way a browser can stop one.**
+  `esc` and `ctrl+c` are keys and a page has neither, so a session driven from a phone had no way
+  to interrupt a running turn at all - `protocol::Command::Interrupt` has been on the wire since
+  the first version of it and is a button nothing was obliged to draw. `/step` has pointed at
+  this name in as many words for longer than it has existed.
+
+  A turn resting on a permission question is a case it deliberately does not claim. That turn is
+  not running - resting is what lets anybody answer it - and an interrupt reaches nothing, so the
+  question would still be there afterwards. What ends that turn is denying it, and `/stop` says
+  so rather than reporting that nothing is running.
+
 - **A settings file is found where you are standing, and `--print-config` hands you one to start
   from.** `kamchatka.json` ships in the crate and in the release archive, and `cargo install`
   copies no files - so the starting point reached everybody except the people who installed this

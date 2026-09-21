@@ -122,6 +122,34 @@ impl App {
             "quit" | "exit" | "q" => self.quit = true,
             "help" | "?" => self.help(),
             "continue" => self.start_turn(),
+            // note: the same act as `esc` and `ctrl+c`, reached by typing, which is the only way
+            // to reach it from a browser: a page has no keys to send and `Command::Interrupt` is
+            // a button nothing was obliged to draw. Two loops here have a line and nothing else,
+            // and `/step` has been pointing at this name since before it existed.
+            //
+            // note: three answers, because a session has three states here and only one of them
+            // is a turn this can stop. A turn resting on a question is not `busy` - resting is
+            // what lets anybody answer it - and an interrupt does not reach it either: there is
+            // nothing running to notice one, so the question is still there afterwards. What ends
+            // that turn is answering, which is `n` at a terminal and the deny button on a page.
+            // Saying so is the whole of what this branch is for; `nothing is running` was the
+            // answer before, and it was false in the one state somebody plainly had something.
+            //
+            // note: silent where it worked, which is what `esc` is. What says a turn stopped is
+            // the turn stopping - the records, the state, the spinner going out - and a line
+            // claiming it as well would be this program reporting its own keystroke. The other
+            // branch is not silent for the reason a typed command is not a key: a press that
+            // lands on nothing is a press somebody can see missing, and a line typed into a
+            // session that was not running looks exactly like one that was ignored
+            "stop" => match (self.busy, !self.kernel.pending_permissions().is_empty()) {
+                (true, _) => self.interrupt(),
+                (false, true) => self.say(
+                    Speaker::Note,
+                    "the turn is waiting on a question, which stopping does not answer; deny it \
+                     to end the turn there",
+                ),
+                (false, false) => self.say(Speaker::Note, "nothing is running"),
+            },
             // note: a command as well as `ctrl+l`, because two of the three loops have no keys to
             // press and one of them is the browser, where a pile of notices is the whole screen
             // rather than a quarter of a tall one. It says nothing when it is done, which is
