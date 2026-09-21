@@ -3593,3 +3593,132 @@ async fn an_item_rewritten_twice_can_be_read_back_at_either_version() {
     .await;
     session.ended().await.1.expect("the session failed");
 }
+
+/// A restart on the *drawn* loop lets go of its clients too, and starts a session without them.
+///
+/// note: a pseudo-terminal, because nothing else picks that loop. `headless` is `asked || piped ||
+/// no screen in the build`, so a served run whose stdout is a pipe is `Server::run` and a served
+/// run on a terminal is `drawn` with a socket beside it. Two loops, each with a `Serving` of its
+/// own, and the one every other test in this file reaches is the first. `script(1)` is a pty and
+/// one process, and it is in the base install of the platform this is gated to.
+///
+/// note: the pair with `a_restart_from_a_client_ends_the_session_and_lets_go_of_everybody`, which
+/// makes the same claim about the other loop and can make it in-process. What cannot be shared is
+/// the reaching: `drawn` is in `main.rs`, so this one is about the program or it is about nothing.
+///
+/// note: linux only, for `script`'s flags - macOS spells it `script -q /dev/null cmd` and windows
+/// has no such thing. The claim is about a loop rather than a platform, and it is the same loop
+/// everywhere.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restart_on_the_drawn_loop_lets_go_of_its_clients_too() {
+    use std::io::Write as _;
+
+    let dir = common::scratch("drawn-restart");
+    let socket = dir.join("kamchatka.sock");
+    let records = dir.join("records");
+    std::fs::create_dir_all(&records).expect("a directory to record into");
+
+    // note: no `-m`, so a message is put in the context and nothing is sent. What this is about is
+    // which session a line is in, and a turn against an endpoint that is not there would be the
+    // run failing about something else
+    let mut host = std::process::Command::new("script")
+        .arg("-qec")
+        .arg(format!(
+            "{} --serve unix:{}",
+            common::program().display(),
+            socket.display()
+        ))
+        .arg("/dev/null")
+        .env("TMPDIR", &records)
+        .env("KAMCHATKA_BASE_URL", CLOSED)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the host did not start");
+
+    for _ in 0..200 {
+        if socket.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+
+    // note: the stdin of this one is held open on purpose, and it is the whole of how the claim is
+    // made. A client that closed its input would leave of its own accord - which is what every
+    // other client in this file does, and it proves nothing about who let go of whom. This one
+    // says its piece and then waits, so the only thing that can end it is the host
+    let mut asked = std::process::Command::new(common::program())
+        .arg("--connect")
+        .arg(format!("unix:{}", socket.display()))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the client did not start");
+    let mut typing = asked.stdin.take().expect("a pipe");
+    typing
+        .write_all(b"before the restart\n")
+        .expect("could not type");
+    typing.flush().expect("could not type");
+    // note: a gap, because the two lines are one write otherwise and a command runs the moment it
+    // arrives. What is being set up is a session with something in it that the next one must not
+    // have, and a restart that overtook the message would leave nothing to tell them apart by
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    typing.write_all(b"/restart\n").expect("could not type");
+    typing.flush().expect("could not type");
+
+    let left = tokio::time::timeout(
+        Duration::from_secs(20),
+        tokio::task::spawn_blocking(move || asked.wait_with_output()),
+    )
+    .await
+    .expect(
+        "the client was never let go of: its input is still open, so only the host could end it",
+    )
+    .expect("the client panicked")
+    .expect("the client did not finish");
+    // held open until here, which is what makes the line above a claim about the host
+    drop(typing);
+
+    let read = String::from_utf8_lossy(&left.stderr);
+    // note: which loop this ran on, read off what the session said rather than assumed from the
+    // pty. A served run says `serving on`; a *headless* one also says `headless: a line is a
+    // message`, and that line's absence is the whole of what says `drawn` was the loop
+    assert!(
+        read.contains("serving on"),
+        "this was not a served session at all: {read}"
+    );
+    assert!(
+        !read.contains("headless: a line is a message"),
+        "the pty did not take: this ran on `Server::run`, which another test already covers: {read}"
+    );
+
+    // a second client reaches a session that is not the one the first was in
+    let second = tokio::task::spawn_blocking({
+        let socket = socket.clone();
+        move || connect(&socket, b"/quit\n")
+    })
+    .await
+    .expect("the second client panicked");
+    let after = String::from_utf8_lossy(&second.stderr);
+    assert!(
+        !after.contains("before the restart"),
+        "the fresh session carried the old one's conversation into it: {after}"
+    );
+
+    tokio::task::spawn_blocking(move || host.wait())
+        .await
+        .expect("the host panicked")
+        .expect("the host did not finish");
+
+    // two sessions, two records: the one the restart wrote out and the one `/quit` did
+    let logs = std::fs::read_dir(records.join("kamchatka"))
+        .expect("the record directory")
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_name().to_string_lossy().ends_with(".jsonl"))
+        .count();
+    assert_eq!(logs, 2, "one record per session");
+}
