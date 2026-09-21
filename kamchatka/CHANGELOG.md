@@ -577,6 +577,15 @@ minor bump may break you.
 
 ### fixed
 
+- **The two advisor tests that read the engine's stderr wait for the lines they assert on.**
+  `what_the_engine_says_about_itself_is_captured_rather_than_printed` waited for the first line
+  the shim wrote and asserted on the second, and the "not ready, then ready" test asserted on the
+  ring as soon as the probe was answered. The ring is filled by its own task, and on Windows the
+  pipe is read on a blocking thread that returns as soon as it has anything, so lines the child
+  wrote before answering land in the ring one wake-up at a time after the answer - which is the
+  race the Windows job lost. Both now wait for the count of lines the shim wrote, with the same
+  budget the other waits in that file have.
+
 - **The pty test for the drawn restart is gated on `tui` as well as on the platform.**
   `a_restart_on_the_drawn_loop_lets_go_of_its_clients_too` asked for `target_os = "linux"` and
   nothing else, so a screenless build ran it against a program with no `drawn` loop in it: the pty

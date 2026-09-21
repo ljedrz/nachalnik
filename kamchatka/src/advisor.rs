@@ -417,6 +417,23 @@ mod tests {
         complaint(&local.said)
     }
 
+    /// The complaint once `lines` of the engine's own output have arrived.
+    ///
+    /// note: the child writes them before it answers, and the answer can still get here first:
+    /// the ring is filled by its own task, and on windows the pipe is read on a blocking thread
+    /// that returns as soon as it has anything, so two lines written a moment apart reach the
+    /// ring a wake-up apart. Waiting for the first and asserting on the second is a race, and
+    /// windows loses it.
+    async fn complaint_after(local: &Local, lines: usize) -> String {
+        for _ in 0..40 {
+            if local.said.lock().len() >= lines {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        complaint_of(local)
+    }
+
     /// Everything the advisor has to say, drained, so a test can look for one line among them.
     ///
     /// note: `notice` is a queue now rather than a slot, and the first thing in it is always the
@@ -653,16 +670,7 @@ for line in sys.stdin:
             .await
             .expect("it answered");
 
-        // the child wrote before it answered, but the task reading it is its own, so this waits
-        // for the line rather than assuming a scheduling order
-        let mut complaint = String::new();
-        for _ in 0..40 {
-            complaint = complaint_of(&local);
-            if complaint.contains("fetching a checkpoint") {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
+        let complaint = complaint_after(&local, 2).await;
 
         assert!(
             complaint.contains("fetching a checkpoint"),
@@ -730,10 +738,10 @@ for line in sys.stdin:
         assert!(said[1].contains("is ready"), "{said:?}");
 
         // the progress bar the engine drew is kept for a failure and was never reported
+        let complaint = complaint_after(&local, 1).await;
         assert!(
-            complaint_of(&local).contains("Fetching 38 files"),
-            "it is kept: {}",
-            complaint_of(&local)
+            complaint.contains("Fetching 38 files"),
+            "it is kept: {complaint}"
         );
         assert!(
             !said.iter().any(|line| line.contains("Fetching")),
