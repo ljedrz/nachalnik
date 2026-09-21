@@ -71,7 +71,15 @@ leaves the context at a third of it). The compaction fixture used to land at 47-
 against a threshold of 50%, so the model's own verbosity decided it and the same model passed and
 failed on consecutive runs; it is twice the size now and breaches on the file alone, firing at
 74-81%. The test says which it was, so a sizing failure reads as one. Also
-`KAMCHATKA_DOCUMENT_MODEL` for the one that attaches a PDF. The rest want
+`KAMCHATKA_DOCUMENT_MODEL` for the one that attaches a PDF.
+
+**The same variable is a trap on `nachalnik`'s side**, and it is the one worth knowing before a
+release run: `NACHALNIK_CONTEXT_LIMIT` does not size a fixture, it makes the runtime *report* a
+window the endpoint does not enforce - so `a_counter_is_told_what_a_refused_request_came_to`,
+which builds a request over the limit and reads the endpoint's refusal, gets a perfectly good
+answer instead and fails with `a model that takes 12288 read 17292`. Set it for `kamchatka`'s
+suite, leave it unset for `nachalnik`'s, and read that failure as the environment rather than as
+a counter that stopped working. The rest want
 `KAMCHATKA_GEMINI_API_KEY`: they drive Google's *native* dialect, where a turn is an order of
 blocks, and they will not borrow `KAMCHATKA_API_KEY` unless the base URL is plausibly Google's -
 deliberately, because borrowing it once sent an OpenRouter key to

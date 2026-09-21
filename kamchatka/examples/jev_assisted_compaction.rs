@@ -5,6 +5,12 @@
 //!   cargo run -p kamchatka --features advise --example jev_assisted_compaction
 //! ```
 //!
+//! note: or `KAMCHATKA_API_KEY`, which asks the same model through OpenRouter. It goes through
+//! [`endpoint::advise::connect`], which is what `--advise` itself goes through, so the two
+//! choose the account and the model the same way - this used to ask for `TYPESAFE_API_KEY` and
+//! nothing else, which left the one example about the advisor unrunnable for anybody whose key
+//! is the one the feature is happiest with.
+//!
 //! An agent's context fills up, and something has to go. `kamchatka` ships [`Trim`], which elides
 //! the oldest tool results — and age is a *proxy*. Nobody wants the oldest gone; they want the
 //! least useful gone, and "useful" is a relation between a result and what the session is trying
@@ -32,16 +38,15 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    env,
     sync::Arc,
 };
 
-use kamchatka::tools::Trim;
+use kamchatka::{endpoint, tools::Trim};
 use nachalnik::{
     BoxError, Compactor, Config, ContextItem, ContextKind, ContextState, Kernel, ModelInfo,
     test::{ScriptedProvider, call},
 };
-use nachalnik_providers::typesafe::{Jev, Question};
+use nachalnik_providers::{Endpoint, typesafe::Question};
 use serde_json::json;
 
 /// The rubric each candidate is placed on, least worth keeping first.
@@ -255,10 +260,13 @@ fn excerpt(text: &str) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
-    let key = env::var("TYPESAFE_API_KEY")
-        .or_else(|_| env::var("KAMCHATKA_TYPESAFE_API_KEY"))
-        .map_err(|_| "set TYPESAFE_API_KEY to run this")?;
-    let jev = Jev::latest(key);
+    // the program's own path to an advisor, so that a key this feature accepts is a key this
+    // example accepts. It reads `KAMCHATKA_TYPESAFE_API_KEY`, `TYPESAFE_API_KEY` and
+    // `KAMCHATKA_API_KEY` in that order and picks the endpoint and the model to match
+    let jev = endpoint::advise::connect(&endpoint::session_endpoint(false)).await?;
+    if let Some(notice) = jev.take_notice() {
+        eprintln!("advisor: {notice}");
+    }
 
     let kernel = context();
     let items = kernel.items();
@@ -424,11 +432,15 @@ async fn main() -> Result<(), BoxError> {
         took.as_secs_f64(),
     );
     if let Some(usage) = answers.usage {
+        // whoever actually answered, rather than the service that makes the model: the same
+        // `jev` is served by TypeSafe's own API and by OpenRouter, and a line naming the wrong
+        // one is a line about somebody else's bill
         println!(
-            "It cost {} in / {} out at TypeSafe to decide which of {} tokens of the agent's own \
+            "It cost {} in / {} out at {} to decide which of {} tokens of the agent's own \
              context to keep — a different endpoint, and a different bill.",
             usage.input_tokens.unwrap_or_default(),
             usage.output_tokens.unwrap_or_default(),
+            jev.host(),
             budget.used(),
         );
     }

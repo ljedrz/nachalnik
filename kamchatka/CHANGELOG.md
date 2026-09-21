@@ -396,6 +396,13 @@ minor bump may break you.
 
 ### fixed
 
+- **`examples/jev_assisted_compaction` runs on the key the advisor actually accepts.** It asked
+  for `TYPESAFE_API_KEY` and built its own `Jev::latest`, while `--advise` and the advise suite
+  both go through `endpoint::advise::connect`, which takes TypeSafe's key *or* `KAMCHATKA_API_KEY`
+  and picks the endpoint and the model to match. So the one example about the advisor was the one
+  thing a person with an OpenRouter key could not run. It goes through the same path now, and the
+  line about what the advice cost names whoever answered rather than saying TypeSafe whoever did.
+
 - **The chat in a browser follows the context again after a command has been typed.** A line
   handed in from the page is drawn at once and put on a list of lines waiting to become context
   items, which the `context.added` record then claims one at a time. A slash command never

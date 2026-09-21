@@ -4,11 +4,20 @@
 //! against a real model, with a context limit small enough that managing it is not optional.
 //!
 //! ```console
-//! KAMCHATKA_API_KEY=... KAMCHATKA_CONTEXT_LIMIT=10000 \
+//! KAMCHATKA_API_KEY=... KAMCHATKA_CONTEXT_LIMIT=10000 DIALECT=openai \
+//!   KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1 KAMCHATKA_MODEL=... \
 //!   cargo run -p kamchatka --example recorded
 //! ```
 //!
-//! `TASK` sets the question and `OUT` the directory the recording is written to.
+//! `TASK` sets the question, `OUT` the directory the recording is written to, `INTROSPECT=off`
+//! takes the four introspection tools away, and `KAMCHATKA_MODEL` names the model - this reads
+//! the variable rather than taking a `-m`, unlike the program it is built out of.
+//!
+//! note: **`DIALECT` defaults to Google's native one**, which is what the ordered-blocks path
+//! wants and is wrong for every other endpoint. Left out against an OpenAI-compatible base URL
+//! the run comes back `404 Not Found` on the first request, recorded as `model.failed` in
+//! `events.jsonl` and reported out here as `the last turn failed` - which names neither the
+//! endpoint nor the dialect. `DIALECT=openai` is the other half of the line above.
 
 use std::{fs, io::Write, path::PathBuf, sync::Arc, time::Duration};
 
