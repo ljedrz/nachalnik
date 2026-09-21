@@ -35,7 +35,7 @@ pub use crate::tools::advice::Advised;
 pub use crate::tools::advice::{Rated, Rating};
 pub use crate::tools::{
     policy::{Careful, Subject, objection_to, path_matches, reaches_the_network},
-    shell::{Exit, Shell},
+    shell::{Exit, Shell, joints},
     trim::Trim,
 };
 

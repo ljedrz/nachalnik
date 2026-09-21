@@ -376,6 +376,19 @@ minor bump may break you.
 
 ### changed
 
+- **`tools::joints` says where one stage of a command line ends and the next begins, and is no
+  longer behind `tui`.** It was `ui::text::joints`, beside the panel that colours a command's
+  `|`, `&&`, `||` and `;` and reachable by nothing else. Where a command comes apart is a fact
+  about the command rather than about drawing it, and a session with no screen could not ask -
+  which is every headless one, and anything in `tools` that reads a command before it runs. It
+  is `pub` now, so a client drawing its own permission panel gets the same reading the terminal
+  gets rather than a second one.
+
+  Nothing about the scan changed, its tests moved with it, and what it declines to answer is
+  still the interesting half: a quoted separator, a joint inside `$(…)`, a `;;` ending a `case`
+  arm, a lone `&`, and any command with a newline in it, since what is inside a heredoc is
+  arbitrary text.
+
 - **`examples/phone.rs` takes the program's own arguments, every one of them.** The session it
   assembles is the program's session, and it was assembled from two positional words: a listen
   address and a model, which it defaulted to `openai/gpt-4o-mini` — the thing `--model` stopped

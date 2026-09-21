@@ -52,11 +52,13 @@ the crate's own `kamchatka.json` is a starting point the suite holds to naming e
 and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that floats over one,
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
 fitting - `columns` is the one place a width is answered and everything deciding what fits goes
-through it, and it is where `joints` finds a shell command's own `|`, `&&` and `;` for the
-permission question to colour, and where `bullet` reads a list marker, because knowing the shape
+through it, and where `bullet` reads a list marker, because knowing the shape
 of the thing being fitted is what fitting it takes), `tools/` (`fs.rs` for the filesystem tool, dispatching to `files.rs` for the three operations that
 open one file and `search.rs` for the two that walk a directory of them with ripgrep's engine, and
-`shell.rs` for the one tool that is a process - with `policy.rs` for `Careful`, `trim.rs` for
+`shell.rs` for the one tool that is a process, and for `joints` - where one stage of a command
+line ends and the next begins, which the permission question colours; it was in `ui/text.rs`
+beside that one caller, and where a command comes apart is a fact about the command rather than
+about drawing it, so it could not stay behind `tui` - with `policy.rs` for `Careful`, `trim.rs` for
 the compactor, `advice.rs` for the two things a model is asked about a call and the one file
 where what leaves this machine is written down (feature `advise` is the verdict, which is folded
 into the gate; feature `assisted-shell` is `Rating`, which is drawn in the question and folded

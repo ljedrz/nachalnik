@@ -15,7 +15,8 @@ use ratatui::{
 use crate::ui::table::is_delimiter;
 
 use super::faint;
-use crate::ui::text::{columns, joints, prefix_within, refit};
+use crate::tools::joints;
+use crate::ui::text::{columns, prefix_within, refit};
 
 /// Puts a blank line in, unless there is one there already or there is nothing to separate from.
 pub(super) fn separate(lines: &mut Vec<Line<'static>>) {

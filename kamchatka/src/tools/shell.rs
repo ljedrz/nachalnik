@@ -73,6 +73,141 @@ impl Exit {
     }
 }
 
+/// Where a command line's own top-level joints are - `|`, `||`, `&&`, `;` - as byte ranges into
+/// it; empty when there are none, or when the scan could not be trusted.
+///
+/// note: here rather than beside the panel that colours them, which is where this was written and
+/// where its only caller was. Where one stage of a command ends and the next begins is a fact
+/// about the command rather than about drawing it, and `ui` is behind feature `tui` - so anything
+/// wanting it without a screen could not ask, which is every headless session and everything in
+/// `tools` that reads a command before it runs.
+///
+/// note: ranges rather than a rewritten command. This started out breaking the line at each of
+/// them, one stage to a row, which read well and cost a row per stage on a panel whose rows are
+/// its scarcest thing - and a broken command is not something `sh` would take back, so the panel
+/// was showing a spelling nobody could act on. Colouring the joints in place says the same thing:
+/// where one stage ends and the next begins, at a glance, in a command still written the way the
+/// model wrote it.
+///
+/// note: worked out here rather than taken from the highlighter, which is the obvious free option
+/// and is wrong twice over. `synoptic`'s `sh` mode calls every flag's hyphen an operator - `-n`,
+/// `-u`, `-5` - and does not tokenise `|` or `;` at all, so painting its operators would colour
+/// the noise and miss the joints. These are the joints.
+///
+/// note: quote-aware, and it gives up rather than guessing.
+/// [`reaches_the_network`](crate::tools::reaches_the_network) splits a command on these same
+/// characters without caring where in it they are, because a policy that over-reads a command asks
+/// a question it need not have, and that is the right way for a policy to be wrong. A panel that
+/// over-reads one *tells somebody a quoted `|` is a pipe* on the screen where they decide whether
+/// to run it. So an unterminated quote, an unclosed `$(` or a trailing backslash comes back empty
+/// and the command is drawn with nothing picked out.
+///
+/// note: a command that already has newlines in it is left alone without being scanned at all.
+/// What is inside a heredoc is arbitrary text - the `|` in the middle of a Python string is not a
+/// joint, and nothing readable from one line says so.
+pub fn joints(cmd: &str) -> Vec<(usize, usize)> {
+    if cmd.contains('\n') {
+        return Vec::new();
+    }
+
+    let mut found: Vec<(usize, usize)> = Vec::new();
+
+    // note: bytes rather than characters, which is safe because everything looked at here is
+    // ASCII: every byte of a multi-byte character is `0x80` or above, so it can match none of
+    // them, and every index taken is one of theirs
+    let bytes = cmd.as_bytes();
+    let mut quote: Option<u8> = None;
+    let mut escaped = false;
+    let mut depth = 0usize;
+    let mut at = 0;
+    while at < bytes.len() {
+        let byte = bytes[at];
+        if escaped {
+            escaped = false;
+            at += 1;
+            continue;
+        }
+        match quote {
+            // nothing inside these is an escape, not even a backslash
+            Some(b'\'') => {
+                if byte == b'\'' {
+                    quote = None;
+                }
+                at += 1;
+                continue;
+            }
+            Some(mark) => {
+                match byte {
+                    b'\\' => escaped = true,
+                    it if it == mark => quote = None,
+                    _ => {}
+                }
+                at += 1;
+                continue;
+            }
+            None => {}
+        }
+
+        match byte {
+            b'\\' => {
+                escaped = true;
+                at += 1;
+                continue;
+            }
+            // a backtick closes with the character it opened with, so it counts here as a quote
+            // rather than as a depth
+            b'\'' | b'"' | b'`' => {
+                quote = Some(byte);
+                at += 1;
+                continue;
+            }
+            b'(' => {
+                depth += 1;
+                at += 1;
+                continue;
+            }
+            b')' => {
+                depth = depth.saturating_sub(1);
+                at += 1;
+                continue;
+            }
+            _ => {}
+        }
+        // a joint inside `$(…)` joins the inner command's stages, not this one's
+        if depth != 0 || !matches!(byte, b'|' | b'&' | b';') {
+            at += 1;
+            continue;
+        }
+
+        let twice = bytes.get(at + 1) == Some(&byte);
+        let width = match (byte, twice) {
+            // a lone `&` is a job put in the background, and it is also the `&` of `2>&1`;
+            // neither is a seam worth picking out
+            (b'&', false) => {
+                at += 1;
+                continue;
+            }
+            // and `;;` ends a `case` arm rather than separating two commands
+            (b';', true) => {
+                at += 2;
+                continue;
+            }
+            (_, true) => 2,
+            (_, false) => 1,
+        };
+
+        found.push((at, at + width));
+        at += width;
+    }
+
+    // a scan that ended in the middle of something did not understand the command, and a command
+    // this cannot read is one it picks nothing out of
+    match quote.is_some() || escaped || depth != 0 {
+        true => Vec::new(),
+        false => found,
+    }
+}
+
 /// Runs a command, reporting its output as it arrives and stopping when asked to.
 ///
 /// note: This is the tool that shows what an [`OutputSink`] is for. Every line goes to the sink
@@ -501,5 +636,69 @@ mod tests {
         ] {
             assert_eq!(Exit::of(line), None, "{line:?}");
         }
+    }
+
+    /// The pieces a set of joint ranges picks out of a command, for reading a test by.
+    fn picked(cmd: &str) -> Vec<&str> {
+        joints(cmd)
+            .into_iter()
+            .map(|(from, to)| &cmd[from..to])
+            .collect()
+    }
+
+    /// Every joint, and only the joints.
+    #[test]
+    fn a_commands_own_joints_are_found() {
+        assert_eq!(
+            picked("cargo build --release 2>&1 | tail -5 && echo done"),
+            ["|", "&&"]
+        );
+        assert_eq!(picked("cd src; ls || true"), [";", "||"]);
+        // and they are where they are, not merely how many: the offsets are what gets coloured
+        let cmd = "a | b";
+        assert_eq!(joints(cmd), vec![(2, 3)]);
+        assert_eq!(&cmd[2..3], "|");
+    }
+
+    /// What looks like a joint and is not.
+    #[test]
+    fn what_is_not_a_joint_is_not_picked_out() {
+        assert!(joints("cargo build --release").is_empty());
+        assert!(joints("").is_empty());
+        // `2>&1` and a job in the background are both a lone `&`, and neither is a seam
+        assert!(joints("make 2>&1").is_empty());
+        assert!(joints("sleep 60 &").is_empty());
+        // a `case` arm's `;;` ends an arm rather than separating two commands
+        assert!(joints("case $x in a) echo one;; esac").is_empty());
+        // and a command with newlines of its own is not scanned at all: what is inside a heredoc
+        // is arbitrary text, and the `|` in a Python expression is not a pipe
+        assert!(joints("python3 - <<'PY'\nprint(1 | 2)\nPY").is_empty());
+    }
+
+    /// A separator that is part of an argument is not a joint, whichever way it was quoted.
+    ///
+    /// note: the case this function is for. Coloured as a joint, the `|` in `echo 'a | b'` would
+    /// be the panel telling somebody a quoted character is a pipe, on the screen where they decide
+    /// whether to run it - so a quoted separator has to be invisible to the scan.
+    #[test]
+    fn a_separator_inside_a_quote_is_not_a_joint() {
+        assert!(joints("echo 'a | b'").is_empty());
+        assert!(joints("echo \"a && b\"").is_empty());
+        assert!(joints(r"echo a\;b").is_empty());
+        // the inner command's joint is the inner command's
+        assert!(joints("echo $(date | tr -d '\\n')").is_empty());
+        assert!(joints("echo `date | wc -c`").is_empty());
+
+        // and the real one beside a quoted one is still found
+        assert_eq!(picked("grep -e '|' file | wc -l"), ["|"]);
+    }
+
+    /// A command this cannot read to the end has nothing picked out of it.
+    #[test]
+    fn an_unreadable_command_is_left_plain() {
+        assert!(joints("echo 'unterminated | still going").is_empty());
+        assert!(joints("echo \"unterminated && more\" | wc -l\"").is_empty());
+        assert!(joints("make | tail -1 $(echo").is_empty());
+        assert!(joints("make | tail -1 \\").is_empty());
     }
 }

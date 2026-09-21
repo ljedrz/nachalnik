@@ -388,7 +388,8 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
 /// red is about whether anybody is at the keys, and nothing else in the panel is either colour.
 ///
 /// note: a shell command is drawn as code, through the same [`highlighted`] a fenced ```sh block
-/// in the chat goes through, and broken at its joints by [`joints`] first. Wrapped as prose it was
+/// in the chat goes through, and broken at its joints by [`joints`](crate::tools::joints) first.
+/// Wrapped as prose it was
 /// folded at whatever space ran out, and the continuation went back to the margin - so the second
 /// half of a pipeline sat under `cmd:` looking exactly like the next argument, on the one screen
 /// whose whole job is saying what is about to run. The rule down the left settles that by itself;
