@@ -543,6 +543,24 @@ pub struct Judged {
     /// that went yellow because the command changes something, and a client that could not tell
     /// them apart has been told the advisor was sure when it was not.
     pub confidence: f64,
+    /// Which stage of the command earned the band, as a byte range into the `cmd` argument.
+    ///
+    /// note: on the wire because it cannot be worked out at the other end. A client would need
+    /// two things to point at this itself - where the command comes apart, which is
+    /// [`joints`](crate::tools::joints) and is Rust in this crate, and which stage the advisor
+    /// liked least, which nothing but the advisor knows - so left off, the one fact that says
+    /// *where* in a long chain is unreachable from anywhere but the process that produced it.
+    /// That is the thing [`Attached::rated`] exists because of.
+    ///
+    /// note: a range and not the text, so a client points at the stage in the command it is
+    /// already drawing rather than printing a copy of it underneath. A second copy of a long
+    /// stage is a row at a terminal and most of the screen on a phone.
+    ///
+    /// note: absent for a command that was rated in one piece, and absent from a session that
+    /// predates the field, which is one case as far as a client is concerned - nothing to point
+    /// at, and a band to draw exactly as before.
+    #[serde(default)]
+    pub worst: Option<(usize, usize)>,
 }
 
 #[cfg(feature = "assisted-shell")]
@@ -567,6 +585,7 @@ impl Judged {
             },
             said: shown.said().to_owned(),
             confidence: rated.confidence,
+            worst: rated.worst,
         }
     }
 }
@@ -951,7 +970,16 @@ mod tests {
     fn a_rating_reaches_the_wire_as_the_band_it_is_drawn_as() {
         use crate::tools::{Rated, Rating};
 
-        let judged = |scored, confidence| Judged::of(PermissionId(1), Rated { scored, confidence });
+        let judged = |scored, confidence| {
+            Judged::of(
+                PermissionId(1),
+                Rated {
+                    scored,
+                    confidence,
+                    worst: None,
+                },
+            )
+        };
 
         let sure = judged(Rating::Reads, 0.95);
         assert_eq!(sure.band, Band::Reads);
@@ -964,6 +992,41 @@ mod tests {
         // and what was already worth looking at is never softened by confidence either way
         assert_eq!(judged(Rating::Grave, 0.3).band, Band::Grave);
         assert_eq!(judged(Rating::Grave, 0.95).band, Band::Grave);
+    }
+
+    /// The stage that earned the band travels too, and a session that sent none is readable.
+    ///
+    /// note: the second half is the one worth the test. `worst` is newer than the message it is
+    /// on, so a client built against this version reads a record written before the field
+    /// existed, and it has to arrive as *nothing to point at* rather than as a message that will
+    /// not parse - which for a projection is a client with no session at all.
+    #[cfg(feature = "assisted-shell")]
+    #[test]
+    fn the_stage_that_earned_a_band_travels_with_it_and_is_optional() {
+        use crate::tools::{Rated, Rating};
+
+        let judged = Judged::of(
+            PermissionId(1),
+            Rated {
+                scored: Rating::Grave,
+                confidence: 0.9,
+                worst: Some((14, 27)),
+            },
+        );
+        assert_eq!(judged.worst, Some((14, 27)));
+
+        let written = serde_json::to_string(&judged).expect("it serialises");
+        let read: Judged = serde_json::from_str(&written).expect("and comes back");
+        assert_eq!(read, judged);
+
+        // and the same message from before the field existed, which is every session older than
+        // it and every command rated in one piece
+        let older: Judged = serde_json::from_str(
+            r#"{"id":1,"band":"grave","said":"destroys, or sends something out","confidence":0.9}"#,
+        )
+        .expect("a message with no `worst` in it is still a message");
+        assert_eq!(older.worst, None);
+        assert_eq!(older.band, Band::Grave);
     }
 
     /// The one byte the reader and the writer have to agree about.

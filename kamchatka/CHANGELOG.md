@@ -19,7 +19,49 @@ minor bump may break you.
   Both structs are `#[non_exhaustive]`, so this is a break only for a caller building one by
   hand.
 
+- `tools::Rated` has a `worst` field and is `#[non_exhaustive]`, which it should have been from
+  the start - it is a struct this crate answers with and nothing outside it builds. Reading it is
+  unchanged; building one by hand is what stops compiling, and `protocol::Judged` grew the same
+  field under the same rule.
+
 ### added
+
+- **A command joined at its `|`, `&&` or `;` is rated stage by stage and drawn as its worst
+  stage, with that stage underlined.** One score for a whole command line is the reading a long
+  chain is worst served by: three quarters of `cargo build --release && cargo test && rm -rf
+  ~/.ssh` is the work an agent does all day, and it is the last quarter a person answering has to
+  see. Every stage is a question in the *same* request, evaluated on its own against the same
+  state, so a twelve-stage pipeline costs the round trip a one-stage command costs and no stage's
+  answer can be moved by another's.
+
+  The fold is over what each stage is **shown** as and not over what it scored, and the order is
+  the whole of it. A stage scored `0.4` at 95% is a confident `reads`; one scored `0.1` at 30% is
+  a reading nobody could make, and `Rated::shown` lifts it off green because green is the colour
+  that says a command is safe. Fold the scores and `0.4` wins, and the command is drawn green on
+  the strength of the other stage's coin toss. That is the property
+  `an_unsure_rating_is_never_drawn_safer_than_it_scored` holds one stage to, and it does not
+  survive being composed unless the fold is done in this order.
+
+  The whole command is folded in with the stages rather than replaced by them, which is what
+  makes this only ever a tightening: a pipeline whose every link is ordinary and whose
+  composition is not still earns its band from the reading that can see the whole thing, and a
+  stage whose answer never arrived costs a tightening that might have happened rather than
+  producing one that should not have.
+
+  What is drawn is an underline under the stage that earned the band, in the command the panel is
+  already showing. Not a colour - the highlighting still says which part of the stage is a path -
+  and not a second line naming the stage, which would cost a row at a terminal and most of the
+  screen on a phone. The band line above it is unchanged. `protocol::Judged` carries the byte
+  range so a client can point at it too, because that is the one thing the other end cannot work
+  out for itself: it would need `joints`, which is Rust in this crate, and which stage the
+  advisor liked least, which nothing but the advisor knows.
+
+  A command is rated whole, exactly as before, when it has no joints in it, when it is a heredoc
+  (`joints` declines anything with a newline, so a long Python script costs nothing here), when
+  it is longer than the 2 kB an argument is cut to - a stage from past the cut would be placed
+  against a command the advisor was not shown the end of - and when it has more than eight
+  stages, where placing the first eight and folding those would be a rating that silently covered
+  part of a command.
 
 - **A turn can be stopped by typing `/stop`, which is the only way a browser can stop one.**
   `esc` and `ctrl+c` are keys and a page has neither, so a session driven from a phone had no way

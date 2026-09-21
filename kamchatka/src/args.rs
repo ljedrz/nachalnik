@@ -92,9 +92,10 @@ pub struct Args {
     pub advise: bool,
 
     /// The same, and this build also asks it where each command a question is about lands on a
-    /// three-level rubric, and colours the question by the answer. The rating decides nothing.
-    /// That sends every command the model writes to the same service, and not only the allowed
-    /// ones: TypeSafe, or OpenRouter where that is whose key paid.
+    /// three-level rubric, and colours the question by the answer - a command joined at its `|`,
+    /// `&&` or `;` is asked about stage by stage and rated by its worst one, which is underlined.
+    /// The rating decides nothing. That sends every command the model writes to the same service,
+    /// and not only the allowed ones: TypeSafe, or OpenRouter where that is whose key paid.
     #[cfg(feature = "assisted-shell")]
     #[arg(long)]
     pub advise: bool,

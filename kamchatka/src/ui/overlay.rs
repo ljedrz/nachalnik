@@ -128,6 +128,7 @@ fn question_parts(
         &request.tool,
         crate::tools::ops::inner(&request.args).unwrap_or(&request.args),
         columns,
+        worst(app, &request),
     );
     let about = app.about(&request);
     if !about.is_empty() {
@@ -193,6 +194,29 @@ fn rating(app: &App, request: &nachalnik::PermissionRequest, columns: usize) -> 
 #[cfg(not(feature = "assisted-shell"))]
 fn rating(_: &App, _: &nachalnik::PermissionRequest, _: usize) -> Vec<Line<'static>> {
     Vec::new()
+}
+
+/// Which stage of the command earned the band, where the advisor took one apart.
+///
+/// note: the pair with [`rating`] above, and it answers the question that one cannot. A band is
+/// how bad the command is and a long `&&` chain earns its colour from one link - so the line says
+/// *how bad* and this says *which part*, and the second is worth having exactly when the command
+/// is too long to find it in by eye. It costs no row: what it produces is an underline under a run
+/// of a command that is already on the screen.
+///
+/// note: `None` is every way of not having one and does not distinguish between them - no
+/// advisor, a command with no joints, one the advisor declined to take apart - the same way
+/// [`App::rating`] answers for the band. What it means on the screen is the same in each case:
+/// nothing underlined, and a command to read as a whole.
+#[cfg(feature = "assisted-shell")]
+fn worst(app: &App, request: &nachalnik::PermissionRequest) -> Option<(usize, usize)> {
+    app.rating(request)?.worst
+}
+
+/// The same where the advisor is not in the build.
+#[cfg(not(feature = "assisted-shell"))]
+fn worst(_: &App, _: &nachalnik::PermissionRequest) -> Option<(usize, usize)> {
+    None
 }
 
 /// The other question: a compaction pass, listed, waiting on a `y`.
@@ -399,7 +423,12 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
 /// note: by the tool's name as well as the field's, the way [`App::about`] picks its two out. A
 /// `cmd` is a shell command *here* because `shell` is the tool that takes one, and somebody else's
 /// tool with a field of that name has not said it is drawing a command line.
-fn readable(tool: &str, args: &serde_json::Value, columns: usize) -> Vec<Line<'static>> {
+fn readable(
+    tool: &str,
+    args: &serde_json::Value,
+    columns: usize,
+    worst: Option<(usize, usize)>,
+) -> Vec<Line<'static>> {
     let Some(fields) = args.as_object() else {
         return serde_json::to_string_pretty(args)
             .unwrap_or_default()
@@ -424,7 +453,7 @@ fn readable(tool: &str, args: &serde_json::Value, columns: usize) -> Vec<Line<'s
             // what it gets is the rule and the colours and none of the breaking
             serde_json::Value::String(text) if tool == "shell" && name == "cmd" => {
                 out.extend(refit(&Line::raw(format!("{name}:")), columns));
-                out.extend(command(text, columns));
+                out.extend(command(text, columns, worst));
             }
             serde_json::Value::String(text) if text.contains('\n') => {
                 out.extend(refit(&Line::raw(format!("{name}:")), columns));

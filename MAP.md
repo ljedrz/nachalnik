@@ -62,7 +62,11 @@ about drawing it, so it could not stay behind `tui` - with `policy.rs` for `Care
 the compactor, `advice.rs` for the two things a model is asked about a call and the one file
 where what leaves this machine is written down (feature `advise` is the verdict, which is folded
 into the gate; feature `assisted-shell` is `Rating`, which is drawn in the question and folded
-into nothing - and is a second opt-in because it is asked on far more calls), and `mod.rs` for
+into nothing - and is a second opt-in because it is asked on far more calls. A command with
+joints in it is placed stage by stage, every stage a question in the one request, and rated by
+`Rated::worst_of` - which folds what each stage is *shown* as rather than what it scored, because
+the unsure rule is what keeps a coin toss off green and folding the scores first loses it), and
+`mod.rs` for
 `Limits`, the domains this program's own tools act in, and the
 argument readers every tool here shares, `unread` among them, which `introspect/` reaches for too),
 `introspect/` (the four tools an agent inspects and manages its own session with, one per file and

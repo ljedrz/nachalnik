@@ -38,7 +38,9 @@ default = ["mcp", "tui"]
 advise = ["nachalnik-providers/typesafe"]
 # the same advisor, asked a different question: where a `shell` command lands on a three-level
 # rubric, drawn in the permission question in green, yellow or red so that somebody deciding
-# whether to press `y` can see at a glance what they are being asked about.
+# whether to press `y` can see at a glance what they are being asked about. A command joined at
+# its `|`, `&&` or `;` is placed stage by stage - every stage a question in the one request - and
+# rated by the worst of them, with that stage underlined in the command itself.
 #
 # note: on top of `advise` rather than beside it, and a second opt-in rather than part of the
 # first, because it widens what leaves the machine in a way the first one's note does not cover.

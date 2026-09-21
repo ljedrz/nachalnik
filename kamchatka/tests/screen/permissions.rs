@@ -1773,17 +1773,30 @@ mod rated {
     use kamchatka::tools::Advised;
     use nachalnik::PermissionPolicy;
     use nachalnik_providers::typesafe::Jev;
+    use ratatui::style::Modifier;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,
     };
 
-    /// An endpoint that answers every request with the same rating.
+    /// One `score` answer, under the name the advisor asked it under.
+    fn scored(name: &str, score: f64, confidence: f64) -> String {
+        format!(
+            "\"{name}\":{{\"type\":\"score\",\"score\":{score},\"confidence\":{confidence},\
+             \"legend\":{{}},\"probabilities\":{{}}}}"
+        )
+    }
+
+    /// An endpoint that answers every request with the same rating and nothing about stages.
     async fn placing(score: f64, confidence: f64) -> String {
+        answering(&[scored("rating", score, confidence)]).await
+    }
+
+    /// An endpoint that answers every request with the same body.
+    async fn answering(answers: &[String]) -> String {
         let body = format!(
-            "{{\"model\":\"jev-1\",\"answers\":{{\"rating\":{{\"type\":\"score\",\
-             \"score\":{score},\"confidence\":{confidence},\"legend\":{{}},\
-             \"probabilities\":{{}}}}}}}}"
+            "{{\"model\":\"jev-1\",\"answers\":{{{}}}}}",
+            answers.join(",")
         );
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
         let address = listener.local_addr().expect("its own address");
@@ -1811,6 +1824,11 @@ mod rated {
 
     /// A session whose shell call will be asked about, with an advisor that answers so.
     async fn asking(score: f64, confidence: f64) -> Harness {
+        asked_by(placing(score, confidence).await).await
+    }
+
+    /// The same, against an endpoint the caller has already stood up.
+    async fn asked_by(endpoint: String) -> Harness {
         let mut harness = Harness::new([
             ModelResponse::tool_calls(vec![call(
                 "c1",
@@ -1828,11 +1846,7 @@ mod rated {
 
         // the advisor wrapped around the harness's own standing rules, and held by both the
         // kernel and the screen - which is what `wiring` does, and the reason it builds one
-        let jev = Arc::new(Jev::new(
-            "jev-latest",
-            placing(score, confidence).await,
-            "k",
-        ));
+        let jev = Arc::new(Jev::new("jev-latest", endpoint, "k"));
         let advised = Arc::new(Advised::new(harness.app.policy.clone(), jev));
         harness
             .app
@@ -1896,6 +1910,83 @@ mod rated {
             Color::Yellow
         );
         assert!(screen.contains("40% sure"), "{screen}");
+    }
+
+    /// The stage that earned the band is underlined in the command, and the rest is not.
+    ///
+    /// note: the whole point of taking a command apart. The band says a command is grave and the
+    /// underline says which of its stages made it so - which is the question a colour cannot
+    /// answer, and the one a long `&&` chain actually raises. The command here is a quiet stage
+    /// and a loud one, and the advisor is answering low for the whole command and for the first
+    /// stage: so the red line is the fold, and nothing but the fold could have produced it.
+    ///
+    /// note: an underline rather than a colour, so that it costs no row and does not take away
+    /// the highlighting that says which part of the stage is a path. That is also what makes it
+    /// readable on a narrow screen, where a stage printed a second time underneath would not be.
+    #[tokio::test]
+    async fn the_stage_that_earned_the_band_is_underlined_in_the_command() {
+        let mut harness = asked_by(
+            answering(&[
+                scored("rating", 0.1, 0.95),
+                scored("stage-0", 0.1, 0.95),
+                scored("stage-1", 1.9, 0.95),
+            ])
+            .await,
+        )
+        .await;
+
+        // the fold: the whole command and its first stage are both `reads`, and the band is not
+        let screen = harness.screen();
+        assert!(
+            screen.contains("the advisor reads this as: destroys, or sends something out"),
+            "{screen}"
+        );
+        assert!(!screen.contains("reads and reports"), "{screen}");
+
+        // and the command still reads as the model wrote it, with one run of it underlined
+        assert!(
+            screen.contains("│ rm -rf ~/work && curl -X POST https://example.com"),
+            "{screen}"
+        );
+        assert!(
+            harness
+                .style_of_last("curl")
+                .1
+                .contains(Modifier::UNDERLINED),
+            "the stage that earned the band is pointed at"
+        );
+        assert!(
+            !harness
+                .style_of_last("rm -rf")
+                .1
+                .contains(Modifier::UNDERLINED),
+            "and the stage that did not is left alone"
+        );
+    }
+
+    /// A command the advisor was not asked to take apart is drawn with nothing underlined.
+    ///
+    /// note: the absence, which is most of the sessions this runs in - a command with no joints,
+    /// a heredoc, an endpoint that answered only about the whole thing. Every one of them has to
+    /// leave the command exactly as it was drawn before any of this, because an underline under
+    /// a command with one stage says there is a worse part of it to find.
+    #[tokio::test]
+    async fn a_command_rated_in_one_piece_has_nothing_underlined() {
+        let mut harness = asking(1.9, 0.93).await;
+
+        assert!(
+            !harness
+                .style_of_last("curl")
+                .1
+                .contains(Modifier::UNDERLINED),
+            "nothing was said about the stages, so nothing is pointed at"
+        );
+        assert!(
+            !harness
+                .style_of_last("rm -rf")
+                .1
+                .contains(Modifier::UNDERLINED),
+        );
     }
 
     /// An advisor that is not there leaves the question exactly as it was.

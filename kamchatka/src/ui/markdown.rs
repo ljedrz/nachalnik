@@ -135,7 +135,18 @@ fn joint() -> Style {
 ///
 /// note: the joints come from [`joints`], which reads the command, rather than from the
 /// highlighter, which does not read it well enough. See the note there.
-pub(super) fn command(cmd: &str, width: usize) -> Vec<Line<'static>> {
+///
+/// note: `worst` is the stage the advisor liked least, and it is underlined rather than painted.
+/// The band above the panel is already saying how bad the command is; what this answers is
+/// *where*, which is the question a colour cannot answer and the one a long `&&` chain actually
+/// raises. Underlining adds a channel instead of spending one - the highlighter's colours still
+/// say which part of the stage is a path and which is a flag, and none of green, yellow or red
+/// is repeated down here where it would compete with the line that owns it.
+pub(super) fn command(
+    cmd: &str,
+    width: usize,
+    worst: Option<(usize, usize)>,
+) -> Vec<Line<'static>> {
     let bar = Span::styled("│ ", faint());
     let room = width.saturating_sub(2).max(8);
     let source: Vec<String> = cmd.lines().map(str::to_owned).collect();
@@ -147,6 +158,10 @@ pub(super) fn command(cmd: &str, width: usize) -> Vec<Line<'static>> {
     // note: over the whole command, and so only where the whole command is one line. `joints`
     // declines a command with newlines in it and this asks it once, so a heredoc is drawn with
     // nothing picked out rather than with the offsets of a line other than the one being drawn
+    //
+    // note: `worst` is safe in the same row-by-row loop for the same reason and not by luck - the
+    // advisor takes a command apart with this function, so a command it declines is one with no
+    // stage to be worst
     let picked = joints(cmd);
 
     let mut drawn = Vec::new();
@@ -172,7 +187,7 @@ pub(super) fn command(cmd: &str, width: usize) -> Vec<Line<'static>> {
         // fidelity supports. The rule down the left is what makes this safe: it says the second
         // row is a continuation, which is exactly what the margin could not say
         let styled = Line::from(
-            accented(spans, &picked)
+            accented(spans, &picked, worst)
                 .into_iter()
                 .map(|(text, style)| Span::styled(text, style))
                 .collect::<Vec<_>>(),
@@ -187,47 +202,69 @@ pub(super) fn command(cmd: &str, width: usize) -> Vec<Line<'static>> {
     drawn
 }
 
-/// The same pieces, cut where a joint starts and ends, with the joints restyled.
+/// The same pieces, cut where a joint or the worst stage starts and ends, and restyled there.
 ///
 /// note: the highlighter's spans and the joints are two readings of one string and neither is
 /// built from the other, so this walks the pieces keeping a byte offset rather than trusting them
 /// to line up. A piece that straddles the start of a joint is split; what is inside a joint's
 /// range takes [`joint`]'s style whatever the highlighter made of it, because the highlighter's
 /// opinion of `|` is that it is not a token at all.
-fn accented(spans: Vec<(String, Style)>, picked: &[(usize, usize)]) -> Vec<(String, Style)> {
-    if picked.is_empty() {
+///
+/// note: three readings now, and the third is cut at the same time as the other two rather than
+/// in a pass of its own. A stage is a run *between* joints, so its edges fall where no joint's
+/// do, and two passes would each split pieces the other had already split - the offsets are what
+/// everything here is keyed on, and re-walking them is where they would come apart. So every
+/// offset a style can change at is collected first and one walk honours all of them.
+///
+/// note: the worst stage takes an underline on top of whatever it already had rather than instead
+/// of it. What it marks is a *run* of the command, several tokens long, and a run repainted in
+/// one colour would take away the highlighting that says which of those tokens is the path.
+fn accented(
+    spans: Vec<(String, Style)>,
+    picked: &[(usize, usize)],
+    worst: Option<(usize, usize)>,
+) -> Vec<(String, Style)> {
+    if picked.is_empty() && worst.is_none() {
         return spans;
     }
+
+    let mut edges: Vec<usize> = picked
+        .iter()
+        .chain(worst.iter())
+        .flat_map(|(from, to)| [*from, *to])
+        .collect();
+    edges.sort_unstable();
+
+    let inside = |range: &(usize, usize), at: usize| at >= range.0 && at < range.1;
 
     let mut out = Vec::with_capacity(spans.len());
     let mut at = 0;
     for (text, style) in spans {
         let mut rest = text.as_str();
         while !rest.is_empty() {
-            // how far this piece can go before it meets the start or the end of a joint
-            let inside = picked.iter().find(|(from, to)| at >= *from && at < *to);
-            let until = match inside {
-                Some((_, to)) => *to,
-                None => picked
-                    .iter()
-                    .find(|(from, _)| *from > at)
-                    .map_or(usize::MAX, |(from, _)| *from),
-            };
+            // how far this piece can go before the styling of it could change
+            let until = edges
+                .iter()
+                .copied()
+                .find(|edge| *edge > at)
+                .unwrap_or(usize::MAX);
             let take = rest.len().min(until.saturating_sub(at));
-            // a boundary inside a character cannot happen - every joint is ASCII and so are its
-            // edges - but slicing on a guess is not worth the certainty
+            // a boundary inside a character cannot happen - every joint is ASCII and a stage's
+            // edges are trimmed to one - but slicing on a guess is not worth the certainty
             let take = match rest.is_char_boundary(take) {
                 true => take,
                 false => rest.len(),
             };
 
-            out.push((
-                rest[..take].to_owned(),
-                match inside.is_some() {
-                    true => joint(),
-                    false => style,
-                },
-            ));
+            let mut styled = match picked.iter().any(|range| inside(range, at)) {
+                true => joint(),
+                false => style,
+            };
+            if worst.is_some_and(|range| inside(&range, at)) {
+                styled = styled.underlined();
+            }
+
+            out.push((rest[..take].to_owned(), styled));
             at += take;
             rest = &rest[take..];
         }

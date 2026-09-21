@@ -95,6 +95,20 @@ const IRREVERSIBLE: &str = "irreversible";
 #[cfg(feature = "assisted-shell")]
 const RATING: &str = "rating";
 
+/// And the same rubric put to one stage of that command, numbered from the left.
+#[cfg(feature = "assisted-shell")]
+const STAGE: &str = "stage";
+
+/// The most stages one command line is taken apart into before it is judged whole instead.
+///
+/// note: a limit rather than a prefix. Placing the first eight of twelve and folding those would
+/// be a rating that silently covers part of a command, which is the failure [`ROOM`]'s marker
+/// exists to prevent one field along - so over this the stages are not asked about at all, and
+/// the whole-command answer stands on its own the way it did before any of this. Eight is past
+/// where a person reads a command line as stages anyway.
+#[cfg(feature = "assisted-shell")]
+const STAGES: usize = 8;
+
 /// Where a command lands on that rubric: what a colour in the question means.
 ///
 /// note: three, and ordered, because the question a colour answers is coarse - does this only
@@ -155,11 +169,28 @@ impl Rating {
 /// turned into a colour, and it is the only place, so the words and the colour cannot disagree.
 #[cfg(feature = "assisted-shell")]
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub struct Rated {
-    /// Where the advisor put it, before [`Rated::shown`] has had its say.
+    /// Where the advisor put it, before [`Rated::shown`] has had its say - or, for a command
+    /// taken apart at its joints, the worst of what its stages were shown as.
+    ///
+    /// note: one field for both, which [`Rated::shown`] being idempotent is what allows. It only
+    /// ever raises a `Reads` nobody was sure of, so running it again over a band that is already
+    /// a fold of `shown` answers with that band.
     pub scored: Rating,
-    /// How sure it was, from 0 to 1.
+    /// How sure it was, from 0 to 1 - about the stage that earned the band, where a stage did.
     pub confidence: f64,
+    /// Which stage of the command earned it, as a byte range into the command line.
+    ///
+    /// note: a range rather than the text, so that a client points at the stage in the command
+    /// it is already drawing instead of printing it a second time underneath. A panel's rows are
+    /// its scarcest thing - the same argument [`joints`](crate::tools::joints) is ranges for -
+    /// and on a phone a second copy of a long stage is the whole screen.
+    ///
+    /// note: `None` where the whole command earned its own band, and for every call that was
+    /// rated in one piece: a heredoc, a command with no joints in it, one too long to be sent
+    /// whole, and one with more stages than are worth reporting on separately.
+    pub worst: Option<(usize, usize)>,
 }
 
 #[cfg(feature = "assisted-shell")]
@@ -176,7 +207,43 @@ impl Rated {
             _ => Rating::Grave,
         };
 
-        Self { scored, confidence }
+        Self {
+            scored,
+            confidence,
+            worst: None,
+        }
+    }
+
+    /// The worst of what a call is made of, which is what the call is drawn as.
+    ///
+    /// note: the fold is over [`Rated::shown`] rather than over the scores, and that order is
+    /// load-bearing rather than incidental. `shown` is what lifts a reading nobody was sure of
+    /// off green: a stage scored `0.4` at 95% and one scored `0.1` at 30% are `Reads` and
+    /// `Changes` once it has run, and `Changes` is the honest answer for the pair. Folding the
+    /// scores first picks the higher one, `0.4`, and draws the whole command green on the
+    /// strength of the other stage's coin toss. That is exactly what
+    /// `an_unsure_rating_is_never_drawn_safer_than_it_scored` holds one stage to, and this is
+    /// that property for a command made of several.
+    ///
+    /// note: the whole command is one of the parts folded, always, and it is the only one that
+    /// can see what the stages cannot - a pipeline whose every link is ordinary and whose
+    /// composition is not. It is also what makes a stage whose answer never arrived cost a
+    /// tightening rather than produce a wrong one: the fold can only ever come back at or above
+    /// the band the whole command was given.
+    ///
+    /// note: the first part to reach the worst band, where more than one does, so what is pointed
+    /// at is where the command first gets as bad as it gets.
+    fn worst_of(parts: impl IntoIterator<Item = Self>) -> Option<Self> {
+        parts
+            .into_iter()
+            .reduce(|best, next| match next.shown() > best.shown() {
+                true => next,
+                false => best,
+            })
+            .map(|worst| Self {
+                scored: worst.shown(),
+                ..worst
+            })
     }
 
     /// The band this is actually drawn as.
@@ -190,6 +257,12 @@ impl Rated {
     /// note: the confidence is drawn beside this rather than folded away into it, so that a person
     /// reading a yellow line can see whether it is yellow because the command changes something or
     /// yellow because nobody could tell.
+    ///
+    /// note: idempotent, and the fold behind [`Rated::worst`] leans on it. It only ever raises a
+    /// `Reads`,
+    /// so asking it about a band it has already answered with gives that band back - which is what
+    /// lets `scored` hold either a raw reading or a fold of several without a caller having to
+    /// know which it has.
     pub fn shown(self) -> Rating {
         match self.confidence >= SURE {
             true => self.scored,
@@ -266,42 +339,69 @@ impl Advised {
     /// the coloured line off a panel that did not have one a version ago.
     #[cfg(feature = "assisted-shell")]
     async fn rate(&self, request: &PermissionRequest) {
-        let asked = self
-            .jev
-            .ask(
-                state(request),
-                [(
-                    RATING,
-                    Question::score(
-                        "A command is about to be run on the user's machine, and a person is \
-                         about to be asked whether to let it. Place it on this rubric by what it \
-                         would do.",
-                        LEVELS,
-                    ),
-                )],
-            )
-            .await;
+        // note: through `inner`, because some models put every argument inside a wrapper object
+        // and the panel unwraps one before drawing it. Reading the command from the other place
+        // than the screen does would take spans into a string nobody is looking at, and the
+        // stage underlined would be the wrong run of the right command
+        let args = crate::tools::ops::inner(&request.args).unwrap_or(&request.args);
+        let cmd = args.get("cmd").and_then(Value::as_str).unwrap_or_default();
+        let stages = stages(cmd);
+
+        // note: all of them in one request, which is the whole reason a command is worth taking
+        // apart at all here. Each is evaluated on its own against the same state, so no stage's
+        // answer can be moved by another's, and a twelve-stage pipeline costs the round trip a
+        // one-stage command costs
+        let mut questions = vec![(RATING.to_owned(), Question::score(PLACE, LEVELS))];
+        questions.extend(
+            stages
+                .iter()
+                .enumerate()
+                .map(|(n, (from, to))| (format!("{STAGE}-{n}"), placing(&cmd[*from..*to]))),
+        );
+
+        let Ok(answers) = self.jev.ask(state(request), questions).await else {
+            return;
+        };
 
         // note: the score and the confidence together or not at all. A score with no confidence
         // beside it cannot be drawn by `Rated::shown`'s rule, and the safe reading of half an
         // answer is that nothing was said
-        let Some((score, confidence)) = asked.ok().and_then(|answers| {
-            Some((
-                answers.score(RATING)?,
-                answers.confidence(RATING).unwrap_or(0.0),
+        let read = |name: &str| {
+            Some(Rated::of(
+                answers.score(name)?,
+                answers.confidence(name).unwrap_or(0.0),
             ))
-        }) else {
+        };
+
+        // note: the whole command is what decides whether anything was said at all. A stage that
+        // did not come back is one fewer chance to tighten - see `worst_of` - but an answer with
+        // no reading of the whole command in it is half an answer, and the safe reading of one is
+        // the same here as it is above
+        let Some(whole) = read(RATING) else {
+            return;
+        };
+        let placed = stages.iter().enumerate().filter_map(|(n, span)| {
+            Some(Rated {
+                worst: Some(*span),
+                ..read(&format!("{STAGE}-{n}"))?
+            })
+        });
+
+        let Some(rated) = Rated::worst_of(std::iter::once(whole).chain(placed)) else {
             return;
         };
 
-        let mut rated = self.rated.lock();
-        match rated.iter_mut().find(|(known, _)| known == &request.call) {
-            Some(known) => known.1 = Rated::of(score, confidence),
+        let mut remembered = self.rated.lock();
+        match remembered
+            .iter_mut()
+            .find(|(known, _)| known == &request.call)
+        {
+            Some(known) => known.1 = rated,
             None => {
-                if rated.len() == REMEMBERED {
-                    rated.pop_front();
+                if remembered.len() == REMEMBERED {
+                    remembered.pop_front();
                 }
-                rated.push_back((request.call.clone(), Rated::of(score, confidence)));
+                remembered.push_back((request.call.clone(), rated));
             }
         }
     }
@@ -319,6 +419,86 @@ impl Advised {
             }
         }
     }
+}
+
+/// What the rubric is put to the model as, for a command taken as one thing.
+#[cfg(feature = "assisted-shell")]
+const PLACE: &str = "A command is about to be run on the user's machine, and a person is about to \
+                     be asked whether to let it. Place it on this rubric by what it would do.";
+
+/// And for one stage of one, which is placed with the whole command in the state beside it.
+///
+/// note: it says to place the stage and not the command, because the state carries the whole
+/// command and has to: `cd /tmp && rm -rf *` is two stages whose second means nothing read on its
+/// own, and a rubric answered about a fragment with no context is answered about a different
+/// command. What the question asks for is a reading of the part, taken in view of the whole.
+#[cfg(feature = "assisted-shell")]
+const PLACE_STAGE: &str = "A command is about to be run on the user's machine, and a person is \
+                           about to be asked whether to let it. The whole command is in the \
+                           state. Place only the stage below on this rubric, by what that stage \
+                           would do as part of that command.";
+
+/// One stage of a command line, put on [`LEVELS`].
+///
+/// note: the stage travels as a *value* in an instructions object rather than interpolated into a
+/// sentence, for the reason [`state`] is an object rather than a sentence built out of one - a
+/// fragment carrying a newline or a quote cannot rearrange the question it is inside of, and a
+/// stage of a command line is arbitrary text written by the model. `Question::structured`
+/// replaces the sentence `score` was handed, so the sentence goes into the object with it.
+#[cfg(feature = "assisted-shell")]
+fn placing(stage: &str) -> Question {
+    Question::score(PLACE_STAGE, LEVELS).structured(json!({ "asked": PLACE_STAGE, "stage": stage }))
+}
+
+/// The byte ranges of a command line's own stages, or nothing where this is not a call it can
+/// take apart.
+///
+/// note: four ways of answering nothing, and each of them leaves the whole-command rating exactly
+/// as it was before any of this. A call whose `cmd` is not a string is not one this program knows
+/// to hold a command line - the rating is asked for on [`Capability::exec`], which somebody
+/// else's tool may declare while taking its command under another name, and guessing which field
+/// that is would be placing a rubric on an argument nobody said was a command. A command with no
+/// joints in it is one stage, and one stage folded with the whole is the whole. Past [`STAGES`]
+/// there are too many to report on honestly - see the note there. And past [`ROOM`] the state the
+/// advisor is shown is a *cut* of this command, so a stage taken from beyond the cut would be
+/// placed against a command the model was never shown the end of.
+#[cfg(feature = "assisted-shell")]
+fn stages(cmd: &str) -> Vec<(usize, usize)> {
+    if cmd.len() > ROOM {
+        return Vec::new();
+    }
+
+    let joints = crate::tools::joints(cmd);
+    if joints.is_empty() || joints.len() + 1 > STAGES {
+        return Vec::new();
+    }
+
+    let mut out = Vec::with_capacity(joints.len() + 1);
+    let mut at = 0;
+    for (from, to) in joints {
+        out.push((at, from));
+        at = to;
+    }
+    out.push((at, cmd.len()));
+
+    out.into_iter()
+        .filter_map(|(from, to)| tight(cmd, from, to))
+        .collect()
+}
+
+/// The range with the whitespace around it left off, or nothing where there is nothing in it.
+///
+/// note: the spaces either side of a `|` belong to neither stage, and a range carrying them is
+/// underlined on a screen as a stage with a gap hanging off it. Trimming here rather than where
+/// it is drawn is what keeps the range the advisor was asked about and the range a client points
+/// at the same range.
+#[cfg(feature = "assisted-shell")]
+fn tight(cmd: &str, from: usize, to: usize) -> Option<(usize, usize)> {
+    let piece = cmd.get(from..to)?;
+    let from = from + (piece.len() - piece.trim_start().len());
+    let to = to - (piece.len() - piece.trim_end().len());
+
+    (from < to).then_some((from, to))
 }
 
 /// The state the model is shown: what is about to run, and nothing about who asked for it.
@@ -703,6 +883,161 @@ mod tests {
             advised.rating(&request.call).is_none(),
             "an outage draws no line, rather than a green one"
         );
+    }
+
+    /// A command of eight stages costs the round trip a command of one costs.
+    ///
+    /// note: the property that makes taking a command apart worth doing here at all, and the
+    /// reason this model rather than a chat one. Every stage is a question in the *same* request,
+    /// evaluated on its own against the same state, so none of them can be moved by another's
+    /// answer and the whole fold is paid for once. A question per request would be eight round
+    /// trips in front of somebody waiting to press `y`, and nobody would keep the feature.
+    #[cfg(feature = "assisted-shell")]
+    #[tokio::test]
+    async fn every_stage_of_a_command_is_asked_about_in_one_request() {
+        let jev = unreachable();
+        let advised = Advised::new(Arc::new(Careful::new()), jev.clone());
+
+        let mut request = asking("shell", Capability::exec("run"));
+        let cmd = ["true"; STAGES].join(" && ");
+        request.args = Arc::new(json!({ "cmd": cmd }));
+        assert_eq!(stages(request.args["cmd"].as_str().unwrap()).len(), STAGES);
+
+        assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
+        assert_eq!(jev.attempts(), 1, "one request, however many stages");
+    }
+
+    /// The fold is over what each stage is *shown* as, and taking the scores first loses the
+    /// property the whole rubric rests on.
+    ///
+    /// note: the most important test of the fold, and the case is not a corner. A stage scored
+    /// `0.4` at 95% is a confident `Reads`; one scored `0.1` at 30% is a reading nobody could
+    /// make, which `Rated::shown` lifts to `Changes` because green is the one colour that must
+    /// never come out of a coin toss. Fold the *scores* and `0.4` wins, and the command is drawn
+    /// green on the strength of the other stage's uncertainty - a higher number standing for a
+    /// safer command, which is exactly backwards. Fold what each is shown as and the pair is
+    /// `Changes`.
+    ///
+    /// note: the pair with `an_unsure_rating_is_never_drawn_safer_than_it_scored`, which holds
+    /// one stage to this. Nothing there survives being composed, which is why this is separate
+    /// rather than another case in it.
+    #[cfg(feature = "assisted-shell")]
+    #[test]
+    fn the_worst_of_several_stages_is_folded_after_the_unsure_rule_and_not_before() {
+        let sure = Rated::of(0.4, 0.95);
+        let unsure = Rated::of(0.1, 0.3);
+        assert_eq!(
+            sure.shown(),
+            Rating::Reads,
+            "the higher score is the safe one"
+        );
+        assert_eq!(unsure.shown(), Rating::Changes, "and the lower one is not");
+
+        for pair in [[sure, unsure], [unsure, sure]] {
+            let folded = Rated::worst_of(pair).expect("two stages fold to one");
+            assert_eq!(
+                folded.shown(),
+                Rating::Changes,
+                "folding the scores would have drawn this green"
+            );
+        }
+    }
+
+    /// And the fold can only ever come back at or above what the whole command was given.
+    ///
+    /// note: the property that makes a stage whose answer never arrived safe to carry on without.
+    /// The whole command is one of the parts folded, always, so a missing stage costs a
+    /// tightening that might have happened and cannot produce one that should not have.
+    #[cfg(feature = "assisted-shell")]
+    #[test]
+    fn a_fold_is_never_softer_than_the_whole_command_on_its_own() {
+        let whole = Rated::of(2.0, 0.9);
+        let mild = Rated::of(0.0, 0.99);
+
+        let folded = Rated::worst_of([whole, mild, mild]).expect("it folds");
+        assert_eq!(folded.shown(), Rating::Grave);
+
+        // and a stage worse than the whole command is what does move it
+        let folded = Rated::worst_of([Rated::of(0.0, 0.99), Rated::of(2.0, 0.99)]);
+        assert_eq!(folded.expect("it folds").shown(), Rating::Grave);
+
+        // nothing at all folds to nothing, rather than to a reassuring band
+        assert_eq!(Rated::worst_of([]), None);
+    }
+
+    /// What is pointed at is the first stage to reach the worst band.
+    #[cfg(feature = "assisted-shell")]
+    #[test]
+    fn the_stage_pointed_at_is_where_the_command_first_gets_as_bad_as_it_gets() {
+        let at = |span, score| Rated {
+            worst: Some(span),
+            ..Rated::of(score, 0.99)
+        };
+
+        let folded = Rated::worst_of([at((0, 4), 0.0), at((7, 11), 2.0), at((14, 18), 2.0)])
+            .expect("it folds");
+        assert_eq!(folded.worst, Some((7, 11)));
+
+        // and the whole command winning points at nothing, because it is not a stage
+        let folded = Rated::worst_of([Rated::of(2.0, 0.99), at((7, 11), 0.0)]).expect("it folds");
+        assert_eq!(folded.worst, None);
+        assert_eq!(folded.shown(), Rating::Grave);
+    }
+
+    /// `shown` run over its own answer answers the same thing, which is what `worst_of` leans on.
+    #[cfg(feature = "assisted-shell")]
+    #[test]
+    fn the_unsure_rule_run_twice_says_what_it_said_once() {
+        for scored in [Rating::Reads, Rating::Changes, Rating::Grave] {
+            for confidence in [0.0, 0.3, SURE, 0.99] {
+                let once = Rated {
+                    scored,
+                    confidence,
+                    worst: None,
+                }
+                .shown();
+                let twice = Rated {
+                    scored: once,
+                    confidence,
+                    worst: None,
+                }
+                .shown();
+
+                assert_eq!(once, twice, "{scored:?} at {confidence}");
+            }
+        }
+    }
+
+    /// Which commands are taken apart, and which are rated whole.
+    ///
+    /// note: the four refusals are the half worth pinning. Each of them leaves the rating exactly
+    /// what it was before any of this, and each is a different reason - see `stages`.
+    #[cfg(feature = "assisted-shell")]
+    #[test]
+    fn a_command_is_taken_apart_only_where_taking_it_apart_says_something_true() {
+        let cmd = "cargo build && rm -rf target";
+        let apart = stages(cmd);
+        assert_eq!(
+            apart.iter().map(|(f, t)| &cmd[*f..*t]).collect::<Vec<_>>(),
+            ["cargo build", "rm -rf target"]
+        );
+        // trimmed, so what is underlined is the stage and not the spaces either side of the `&&`
+        assert_eq!(apart[0], (0, 11));
+
+        // one stage is the whole command, and folding the whole command with itself says nothing
+        // the whole command did not
+        assert!(stages("cargo build --release").is_empty());
+        // a heredoc is not scanned at all, which is `joints`' rule and the reason a long script
+        // costs nothing here
+        assert!(stages("python3 - <<'PY'\nprint(1 | 2)\nPY").is_empty());
+        // over `ROOM` the state is a cut of the command, so a stage past the cut would be placed
+        // against a command the advisor was not shown the end of
+        assert!(stages(&format!("echo {} | wc -l", "a".repeat(ROOM))).is_empty());
+
+        // up to `STAGES`, and past it the command is rated whole rather than in part
+        let chain = |n: usize| vec!["true"; n].join(" && ");
+        assert_eq!(stages(&chain(STAGES)).len(), STAGES);
+        assert!(stages(&chain(STAGES + 1)).is_empty());
     }
 
     /// An option nobody offered is read as nothing having been said.
