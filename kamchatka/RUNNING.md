@@ -862,12 +862,22 @@ over a recorded answer and needs no checkpoint; `cargo test` runs it.
 
 **Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
 matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child
-sharing your terminal would be writing over the screen ratatui is drawing. What it says about itself is reported to the
-session instead, as trace lines, as it arrives: `advisor: ready` is the shim saying the
-checkpoint has finished loading, which is the one thing worth knowing while the first question
-waits. The last twenty lines are also kept and hung on the end of whatever failure they
-explain, so a traceback shows up in the permission panel that went unanswered rather than
-having scrolled past.
+sharing your terminal would be writing over the screen ratatui is drawing. What the session is told instead is two lines
+and no more — that the advisor is not ready yet, and then that it is:
+
+```text
+· the advisor `…/python` is not ready yet; you will be told when it is
+· the advisor is ready
+```
+
+The second one means it answered a question, not that it printed a word: the advisor is asked
+one trivial thing as soon as it starts, and readiness is that coming back. So a shim that cannot
+answer is found before a permission question depends on it, rather than at the first `y` — which
+is the startup check the hosted advisor gets from `Jev::probe` and a local one had none of.
+
+The last twenty lines of whatever the engine wrote are kept and hung on the end of whatever
+failure they explain, so a traceback shows up in the permission panel that went unanswered
+rather than having scrolled past.
 
 If it fails — the command is not there, it stops answering, a line does not parse, a question
 takes longer than 30s — the pipe is closed and every later question says the advisor is gone,

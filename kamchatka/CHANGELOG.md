@@ -546,10 +546,18 @@ minor bump may break you.
   advisor rather than only in a build that rates commands: whether the thing is *working* is not
   a rating concern.
 
-  What that surfaces first is a local engine starting. It reports that it is, and then reports
-  what the engine writes about itself as it arrives - `advisor: ready` is the shim saying the
-  checkpoint has finished loading, which is the one thing worth knowing while the first question
-  waits on it.
+  What that surfaces first is a local engine starting, and it is two lines: that the advisor is
+  not ready yet, and then that it is. Reporting what the engine writes about itself was the
+  first attempt and is unreadable - a downloader draws a progress bar by rewriting one line with
+  carriage returns, so a session filled up with `Fetching 38 files: 0%|    |`. Those lines are
+  kept for the failure they would explain and are not reported.
+
+  The second line means the engine *answered*, not that it printed a word. It is asked one
+  trivial question as soon as it starts and readiness is that coming back, so a shim that cannot
+  answer is found before a permission question depends on it rather than at the first `y` -
+  which is the startup check `Jev::probe` gives the hosted one and a local one had none of.
+  Reading a word like `ready` out of the child's output would have been matching a magic string
+  in a program this does not own.
 
 - **A local advisor rated every command yellow, `ls` included, at 1% confidence.** The rule that
   produced it is right: kamchatka will not draw a reading nobody is sure of green, because a

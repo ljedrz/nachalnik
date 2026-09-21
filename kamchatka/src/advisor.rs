@@ -95,7 +95,7 @@ pub struct Local {
     /// several calls at once, and this is the thing they all queue on.
     ///
     /// note: `tokio`'s rather than `parking_lot`'s, because it is held across an `.await`.
-    pipe: Mutex<Option<Pipe>>,
+    pipe: Arc<Mutex<Option<Pipe>>>,
     /// What is worth saying and has not been said yet, oldest first.
     ///
     /// note: a queue rather than the single slot the HTTP client keeps, because the lines worth
@@ -115,6 +115,43 @@ pub struct Local {
     said: Arc<Sync<VecDeque<String>>>,
 }
 
+/// Asks the engine one trivial question, so that being ready is something it demonstrated.
+///
+/// note: two lines is what somebody waiting wants - it is not ready, and now it is - and the
+/// second one has to mean something. Watching the engine's output for a word like `ready` would
+/// be reading a magic string out of a program this does not own; answering a question is the
+/// thing itself, and any engine that can be pointed at this can do it.
+///
+/// note: not awaited, which is the whole reason it is a task. Loading a checkpoint takes seconds
+/// and a session must not wait on an advisor it may never consult - so the warm-up and the first
+/// real question race for the same lock, and whichever arrives second waits for the first. That
+/// is the wait the session was always going to have, spent once.
+///
+/// note: it goes through `exchange`, so a warm-up that fails closes the pipe exactly as a real
+/// question would - and says so, with whatever the engine wrote on its stderr attached. That is
+/// the startup check `Jev::probe` gets and a local engine had none of: a shim that cannot answer
+/// is found before a permission question depends on it rather than at the first `y`.
+fn warm(
+    pipe: Arc<Mutex<Option<Pipe>>>,
+    notice: Arc<Sync<VecDeque<String>>>,
+    said: Arc<Sync<VecDeque<String>>>,
+) {
+    tokio::spawn(async move {
+        let body = json!({
+            "model": MODEL,
+            "state": { "cmd": "true" },
+            "questions": { "ready": Question::noul("Is this a command?").to_wire() },
+        });
+
+        // note: nothing is done with the answer. What is being checked is that one came back at
+        // all, which is the whole of what readiness means here; a `ready` that also had to be
+        // *correct* would be this program grading an engine on a question it made up
+        if exchange(&pipe, &notice, &said, &body).await.is_ok() {
+            remark(&notice, "the advisor is ready".to_owned());
+        }
+    });
+}
+
 /// Reads the child's stderr for as long as it has one, keeping the last [`REMEMBERED`] lines.
 ///
 /// note: a task rather than a read at the point of failure, because the reason to read it at all
@@ -122,13 +159,15 @@ pub struct Local {
 /// diagnostics, and the symptom would be an advisor that stopped answering for a reason nothing
 /// could report.
 ///
+/// note: kept and not reported. Reporting each line as it arrived was tried and is unreadable:
+/// a downloader draws a progress bar by rewriting one line with carriage returns, so what
+/// arrives is two enormous lines of `0%|    |` and the session fills with them. What somebody
+/// waiting on a checkpoint wants is that it is loading and that they will be told when it is
+/// done, which is two lines - see [`Local::new`]. These are for the failure they explain.
+///
 /// note: it ends when the child closes the stream, which is when the child ends, so there is
 /// nothing to cancel. [`Local`] kills the child on drop and this sees the close.
-fn drain(
-    errors: tokio::process::ChildStderr,
-    said: Arc<Sync<VecDeque<String>>>,
-    notice: Arc<Sync<VecDeque<String>>>,
-) {
+fn drain(errors: tokio::process::ChildStderr, said: Arc<Sync<VecDeque<String>>>) {
     tokio::spawn(async move {
         let mut lines = BufReader::new(errors).lines();
         while let Ok(Some(mut line)) = lines.next_line().await {
@@ -145,8 +184,6 @@ fn drain(
                 line.push('…');
             }
 
-            remark(&notice, format!("advisor: {line}"));
-
             let mut said = said.lock();
             if said.len() == REMEMBERED {
                 said.pop_front();
@@ -154,6 +191,22 @@ fn drain(
             said.push_back(line);
         }
     });
+}
+
+/// The last few lines an engine wrote about itself, as one, or nothing where it wrote none.
+///
+/// note: for hanging on the end of a failure rather than for printing. A local engine that
+/// answered nothing has usually said why on its stderr, and that sentence is the difference
+/// between "the advisor stopped answering" and a traceback naming the line.
+fn complaint(said: &Sync<VecDeque<String>>) -> String {
+    let said = said.lock();
+    match said.is_empty() {
+        true => String::new(),
+        false => format!(
+            "; it last said: {}",
+            said.iter().cloned().collect::<Vec<_>>().join(" / ")
+        ),
+    }
 }
 
 /// Adds something worth saying, keeping the queue bounded.
@@ -216,39 +269,26 @@ impl Local {
         let said = Arc::new(Sync::new(VecDeque::new()));
         let notice = Arc::new(Sync::new(VecDeque::new()));
         if let Some(errors) = child.stderr.take() {
-            drain(errors, said.clone(), notice.clone());
+            drain(errors, said.clone());
         }
+
+        let pipe = Arc::new(Mutex::new(Some(Pipe {
+            _child: child,
+            writes,
+            reads,
+        })));
         remark(
             &notice,
-            format!("the advisor `{program}` is starting; the first question waits for it"),
+            format!("the advisor `{program}` is not ready yet; you will be told when it is"),
         );
+        warm(pipe.clone(), notice.clone(), said.clone());
 
         Ok(Self {
             command: command.to_owned(),
-            pipe: Mutex::new(Some(Pipe {
-                _child: child,
-                writes,
-                reads,
-            })),
+            pipe,
             notice,
             said,
         })
-    }
-
-    /// The last few lines the engine wrote about itself, as one, or nothing where it wrote none.
-    ///
-    /// note: for hanging on the end of a failure rather than for printing. A local engine that
-    /// answered nothing has usually said why on its stderr, and that sentence is the difference
-    /// between "the advisor stopped answering" and a traceback naming the line.
-    fn complaint(&self) -> String {
-        let said = self.said.lock();
-        match said.is_empty() {
-            true => String::new(),
-            false => format!(
-                "; it last said: {}",
-                said.iter().cloned().collect::<Vec<_>>().join(" / ")
-            ),
-        }
     }
 
     /// What was run, which is what the setup tab and the status line name.
@@ -257,48 +297,63 @@ impl Local {
     }
 
     /// One question and its answer, over the pipe.
-    ///
-    /// note: every failure here closes the pipe rather than leaving it half-used. A child that
-    /// died, a line that did not parse and a question that timed out all leave a stream whose
-    /// next read is the answer to the question *before* it - and an advisor answering the
-    /// previous call's question is the one failure mode worse than no advisor, because it is a
-    /// confident answer about the wrong command. So the pipe is taken, and every later question
-    /// says the advisor is gone.
     async fn asked(&self, body: &Value) -> Result<Value, BoxError> {
-        let mut held = self.pipe.lock().await;
-        let pipe = held.as_mut().ok_or("the advisor is no longer running")?;
+        exchange(&self.pipe, &self.notice, &self.said, body).await
+    }
+}
 
-        let exchange = async {
-            let line = serde_json::to_string(body)?;
-            pipe.writes.write_all(line.as_bytes()).await?;
-            pipe.writes.write_all(b"\n").await?;
-            pipe.writes.flush().await?;
+/// One question and its answer, over a pipe somebody else is holding.
+///
+/// note: a function over the three handles rather than a method, because [`Local::new`] fires a
+/// warm-up before there is a `Local` to call one on. What the two callers must share is this
+/// exactly: the same lock, so a warm-up still in flight is a real question's queue rather than a
+/// second writer, and the same closing rule.
+///
+/// note: every failure here closes the pipe rather than leaving it half-used. A child that died,
+/// a line that did not parse and a question that timed out all leave a stream whose next read is
+/// the answer to the question *before* it - and an advisor answering the previous call's question
+/// is the one failure mode worse than no advisor, because it is a confident answer about the
+/// wrong command. So the pipe is taken, and every later question says the advisor is gone.
+async fn exchange(
+    pipe: &Mutex<Option<Pipe>>,
+    notice: &Sync<VecDeque<String>>,
+    said: &Sync<VecDeque<String>>,
+    body: &Value,
+) -> Result<Value, BoxError> {
+    let mut held = pipe.lock().await;
+    let open = held.as_mut().ok_or("the advisor is no longer running")?;
 
-            let mut answer = String::new();
-            match pipe.reads.read_line(&mut answer).await? {
-                0 => Err::<Value, BoxError>("the advisor stopped answering".into()),
-                _ => Ok(serde_json::from_str(&answer)?),
-            }
-        };
+    let asking = async {
+        let line = serde_json::to_string(body)?;
+        open.writes.write_all(line.as_bytes()).await?;
+        open.writes.write_all(b"\n").await?;
+        open.writes.flush().await?;
 
-        match tokio::time::timeout(PATIENCE, exchange).await {
-            Ok(Ok(answer)) => Ok(answer),
-            Ok(Err(e)) => {
-                *held = None;
-                let said = format!("the advisor failed and was closed: {e}{}", self.complaint());
-                remark(&self.notice, said.clone());
-                Err(said.into())
-            }
-            Err(_) => {
-                *held = None;
-                let said = format!(
-                    "the advisor did not answer in {}s and was closed{}",
-                    PATIENCE.as_secs(),
-                    self.complaint()
-                );
-                remark(&self.notice, said.clone());
-                Err(said.into())
-            }
+        let mut answer = String::new();
+        match open.reads.read_line(&mut answer).await? {
+            0 => Err::<Value, BoxError>("the advisor stopped answering".into()),
+            _ => Ok(serde_json::from_str(&answer)?),
+        }
+    };
+
+    let closed = |why: String| -> BoxError {
+        let why = format!("{why}{}", complaint(said));
+        remark(notice, why.clone());
+        why.into()
+    };
+
+    match tokio::time::timeout(PATIENCE, asking).await {
+        Ok(Ok(answer)) => Ok(answer),
+        Ok(Err(e)) => {
+            *held = None;
+            Err(closed(format!("the advisor failed and was closed: {e}")))
+        }
+        Err(_) => {
+            *held = None;
+            Err(closed(format!(
+                "the advisor did not answer in {}s and was closed",
+                PATIENCE.as_secs()
+            )))
         }
     }
 }
@@ -356,6 +411,11 @@ pub fn configured() -> Option<Result<Arc<dyn SystemOne>, BoxError>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What the engine said about itself, as the failure path would attach it.
+    fn complaint_of(local: &Local) -> String {
+        complaint(&local.said)
+    }
 
     /// Everything the advisor has to say, drained, so a test can look for one line among them.
     ///
@@ -536,7 +596,7 @@ for line in sys.stdin:
         // for the line rather than assuming a scheduling order
         let mut complaint = String::new();
         for _ in 0..40 {
-            complaint = local.complaint();
+            complaint = complaint_of(&local);
             if complaint.contains("fetching a checkpoint") {
                 break;
             }
@@ -555,6 +615,68 @@ for line in sys.stdin:
         assert!(
             complaint.contains('…'),
             "and the cut is marked: {complaint}"
+        );
+
+        let _ = std::fs::remove_file(&at);
+    }
+
+    /// Two lines and no more: it is not ready, and then it is.
+    ///
+    /// note: the whole of what a session is told about a local engine starting. Reporting the
+    /// engine's own output instead was tried and is unreadable - a downloader draws a progress
+    /// bar by rewriting one line, so what arrived was two enormous `0%|    |` lines in the
+    /// middle of the session.
+    ///
+    /// note: and "ready" is something the engine *demonstrated*, which is why the shim here
+    /// answers rather than printing a word. A readiness read out of the child's output would be
+    /// this program matching a magic string in a program it does not own.
+    #[tokio::test]
+    async fn a_local_engine_says_it_is_not_ready_and_then_that_it_is() {
+        let shim = "\
+import json, sys
+print('Fetching 38 files: 0%|          | 0/38', file=sys.stderr, flush=True)
+for line in sys.stdin:
+    asked = json.loads(line)
+    out = {n: {'type': 'noul', 'noul': 0.5} for n in asked['questions']}
+    json.dump({'model': 'stub', 'answers': out}, sys.stdout)
+    print()
+    sys.stdout.flush()
+";
+        let at = std::env::temp_dir().join(format!("kamchatka-warm-{}.py", std::process::id()));
+        if std::fs::write(&at, shim).is_err() {
+            return;
+        }
+        let Ok(local) = Local::new(&format!("python3 {}", at.display())) else {
+            let _ = std::fs::remove_file(&at);
+            return;
+        };
+
+        let mut said = Vec::new();
+        for _ in 0..80 {
+            said.extend(everything(&local));
+            if said.iter().any(|line| line.contains("is ready")) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+
+        assert_eq!(
+            said.len(),
+            2,
+            "two lines and no more is the whole report: {said:?}"
+        );
+        assert!(said[0].contains("not ready yet"), "{said:?}");
+        assert!(said[1].contains("is ready"), "{said:?}");
+
+        // the progress bar the engine drew is kept for a failure and was never reported
+        assert!(
+            complaint_of(&local).contains("Fetching 38 files"),
+            "it is kept: {}",
+            complaint_of(&local)
+        );
+        assert!(
+            !said.iter().any(|line| line.contains("Fetching")),
+            "and not reported: {said:?}"
         );
 
         let _ = std::fs::remove_file(&at);
@@ -588,9 +710,13 @@ for line in sys.stdin:
             said.iter().any(|line| line.contains("closed")),
             "it wrote down what happened: {said:?}"
         );
-        // and the first thing it said was that it was starting, which is what a person waiting
-        // on a checkpoint is owed
-        assert!(said[0].contains("is starting"), "{said:?}");
+        // and the first thing it said was that it was not ready, which is what a person waiting
+        // on a checkpoint is owed - and there is no "ready" after it, because there never was
+        assert!(said[0].contains("not ready yet"), "{said:?}");
+        assert!(
+            !said.iter().any(|line| line.contains("is ready")),
+            "a child that never answered is never ready: {said:?}"
+        );
 
         // and the second question is refused by the pipe rather than by the child
         let again = asking().await.expect_err("the advisor is gone");
