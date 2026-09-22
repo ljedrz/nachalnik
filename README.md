@@ -107,8 +107,8 @@ offering a tool called `delete_everything` that claims to be read-only.
 
 **[`kamchatka`](kamchatka)** hands the model four tools about its own session, and every operation
 in them is a public function a user interface was already calling. `context` is the context:
-`look`, `budget`, `request` and `search` read it, and nine more - `elide`, `exclude`, `revise`,
-`note`, `undo` - change it, touching nothing a person pinned. `fork` answers on a throwaway copy,
+`look`, `budget`, `request` and `search` read it, and eight more - `elide`, `exclude`, `pin`,
+`restore`, `revise`, `note`, `undo`, `redo` - change it, touching nothing a person pinned. `fork` answers on a throwaway copy,
 either carrying the conversation on or putting a question with some items taken away. `log` reads
 the append-only record kept beside the context. `setup` says what the session is running with:
 which model, which tools, what the policy will refuse, and whether this context was resumed from

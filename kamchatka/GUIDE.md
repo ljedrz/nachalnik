@@ -800,9 +800,10 @@ that says what the rule is.
 ```text
 the next request is ~48,120 tokens of 128,000 (38% full, ~79,880 left)
   47,343 in the context, 777 in the tool definitions
-~34,512 tokens are being held back: excluded, archived or elided to a marker - three states you
-set, and `context` takes any of them off again - or thinking this endpoint will not take back,
-which is not yours to change
+~34,512 tokens are being held back: excluded or elided to a marker, which you set; archived, which
+is where a note you undid and the whole of a shortened answer go; or thinking this endpoint will
+not take back, which is not yours to change. `restore` puts an excluded, elided or archived item
+back
 the last request really cost 52,905 in / 214 out, as the provider counted it
 the estimate is corrected by x1.09, learned from 6 request(s)
 
@@ -975,7 +976,7 @@ loud in a turn is not a promise about anything; a pin is.
 <kbd>u</kbd>, and the top of it while a tool is running is always the assistant turn that asked
 for the call: one step would erase the model's own question and orphan the answer it is waiting
 for. So the tool keeps a journal of what *it* did, and that is what it walks. A `reason` is
-required by every one of the nine that change something, and it is what you read in the context
+required by every one of the eight that change something, and it is what you read in the context
 pane.
 
 Three things are refused outright, with the refusal handed back to the model: a **pinned** item
