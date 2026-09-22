@@ -49,6 +49,14 @@ minor bump may break you.
 
 ### fixed
 
+- **Two panics on text somebody else wrote.** A tool's output streaming in wide characters was
+  shortened by a count of characters taken from a length in bytes, which went below zero once the
+  output passed the bound in bytes while short of half of it in characters - a panic inside the
+  event handler every loop runs, and in a release build a marker prepended on every fragment
+  after. And `context search` found its match in the lowercased line and sliced the line as
+  written at the same offset, which lands inside a character wherever lowercasing changes one's
+  length: a Kelvin sign before the match, and the turn was gone.
+
 - **A `shell` call answers when its output is not text, and when it leaves something running.**
   Standard output was read a line at a time as UTF-8, and the first line that was not stopped the
   reading - so `cat` of a picture left the pipe full, the command blocked writing into it, and the

@@ -965,10 +965,13 @@ fn around(needle: &str) -> impl Fn(&str) -> String + '_ {
         if line.chars().count() <= WINDOW {
             return line.to_owned();
         }
-        let at = line
-            .to_lowercase()
+        // note: counted in the lowercased line, which is where the offset came from. Lowercasing
+        // can change a character's length - the Kelvin sign is three bytes and its `k` is one - so
+        // the same offset into the line as written can land inside a character, which is a panic
+        let lower = line.to_lowercase();
+        let at = lower
             .find(needle)
-            .map(|byte| line[..byte].chars().count())
+            .map(|byte| lower[..byte].chars().count())
             .unwrap_or_default();
         let from = at.saturating_sub(LEAD);
         let said: String = line.chars().skip(from).take(WINDOW).collect();

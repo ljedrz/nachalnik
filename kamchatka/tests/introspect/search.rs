@@ -352,6 +352,12 @@ async fn the_edges_of_a_search_and_a_filter_do_not_panic() {
         format!("{}NEEDLE", "日本語テスト ".repeat(40)),
     ));
     kernel.push(ContextItem::file("emoji.txt", "🦀🦀🦀 NEEDLE 🦀🦀🦀"));
+    // a character whose lowercase is a different length, right before the match: the offset the
+    // search finds is in the lowercased line, and is not a boundary in the line as written
+    kernel.push(ContextItem::file(
+        "kelvin.txt",
+        format!("{}\u{212A}NEEDLE", "x".repeat(120)),
+    ));
     kernel.push(ContextItem::file(
         "odd.txt",
         "a [bracket] and a (paren) and a \\ backslash NEEDLE",
@@ -363,7 +369,7 @@ async fn the_edges_of_a_search_and_a_filter_do_not_panic() {
 
     let said = answers_from(&kernel, &["context", "log"]);
     let found = &said[0];
-    assert!(found.contains("3 line(s) say `needle`"), "{found}");
+    assert!(found.contains("4 line(s) say `needle`"), "{found}");
     // the window kept the match and said it had trimmed the front
     assert!(found.contains("…"), "{found}");
     assert!(found.contains("NEEDLE 🦀🦀🦀"), "{found}");

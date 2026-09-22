@@ -166,6 +166,41 @@ let mid = sorted.len() / 2;
     assert!(fenced.trim_start().starts_with('│'), "{fenced}");
 }
 
+/// A tool's output in wide characters is shortened like any other, rather than taking the session
+/// with it.
+///
+/// note: the bound is in bytes, and the cut was counted in characters from it - so an output past
+/// the bound in bytes and short of half of it in characters subtracted below zero.
+#[tokio::test]
+async fn a_long_output_in_wide_characters_is_shortened_rather_than_fatal() {
+    let mut harness = Harness::new([]);
+    let call = nachalnik::ToolCallId("c1".to_owned());
+    harness.app.on_event(Event::ToolStarted {
+        call: call.clone(),
+        tool: "shell".to_owned(),
+    });
+    for _ in 0..900 {
+        harness.app.on_event(Event::ToolOutput {
+            call: call.clone(),
+            tool: "shell".to_owned(),
+            chunk: "日本語テスト\n".to_owned(),
+        });
+    }
+
+    let live = harness
+        .app
+        .loose
+        .last()
+        .expect("the output is on the screen");
+    assert!(live.text.len() < 8_000, "{} bytes", live.text.len());
+    assert_eq!(
+        live.text.matches("not repeated here").count(),
+        1,
+        "one marker, however many fragments went past it"
+    );
+    assert!(live.text.ends_with("日本語テスト\n"));
+}
+
 #[tokio::test]
 async fn what_a_tool_said_is_shown_as_the_tool_said_it() {
     let mut harness = Harness::new([]);

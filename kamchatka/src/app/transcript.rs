@@ -285,12 +285,14 @@ impl App {
             Some(entry) if entry.open && entry.speaker == speaker => {
                 entry.text.push_str(fragment);
                 if speaker == Speaker::Result && entry.text.len() > LIVE_OUTPUT {
-                    let cut = entry
-                        .text
-                        .char_indices()
-                        .nth(entry.text.chars().count() - LIVE_OUTPUT / 2)
-                        .map(|(at, _)| at)
-                        .unwrap_or(0);
+                    // note: in bytes, like the bound it answers. It was a count of characters taken
+                    // from a length in bytes, which in three-byte text went below zero - a panic
+                    // inside the event handler in a debug build, and in a release one a cut at
+                    // nothing and another marker on the front of every fragment
+                    let mut cut = entry.text.len() - LIVE_OUTPUT / 2;
+                    while !entry.text.is_char_boundary(cut) {
+                        cut += 1;
+                    }
                     entry.text = format!(
                         "[... the earlier output is not repeated here; the whole of it is in the \
                          context ...]\n{}",
