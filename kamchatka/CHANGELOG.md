@@ -32,6 +32,13 @@ minor bump may break you.
 
 ### changed
 
+- **`tests/remote.rs` is `tests/remote/`**, the way `tests/screen/` and `tests/introspect/`
+  already are: one binary named for the directory, `main.rs` holding what every file in it reaches
+  for - a served session, the `Peer` that speaks the protocol by hand, the two tools that answer
+  slowly - and nine files for the nine things it is about. It had grown to 3,900 lines, the
+  largest file in the workspace and half again the next test suite, with the seams already drawn
+  as section banners. Not one test changed.
+
 - **The sandbox suite is two: `tests/sandbox.rs` for what needs a process, `tests/boundary.rs` for
   what does not.** The first is `#![cfg(target_os = "linux")]`, as it was; the second is
   `#![cfg(unix)]`, and holds the six tests that never spawn anything - which paths `Reach` admits,
