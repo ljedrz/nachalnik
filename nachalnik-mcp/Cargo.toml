@@ -29,7 +29,17 @@ default = ["child-process"]
 # `tokio::process::Command` in its signature and nothing else here touches the runtime, so the
 # dependency belongs to this feature rather than to the crate: without it, a build of this bridge
 # has no `tokio` of its own at all.
-child-process = ["rmcp/transport-child-process", "dep:tokio", "tokio/process"]
+#
+# note: `io-util`, `rt` and `time` for the server's standard error, which is read in the background
+# rather than inherited, and waited on briefly when a handshake fails; see `Server::spawn`.
+child-process = [
+    "rmcp/transport-child-process",
+    "dep:tokio",
+    "tokio/process",
+    "tokio/io-util",
+    "tokio/rt",
+    "tokio/time",
+]
 # Servers reached over HTTP.
 http = ["rmcp/transport-streamable-http-client-reqwest"]
 

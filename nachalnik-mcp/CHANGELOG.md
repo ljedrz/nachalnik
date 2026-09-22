@@ -5,6 +5,21 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A spawned server's standard error is held rather than inherited.** `Server::spawn` handed the
+  command to a transport whose default is to inherit it, and which sets all three streams over
+  whatever the `Command` said - so a server logging a line per request wrote across the caller's
+  terminal, `kamchatka`'s drawn screen included, and no caller could stop it. It is read in the
+  background now, and the last lines of it ride on the error when the handshake fails, which is
+  the one moment what a server says is the reason.
+
+- The crate docs no longer say a server's progress reaches an `OutputSink` - no progress token is
+  sent, so no notification arrives - and `Server::install` says that running it again leaves a
+  tool the server stopped offering in place.
+
 ## [0.6.1] - 2026-09-19
 
 ### fixed

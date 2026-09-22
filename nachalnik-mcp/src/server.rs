@@ -79,12 +79,42 @@ impl Server {
     ///
     /// note: This is how most MCP servers are distributed, and it is the reason this crate exists
     /// separately: the runtime spawns no processes.
+    ///
+    /// note: its standard error is held and read rather than inherited, whatever the `Command`
+    /// says - the transport sets all three streams, and inheriting was its default. A server that
+    /// logs a line per request then wrote it across whatever the caller had on the terminal, a
+    /// drawn screen included, and no caller could stop it. What it says is kept, a few lines of
+    /// it, for the one moment it is worth reading: a handshake that failed, where it is the reason.
     #[cfg(feature = "child-process")]
     pub async fn spawn(name: impl Into<String>, command: tokio::process::Command) -> Result<Self> {
-        let transport = rmcp::transport::TokioChildProcess::new(command)
+        let (transport, stderr) = rmcp::transport::TokioChildProcess::builder(command)
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .map_err(|e| Error::Connect(Box::new(e)))?;
+        let said = Arc::new(std::sync::Mutex::new(std::collections::VecDeque::new()));
+        // read for as long as the server runs, because a pipe nobody reads fills and blocks the
+        // process writing to it
+        let draining = stderr.map(|stderr| tokio::spawn(drain(stderr, said.clone())));
 
-        Self::connect(name, transport).await
+        match Self::connect(name, transport).await {
+            Ok(server) => Ok(server),
+            Err(Error::Connect(e)) => {
+                // a server that failed the handshake has usually exited, and what it said on the
+                // way out may not have been read yet
+                if let Some(draining) = draining {
+                    let _ = tokio::time::timeout(LAST_WORDS, draining).await;
+                }
+                let tail: Vec<String> = said
+                    .lock()
+                    .map(|said| said.iter().cloned().collect())
+                    .unwrap_or_default();
+                Err(Error::Connect(match tail.is_empty() {
+                    true => e,
+                    false => format!("{e}; it said:\n{}", tail.join("\n")).into(),
+                }))
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Decides what this server's tools are allowed to do; see [`Trust`], which is worth reading
@@ -144,9 +174,12 @@ impl Server {
 
     /// Puts every tool the server offers into a kernel.
     ///
-    /// note: Running it again is how a server whose tool list has changed is picked up. It is
-    /// deliberately something you do rather than something that happens: the model is about to be
-    /// told what it can do, and that is not a thing to change underneath a turn.
+    /// note: Running it again is how a server whose tool list has grown or changed is picked up -
+    /// every tool it lists comes back in `replaced`, since each one had a tool under its name. A
+    /// tool the server has *stopped* offering is left where it is, for
+    /// [`Kernel::remove_tool`](nachalnik::Kernel::remove_tool). It is deliberately something you do
+    /// rather than something that happens: the model is about to be told what it can do, and that
+    /// is not a thing to change underneath a turn.
     pub async fn install(&self, kernel: &Kernel) -> Result<Installed> {
         let mut installed = Installed::default();
 
@@ -238,5 +271,36 @@ impl std::fmt::Debug for Server {
             .field("prefix", &self.prefix)
             .field("trust", &self.trust)
             .finish_non_exhaustive()
+    }
+}
+
+/// How many of the last lines a spawned server wrote to standard error are kept.
+#[cfg(feature = "child-process")]
+const KEPT: usize = 20;
+
+/// How long a server that failed its handshake is given to finish saying why.
+#[cfg(feature = "child-process")]
+const LAST_WORDS: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Reads a spawned server's standard error to its end, keeping the last [`KEPT`] lines.
+#[cfg(feature = "child-process")]
+async fn drain(
+    stderr: tokio::process::ChildStderr,
+    said: Arc<std::sync::Mutex<std::collections::VecDeque<String>>>,
+) {
+    use tokio::io::AsyncBufReadExt as _;
+
+    let mut stderr = tokio::io::BufReader::new(stderr);
+    let mut line = Vec::new();
+    while let Ok(1..) = stderr.read_until(b'\n', &mut line).await {
+        let text = String::from_utf8_lossy(&line).trim_end().to_owned();
+        line.clear();
+        let Ok(mut said) = said.lock() else {
+            return;
+        };
+        if said.len() == KEPT {
+            said.pop_front();
+        }
+        said.push_back(text);
     }
 }

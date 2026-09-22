@@ -252,3 +252,26 @@ async fn a_real_model_uses_a_tool_from_a_foreign_server() {
         "the server's answer should have reached the model: {said}"
     );
 }
+
+/// A server that dies before the handshake says why, in the error rather than on the terminal.
+///
+/// note: its standard error was inherited, so what a server said on the way out went wherever the
+/// caller's terminal was - across a drawn screen, or nowhere a person would look - and the error
+/// said only that the handshake had not happened. It is held and read now, and the last of it
+/// rides on the error, which is the one place it is worth reading.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_server_that_dies_before_the_handshake_says_why() {
+    let mut command = Command::new("sh");
+    command
+        .arg("-c")
+        .arg("echo 'ModuleNotFoundError: no module named mcp' >&2; exit 1");
+
+    let refused = Server::spawn("broken", command)
+        .await
+        .err()
+        .expect("nothing answered the handshake")
+        .to_string();
+
+    assert!(refused.contains("no module named mcp"), "{refused}");
+}

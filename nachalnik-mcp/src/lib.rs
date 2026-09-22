@@ -37,9 +37,10 @@ println!("{} tools: {}", installed.added.len(), installed.added.join(", "));
 //!
 //! It needs nothing the runtime does not already expose. An MCP tool is a `Tool` that forwards to
 //! a server; tools arriving and leaving is [`Kernel::add_tool`](nachalnik::Kernel::add_tool) and
-//! [`remove_tool`](nachalnik::Kernel::remove_tool), which put it on the event stream; a tool's
-//! progress is an [`OutputSink`](nachalnik::OutputSink); a structured result is
-//! [`Content::Json`](nachalnik::Content). That is the point of a seam.
+//! [`remove_tool`](nachalnik::Kernel::remove_tool), which put it on the event stream; a stop
+//! reaches a running tool through its [`OutputSink`](nachalnik::OutputSink); a structured result
+//! is [`Content::Json`](nachalnik::Content). That is the point of a seam. (A server's progress
+//! notifications are not forwarded yet: no progress token is sent, so none arrive.)
 //!
 //! # What it decides, and what it refuses to
 //!
