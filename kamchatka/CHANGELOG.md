@@ -72,6 +72,14 @@ minor bump may break you.
   same question five times each way, the untyped shape stringified five times out of five and the
   typed one none.
 
+- **A `call` written as a string of JSON is still a call.** The schema is what invited it, and the
+  entry above is the fix for that - but a model that sends the wrapper's contents as text anyway,
+  `{"call": "{\"action\": \"read\", …}"}`, was not read through at all: `action` was not found, so
+  the call declared every operation its tool has and a session granted `fs:read` could not read a
+  file, with ``the `action` argument is required`` as the only explanation. One that parses to an
+  object is taken, the way flat arguments already were; one that does not is refused saying what
+  arrived.
+
 - **A call whose arguments never parsed says what is wrong with them and shows that part.** It
   said `the arguments were not JSON` and quoted the first 200 characters, which is the wrong two
   hundred: of twelve such calls in one session, four had the fault past the cut, so the message

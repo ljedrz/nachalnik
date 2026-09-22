@@ -374,7 +374,8 @@ impl Careful {
         // a path asks a question nobody needed, where skipping it is a rule that stops being one.
         // `inner` only reads through a `call` that is the whole of the arguments, so nothing on
         // the outside of one is passed over for it
-        let args = super::ops::inner(&request.args).unwrap_or(&request.args);
+        let args =
+            super::ops::inner(&request.args).unwrap_or(std::borrow::Cow::Borrowed(&request.args));
 
         let mut judged: Vec<Subject> = request
             .capabilities
@@ -384,7 +385,7 @@ impl Careful {
             .collect();
 
         if request.capabilities.contains(&Capability::exec("run"))
-            && command(args).is_some_and(reaches_the_network)
+            && command(&args).is_some_and(reaches_the_network)
         {
             judged.push(Subject::Capability(Capability::net("reach")));
         }

@@ -152,7 +152,7 @@ impl Fs {
     }
 
     /// The operation a call names, if it names one this tool has.
-    fn op<'a>(&self, call: &'a ToolCall) -> Option<&'a str> {
+    fn op(&self, call: &ToolCall) -> Option<String> {
         action_of(call, &self.ops)
     }
 }
@@ -201,6 +201,7 @@ impl Tool for Fs {
             Ok(args) => args,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        let args = &*args;
 
         // note: the operation is checked here as well as in `needs`, because a refusal a model
         // can act on is one that names what was wrong. The alternative - dispatching on a default
@@ -213,11 +214,11 @@ impl Tool for Fs {
             )));
         };
 
-        if let Some(refusal) = unread(action, args, &self.ops) {
+        if let Some(refusal) = unread(&action, args, &self.ops) {
             return Ok(ToolOutput::error(refusal));
         }
 
-        match action {
+        match action.as_str() {
             "read" => self.read.invoke(args, output).await,
             "glob" => self.glob.invoke(args, output).await,
             "grep" => self.grep.invoke(args, output).await,

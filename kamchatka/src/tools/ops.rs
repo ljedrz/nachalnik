@@ -15,6 +15,8 @@
 //! same table: nothing is sent `strict`, so the schema guides rather than binds, and a model that
 //! ignores it is still answered by name.
 
+use std::borrow::Cow;
+
 use nachalnik::{PermissionRequest, ToolCall, ToolSpec};
 use serde_json::{Map, Value, json};
 
@@ -341,20 +343,41 @@ fn around(written: &str, at: usize, width: usize) -> String {
 
 /// The object a call's arguments are really in, or what is wrong with where they are.
 ///
-/// note: four readings, and two of them are refused. Arguments under [`WRAPPER`] is what the
+/// note: five readings, and two of them are refused. Arguments under [`WRAPPER`] is what the
 /// schema asks for. Arguments flat is what the schema used to ask for, and it is unambiguous, so
 /// it is taken - a model that has learnt the old shape loses nothing. Arguments in both places is
 /// the one that cannot be read charitably: picking either would drop the other half, and a call
 /// that ignored an argument answers as though it had never been given one, which is the failure
 /// [`unread`] exists for one step further in. And arguments that never parsed are not arguments;
 /// see [`UNPARSED`].
-pub(crate) fn inner(args: &Value) -> Result<&Value, String> {
+///
+/// note: the fifth is a [`WRAPPER`] holding a *string* of JSON rather than an object, which some
+/// models produce for every call they make - the whole session's worth, not the occasional one.
+/// What invited it is in [`schema`], where the property said `anyOf` and not what type it was, and
+/// that is the fix; this is the backstop for a model that does it anyway, since nothing here can
+/// make a schema binding. One that parses to an object is as unambiguous as the flat shape and is
+/// taken for the same reason. One that does not is refused here, saying so, rather than falling
+/// through to `the \`action\` argument is required` - which is the [`UNPARSED`] failure again: a
+/// model sent to fix an argument it did write.
+pub(crate) fn inner(args: &Value) -> Result<Cow<'_, Value>, String> {
     if let Some(written) = args.get(UNPARSED).and_then(Value::as_str) {
         return Err(unreadable(written));
     }
 
-    let Some(inside) = args.get(WRAPPER).filter(|it| it.is_object()) else {
-        return Ok(args);
+    let inside = match args.get(WRAPPER) {
+        Some(it) if it.is_object() => Cow::Borrowed(it),
+        Some(Value::String(written)) => match serde_json::from_str::<Value>(written) {
+            Ok(parsed) if parsed.is_object() => Cow::Owned(parsed),
+            _ => {
+                return Err(format!(
+                    "`{WRAPPER}` arrived as text rather than as an object, and nothing was read \
+                     and nothing was done. What was in it was `{}`. Send the call again, with \
+                     `{WRAPPER}` an object: `{{\"{WRAPPER}\": {{\"action\": ...}}}}`.",
+                    written.chars().take(200).collect::<String>()
+                ));
+            }
+        },
+        _ => return Ok(Cow::Borrowed(args)),
     };
 
     let beside: Vec<&str> = args
@@ -380,12 +403,9 @@ pub(crate) fn inner(args: &Value) -> Result<&Value, String> {
 }
 
 /// The operation a call names, if it names one of these.
-pub(crate) fn action_of<'a>(call: &'a ToolCall, ops: &[Op]) -> Option<&'a str> {
-    inner(&call.args)
-        .ok()?
-        .get("action")?
-        .as_str()
-        .filter(|named| actions(ops).contains(named))
+pub(crate) fn action_of(call: &ToolCall, ops: &[Op]) -> Option<String> {
+    let named = inner(&call.args).ok()?.get("action")?.as_str()?.to_owned();
+    actions(ops).contains(&named.as_str()).then_some(named)
 }
 
 /// Why a question is about everything a tool does, where the reason is that the call did not say
@@ -680,9 +700,10 @@ mod tests {
     /// A call nobody can place is one the question says so about, and a call that names its
     /// operation is left alone.
     ///
-    /// note: the second half is the one worth keeping. A sentence on every question is a sentence
-    /// nobody reads, and this one is only true of a call that did not say which operation it
-    /// wanted - so the case that matters is the ordinary call it has to stay silent about.
+    /// note: the cases it stays silent about are the ones worth keeping. A sentence on every
+    /// question is a sentence nobody reads, and this one is only true of a call that did not say
+    /// which operation it wanted - which a wrapper written as text has, since [`inner`] reads
+    /// through one. What is left is arguments that name nothing and arguments that never parsed.
     #[test]
     fn a_call_that_names_no_operation_says_so() {
         let ops = ops();
@@ -711,13 +732,26 @@ mod tests {
             "a call that placed itself is judged by one capability and needs no sentence"
         );
 
-        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: "{\"action\": \"read\"}" })))
-            .expect("a wrapper written as text names no operation this can read");
+        assert_eq!(
+            unnamed_operation(&spec, &asking(json!({ WRAPPER: "{\"action\": \"read\"}" }))),
+            None,
+            "a wrapper written as text is read through, so the call it holds placed itself"
+        );
+
+        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "path": "x" } })))
+            .expect("arguments that name no operation are a call nobody can place");
         assert!(said.contains("names no operation"), "{said}");
         assert!(
             said.contains("`fs:read`"),
             "and says what a rule that would have answered looks like: {said}"
         );
+
+        let said = unnamed_operation(
+            &spec,
+            &asking(json!({ UNPARSED: "{\"call\": {\"action\"" })),
+        )
+        .expect("arguments that never parsed name nothing either");
+        assert!(said.contains("names no operation"), "{said}");
 
         let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "action": "fly" } })))
             .expect("`fly` is not one of these");
@@ -753,6 +787,25 @@ mod tests {
         let refusal = inner(&both).expect_err("arguments in two places is not a call");
         assert!(refusal.contains("`path`"), "{refusal}");
         assert!(refusal.contains("nothing was done"), "{refusal}");
+    }
+
+    /// A wrapper holding a string of JSON is read, and one holding anything else is refused as
+    /// that rather than as an argument nobody gave.
+    ///
+    /// note: the text is what a live session actually arrived as, every call of it - some models
+    /// write a nested object as a string and do it consistently. Unread, `action` is not found,
+    /// the call declares every operation the tool has, and a session granted `fs:read` cannot read
+    /// a file.
+    #[test]
+    fn a_wrapper_written_as_text_is_still_a_call() {
+        let written = json!({ WRAPPER: "{\"action\": \"read\", \"path\": \"x\"}" });
+        assert_eq!(inner(&written).expect("written")["path"], json!("x"));
+
+        let neither = json!({ WRAPPER: "read the file" });
+        let refusal = inner(&neither).expect_err("that is not a call");
+        assert!(refusal.contains("as text"), "{refusal}");
+        assert!(refusal.contains("nothing was done"), "{refusal}");
+        assert!(refusal.contains("read the file"), "{refusal}");
     }
 
     /// Arguments that never parsed are answered as that, not as an argument nobody gave.
@@ -855,14 +908,18 @@ mod tests {
         let call = |args| ToolCall::new("1", "t", args);
 
         assert_eq!(
-            action_of(&call(json!({ WRAPPER: { "action": "grep" } })), &ops),
+            action_of(&call(json!({ WRAPPER: { "action": "grep" } })), &ops).as_deref(),
             Some("grep")
         );
         assert_eq!(
-            action_of(&call(json!({ "action": "grep" })), &ops),
+            action_of(&call(json!({ "action": "grep" })), &ops).as_deref(),
             Some("grep")
         );
         assert_eq!(action_of(&call(json!({ "action": "fly" })), &ops), None);
         assert_eq!(action_of(&call(json!({})), &ops), None);
+        assert_eq!(
+            action_of(&call(json!({ WRAPPER: "{\"action\": \"grep\"}" })), &ops).as_deref(),
+            Some("grep")
+        );
     }
 }

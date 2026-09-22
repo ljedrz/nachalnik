@@ -121,6 +121,7 @@ impl Tool for Fork {
             Ok(args) => args,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        let args = &*args;
 
         let action = action(args)?;
         if let Some(refusal) = crate::tools::ops::unread(action, args, &self.ops) {

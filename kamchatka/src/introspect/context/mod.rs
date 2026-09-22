@@ -329,6 +329,7 @@ impl Tool for Context {
             Ok(args) => args,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        let args = &*args;
         if let Some(refusal) = unread(action(args)?, args, &self.ops) {
             return Ok(ToolOutput::error(refusal));
         }

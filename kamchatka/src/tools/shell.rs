@@ -361,6 +361,7 @@ impl Tool for Shell {
             Ok(args) => args,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        let args = &*args;
         if let Some(named) = args["action"].as_str().filter(|it| *it != "run") {
             return Ok(ToolOutput::error(format!(
                 "`{named}` is not something `shell` does; it does run"

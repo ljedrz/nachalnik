@@ -436,7 +436,8 @@ impl Advised {
         // and the panel unwraps one before drawing it. Reading the command from the other place
         // than the screen does would take spans into a string nobody is looking at, and the
         // stage underlined would be the wrong run of the right command
-        let args = crate::tools::ops::inner(&request.args).unwrap_or(&request.args);
+        let args = crate::tools::ops::inner(&request.args)
+            .unwrap_or(std::borrow::Cow::Borrowed(&request.args));
         let cmd = args.get("cmd").and_then(Value::as_str).unwrap_or_default();
         let stages = stages(cmd);
 
