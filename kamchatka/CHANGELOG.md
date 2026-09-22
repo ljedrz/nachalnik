@@ -49,6 +49,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`--compact` is refused unless it is a fraction.** `80`, meant as a percentage, installed no
+  compactor and said nothing, and zero or less installed one that took every tool result. The
+  settings file's `compact` is held to the same rule.
+
 - **A session is not recorded into a directory somebody else can read.** The record goes under
   `$TMPDIR/kamchatka`, a fixed name in a directory every user shares, and a directory another user
   made there first could not be made private - the `chmod` failed and was ignored, so the

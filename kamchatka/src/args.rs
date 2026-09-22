@@ -415,6 +415,15 @@ impl Args {
     /// messages worth writing - which path, and whether it was a session at all - belong to
     /// whoever was handed the path.
     pub fn setup(&self) -> Result<Setup> {
+        // note: here rather than in the parser, so that a settings file's `compact` is held to it
+        // too. A fraction, and said so: `80`, meant as a percentage, was no compactor at all, and
+        // anything at or below zero was one that took every tool result
+        anyhow::ensure!(
+            self.compact > 0.0 && self.compact <= 1.0,
+            "`compact` is how full the context may get, as a fraction above 0 and at most 1 - \
+             `0.8` rather than `80`, and `1` never compacts - and this was `{}`",
+            self.compact
+        );
         let resume = match &self.resume {
             Some(path) => Some(
                 serde_json::from_slice(

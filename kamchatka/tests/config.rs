@@ -644,6 +644,20 @@ fn print_config_hands_over_a_file_this_program_would_accept() {
     assert_eq!(String::from_utf8_lossy(&out.stdout), printed);
 }
 
+/// `compact` is a fraction, from the command line or from a file, and a percentage is refused.
+#[test]
+fn a_compaction_threshold_that_is_not_a_fraction_is_refused() {
+    let (ok, said) = run_with(&["--compact", "80"], "", &[]);
+    assert!(!ok, "{said}");
+    assert!(said.contains("rather than `80`"), "{said}");
+
+    let dir = common::scratch("compact-percent");
+    std::fs::write(dir.join("kamchatka.json"), r#"{"compact": 0}"#).expect("written");
+    let (ok, said) = run_from(&dir, &[], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("was `0`"), "{said}");
+}
+
 /// A settings file's `system` is for a session starting, not for one carrying on.
 ///
 /// note: the resumed context already holds it, pinned, from the run that wrote the snapshot - so
