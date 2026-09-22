@@ -34,6 +34,14 @@ minor bump may break you.
   connecting is the writing half of the rule, because what comes back from a socket is whatever
   the process behind it was willing to do.
 
+- **`session.finished` was recorded twice for a session `/restart` replaced.** A served loop and a
+  headless one each end their own session, because the last record is owed to the stream they are
+  writing, and `wiring::Setup::relaunch` ended the one it was handed as well - so the log said
+  nothing more would be recorded and then recorded it again. It now ends a session only where the
+  loop that handed it over has not, asked of the log, which is the thing the record it is about to
+  write is made of. A loop that leaves the ending to `relaunch`, as the drawn one with no socket
+  does, is unchanged.
+
 ## [0.14.0] - 2026-09-21
 
 ### breaking

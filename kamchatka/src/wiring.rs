@@ -460,6 +460,13 @@ impl Setup {
     /// writes, and deliberately: a session somebody restarted is a session that ended, and a run
     /// abandoned halfway is the case that safety net is most for.
     ///
+    /// note: and only where the loop that handed it over has not ended it already, which three of
+    /// the four have - a served loop and a headless one each owe their clients the last record on
+    /// the stream they are writing, so each emits it itself. [`Kernel::finish`] emits every time it
+    /// is called, so a second one here put `session.finished` in the log twice, under a line that
+    /// says nothing more will be recorded. The question is asked of the log because the log is what
+    /// this is about: the last line of the record it is going to write.
+    ///
     /// note: it hands back the sentence rather than saying it, because the thing to say it to
     /// does not exist until this returns. The old [`App`] is about to be dropped and is the only
     /// place the name and the paths are written down; the caller says it into the new one.
@@ -475,7 +482,9 @@ impl Setup {
         app: &App,
         provider: Arc<dyn Dialect>,
     ) -> Result<(Wired, String), String> {
-        app.kernel.finish();
+        if !ended(&app.kernel) {
+            app.kernel.finish();
+        }
 
         let name = app.kernel.session_name();
         let said = match self.record {
@@ -504,6 +513,21 @@ impl Setup {
 
         Ok((wired, said))
     }
+}
+
+/// Whether the session has already said it is over.
+///
+/// note: the log rather than a flag on [`App`], because the loops that end a session end it on the
+/// kernel and a flag would be a second place to keep the same fact. Reading the last record is
+/// also the only answer that stays right for a loop nobody here has written: an embedder that ends
+/// its own session gets one `session.finished`, and one that leaves it to [`Setup::relaunch`] gets
+/// one too.
+fn ended(kernel: &Kernel) -> bool {
+    kernel.with_history(|log| {
+        log.records()
+            .last()
+            .is_some_and(|record| record.event == Event::SessionFinished)
+    })
 }
 
 /// Where a session went when it was written out: how many records, and the two files.
