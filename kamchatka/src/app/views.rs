@@ -213,6 +213,19 @@ impl App {
         self.advisor.as_ref()?.rating(&request.call)
     }
 
+    /// Why a question is about everything a tool does, where that is because the call did not
+    /// say which operation it wanted.
+    ///
+    /// note: the question is the only place this can be said in time to matter. By the time the
+    /// tool refuses the call by name the answer has already been given, and a run with nobody at
+    /// the prompt never gets that far: it reads `deny`, and the standing rule somebody wrote is
+    /// one the call could not match. See `tools::ops::unnamed_operation`.
+    pub fn widened(&self, request: &PermissionRequest) -> Option<String> {
+        let tool = self.kernel.tool(&request.tool)?;
+
+        crate::tools::ops::unnamed_operation(&tool.spec(), request)
+    }
+
     /// The context items a pending call names, described the way a row on the context tab is.
     ///
     /// note: `ids: [22]` is a true account of the arguments and a useless one to be asked about.

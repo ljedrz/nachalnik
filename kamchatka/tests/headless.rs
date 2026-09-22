@@ -317,6 +317,64 @@ async fn an_unanswerable_question_is_denied_by_default() {
     );
 }
 
+/// A tool of several operations, taking its arguments under a `call` the way this program's own
+/// do, so that a call which names none of them can be asked about.
+struct Several;
+
+#[async_trait]
+impl Tool for Several {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec::new("fs", "the filesystem")
+            .with_schema(Arc::new(json!({
+                "type": "object",
+                "properties": { "call": { "type": "object" } },
+                "required": ["call"],
+            })))
+            .with_capabilities([Capability::fs("read"), Capability::fs("write")])
+    }
+
+    async fn invoke(&self, _call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+        Ok(ToolOutput::new("read it"))
+    }
+}
+
+/// A run with nobody at it says why a rule that was given did not answer the question.
+///
+/// note: the whole of the failure this is about happened in one session and cost twenty calls. A
+/// model wrote the wrapper as a string of JSON, so no operation could be read out of it, so the
+/// call declared every operation `fs` has - and `--allow fs:read` then matched nothing. What the
+/// run said was `deny, because nobody is here to be asked`, which is true and is about the wrong
+/// thing: the model went looking for a different approach, and the person watching had no way to
+/// see that their rule and the call could never meet.
+#[tokio::test]
+async fn a_call_that_names_no_operation_says_why_the_rule_missed_it() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "fs",
+            json!({ "call": "{\"action\": \"read\", \"path\": \"x\"}" }),
+        )]),
+        ModelResponse::text("told it was refused"),
+    ];
+    let run = run("read it\n", script, |app| {
+        app.kernel.add_tool(Arc::new(Several));
+        app.policy
+            .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
+    })
+    .await;
+
+    assert!(
+        run.prose.contains("names no operation"),
+        "the reason the rule missed is the one thing this run could not work out: {}",
+        run.prose
+    );
+    assert!(
+        run.prose.contains("`fs:read`"),
+        "and it names the rule that would have answered: {}",
+        run.prose
+    );
+}
+
 /// `--on-ask allow` is the other answer, and the tool runs.
 #[tokio::test]
 async fn the_other_answer_lets_it_run() {

@@ -432,6 +432,8 @@ impl<'a> Headless<'a> {
     fn answer(&mut self, app: &mut App) -> Result<(), String> {
         for pending in app.kernel.pending_permissions() {
             let tool = pending.tool.clone();
+            // read before the answer, because answering takes the question away
+            let widened = app.widened(&pending);
             app.decide(pending.id, self.on_ask, false)
                 .map_err(|e| format!("could not answer for `{tool}`: {e}"))?;
             self.fresh_line()?;
@@ -441,6 +443,12 @@ impl<'a> Headless<'a> {
                 self.on_ask
             )
             .map_err(|e| e.to_string())?;
+            // and why it was asked at all, where the answer is that the call named no operation.
+            // This is the run where somebody wrote `--allow fs:read` and is watching every call be
+            // refused, with nothing between the two saying why they never meet
+            if let Some(widened) = widened {
+                writeln!(self.prose, "  {widened}").map_err(|e| e.to_string())?;
+            }
         }
 
         Ok(())

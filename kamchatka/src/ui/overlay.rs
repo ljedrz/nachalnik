@@ -113,6 +113,17 @@ fn question_parts(
     .map(Line::raw)
     .collect();
     head.extend(rating(app, &request, columns));
+    // and why the list above is every operation the tool has, where it is because the call did
+    // not say which one it wanted. It goes in the pinned region with the rating, and for the same
+    // reason: it is the part that explains the question, and a line explaining the question is no
+    // use below the fold of the arguments it is about
+    if let Some(widened) = app.widened(&request) {
+        head.extend(
+            wrapped(&widened, columns, "")
+                .into_iter()
+                .map(|line| Line::from(Span::styled(line, Style::default().fg(Color::Yellow)))),
+        );
+    }
     // the blank the `\n` above used to put here, and now the one thing under the header whether or
     // not there is a rating between the two
     head.push(Line::default());

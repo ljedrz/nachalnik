@@ -15,7 +15,7 @@
 //! same table: nothing is sent `strict`, so the schema guides rather than binds, and a model that
 //! ignores it is still answered by name.
 
-use nachalnik::ToolCall;
+use nachalnik::{PermissionRequest, ToolCall, ToolSpec};
 use serde_json::{Map, Value, json};
 
 /// The one property every one of these tools takes, with the operation inside it.
@@ -313,6 +313,60 @@ pub(crate) fn action_of<'a>(call: &'a ToolCall, ops: &[Op]) -> Option<&'a str> {
         .filter(|named| actions(ops).contains(named))
 }
 
+/// Why a question is about everything a tool does, where the reason is that the call did not say
+/// which operation it wanted.
+///
+/// note: [`action_of`] answering `None` is not a quiet fallback - it widens what the call declares
+/// to every capability the tool has, which is the strictest reading of a call nobody can place and
+/// the right one. What was missing is anybody saying so. A session started with `--allow fs:read`
+/// is then asked about `fs:write` as well, the rule it was given matches nothing, and in a run
+/// with nobody at the prompt the refusal reads `this call was refused when it was asked about` -
+/// which sends a model looking for a different *approach* when what is wrong is the shape of the
+/// call it just made. Watched live, for twenty calls.
+///
+/// note: only for a tool whose schema puts its arguments under [`WRAPPER`], because that is the
+/// convention the sentence is about. Read off the tool's own schema rather than off a list of
+/// names kept here: a tool that takes no `call` may declare several capabilities for reasons of
+/// its own, and telling its caller that such a call named no operation would be inventing a
+/// vocabulary it never claimed.
+pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) -> Option<String> {
+    spec.schema["properties"].get(WRAPPER)?;
+
+    let ops: Vec<&str> = spec
+        .capabilities
+        .iter()
+        .map(|capability| capability.op.as_str())
+        .collect();
+    if ops.len() < 2 || request.capabilities != spec.capabilities {
+        return None;
+    }
+
+    // the same reading the tool will do, so that a call this cannot place is one the tool could
+    // not place either. Arguments that never parsed are their own answer and are given it there
+    let named = inner(&request.args)
+        .ok()
+        .and_then(|args| args["action"].as_str().map(str::to_owned));
+    let why = match named {
+        Some(action) if ops.contains(&action.as_str()) => return None,
+        Some(action) => format!(
+            "`{action}` is not one of the {} operations `{}` has, so the call is judged against \
+             all of them",
+            ops.len(),
+            spec.id
+        ),
+        None => format!(
+            "the call names no operation, so it is judged against all {} `{}` has",
+            ops.len(),
+            spec.id
+        ),
+    };
+
+    Some(format!(
+        "{why} - a rule about one of them, like `{}:{}`, does not answer it",
+        spec.capabilities[0].domain, ops[0]
+    ))
+}
+
 /// What is wrong with the arguments a call gave, if anything: an argument the operation it named
 /// does not read.
 ///
@@ -397,6 +451,8 @@ pub(crate) fn offered(schema: &Value) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
+    use nachalnik::Capability;
+
     use super::*;
 
     fn ops() -> Vec<Op> {
@@ -544,6 +600,69 @@ mod tests {
             vec![Arg::text("cmd", "what").needed()],
         )]);
         assert_eq!(one["properties"][WRAPPER]["type"], json!("object"));
+    }
+
+    /// A call nobody can place is one the question says so about, and a call that names its
+    /// operation is left alone.
+    ///
+    /// note: the second half is the one worth keeping. A sentence on every question is a sentence
+    /// nobody reads, and this one is only true of a call that did not say which operation it
+    /// wanted - so the case that matters is the ordinary call it has to stay silent about.
+    #[test]
+    fn a_call_that_names_no_operation_says_so() {
+        let ops = ops();
+        let spec = ToolSpec::new("fs", "the filesystem")
+            .with_schema(std::sync::Arc::new(schema(&ops)))
+            .with_capabilities(
+                actions(&ops)
+                    .into_iter()
+                    .map(Capability::fs)
+                    .collect::<Vec<_>>(),
+            );
+        let asking = |args| PermissionRequest {
+            id: nachalnik::PermissionId(1),
+            call: nachalnik::ToolCallId("c1".to_owned()),
+            tool: "fs".to_owned(),
+            capabilities: spec.capabilities.clone(),
+            args: std::sync::Arc::new(args),
+        };
+
+        assert_eq!(
+            unnamed_operation(
+                &spec,
+                &asking(json!({ WRAPPER: { "action": "read", "path": "x" } }))
+            ),
+            None,
+            "a call that placed itself is judged by one capability and needs no sentence"
+        );
+
+        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: "{\"action\": \"read\"}" })))
+            .expect("a wrapper written as text names no operation this can read");
+        assert!(said.contains("names no operation"), "{said}");
+        assert!(
+            said.contains("`fs:read`"),
+            "and says what a rule that would have answered looks like: {said}"
+        );
+
+        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "action": "fly" } })))
+            .expect("`fly` is not one of these");
+        assert!(said.contains("`fly` is not one of the"), "{said}");
+
+        // one operation cannot be widened to, and a tool that takes no wrapper is not this
+        // convention, so neither gets a sentence about it
+        let one = ToolSpec::new("shell", "runs things")
+            .with_schema(std::sync::Arc::new(schema(&[Op::new(
+                "run",
+                "runs it",
+                vec![],
+            )])))
+            .with_capabilities(vec![Capability::exec("run")]);
+        assert_eq!(unnamed_operation(&one, &asking(json!({}))), None);
+
+        let flat = ToolSpec::new("fs", "the filesystem")
+            .with_schema(std::sync::Arc::new(json!({ "type": "object" })))
+            .with_capabilities(spec.capabilities.clone());
+        assert_eq!(unnamed_operation(&flat, &asking(json!({}))), None);
     }
 
     /// The wrapper is asked for, understood without, and refused in both places at once.
