@@ -69,7 +69,8 @@ async fn a_call_refused_by_whoever_was_asked_says_it_was_about_this_call() {
         ModelResponse::tool_calls(vec![call("c1", "shell", json!({}))]),
         ModelResponse::text("fine"),
     ]);
-    kernel.set_policy(Arc::new(Fussy2));
+    let policy = Arc::new(Fussy2::default());
+    kernel.set_policy(policy.clone());
     kernel.add_tool(Arc::new(
         ConstTool::new("shell", "it ran!").with_capabilities([Capability::exec("run")]),
     ));
@@ -91,10 +92,21 @@ async fn a_call_refused_by_whoever_was_asked_says_it_was_about_this_call() {
         "{said}"
     );
     assert!(!said.contains("off for the whole"), "{said}");
+    assert_eq!(
+        policy.asked.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "and it was never asked: an explanation of a decision it did not make is one the model \
+         would read as the rule to work around"
+    );
 }
 
-/// The same, but it asks rather than refusing - so the answer comes from `decide`.
-struct Fussy2;
+/// The same, but it asks rather than refusing - so the answer comes from `decide`. It counts
+/// the times it is asked to explain itself, because a refusal it did not make is not its to
+/// explain.
+#[derive(Default)]
+struct Fussy2 {
+    asked: std::sync::atomic::AtomicUsize,
+}
 
 #[nachalnik::async_trait]
 impl nachalnik::PermissionPolicy for Fussy2 {
@@ -103,6 +115,8 @@ impl nachalnik::PermissionPolicy for Fussy2 {
     }
 
     fn why(&self, _request: &nachalnik::PermissionRequest) -> Option<String> {
+        self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
         Some("`shell` is off for the whole of this session".to_owned())
     }
 }
