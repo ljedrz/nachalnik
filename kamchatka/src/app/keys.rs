@@ -463,7 +463,6 @@ impl App {
         );
     }
 
-    /// Keys that belong to the trace tab, which is a log and therefore worth reading backwards.
     /// Keys the search box wants while it is open; `false` to let the pane underneath have it.
     ///
     /// note: `up`, `down` and the paging are deliberately *not* taken. The point of filtering eight
@@ -519,6 +518,7 @@ impl App {
         }
     }
 
+    /// Keys that belong to the trace tab, which is a log and therefore worth reading backwards.
     pub(super) fn trace_key(&mut self, key: KeyEvent) {
         // the pane draws the tail, so scrolling counts upwards from the newest line; the frame
         // clamps it to what there is

@@ -2001,15 +2001,6 @@ impl App {
         )
     }
 
-    /// Writes the session log and a snapshot that can be resumed from, at a path somebody gave.
-    ///
-    /// note: Two files, because they answer different questions: the log says what happened, and
-    /// the snapshot is what can be picked back up. An event names an item rather than carrying
-    /// it, so the log alone cannot rebuild a context - keeping only one of them means losing
-    /// either the story or the state.
-    ///
-    /// note: the snapshot is what `/load` reads back into a running session and what
-    /// `kamchatka -r` starts from.
     /// Writes the event log and a resumable snapshot, and says how many records that was.
     ///
     /// note: separate from `save` because the last write of a session happens after the terminal

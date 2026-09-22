@@ -427,7 +427,7 @@ impl Args {
 
         Ok(Setup {
             resume,
-            // the runtime's own default is a counter that restarts at 1 with the process, which is
+            // the runtime's own default is a counter that restarts at 0 with the process, which is
             // fine as an identity and useless as a filename: every session would write over the
             // last one's record. A resumed session keeps the name in its snapshot, so carrying on
             // appends to the same session rather than starting a second one that looks unrelated

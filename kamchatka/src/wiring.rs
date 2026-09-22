@@ -56,7 +56,7 @@ pub struct Setup {
     pub resume: Option<Snapshot>,
     /// What to call the session, which is also what its files are named after.
     ///
-    /// note: `None` leaves the runtime's own counter, which restarts at 1 with the process and is
+    /// note: `None` leaves the runtime's own counter, which restarts at 0 with the process and is
     /// fine as an identity and useless as a filename. A resumed session keeps the name in its
     /// snapshot, so this is left empty when resuming.
     pub session_name: Option<String>,
@@ -425,11 +425,6 @@ impl Setup {
         // only the named ones being built. That is what makes the list a starting position: the
         // rest are on the shelf, `/tools toggle` reaches them, and a `shell` offered later is
         // the one the confiner above was decided for.
-        //
-        // note: a name that is not a tool stops the session rather than being skipped, for the
-        // reason `deny_unknown_fields` is on the settings struct. Asking for `contxt` and getting
-        // a session with no context tool and nothing said about it is the failure this setting is
-        // most likely to have
         if let Some(wanted) = self.tools {
             // the names were answered for by `Setup::check` before anything was built; what is
             // left is the position itself - everything is here, and what was not asked for goes

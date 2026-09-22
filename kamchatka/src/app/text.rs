@@ -584,7 +584,6 @@ pub(crate) fn one_line(text: &str) -> String {
     }
 }
 
-/// The first few lines of something, with a note if there were more.
 /// The same text without the blank lines a provider put in front of it.
 ///
 /// note: a presentation fix, not a correction to the record. The newlines are the provider's -

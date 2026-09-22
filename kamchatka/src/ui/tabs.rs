@@ -481,13 +481,6 @@ fn verdict_word(verdict: Verdict) -> (&'static str, Style) {
     }
 }
 
-/// What the policy will answer about each capability, and which tools that covers.
-///
-/// note: The permission prompt is the policy's only other appearance, and it shows up one call at
-/// a time, at the worst possible moment to think about it. This is the same decisions, all of
-/// them, in advance, and changeable - which is also the plainest thing to point at when somebody
-/// asks what a replaceable `PermissionPolicy` buys you: a policy is an object with state, not a
-/// callback you can only learn about by triggering it.
 /// The line a build that can rate commands draws when nothing is rating them.
 ///
 /// note: the feature puts the advisor in the binary and `--advise` is what starts one, so a build
@@ -512,6 +505,13 @@ fn unrated(_: &App) -> Vec<Line<'static>> {
     Vec::new()
 }
 
+/// What the policy will answer about each capability, and which tools that covers.
+///
+/// note: The permission prompt is the policy's only other appearance, and it shows up one call at
+/// a time, at the worst possible moment to think about it. This is the same decisions, all of
+/// them, in advance, and changeable - which is also the plainest thing to point at when somebody
+/// asks what a replaceable `PermissionPolicy` buys you: a policy is an object with state, not a
+/// callback you can only learn about by triggering it.
 pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> Scrolled {
     let rows = app.permissions();
 
@@ -846,7 +846,6 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
 
 // ----------------------------------------------------------- what both lists say about an item
 
-/// A line of a fenced code block: a rule down the left, and no reflowing of what is inside it.
 /// The mark and style an item in this state is drawn with.
 ///
 /// note: shared by the context tab and the chat, so that one screen cannot call an item

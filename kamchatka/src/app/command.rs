@@ -769,12 +769,6 @@ impl App {
         );
     }
 
-    /// What the next request is estimated to cost, beside what the last one actually did.
-    ///
-    /// note: The status line can only afford one number, and it shows the estimate - which is
-    /// produced by a counter that does not have the model's tokenizer and is therefore wrong.
-    /// This is where the two numbers sit side by side, along with the correction the counter has
-    /// worked out for itself from the difference. A budget nobody can check is a decoration.
     /// What is plugged into each of the runtime's six seams, right now.
     ///
     /// note: The crate's headline claim is six replaceable parts, and until this there was no way
@@ -828,24 +822,6 @@ impl App {
         self.preview("what is plugged into the runtime", body);
     }
 
-    /// Reports how much of each tool's output the model is shown, or changes one.
-    ///
-    /// note: this exists because of a session that asked a copy of itself three questions and got
-    /// back the copy's deliberation with all three answers cut off the end. The limit was right
-    /// for the four other things that tool does and wrong for that one, and there was no way to
-    /// say so without restarting - so a person watching a result come back shortened had the
-    /// choice of living with it or losing the session.
-    ///
-    /// note: it changes the next call, not the one already shortened, and the message says which.
-    /// Nothing is lost either way: the whole of a shortened result is archived beside the copy the
-    /// model was shown, and one keystroke on the context tab sends it instead.
-    ///
-    /// note: the rows are numbered, and the number is one this command takes - `/limit 3 64000`
-    /// and `/limit read 64000` are the same instruction. A tool has no identifier but its name,
-    /// which is what the model calls and what `/tools drop` takes, so this number belongs to the
-    /// listing rather than to the tool; that is exactly why it is only worth printing if it can
-    /// then be typed. The context tab settled the same argument the same way, and `23G` is there
-    /// because the number in its first column is the one `/exclude` takes.
     /// Says what the session has been charged, and changes the ceiling that stops it.
     ///
     /// note: named `spend_command` because `App::spend` is the ceiling itself and a method may not
@@ -902,6 +878,16 @@ impl App {
     }
 
     /// Shows the output limits, or changes one.
+    ///
+    /// note: this exists because of a session that asked a copy of itself three questions and got
+    /// back the copy's deliberation with all three answers cut off the end. The limit was right
+    /// for the other things that tool does and wrong for that one, and there was no way to say so
+    /// without restarting - so a person watching a result come back shortened had the choice of
+    /// living with it or losing the session.
+    ///
+    /// note: it changes the next call, not the one already shortened, and the message says which.
+    /// Nothing is lost either way: the whole of a shortened result is archived beside the copy the
+    /// model was shown, and one keystroke on the context tab sends it instead.
     ///
     /// note: a row is a **subject** - `fs:read`, `context:look` - which is the same string the
     /// permissions tab is keyed on, so a person who has read one table can read the other and
@@ -1195,6 +1181,12 @@ impl App {
         }
     }
 
+    /// What the next request is estimated to cost, beside what the last one actually did.
+    ///
+    /// note: The status line can only afford one number, and it shows the estimate - which is
+    /// produced by a counter that does not have the model's tokenizer and is therefore wrong.
+    /// This is where the two numbers sit side by side, along with the correction the counter has
+    /// worked out for itself from the difference. A budget nobody can check is a decoration.
     fn budget(&mut self) {
         let budget = self.kernel.budget();
         // note: both figures from `Going`, and both from the same one, because they are the two
@@ -1484,6 +1476,15 @@ impl App {
         );
     }
 
+    /// Writes the session log and a snapshot that can be resumed from, at a path somebody gave.
+    ///
+    /// note: Two files, because they answer different questions: the log says what happened, and
+    /// the snapshot is what can be picked back up. An event names an item rather than carrying
+    /// it, so the log alone cannot rebuild a context - keeping only one of them means losing
+    /// either the story or the state.
+    ///
+    /// note: the snapshot is what `/load` reads back into a running session and what
+    /// `kamchatka -r` starts from.
     fn save(&mut self, path: &str) {
         let stem = match path {
             "" => "session",

@@ -9,7 +9,7 @@
 //! note: every field is optional and every one of them is a *default*. The command line is the
 //! thing in front of somebody's hands, so it wins, and it wins for a list by replacing it rather
 //! than adding to it - one rule for every key, which is the only kind anybody can predict. See
-//! `Args::under` in `main.rs`, which is where the two meet, because the merge has to know which
+//! `Args::under` in `args.rs`, which is where the two meet, because the merge has to know which
 //! arguments were actually typed and only clap can say.
 //!
 //! note: unknown keys are refused rather than skipped. A settings file whose `modle` key does
@@ -45,7 +45,7 @@ pub struct Settings {
     ///
     /// note: not behind the `advise` feature, for the reason `mcp` is not: one file works for
     /// every build of this program, and a build without it refuses the key rather than ignoring
-    /// it - see `main.rs`. A setting that silently did nothing is worse here than almost
+    /// it - see `Args::under`. A setting that silently did nothing is worse here than almost
     /// anywhere else in this file, because what it would silently not be doing is checking
     /// permissions.
     pub advise: Option<bool>,
@@ -55,7 +55,7 @@ pub struct Settings {
     /// MCP servers to run, as `[name=]command`.
     ///
     /// note: not behind the `mcp` feature, so that one file works for every build of this program.
-    /// A build without it refuses the key rather than ignoring it - see `main.rs`.
+    /// A build without it refuses the key rather than ignoring it - see `Args::under`.
     pub mcp: Option<Vec<String>>,
     /// How many requests one turn may make before it stops; `0` is no limit.
     pub requests: Option<usize>,

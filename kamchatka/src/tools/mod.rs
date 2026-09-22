@@ -1,4 +1,4 @@
-//! The six tools, the permission policy and the compactor - all of it ordinary user code.
+//! The two tools, the permission policy and the compactor - all of it ordinary user code.
 //!
 //! note: The runtime ships none of this. It has no idea what a file is, it spawns no processes,
 //! and it never decides that something may run. What it provides is the shape: a [`Tool`] that
@@ -6,7 +6,8 @@
 //! happens, and a [`nachalnik::Compactor`] whose plan is applied in the open and can be undone.
 //!
 //! note: a file each, because they answer to three different traits and are read at three
-//! different moments. `files`, `search` and `shell` are the tools themselves, `policy` is what
+//! different moments. `fs` and `shell` are the tools themselves - `fs` dispatching to `files` and
+//! `search` for the operations that open one file and the ones that walk many - `policy` is what
 //! decides whether one of them runs, and `trim` is what happens when there is no room left for the
 //! results. `ops` is under all of them: what a tool that does several things declares, and the
 //! schema a model is shown for it.
@@ -288,7 +289,8 @@ impl Limits {
     }
 }
 
-/// Returns the six tools a terminal agent needs to be worth talking to, all held to `reach`.
+/// Returns the two tools a terminal agent needs to be worth talking to, `fs` and `shell`, both
+/// held to `reach`.
 ///
 /// note: the policy the two searching tools consult comes off the `shell` rather than being a
 /// parameter of its own, because a second handle passed in is a second chance for them to
