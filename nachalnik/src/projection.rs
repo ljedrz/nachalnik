@@ -8,7 +8,10 @@
 //! [`Projection`] is the answer to "what is about to be sent", available before anything is, and
 //! the [`Skipped`] list beside it is why that answer is shorter than the context it came from.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -610,6 +613,15 @@ fn in_wire_order(
             results.entry(answers).or_default().push(at);
         }
     }
+    // the calls this request actually makes, which is what decides whether a result has somebody
+    // to wait for. Asking `results` instead was asking whether a result is a result: the map was
+    // built from every result's own identifier, so the answer was yes for all of them and the
+    // branch below meant to keep an unasked-for result where it was never ran
+    let asked: HashSet<&ToolCallId> = built
+        .iter()
+        .flat_map(|(_, message)| message.calls())
+        .map(|call| &call.id)
+        .collect();
 
     let mut placed = vec![false; built.len()];
     let mut order: Vec<usize> = Vec::with_capacity(built.len());
@@ -620,7 +632,7 @@ fn in_wire_order(
         let deferred = message
             .tool_call_id
             .as_ref()
-            .is_some_and(|answers| results.contains_key(answers));
+            .is_some_and(|answers| asked.contains(answers));
         if placed[at] || deferred {
             continue;
         }

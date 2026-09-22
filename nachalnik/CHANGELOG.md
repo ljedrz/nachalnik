@@ -15,6 +15,13 @@ minor bump may break you.
   it was meant for - a `Provider` watching `DeltaSink::is_interrupted` saw it go false mid-stream,
   and the turn carried on. Busy is decided first now, and acts on nothing, so it spends nothing.
 
+- **A tool result nothing in the request asks for keeps the place it had.** `LinearProjector`'s
+  wire-ordering pass decided whether to defer a result by asking whether its identifier was in the
+  map of results - which it had just built out of every result's own identifier, so the answer was
+  yes for all of them. The branch meant to leave an unasked-for result where it was never ran, and
+  with `repair_orphans` off the result was moved to the end of the request instead, past turns it
+  came before, with nothing in `Projection::reordered` saying so.
+
 ## [0.6.2] - 2026-09-21
 
 ### fixed
