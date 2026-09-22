@@ -39,6 +39,13 @@ minor bump may break you.
   counter or compactor, do not call back into the kernel: each is asked what was replaced while
   the lock holding it is held.
 
+- **`Kernel::set_params` with the parameters already in force announces nothing.** It replaced and
+  emitted unconditionally, so setting a key to the value it already holds, or loading a snapshot
+  back into the session it was taken from, wrote `model.params` into the log over a request that
+  goes out byte for byte the same. `Params` is a `Map`, which makes this the one component setter
+  that can tell: the rest hold an `Arc<dyn Trait>`, where two that would behave alike are not
+  comparable. The rule is the one `replace` and `set_state` follow.
+
 ### changed
 
 - **A policy is asked `why` only about a refusal its own verdict made.** The kernel called it for

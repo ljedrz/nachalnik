@@ -832,8 +832,17 @@ impl Kernel {
     }
 
     /// Sets the parameters sent with every request, returning the previous ones.
+    ///
+    /// note: parameters equal to the ones in force are not an operation, which is the rule
+    /// [`Kernel::replace`] and [`Kernel::set_state`] already follow. `model.params` over a request
+    /// that will go out byte for byte the same is a change somebody reading the log goes looking
+    /// for and cannot find. This is the one component setter that can tell: the rest hold a trait
+    /// object, and two `Arc<dyn Provider>` that would behave alike are not comparable.
     pub fn set_params(&self, params: Params) -> Params {
         let mut held = self.0.params.write();
+        if *held == params {
+            return params;
+        }
         let previous = std::mem::replace(&mut *held, params.clone());
         self.emit(Event::ModelParamsChanged { params });
 

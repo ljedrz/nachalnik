@@ -239,6 +239,30 @@ async fn a_policy_can_say_something_friendlier_than_its_type() {
     assert_eq!(kernel.policy().name(), "the one from the config file");
 }
 
+/// The parameters are the one component a caller can hand back unchanged and the kernel can tell,
+/// so they follow the rule the context already follows: a set that changes nothing is announced
+/// as nothing.
+#[tokio::test]
+async fn parameters_that_are_already_in_force_are_not_a_change() {
+    let kernel = Kernel::new(Config::default());
+    let params = json!({"temperature": 0.2}).as_object().unwrap().clone();
+
+    kernel.set_params(params.clone());
+    let mut events = kernel.subscribe();
+
+    let previous = kernel.set_params(params.clone());
+    assert_eq!(previous, params, "the ones in force are still handed back");
+    assert_eq!(kernel.params(), params);
+    assert!(
+        names(&mut events).is_empty(),
+        "a request that will go out byte for byte the same is not a parameter change"
+    );
+
+    // and a real one still is
+    kernel.set_params(json!({"temperature": 0.9}).as_object().unwrap().clone());
+    assert!(names(&mut events).contains(&"model.params".to_owned()));
+}
+
 #[tokio::test]
 async fn a_provider_can_be_taken_out_again() {
     let kernel = Kernel::new(Config::default());
