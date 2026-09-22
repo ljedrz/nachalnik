@@ -166,8 +166,8 @@ fn join(parts: Vec<&Part>) -> Option<Content> {
 /// | [`ContextKind::ToolResult`] | [`Role::Tool`], carrying its call identifier |
 /// | [`ContextKind::Reference`] | [`Role::User`] |
 ///
-/// note: The three flags below are the only judgement calls this projector makes, and every one
-/// of them can be turned off.
+/// note: The flags below are the only judgement calls this projector makes, and every one of them
+/// can be turned off.
 ///
 /// note: This is the projector for the dialect in which a tool result is a message of its own
 /// and an assistant message must carry content. A provider whose format disagrees - tool results

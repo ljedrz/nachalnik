@@ -259,7 +259,8 @@ pub struct PermissionRequest {
     pub call: ToolCallId,
     /// The [`crate::ToolSpec::id`] of the tool.
     pub tool: String,
-    /// The capabilities the tool declared.
+    /// The capabilities this call needs: [`crate::Tool::needs`], which may be narrower than
+    /// everything the tool declares.
     pub capabilities: Vec<Capability>,
     /// The arguments the model produced, verbatim.
     ///

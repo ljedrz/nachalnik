@@ -116,8 +116,13 @@ impl Session {
     }
 
     /// Returns the records whose sequence number is greater than `seq`.
+    ///
+    /// note: found by halving rather than by reading every record, because the records are in
+    /// the order they were numbered and a client following the log asks this after every event.
     pub fn since(&self, seq: u64) -> impl Iterator<Item = &Record> {
-        self.records.iter().filter(move |r| r.seq > seq)
+        let from = self.records.partition_point(|record| record.seq <= seq);
+
+        self.records.range(from..)
     }
 
     /// Removes and returns the records up to and including `seq`, oldest first.
@@ -131,8 +136,8 @@ impl Session {
         self.records.drain(..keep).collect()
     }
 
-    /// Appends an event, returning the record it became.
-    pub(crate) fn append(&mut self, event: Event) -> Record {
+    /// Appends an event.
+    pub(crate) fn append(&mut self, event: Event) {
         self.seq += 1;
         let record = Record {
             seq: self.seq,
@@ -143,9 +148,7 @@ impl Session {
             event,
         };
 
-        self.records.push_back(record.clone());
-
-        record
+        self.records.push_back(record);
     }
 }
 

@@ -9,6 +9,21 @@ minor bump may break you.
 
 ### fixed
 
+- **`push_all` and `supersede` are one operation under one lock.** Both took the context lock
+  once per change, so another thread's work could land between them: a turn recorded halfway
+  through a `push_all` went into its checkpoint, and one `undo` took back the turn and the tail of
+  the files and left their head; an `undo` between `supersede`'s check and its change answered `Ok`
+  having superseded nothing.
+
+- **The calibrating counter and `Usage::settled` saturate rather than overflow.** Both add figures
+  that came from outside the process - a snapshot, a provider's report - which panicked in a debug
+  build on a hostile one and wrapped in a release build.
+
+- The docs say the policy is asked about what a call needs (`Tool::needs`) rather than everything
+  the tool declared; that `Budget::context_tokens` is counted over the projected messages; that a
+  step can also end in `Idle` or spend itself on an interrupt; and that `tool_result:N` is the item
+  numbered `N`, whatever its kind.
+
 - **The results of a turn's calls are one undo.** Every result a batch produced took a checkpoint
   of its own, so one `undo` after a turn that ran three tools took back the last result and left
   the model looking at a turn where two calls were answered and one never mentioned -

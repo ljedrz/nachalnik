@@ -21,8 +21,9 @@ use crate::{
 
 /// A tool's definition: its stable identity, its schema, and the capabilities it needs.
 ///
-/// note: The capability list is the tool's own permission declaration. It is what the
-/// [`PermissionPolicy`] sees, and it is visible to the user before anything runs.
+/// note: The capability list is the tool's own permission declaration, visible to the user before
+/// anything runs. What the [`PermissionPolicy`] is asked about is the part of it one call needs -
+/// [`Tool::needs`], which is the whole list unless the tool says otherwise.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolSpec {
     /// The tool's stable identifier; this is the name the model calls.

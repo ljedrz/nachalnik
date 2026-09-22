@@ -943,8 +943,9 @@ impl Usage {
         };
 
         match cached > input {
+            // saturating, because both figures are whatever a provider reported
             true => Self {
-                input_tokens: Some(input + cached),
+                input_tokens: Some(input.saturating_add(cached)),
                 ..self
             },
             false => self,

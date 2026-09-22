@@ -270,8 +270,8 @@ impl PermissionPolicy for DenyAll {
     }
 }
 
-/// A [`PermissionPolicy`] mapping capabilities to verdicts, with the strictest verdict among a
-/// tool's declared capabilities winning.
+/// A [`PermissionPolicy`] mapping capabilities to verdicts, with the strictest verdict among the
+/// capabilities a call needs winning.
 ///
 /// ```
 /// use nachalnik::{Capability, Verdict, test::Table};

@@ -19,7 +19,8 @@ use crate::{
 /// How much room the context is taking up, and how much there is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Budget {
-    /// The estimated tokens of the items that would be sent.
+    /// The estimated tokens of the messages the context projects to - the items as they would be
+    /// sent, reference labels and elision markers included.
     pub context_tokens: usize,
     /// The estimated tokens of the tool definitions that would be sent.
     pub tool_tokens: usize,

@@ -65,7 +65,7 @@ impl std::error::Error for SelectorError {}
 /// file:src/parser.rs     the file with that path
 /// tool:grep              every result produced by the `grep` tool
 /// tool:grep:latest       the most recent one; also: tool:grep:first
-/// tool_result:1842       the tool result with that identifier
+/// tool_result:1842       the item with that identifier, as `1842` is; the kind is not checked
 /// label:cargo test       every item with that exact label
 /// src/parser.rs          anything else is taken as a label
 /// ```

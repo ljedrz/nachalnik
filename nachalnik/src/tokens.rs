@@ -487,9 +487,11 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
             return;
         }
 
-        learned.observations += 1;
-        learned.estimated += own;
-        learned.reported += reported as u64;
+        // saturating, because what these add to may have come out of a snapshot somebody wrote;
+        // see `applicable` for the same caution about the scale
+        learned.observations = learned.observations.saturating_add(1);
+        learned.estimated = learned.estimated.saturating_add(own);
+        learned.reported = learned.reported.saturating_add(reported as u64);
         learned.scale = applicable(learned.reported as f64 / learned.estimated.max(1) as f64);
     }
 }

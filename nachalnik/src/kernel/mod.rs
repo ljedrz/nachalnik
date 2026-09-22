@@ -865,36 +865,53 @@ impl Kernel {
     /// note: Ten separate [`Kernel::push`]es are ten checkpoints, which at the default depth
     /// means opening a project wipes the undo history before the user has done anything. Putting
     /// a set of files in the context is one thing the user did, so it is one thing to undo.
+    ///
+    /// note: under one lock, and not for tidiness. Taken item by item, a turn recorded on another
+    /// thread halfway through landed inside this checkpoint - so one `undo` took back the turn and
+    /// the tail of the files and left their head.
     pub fn push_all(&self, items: impl IntoIterator<Item = ContextItem>) -> Vec<ContextId> {
-        let mut items = items.into_iter();
-        let Some(first) = items.next() else {
+        let mut items = items.into_iter().peekable();
+        if items.peek().is_none() {
             return Vec::new();
-        };
+        }
 
-        let mut ids = vec![self.add_item(first, true)];
-        ids.extend(items.map(|item| self.add_item(item, false)));
+        let counter = self.counter();
+        let mut context = self.0.context.write();
+        context.checkpoint();
 
-        ids
+        items
+            .map(|item| self.added(&mut context, item, &*counter))
+            .collect()
     }
 
     /// Adds an item in place of an existing one, marking the old one
     /// [`ContextState::Superseded`], as one undoable operation.
     ///
-    /// note: This is the only thing that ever sets that state, and it is explicit because the
-    /// kernel cannot tell whether a second read of a file replaces the first or stands beside
+    /// note: This is the one operation that means that state - [`Kernel::set_state`] can set it
+    /// too, and leaves saying what replaced the item to whoever did - and it is explicit because
+    /// the kernel cannot tell whether a second read of a file replaces the first or stands beside
     /// it. The old item keeps its identifier and its contents, and comes back with a
     /// [`Kernel::set_state`] or a [`Kernel::undo`] like anything else.
     pub fn supersede(&self, old: ContextId, item: ContextItem) -> Result<ContextId> {
-        if self.item(old).is_none() {
+        // one lock for the check and both changes, so that an `undo` on another thread cannot take
+        // `old` away in between - which answered `Ok` having superseded nothing
+        let counter = self.counter();
+        let mut context = self.0.context.write();
+        if context.item(old).is_none() {
             return Err(Error::UnknownItem(old));
         }
+        context.checkpoint();
 
-        let new = self.add_item(item, true);
-        self.set_state_one(
-            old,
-            ContextState::Superseded,
-            Some(format!("replaced by item {new}")),
-        );
+        let new = self.added(&mut context, item, &*counter);
+        let note = Some(format!("replaced by item {new}"));
+        if let Some(from) = context.set_state(old, ContextState::Superseded, note.clone()) {
+            self.emit(Event::ContextChanged {
+                id: old,
+                from,
+                to: ContextState::Superseded,
+                note,
+            });
+        }
 
         Ok(new)
     }
@@ -1453,10 +1470,11 @@ impl Kernel {
     ///
     /// | from | what happens | to |
     /// | --- | --- | --- |
-    /// | [`State::Idle`], [`State::Finished`] | a request is built and sent | `Finished`, `Ready` or `Deciding` |
+    /// | [`State::Idle`], [`State::Finished`] | a request is built and sent | `Finished`, `Ready` or `Deciding`; `Idle` if every call named a tool that is not there |
     /// | [`State::Ready`] | the tools run, in order, and their results are recorded | `Idle` |
     /// | [`State::Deciding`] | nothing; the answer has to come from you | `Deciding` |
     /// | [`State::Requesting`], [`State::Executing`] | nothing; [`Error::Busy`] | - |
+    /// | any resting state, with an interrupt outstanding | nothing; the interrupt is spent | the same state |
     ///
     /// note: One step is one transition, so the model asking for a tool and that tool running
     /// are two of them. That is deliberate: [`State::Ready`] is a checkpoint at which the model
@@ -1521,7 +1539,8 @@ impl Kernel {
     ///
     /// note: [`State::Finished`] means the model answered, [`State::Deciding`] means it is your
     /// move, and [`State::Idle`] means the request budget ran out mid-loop - calling `turn`
-    /// again picks up exactly where it left off.
+    /// again picks up exactly where it left off. An interrupt stops it too, in whatever resting
+    /// state the loop had reached: [`State::Ready`] or [`State::Idle`] as often as not.
     pub async fn turn(&self) -> Result<State> {
         let mut requests = 0;
 
@@ -1619,7 +1638,18 @@ impl Kernel {
         if checkpoint {
             context.checkpoint();
         }
-        let id = context.add(item, &*counter);
+
+        self.added(&mut context, item, &*counter)
+    }
+
+    /// Adds an item to a context the caller holds the lock on, and announces it under that lock.
+    fn added(
+        &self,
+        context: &mut Context,
+        item: ContextItem,
+        counter: &dyn TokenCounter,
+    ) -> ContextId {
+        let id = context.add(item, counter);
         let item = context.item(id).expect("the item was just added");
 
         self.emit(Event::ContextAdded {
@@ -1668,27 +1698,6 @@ impl Kernel {
             appeared,
             changed,
         }
-    }
-
-    /// Moves one item to the given state, without checkpointing; `None` if there is no such item
-    /// or if nothing would change.
-    fn set_state_one(
-        &self,
-        id: ContextId,
-        state: ContextState,
-        note: Option<String>,
-    ) -> Option<ContextState> {
-        let mut context = self.0.context.write();
-        let from = context.set_state(id, state, note.clone())?;
-
-        self.emit(Event::ContextChanged {
-            id,
-            from,
-            to: state,
-            note,
-        });
-
-        Some(from)
     }
 }
 
