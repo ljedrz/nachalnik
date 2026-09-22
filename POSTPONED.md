@@ -346,3 +346,20 @@ Referenced from [AGENTS.md](AGENTS.md).
   hundred connections, and five people watching one agent is five clients making five. Telling
   those apart is what a bound would have to do, and nothing on the wire carries a client identifier
   to do it with - which is the same thing the arbitration entry above needs first.
+
+- **Saying that a refused `connect` was the confinement.** `Sandbox::note_for` accounts for a
+  permission error a confined command hit, and it says nothing where every path the error names is
+  one the session reaches - because such a refusal is normally the file's own permissions, and a
+  hedge there sends a model looking for a boundary that had nothing to do with it. A socket under
+  `/run` is now exactly that case and the reasoning no longer holds: the session can read it and
+  cannot connect to it, so `docker ps` comes back `Permission denied` with nothing said about why.
+
+  What stops it is that the note is written in the terminal's own process, which never applies a
+  ruleset and so cannot ask `confines_unix_sockets` about the kernel that matters - the answer
+  belongs to the child. Saying it unconditionally would be wrong on every kernel below 7.1, where
+  the connect is not confined and the refusal really is the socket's own permissions.
+
+  What would unblock it is the startup probe carrying the answer back. `available` already spawns
+  the binary and reads one line out of it; that line naming the socket right as well as the
+  ruleset status would give the parent the fact, at no extra process. It wants a shape that does
+  not make `Confinement` mean two things at once.

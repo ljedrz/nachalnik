@@ -1136,6 +1136,20 @@ about to run is not the trade anybody meant to make. The same goes for `~/.nvm`,
 `~/.rbenv` and the rest. Both flags take a comma-separated list and may also be repeated, so a
 checkout elsewhere and a scratch directory are one flag: `--sandbox-allow /srv/repo,/tmp/work`.
 
+**A daemon you talk to over a socket needs one too**, on Linux 7.1 and up. A confined command may
+connect to a unix socket only where it could have written one, so the session bus, the compositor
+and a container daemon all come back `Permission denied` — which is the point, because each of them
+runs what it is asked outside the confinement. Hand over the socket rather than the directory it
+sits in:
+
+```console
+$ kamchatka --sandbox-allow /run/docker.sock -m …
+```
+
+`--sandbox-allow` rather than `--sandbox-read`, because connecting is the writing half of the rule:
+what comes back from a socket is whatever the process behind it was willing to do. On an older
+kernel there is no such right and every one of them was reachable all along.
+
 **Git needs no flag.** It used to: under Landlock `access(2)` still answers from the file's own
 permissions, so git asked whether `~/.gitconfig` was readable, was told yes, opened it, got
 `EACCES` and took the *unreadable configuration* branch — `fatal: unknown error occurred while

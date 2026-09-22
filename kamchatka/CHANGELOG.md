@@ -5,6 +5,35 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- **`sandbox::confines_unix_sockets`** answers whether this kernel refuses a confined command a
+  connection to a unix socket outside what it may write. Landlock grew the right for it in ABI 9,
+  which is Linux 7.1, and below that there is none to ask for. It is a question rather than an
+  assumption because handling a right the kernel does not have costs the whole ruleset its `Full`
+  status, and a sandbox that calls itself partially enforced over a right it was never going to
+  enforce is worse than one that says what it does.
+
+### fixed
+
+- **A confined command could have a process outside the confinement act for it.** Landlock governs
+  a `connect` only from ABI 9, so every pathname unix socket under `/run` - the session bus, the
+  compositor, a container daemon - answered a confined command, and each of those does what it is
+  asked with none of the ruleset in force: `systemd-run --user` read and wrote a home directory
+  that the same command, run directly, was refused. The working directory was the edge of the
+  world for `open` and not for this.
+
+  The ruleset handles `ResolveUnix` where the kernel has it, and grants it on every writable path
+  the way it grants `Truncate`, so a command may connect to a socket it could have written to and
+  to no other.
+
+  What that costs on Linux 7.1 and up: a daemon reached over a socket outside the working
+  directory now needs `--sandbox-allow <the socket>`, and `--sandbox-read` will not do it -
+  connecting is the writing half of the rule, because what comes back from a socket is whatever
+  the process behind it was willing to do.
+
 ## [0.14.0] - 2026-09-21
 
 ### breaking
