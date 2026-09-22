@@ -428,27 +428,47 @@ impl Tool for Shell {
 
         // taken out of the child, so that it can still be killed while these are being read
         let stdout = child.stdout.take().expect("stdout was piped");
-        let stderr = child.stderr.take().expect("stderr was piped");
-        let mut collecting_stderr = tokio::spawn(async move {
-            let mut collected = String::new();
-            let _ = BufReader::new(stderr).read_to_string(&mut collected).await;
-
-            collected
+        let mut stderr = child.stderr.take().expect("stderr was piped");
+        // note: into a buffer this end keeps, rather than one the task hands back when it is done,
+        // because it may never be done - see below - and what had arrived by then is still worth
+        // telling the model
+        let heard = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut collecting_stderr = tokio::spawn({
+            let heard = heard.clone();
+            async move {
+                let mut chunk = [0u8; 4096];
+                while let Ok(read @ 1..) = stderr.read(&mut chunk).await {
+                    heard
+                        .lock()
+                        .expect("nothing panics holding it")
+                        .extend_from_slice(&chunk[..read]);
+                }
+            }
         });
 
-        let mut lines = BufReader::new(stdout).lines();
+        // note: bytes rather than `lines()`, which refuses a line that is not UTF-8 - and stopping
+        // there left the pipe full and nobody reading it, so `cat` of a picture blocked writing and
+        // the call waited for it for ever. A command's output is whatever it wrote; what is not
+        // text is shown the way `from_utf8_lossy` shows it
+        let mut stdout = BufReader::new(stdout);
+        let mut line = Vec::new();
         let mut collected = String::new();
         let mut interrupted = false;
         loop {
             // the timeout is what makes a command that says nothing at all interruptible; without
-            // it this would sit in `next_line` until the child felt like talking
-            match tokio::time::timeout(HEARTBEAT, lines.next_line()).await {
-                Ok(Ok(Some(line))) => {
-                    output.push(format!("{line}\n"));
-                    collected.push_str(&line);
+            // it this would sit in `read_until` until the child felt like talking. A timed-out
+            // read keeps what it had in `line`, and the next one carries on from there
+            match tokio::time::timeout(HEARTBEAT, stdout.read_until(b'\n', &mut line)).await {
+                Ok(Ok(0)) => break,
+                Ok(Ok(_)) => {
+                    let text = String::from_utf8_lossy(&line);
+                    let text = text.strip_suffix('\n').unwrap_or(&text);
+                    let text = text.strip_suffix('\r').unwrap_or(text);
+                    output.push(format!("{text}\n"));
+                    collected.push_str(text);
                     collected.push('\n');
+                    line.clear();
                 }
-                Ok(Ok(None)) => break,
                 Ok(Err(e)) => {
                     collected.push_str(&format!("\n[could not read the output: {e}]\n"));
                     break;
@@ -462,21 +482,43 @@ impl Tool for Shell {
                 break;
             }
         }
+        // whatever stopped the reading, nobody reads this pipe again: closing it is what tells a
+        // command still writing to it, rather than leaving it blocked on a full one
+        drop(stdout);
 
-        // note: a killed shell can leave children of its own behind - `sleep 60; echo done` is
-        // two processes - and they hold the standard error this is reading. Waiting for the end of
-        // it would mean a stopped call that answers a minute after it was stopped, which is the
-        // one thing `esc` is for. What has arrived by now is what the model is told
-        let errors = match interrupted {
-            true => match tokio::time::timeout(HEARTBEAT, &mut collecting_stderr).await {
-                Ok(collected) => collected.unwrap_or_default(),
-                Err(_) => {
-                    collecting_stderr.abort();
-                    String::new()
+        // note: the end of standard output is not the end of the command. `sleep 5 >&-` has closed
+        // it and is still running, so the wait is watched the way the reading was
+        let mut waited = None;
+        while !interrupted {
+            match tokio::time::timeout(HEARTBEAT, child.wait()).await {
+                Ok(status) => {
+                    waited = Some(status);
+                    break;
                 }
-            },
-            false => collecting_stderr.await.unwrap_or_default(),
-        };
+                Err(_) if output.is_interrupted() => {
+                    stop(&mut child).await;
+                    interrupted = true;
+                }
+                Err(_) => {}
+            }
+        }
+
+        // note: and the end of the command is not the end of its standard error. A killed shell
+        // can leave children of its own behind - `sleep 60; echo done` is two processes - and so
+        // can one that finished: `python3 -m http.server > log &` holds the pipe for as long as the
+        // server runs. Waiting for the end of it would be a call that never answers, so it gets a
+        // moment to drain once the command is gone and no longer
+        let held = tokio::time::timeout(HEARTBEAT, &mut collecting_stderr)
+            .await
+            .is_err();
+        if held {
+            collecting_stderr.abort();
+        }
+        let mut errors =
+            String::from_utf8_lossy(&heard.lock().expect("nothing panics holding it")).into_owned();
+        if held && !interrupted {
+            errors.push_str("\n[standard error is still open: something this command started is still running]\n");
+        }
         // note: not `ExitStatus`'s own `Display`, which renders `exit status: 0` and made the
         // first line of every result read `exit: exit status: 0`. What a reader wants from this
         // line is the number, and whether it means the command worked
@@ -486,7 +528,10 @@ impl Tool for Shell {
         // more than the limit lost the one line explaining why its output stops mid-sentence -
         // the truncation marker took its place, and the model was told the wrong thing about
         // what it was reading. The first line survives anything
-        let waited = child.wait().await;
+        let waited = match waited {
+            Some(waited) => waited,
+            None => child.wait().await,
+        };
         let (meant, status) = match (interrupted, waited) {
             (true, _) => (
                 Exit::Stopped,
@@ -577,6 +622,77 @@ async fn stop(child: &mut tokio::process::Child) {
 mod tests {
     use super::*;
 
+    /// A shell with no confinement, in a directory every platform has.
+    fn unconfined() -> Shell {
+        Shell {
+            policy: Arc::new(Careful::new()),
+            workdir: std::env::temp_dir(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            confiner: None,
+            limits: Limits::default(),
+        }
+    }
+
+    /// Runs one command, and gives up on it rather than on the suite.
+    async fn ran(command: &str) -> String {
+        let call = ToolCall::new("c1", "shell", serde_json::json!({ "cmd": command }));
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            unconfined().invoke(&call, OutputSink::disconnected()),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("`{command}` never answered"))
+        .expect("the tool answers the call either way")
+        .content
+        .to_text()
+        .into_owned()
+    }
+
+    /// Output that is not text is shown rather than stopped at, and what follows it arrives.
+    ///
+    /// note: more than a pipe holds follows the byte that is not UTF-8, because that is what made
+    /// this a hang rather than a loss: the reading stopped at the first such line, and the command
+    /// behind it blocked writing into a full pipe that nobody was reading.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn output_that_is_not_text_is_read_to_the_end() {
+        let said = ran(
+            "printf '\\377\\n'; head -c 200000 /dev/zero | tr '\\0' a; echo; \
+             printf 'refused\\n\\377\\n' >&2",
+        )
+        .await;
+
+        assert!(
+            said.contains('\u{FFFD}'),
+            "{}",
+            &said[..said.len().min(200)]
+        );
+        assert!(
+            said.contains(&"a".repeat(1_000)),
+            "what followed never arrived"
+        );
+        assert!(
+            said.contains("refused"),
+            "one byte that is not text cost the whole of standard error"
+        );
+    }
+
+    /// A command that finishes and leaves something running still answers.
+    ///
+    /// note: the background job inherits standard error, so the pipe stays open for as long as it
+    /// runs. The call waited for the end of it, and a server started with `&` was a call that
+    /// never answered and an `esc` that did nothing.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_command_that_leaves_something_running_still_answers() {
+        let said = ran("sleep 30 > /dev/null & echo started").await;
+
+        assert!(said.starts_with("exit: 0"), "{said}");
+        assert!(said.contains("started"), "{said}");
+        assert!(said.contains("still open"), "{said}");
+    }
+
     /// What a command reported is what its first line says, for every shape the tool writes.
     ///
     /// note: real commands rather than a table of the strings this file writes. A table would go
@@ -598,14 +714,7 @@ mod tests {
     /// `tests/headless.rs` too, for want of a way to send the press.
     #[tokio::test]
     async fn what_a_command_reported_is_what_its_first_line_says() {
-        let shell = Shell {
-            policy: Arc::new(Careful::new()),
-            workdir: std::env::temp_dir(),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            confiner: None,
-            limits: Limits::default(),
-        };
+        let shell = unconfined();
 
         for (command, meant) in [
             ("exit 0", Exit::Ok),

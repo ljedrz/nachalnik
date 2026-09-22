@@ -49,6 +49,17 @@ minor bump may break you.
 
 ### fixed
 
+- **A `shell` call answers when its output is not text, and when it leaves something running.**
+  Standard output was read a line at a time as UTF-8, and the first line that was not stopped the
+  reading - so `cat` of a picture left the pipe full, the command blocked writing into it, and the
+  call never came back; standard error was read the same way and lost whole to one Latin-1 byte.
+  And the end of standard output was followed by a wait for the end of standard error with no
+  clock on it, so `python3 -m http.server > log &` - the background job holding the pipe - was a
+  call that never answered and an `esc` that did nothing. Both streams are read as bytes and shown
+  lossily, the wait for the command is watched for the interrupt the way the reading is, and
+  standard error gets a moment to drain once the command has gone: a result says so when something
+  the command started is still holding it.
+
 - **`fs write` no longer follows a dangling symlink out of the working directory.** A link to
   something that did not exist could not be canonicalized, so the boundary check took it for a
   file about to be created, resolved its parent, and approved the link's own path - and the write
