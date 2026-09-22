@@ -369,3 +369,105 @@ Referenced from [AGENTS.md](AGENTS.md).
   the binary and reads one line out of it; that line naming the socket right as well as the
   ruleset status would give the parent the fact, at no extra process. It wants a shape that does
   not make `Confinement` mean two things at once.
+
+- **`nachalnik-eval` scoring where it disagrees with its own rules.** Found in a review and left
+  alone, because each changes what the benchmark measures and every run recorded before it would
+  be measuring something else:
+  - `Change::divergence` counts a treated copy whose answer did not read as having differed, while
+    `moved` is `None` for the same copy - so in Attribution an item whose removal made the copies
+    say "cannot be determined" leads the ranking that the manipulation check says did not move.
+  - Attribution sets `happened` to unreadable when the subject names two items, which takes the
+    claim out of the denominator. Lie and Conflict count an unreadable claim against a readable
+    outcome as measured and wrong, which is the rule `trial.rs` states.
+  - Provenance builds its claimed answer from `Observation::majority`, a bare key, so it carries
+    no confidence and its Brier, ECE and overconfidence are always `None` - while its doc says
+    overconfidence is the figure that separates its two kinds of wrong.
+  - A copy cut off at the token limit reads as unreadable rather than `Answer::Cut` wherever the
+    copies' majority is the *claimed* answer (Provenance, and Conflict's unsettled and settled
+    arms), so it is scored wrong and never reaches `Scores::cut`.
+
+  Smaller, of the same kind: Deference credits a test without several items to each of them;
+  Surface takes claims from every stage, so an item can count up to three times; a tied control
+  reads as maximum instability; and `Outcome::paired` pairs Conflict stages that are not repeated
+  measures. What would unblock any of them is the decision, then a new instrument digest and a
+  changelog line saying which runs it separates.
+
+- **API keys reach every command the shell runs, and every MCP server.** Nothing strips
+  `KAMCHATKA_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `KAMCHATKA_SYSTEM1_API_KEY` or
+  `TYPESAFE_API_KEY` from a child's environment, so `printenv` puts a key in the context, the
+  request, the record and, with `--advise`, the advisor's question; with `net:reach` it can go
+  anywhere. SECURITY.md does not say so.
+
+  The decision is which names. This program's own variables could go without anybody missing them;
+  `OPENROUTER_API_KEY` and `OPENAI_API_KEY` are also what somebody's own scripts read, and a shell
+  that quietly lacks them is its own surprise. Either way the confined helper and `mcp.rs` have to
+  do the same, and SECURITY.md has to say what was chosen.
+
+- **A tool's output is held whole, however large.** `fs read` reads the entire file and `shell`
+  collects everything a command writes; the output limit trims only the copy the model is shown,
+  and the whole is archived beside it by default. A 2 GB log or a `yes` that nobody stops grows
+  the process, and every snapshot after it.
+
+  It waits because the fix collides with an invariant: *nothing is destroyed* is written as "the
+  whole of a truncated tool result is archived", and a ceiling on collection means the archive is
+  no longer the whole. Unblocking it is deciding what the archive promises - the whole up to a
+  size, said in the item - and changing INVARIANTS.md to match before the code.
+
+- **Changes that wait for the next minor of `nachalnik`.** `Snapshot` and `SelectorError` want
+  `#[non_exhaustive]`: nothing outside the crate builds either, which is the convention's test.
+  And a resumed kernel starts its record sequence and its `PermissionId`s at 1 again, so a client
+  keeping a `history_since` cursor across `Kernel::resume` reads nothing until the new log passes
+  the old number, and a log spanning the resume repeats both. `Snapshot` carrying `last_seq` and
+  `next_permission` is the fix. All of these are breaking for somebody writing a struct literal,
+  so they ride the next `0.x` bump rather than forcing one. `nachalnik-eval`'s public result
+  structs - `Scores` has gained fields since release - are the same question in that crate.
+
+- **Leaving while a turn is still running writes the record before the turn has ended.** `/quit`
+  and `/restart` interrupt and then end the loop at once, and an interrupt does not abort a step
+  already in flight - so the rest of a streamed answer and the result of a running tool land in
+  the old kernel after `session.finished`, in files already written, while a restarted session is
+  already running beside it. Reachable from the screen and from a remote client.
+
+  What would unblock it is deciding how long somebody who pressed restart waits. Draining events
+  and the turn's outcome until it ends is the fix; bounding that wait is the decision, and so is
+  what the record says about a turn that was still running when the bound ran out.
+
+- **A `fork` is not counted against the spend ceiling.** The fork is a kernel of its own with a
+  broadcast of its own, and `App::charge` reads only the main kernel's, so a model calling
+  `fork draft` over and over spends a full-context request each time and none of it reaches
+  `spent`. Either a shared accumulator handed to `introspect::install`, or refusing `fork` once the
+  ceiling is reached - which one is a decision about whether a draft is part of the session's
+  spend, and it is money either way.
+
+- **The two dialects' read and retry loops, which have drifted apart.** Each has its own send loop
+  and SSE reader, and they no longer agree: Gemini reads no `Retry-After`, applies no `LINGER`,
+  puts the raw body into an error rather than going through `complaint`, and keeps a `HEARTBEAT` of
+  its own. Several faults live in both copies: a whole answer's body is read with no stall watch
+  after the headers arrive; a 200 that is not a stream keeps only what followed its last newline
+  for the error, and a one-line completion from a server that ignored `stream: true` is reported as
+  one; and a final event with no blank line after it is dropped. Gemini also merges
+  `generationConfig` one level deep, so a caller's `thinkingConfig` replaces the default that asks
+  for thoughts. The shared reader and loop belong in `waiting.rs`, and fixing each fault once there
+  is cheaper than fixing it twice here.
+
+- **The `fs` boundary checks a path and then opens it.** A directory swapped for a link between the
+  two is not caught; SECURITY.md says so. And `write` and `edit` truncate before they write, so a
+  full disk mid-edit leaves a truncated file. The first wants opens component by component with
+  `O_NOFOLLOW`, which `std` does not offer and this crate reaches no further than `std` for without
+  a reason written down; the second is a temporary file and a rename that keeps the permissions.
+
+- **Where the kernel's ordering is weaker than its notes.** `cancel_pending_calls` lets go of the
+  machine lock before it records the refusals, so a concurrent `step` can build a request in which
+  the calls have no results, and the log says `idle` before `permission.decided` - the reverse of
+  `decide`. Holding the lock means calling `Tool::needs`, which is somebody else's code, under it,
+  and that is the question to settle first. An `undo` across `set_counter` or `recount` puts back
+  the old counter's figures without a `context.recounted` and lists every item as changed.
+  `snapshot` reads the used call identifiers before the context, so a turn landing between the two
+  can leave identifiers a resumed session hands out again. And `interrupt` sets its flag outside the
+  machine lock, so the log can place `turn.interrupted` after the transition that consumed it.
+
+- **Pictures of the program and a table of what runs cost, both out of date.** The demo screens in
+  the workspace readme, `kamchatka`'s readme and its guide still show the `read` tool from before
+  `fs`, and `nachalnik-eval`'s readme lists requests per experiment from before six dossiers. Both
+  are copies of real output, so what unblocks them is a fresh recording and a fresh run rather than
+  an edit.
