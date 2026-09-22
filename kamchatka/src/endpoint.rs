@@ -64,6 +64,26 @@ pub fn api_key() -> Result<String, BoxError> {
         .map_err(|_| "set KAMCHATKA_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY)".into())
 }
 
+/// Every variable this program reads a key from, none of which a command it runs for the model
+/// inherits.
+///
+/// note: all of them rather than the one that won. A command the model writes is the model's
+/// hands, and what `printenv` prints goes into the context, the request and the record - and with
+/// the network granted, anywhere. The confinement holds a command to its directory and says
+/// nothing about what the command was handed when it started, so a key in its environment is the
+/// one secret it could always reach.
+///
+/// note: the shell only. An MCP server or a local advisor is a program the person chose, running
+/// unconfined with everything they can read, and a server that calls an API of its own may read
+/// one of these names for its own key; taking them from it would be a nuisance and not a boundary.
+pub const KEYS: [&str; 5] = [
+    "KAMCHATKA_API_KEY",
+    "OPENROUTER_API_KEY",
+    "OPENAI_API_KEY",
+    "KAMCHATKA_SYSTEM1_API_KEY",
+    "TYPESAFE_API_KEY",
+];
+
 /// The endpoint to talk to; OpenRouter unless told otherwise.
 pub fn base_url() -> String {
     env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_owned())

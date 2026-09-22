@@ -1265,6 +1265,70 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
     assert_eq!(last.event.name(), "session.finished");
 }
 
+/// A command the model runs is not handed the keys the program reads, confined or not - and is
+/// handed the rest of the environment as before.
+///
+/// note: what it saw is written to a file rather than read off the prose, because a headless run
+/// reports a tool result by its size and the record names results rather than copying them.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
+    let cmd = "echo \"${KAMCHATKA_API_KEY:-none} ${OPENAI_API_KEY:-none} ${TYPESAFE_API_KEY:-none} \
+               ${HOME:+home}\" > seen.txt";
+    for confined in [true, false] {
+        let dir = common::scratch(&format!("keys-{confined}"));
+        let base = common::endpoint(vec![
+            format!(
+                "data: {}",
+                json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+                    "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+                    "function": {"name": "shell", "arguments": json!({"cmd": cmd}).to_string()}}
+                ]}, "finish_reason": "tool_calls"}]})
+            ),
+            answer("done"),
+        ])
+        .await;
+
+        let mut command = std::process::Command::new(common::program());
+        // `fs:write` too, because a confined shell is read-only where writing is refused - and
+        // headless, a question nobody can be asked is refused
+        command.args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing",
+            "--allow",
+            "exec:run,fs:write",
+        ]);
+        if !confined {
+            command.arg("--no-sandbox");
+        }
+        let ran = command
+            .arg("go")
+            .current_dir(&dir)
+            .env("KAMCHATKA_BASE_URL", &base)
+            .env("KAMCHATKA_API_KEY", "sk-the-session-key")
+            .env("OPENAI_API_KEY", "sk-another-key")
+            .env("TYPESAFE_API_KEY", "sk-the-advisor-key")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("the binary under test is built");
+        assert!(
+            ran.status.success(),
+            "confined: {confined}: {}",
+            String::from_utf8_lossy(&ran.stderr)
+        );
+
+        let seen = std::fs::read_to_string(dir.join("seen.txt")).unwrap_or_else(|e| {
+            panic!(
+                "confined: {confined}: the command never ran ({e}): {}",
+                String::from_utf8_lossy(&ran.stderr)
+            )
+        });
+        assert_eq!(seen.trim(), "none none none home", "confined: {confined}");
+    }
+}
+
 /// Reads a child's output into a string as it arrives, so that a test can look at it without
 /// blocking on a pipe that may never say another word.
 #[cfg(unix)]

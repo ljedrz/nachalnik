@@ -32,6 +32,15 @@ minor bump may break you.
 
 ### changed
 
+- **A command the model runs is not handed this program's keys.** `KAMCHATKA_API_KEY`,
+  `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `KAMCHATKA_SYSTEM1_API_KEY` and `TYPESAFE_API_KEY` are
+  taken out of the `shell` tool's environment, confined or not, so `printenv` no longer puts the
+  key paying for the session into the context, the request and the record. The list is
+  `endpoint::KEYS`. An MCP server and a local advisor still inherit them: each is a program the
+  person chose, running unconfined, and a server with an API of its own may read one of these
+  names for it. A command that needs one of these names is handed it on purpose, in a file it
+  reads, rather than inheriting the session's.
+
 - **`tests/remote.rs` is `tests/remote/`**, the way `tests/screen/` and `tests/introspect/`
   already are: one binary named for the directory, `main.rs` holding what every file in it reaches
   for - a served session, the `Peer` that speaks the protocol by hand, the two tools that answer

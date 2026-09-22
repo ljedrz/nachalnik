@@ -403,6 +403,11 @@ impl Tool for Shell {
             }
         };
 
+        // the program's keys stay with the program; see `endpoint::KEYS`
+        for key in crate::endpoint::KEYS {
+            command.env_remove(key);
+        }
+
         // a group of its own, so that stopping the command can stop everything the command
         // started; see `stop`
         #[cfg(unix)]

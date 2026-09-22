@@ -36,6 +36,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   opened, so a component swapped for a link in between those two moments is not caught.
   `#![deny(unsafe_code)]` is why it is a re-exec rather than `CommandExt::pre_exec` - and why the UDP
   rights stay out of reach until the crate exposes them.
+- **A command the model runs is not handed this program's keys.** Every variable `kamchatka` reads
+  a key from - `endpoint::KEYS` - is taken out of the `shell` tool's environment, confined or not.
+  The confinement holds a command to its directory and says nothing about what the command was
+  handed when it started, so a key left in the environment is the one secret a confined command
+  could always print, and what it prints goes into the context, the request and the record. MCP
+  servers and a local advisor keep them: those are programs the person chose, running unconfined
+  with everything the person can read, and stripping their environment would be a nuisance rather
+  than a boundary.
 - **A boundary that stops at `open` stops short.** A command that can reach a unix socket can have
   the process behind it act for it, and that process is not in the domain: `systemd-run --user`
   over the session bus read and wrote a home directory the same command was refused directly, and

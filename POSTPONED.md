@@ -392,17 +392,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   measures. What would unblock any of them is the decision, then a new instrument digest and a
   changelog line saying which runs it separates.
 
-- **API keys reach every command the shell runs, and every MCP server.** Nothing strips
-  `KAMCHATKA_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `KAMCHATKA_SYSTEM1_API_KEY` or
-  `TYPESAFE_API_KEY` from a child's environment, so `printenv` puts a key in the context, the
-  request, the record and, with `--advise`, the advisor's question; with `net:reach` it can go
-  anywhere. SECURITY.md does not say so.
-
-  The decision is which names. This program's own variables could go without anybody missing them;
-  `OPENROUTER_API_KEY` and `OPENAI_API_KEY` are also what somebody's own scripts read, and a shell
-  that quietly lacks them is its own surprise. Either way the confined helper and `mcp.rs` have to
-  do the same, and SECURITY.md has to say what was chosen.
-
 - **A tool's output is held whole, however large.** `fs read` reads the entire file and `shell`
   collects everything a command writes; the output limit trims only the copy the model is shown,
   and the whole is archived beside it by default. A 2 GB log or a `yes` that nobody stops grows
