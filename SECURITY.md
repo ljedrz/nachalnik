@@ -119,3 +119,43 @@ Referenced from [AGENTS.md](AGENTS.md).
   exist because its documentation is exact about what it misses, and because refusing up front with
   a reason is kinder than letting a command run and fail. It is no longer what stands between the
   model and the network. Anything of that shape needs the same treatment.
+
+---
+
+## who `kamchatka` is defending against
+
+The positions above are each about one mechanism. This is the same ground by who could do harm,
+what stands in the way, and what does not.
+
+- **The model, and whoever wrote something it read.** A file, a command's output or a tool's
+  answer can carry instructions, and the model acts on what it reads, so the model is treated as
+  a party that may be steered. It acts only through tools the policy lets run. The `shell` tool is
+  confined by Landlock on Linux - files outside the reach, TCP `connect`, and on 7.1 and later a
+  unix socket it could not write - and is not handed this program's keys. The `fs` tool is held to
+  the same reach by its own code, and on Linux opens beneath the directory a path was allowed
+  under. What it can still do: send UDP; read anything the reach includes and put it in the
+  context, which goes to the provider; spend the session's budget, including on `fork` drafts,
+  which the spend ceiling does not count yet (POSTPONED.md). Off Linux, and under `--no-sandbox`,
+  the shell is not confined at all and the permission question is the only thing in the way.
+- **Whoever reaches a served session.** The protocol carries the `shell` tool, so reaching it is
+  reaching the machine as the person who started it. `--serve` binds loopback only and makes its
+  socket `0600`, and there is no authentication beyond that. The `gateway` and `phone` examples
+  put a page in front of a session and will listen wherever they are told: whoever reaches that
+  page drives the session, the same as the person at the keyboard. A web page open in a browser on
+  the same machine is refused - the relay takes only requests whose host is an address or
+  `localhost`, that name no origin but its own, and that post JSON - so a site cannot drive a
+  session through the visitor's browser.
+- **An MCP server or a local advisor.** These are programs the person chose, and they run
+  unconfined with the person's environment and everything the person can read. What `kamchatka`
+  controls is what their answers do: a server's tools are judged under the server's name, and what
+  it returns reaches the context like any other tool result, where the model reads it - which is
+  the first actor above again.
+- **The provider.** Everything in a request is sent, and a request is the context: the
+  conversation, what the tools returned, and any file the reach let the model read. Nothing here
+  stops that, and nothing can - it is what asking a model is.
+- **Other people on the machine.** The automatic record is written under a `0700` directory in the
+  temporary directory, and not at all if what holds that name is anything but a directory nobody
+  else can read; a served unix socket is `0600` from the moment it exists.
+- **Size.** What a tool keeps of one call stops at `tools::KEPT`, so a command that writes without
+  end, or a file larger than anybody meant to read, cannot fill the process, the archive or a save.
+  What a tool from an MCP server returns is that server's to bound.
