@@ -501,9 +501,18 @@ fn resolve(named: &[Value], items: &[(ContextId, String)]) -> (Vec<ContextId>, V
     let mut ids = Vec::new();
     let mut unknown = Vec::new();
     for name in named {
-        let Some(name) = name.as_str().map(str::trim) else {
-            continue;
+        // note: a number is taken as the number it is, which is what `look` shows and what the
+        // schema says an item may be named by. Skipped, `"without": [12]` read as naming nothing
+        // at all, and the refusal said so with an empty list
+        let name = match name {
+            Value::String(name) => name.trim().to_owned(),
+            Value::Number(number) => number.to_string(),
+            other => {
+                unknown.push(format!("`{other}`"));
+                continue;
+            }
         };
+        let name = name.as_str();
         let found = name
             .parse::<u64>()
             .ok()
@@ -564,4 +573,31 @@ fn refusals(refused: &[(ContextId, String)]) -> String {
         .map(|(id, why)| format!("{id} was refused: {why}"))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An item named by its number as a JSON number is the item with that number.
+    ///
+    /// note: `look` shows numbers and the schema says an item may be named by one, so a model will
+    /// send `[12]` as often as `["12"]`. The number was skipped: `test` answered that it needed
+    /// `without`, and `amend` refused with an empty list of reasons.
+    #[test]
+    fn a_number_names_the_item_it_numbers() {
+        let items = vec![
+            (ContextId(12), "records/capacity".to_owned()),
+            (ContextId(13), "records/annex".to_owned()),
+        ];
+
+        let (ids, unknown) = resolve(&[json!(12), json!("13"), json!("records/capacity")], &items);
+        assert_eq!(ids, vec![ContextId(12), ContextId(13), ContextId(12)]);
+        assert!(unknown.is_empty(), "{unknown:?}");
+
+        // and what is neither is said, rather than dropped
+        let (ids, unknown) = resolve(&[json!(true), json!(99)], &items);
+        assert!(ids.is_empty());
+        assert_eq!(unknown, vec!["`true`".to_owned(), "`99`".to_owned()]);
+    }
 }

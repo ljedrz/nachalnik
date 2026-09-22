@@ -5,6 +5,30 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A permit coming free wakes the future waiting for it.** `Permits::release` woke the first
+  waker in line, and a waker stays queued when the future that left it takes a permit on a later
+  poll - so the wake could go to somebody who no longer wanted one while the future that did slept
+  beside a free permit for good. Every waiter is woken now, and the ones that find nothing queue
+  again. Nothing in the suite shares `Permits` across tasks, which is why no run hung; `Permits`,
+  `Acquiring` and `Governor` are public for callers that do.
+
+- **The handles take an item's number as a number.** `look` shows numbers and the schema says an
+  item may be named by one, and `"without": [12]` was skipped as naming nothing: `test` answered
+  that it needed `without`, and `amend` refused with an empty list of reasons. Anything that is
+  neither a string nor a number is named in the refusal rather than dropped.
+
+- **Conflict's "the two sides pull the copies apart" needs both sides read.** It passed when the
+  disputed arm's copies were unreadable, since nothing equals an unreadable answer.
+
+- `an_errand_answers_out_of_its_own_result` parses each errand's arguments rather than asking
+  `Errand::args`, which falls back to an empty object and so was an object whatever the constant
+  said; and the notes that named a test that does not exist, the wrong probe, a request count from
+  before the six dossiers, and a digest version from two bumps ago are brought up to date.
+
 ## [0.4.1] - 2026-09-19
 
 ### changed

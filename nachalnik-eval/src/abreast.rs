@@ -98,10 +98,15 @@ impl Permits {
     fn release(&self) {
         let mut inner = self.inner.lock();
         inner.free += 1;
-        if let Some(waker) = inner.waiting.pop_front() {
-            // dropped before waking, so that the woken future does not immediately block on the
-            // lock this thread is still holding
-            drop(inner);
+        // note: every waiter rather than the first. A waker stays queued when the future that left
+        // it takes a permit on a later poll or is dropped, so the first in line can be somebody who
+        // no longer wants one - and waking only them left a real waiter asleep beside a free
+        // permit. Everyone woken looks again, and whoever finds none puts itself back
+        let waiting = std::mem::take(&mut inner.waiting);
+        // dropped before waking, so that a woken future does not immediately block on the lock
+        // this thread is still holding
+        drop(inner);
+        for waker in waiting {
             waker.wake();
         }
     }

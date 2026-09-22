@@ -599,7 +599,10 @@ impl Experiment for Conflict {
         // ------------------------------------------------------------------------------ checks
         trial.check(
             "the two sides pull the copies apart",
-            on_rift.after.is_some() && on_rift.after != on_disputed.after,
+            // both sides read, since an unreadable one differs from anything and says nothing
+            on_rift.after.is_some()
+                && on_disputed.after.is_some()
+                && on_rift.after != on_disputed.after,
             format!(
                 "without `{}` the copies answered {}; without `{}`, {}",
                 self.rift.label,

@@ -5,9 +5,12 @@
 //! arrived, and never lets more run at once than it was told to - three properties a run's
 //! correctness rests on and none of which need a provider to demonstrate.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    future::Future as _,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use nachalnik_eval::{Acquiring, Permit, Permits, together};
@@ -157,4 +160,61 @@ async fn what_acquire_hands_back_can_be_named_by_a_caller() {
 
     drop(held);
     assert_eq!(permits.free(), 1, "and back");
+}
+
+/// A waker that counts how many times it was woken.
+struct Counted(AtomicUsize);
+
+impl std::task::Wake for Counted {
+    fn wake(self: Arc<Self>) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+/// A permit freed while the first waker in line belongs to a future that no longer wants one still
+/// wakes the one that does.
+///
+/// note: polled by hand, because the interleaving is the whole of it and a runtime would pick its
+/// own. A queued waker is left behind when its future takes a permit on a later poll, and waking
+/// only the first in line then spent the wake on it - so the other waiter slept beside a free
+/// permit with nothing left that would ever wake it.
+#[test]
+fn a_stale_waker_does_not_swallow_the_wake_somebody_else_needed() {
+    use std::{
+        pin::pin,
+        task::{Context, Poll, Waker},
+    };
+
+    let permits = Permits::new(1);
+    let (a, b) = (
+        Arc::new(Counted(AtomicUsize::new(0))),
+        Arc::new(Counted(AtomicUsize::new(0))),
+    );
+    let (wa, wb) = (Waker::from(a.clone()), Waker::from(b.clone()));
+    let (mut ca, mut cb) = (Context::from_waker(&wa), Context::from_waker(&wb));
+
+    let held = permits.acquire();
+    let Poll::Ready(first) = pin!(held).poll(&mut ca) else {
+        panic!("a free permit is taken at once");
+    };
+    let mut second = pin!(permits.acquire());
+    let mut other = pin!(permits.acquire());
+    assert!(other.as_mut().poll(&mut cb).is_pending());
+    assert!(second.as_mut().poll(&mut ca).is_pending());
+
+    // the first release wakes `b`, and `a`'s second future takes the permit before `b` looks
+    drop(first);
+    let Poll::Ready(taken) = second.as_mut().poll(&mut ca) else {
+        panic!("the freed permit was there to take");
+    };
+    assert!(other.as_mut().poll(&mut cb).is_pending());
+    let woken = b.0.load(Ordering::SeqCst);
+
+    // and the next release has to reach `b`, whatever else is still queued ahead of it
+    drop(taken);
+    assert!(
+        b.0.load(Ordering::SeqCst) > woken,
+        "the permit came free and the one future waiting for it was never told"
+    );
+    assert!(other.as_mut().poll(&mut cb).is_ready());
 }

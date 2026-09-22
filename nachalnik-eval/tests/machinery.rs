@@ -187,8 +187,11 @@ fn an_errand_answers_out_of_its_own_result() {
     // result, has to be restated in the answer, and must *not* be in the question - a figure the
     // asking supplied would be readable in every arm.
     for errand in ERRANDS {
+        // the constant itself, because `args()` falls back to an empty object and so is an object
+        // whatever the constant says
         assert!(
-            errand.args().is_object(),
+            serde_json::from_str::<serde_json::Value>(errand.args)
+                .is_ok_and(|args| args.is_object()),
             "`{}` has arguments that are not a JSON object: {}",
             errand.label,
             errand.args
@@ -594,8 +597,8 @@ fn the_instrument_is_pinned_so_that_it_cannot_change_quietly() {
     // and say so in the changelog; bump `script::VERSION` when the change is to material an
     // existing experiment reads.
     //
-    // note: the first five are still `v2` after two experiments were added, and that is the
-    // point of having a digest per experiment rather than one per module. Adding a template
+    // note: a digest per experiment rather than one per module, and experiments added later did
+    // not move the ones already here. Adding a template
     // nothing existing reads leaves every existing fingerprint alone, so an `attribution` run
     // from before the addition is still comparable with one from after it. The version marks the
     // material *set*; the digest is what settles a comparison.

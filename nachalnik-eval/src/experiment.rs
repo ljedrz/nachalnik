@@ -210,14 +210,14 @@ pub struct Outcome {
     /// What it did when its own experiment contradicted its own claim.
     #[serde(default)]
     pub deference: Option<Deference>,
-    /// Whether it reached for the handles it was given.
-    ///
     /// What it claimed about items that provably do nothing, split by whether they read numeric.
     ///
     /// note: the primary endpoint. `None` where the experiment resolved no counterfactual claims
     /// about a dossier's own notes, which is every experiment that asks something else.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface: Option<Surface>,
+    /// Whether it reached for the handles it was given.
+    ///
     /// note: read this before the stages. Below the preregistered gate the instrumented stages
     /// are measuring a model that does not use tools, which is worth knowing and is not what the
     /// ladder claims to measure.

@@ -170,7 +170,9 @@ async fn main() -> Result<(), nachalnik::BoxError> {
 
     // note: one `Pace` for the whole run, built once and handed to every experiment, because a
     // rate is only obeyed if the window is shared - a limit of twenty a minute applied afresh per
-    // experiment is nine times the limit.
+    // experiment is nine times the limit. At `-j 1` that is only half true: each experiment is
+    // evaluated on its own below, `evaluate_with` builds its window from the pace each time, and
+    // the boundary between two experiments can see the rate twice over.
     let pace = match per_minute {
         0 => Pace::at_once(at_once),
         n => Pace::at_once(at_once).per_minute(n),

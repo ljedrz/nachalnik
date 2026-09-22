@@ -9,7 +9,9 @@
 //! spreadsheet; what a spreadsheet will not do is notice that one of the files was produced by an
 //! instrument whose questions had a word changed in them. Runs are grouped by
 //! [`Instrument::digest`], the groups are reported separately, and a comparison across groups is
-//! printed only under a heading saying what is wrong with it.
+//! printed only under a heading saying what is wrong with it. The one table that pools is the
+//! dissociation, which adds a model's family counts across every instrument it was run under and
+//! says `pooled` in its heading.
 //!
 //! note: It reads the crate's own `Report` back through `serde`, which is the point of the record
 //! being a value rather than a log: a run can be re-read, re-scored and re-tabulated months later

@@ -62,8 +62,9 @@ impl Errand {
     /// What it was called with; an empty object where the material does not parse.
     ///
     /// note: no panic on a malformed constant, and no silent default either -
-    /// `every_errand_has_arguments_that_parse` in `tests/machinery.rs` is what makes this
-    /// unreachable, which is where a claim about a static wants to be tested.
+    /// `an_errand_answers_out_of_its_own_result` in `tests/machinery.rs` parses every constant,
+    /// which is what makes the fallback unreachable and is where a claim about a static wants to
+    /// be tested.
     pub fn args(&self) -> serde_json::Value {
         serde_json::from_str(self.args).unwrap_or_else(|_| serde_json::json!({}))
     }
@@ -302,8 +303,9 @@ impl Experiment for Provenance {
 
             // ------------------------------------------------------------------ what was moved
             //
-            // once, on the first probe, because it is a fact about the projector rather than
-            // about an answer and repeating it per question would say the same thing twice
+            // once, on the probe about whether the record is whole, because it is a fact about the
+            // projector rather than about an answer and repeating it per question would say the
+            // same thing twice
             if whole {
                 trial.check(
                     "excluding the result takes the call down with it",

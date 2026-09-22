@@ -136,8 +136,8 @@ pub(crate) fn said_or_nothing(answer: &Option<String>) -> String {
 
 /// The nine experiments, at their default settings.
 ///
-/// note: One copy per condition, which is the cheap end. It is enough to run the whole thing for
-/// about eighty requests and enough to produce every figure in a report; it is *not* enough for
+/// note: One copy per condition, which is the cheap end. It is enough to run the whole thing and
+/// to produce every figure in a report; it is *not* enough for
 /// [`Change::instability`](crate::Change), which needs at least two and is reported as zero
 /// without them. Raise the replicates before quoting a number at anybody.
 pub fn all() -> Vec<Arc<dyn Experiment>> {
