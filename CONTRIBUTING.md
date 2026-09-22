@@ -456,10 +456,13 @@ for, so there is nothing for it to agree with.
 - `Kernel::with_context` holds the context read lock for the whole closure. The closure must not
   call back into the kernel.
 - **Emit while still holding the lock that made the change** - the machine lock for a transition,
-  the context lock for anything the context did. Announcing after the release looks tidier and is
-  wrong: two threads changing the same item apply in one order and get logged in the other. The
-  lock order is machine → context → session and nothing goes back up it; `emit` takes the session
-  lock and nothing else, and a broadcast `send` runs no subscriber code.
+  the context lock for anything the context did, and a component's own lock for the setter that
+  swapped it. Announcing after the release looks tidier and is wrong: two threads changing the
+  same item apply in one order and get logged in the other. The lock order is machine → context →
+  session and nothing goes back up it; `emit` takes the session lock and nothing else, and a
+  broadcast `send` runs no subscriber code. What the setters ask in return is that a `Provider`'s
+  `info` and a component's `name` do not call back into the kernel: they are asked what was
+  replaced while the lock holding it is held.
 - The `test` and `selectors` features are off by default but on for `nachalnik`'s own tests, via a
   dev-dependency on itself. `cargo build -p nachalnik` is the configuration users get, and CI
   checks it separately for that reason.
