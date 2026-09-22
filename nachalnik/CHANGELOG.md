@@ -22,6 +22,12 @@ minor bump may break you.
   with `repair_orphans` off the result was moved to the end of the request instead, past turns it
   came before, with nothing in `Projection::reordered` saying so.
 
+- **`Kernel::replace` with what the item already says takes no checkpoint and announces nothing.**
+  It checked that the item existed and then checkpointed unconditionally, so a replacement that
+  changed no byte spent an undo: the next `undo` put back a state identical to the one it was
+  asked from, and the operation somebody wanted reverted needed a second one. `set_state` has had
+  the rule since it was written; this is the same rule, in the other place that needed it.
+
 ## [0.6.2] - 2026-09-21
 
 ### fixed
