@@ -34,9 +34,9 @@ comment linking to a `pub(super)` item, which resolves for everyone in the modul
 docs.rs.
 
 CI (`.github/workflows/ci.yml`) also builds with **default** features (the tests turn both on, so
-nothing else exercises that configuration), checks `nachalnik`, `nachalnik-mcp` and `kamchatka`
-with `--no-default-features`, runs the three keyless examples, and checks the whole workspace on the
-MSRV, **1.88**. Edition is 2024. `RUSTFLAGS: -D warnings` throughout, so a warning is a failure.
+nothing else exercises that configuration), checks `nachalnik`, `nachalnik-mcp`,
+`nachalnik-providers` and `kamchatka` with `--no-default-features`, runs the three keyless
+examples, and checks the whole workspace on the MSRV, **1.88**. Edition is 2024. `RUSTFLAGS: -D warnings` throughout, so a warning is a failure.
 
 The live suite is the only thing that can check that a real API accepts what this crate builds:
 
@@ -173,23 +173,28 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
     cargo run -p nachalnik-eval --example bench -- -m granite4.2:3b --json run.json
 ```
 
-Its own live suite is a couple of tests and about twenty requests; the whole eight-experiment
+Its own live suite is a couple of tests and about twenty requests; the whole experiment
 suite is about a hundred and sixty, which is the `bench` example's job rather than `cargo test`'s.
 Request counts stay because they are what a run costs and somebody has to budget for them; test
 counts do not, here or in the readmes.
 
 Test files: `nachalnik/tests/` is `kernel/` (what gets sent, what gets run, who decides, the record,
 and the seams - a file each), `context/` (items, undo, compaction, and what the context projects
-to), `state`, `session`, `tokens`, `concurrency`, `blocks`, `live`. `nachalnik-eval/tests/` is
-`machinery` (the readings, the arithmetic and the pinned instrument digests), `harness` (the whole
-loop against a provider whose causal structure the test wrote - the only way to check that the
-harness recovers an influence nobody told it about, and, since the rulebook can emit tool calls, the
-only way to check the handles without paying a model to use them) and `live`. `kamchatka/tests/`
-draws the screen and reads the characters back (`screen/`, one binary made of ten files -
-`harness.rs` is the terminal they all sit at, and the other nine are named for what they read off
-it), drives the introspection tools through the real loop (`introspect`), runs real commands under
-a real ruleset (`sandbox`), and asks the policy its own questions rather than reading the answers
-off the screen (`policy`). `edges` is the sweep: every tab at every window size from 1x1 up, every
+to), `state`, `session`, `tokens`, `concurrency`, `blocks`, `crash` (a dropped kernel and a
+resume from what was written down), `invariants` (what holds after every operation of a generated
+sequence), `live`. `nachalnik-eval/tests/` is `machinery` (the readings, the arithmetic and the
+pinned instrument digests), `harness` (the whole loop against a provider whose causal structure the
+test wrote - the only way to check that the harness recovers an influence nobody told it about,
+and, since the rulebook can emit tool calls, the only way to check the handles without paying a
+model to use them), `abreast` and `paced` (the combinator independent work runs on, and that a run
+asked to go abreast never goes wider than it was told) and `live`. `kamchatka/tests/` draws the
+screen and reads the characters back (`screen/`, one binary - `harness.rs` is the terminal every
+other file sits at, and they are named for what they read off it), drives the introspection tools
+through the real loop (`introspect`), serves a session over a socket and speaks the protocol to it
+(`remote/`, laid out the same way), runs real commands under a real ruleset (`sandbox`, Linux only)
+and works out the boundary without spawning anything (`boundary`, which is the half that runs on
+every unix), puts `fs` against real files (`files` and `search`), and asks the policy its own
+questions rather than reading the answers off the screen (`policy`). `edges` is the sweep: every tab at every window size from 1x1 up, every
 key at every tab with nothing to act on, and both scrolled past their own ends - a frame that
 panics takes the session with it, which is the one failure this program cannot report. `headless`
 is the program with nothing drawing it, and half of it runs the *binary*: a settings file, a
@@ -205,7 +210,8 @@ mid-stream (`stalled`), holds each dialect's projection against what its own `to
 (`projection`), pins where each puts a `Content::Blob` and that neither is handed one in a place
 it would refuse (`blobs`), reads the answer that arrives in one piece (`whole_answers`), takes
 thinking back out of the content a model wrote it into (`thinking`), and moves a session to a second
-address to be told the model does not live there (`switching`).
+address to be told the model does not live there (`switching`). `system1` and `kamchatka`'s
+`advise` ask TypeSafe's real endpoint and skip without its key, like the `live` suites.
 `nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one
 (`bridge`), and `foreign` runs one written in another language.
 
@@ -234,7 +240,7 @@ for, so there is nothing for it to agree with.
   end up on two versions of the same thing; every non-obvious one carries a comment saying why it
   is there.
 - **`#[non_exhaustive]`** on every public enum that names things the world can add to: `Event`,
-  `Error`, `State`, `Delta`, `Content`, `Role`, `StopReason`, `Capability`, `GrantSource`,
+  `Error`, `State`, `Delta`, `Content`, `Block`, `Role`, `StopReason`, `Domain`, `GrantSource`,
   `ContextKind`, `ContextState`, `Selector`, `Which`. A new variant is not a breaking change;
   forgetting the attribute on a new enum is. `Grant` and `Verdict` are deliberately without it:
   allow/deny and allow/ask/deny are the whole of what a decision can be, and `Verdict::strictest`
@@ -276,9 +282,12 @@ for, so there is nothing for it to agree with.
   are actions now, named for the state each leaves behind.
 
   This is about what the program **says**, not what it accepts. Taking a word somebody reached for
-  costs nothing and refusing it costs them a turn, so `unelide`, `unpin`, `include`, the old
-  `prune` and `/keep` all still work and none of them is documented. A synonym in an enum, a help
-  line or a message is the bug; a synonym in a `match` is a kindness.
+  costs nothing and refusing it costs them a turn, so `/prune` and `/keep` still work at the
+  prompt and neither is documented. A synonym in an enum, a help line or a message is the bug; a
+  synonym in a `match` is a kindness. The one place that takes no second spelling is a tool's
+  schema: the model's `context` moves used to, and every place answering "which operation is this
+  call" then needed a table of the words that are not in it (`state_of` in
+  `introspect/context/changes.rs` has the rest).
 - **Seams identify themselves.** `Projector`, `TokenCounter`, `PermissionPolicy` and `Compactor`
   each carry a `name()` defaulting to the implementing type's path, so a client can put the six
   seams on a screen (`/seams` in `kamchatka`). It is for showing a person, not for matching on.
@@ -378,7 +387,8 @@ for, so there is nothing for it to agree with.
   number - and the bump commits before it are deliberately left untagged.
 - **One of those tags builds a binary.** `kamchatka-v*` starts `.github/workflows/release.yml`,
   which creates the GitHub release with that version's section of `kamchatka/CHANGELOG.md` as its
-  body and attaches a static `x86_64-unknown-linux-musl` build with a `sha256` beside it. The
+  body and attaches a static `x86_64-unknown-linux-musl` build and an unsigned
+  `aarch64-apple-darwin` one, each with a `sha256` beside it. The
   other crates are libraries and their artifact is the crates.io tarball, which the `package` job
   already checks; the workspace `v*` tag builds nothing, since it would be the same binary under
   a name that does not say so.

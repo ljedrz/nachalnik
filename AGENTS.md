@@ -86,8 +86,9 @@ the fake tools and the table policy: use those rather than writing another mock.
 
 `kamchatka/src`: `app/` is the state, `ui/` draws and decides nothing, `tools/` is the filesystem
 and the shell, `introspect/` the four an agent reads and manages its own session with, `wiring.rs`
-assembles a session in nine steps and `main.rs` is arguments and a loop - which is the shape to
-keep it in.
+assembles a session in nine steps, `args.rs` turns flags and a settings file into one set of
+answers, and `main.rs` picks the loop and says where the record went - which is the shape to keep
+it in.
 
 The file-by-file map, and the reasoning behind the shapes that are not obvious from the names, is
 in [MAP.md](MAP.md).
@@ -104,12 +105,14 @@ cargo doc --workspace --all-features --no-deps   # with RUSTDOCFLAGS=-D warnings
 ```
 
 CI (`.github/workflows/ci.yml`) also builds with **default** features, checks `nachalnik`,
-`nachalnik-mcp` and `kamchatka` with `--no-default-features`, runs the three keyless examples, and
+`nachalnik-mcp`, `nachalnik-providers` and `kamchatka` with `--no-default-features`, runs the three
+keyless examples, and
 checks the whole workspace on the MSRV, **1.88**. Edition is 2024, `RUSTFLAGS: -D warnings`
 throughout, so a warning is a failure.
 
 A second workflow, `release.yml`, runs on a `kamchatka-v*` tag only: it creates the GitHub release
-from that version's changelog section and attaches a static `x86_64-unknown-linux-musl` binary.
+from that version's changelog section and attaches a static `x86_64-unknown-linux-musl` binary
+and an unsigned `aarch64-apple-darwin` one.
 `workflow_dispatch` runs the build and uploads nothing, which is how to check it without tagging.
 
 The live suites are the only thing that can check that a real API accepts what this workspace

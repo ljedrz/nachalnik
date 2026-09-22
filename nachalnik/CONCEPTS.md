@@ -186,10 +186,10 @@ whatever had been streamed.
 session.started    state.changed       model.changed      tool.requested
 session.resumed    context.added       model.params       tool.unknown
 session.finished   context.changed     model.requested    tool.repaired
-turn.interrupted   context.replaced    model.delta        tool.started
-tools.changed      context.undone      model.payload      tool.output
-policy.changed     context.redone      model.finished     tool.finished
-projector.changed  context.annotated   model.failed
+turn.interrupted   context.replaced    model.delta        tool.reserved
+tools.changed      context.undone      model.payload      tool.started
+policy.changed     context.redone      model.finished     tool.output
+projector.changed  context.annotated   model.failed       tool.finished
 counter.changed    context.recounted   step.failed        permission.requested
 compactor.changed  context.compacted                      permission.decided
 ```

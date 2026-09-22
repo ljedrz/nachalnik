@@ -453,7 +453,7 @@ a decision back looks like.
 
 A rule about a whole domain is one row too. `--allow log` decides `log:read`, and the `log` row
 names it in the column beside it rather than the operation getting a row that says the same answer
-back — `--allow context` would put fourteen of those on the screen. An operation is a row of its
+back — `--allow context` would otherwise put a row on the screen for every one of its operations. An operation is a row of its
 own when somebody has answered about it separately: `--allow fs --deny fs:write` is two decisions.
 
 **What it covers** is said in the terms the rule is written in, and is never wider than the rule: a
@@ -498,7 +498,7 @@ this same table — the prompt and the tab are one object, not two.
 
 `allow` runs with no question. `deny` never runs and never asks: the model gets a tool result it
 can read and work around, rather than a call that silently vanished. The transcript says which
-stance did it — ``shell: refused by `network`, which this command reaches for`` — because "the
+stance did it — ``shell: refused by `net:reach`, which this command reaches for`` — because "the
 call was not permitted" beside a `shell: allow` is true and useless.
 
 The model is told the same thing, and told which *kind* of refusal it was, which is the only part
@@ -532,7 +532,7 @@ the screen:
 │                                                                      │
 └───────── alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions┘
 ┌ a tool wants to run · tab ───────────────────────────────────────────┐
-│ shell wants: shell, network                                          │
+│ shell wants: exec:run, net:reach                                     │
 │                                                                      │
 │ cmd:                                                                 │
 │ │ curl -s https://example.com | tee /tmp/page.html                   │
@@ -595,7 +595,7 @@ A build with `--features shell-advisor`, run with `--advise`, puts one more line
 above the arguments and inside the part that does not scroll:
 
 ```text
-│ shell wants: shell, network                                          │
+│ shell wants: exec:run, net:reach                                     │
 │ the advisor reads this as: destroys, or sends something out · 93% sure│
 ```
 
@@ -626,10 +626,11 @@ the trip was for. So the whole gesture is: <kbd>ctrl+t</kbd>, look at the thing,
 
 ## 🔦 finding things without a shell
 
-`grep` and `glob` are the two tools the model reaches for to find its way around, and the reason
+`fs`'s `grep` and `glob` are what the model reaches for to find its way around, and the reason
 they exist is the *capability* they ride. Finding a symbol used to mean `shell`, which subsumes
 every other capability — so a session that only wanted to be asked about a repository had to hand
-over the one permission that answers for everything. These declare `read`.
+over the one permission that answers for everything. These declare `fs:grep` and `fs:glob`, and
+the path rules that bind a read bind them too.
 
 Underneath is ripgrep's own engine, linked in rather than shelled out to: no `rg` on the machine,
 no second process for the sandbox to think about, and the walker that knows what a `.gitignore`

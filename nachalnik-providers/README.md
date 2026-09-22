@@ -28,6 +28,7 @@ lines, written once.
 | `openai` (default) | `POST /chat/completions`, `choices[].delta`, tool calls assembled from fragments. OpenRouter, ollama, vLLM, LM Studio, Together, and most of the rest. |
 | `gemini` | Google's `generateContent`: `candidates[].content.parts`, whole calls, ordered `thought` parts. |
 | `conformance` | the suite the two above are held to, for anyone writing a third. Stands up real sockets; off unless asked for. |
+| `system1` | not a dialect: TypeSafe's `jev`, which answers typed questions about a state with numbers rather than driving a turn. Nothing it returns reaches a kernel. |
 
 Both answer `Provider`, which is what the kernel asks through, and `Endpoint`, which is what the
 program around it asks: where the requests are going, which model is being asked, what this

@@ -536,7 +536,7 @@ let wired = kamchatka::wiring::Setup {
     spend: Some(50_000),
     ..Default::default()
 }
-.wire(kamchatka::endpoint::connect("mercury-2").await?)?;
+.wire(kamchatka::endpoint::connect(Some("mercury-2")).await?)?;
 ```
 
 Two of those steps are not guessable and are the reason this exists rather than a page of
@@ -830,7 +830,7 @@ $ kamchatka --advise -m qwen/qwen3-coder
 
 [`laya`](https://github.com/NandhaKishorM/laya) is a library rather than a service — no HTTP, no
 CLI, nothing to point a base URL at — so the command is an interpreter and a script, and
-`contrib/laya_advisor.py` is the script. It is about forty lines and most of them are comments:
+`contrib/laya_advisor.py` is the script. Most of it is comments, and
 the protocol is one JSON object per line in and one per line out, in the body kamchatka already
 builds for the hosted engine, because laya's question dicts and answers use the same three types
 under the same names.
@@ -1070,7 +1070,7 @@ the end of a run.
 
 **It goes back to the flags, not to where the session had got to.** The model is whatever `--model`
 said, the permissions are `--allow` and `--deny` again, every tool `/tools toggle` switched off is
-back, `--system` and `--files` are re-read, and the context is empty. What carries over is only
+back, `--system` and `--file` are re-read, and the context is empty. What carries over is only
 what cannot be rebuilt cheaply or at all: the connection to the provider, the MCP servers — whose
 tools are installed into the new session rather than their processes being spawned again — and the
 sandbox, which is a ruleset that cannot be lifted once it has been applied. A session started with

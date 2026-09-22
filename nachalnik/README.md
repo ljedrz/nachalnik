@@ -300,8 +300,9 @@ INPUTS · what each model is about to be sent
   identical: every model is sent the same request, byte for byte.
 ```
 
-The two networked ones share [`examples/common`][ex-common] - an OpenAI-compatible HTTP provider
-and nothing else. They talk to anything that speaks that dialect, local models included:
+The two networked ones talk through [`nachalnik-providers`][nachalnik-providers], built from the
+environment by `nachalnik-utils`, and share [`examples/common`][ex-common] for two formatting
+helpers. They talk to anything that speaks the OpenAI dialect, local models included:
 
 ```console
 $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
@@ -352,8 +353,9 @@ being told what a real request cost.
 | **[`kamchatka`][kamchatka]** | a terminal agent built on this - the thing you actually run, and the demonstration that the seams hold up under one. |
 | **[`nachalnik-mcp`][nachalnik-mcp]** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`][nachalnik-eval]** | a benchmark for model introspection: the model commits to a claim about its own context, the harness moves the thing the claim was about on a forked copy, and the two are compared. |
+| **[`nachalnik-providers`][nachalnik-providers]** | the two dialects this workspace talks - OpenAI chat-completions and Google's `generateContent` - as `Provider`s, streamed, retried and interruptible. |
 
-None of the three needed a change to this crate to exist, which is the argument that its six seams
+None of them needed a change to this crate to exist, which is the argument that its six seams
 are real ones. See the [workspace readme][workspace].
 
 ---
@@ -390,6 +392,7 @@ Licensed under the MIT License ([LICENSE-MIT][license]).
 [writeup]: https://ljedrz.github.io/nachalnik/
 [nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
 [nachalnik-eval]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-eval
+[nachalnik-providers]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-providers
 [ex-compare]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compare_models.rs
 [ex-panel]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/panel.rs
 [ex-transparency]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/transparency.rs

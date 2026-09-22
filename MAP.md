@@ -51,8 +51,13 @@ which is not a loop - the voice, the questions and the bookkeeping - because the
 two things selecting on it), `help.rs` (the
 key listing and the selector listing, which `/help` and the `context` tool print), `config.rs`
 (`Settings`: the JSON `--config-file` takes, one field per argument it stands in for - the merge
-itself is `Args::under` in `main.rs`, because only clap can say which arguments were typed, and
+itself is `Args::under` in `args.rs`, because only clap can say which arguments were typed, and
 the crate's own `kamchatka.json` is a starting point the suite holds to naming every field of it),
+`args.rs` (the command line and what a session made of it looks like - in the library rather than
+in `main.rs` because `examples/phone.rs` builds a session from the same flags), `clipboard.rs`
+(OSC 52, which is how `/copy` hands the terminal an answer unwrapped and whole), `stopping.rs`
+(<kbd>ctrl+c</kbd> subscribed once rather than once per turn round a loop, so a second press
+landing between two iterations is not lost),
 `mcp.rs` (feature `mcp`: somebody else's server spawned and its tools installed), `ui/` (drawing only - it decides nothing: `mod.rs` is the frame
 and the chrome on it, `tabs.rs` the four bodies, `overlay.rs` the panel that floats over one,
 `markdown.rs` and `table.rs` a model's prose turned into styled lines, `text.rs` the measuring and
@@ -64,7 +69,9 @@ open one file and `search.rs` for the two that walk a directory of them with rip
 line ends and the next begins, which the permission question colours; it was in `ui/text.rs`
 beside that one caller, and where a command comes apart is a fact about the command rather than
 about drawing it, so it could not stay behind `tui` - with `policy.rs` for `Careful`, `trim.rs` for
-the compactor, `advice.rs` for the two things a model is asked about a call and the one file
+the compactor, `ops.rs` for what a tool that does several things declares - one table of
+operations, with the schema, the refusal and `unread` all made out of it - `advice.rs` for the two
+things a model is asked about a call and the one file
 where what leaves this machine is written down (feature `advise` is the verdict, which is folded
 into the gate; feature `shell-advisor` is `Rating`, which is drawn in the question and folded
 into nothing - and is a second opt-in because it is asked on far more calls. A command with
@@ -73,7 +80,8 @@ joints in it is placed stage by stage, every stage a question in the one request
 the unsure rule is what keeps a coin toss off green and folding the scores first loses it), and
 `mod.rs` for
 `Limits`, the domains this program's own tools act in, and the
-argument readers every tool here shares, `unread` among them, which `introspect/` reaches for too),
+argument readers every tool here shares - `arg`, `whole` and `truth`, which `introspect/` reaches
+for too),
 `introspect/` (the four tools an agent inspects and manages its own session with, one per file and
 named for the noun each is about: `context/` is the context, reading it and changing it, a
 directory because the changing half is a file of its own - `changes.rs`, holding the journal
@@ -96,11 +104,12 @@ because `laya` ships no interface to point a base URL at, so `contrib/laya_advis
 script `SYSTEM1_ADVISOR_COMMAND` names. Every failure closes the pipe, because the next read off a
 doubtful stream is the answer to the question before it - and both of the child's streams are
 held rather than inherited, because a child sharing the terminal writes over the frame, while a
-pipe nobody reads fills and blocks the child writing to it), `main.rs` (arguments, and the loop that draws). It is
+pipe nobody reads fills and blocks the child writing to it), `main.rs` (which loop drives the
+session, the loop that draws, and where the record went). It is
 a library plus a binary so the screen can be drawn against a `TestBackend` in tests, and because
 the screen is not the program.
 
-**`main.rs` is arguments and a loop, and that is the shape to keep it in.** Everything it used to
+**`main.rs` is a choice of loop, and that is the shape to keep it in.** Everything it used to
 assemble is `wiring::Setup`, because it was assembled twice - here and in `examples/recorded.rs` -
 and an embedder would have written it a third time out of reading `main.rs`. Its callers now are
 the program, that example, and the suites that drive a session with no screen. If something else
@@ -136,7 +145,7 @@ message would be a scheme to keep in step protecting a channel whose real bounda
 
 **No feature gate, alone among the optional-looking things here**, because of what it costs: one
 `tokio` feature, `net`, and one method of `socket2` on a port - a crate `tokio` already builds for
-that same feature. `tui` and `mcp` are features to keep six dependencies and a child process out of
+that same feature. `tui` and `mcp` are features to keep the screen's dependencies and a child process out of
 builds that want neither, and that argument does not transfer to a line in a manifest.
 
 **`tui` is a default feature, and the line it draws is load-bearing.** `ui/`, `app/keys.rs`, the
@@ -161,8 +170,10 @@ of that too and is headless in it, so `--no-default-features` is a program rathe
 endpoint says it serves), `openai/wire.rs` (one request sent and read back, streamed or whole),
 `gemini.rs` (Google's own, the one that keeps the order of a turn), `endpoint.rs` (the `Endpoint`
 trait both answer), `waiting.rs` (the stall watch and the retry rules, `pub(crate)` because both
-dialects use them), `conformance.rs` (the suite, behind its own feature). Each dialect is a
-feature; `waiting.rs` is what makes them one crate rather than two.
+dialects use them), `conformance.rs` (the suite, behind its own feature), `system1.rs` (feature
+`system1`: `Jev`, TypeSafe's engine for typed questions answered with numbers, and the one thing
+here that is not a `Dialect` - it drives no turn). Each dialect is a feature; `waiting.rs` is what
+makes them one crate rather than two.
 
 This crate **reads no environment**. Where the requests go, which key pays for them and what limit
 to measure against are arguments, and the two callers in this workspace supply them:
@@ -172,7 +183,7 @@ of a variable they exported for another reason.
 
 Two providers, one trait. `Provider` is the kernel's half - ask, and be answered - and `Endpoint`
 is the caller's: where the requests go, what is served there, what the last retry was about.
-`kamchatka`'s `App` holds an `Arc<dyn Endpoint>` and never finds out which wire format is behind
+`kamchatka`'s `App` holds an `Arc<dyn Dialect>` - both traits in one - and never finds out which wire format is behind
 it, which is the claim `/seams` makes about every other part of the runtime and had not been true
 of this one. `--gemini` picks the second, and turns on `LinearProjector::send_blocks` with it,
 because that dialect's turn *is* an order and projecting three slots at it would flatten every
@@ -202,7 +213,9 @@ the runtime's own concerns: `subject.rs` (a `Kernel` plus "ask, and wait for the
 model), `intervene.rs` and `fork.rs` (a frozen `Snapshot`, a `ContextState` moved on a copy of it,
 and the copy run once with no tools), `trial.rs` (an append-only record, the way `Session` is,
 plus `Act` - what a subject *did*), `score.rs` (the arithmetic, computed *from* the record),
-`experiment.rs` (one trait method, a runner, and `Instrument`), and `suite/` (the nine
+`experiment.rs` (one trait method, a runner, and `Instrument`), `abreast.rs` (independent work run
+at once under a ceiling, written here rather than taken from `futures-util` so that nothing enters
+the tree the runtime did not already need), and `suite/` (the nine
 experiments, the six dossiers, `script.rs`, and `handles.rs`).
 
 **What the crate is for is a ladder, and it is easy to miss the top of it.** `attribution`,
@@ -259,18 +272,20 @@ averaged together. `pool` computes the figures that are about *models* rather th
 the sign test over one run per model, which is honest there and nowhere else in the crate, since
 models are independent of each other in a way that items sharing a dossier never are.
 
-`kamchatka/examples/` has four, and two of them share a module. `attached.rs` is a client of a
+`kamchatka/examples/`: two of them share a module. `attached.rs` is a client of a
 served session written against `remote::protocol` and nothing else that runs one, which is the check
 on the claim that `protocol` is what moves. `gateway.rs` relays a browser to somebody else's
 session; `phone.rs` is a session and a relay in one process, for when there is nobody at the
 machine. The HTTP half of both is `relay/mod.rs` - `mod relay;` from each, the way `tests/common`
 is included, and cargo builds no example out of a directory with no `main.rs` in it.
+`jev_assisted_compaction.rs` (feature `advise`) asks TypeSafe's `jev` which tool results a full
+context can afford to lose, against `Trim`'s oldest-first.
 
 `kamchatka/examples/recorded.rs` runs a session headless and writes it out four ways - readable,
 as events, as a snapshot, as the raw stream - which is how the first two transcripts under `docs/`
 were produced. The third needed a conversation rather than a task, which `recorded.rs` cannot do:
 it takes a brief and two tasks. That session ran the same `App`, tools and kernel with its turns
-read from a file and `/save` typed at the end, and that harness is not in this tree yet. `PLANT`, `TASK`, `TASK2`, `BRIEF`, `DIALECT` and `OUT` parameterise it, and it
+read from a file and `/save` typed at the end, and that harness is not in this tree yet. `PLANT`, `TASK`, `TASK2`, `BRIEF`, `DIALECT`, `INTROSPECT` and `OUT` parameterise it, and it
 needs `KAMCHATKA_CONTEXT_LIMIT` set rather than setting one itself. It writes into `recorded/`,
 which is ignored: a run measuring the repository it sits in must not find previous transcripts
 lying in it.

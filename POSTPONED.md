@@ -57,7 +57,7 @@ Referenced from [AGENTS.md](AGENTS.md).
   nobody's head, because most of it is decisions rather than code.
 
   It needs nothing in the runtime. `Snapshot` and `Kernel::resume` already are this, which is
-  what `context: fork` is built out of and what its own note says - so it is a
+  what the `fork` tool is built out of and what its own note says - so it is a
   `Vec<Snapshot> -> Snapshot` in this crate and everything downstream is unchanged.
 
   **It is a common prefix, not a common subset.** Identifiers come from one `next_item` that never
