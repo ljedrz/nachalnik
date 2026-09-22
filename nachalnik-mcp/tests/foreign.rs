@@ -267,11 +267,10 @@ async fn a_server_that_dies_before_the_handshake_says_why() {
         .arg("-c")
         .arg("echo 'ModuleNotFoundError: no module named mcp' >&2; exit 1");
 
-    let refused = Server::spawn("broken", command)
-        .await
-        .err()
-        .expect("nothing answered the handshake")
-        .to_string();
+    let refused = match Server::spawn("broken", command).await {
+        Ok(_) => panic!("nothing answered the handshake"),
+        Err(e) => e.to_string(),
+    };
 
     assert!(refused.contains("no module named mcp"), "{refused}");
 }
