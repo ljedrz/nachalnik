@@ -11,7 +11,7 @@
 //! note: the point of the pair is which capability they ride. Finding a symbol used to mean
 //! `shell`, which subsumes every other capability - so a session that only wanted to be asked
 //! about the repository had to hand over the one permission that answers for everything. These
-//! declare [`Capability::fs("read")`], and the path rules that bind `read` bind them too: see
+//! declare `fs:grep` and `fs:glob`, and the path rules that bind a read bind them too: see
 //! [`Looking::barred`], which is the part that had to be built rather than linked.
 
 use std::{
@@ -359,11 +359,16 @@ impl Grep {
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
 
+        // read the way `files_only` is, so that `"true"` in quotes is not a case-sensitive search
+        let ignore_case = match truth(args, "ignore_case") {
+            Ok(ignore) => ignore,
+            Err(why) => return Ok(ToolOutput::error(why)),
+        };
         // note: the regex is built before anything is walked, so a pattern that does not parse
         // costs no directory at all - and the answer is the one thing a model can act on
         // immediately, which is why it says how to spell what it probably meant
         let matcher = match RegexMatcherBuilder::new()
-            .case_insensitive(args["ignore_case"].as_bool().unwrap_or(false))
+            .case_insensitive(ignore_case)
             .build(&pattern)
         {
             Ok(matcher) => matcher,

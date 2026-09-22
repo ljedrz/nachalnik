@@ -259,7 +259,8 @@ fn compaction_parts(
 
     let head: Vec<Line<'static>> = wrapped(
         &format!(
-            "compacting would take {} item(s), holding {} tokens - less what the markers cost.              Nothing has happened yet: `p` on the context tab keeps one out of it\n",
+            "compacting would take {} item(s), holding {} tokens - less what the markers cost. \
+             Nothing has happened yet: `p` on the context tab keeps one out of it\n",
             proposed.count,
             thousands(proposed.holding),
         ),

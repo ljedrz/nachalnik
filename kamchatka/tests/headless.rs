@@ -479,6 +479,35 @@ async fn a_second_line_is_a_second_turn() {
     );
 }
 
+/// A blank line is nothing, the way enter on an empty prompt is, and spaces round a line do not
+/// make a command into a message.
+#[tokio::test]
+async fn a_blank_line_is_not_a_message() {
+    let run = run(
+        "\n   \n  /budget\nfirst\n",
+        vec![ModelResponse::text("one")],
+        |_| {},
+    )
+    .await;
+
+    let asked: Vec<String> = run
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, nachalnik::ContextKind::UserMessage))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(asked, vec!["first".to_owned()], "a blank line was sent");
+    assert_eq!(
+        run.names()
+            .iter()
+            .filter(|name| *name == "model.requested")
+            .count(),
+        1
+    );
+}
+
 /// A question left standing by a `/step` does not hold the session open for ever.
 ///
 /// note: this is the one case the exit condition gets wrong if a waiting question is allowed to

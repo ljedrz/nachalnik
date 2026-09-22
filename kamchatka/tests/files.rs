@@ -99,6 +99,18 @@ async fn an_edit_that_could_mean_two_places_changes_neither() {
     .await;
     assert!(said.contains("replaced one occurrence"), "{said}");
     assert_eq!(held(&dir, "a.rs"), "let x = 1;\nlet y = 2;\nlet x = 9;\n");
+
+    // and two places that overlap are two places: `\n\n` is in three newlines twice, which a
+    // count of separate matches reads as once
+    std::fs::write(dir.join("b.rs"), "a\n\n\nb").expect("a file");
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "b.rs", "old": "\n\n", "new": "\n" }),
+    )
+    .await;
+    assert!(said.contains("occurs 2 times"), "{said}");
+    assert_eq!(held(&dir, "b.rs"), "a\n\n\nb", "nothing was changed");
 }
 
 /// An empty `old` names no text, rather than the front of the file.

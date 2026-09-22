@@ -202,11 +202,15 @@ impl<'a> Headless<'a> {
                 // third line of a three-line script would have quietly replaced the second.
                 // Nothing here can be typed during a turn, so nothing is lost by reading it after
                 line = lines.next_line(), if reading && !app.busy => match line {
+                    // note: what the prompt does with enter on nothing, and with spaces round a
+                    // line. A blank line down a pipe was sent as an empty message and answered -
+                    // a request for nothing - and `  /help` was a message here and a command there
+                    Ok(Some(line)) if line.trim().is_empty() => {}
                     Ok(Some(line)) => {
                         // the lines it said are printed by `echo` below, which is watching
                         // `App::loose` for the ones that arrive with no line to answer either;
                         // the page is this call's alone and has no other way out
-                        let opened = app.submit(line.trim_end()).await.page;
+                        let opened = app.submit(line.trim()).await.page;
                         if let Some(Overlay::Text { title, pages, .. }) = opened {
                             self.fresh_line()?;
                             writeln!(self.prose, "--- {title} ---").map_err(|e| e.to_string())?;

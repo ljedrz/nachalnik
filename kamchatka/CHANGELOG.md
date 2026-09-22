@@ -49,6 +49,19 @@ minor bump may break you.
 
 ### fixed
 
+- **A blank line down a pipe is nothing, as enter on an empty prompt is.** A headless run sent it
+  as an empty message and paid for the answer, and trimmed only the end of a line, so `  /help`
+  was a command at the prompt and a message down a pipe.
+
+- **`fs edit` counts overlapping occurrences.** `\n\n` is in three newlines twice, and counted as
+  once the edit went ahead on the first and said it had replaced the only one.
+
+- **`grep`'s `ignore_case` reads a quoted `"true"`**, and refuses a word that is neither, the way
+  `files_only` beside it always has; it ran a case-sensitive search instead.
+
+- The compaction panel's header had fourteen spaces in the middle of a sentence, from a string
+  continued without its `\`.
+
 - **A client attaching mid-turn no longer loses the records written while it attached.** The
   projection read the items and the questions waiting and only then the sequence it reflects, while
   the turn went on writing on a task of its own - so a record landing in between was in neither the

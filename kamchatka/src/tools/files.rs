@@ -1,4 +1,4 @@
-//! The three tools that touch one file, and the argument description every tool with a path
+//! The three `fs` operations that touch one file, and the argument description every tool with a path
 //! shares.
 //!
 //! note: they run in this process with no shell in front of them, so what keeps them inside the
@@ -112,7 +112,17 @@ impl Edit {
                 path.display()
             )));
         }
-        let occurrences = before.matches(old).count();
+        // note: overlapping, which `matches` does not count - `\n\n` is in `a\n\n\nb` twice, and
+        // counted as once the edit went ahead on the first and said it had replaced the one
+        let occurrences = {
+            let (mut count, mut from) = (0, 0);
+            while let Some(found) = before[from..].find(old) {
+                count += 1;
+                let at = from + found;
+                from = at + before[at..].chars().next().map_or(1, char::len_utf8);
+            }
+            count
+        };
         let Some(at) = before.find(old).filter(|_| occurrences == 1) else {
             return Ok(ToolOutput::error(match occurrences {
                 0 => format!("`old` does not occur in {}", path.display()),

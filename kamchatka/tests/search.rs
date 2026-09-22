@@ -411,24 +411,28 @@ async fn the_same_search_twice_is_the_same_answer() {
     assert_eq!(once, twice);
 }
 
-/// Both of them read files, so both of them ride the capability that says so.
+/// Each of them rides a capability of its own, and neither rides `shell`.
 ///
 /// note: the whole point of the pair. Finding a symbol used to mean `shell`, which subsumes every
 /// other capability - so a session that only wanted to be asked about a repository had to hand
 /// over the one permission that answers for everything.
+///
+/// note: asked of the `fs` tool, call by call, because that is where they live now. This looked
+/// for tools called `grep` and `glob`, which stopped existing when they became operations of `fs`,
+/// and went on passing with nothing left for its loop to check.
 #[tokio::test]
-async fn finding_things_costs_read_and_not_shell() {
+async fn finding_things_costs_its_own_operation_and_not_shell() {
     let dir = tree("search-capability");
-    for tool in tools(&dir) {
-        let spec = tool.spec();
-        if spec.id != "grep" && spec.id != "glob" {
-            continue;
-        }
+    let fs = tools(&dir)
+        .into_iter()
+        .find(|tool| tool.spec().id == "fs")
+        .expect("the filesystem tool is built");
+    for action in ["grep", "glob"] {
+        let asked = call("c1", "fs", json!({ "action": action, "pattern": "Kernel" }));
         assert_eq!(
-            spec.capabilities,
-            vec![nachalnik::Capability::fs("read")],
-            "`{}` should need reading and nothing else",
-            spec.id
+            fs.needs(&asked),
+            vec![nachalnik::Capability::fs(action)],
+            "`{action}` should need itself and nothing else"
         );
     }
 }
@@ -558,6 +562,15 @@ async fn a_quoted_argument_is_read_and_an_unreadable_one_is_refused() {
     )
     .await;
     assert!(said.starts_with("2 file(s) match"), "{said}");
+    // and the same for `ignore_case`, which read only a bare `true` and ran a case-sensitive
+    // search for a quoted one
+    let said = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "kernel", "files_only": true, "ignore_case": "true" }),
+    )
+    .await;
+    assert!(said.starts_with("2 file(s) match"), "{said}");
 
     let context = ask(
         &dir,
@@ -579,6 +592,10 @@ async fn a_quoted_argument_is_read_and_an_unreadable_one_is_refused() {
         (
             json!({ "pattern": "Kernel", "files_only": "yes" }),
             "`files_only` is true or false",
+        ),
+        (
+            json!({ "pattern": "Kernel", "ignore_case": "yes" }),
+            "`ignore_case` is true or false",
         ),
     ] {
         let refused = ask(&dir, "grep", args).await;
