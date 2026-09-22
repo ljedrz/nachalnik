@@ -103,7 +103,14 @@ impl Session {
         self.records.is_empty()
     }
 
-    /// Returns the sequence number of the most recent record; `0` if there is none.
+    /// Returns the highest sequence number handed out; `0` before anything has been recorded.
+    ///
+    /// note: the highest handed out rather than the highest still here, which is the difference
+    /// [`Kernel::drain_history`](crate::Kernel::drain_history) makes: a drained log holds no
+    /// records and this still answers what the last of them was numbered. That is what makes it a
+    /// cursor - `last_seq` then
+    /// [`Session::since`] reads what arrived in between, whether or not anybody took the records
+    /// out from under it - and numbers are never reused, so the two cannot disagree.
     pub fn last_seq(&self) -> u64 {
         self.seq
     }
