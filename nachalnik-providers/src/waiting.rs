@@ -13,7 +13,11 @@ use std::{
 use nachalnik::{BoxError, DeltaSink, ModelResponse, StopReason};
 use parking_lot::Mutex;
 
-/// How many times a request is retried when the server says it is busy.
+/// How many times a request is sent when the server keeps saying it is busy, the first included.
+///
+/// note: counted per request. It was one counter on the provider, which every request sharing it
+/// drew from and any one of them reset - so eight abreast against a busy endpoint handed out
+/// attempts one to eight, and the fourth to fail gave up without being retried at all.
 pub(crate) const RETRIES: usize = 4;
 
 /// The longest a server may ask to be left alone before this stops waiting and says so.
@@ -253,6 +257,25 @@ pub(crate) async fn watched(
             Silence::Worth(seconds) => *notice.lock() = Some(not_answered(model, seconds)),
             Silence::Ordinary => {}
         }
+    }
+}
+
+/// Waits out a backoff, and says whether it was let run to the end.
+///
+/// note: in heartbeats rather than one sleep, because a request somebody has asked to stop is not
+/// one to send again. A single sleep kept a stopped turn waiting for as long as the server asked -
+/// a minute, for a `Retry-After: 60` - and then sent the request anyway, to be answered and billed.
+pub(crate) async fn backed_off(wait: Duration, deltas: &DeltaSink) -> bool {
+    let until = Instant::now() + wait;
+    loop {
+        if deltas.is_interrupted() {
+            return false;
+        }
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return true;
+        }
+        tokio::time::sleep(left.min(HEARTBEAT)).await;
     }
 }
 

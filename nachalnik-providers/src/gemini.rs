@@ -36,7 +36,9 @@ use serde_json::{Map, Value, json};
 
 use crate::{
     Dialect, Endpoint, install_crypto, refused, same_model,
-    waiting::{PATIENCE, RETRIES, Silence, Unsent, Vigil, gone_quiet, interrupted, watched},
+    waiting::{
+        PATIENCE, RETRIES, Silence, Unsent, Vigil, backed_off, gone_quiet, interrupted, watched,
+    },
 };
 
 /// How long a stream may say nothing before the provider looks up to check whether it has been
@@ -56,8 +58,6 @@ pub struct Gemini {
     /// The limit the caller set by hand, if it set one, kept so that changing model or endpoint
     /// puts it back rather than dropping it.
     configured: Option<usize>,
-    /// Backed off since the last answer; see [`OpenAiCompatible`](crate::openai::OpenAiCompatible).
-    backoff: AtomicUsize,
     /// Every HTTP request this has made, never reset.
     attempts: AtomicUsize,
     notice: Mutex<Option<String>>,
@@ -89,7 +89,6 @@ impl Gemini {
             model: Mutex::new(model.into()),
             context_limit: Mutex::new(None),
             configured: None,
-            backoff: AtomicUsize::new(0),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
         }
@@ -527,6 +526,8 @@ impl Gemini {
         model: &str,
         deltas: &DeltaSink,
     ) -> Result<Sent, BoxError> {
+        // the count is this request's and nobody else's; see `RETRIES`
+        let mut backoff = 0;
         Ok(loop {
             self.attempts.fetch_add(1, Ordering::SeqCst);
             let response = match watched(
@@ -550,10 +551,9 @@ impl Gemini {
                 // went away ended the turn whenever the operating system noticed - and said
                 // nothing at all in the meantime
                 Err(reason) if reason.worth_waiting_out() => {
-                    let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
-                    let wait = Duration::from_secs(1 << attempt);
-                    if attempt >= RETRIES {
-                        self.backoff.store(0, Ordering::SeqCst);
+                    backoff += 1;
+                    let wait = Duration::from_secs(1 << backoff);
+                    if backoff >= RETRIES {
                         return Err(reason.giving_up(model));
                     }
 
@@ -562,7 +562,9 @@ impl Gemini {
                         reason.what_happened(),
                         wait.as_secs()
                     ));
-                    tokio::time::sleep(wait).await;
+                    if !backed_off(wait, deltas).await {
+                        return Ok(Sent::Answered(interrupted()));
+                    }
                     continue;
                 }
                 // nobody is owed an error for being obeyed
@@ -572,17 +574,12 @@ impl Gemini {
 
             let status = response.status();
             if status.is_success() {
-                // the budget belongs to a request, not to a session: without this an afternoon
-                // that had already ridden out four busy servers answered the fifth by giving up
-                // on the first try
-                self.backoff.store(0, Ordering::SeqCst);
                 break Sent::Streaming(response);
             }
 
             let transient = status.as_u16() == 429 || status.is_server_error();
-            let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
-            if !transient || attempt >= RETRIES {
-                self.backoff.store(0, Ordering::SeqCst);
+            backoff += 1;
+            if !transient || backoff >= RETRIES {
                 let body = response.text().await.unwrap_or_default();
                 return Err(refused(
                     format!("{status}: {body}"),
@@ -590,13 +587,15 @@ impl Gemini {
                 ));
             }
 
-            let wait = Duration::from_secs(1 << attempt);
+            let wait = Duration::from_secs(1 << backoff);
             *self.notice.lock() = Some(format!(
                 "{model} answered {}; trying again in {}s",
                 status.as_u16(),
                 wait.as_secs()
             ));
-            tokio::time::sleep(wait).await;
+            if !backed_off(wait, deltas).await {
+                return Ok(Sent::Answered(interrupted()));
+            }
         })
     }
 

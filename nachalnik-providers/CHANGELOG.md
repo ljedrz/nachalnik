@@ -24,6 +24,24 @@ minor bump may break you.
   `Question::choice` and `Question::score`, and `Attribution` is assembled by
   `OpenAiCompatible::on_behalf_of` and read by nobody.
 
+### fixed
+
+- **A request's retries are its own.** The count of how many times a request had backed off was
+  one counter on the provider, shared by every request made through it and reset by any one that
+  succeeded or gave up. Eight abreast against a busy endpoint - `nachalnik-eval`'s `bench -j 8`
+  shares one provider across eight kernels - handed out attempts one to eight, so the fourth to fail
+  gave up without a single retry, while a request whose failures kept landing between other
+  requests' successes could retry without end. Each request counts its own now, in both dialects.
+
+- **A stop pressed during a backoff ends it, and nothing is sent again.** The wait between
+  attempts was one sleep, as long as the server asked - a `Retry-After: 30` was thirty seconds of a
+  turn that would not stop - and at the end of it the request went out again anyway, to be answered
+  and billed. The wait is in heartbeats that check for the interrupt now.
+
+- **A spent daily quota answering a streamed request is not retried.** The whole-answer path told
+  it apart from a momentary limit and the streaming path, which is the default, did not, so a quota
+  that would still be spent tomorrow was sent three more times over fourteen seconds first.
+
 ## [0.5.0] - 2026-09-21
 
 ### added

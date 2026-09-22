@@ -163,3 +163,72 @@ async fn the_other_dialect_is_watched_the_same_way() {
         .expect("the turn is not a panic")
         .expect("an interrupted request is not a failed one");
 }
+
+/// Answers every request with a `429` asking to be left for half a minute, and counts them.
+#[cfg(feature = "openai")]
+async fn busy_server(requests: Arc<std::sync::atomic::AtomicUsize>) -> String {
+    use tokio::io::AsyncWriteExt as _;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut discard = [0u8; 4096];
+            let _ = socket.read(&mut discard).await;
+            let body = r#"{"error":{"message":"slow down","code":429}}"#;
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 30\r\n\
+                         Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        }
+    });
+
+    format!("http://{address}")
+}
+
+/// A stop pressed while the provider waits out a busy server ends the wait, and sends nothing more.
+///
+/// note: the wait was one sleep for as long as the server asked - thirty seconds here - and the
+/// request went out again at the end of it, stopped or not: answered, and paid for, by a turn that
+/// somebody had already put down.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_stop_pressed_during_a_backoff_is_not_sent_again() {
+    let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "busy",
+        busy_server(requests.clone()).await,
+        "no key needed",
+    )));
+    kernel.push(ContextItem::user("are you there?"));
+
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.turn().await }
+    });
+
+    // long enough for the first answer to have come back and the wait to have begun
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    kernel.interrupt();
+
+    let stopped = tokio::time::timeout(Duration::from_secs(5), running)
+        .await
+        .expect("the interrupt should end a backoff")
+        .expect("the turn is not a panic");
+    stopped.expect("an interrupted request is not a failed one");
+    assert_eq!(
+        requests.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "a stopped request was sent again"
+    );
+}

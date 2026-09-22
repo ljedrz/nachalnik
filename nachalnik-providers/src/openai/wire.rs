@@ -22,8 +22,8 @@ use crate::{
     openai::OpenAiCompatible,
     out_of_quota, refused,
     waiting::{
-        HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, WHOLE_ANSWER, gone_quiet,
-        interrupted, watched,
+        HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, WHOLE_ANSWER, backed_off,
+        gone_quiet, interrupted, watched,
     },
 };
 
@@ -618,6 +618,9 @@ impl OpenAiCompatible {
         // a free tier answers "busy" often enough that not retrying makes the whole thing look
         // broken when it is not. Waiting and trying again is the *provider's* business: the
         // kernel must not silently send a request twice behind a caller's back
+        //
+        // note: the count is this request's and nobody else's; see `RETRIES`
+        let mut backoff = 0;
         Ok(loop {
             self.attempts.fetch_add(1, Ordering::SeqCst);
             let response = match watched(
@@ -644,10 +647,9 @@ impl OpenAiCompatible {
                 // with nothing behind it, and making a typo take four doublings to report helps
                 // nobody
                 Err(reason) if reason.worth_waiting_out() => {
-                    let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
-                    let wait = Duration::from_secs(1 << attempt);
-                    if attempt >= RETRIES {
-                        self.backoff.store(0, Ordering::SeqCst);
+                    backoff += 1;
+                    let wait = Duration::from_secs(1 << backoff);
+                    if backoff >= RETRIES {
                         return Err(reason.giving_up(model));
                     }
 
@@ -656,7 +658,9 @@ impl OpenAiCompatible {
                         reason.what_happened(),
                         wait.as_secs()
                     ));
-                    tokio::time::sleep(wait).await;
+                    if !backed_off(wait, deltas).await {
+                        return Ok(Sent::Answered(interrupted()));
+                    }
                     continue;
                 }
                 // nobody is owed an error for being obeyed
@@ -676,7 +680,6 @@ impl OpenAiCompatible {
                     let payload: Value = serde_json::from_str(&text)
                         .map_err(|e| format!("the answer was not JSON ({e}): {text}"))?;
                     let Some(error) = payload.get("error").filter(|e| !e.is_null()) else {
-                        self.backoff.store(0, Ordering::SeqCst);
                         return Ok(Sent::Answered(whole(&payload, self.thinking_in_content)));
                     };
 
@@ -685,10 +688,9 @@ impl OpenAiCompatible {
                     // told apart here rather than waited out four times over
                     let transient =
                         (code == 429 || (500..600).contains(&code)) && !out_of_quota(&text);
-                    let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
-                    let wait = Duration::from_secs(1 << attempt);
-                    if !transient || attempt >= RETRIES {
-                        self.backoff.store(0, Ordering::SeqCst);
+                    backoff += 1;
+                    let wait = Duration::from_secs(1 << backoff);
+                    if !transient || backoff >= RETRIES {
                         return Err(refused(
                             match said(error) {
                                 Some(said) => said,
@@ -702,14 +704,12 @@ impl OpenAiCompatible {
                         "{model} answered {code}; trying again in {}s",
                         wait.as_secs()
                     ));
-                    tokio::time::sleep(wait).await;
+                    if !backed_off(wait, deltas).await {
+                        return Ok(Sent::Answered(interrupted()));
+                    }
                     continue;
                 }
 
-                // the budget belongs to a request, not to a session: without this an afternoon
-                // that had already ridden out four busy servers answered the fifth by giving up
-                // on the first try
-                self.backoff.store(0, Ordering::SeqCst);
                 break Sent::Streaming(response);
             }
 
@@ -722,12 +722,15 @@ impl OpenAiCompatible {
                 .and_then(|value| value.trim().parse::<u64>().ok())
                 .map(Duration::from_secs);
 
-            let transient = status.as_u16() == 429 || status.is_server_error();
-            let attempt = self.backoff.fetch_add(1, Ordering::SeqCst) + 1;
-            let wait = asked.unwrap_or(Duration::from_secs(1 << attempt));
-            if !transient || attempt >= RETRIES || wait > LINGER {
-                self.backoff.store(0, Ordering::SeqCst);
-                let body = response.text().await.unwrap_or_default();
+            // read before deciding, because a spent daily quota is a 429 that will still be one in
+            // a minute - which the whole-answer branch above already tells apart, and this one
+            // retried three times over
+            let body = response.text().await.unwrap_or_default();
+            let transient =
+                (status.as_u16() == 429 || status.is_server_error()) && !out_of_quota(&body);
+            backoff += 1;
+            let wait = asked.unwrap_or(Duration::from_secs(1 << backoff));
+            if !transient || backoff >= RETRIES || wait > LINGER {
                 let mut said = complaint(status, &body);
                 if transient && wait > LINGER {
                     said.push_str(&format!(
@@ -744,7 +747,9 @@ impl OpenAiCompatible {
                 status.as_u16(),
                 wait.as_secs()
             ));
-            tokio::time::sleep(wait).await;
+            if !backed_off(wait, deltas).await {
+                return Ok(Sent::Answered(interrupted()));
+            }
         })
     }
 }

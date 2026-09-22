@@ -67,10 +67,6 @@ pub struct OpenAiCompatible {
     /// about whichever model the session happens to be asking, and a `set_model` that quietly
     /// replaced it with whatever the endpoint advertises would be overruling them.
     configured: Option<usize>,
-    /// How many times this provider has backed off *since the last answer*, so that a busy
-    /// server cannot be retried forever by a session that keeps making new requests. Reset by
-    /// every request that succeeds.
-    backoff: AtomicUsize,
     /// How many HTTP requests this has made in its life, retries counted separately. Never reset:
     /// what it answers is "what did this cost", which a run wants at the end of it.
     attempts: AtomicUsize,
@@ -156,7 +152,6 @@ impl OpenAiCompatible {
             configured: None,
             parameters: Mutex::new(Vec::new()),
             every_parameter: Mutex::new(true),
-            backoff: AtomicUsize::new(0),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
             attribution: None,
