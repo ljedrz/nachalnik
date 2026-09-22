@@ -559,7 +559,10 @@ impl Kernel {
     /// note: The flag is cleared by the transition attempt that acts on it - [`Kernel::step`],
     /// including the one [`Kernel::turn`] is in the middle of making - so it can never outlive the
     /// thing it was meant to stop, and there is only ever one reader of it. It discards no work: a
-    /// partial answer and a half-finished tool result are recorded like any other.
+    /// partial answer and a half-finished tool result are recorded like any other. A step refused
+    /// as [`Error::Busy`] acts on nothing and so clears nothing: the attempt that spends the flag
+    /// is the one that was in a position to transition, and the request in flight keeps the stop
+    /// its provider is reading.
     pub fn interrupt(&self) -> bool {
         let already = self.0.interrupted.swap(true, SeqCst);
         if !already {
@@ -1406,17 +1409,24 @@ impl Kernel {
     /// which returned the state unchanged, leaving `turn` to see an ordinary resting state and
     /// go round again. The stop was on the event log and the next request went out anyway.
     async fn step_once(&self) -> Result<(State, bool)> {
-        // somebody asked to stop. One transition attempt is spent acknowledging it, which is
-        // also what keeps the flag from outliving the request it was meant for: a client that
-        // drives `step` itself has no `turn` to consume it
-        if self.0.interrupted.swap(false, SeqCst) {
-            return Ok((self.state(), true));
-        }
-
         let claim = {
             let mut machine = self.0.machine.lock();
-            match machine.state.clone() {
-                state if state.is_busy() => return Err(Error::Busy),
+            let state = machine.state.clone();
+            // busy first, and before the flag is touched. A step refused as busy transitions
+            // nothing, so it is not the attempt the interrupt is spent on - and consuming it here
+            // would take the stop away from the request that is actually in flight, whose provider
+            // is reading `is_interrupted` to decide whether to keep reading the stream
+            if state.is_busy() {
+                return Err(Error::Busy);
+            }
+            // somebody asked to stop. One transition attempt is spent acknowledging it, which is
+            // also what keeps the flag from outliving the request it was meant for: a client that
+            // drives `step` itself has no `turn` to consume it
+            if self.0.interrupted.swap(false, SeqCst) {
+                return Ok((state, true));
+            }
+
+            match state {
                 State::Deciding { calls } => return Ok((State::Deciding { calls }, false)),
                 State::Ready { calls } => {
                     let prepared = std::mem::take(&mut machine.pending);

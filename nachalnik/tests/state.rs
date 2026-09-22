@@ -217,6 +217,50 @@ async fn a_second_step_is_refused_while_one_is_in_flight() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_step_refused_as_busy_does_not_spend_the_interrupt() {
+    let (open, gate) = oneshot::channel();
+    let provider = Arc::new(Blocking::new(gate));
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("hi"));
+
+    let stepping = kernel.clone();
+    let first = tokio::spawn(async move { stepping.step().await });
+
+    for _ in 0..1_000 {
+        if kernel.state().is_busy() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+    assert_eq!(kernel.state(), State::Requesting);
+
+    // the stop is for the request in flight, whose provider reads `is_interrupted` to decide
+    // whether to keep reading the stream
+    kernel.interrupt();
+    assert!(
+        matches!(kernel.step().await, Err(Error::Busy)),
+        "a step that transitions nothing is still refused"
+    );
+    assert!(
+        kernel.is_interrupted(),
+        "and takes nothing away from the request it was refused for"
+    );
+
+    open.send(()).unwrap();
+    assert!(matches!(
+        first.await.unwrap().unwrap(),
+        State::Finished { .. }
+    ));
+
+    // and the request it was refused for is the one that ends up putting it down, by reaching
+    // `Finished` - which is where an interrupt has nothing left to stop
+    assert_eq!(*provider.calls.lock(), 1, "and nothing else was sent");
+    assert!(!kernel.is_interrupted());
+}
+
 #[tokio::test]
 async fn a_dropped_step_does_not_wedge_the_kernel() {
     let (_open, gate) = oneshot::channel();

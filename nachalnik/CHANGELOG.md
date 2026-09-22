@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A step refused as `Error::Busy` no longer swallows the interrupt.** `step_once` cleared the
+  flag before it took the machine lock, so a second thread calling `step` while a request was in
+  flight got `Ok` where the state table promises `Busy`, and took the stop away from the request
+  it was meant for - a `Provider` watching `DeltaSink::is_interrupted` saw it go false mid-stream,
+  and the turn carried on. Busy is decided first now, and acts on nothing, so it spends nothing.
+
 ## [0.6.2] - 2026-09-21
 
 ### fixed
