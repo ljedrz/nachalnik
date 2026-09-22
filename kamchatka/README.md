@@ -78,11 +78,11 @@ shell in front of them, honour a `.gitignore`, and cut at a number of matches ra
 saying so where they cut. The path rules bind them too: a walk cannot ask about `.env`, so it does
 not open it and says how many it left alone.
 
-Four of them are about the session itself: `context` reads the context, `log` the record kept
-beside it, `setup` what the session is running with, and `fork` asks a copy of the session a
-question. Every
-action in them is a public function the screen was already calling, which is the argument for the
-whole workspace rather than a feature of this program — [what each does][guide-introspect].
+Four of them are about the session itself: `context` reads the context and changes it, `log` reads
+the record kept beside it, `setup` what the session is running with, and `fork` asks a copy of the
+session a question. Every operation in them is a public function the screen was already calling,
+which is the argument for the whole workspace rather than a feature of this program — [what each
+does][guide-introspect].
 
 The registry is live rather than fixed at startup: `/tools toggle shell` stops offering it from the
 next request onward and `/tools toggle shell` again offers it, which is one call on the kernel each way

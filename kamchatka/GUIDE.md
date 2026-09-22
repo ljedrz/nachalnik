@@ -851,10 +851,60 @@ was told there were no matches has been told something false about itself, silen
 shape of wrong answer a search must not have. A nil result says what it looked at for the same
 reason.
 
-`fork` is its own tool, with `draft` and `ask`. Both take a snapshot of the context, resume it as
-a second kernel with **no tools**, ask it once, and hand back only what it said. `draft` is for
-reading your own answer before you give it; `ask` is for asking whether a piece of context is what
-is leading you astray:
+The other eight operations of **`context`** change it. `elide`, `exclude`, `pin` and `restore` move
+items between the same states the <kbd>space</kbd> key does, and each is named for the state it
+leaves — which is the word you will read back on the item afterwards:
+
+* `elide` — for a tool result that has served its purpose. The call stays answered, and the result
+  stops costing what it holds.
+* `exclude` — take it out altogether.
+* `pin` — protect it from compaction.
+
+Items are named by `ids`, or by `select`, which takes the same selector language `/exclude` does. So
+"the tool results I am done with" is one call rather than twelve numbers read off a listing. One or
+the other, and a call giving both is refused rather than answered on whichever it read first: a move
+that quietly dropped half of what it was told reads exactly like a move that did what it was asked.
+That cannot be said in the schema — mutual exclusion is `oneOf`, and neither of the two dialects one
+schema has to go out in has the keyword — so it is said in each argument's description and enforced
+where the call is read.
+
+`look` takes the same `select`, and that is the only way to resolve a selector without using it on
+something. It lists the items the class comes to, their cost against the request's, and which of
+them a move would refuse — the person's pins, a system instruction, the turn the model is speaking
+in — read off the same function the move consults, so a preview and the move it previews cannot
+disagree.
+
+`revise` rewrites what an item says. `note` writes something into the context — a plan, a
+conclusion, a thing not to try again. A note is attributed to `agent`, so the context pane can say
+who put it there, and it can be pinned so compaction cannot take it. Saying the same thing out
+loud in a turn is not a promise about anything; a pin is.
+
+`undo` walks back — deliberately *not* the kernel's undo stack. That stack is yours, bound to
+<kbd>u</kbd>, and the top of it while a tool is running is always the assistant turn that asked
+for the call: one step would erase the model's own question and orphan the answer it is waiting
+for. So the tool keeps a journal of what *it* did, and that is what it walks. A `reason` is
+required by every one of the eight that change something, and it is what you read in the context
+pane.
+
+Three things are refused outright, with the refusal handed back to the model: a **pinned** item
+(a pin is a promise, and it was not made to the model), a **system instruction**, and the
+assistant turn it is currently speaking in. It may unpin what it pinned itself, and nothing else.
+
+Reading the context and changing it were two tools once, on the argument that a tool declares its
+capabilities for every call it will ever receive — so one tool would mean answering **always** to
+"may it read its own context?" also answered "may it rewrite a tool result?", a grant that
+delivers more than it implies. The hazard is real and it is no longer a reason for two tools: a
+subject is `<domain>:<operation>`, a call declares which operation it is, and `context:look` and
+`context:revise` are separate rows on the permissions tab whichever tool they arrive under. You
+can answer them differently, and `--allow context` is how you answer for the lot.
+
+**`fork`** went the other way and is its own tool, because it is neither a reading nor a change: it
+stands up a copy of the session and pays a provider for an answer. Letting something read its own
+items should not be letting it buy another request, which is why it is `fork:draft` and `fork:ask`
+rather than two more operations on the context. Both take a snapshot, resume it as a second kernel
+with **no tools**, ask it once, and hand back only what it said. `draft` is for reading your own
+answer before you give it; `ask` is for asking whether a piece of context is what is leading you
+astray:
 
 ```text
 ⟩ fork({"call":{"action":"ask","question":"am I overfitting to the first stack trace?",
@@ -943,62 +993,6 @@ itself:
   request; it has never said what decided that, and a model that can read the verdict but not the
   rule cannot argue with either.
 
-The other eight operations of **`context`** change it. `elide`, `exclude`, `pin` and `restore`
-move items between
-the same states the <kbd>space</kbd> key does, and each is named for the state it leaves — which
-is the word you will read back on the item afterwards:
-
-* `elide` — for a tool result that has served its purpose. The call stays answered, and the result
-  stops costing what it holds.
-* `exclude` — take it out altogether.
-* `pin` — protect it from compaction.
-
-Items are named by `ids`, or by `select`, which takes the same selector language `/exclude` does. So
-"the tool results I am done with" is one call rather than twelve numbers read off a listing. One or
-the other, and a call giving both is refused rather than answered on whichever it read first: a move
-that quietly dropped half of what it was told reads exactly like a move that did what it was asked.
-That cannot be said in the schema — mutual exclusion is `oneOf`, and neither of the two dialects one
-schema has to go out in has the keyword — so it is said in each argument's description and enforced
-where the call is read.
-
-`look` takes the same `select`, and that is the only way to resolve a selector without using it on
-something. It lists the items the class comes to, their cost against the request's, and which of
-them a move would refuse — the person's pins, a system instruction, the turn the model is speaking
-in — read off the same function the move consults, so a preview and the move it previews cannot
-disagree.
-
-`revise` rewrites what an item says. `note` writes something into the context — a plan, a
-conclusion, a thing not to try again. A note is attributed to `agent`, so the context pane can say
-who put it there, and it can be pinned so compaction cannot take it. Saying the same thing out
-loud in a turn is not a promise about anything; a pin is.
-
-`undo` walks back — deliberately *not* the kernel's undo stack. That stack is yours, bound to
-<kbd>u</kbd>, and the top of it while a tool is running is always the assistant turn that asked
-for the call: one step would erase the model's own question and orphan the answer it is waiting
-for. So the tool keeps a journal of what *it* did, and that is what it walks. A `reason` is
-required by every one of the eight that change something, and it is what you read in the context
-pane.
-
-Three things are refused outright, with the refusal handed back to the model: a **pinned** item
-(a pin is a promise, and it was not made to the model), a **system instruction**, and the
-assistant turn it is currently speaking in. It may unpin what it pinned itself, and nothing else.
-
-Reading the context and changing it were two tools once, on the argument that a tool declares its
-capabilities for every call it will ever receive — so one tool would mean answering **always** to
-"may it read its own context?" also answered "may it rewrite a tool result?", a grant that
-delivers more than it implies. The hazard is real and it is no longer a reason for two tools: a
-subject is `<domain>:<operation>`, a call declares which operation it is, and `context:look` and
-`context:revise` are separate rows on the permissions tab whichever tool they arrive under. You
-can answer them differently, and `--allow context` is how you answer for the lot.
-
-**`fork`** went the other way and is its own tool, because it is neither a reading nor a change:
-it stands up a copy of the session and pays a provider for an answer. `draft` carries the
-conversation on; `ask` puts a question, optionally with items left out, which is what makes it an
-experiment rather than the same context answering twice. A fork has no tools — it can think, not
-act — and nothing it does reaches this context or this log. Letting something read its own items
-should not be letting it buy another request, which is why it is `fork:draft` and `fork:ask`
-rather than two more operations on the context.
-
-Any tool can also be taken *away* mid-session with `/tools toggle ID`, and that is deliberate
+Any tool can be taken *away* mid-session with `/tools toggle ID`, and that is deliberate
 rather than incidental. An agent whose ability to check the record is revoked half way through a
 run is a thing this program can set up, and a thing worth watching a model in.

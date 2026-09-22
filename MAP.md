@@ -185,10 +185,13 @@ runtime has no opinion about - which of those a *model* may do. A pinned item, a
 instruction and the assistant turn carrying the call in flight are refused, it may unpin only
 what it pinned itself, and `undo` walks that tool's own journal rather than `Kernel::undo`, whose
 stack belongs to the person and whose top during a turn is always the model's own question. There
-is a tool per noun rather than one with a mode argument because a `ToolSpec` declares its
-capabilities once: reading a context, reading the record beside it, reading what the session is
-running with and rewriting the context have to be separately grantable or the grant delivers more
-than it implies. It is also what makes each of them separately *revocable*.
+is a tool per noun - the context, the record beside it, what the session is running with, a copy of
+the session asked something - and the noun is what the tool is *about* rather than what it does to
+it. Reading a context and rewriting one were two tools while a `ToolSpec` declared its capabilities
+once for every call it would ever receive, which made `--allow` on the reader an answer for the
+writer too; a subject is `<domain>:<operation>` now, so `context:look` and `context:revise` are
+separately grantable under one tool's name. What the boundary still decides is what is separately
+*revocable*, and `fork` is on the other side of it because buying a request is not reading.
 
 `nachalnik-eval/src` is the third instance of the same test, and the one that is furthest from
 the runtime's own concerns: `subject.rs` (a `Kernel` plus "ask, and wait for the turn to end"),
