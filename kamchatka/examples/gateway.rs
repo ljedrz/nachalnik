@@ -45,6 +45,10 @@
 //! outright and says what a non-loopback one means, because an example somebody runs on their own
 //! network for an afternoon is a different thing from a program's default. It is not a thing to
 //! leave running, and it is not a thing to put on a network you share.
+//!
+//! What it does refuse is the one way in that needs no network at all: another page open in the
+//! same browser. A request has to be for an address rather than a name, come from this page if it
+//! says where it came from, and post its command as JSON - see `relay::foreign`.
 
 mod relay;
 

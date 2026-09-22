@@ -49,6 +49,13 @@ minor bump may break you.
 
 ### fixed
 
+- **The browser relay in `examples/` refuses requests from other pages.** It checked neither
+  `Host` nor `Origin`, so any page open in the same browser could put `/events` in a frame to open
+  a tab and post to `/do` - a line typed into the session, or a question answered `allow` - and a
+  page on a name made to resolve to this machine could read the stream as well. A request now has
+  to name an address or `localhost`, come from the relay's own page if it says where it came from,
+  and post its command as JSON.
+
 - **A blank line down a pipe is nothing, as enter on an empty prompt is.** A headless run sent it
   as an empty message and paid for the answer, and trimmed only the end of a line, so `  /help`
   was a command at the prompt and a message down a pipe.

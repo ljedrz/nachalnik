@@ -113,6 +113,15 @@ async fn serve(browser: TcpStream, session: &str, tabs: Tabs, named: Named) -> R
         None => (request.target.as_str(), ""),
     };
     let tab = param(query, "tab").unwrap_or_default().to_owned();
+    if let Some(refusal) = foreign(&request) {
+        return reply(
+            &mut write,
+            "403 Forbidden",
+            "text/plain",
+            refusal.as_bytes(),
+        )
+        .await;
+    }
 
     match (request.method.as_str(), path) {
         ("GET", "/") => page(&mut write).await,
@@ -142,6 +151,44 @@ async fn serve(browser: TcpStream, session: &str, tabs: Tabs, named: Named) -> R
         }
         _ => reply(&mut write, "404 Not Found", "text/plain", b"no").await,
     }
+}
+
+/// Why a request did not come from this page, if it did not.
+///
+/// note: a port on loopback is not a boundary a browser keeps. Any page open in the same browser
+/// can put `/events` in a frame to open a tab and then post to `/do` - a POST with a text body is a
+/// simple request and needs no preflight - which is a line typed into the session, or a permission
+/// answered, by a page nobody meant to give either. And with no look at `Host`, a page whose name
+/// is made to resolve here is same-origin with this server and can read the stream as well. So the
+/// host has to be an address or `localhost` rather than a name, which is what a rebinding needs; a
+/// request that says where it came from has to have come from here; and a command has to say it is
+/// JSON, which a page elsewhere cannot send without a preflight this server never answers.
+fn foreign(request: &Request) -> Option<&'static str> {
+    let Some(host) = request.header("host") else {
+        return Some("a request names the host it is for");
+    };
+    let name = match host.strip_prefix('[') {
+        Some(bracketed) => bracketed.split(']').next().unwrap_or_default(),
+        None => host.rsplit_once(':').map_or(host, |(name, _)| name),
+    };
+    if name.parse::<std::net::IpAddr>().is_err() && !name.eq_ignore_ascii_case("localhost") {
+        return Some("this is reached by address, not by a name");
+    }
+    if request
+        .header("origin")
+        .is_some_and(|origin| origin != format!("http://{host}"))
+    {
+        return Some("this answers its own page and no other");
+    }
+    if request.method == "POST"
+        && !request
+            .header("content-type")
+            .is_some_and(|kind| kind.starts_with("application/json"))
+    {
+        return Some("a command is JSON, and says so");
+    }
+
+    None
 }
 
 /// Serves the client, which is one file and no build step.

@@ -348,7 +348,11 @@ function conversation(lines) {
  */
 async function send(command) {
   try {
-    const answer = await fetch(`/do?tab=${tab}`, { method: "POST", body: JSON.stringify(command) });
+    const answer = await fetch(`/do?tab=${tab}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(command),
+    });
     if (answer.ok) return true;
     say("error", `${command.do}: the gateway said ${answer.status} ${answer.statusText}`);
   } catch (e) {

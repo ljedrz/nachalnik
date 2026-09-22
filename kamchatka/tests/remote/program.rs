@@ -222,6 +222,39 @@ fn the_phone_example_writes_every_session_out() {
     };
 
     let mut first = tab("first");
+
+    // and a page somewhere else is refused, whichever door it tries. Each would end the session
+    // if it were taken, so a refusal missed here fails everything after it too
+    let foreign = |extra: &str, host: &str| -> String {
+        let body = json!({ "do": "submit", "line": "/quit" }).to_string();
+        let mut stream = std::net::TcpStream::connect(&page).expect("the page is reachable");
+        stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
+        write!(
+            stream,
+            "POST /do?tab=first HTTP/1.1\r\nHost: {host}\r\n{extra}Content-Length: {}\r\n\
+             Connection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .expect("the request goes out");
+        let mut answer = String::new();
+        let _ = stream.read_to_string(&mut answer);
+        answer
+    };
+    for (extra, host) in [
+        (
+            "Content-Type: application/json\r\nOrigin: http://elsewhere.example\r\n",
+            page.as_str(),
+        ),
+        ("Content-Type: text/plain\r\n", page.as_str()),
+        ("Content-Type: application/json\r\n", "elsewhere.example"),
+    ] {
+        let answer = foreign(extra, host);
+        assert!(
+            answer.starts_with("HTTP/1.1 403"),
+            "a request from somewhere else was taken: {extra}{host}\n{answer}"
+        );
+    }
+
     post("first", "/restart");
     // the restart lets go of every client, which is this stream ending. The page comes back into
     // the new session by itself; this does the same by hand, under another name
