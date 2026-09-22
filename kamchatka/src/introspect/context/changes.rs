@@ -21,7 +21,7 @@ use parking_lot::Mutex;
 use serde_json::{Value, json};
 
 use crate::{
-    app::text::thousands,
+    app::text::{beyond_a_prompt, thousands},
     introspect::{ids, named, protected, unknown},
 };
 
@@ -474,6 +474,17 @@ impl Changes {
         };
         if let Some(why) = protected(&item, &self.pinned.lock(), own_turn(kernel, &call.id)) {
             return ToolOutput::error(format!("[{id}] {why}"));
+        }
+        // note: the three shapes a person's edit is refused for, refused here for the same reason:
+        // text written over a picture is the picture gone, and over a turn whose calls live beside
+        // or among its words it is the calls gone - and their results with them, orphaned and
+        // quietly repaired out of the request. The first paragraph is the part that is not about
+        // an editor on a screen
+        if let Some(why) = beyond_a_prompt(&item) {
+            let why = why.split("\n\n").next().unwrap_or(why);
+            return ToolOutput::error(format!(
+                "[{id}] {why} `revise` writes text, and would write it over the whole item."
+            ));
         }
 
         let before = kernel.budget().used();

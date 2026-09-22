@@ -388,6 +388,67 @@ async fn revise_rewrites_an_item_and_says_who_did_it() {
     )));
 }
 
+/// `revise` refuses what text cannot stand for, which is what a person's edit refuses: a picture,
+/// and a turn whose calls are not in the words it would be replacing.
+///
+/// note: the model's way in skipped the question the person's way asks, so a picture could be
+/// written over with a sentence, and a turn's calls replaced by one - and the calls' results,
+/// orphaned, were quietly repaired out of the request after it.
+#[tokio::test]
+async fn revise_refuses_what_text_cannot_stand_for() {
+    let revise = |id: &str, item: u64| {
+        call(
+            id,
+            "context",
+            json!({ "action": "revise", "ids": [item], "content": "a sentence", "reason": "shorter" }),
+        )
+    };
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![revise("c1", 1), revise("c2", 2)]));
+
+    kernel.push(ContextItem::new(
+        ContextKind::Reference,
+        "user",
+        "pic.png",
+        nachalnik::Content::Blob(std::sync::Arc::new(nachalnik::Blob::new(
+            "image/png",
+            "AAAABBBB",
+        ))),
+    ));
+    kernel.push(ContextItem::assistant(
+        nachalnik::Content::text(""),
+        vec![nachalnik::ToolCall::new(
+            "earlier",
+            "look",
+            std::sync::Arc::new(json!({})),
+        )],
+    ));
+    kernel.push(ContextItem::user("tidy up"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    assert!(
+        kernel
+            .item(nachalnik::ContextId(1))
+            .unwrap()
+            .content
+            .as_blob()
+            .is_some(),
+        "the picture was written over"
+    );
+    assert!(
+        kernel
+            .item(nachalnik::ContextId(2))
+            .unwrap()
+            .content
+            .to_text()
+            .is_empty(),
+        "a sentence went onto a turn that is a call and nothing else"
+    );
+    let said = answers_from(&kernel, &["context"]);
+    assert!(said[0].contains("picture"), "{}", said[0]);
+    assert!(said[1].contains("tool call"), "{}", said[1]);
+}
+
 #[tokio::test]
 async fn undo_walks_back_this_tools_own_changes_and_nothing_else() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![

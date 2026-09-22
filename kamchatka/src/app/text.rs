@@ -517,8 +517,9 @@ pub(crate) fn whole(content: &Content) -> String {
 ///
 /// note: not gated on `tui`, because the terminal's `e` is no longer the only way in. A client
 /// editing an item over [`crate::remote`] reaches [`super::App::revise`], which asks this the same
-/// question before it writes - so the three shapes that cannot be rewritten are refused wherever
-/// the edit came from, and are refused in one place rather than two that drift.
+/// question before it writes, and so does the model's own `context revise` - so the three shapes
+/// that cannot be rewritten are refused wherever the edit came from, and are refused in one place
+/// rather than three that drift.
 ///
 /// note: an editor shows `Content::to_text` and commits what comes back as `Content::text`, so it
 /// is faithful exactly where those two are the whole of the item. [`stored`] is the function that

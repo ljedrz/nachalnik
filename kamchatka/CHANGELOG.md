@@ -49,6 +49,12 @@ minor bump may break you.
 
 ### fixed
 
+- **The model's `context revise` refuses what a person's edit refuses.** A picture, a turn recorded
+  as blocks, and a turn that is a call and nothing else are refused by `App::revise`, because text
+  written over them destroys what the text was never the whole of - and the model's way in skipped
+  the question. Under `--gemini` a revised turn lost its calls, and their results were orphaned and
+  quietly repaired out of the request after it.
+
 - **`kamchatka --print-config > kamchatka.json` works.** The settings file was looked for and read
   before the flag was, and the shell had already emptied the file being redirected into - so the
   one documented use of the flag failed with a parse error and left an empty file behind.
