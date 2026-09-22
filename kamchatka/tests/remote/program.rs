@@ -20,7 +20,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{PATIENCE, Peer, connect, quit, served, served_at};
+use crate::{PATIENCE, Peer, quit, served, served_at};
 
 /// The two flags, the socket file, and a whole session driven from one process to another.
 ///
@@ -32,6 +32,10 @@ use crate::{PATIENCE, Peer, connect, quit, served, served_at};
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
+    // note: imported here rather than at the top, because `connect` is `#[cfg(unix)]` and so is
+    // every test that calls it. At the top it is an unresolved import on Windows
+    use crate::connect;
+
     let base = crate::common::endpoint(vec![answer("what the other end reads")]).await;
     let dir = crate::common::scratch("served");
     let socket = dir.join("kamchatka.sock");
