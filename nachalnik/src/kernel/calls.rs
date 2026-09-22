@@ -179,7 +179,15 @@ impl Kernel {
     ) -> ToolOutput {
         let (grant, source) = grant.expect("every claimed call has been decided");
         if grant == Grant::Deny {
-            return ToolOutput::error(refusal(source, self.policy().why(&request)));
+            // asked only where the policy is what refused it. `refusal` puts a reason into the
+            // standing-rule wording and into no other, so asking anywhere else computes an
+            // explanation of somebody else's decision and drops it
+            let why = match source {
+                GrantSource::Policy => self.policy().why(&request),
+                _ => None,
+            };
+
+            return ToolOutput::error(refusal(source, why));
         }
 
         self.emit(Event::ToolStarted {
@@ -338,15 +346,18 @@ impl Kernel {
 /// `verdict`, no `grant`: a tool result is read by a model, and a sentence in a codebase's own
 /// idiom reads to one like a state it is supposed to recognise.
 fn refusal(source: GrantSource, why: Option<String>) -> String {
-    let reason = why.unwrap_or_else(|| "the permission policy refused it".to_owned());
-
     match source {
         // a standing rule: the same call will meet the same answer, and so will a paraphrase of
         // it, so the useful move is a different approach or a question to whoever set the rule
-        GrantSource::Policy => format!(
-            "the call was not permitted: {reason}. That is a standing rule rather than an \
-             answer to this one call, so making the same call again will be refused the same way."
-        ),
+        GrantSource::Policy => {
+            let reason = why.unwrap_or_else(|| "the permission policy refused it".to_owned());
+
+            format!(
+                "the call was not permitted: {reason}. That is a standing rule rather than an \
+                 answer to this one call, so making the same call again will be refused the same \
+                 way."
+            )
+        }
         // asked and answered: this call was refused, and nothing was said about the next one
         GrantSource::User => "the call was not permitted: this call was refused when it was \
                               asked about. That is an answer to this call rather than a standing \

@@ -41,6 +41,13 @@ minor bump may break you.
 
 ### changed
 
+- **A policy is asked `why` only about a refusal its own verdict made.** The kernel called it for
+  every refused call and then used the answer for policy-sourced refusals alone, so a policy that
+  answered `Ask` and had its question refused by a person was asked to explain a decision it did
+  not make, and the explanation was computed and dropped. The wording the model reads is
+  unchanged - a call somebody refused still says it was an answer to that call rather than a
+  standing rule - and `PermissionPolicy::why` now says which refusals it is asked about.
+
 - Three doc notes that said what the code does not. `Blob::wire_len` said `meta` never reaches a
   provider, where the field's own note says one reads `name` out of it and
   `nachalnik-providers` does. `Session::last_seq` said `0` when there is no record, where a

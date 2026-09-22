@@ -297,10 +297,14 @@ pub trait PermissionPolicy: Send + Sync {
     /// Why this policy refused a call, in words the model can act on; `None` when it has nothing
     /// to add beyond the refusal itself.
     ///
-    /// note: the kernel calls this only for a call it is about to refuse, and puts what comes
-    /// back into the tool result the model reads. Defaulted, because a policy with nothing to say
-    /// should implement nothing: the kernel still reports whether a refusal was a standing rule
-    /// or an answer to this one call, which is the part it knows on its own.
+    /// note: the kernel calls this only for a call *this policy's own verdict* refused, and puts
+    /// what comes back into the tool result the model reads. A call the policy left to
+    /// [`Kernel::decide`] and a person then refused is not asked about: whoever answered had
+    /// their own reason, the standing rules are not what stopped it, and a policy's account of a
+    /// decision it did not make would be read by the model as the rule to work around.
+    /// Defaulted, because a policy with nothing to say should implement nothing: the kernel still
+    /// reports whether a refusal was a standing rule or an answer to this one call, which is the
+    /// part it knows on its own.
     ///
     /// note: the reason itself is emphatically not the kernel's. It is made of a policy's own
     /// vocabulary - which capability, which path rule, which of several subjects actually did it
