@@ -185,7 +185,7 @@ impl App {
         if grant == Grant::Allow
             && request.capabilities.contains(&Capability::exec("run"))
             && crate::tools::ops::inner(&request.args)
-                .unwrap_or(&request.args)
+                .unwrap_or(std::borrow::Cow::Borrowed(&request.args))
                 .get("cmd")
                 .and_then(|cmd| cmd.as_str())
                 .is_some_and(crate::tools::reaches_the_network)
@@ -253,7 +253,7 @@ impl App {
         // here as one about to move things. A selector is the argument most worth expanding -
         // nobody can count `all:tool_results` off the screen this overlay is covering - and a
         // call naming its items both ways is one the tool refuses, so there is nothing to name
-        let Ok(named) = crate::introspect::named(&items, args) else {
+        let Ok(named) = crate::introspect::named(&items, &args) else {
             return Vec::new();
         };
         let named = named.ids;

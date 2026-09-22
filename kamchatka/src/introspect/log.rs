@@ -144,6 +144,7 @@ impl Tool for Log {
             Ok(args) => args,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        let args = &*args;
         if let Some(named) = args["action"].as_str().filter(|it| *it != "read") {
             return Ok(ToolOutput::error(unknown(named, &actions(&self.ops))));
         }

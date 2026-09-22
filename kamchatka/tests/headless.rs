@@ -340,20 +340,21 @@ impl Tool for Several {
 
 /// A run with nobody at it says why a rule that was given did not answer the question.
 ///
-/// note: the whole of the failure this is about happened in one session and cost twenty calls. A
-/// model wrote the wrapper as a string of JSON, so no operation could be read out of it, so the
-/// call declared every operation `fs` has - and `--allow fs:read` then matched nothing. What the
-/// run said was `deny, because nobody is here to be asked`, which is true and is about the wrong
-/// thing: the model went looking for a different approach, and the person watching had no way to
-/// see that their rule and the call could never meet.
+/// note: the whole of the failure this is about happened in one session and cost twenty calls. No
+/// operation could be read out of the arguments, so the call declared every operation `fs` has -
+/// and `--allow fs:read` then matched nothing. What the run said was `deny, because nobody is here
+/// to be asked`, which is true and is about the wrong thing: the model went looking for a
+/// different approach, and the person watching had no way to see that their rule and the call
+/// could never meet.
+///
+/// note: the call here leaves `action` out, where the session that bought this wrote the whole
+/// wrapper as a string of JSON. That shape is read through now - see `ops::inner` - and the
+/// widening it caused is reached by any call whose operation cannot be read, so the test asks for
+/// the one that is still a call nobody can place.
 #[tokio::test]
 async fn a_call_that_names_no_operation_says_why_the_rule_missed_it() {
     let script = vec![
-        ModelResponse::tool_calls(vec![call(
-            "c1",
-            "fs",
-            json!({ "call": "{\"action\": \"read\", \"path\": \"x\"}" }),
-        )]),
+        ModelResponse::tool_calls(vec![call("c1", "fs", json!({ "call": { "path": "x" } }))]),
         ModelResponse::text("told it was refused"),
     ];
     let run = run("read it\n", script, |app| {
