@@ -966,16 +966,26 @@ impl Kernel {
     }
 
     /// Replaces an item's content in place, keeping its identifier.
+    ///
+    /// note: a replacement with what the item already says is not an operation. Nothing observable
+    /// changes, so nothing is announced and no checkpoint is taken - the same rule
+    /// [`Kernel::set_state`] follows through `Context::would_change`. A checkpoint for it would be
+    /// an undo that puts back a state identical to the one it was asked from, and the operation
+    /// somebody actually wanted reverted would need a second one.
     pub fn replace(&self, id: ContextId, content: impl Into<Content>) -> Result<()> {
         let counter = self.counter();
+        let content = content.into();
         let mut context = self.0.context.write();
         // an operation that is about to fail does not get a checkpoint
-        if context.item(id).is_none() {
+        let Some(item) = context.item(id) else {
             return Err(Error::UnknownItem(id));
+        };
+        if item.content == content {
+            return Ok(());
         }
         context.checkpoint();
 
-        match context.replace(id, content.into(), &*counter) {
+        match context.replace(id, content, &*counter) {
             Some((was, tokens_before, tokens_after)) => {
                 self.emit(Event::ContextReplaced {
                     id,

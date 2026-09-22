@@ -64,8 +64,10 @@ fn an_operation_that_does_nothing_does_not_spend_an_undo() {
 
     let depth = kernel.with_context(|c| c.undo_len());
 
-    // a replace of something that is not there, and a state change that is already true
+    // a replace of something that is not there, a replace with what the item already says, and a
+    // state change that is already true
     assert!(kernel.replace(ContextId(999), "nope").is_err());
+    assert!(kernel.replace(a, "a").is_ok());
     assert!(
         kernel
             .set_state([a], ContextState::Excluded, Some("too big".into()))
