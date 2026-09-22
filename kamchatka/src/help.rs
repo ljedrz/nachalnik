@@ -335,7 +335,7 @@ pub(crate) const SELECTORS: &str = "  17                      the item with that
   file:src/parser.rs      the file with that path
   tool:grep               every result the `grep` tool produced
   tool:grep:latest        the most recent one; also: tool:grep:first
-  tool_result:1842        the tool result with that call id
+  tool_result:1842        the item numbered 1842, the same as `1842`
   label:cargo test        every item with exactly that label
   src/parser.rs           anything else is taken as a label
 
