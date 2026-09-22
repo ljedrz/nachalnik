@@ -467,11 +467,17 @@ enum Ending {
 /// about how it was driven - and while it was inline at the bottom of `session` a third loop meant
 /// a third copy of the two decisions [`Ending`] names.
 fn finish(app: &App, record: bool, ending: Ending, outcome: Result<()>) -> Result<()> {
-    // note: the headless driver and the server have each ended the session themselves, so that the
-    // record saying so goes down their own stream with the rest rather than being the one nobody
-    // was sent. `Kernel::finish` emits an event every time it is called, so this is an either-or
-    // rather than a belt and braces
-    if matches!(ending, Ending::Spoken) {
+    // note: the headless driver and the server each end the session themselves, so that the record
+    // saying so goes down their own stream with the rest rather than being the one nobody was sent.
+    // `Kernel::finish` emits an event every time it is called, so this asks the log whether it has
+    // been, rather than asking which loop ran: a loop meant to end the session can leave before it
+    // gets there - the headless driver returns on a line it cannot read, or a stdout that went away
+    // - and the record written below still has to say the session ended
+    let ended = app.kernel.with_history(|log| {
+        log.since(0)
+            .any(|record| matches!(record.event, nachalnik::Event::SessionFinished))
+    });
+    if !ended {
         app.kernel.finish();
     }
     // note: on stderr in a headless run, because stdout is the log there. A line of prose in the

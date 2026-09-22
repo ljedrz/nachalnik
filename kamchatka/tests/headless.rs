@@ -1495,6 +1495,54 @@ async fn a_recorded_run_writes_the_session_where_it_says_it_did() {
     );
 }
 
+/// A run that leaves on an error still records a session that ended.
+///
+/// note: the headless driver ends the session itself, and returned before it got there on a line
+/// it could not read - so the record was written with no `session.finished` in it, which reads as
+/// a process that was killed rather than one that stopped.
+#[cfg(unix)]
+#[test]
+fn a_run_that_fails_still_records_an_ending() {
+    use std::io::Write as _;
+
+    let dir = common::scratch("failed-record");
+    let mut child = std::process::Command::new(common::program())
+        .args(["--headless", "-m", "nothing"])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .env("TMPDIR", &dir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    child
+        .stdin
+        .take()
+        .expect("a pipe")
+        .write_all(b"\xff\n")
+        .expect("typed");
+    let out = child.wait_with_output().expect("it ends");
+    assert!(
+        !out.status.success(),
+        "a line it could not read is a failure"
+    );
+
+    let log = std::fs::read_dir(dir.join("kamchatka"))
+        .expect("the record directory")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|it| it == "jsonl"))
+        .expect("a record was written");
+    let last = std::fs::read_to_string(&log)
+        .expect("readable")
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Record>(line).ok())
+        .next_back()
+        .expect("a record");
+    assert_eq!(last.event.name(), "session.finished");
+}
+
 /// One streamed answer, with what it cost on the end of it.
 #[cfg(unix)]
 fn answer(text: &str) -> String {

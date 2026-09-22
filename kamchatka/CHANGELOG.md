@@ -49,6 +49,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A headless run that leaves on an error still records a session that ended.** The line driver
+  ends the session itself and returned before it got there on a line it could not read or a stdout
+  that went away, so the record was written with no `session.finished` - which reads as a process
+  that was killed. The program ends the session wherever the log does not already say it ended.
+
 - **The model cannot take off a pin the person made, on an item it once pinned itself.** What the
   model had pinned was a list of identifiers only its own moves wrote, so an item the person
   unpinned and pinned again stayed on it, and the model's next `restore` removed the person's pin.
