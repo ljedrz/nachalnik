@@ -11,7 +11,7 @@
 //! journal rather than the kernel's stack, which belongs to the person. Both rules are in the
 //! doc comments below, where the code that enforces them is.
 
-use std::{cmp::Ordering, collections::BTreeSet};
+use std::cmp::Ordering;
 
 use nachalnik::{
     Content, ContextId, ContextItem, ContextKind, ContextState, Kernel, ToolCall, ToolCallId,
@@ -117,7 +117,7 @@ impl Undoing {
     /// note: `own_turn` is `None` because a change recorded earlier cannot be about the turn this
     /// call is speaking in: that item did not exist when the change was made, and identifiers are
     /// never reused.
-    fn apply(self, kernel: &Kernel, mine: &BTreeSet<ContextId>) -> Applied {
+    fn apply(self, kernel: &Kernel, mine: &crate::introspect::Mine) -> Applied {
         match self {
             Self::States(states) => {
                 let mut back = Vec::new();
@@ -348,7 +348,7 @@ impl Changes {
             .collect();
         let changed = kernel.set_state(allowed, state, Some(reason.to_owned()));
         for id in &changed.changed {
-            self.note_pin(*id, state);
+            self.note_pin(*id, state, Some(reason.to_owned()));
         }
         // note: `StateChange::unchanged` is "already in that state *with that note*", so an item
         // that was pinned and is being pinned again for a different reason comes back as changed -
@@ -587,11 +587,13 @@ impl Changes {
         let mut item = ContextItem::new(ContextKind::Reference, "agent", label, content.to_owned())
             .because(reason.to_owned());
         if pin {
+            // with the reason as the note, which is what says the pin is the model's; see `Mine`
             item = item.pinned();
+            item.note = Some(reason.to_owned());
         }
         let id = kernel.push(item);
         if pin {
-            self.note_pin(id, ContextState::Pinned);
+            self.note_pin(id, ContextState::Pinned, Some(reason.to_owned()));
         }
         // the way back from having written it is to put it away; nothing here destroys anything,
         // so an undone note is archived and still listed rather than gone
@@ -673,7 +675,7 @@ impl Changes {
         }
         for id in touched {
             if let Some(item) = kernel.item(id) {
-                self.note_pin(id, item.state);
+                self.note_pin(id, item.state, item.note.clone());
             }
         }
 
@@ -725,11 +727,11 @@ impl Changes {
         journal.done.push(undoing);
     }
 
-    /// Remembers whether this tool is the one holding an item pinned.
-    fn note_pin(&self, id: ContextId, state: ContextState) {
+    /// Remembers whether this tool is the one holding an item pinned, and with what note.
+    fn note_pin(&self, id: ContextId, state: ContextState, note: Option<String>) {
         let mut mine = self.pinned.lock();
         match state {
-            ContextState::Pinned => mine.insert(id),
+            ContextState::Pinned => mine.insert(id, note),
             _ => mine.remove(&id),
         };
     }

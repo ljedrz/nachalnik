@@ -49,6 +49,12 @@ minor bump may break you.
 
 ### fixed
 
+- **The model cannot take off a pin the person made, on an item it once pinned itself.** What the
+  model had pinned was a list of identifiers only its own moves wrote, so an item the person
+  unpinned and pinned again stayed on it, and the model's next `restore` removed the person's pin.
+  A pin is the model's now while the item still carries the note the model pinned it with; the
+  person's pins carry none, and a note the model pins as it writes carries its reason.
+
 - **`--compact` is refused unless it is a fraction.** `80`, meant as a percentage, installed no
   compactor and said nothing, and zero or less installed one that took every tool result. The
   settings file's `compact` is held to the same rule.

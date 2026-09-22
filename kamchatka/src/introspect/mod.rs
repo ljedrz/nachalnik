@@ -33,7 +33,7 @@
 //! reason handed back to the model. The agent is not the boss.
 
 use std::{
-    collections::BTreeSet,
+    collections::BTreeMap,
     sync::{Arc, Weak},
 };
 
@@ -229,16 +229,21 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
     }
 }
 
+/// The pins the model made itself, and the note each was made with.
+///
+/// note: the note because an identifier alone went stale. It was only ever written by the model's
+/// own moves, so an item the model pinned and the person then unpinned and pinned again was still
+/// on the list - and the model could take the person's pin off. The person's pins carry no note and
+/// the model's carry its reason, so a pin is the model's while the item still says what the model
+/// wrote.
+type Mine = BTreeMap<ContextId, Option<String>>;
+
 /// Why this item is not the model's to change, if it is not.
-fn protected(
-    item: &ContextItem,
-    mine: &BTreeSet<ContextId>,
-    own_turn: Option<ContextId>,
-) -> Option<String> {
+fn protected(item: &ContextItem, mine: &Mine, own_turn: Option<ContextId>) -> Option<String> {
     if matches!(item.kind, ContextKind::System) {
         return Some("a system instruction, which belongs to whoever started this session".into());
     }
-    if item.state == ContextState::Pinned && !mine.contains(&item.id) {
+    if item.state == ContextState::Pinned && mine.get(&item.id) != Some(&item.note) {
         return Some("pinned by the person you are working with, and a pin is a promise".into());
     }
     if own_turn == Some(item.id) {

@@ -329,6 +329,45 @@ async fn context_may_unpin_only_what_it_pinned_itself() {
     assert_eq!(kernel.items()[0].state, ContextState::Active);
 }
 
+/// And a pin the person has since made their own is theirs, even on an item the model once pinned.
+///
+/// note: what the model had pinned was kept as a list of identifiers written only by its own
+/// moves, so the person taking the pin off and putting one back left the item on the list - and
+/// the model's next `restore` took the person's pin away.
+#[tokio::test]
+async fn a_pin_the_person_made_again_is_the_persons() {
+    let mut script = one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "pin", "ids": [1], "reason": "I need this" }),
+    )]);
+    script.extend(one_turn(vec![call(
+        "c2",
+        "context",
+        json!({ "action": "restore", "ids": [1], "reason": "no I do not" }),
+    )]));
+    let (kernel, _provider, _anchor) = agent(script);
+
+    let file = kernel.push(ContextItem::file("maybe.rs", "..."));
+    kernel.push(ContextItem::user("think about it"));
+    kernel.turn().await.expect("the first turn failed");
+    assert_eq!(kernel.item(file).unwrap().state, ContextState::Pinned);
+
+    // the person takes it off and puts their own on, the way `p` on the context tab does
+    kernel.set_state([file], ContextState::Active, None);
+    kernel.set_state([file], ContextState::Pinned, None);
+
+    kernel.push(ContextItem::user("and now?"));
+    kernel.turn().await.expect("the second turn failed");
+
+    assert!(
+        answered(&kernel).contains("a pin is a promise"),
+        "{}",
+        answered(&kernel)
+    );
+    assert_eq!(kernel.item(file).unwrap().state, ContextState::Pinned);
+}
+
 #[tokio::test]
 async fn context_will_not_touch_the_turn_it_is_speaking_in() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(

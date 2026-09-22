@@ -47,7 +47,7 @@ use changes::{Changes, own_turn};
 
 /// The items the agent pinned itself, shared between the half that sets them and the half that
 /// reports them.
-type Pinned = Arc<Mutex<BTreeSet<ContextId>>>;
+type Pinned = Arc<Mutex<super::Mine>>;
 
 /// How much of an item's text the listing shows on its row.
 const GLIMPSE: usize = 48;
@@ -537,7 +537,7 @@ fn matched(
     kernel: &Kernel,
     select: &str,
     ids: &[ContextId],
-    mine: &BTreeSet<ContextId>,
+    mine: &super::Mine,
     own: Option<ContextId>,
 ) -> String {
     let items = kernel.items();
@@ -1009,7 +1009,7 @@ fn around(needle: &str) -> impl Fn(&str) -> String + '_ {
 /// whole log with `since: 0` - a 2,938-token item that was the most expensive thing it carried for
 /// the next forty turns. An ordinal in a tool whose output is a numbered table has two readings and
 /// costs whatever the wrong one costs.
-fn budget(kernel: &Kernel, mine: &BTreeSet<ContextId>) -> String {
+fn budget(kernel: &Kernel, mine: &super::Mine) -> String {
     let budget = kernel.budget();
     let going = Going::of(kernel);
     let withheld: usize = kernel
