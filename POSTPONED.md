@@ -153,16 +153,19 @@ Referenced from [AGENTS.md](AGENTS.md).
   restriction leaks past the spawn, which is the opposite of the re-execution this program does
   deliberately.
 
-  `tests/sandbox.rs` is `#![cfg(target_os = "linux")]` at the file level, so the `macos-latest`
-  column in CI is green while checking none of this. Splitting it is the first step, and this
-  entry used to say the portable half included *a command cannot write outside the working
+  **The first step is done.** `tests/sandbox.rs` was `#![cfg(target_os = "linux")]` at the file
+  level, so the `macos-latest` column in CI was green while checking none of this. Everything up
+  to the spawn is `tests/boundary.rs` now, under `#![cfg(unix)]` - the `Reach` rules the file
+  tools obey, what a refusal names, the `~` refused in words rather than expanded, the arguments
+  a confinement travels as, what the scratch directory may be made through, and which errors
+  `Sandbox::note_for` will claim. Six of the twenty-six, and `cfg(unix)` rather than nothing at
+  all because they are written against `/usr` and `/etc` and a root with no drive letter is not
+  absolute on Windows.
+
+  This entry used to say the portable half included *a command cannot write outside the working
   directory* and *a `curl` is refused*. It does not: both of those are a spawned process being
-  stopped, which off Linux nothing does - they are the whole of what is left here. What runs on
-  both is everything up to the spawn, which is seven of the twenty-three: the `Reach` rules the
-  file tools obey, what a refusal names, the `~` refused in words rather than expanded, the
-  arguments a confinement travels as, and what `shell` says about itself before anything runs.
-  Those want `#![cfg(unix)]` rather than nothing at all, because they are written against `/usr`
-  and `/etc` and a root with no drive letter is not absolute on Windows.
+  stopped, which off Linux nothing does - they are the whole of what is left in `sandbox.rs`, and
+  a backend is what would check them.
 
   **The Mac binary is separable and is not blocked by any of it.** It is one matrix entry on
   `macos-latest` for `aarch64-apple-darwin` in the `upload-rust-binary-action` the Linux job

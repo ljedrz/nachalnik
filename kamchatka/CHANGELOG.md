@@ -23,6 +23,16 @@ minor bump may break you.
   and a headless run now say which it is: a call that named nothing, or one that named something
   the tool does not do, and what a rule that would have answered looks like.
 
+### changed
+
+- **The sandbox suite is two: `tests/sandbox.rs` for what needs a process, `tests/boundary.rs` for
+  what does not.** The first is `#![cfg(target_os = "linux")]`, as it was; the second is
+  `#![cfg(unix)]`, and holds the six tests that never spawn anything - which paths `Reach` admits,
+  what a refusal names, the `~` refused in words rather than expanded, what a confinement travels
+  as on a command line, what the scratch directory may be made through, and which errors
+  `Sandbox::note_for` will claim. All six were behind the Linux gate because the file was, so the
+  `macos-latest` column in CI passed without running any of them. Nothing moved in `src`.
+
 ### fixed
 
 - **`/step` with a message, refused, said it in a sentence with a hole in the middle.** The
