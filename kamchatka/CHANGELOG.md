@@ -33,6 +33,21 @@ minor bump may break you.
   directory now needs `--sandbox-allow <the socket>`, and `--sandbox-read` will not do it -
   connecting is the writing half of the rule, because what comes back from a socket is whatever
   the process behind it was willing to do.
+- **A browser watching a session through `examples/phone.rs` came back after `/restart`.** It
+  could not. `EventSource` reconnects with `Last-Event-ID`, which the relay hands the session as
+  `attach { since }` under the name it read off the first projection - and behind that address is
+  now a session of its own, with a log of its own, so the attach is refused. That refusal went
+  through to the page as an error, the stream closed, the browser opened another a second later
+  carrying the same watermark, and the same line arrived again for as long as the tab was open.
+  The one thing nobody could see was the session the restart had just started, whose first line
+  says where the old one was written.
+
+  The relay does what `remote::Client` does with the same answer, because a relay is a client:
+  only a fresh attach can succeed now, so it puts down the watermark and the name and makes one.
+  The `attached` that comes back carries the new session's `seq`, which is the `id:` that puts the
+  browser's own watermark where it belongs. A version refusal is still passed on untouched -
+  nothing mends that one. `examples/gateway.rs` shares the relay and is fixed with it, for the
+  restart at the other end of it.
 
 - **`session.finished` was recorded twice for a session `/restart` replaced.** A served loop and a
   headless one each end their own session, because the last record is owed to the stream they are

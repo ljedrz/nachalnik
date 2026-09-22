@@ -19,7 +19,10 @@ use std::{
 use kamchatka::remote::protocol::{self, Address, Command};
 use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
-    net::{TcpListener, TcpStream},
+    net::{
+        TcpListener, TcpStream,
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+    },
     sync::mpsc,
 };
 
@@ -169,28 +172,17 @@ async fn stream<W: AsyncWrite + Unpin>(
         )
         .await;
     };
-    let upstream = match TcpStream::connect(host).await {
-        Ok(stream) => stream,
-        Err(e) => {
-            let said = format!("could not reach the session at {host}: {e}");
-            return reply(write, "502 Bad Gateway", "text/plain", said.as_bytes()).await;
-        }
+    // note: the whole attach happens before the head goes out, which is what makes the retry below
+    // possible: nothing has been said to the browser yet, so a second attempt is the first one it
+    // hears about. A `200` on this route means "attached", and now it is true when it is sent
+    let Some(Upstream {
+        mut up,
+        mut down,
+        first,
+    }) = attach(host, since, &named, write).await?
+    else {
+        return Ok(());
     };
-    let _ = upstream.set_nodelay(true);
-    let (up, mut down) = upstream.into_split();
-    let mut up = protocol::Frames::new(BufReader::new(up));
-    // taken out of the lock before the write rather than inside the call, because a guard held
-    // across an `await` is a future that cannot be sent between threads
-    let was = named.lock().expect("the name is not poisoned").clone();
-    protocol::write(
-        &mut down,
-        &Command::Attach {
-            since,
-            session: was,
-            version: Some(protocol::VERSION),
-        },
-    )
-    .await?;
 
     // note: no `Content-Length` and no chunking - a response with neither is delimited by the
     // connection closing, which is what a stream is. It is the one thing this saves by not being a
@@ -208,6 +200,9 @@ async fn stream<W: AsyncWrite + Unpin>(
         .write_all(format!("retry: {RETRY}\n\n").as_bytes())
         .await
         .map_err(|e| e.to_string())?;
+    if !forward(write, &first, &named).await? {
+        return Ok(());
+    }
 
     let (to_session, mut commands) = mpsc::unbounded_channel();
     let mine = to_session.clone();
@@ -240,6 +235,92 @@ async fn stream<W: AsyncWrite + Unpin>(
     relayed
 }
 
+/// A connection to the session with its attach already answered.
+struct Upstream {
+    /// What the session says, framed.
+    up: protocol::Frames<BufReader<OwnedReadHalf>>,
+    /// What this end says back.
+    down: OwnedWriteHalf,
+    /// The answer to the attach, which the browser is owed like every message after it.
+    first: serde_json::Value,
+}
+
+/// Opens a connection to the session and attaches to it, starting again from nothing where the
+/// watermark this tab is holding belongs to a session that is not there any more.
+///
+/// note: what `remote::Client` does with the same answer, and for the same reason - a relay is a
+/// client. `/restart` leaves a session of its own behind this address, so a resume naming the one
+/// before it, or numbered from its log, is refused, which is the check doing its job. Passed on to
+/// the page it was a `failed` line, a closed stream, a reconnection a second later carrying the
+/// same `Last-Event-ID`, and the same line again for as long as the tab was open - and the session
+/// the restart had just started, with the path the old one was written to as its first line, was
+/// the one thing nobody could see. Only a fresh attach can succeed now, so this is where it is
+/// made: the `attached` that answers one carries the new session's `seq`, which is the `id:` that
+/// puts the browser's own watermark back where it belongs.
+///
+/// note: the answer is read here rather than left to the relay, because it is the only place both
+/// halves of the retry are still to hand - the connection to replace and the watermark to drop -
+/// and it is handed back so that the browser is told what it said like anything else.
+///
+/// note: a version refusal is passed on untouched, because nothing mends it. Attaching again says
+/// the same thing and is refused for the same reason, which is the minute `remote::Client` spent
+/// finding that out.
+async fn attach<W: AsyncWrite + Unpin>(
+    host: &str,
+    since: Option<u64>,
+    named: &Named,
+    write: &mut W,
+) -> Result<Option<Upstream>, String> {
+    let mut since = since;
+    loop {
+        let upstream = match TcpStream::connect(host).await {
+            Ok(stream) => stream,
+            Err(e) => {
+                let said = format!("could not reach the session at {host}: {e}");
+                reply(write, "502 Bad Gateway", "text/plain", said.as_bytes()).await?;
+
+                return Ok(None);
+            }
+        };
+        let _ = upstream.set_nodelay(true);
+        let (up, mut down) = upstream.into_split();
+        let mut up = protocol::Frames::new(BufReader::new(up));
+        // taken out of the lock before the write rather than inside the call, because a guard held
+        // across an `await` is a future that cannot be sent between threads
+        let was = named.lock().expect("the name is not poisoned").clone();
+        protocol::write(
+            &mut down,
+            &Command::Attach {
+                since,
+                session: was,
+                version: Some(protocol::VERSION),
+            },
+        )
+        .await?;
+
+        // a session that took the connection and went away before answering it. Said as a gateway
+        // error rather than as an empty reply, because that is what it is, and the browser opens
+        // another in a second either way
+        let Some(first) = protocol::read::<serde_json::Value>(&mut up).await? else {
+            let said = format!("the session at {host} closed without answering the attach");
+            reply(write, "502 Bad Gateway", "text/plain", said.as_bytes()).await?;
+
+            return Ok(None);
+        };
+        let refused = first.get("is").and_then(serde_json::Value::as_str) == Some("failed")
+            && first.get("about").and_then(serde_json::Value::as_str) == Some("attach");
+        // `since` and not the refusal alone, so there are two attempts and not a loop: an attach
+        // carrying no watermark cannot be refused for one
+        if refused && since.is_some() {
+            *named.lock().expect("the name is not poisoned") = None;
+            since = None;
+            continue;
+        }
+
+        return Ok(Some(Upstream { up, down, first }));
+    }
+}
+
 /// Turns every message the session sends into one event, until one end stops.
 async fn relay<W: AsyncWrite + Unpin, R: AsyncBufRead + Unpin>(
     write: &mut W,
@@ -251,38 +332,55 @@ async fn relay<W: AsyncWrite + Unpin, R: AsyncBufRead + Unpin>(
     // a later session said into `Message::Unknown` on the way past - which is the relay deciding
     // what the page is allowed to hear. What it has to understand is the tag and one number
     while let Some(message) = protocol::read::<serde_json::Value>(up).await? {
-        let is = message.get("is").and_then(serde_json::Value::as_str);
-        // the one place the session says what it is called, and what the next stream's resume has
-        // to name; see `Named`
-        if is == Some("attached")
-            && let Some(session) = message.get("session").and_then(serde_json::Value::as_str)
-        {
-            *named.lock().expect("the name is not poisoned") = Some(session.to_owned());
-        }
-        // note: the whole mapping, and it is three lines because the standard already had the
-        // shape. An `id:` is what a browser resumes from, so it goes on exactly the messages that
-        // *can* be resumed from - which is the numbered ones, which is the ones in the log
-        //
-        // note: `projected` carries a `seq` that would be a valid one, which is the near miss
-        // worth naming. It is an answer to a command rather than a place in the stream, and a
-        // browser resuming from it would be resuming from a message nobody can ask for again by
-        // number. The rule is what can be *re-sent*, not what has a number on it
-        let id = matches!(is, Some("record" | "attached"))
-            .then(|| message.get("seq").and_then(serde_json::Value::as_u64))
-            .flatten();
-        let data = serde_json::to_string(&message).map_err(|e| e.to_string())?;
-        let event = match id {
-            Some(id) => format!("id: {id}\ndata: {data}\n\n"),
-            None => format!("data: {data}\n\n"),
-        };
-        // a browser that has gone is not an error, it is a browser that has gone
-        if write.write_all(event.as_bytes()).await.is_err() {
+        if !forward(write, &message, named).await? {
             return Ok(());
         }
-        write.flush().await.map_err(|e| e.to_string())?;
     }
 
     Ok(())
+}
+
+/// Writes one message out as one event; `false` where the browser has gone.
+///
+/// note: a function rather than the body of the loop above, because the first message off a fresh
+/// connection is read by [`attach`] and owes the page exactly what every one after it does - the
+/// same `id:`, and the same note of what the session is called.
+async fn forward<W: AsyncWrite + Unpin>(
+    write: &mut W,
+    message: &serde_json::Value,
+    named: &Named,
+) -> Result<bool, String> {
+    let is = message.get("is").and_then(serde_json::Value::as_str);
+    // the one place the session says what it is called, and what the next stream's resume has
+    // to name; see `Named`
+    if is == Some("attached")
+        && let Some(session) = message.get("session").and_then(serde_json::Value::as_str)
+    {
+        *named.lock().expect("the name is not poisoned") = Some(session.to_owned());
+    }
+    // note: the whole mapping, and it is three lines because the standard already had the
+    // shape. An `id:` is what a browser resumes from, so it goes on exactly the messages that
+    // *can* be resumed from - which is the numbered ones, which is the ones in the log
+    //
+    // note: `projected` carries a `seq` that would be a valid one, which is the near miss
+    // worth naming. It is an answer to a command rather than a place in the stream, and a
+    // browser resuming from it would be resuming from a message nobody can ask for again by
+    // number. The rule is what can be *re-sent*, not what has a number on it
+    let id = matches!(is, Some("record" | "attached"))
+        .then(|| message.get("seq").and_then(serde_json::Value::as_u64))
+        .flatten();
+    let data = serde_json::to_string(message).map_err(|e| e.to_string())?;
+    let event = match id {
+        Some(id) => format!("id: {id}\ndata: {data}\n\n"),
+        None => format!("data: {data}\n\n"),
+    };
+    // a browser that has gone is not an error, it is a browser that has gone
+    if write.write_all(event.as_bytes()).await.is_err() {
+        return Ok(false);
+    }
+    write.flush().await.map_err(|e| e.to_string())?;
+
+    Ok(true)
 }
 
 /// One request's first line and headers.
