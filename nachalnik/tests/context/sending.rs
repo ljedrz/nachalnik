@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    BytesPerToken, ContextItem, ContextState, TokenCounter,
+    BytesPerToken, ContextItem, ContextState, Projector, TokenCounter,
     test::{ConstTool, EchoTool},
 };
 use serde_json::json;
@@ -133,6 +133,42 @@ fn the_budget_quotes_for_the_request_that_would_actually_be_sent() {
         vec![nachalnik::ToolCall::new("nobody-asked", "grep", json!({}))],
     ));
     assert!(kernel.budget().context_tokens > budget.context_tokens + 900);
+}
+
+#[test]
+fn a_result_nothing_asks_for_keeps_the_place_it_had() {
+    let items: Vec<Arc<ContextItem>> = [
+        ContextItem::user("hi"),
+        ContextItem::tool_result("nobody-asked".into(), "grep", "x", false),
+        ContextItem::user("still here?"),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, mut item)| {
+        item.id = nachalnik::ContextId(index as u64 + 1);
+        Arc::new(item)
+    })
+    .collect();
+
+    // a caller who turned the repair off keeps the orphan, and where it keeps it is where it was:
+    // deferring it would send it to the end of the request, past turns it came before, and the
+    // move would not be in `reordered` either
+    let projection = nachalnik::LinearProjector {
+        repair_orphans: false,
+        ..Default::default()
+    }
+    .project(&items);
+
+    assert_eq!(projection.included, [1, 2, 3].map(nachalnik::ContextId));
+    assert_eq!(
+        projection
+            .messages
+            .iter()
+            .map(|message| message.role.as_str())
+            .collect::<Vec<_>>(),
+        ["user", "tool", "user"]
+    );
+    assert!(projection.reordered.is_empty(), "nothing had to move");
 }
 
 #[test]
