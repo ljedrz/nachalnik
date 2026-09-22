@@ -417,20 +417,33 @@ impl Kernel {
     /// note: Cheap enough to take after every turn, and worth it: this is the only thing that
     /// can rebuild a context. The event log cannot, by design - an event names an item rather
     /// than carrying its contents, which is what makes the log affordable to keep.
+    ///
+    /// note: the context is read before the used call identifiers, and the order is the point. A
+    /// turn reserves a call's identifier before it records the item carrying the call, and an
+    /// identifier is never given back - so identifiers read afterwards cover every call in the
+    /// items read before. Read the other way round, a turn recorded between the two left a call
+    /// in `items` whose identifier `used_calls` did not have, for a resumed session to hand out
+    /// again.
     pub fn snapshot(&self) -> Snapshot {
         let session = self.session_name();
         let params = self.params();
         let counter = self.counter();
+
+        let (items, next_item) = {
+            let context = self.0.context.read();
+            (
+                context.items().iter().map(|i| (**i).clone()).collect(),
+                context.next_id(),
+            )
+        };
         let mut used_calls: Vec<_> = self.0.seen_calls.lock().iter().cloned().collect();
         used_calls.sort();
 
-        let context = self.0.context.read();
-
         Snapshot {
             session,
-            items: context.items().iter().map(|i| (**i).clone()).collect(),
+            items,
             params,
-            next_item: context.next_id(),
+            next_item,
             used_calls,
             calibration: counter.calibration(),
         }
@@ -564,7 +577,12 @@ impl Kernel {
     /// as [`Error::Busy`] acts on nothing and so clears nothing: the attempt that spends the flag
     /// is the one that was in a position to transition, and the request in flight keeps the stop
     /// its provider is reading.
+    ///
+    /// note: set and announced under the machine lock, which is where every step reads it and
+    /// spends it. Outside it, a step could take the flag between the setting and the announcing,
+    /// and the log would place `turn.interrupted` after the transition that acted on it.
     pub fn interrupt(&self) -> bool {
+        let _machine = self.0.machine.lock();
         let already = self.0.interrupted.swap(true, SeqCst);
         if !already {
             self.emit(Event::Interrupted);
@@ -1433,27 +1451,40 @@ impl Kernel {
     /// some of the model's calls were answered and one was never mentioned. It is also what
     /// [`Config::context_undo_depth`] is measured against: a model asking for sixteen tools and
     /// a person who says no would otherwise spend the whole undo history on one keystroke.
+    ///
+    /// note: the shape of [`Kernel::decide`] refusing every call and a [`Kernel::step`] running
+    /// them, which is what this is. The refusals are announced and the machine claimed as
+    /// [`State::Executing`] without letting go of the lock, and the results are recorded before
+    /// it returns to [`State::Idle`]. Going straight to `Idle` let a step in before the results
+    /// were there - a request carrying calls nobody had answered - and logged the machine idle
+    /// before the calls were refused. The results are not recorded *under* the lock because
+    /// recording one asks the tool what the call needed, and that is somebody else's code.
     pub fn cancel_pending_calls(&self, reason: impl Into<String>) -> usize {
         let reason = reason.into();
         let prepared = {
             let mut machine = self.0.machine.lock();
             let prepared = std::mem::take(&mut machine.pending);
-            if !prepared.is_empty() {
-                self.transition(&mut machine, State::Idle);
+            if prepared.is_empty() {
+                return 0;
             }
+
+            for call in &prepared {
+                self.emit(Event::PermissionDecided {
+                    id: call.request.id,
+                    call: call.call.id.clone(),
+                    tool: call.call.tool.clone(),
+                    grant: Grant::Deny,
+                    source: GrantSource::Cancellation,
+                });
+            }
+            let calls = prepared.iter().map(|p| p.call.id.clone()).collect();
+            self.transition(&mut machine, State::Executing { calls });
 
             prepared
         };
-        let count = prepared.len();
+        let mut restore = Restore::new(self, State::Idle);
 
-        for (nth, call) in prepared.into_iter().enumerate() {
-            self.emit(Event::PermissionDecided {
-                id: call.request.id,
-                call: call.call.id.clone(),
-                tool: call.call.tool.clone(),
-                grant: Grant::Deny,
-                source: GrantSource::Cancellation,
-            });
+        for (nth, call) in prepared.iter().enumerate() {
             self.record_tool_result(
                 &call.call,
                 ToolOutput::error(format!("the call was cancelled: {reason}")),
@@ -1463,7 +1494,10 @@ impl Kernel {
             );
         }
 
-        count
+        self.transition(&mut self.0.machine.lock(), State::Idle);
+        restore.disarm();
+
+        prepared.len()
     }
 
     /// Performs one transition of the state machine, and returns the state it produced.

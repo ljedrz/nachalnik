@@ -7,7 +7,25 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **`cancel_pending_calls` passes through `State::Executing`.** It refuses the calls and claims
+  the machine without letting go of the lock, records the results, and only then goes `Idle` - the
+  shape `decide` refusing each call and a `step` running them would give. It went straight to
+  `Idle` and recorded afterwards, so a `step` in between could build a request carrying calls with
+  no results, and the log said `idle` before it said the calls were refused. A client drawing
+  states sees `executing` for the length of the recording.
+
 ### fixed
+
+- **`interrupt` sets and announces the flag under the machine lock**, where every step reads and
+  spends it. Outside it, a step could spend an interrupt between its setting and its announcement,
+  and the log placed `turn.interrupted` after the step that had acted on it.
+
+- **`snapshot` reads the context before the used call identifiers.** A turn reserves an
+  identifier before it records the call, and none is given back, so identifiers read afterwards
+  cover every call read before. The other order let a turn recorded between the two reads leave a
+  call whose identifier `used_calls` lacked, for a resumed session to hand out again.
 
 - **`push_all` and `supersede` are one operation under one lock.** Both took the context lock
   once per change, so another thread's work could land between them: a turn recorded halfway

@@ -191,8 +191,10 @@ counts do not, here or in the readmes.
 
 Test files: `nachalnik/tests/` is `kernel/` (what gets sent, what gets run, who decides, the record,
 and the seams - a file each), `context/` (items, undo, compaction, and what the context projects
-to), `state`, `session`, `tokens`, `concurrency`, `blocks`, `crash` (a dropped kernel and a
-resume from what was written down), `invariants` (what holds after every operation of a generated
+to), `state`, `session`, `tokens`, `concurrency` (a claim about ordering is tested by holding
+the kernel at one moment through a seam - a counter or a provider that waits to be let go - and
+doing the other thing while it is there, rather than by racing threads and hoping), `blocks`,
+`crash` (a dropped kernel and a resume from what was written down), `invariants` (what holds after every operation of a generated
 sequence), `live`. `nachalnik-eval/tests/` is `machinery` (the readings, the arithmetic and the
 pinned instrument digests), `harness` (the whole loop against a provider whose causal structure the
 test wrote - the only way to check that the harness recovers an influence nobody told it about,

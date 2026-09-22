@@ -475,3 +475,229 @@ async fn two_clients_swapping_a_component_are_logged_in_the_order_they_applied()
     );
     assert_eq!(kernel.model_info().unwrap().model, "third");
 }
+
+// ------------------------------------------------------------------------ held at one moment
+
+/// A counter that counts the way the default does, except that the first content it is asked
+/// about mentioning `word` waits to be let go - holding whatever lock the kernel counts under.
+///
+/// note: a seam rather than a sleep, so that the moment a test is about is one the kernel is
+/// really in: the thread counting is stopped there, and everything the test does next happens
+/// while it is.
+struct Held {
+    word: &'static str,
+    reached: parking_lot::Mutex<Option<std::sync::mpsc::Sender<()>>>,
+    gate: parking_lot::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+}
+
+impl Held {
+    /// The counter, the signal that it has been reached, and the key that lets it go.
+    fn new(
+        word: &'static str,
+    ) -> (
+        Arc<Self>,
+        std::sync::mpsc::Receiver<()>,
+        std::sync::mpsc::Sender<()>,
+    ) {
+        let (reached, signal) = std::sync::mpsc::channel();
+        let (open, gate) = std::sync::mpsc::channel();
+
+        (
+            Arc::new(Self {
+                word,
+                reached: parking_lot::Mutex::new(Some(reached)),
+                gate: parking_lot::Mutex::new(Some(gate)),
+            }),
+            signal,
+            open,
+        )
+    }
+}
+
+impl nachalnik::TokenCounter for Held {
+    fn count(&self, content: &nachalnik::Content) -> usize {
+        if content.to_text().contains(self.word)
+            && let Some(reached) = self.reached.lock().take()
+        {
+            let _ = reached.send(());
+            if let Some(gate) = self.gate.lock().take() {
+                let _ = gate.recv();
+            }
+        }
+
+        nachalnik::BytesPerToken::default().count(content)
+    }
+}
+
+/// Runs one step on a thread of its own, and hands back where its answer will arrive.
+///
+/// note: its own thread and runtime, because a step that waits on a lock blocks the thread it is
+/// on - and a test that awaited it on its own would wait with it rather than notice it.
+fn stepped_elsewhere(
+    kernel: &Kernel,
+) -> std::sync::mpsc::Receiver<Result<State, nachalnik::Error>> {
+    let (said, answer) = std::sync::mpsc::channel();
+    let kernel = kernel.clone();
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
+        let _ = said.send(runtime.block_on(kernel.step()));
+    });
+
+    answer
+}
+
+/// A kernel with two calls waiting on a decision.
+async fn two_calls_waiting() -> Kernel {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![
+            call("c1", "quick", json!({})),
+            call("c2", "quick", json!({})),
+        ]),
+        ModelResponse::text("done"),
+    ])));
+    kernel.add_tool(Arc::new(ConstTool::new("quick", "instant")));
+    kernel.push(ContextItem::user("go"));
+    assert!(matches!(
+        kernel.turn().await.unwrap(),
+        State::Deciding { .. }
+    ));
+
+    kernel
+}
+
+/// Cancelling is logged the way refusing each call and then running them would be: the
+/// refusals, the machine claimed, the results, and only then idle.
+///
+/// note: the machine went idle first and the refusals followed it, which is the reverse of
+/// `decide` - so a log read in order said nothing was waiting before it said what had become of
+/// what was.
+#[tokio::test]
+async fn cancelling_is_logged_as_refusing_and_then_running() {
+    let kernel = two_calls_waiting().await;
+    let before = kernel.history().len();
+
+    assert_eq!(kernel.cancel_pending_calls("changed my mind"), 2);
+
+    let said: Vec<String> = kernel.history()[before..]
+        .iter()
+        .map(|record| match &record.event {
+            Event::StateChanged { to, .. } => format!("state {}", to.name()),
+            event => event.name().to_owned(),
+        })
+        .collect();
+    let at = |what: &str| -> Vec<usize> {
+        said.iter()
+            .enumerate()
+            .filter(|(_, name)| *name == what)
+            .map(|(at, _)| at)
+            .collect()
+    };
+    let (decided, executing, finished, idle) = (
+        at("permission.decided"),
+        at("state executing"),
+        at("tool.finished"),
+        at("state idle"),
+    );
+
+    assert_eq!((decided.len(), finished.len()), (2, 2), "{said:?}");
+    assert_eq!((executing.len(), idle.len()), (1, 1), "{said:?}");
+    assert!(decided.iter().all(|at| *at < executing[0]), "{said:?}");
+    assert!(finished.iter().all(|at| *at > executing[0]), "{said:?}");
+    assert!(finished.iter().all(|at| *at < idle[0]), "{said:?}");
+}
+
+/// No step begins while cancelled calls are still being answered.
+///
+/// note: the counter stops the kernel inside recording the first refusal, which is where a step
+/// used to be able to start: the machine had already gone idle, so a request could be built with
+/// calls in it that had no results yet. The machine is still claimed there now, and a step is
+/// told it is busy.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn no_step_begins_while_cancelled_calls_are_being_answered() {
+    let kernel = two_calls_waiting().await;
+    let (held, reached, open) = Held::new("cancelled");
+    kernel.set_counter(held);
+
+    let cancelling = {
+        let kernel = kernel.clone();
+        std::thread::spawn(move || kernel.cancel_pending_calls("changed my mind"))
+    };
+    reached
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the first refusal is being recorded");
+
+    let answer = stepped_elsewhere(&kernel).recv_timeout(std::time::Duration::from_secs(2));
+    open.send(()).expect("the counter is still waiting");
+    assert_eq!(cancelling.join().expect("no panic"), 2);
+
+    assert!(
+        matches!(answer, Ok(Err(nachalnik::Error::Busy))),
+        "a step began while the cancelled calls had no results: {answer:?}"
+    );
+}
+
+/// An interrupt is announced before any step can spend it.
+///
+/// note: the session is held from outside, through `with_history`, so the announcement waits on
+/// it with the flag already up. A step that could read the flag meanwhile would spend an
+/// interrupt the log had not reported - and that is what a step did, because the flag was set
+/// outside the lock every step reads it under. It waits now, and spends it once it is on record.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_interrupt_is_announced_before_a_step_can_spend_it() {
+    let kernel = Kernel::new(Config::default());
+    let (held, holding) = std::sync::mpsc::channel();
+    let (open, gate) = std::sync::mpsc::channel::<()>();
+    let holder = {
+        let kernel = kernel.clone();
+        std::thread::spawn(move || {
+            kernel.with_history(|_| {
+                let _ = held.send(());
+                let _ = gate.recv();
+            })
+        })
+    };
+    holding.recv().expect("the session is held");
+
+    let interrupting = {
+        let kernel = kernel.clone();
+        std::thread::spawn(move || kernel.interrupt())
+    };
+    let waited = std::time::Instant::now();
+    while !kernel.is_interrupted() {
+        assert!(
+            waited.elapsed() < std::time::Duration::from_secs(5),
+            "the flag never went up"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+
+    let stepping = stepped_elsewhere(&kernel);
+    let early = stepping.recv_timeout(std::time::Duration::from_millis(300));
+    open.send(()).expect("the session is still held");
+    holder.join().expect("no panic");
+    assert!(
+        !interrupting.join().expect("no panic"),
+        "the first interrupt"
+    );
+    let answer = stepping
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the step comes back once the interrupt is on record");
+
+    assert!(
+        early.is_err(),
+        "a step spent an interrupt the log did not have yet: {early:?}"
+    );
+    assert_eq!(answer.expect("a step"), State::Idle);
+    assert!(
+        kernel
+            .history()
+            .iter()
+            .any(|record| matches!(record.event, Event::Interrupted)),
+        "and it is on record"
+    );
+    assert!(!kernel.is_interrupted(), "and the step spent it");
+}

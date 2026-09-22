@@ -425,15 +425,11 @@ Referenced from [AGENTS.md](AGENTS.md).
   hard link to it keeps the old contents, and the owner and extended attributes are the new file's
   unless something copies them across.
 
-- **Where the kernel's ordering is weaker than its notes.** `cancel_pending_calls` lets go of the
-  machine lock before it records the refusals, so a concurrent `step` can build a request in which
-  the calls have no results, and the log says `idle` before `permission.decided` - the reverse of
-  `decide`. Holding the lock means calling `Tool::needs`, which is somebody else's code, under it,
-  and that is the question to settle first. An `undo` across `set_counter` or `recount` puts back
-  the old counter's figures without a `context.recounted` and lists every item as changed.
-  `snapshot` reads the used call identifiers before the context, so a turn landing between the two
-  can leave identifiers a resumed session hands out again. And `interrupt` sets its flag outside the
-  machine lock, so the log can place `turn.interrupted` after the transition that consumed it.
+- **An `undo` across a change of counter.** `set_counter` and `recount` re-price every item and
+  take no checkpoint, so an `undo` after either puts back the figures the old counter gave, with
+  no `context.recounted` to say so, and lists every item as changed. Whether a recount is an
+  operation `undo` should see - and so a checkpoint, and the undo history it costs - or a fact that
+  `undo` should re-apply on the way back is the decision.
 
 - **Pictures of the program and a table of what runs cost, both out of date.** The demo screens in
   the workspace readme, `kamchatka`'s readme and its guide still show the `read` tool from before
