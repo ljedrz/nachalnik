@@ -569,6 +569,20 @@ pub fn record(app: &App) -> Result<Recorded, String> {
         // it may already exist from an earlier run, made before this did it; either way, this is
         // the run that is about to write a transcript into it
         let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
+
+        // note: and then looked at, because the temporary directory is everybody's and this name
+        // is fixed. One somebody else made there first is one the line above cannot make private
+        // - it fails, and was ignored - so the transcript went into a directory they could read,
+        // and a link they left at a predictable name was followed. A real directory that nobody
+        // but its owner can enter is one this user owns, or one it cannot write in at all
+        let private = std::fs::symlink_metadata(&dir)
+            .is_ok_and(|meta| meta.is_dir() && meta.permissions().mode() & 0o077 == 0);
+        if !private {
+            return Err(format!(
+                "{} is not a directory only you can enter, so the session was not recorded                  there; remove it, or use `--no-record` and `/save`",
+                dir.display()
+            ));
+        }
     }
 
     let (log, state) = unclaimed(&dir.join(app.kernel.session_name()))?;
@@ -610,7 +624,9 @@ fn unclaimed(stem: &std::path::Path) -> Result<(String, String), String> {
                 nth => format!("{}-{nth}", stem.display()),
             };
             let (log, state) = (format!("{stem}.jsonl"), format!("{stem}.json"));
-            if std::path::Path::new(&state).exists() {
+            // anything there at all, a link to nothing included, which `exists` answers no to and
+            // a write would follow
+            if std::fs::symlink_metadata(&state).is_ok() {
                 return None;
             }
 
@@ -669,5 +685,25 @@ mod tests {
         std::fs::write(&beside, "{}").expect("written");
         let (third, _) = unclaimed(&stem).expect("a third name");
         assert!(third.ends_with("2026-09-15T13-34-29Z-3.jsonl"), "{third}");
+    }
+
+    /// A link at the snapshot's name is a name that is taken, even when it points at nothing.
+    ///
+    /// note: `exists` follows a link and answers no for one to a file that is not there, and the
+    /// write after it follows the link too - so a link left at a predictable name was a file
+    /// created wherever it pointed.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_at_the_snapshots_name_is_not_written_through() {
+        let dir = std::env::temp_dir().join("kamchatka-unclaimed-link");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a directory to work in");
+        let stem = dir.join("2026-09-22T12-00-00Z");
+        std::os::unix::fs::symlink(dir.join("nowhere"), dir.join("2026-09-22T12-00-00Z.json"))
+            .expect("a link");
+
+        let (log, state) = unclaimed(&stem).expect("a name beside it");
+        assert!(log.ends_with("2026-09-22T12-00-00Z-2.jsonl"), "{log}");
+        assert!(state.ends_with("2026-09-22T12-00-00Z-2.json"), "{state}");
     }
 }

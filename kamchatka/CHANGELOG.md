@@ -49,6 +49,14 @@ minor bump may break you.
 
 ### fixed
 
+- **A session is not recorded into a directory somebody else can read.** The record goes under
+  `$TMPDIR/kamchatka`, a fixed name in a directory every user shares, and a directory another user
+  made there first could not be made private - the `chmod` failed and was ignored, so the
+  transcript went in anyway, readable by them. And the snapshot's name was checked with `exists`,
+  which answers no for a link to nothing, so a link planted at the predictable name was written
+  through. The directory has to be one only its owner can enter now or nothing is recorded, and
+  anything at all at the snapshot's name makes it taken.
+
 - **The browser relay in `examples/` refuses requests from other pages.** It checked neither
   `Host` nor `Origin`, so any page open in the same browser could put `/events` in a frame to open
   a tab and post to `/do` - a line typed into the session, or a question answered `allow` - and a
