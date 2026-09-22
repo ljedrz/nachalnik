@@ -58,6 +58,15 @@ minor bump may break you.
 
 ### fixed
 
+- **The file tools open what they checked.** `read`, `write`, `edit` and `grep` resolved a path,
+  checked it against the reach and then opened it by name, so a directory replaced by a link
+  between the two - by a background command the model had left running, say - was followed out.
+  They open through `Reach::open` now, which on Linux is `openat2` with `RESOLVE_BENEATH` from the
+  directory the path was allowed under, and the kernel refuses the swap. A kernel without
+  `openat2`, and every other platform, opens as before. `grep` opens a file reached through a link
+  by what the link resolved to, since an open that stays beneath the root refuses an absolute link
+  even where it points inside.
+
 - **A headless run that leaves on an error still records a session that ended.** The line driver
   ends the session itself and returned before it got there on a line it could not read or a stdout
   that went away, so the record was written with no `session.finished` - which reads as a process

@@ -174,6 +174,72 @@ fn the_file_tools_are_held_to_the_same_boundary() {
 /// on purpose is one it then never goes near, and nothing in front of it says otherwise. The
 /// `shell` tool has named them in its own description since the same thing happened to a confined
 /// command; these three run in process and were the half left behind.
+/// A path checked and then changed into a link out, before it is opened, is refused at the open
+/// rather than followed - for reading, and for writing, which would create or empty a file there.
+///
+/// note: the swap is done by hand between the two calls, which is the whole of what a race is:
+/// something else writing to the directory after `allows` has looked at it. Linux only, because
+/// `openat2` is what refuses it and elsewhere the open is an ordinary one.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
+    use kamchatka::sandbox::{Access, Reach};
+
+    let base = common::scratch("swapped")
+        .canonicalize()
+        .expect("it exists");
+    let (inside, outside) = (base.join("w"), base.join("elsewhere"));
+    std::fs::create_dir_all(inside.join("d")).expect("a directory to check");
+    std::fs::create_dir_all(&outside).expect("a directory outside it");
+    std::fs::write(inside.join("d").join("notes.txt"), "mine").expect("a file inside");
+    std::fs::write(outside.join("notes.txt"), "not yours").expect("a file outside");
+    let reach = Reach {
+        workdir: inside.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confined: true,
+    };
+
+    let read = reach
+        .allows("d/notes.txt", Access::Reading)
+        .expect("it is inside");
+    let written = reach
+        .allows("d/new.txt", Access::Writing)
+        .expect("it is inside");
+    std::fs::rename(inside.join("d"), base.join("d-was")).expect("moved aside");
+    std::os::unix::fs::symlink(&outside, inside.join("d")).expect("and a link out in its place");
+
+    let refused = reach
+        .open(&read, Access::Reading)
+        .expect_err("the path leads out now");
+    assert_eq!(refused.kind(), std::io::ErrorKind::PermissionDenied);
+    reach
+        .open(&written, Access::Writing)
+        .expect_err("and so does this one");
+    reach
+        .open(&read, Access::Writing)
+        .expect_err("and writing over one that is there");
+    assert!(
+        !outside.join("new.txt").exists(),
+        "nothing was created out there"
+    );
+    assert_eq!(
+        std::fs::read_to_string(outside.join("notes.txt")).expect("still there"),
+        "not yours",
+        "and nothing out there was emptied"
+    );
+
+    // and a path that is still what was checked opens as ever
+    std::fs::remove_file(inside.join("d")).expect("the link");
+    std::fs::rename(base.join("d-was"), inside.join("d")).expect("put back");
+    let mut opened = reach
+        .open(&read, Access::Reading)
+        .expect("it is inside again");
+    let mut said = String::new();
+    std::io::Read::read_to_string(&mut opened, &mut said).expect("text");
+    assert_eq!(said, "mine");
+}
+
 #[test]
 fn a_refusal_names_what_was_opened_up() {
     use kamchatka::sandbox::{Access, Reach};

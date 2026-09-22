@@ -1350,6 +1350,7 @@ dependencies = [
  "proptest",
  "ratatui",
  "ratatui-textarea",
+ "rustix",
  "serde",
  "serde_json",
  "socket2",

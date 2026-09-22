@@ -428,11 +428,12 @@ Referenced from [AGENTS.md](AGENTS.md).
   ceiling is reached - which one is a decision about whether a draft is part of the session's
   spend, and it is money either way.
 
-- **The `fs` boundary checks a path and then opens it.** A directory swapped for a link between the
-  two is not caught; SECURITY.md says so. And `write` and `edit` truncate before they write, so a
-  full disk mid-edit leaves a truncated file. The first wants opens component by component with
-  `O_NOFOLLOW`, which `std` does not offer and this crate reaches no further than `std` for without
-  a reason written down; the second is a temporary file and a rename that keeps the permissions.
+- **`fs write` and `fs edit` empty a file before they write it.** The open truncates, so a full
+  disk or a killed process midway leaves a file shorter than either version of it. The fix is a
+  temporary file beside it and a rename over it, and what makes it a decision rather than a
+  change is what a rename does that a write does not: it gives the file a new inode, so another
+  hard link to it keeps the old contents, and the owner and extended attributes are the new file's
+  unless something copies them across.
 
 - **Where the kernel's ordering is weaker than its notes.** `cancel_pending_calls` lets go of the
   machine lock before it records the refusals, so a concurrent `step` can build a request in which

@@ -187,8 +187,8 @@ fn walk(root: &Path) -> ignore::Walk {
 /// it. Where it points inside the reach, the walk arrives at those files by their real names
 /// anyway, and following it as well would report each of them twice - or walk a cycle for ever.
 enum Link {
-    /// A file with a second name: search it.
-    Read,
+    /// A file with a second name: search it, by its first.
+    Read(PathBuf),
     /// A directory the walk reaches by its own name: nothing to do and nothing to say.
     Skip,
     /// Somewhere this session does not reach: count it and say so.
@@ -198,9 +198,9 @@ enum Link {
 fn followed(reach: &Reach, path: &Path) -> Link {
     match reach.allows(&path.to_string_lossy(), Access::Reading) {
         Err(_) => Link::Refuse,
-        Ok(_) => match path.is_dir() {
+        Ok(resolved) => match path.is_dir() {
             true => Link::Skip,
-            false => Link::Read,
+            false => Link::Read(resolved),
         },
     }
 }
@@ -447,16 +447,19 @@ impl Grep {
                 if kind.is_dir() {
                     continue;
                 }
-                if kind.is_symlink() {
-                    match followed(&reach, entry.path()) {
-                        Link::Read => {}
+                // opened by the name it was checked under: a link by what it resolved to, since an
+                // open that stays beneath the root refuses a link however it was made
+                let opening = match kind.is_symlink() {
+                    true => match followed(&reach, entry.path()) {
+                        Link::Read(resolved) => resolved,
                         Link::Skip => continue,
                         Link::Refuse => {
                             found.skipped.links += 1;
                             continue;
                         }
-                    }
-                }
+                    },
+                    false => entry.path().to_path_buf(),
+                };
 
                 let path = relative(entry.path(), &workdir);
                 // the file the *call* named is one the policy has already been asked about; only
@@ -476,10 +479,10 @@ impl Grep {
                     room: (!files_only).then(|| MATCHES - found.matches),
                     ..Lines::default()
                 };
-                if searcher
-                    .search_path(&matcher, entry.path(), &mut lines)
-                    .is_err()
-                {
+                let searched = reach
+                    .open(&opening, Access::Reading)
+                    .and_then(|file| searcher.search_file(&matcher, &file, &mut lines));
+                if searched.is_err() {
                     found.skipped.unreadable += 1;
                     continue;
                 }
@@ -717,7 +720,7 @@ impl Glob {
                 }
                 if kind.is_symlink() {
                     match followed(&reach, entry.path()) {
-                        Link::Read => {}
+                        Link::Read(_) => {}
                         Link::Skip => continue,
                         Link::Refuse => {
                             skipped.links += 1;

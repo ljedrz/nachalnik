@@ -5,11 +5,15 @@
 //! working directory is their own code asking [`Reach`] rather than a kernel refusing an `open`.
 //! That is weaker in kind than what `shell` gets and the readmes say so; the reason it is worth
 //! having anyway is that a model reads a refusal here in the same words either way.
+//!
+//! note: every open goes through [`Reach::open`] rather than a path handed to `tokio::fs`, so that
+//! what is opened is what was checked; see there.
 
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use nachalnik::{BoxError, OutputSink, ToolOutput};
 use serde_json::Value;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::sandbox::{Access, Reach};
 
@@ -48,11 +52,28 @@ impl Read {
         };
 
         // a failure the model should read and react to, rather than one that stops the loop
-        match tokio::fs::read_to_string(&path).await {
+        match read(&self.0, &path).await {
             Ok(content) => Ok(ToolOutput::new(content)),
             Err(e) => Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         }
     }
+}
+
+/// The whole of a file `allows` answered for, as text.
+async fn read(reach: &Reach, path: &Path) -> std::io::Result<String> {
+    let mut content = String::new();
+    tokio::fs::File::from_std(reach.open(path, Access::Reading)?)
+        .read_to_string(&mut content)
+        .await?;
+
+    Ok(content)
+}
+
+/// Replaces the whole of a file `allows` answered for, creating it if it is not there.
+async fn write(reach: &Reach, path: &Path, content: &str) -> std::io::Result<()> {
+    let mut file = tokio::fs::File::from_std(reach.open(path, Access::Writing)?);
+    file.write_all(content.as_bytes()).await?;
+    file.flush().await
 }
 
 pub(super) struct Write(pub(super) Arc<Reach>);
@@ -69,7 +90,7 @@ impl Write {
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
 
-        match tokio::fs::write(&path, content).await {
+        match write(&self.0, &path, content).await {
             Ok(()) => Ok(ToolOutput::new(format!(
                 "wrote {} bytes to {}",
                 content.len(),
@@ -94,7 +115,7 @@ impl Edit {
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
 
-        let before = match tokio::fs::read_to_string(&path).await {
+        let before = match read(&self.0, &path).await {
             Ok(before) => before,
             Err(e) => return Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         };
@@ -136,7 +157,7 @@ impl Edit {
         };
 
         let after = format!("{}{new}{}", &before[..at], &before[at + old.len()..]);
-        match tokio::fs::write(&path, after).await {
+        match write(&self.0, &path, &after).await {
             Ok(()) => Ok(ToolOutput::new(format!(
                 "replaced one occurrence in {}",
                 path.display()

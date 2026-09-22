@@ -583,6 +583,108 @@ impl Reach {
     }
 }
 
+impl Reach {
+    /// Opens a path [`Reach::allows`] answered for, beneath the directory it was allowed under:
+    /// for reading, or for writing from the start.
+    ///
+    /// note: `allows` resolves a path and checks it, and the open comes after - so a part of the
+    /// path swapped for a link in between would be followed wherever the link pointed. On Linux
+    /// this opens with `openat2` and `RESOLVE_BENEATH` from the directory the path was allowed
+    /// under, which the kernel will not leave whatever is on disk by then, so a swap is refused
+    /// rather than followed. Elsewhere, and on a kernel that has no `openat2`, it is an ordinary
+    /// open and the window is the one SECURITY.md describes.
+    ///
+    /// note: `path` is what `allows` returned, which is resolved, so a link met on the way is one
+    /// that was not there when the path was checked, and refusing it refuses nothing that was
+    /// allowed.
+    pub fn open(&self, path: &Path, doing: Access) -> std::io::Result<std::fs::File> {
+        let mut options = std::fs::OpenOptions::new();
+        match doing {
+            Access::Reading => options.read(true),
+            Access::Writing => options.write(true).create(true).truncate(true),
+        };
+        if !self.confined {
+            return options.open(path);
+        }
+
+        let readable = matches!(doing, Access::Reading);
+        let Some(root) = std::iter::once(&self.workdir)
+            .chain(self.extra.iter())
+            .chain(self.readable.iter().filter(|_| readable))
+            .filter_map(|allowed| allowed.canonicalize().ok())
+            .find(|allowed| path.starts_with(allowed))
+        else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "outside what this session reaches",
+            ));
+        };
+
+        if let Some(opened) = beneath(&root, path, doing) {
+            return opened;
+        }
+
+        options.open(path)
+    }
+}
+
+/// Opens `path` without leaving `root`, or `None` where the kernel will not do that.
+///
+/// note: `None` for `ENOSYS`, a kernel older than 5.6, and for `EPERM`, which is what a container
+/// runtime's seccomp filter answered for `openat2` before it knew the call. The ordinary open that
+/// follows gives the same answer as before this existed, and the real error where there is one.
+#[cfg(target_os = "linux")]
+fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<std::fs::File>> {
+    use rustix::{
+        fs::{Mode, OFlags, ResolveFlags},
+        io::Errno,
+    };
+
+    let dir = match rustix::fs::open(
+        root,
+        OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+    ) {
+        Ok(dir) => dir,
+        Err(e) => return Some(Err(e.into())),
+    };
+    let relative = match path.strip_prefix(root) {
+        Ok(relative) if !relative.as_os_str().is_empty() => relative,
+        _ => Path::new("."),
+    };
+    // a mode only beside `CREATE`: `openat2` refuses one anywhere else, where `open` ignores it
+    let (flags, mode) = match doing {
+        Access::Reading => (OFlags::RDONLY, Mode::empty()),
+        Access::Writing => (
+            OFlags::WRONLY | OFlags::CREATE | OFlags::TRUNC,
+            Mode::from_raw_mode(0o666),
+        ),
+    };
+
+    match rustix::fs::openat2(
+        &dir,
+        relative,
+        flags | OFlags::CLOEXEC,
+        mode,
+        ResolveFlags::BENEATH | ResolveFlags::NO_MAGICLINKS,
+    ) {
+        Ok(file) => Some(Ok(file.into())),
+        Err(Errno::NOSYS | Errno::PERM) => None,
+        Err(Errno::XDEV) => Some(Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "a part of this path has become a link out of what this session reaches since it \
+             was checked, so it was not opened",
+        ))),
+        Err(e) => Some(Err(e.into())),
+    }
+}
+
+/// Nowhere else has an open that stays beneath a directory, so the ordinary one is all there is.
+#[cfg(not(target_os = "linux"))]
+fn beneath(_: &Path, _: &Path, _: Access) -> Option<std::io::Result<std::fs::File>> {
+    None
+}
+
 /// How much of a [`Sandbox`] the kernel actually agreed to.
 ///
 /// note: the point of a separate value is that "not confined" must be sayable. A sandbox that
