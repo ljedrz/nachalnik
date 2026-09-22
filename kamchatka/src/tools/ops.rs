@@ -194,7 +194,17 @@ pub(crate) fn schema(ops: &[Op]) -> Value {
             }
             one
         }
+        // note: `type` beside `anyOf`, though every branch already says `object` and a reader
+        // that resolves the union learns it there. It is the property's own declaration that
+        // decides what a model writes into it, and without one `xiaomi/mimo-v2.6-flash` wrote the
+        // arguments as a *string* of JSON - `{"call": "{\"action\": ...}"}` - on every call to
+        // `fs` and `context`, and on none at all to `shell`, `log` or `setup`, whose single
+        // branch is the wrapper and carries a `type` of its own. Asked the same question five
+        // times each way, the untyped shape stringified five times out of five and the typed one
+        // none. The two assertions cannot disagree - a branch is an object either way - so this
+        // costs a keyword and settles a question the model should not have had to guess at
         several => json!({
+            "type": "object",
             "description": ABOUT,
             "anyOf": several.iter().map(branch).collect::<Vec<_>>(),
         }),
@@ -511,6 +521,29 @@ mod tests {
                 "`{keyword}` is not a keyword both dialects take"
             );
         }
+    }
+
+    /// The wrapper says it is an object, whether it holds one shape or several.
+    ///
+    /// note: the one that was missing is the `anyOf` case, and what it cost was a model writing
+    /// the whole call as a string into a property that never said what it was. Both arms are
+    /// asserted because the single-branch arm gets its `type` from `branch` by accident of
+    /// construction rather than on purpose, and an accident is a thing to pin.
+    #[test]
+    fn the_wrapper_says_it_is_an_object() {
+        let several = schema(&ops());
+        assert_eq!(several["properties"][WRAPPER]["type"], json!("object"));
+        assert!(
+            several["properties"][WRAPPER]["anyOf"].is_array(),
+            "the case this is about is the union"
+        );
+
+        let one = schema(&[Op::new(
+            "run",
+            "runs it",
+            vec![Arg::text("cmd", "what").needed()],
+        )]);
+        assert_eq!(one["properties"][WRAPPER]["type"], json!("object"));
     }
 
     /// The wrapper is asked for, understood without, and refused in both places at once.
