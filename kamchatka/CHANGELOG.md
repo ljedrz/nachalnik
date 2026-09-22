@@ -16,6 +16,13 @@ minor bump may break you.
   status, and a sandbox that calls itself partially enforced over a right it was never going to
   enforce is worse than one that says what it does.
 
+- **A question about every operation a tool has says why it is.** A call that names no operation
+  declares all of them, which is the strictest reading of a call nobody can place and the right
+  one - but nothing said so, and a session started with `--allow fs:read` was then asked about
+  `fs:write` with no way to see that its rule and the call could never meet. The permission panel
+  and a headless run now say which it is: a call that named nothing, or one that named something
+  the tool does not do, and what a rule that would have answered looks like.
+
 ### fixed
 
 - **A confined command could have a process outside the confinement act for it.** Landlock governs
@@ -64,6 +71,7 @@ minor bump may break you.
   all to `shell`, `log` or `setup`, whose single branch carries a `type` of its own. Asked the
   same question five times each way, the untyped shape stringified five times out of five and the
   typed one none.
+
 
 ## [0.14.0] - 2026-09-21
 
