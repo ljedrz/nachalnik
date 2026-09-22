@@ -25,6 +25,11 @@ minor bump may break you.
 
 ### fixed
 
+- **The published crate no longer carries a compiled Python file.**
+  `contrib/__pycache__/laya_advisor.cpython-314.pyc` was committed by accident and `cargo package`
+  takes what `git` tracks, so 29 KB of bytecode for one interpreter version went out inside 0.14.0.
+  `.gitignore` covers `__pycache__/` now. The advisor script beside it is unaffected.
+
 - **A confined command could have a process outside the confinement act for it.** Landlock governs
   a `connect` only from ABI 9, so every pathname unix socket under `/run` - the session bus, the
   compositor, a container daemon - answered a confined command, and each of those does what it is

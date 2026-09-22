@@ -21,6 +21,12 @@ recorded/
 **/*.rs.bk
 *.profraw
 
+# what running `kamchatka/contrib/laya_advisor.py` leaves beside it. There is no build step in
+# this workspace that would have caught it: `cargo package` takes what `git` tracks, so a stray
+# 29 KB of bytecode for one interpreter version went onto the registry inside kamchatka 0.14.0
+**/__pycache__/
+*.pyc
+
 # documents that belong to another repository and only ever pass through this working directory.
 # A pattern rather than a name, because the point is that no such file is ever committed here by
 # accident - and because the local `.git/info/exclude` that has been holding the line is not
