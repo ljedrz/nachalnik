@@ -23,6 +23,13 @@ minor bump may break you.
   and a headless run now say which it is: a call that named nothing, or one that named something
   the tool does not do, and what a rule that would have answered looks like.
 
+- **A release attaches a Mac binary as well.** `aarch64-apple-darwin`, built on `macos-latest`,
+  which is that runner's own host - so it is a second entry in the matrix rather than anything
+  cross-compiled. It is **unsigned**: Gatekeeper quarantines a download and the first run is
+  refused until `xattr -d com.apple.quarantine kamchatka`, which is what a paid Apple Developer
+  account would fix and there is not one. It runs the shell unconfined, as any `kamchatka` off
+  Linux does.
+
 ### changed
 
 - **The sandbox suite is two: `tests/sandbox.rs` for what needs a process, `tests/boundary.rs` for

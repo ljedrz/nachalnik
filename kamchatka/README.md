@@ -137,6 +137,12 @@ $ cargo install --git https://github.com/ljedrz/nachalnik kamchatka
 $ cargo install --path kamchatka              # from a clone
 ```
 
+Two binaries are attached to a release. The Linux one is static musl and runs wherever the kernel
+is new enough. The Mac one is arm64 and **unsigned**, so Gatekeeper quarantines it and the first
+run is refused until `xattr -d com.apple.quarantine kamchatka` — signing it needs a paid Apple
+Developer account. It also runs the shell unconfined, which is macOS rather than the download and
+which the status line says in as many words.
+
 Rust 1.88 or newer, and that is the whole list: no system libraries, no `pkg-config`, nothing
 to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
 looking for yours.

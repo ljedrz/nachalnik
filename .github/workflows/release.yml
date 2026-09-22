@@ -43,13 +43,37 @@ jobs:
   # note: `!failure() && !cancelled()` rather than nothing, because `create-release` is skipped on
   # a dispatch and a job that needs a skipped job is skipped too. This has to run in both cases:
   # on a tag it is the artifact, and on a dispatch it is the whole point
+  #
+  # note: two targets, and each is its own platform's host - so nothing here cross-compiles and
+  # `build-tool: cargo` below is right for both. `macos-latest` has been arm64 since 2024, which
+  # is what makes `aarch64-apple-darwin` the native one; an Intel Mac is a `cargo install` away
+  # and is not worth a third column nobody here can test on.
+  #
+  # note: the Mac binary is **unsigned**, so Gatekeeper quarantines it on download and the first
+  # run is refused until `xattr -d com.apple.quarantine kamchatka`. Signing and notarising needs a
+  # paid Apple Developer account and two secrets in this repository, and neither exists. The
+  # readme says so beside the link rather than leaving somebody to meet it. What this does *not*
+  # claim is a confined shell: away from Linux `confine` answers `Unsupported` and the status line
+  # says so - see POSTPONED.md, which is where that half is written down.
   binary:
-    name: the linux binary
+    name: the ${{ matrix.what }} binary
     needs: create-release
     if: ${{ !failure() && !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+    strategy:
+      # a target that will not build is worth knowing about on its own rather than through the
+      # other one being cancelled, and on a tag the release is already made by the time these run
+      fail-fast: false
+      matrix:
+        include:
+          - what: linux
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - what: mac
+            os: macos-latest
+            target: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -60,15 +84,16 @@ jobs:
       # `musl-tools` is the compiler for it. `CC_` names the target explicitly rather than
       # trusting `cc`'s own guess at which compiler a musl target wants
       - name: the musl C toolchain
+        if: matrix.what == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y musl-tools
 
-      # note: static musl rather than glibc, so that what a release attaches runs wherever the
-      # kernel is new enough rather than wherever the distribution is. The confinement survives
-      # it: the whole of `kamchatka`'s suite passes against this target, Landlock tests included,
-      # which is the one thing worth having checked before shipping a single file that claims to
-      # sandbox what it runs.
+      # note: on Linux, static musl rather than glibc, so that what a release attaches runs
+      # wherever the kernel is new enough rather than wherever the distribution is. The
+      # confinement survives it: the whole of `kamchatka`'s suite passes against this target,
+      # Landlock tests included, which is the one thing worth having checked before shipping a
+      # single file that claims to sandbox what it runs.
       #
       # note: `build-tool: cargo` because the action would otherwise choose `cross` - the target
       # is not the host, and that is its rule - which means installing `cross` from source and
@@ -81,7 +106,7 @@ jobs:
         with:
           bin: kamchatka
           package: kamchatka
-          target: x86_64-unknown-linux-musl
+          target: ${{ matrix.target }}
           build-tool: cargo
           locked: true
           checksum: sha256

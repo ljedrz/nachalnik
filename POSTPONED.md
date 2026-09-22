@@ -167,11 +167,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   stopped, which off Linux nothing does - they are the whole of what is left in `sandbox.rs`, and
   a backend is what would check them.
 
-  **The Mac binary is separable and is not blocked by any of it.** It is one matrix entry on
-  `macos-latest` for `aarch64-apple-darwin` in the `upload-rust-binary-action` the Linux job
-  already uses. Gatekeeper gates it rather than the build: an unsigned download is quarantined
-  until `xattr -d com.apple.quarantine`, and signing and notarising needs a paid Apple Developer
-  account and two secrets in CI. A Homebrew tap avoids quarantine.
+  **The Mac binary was separable and is shipped.** It is a second entry in the `binary` job's
+  matrix, `aarch64-apple-darwin` on `macos-latest`, through the `upload-rust-binary-action` the
+  Linux one already used; the target is that runner's own host, so nothing cross-compiles.
+  Gatekeeper gates it rather than the build: it is unsigned, so a download is quarantined until
+  `xattr -d com.apple.quarantine`, which `kamchatka`'s readme says beside the link. Signing and
+  notarising needs a paid Apple Developer account and two secrets in this repository, and that is
+  what is still not done - a Homebrew tap is the other way to avoid the quarantine. What the
+  binary does not have is any of the confinement above.
 
 - **A second System One engine, `laya` among them.** The module is
   `nachalnik-providers::system1` and the variables are `KAMCHATKA_SYSTEM1_*` because the three
