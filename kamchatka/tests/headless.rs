@@ -2221,6 +2221,20 @@ fn restart_writes_the_session_out_and_starts_another() {
         .collect();
     assert_eq!(logs.len(), 2, "one record per session: {logs:?}");
 
+    // note: the session that was restarted, because it is the one with two ways to be ended. This
+    // loop ends its own session - the last record owes the stream it is writing - and
+    // `Setup::relaunch` ends the one it is handed, so the pair of them wrote `session.finished`
+    // twice: the log said nothing more would be recorded and then recorded it again
+    for log in &logs {
+        let lines =
+            std::fs::read_to_string(dir.join("kamchatka").join(log)).expect("it is readable");
+        let ended = lines
+            .lines()
+            .filter(|line| line.contains("session.finished"))
+            .count();
+        assert_eq!(ended, 1, "{log} ended {ended} time(s)");
+    }
+
     // and the second session is a session of its own rather than the first one's log written twice
     let mut names: Vec<String> = logs.iter().map(|it| it.replace(".jsonl", "")).collect();
     names.sort();
