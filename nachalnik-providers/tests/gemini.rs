@@ -139,6 +139,21 @@ async fn a_streamed_turn_keeps_the_order_it_arrived_in() {
     );
 }
 
+/// A prompt the API blocked outright is a refusal, not an empty turn nobody explained.
+///
+/// note: no candidate at all, and the reason under `promptFeedback`, which nothing read - so the
+/// turn went into the record empty with `unreported` as its stop.
+#[tokio::test]
+async fn a_blocked_prompt_is_a_refusal() {
+    let response = answered(
+        "data: {\"promptFeedback\":{\"blockReason\":\"PROHIBITED_CONTENT\"},\
+         \"usageMetadata\":{\"promptTokenCount\":12}}\n\n",
+    )
+    .await;
+
+    assert_eq!(response.stop, StopReason::Refusal);
+}
+
 #[tokio::test]
 async fn a_run_of_parts_of_one_kind_is_one_block() {
     let response = answered(SPOKEN).await;

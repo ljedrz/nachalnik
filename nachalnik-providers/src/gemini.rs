@@ -732,6 +732,12 @@ impl Gemini {
                     });
                 }
 
+                // a prompt the API will not answer at all comes back with no candidate and the reason
+                // beside it - which is a refusal whatever it names, and was an empty turn with a
+                // stop nobody had reported
+                if let Some(reason) = chunk["promptFeedback"]["blockReason"].as_str() {
+                    finish = Some(format!("blocked: {reason}"));
+                }
                 let candidate = &chunk["candidates"][0];
                 if let Some(reason) = candidate["finishReason"].as_str() {
                     finish = Some(reason.to_owned());
@@ -811,6 +817,7 @@ fn answer(streamed: Streamed, deltas: &DeltaSink) -> Result<ModelResponse, BoxEr
             // stopped partway through is visible nowhere else. The kernel decides what to run
             // from the calls rather than from this, so saying so costs the turn nothing
             Some("cut off") => StopReason::Other("cut off".to_owned()),
+            Some(blocked) if blocked.starts_with("blocked: ") => StopReason::Refusal,
             _ if asked => StopReason::ToolUse,
             Some("STOP") => StopReason::EndTurn,
             Some("MAX_TOKENS") => StopReason::Length,

@@ -26,6 +26,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A prompt Google blocks is a refusal.** It comes back with no candidate and the reason under
+  `promptFeedback.blockReason`, which nothing read, so the turn was recorded empty with
+  `StopReason::Other("unreported")` and the reason survived only in `raw`.
+
 - **`OpenAiCompatible::set_endpoint` forgets the last address's parameter list.** `set_model` put
   it down and `set_endpoint` did not, and a probe only writes one where the new listing has one of
   its own - so a session moved from an endpoint that publishes its parameters to one that does not
