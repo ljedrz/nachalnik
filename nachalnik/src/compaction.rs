@@ -85,7 +85,9 @@ pub struct CompactionPlan {
     /// The items to exclude from the projection.
     ///
     /// note: [`ContextState::Pinned`](crate::ContextState::Pinned) items in this list are
-    /// refused by the kernel and reported in [`CompactionReport::refused`]. A pin is a promise.
+    /// refused by the kernel and reported in [`CompactionReport::refused`], and so is the other
+    /// half of a pinned call and its result, since excluding either takes both out of the
+    /// request. A pin is a promise.
     ///
     /// note: prefer [`CompactionPlan::elide`] for anything a tool call answers. Excluding a tool
     /// result takes the call down with it - the projector has no choice, since most providers
@@ -138,7 +140,8 @@ pub struct CompactionReport {
     pub removed: Vec<Removed>,
     /// The items that were reduced to a marker, with what they were costing before.
     pub elided: Vec<Removed>,
-    /// The items the kernel refused to remove because they are pinned.
+    /// The items the kernel refused to remove because they are pinned, or are the call or the
+    /// result a pinned item is paired with.
     pub refused: Vec<Removed>,
     /// The summary item that was added, if any.
     pub summary: Option<Removed>,

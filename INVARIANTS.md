@@ -26,7 +26,8 @@ time it is inconvenient. [AGENTS.md](AGENTS.md) lists them without it.
   messages. `context.replaced` is the one event carrying content, because overwritten text is the
   one thing nothing else can recover.
 - **A pin is a promise**: the kernel refuses a `Compactor`'s attempt to remove a pinned item and
-  says so in `CompactionReport::refused`.
+  says so in `CompactionReport::refused` - and the same for a removal of the call or the result a
+  pinned item is paired with, because the two go out together or not at all.
 - **One operation is one undo.** `push_all`, `set_state` over eight ids, `supersede`, a recorded
   turn - one checkpoint each. An operation that changes nothing takes no checkpoint, and one that
   is about to fail takes none either.

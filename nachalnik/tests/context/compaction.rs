@@ -171,6 +171,97 @@ fn a_compaction_that_moves_something_is_one_undo() {
     assert_eq!(kernel.items().len(), 2, "the summary went with them");
 }
 
+/// An item a plan names twice, or in both lists, is moved once and reported once. The report is
+/// what a pass is judged by, and an item in it twice is counted twice.
+#[test]
+fn a_plan_naming_an_item_twice_moves_it_once() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a".repeat(400)));
+    let b = kernel.push(ContextItem::file("src/b.rs", "b".repeat(400)));
+
+    let report = kernel.apply_compaction(CompactionPlan {
+        remove: vec![a, a],
+        elide: vec![a, b, b],
+        reason: "a careless compactor".into(),
+        ..CompactionPlan::default()
+    });
+
+    let ids = |list: &[nachalnik::Removed]| list.iter().map(|r| r.id).collect::<Vec<_>>();
+    assert_eq!(ids(&report.removed), vec![a]);
+    assert_eq!(ids(&report.elided), vec![b], "removal wins over elision");
+    assert_eq!(kernel.item(a).unwrap().state, ContextState::Excluded);
+    assert_eq!(kernel.item(b).unwrap().state, ContextState::Elided);
+}
+
+/// A pin reaches the other half of its pair. A call and its result go out together or not at
+/// all, so excluding the turn a pinned result answers - or the result a pinned turn's only call
+/// asked for - takes the pinned item out of the request while its state still says `Pinned`.
+#[test]
+fn a_pin_protects_the_other_half_of_its_pair() {
+    use nachalnik::{Content, ToolCall};
+
+    let pair = |kernel: &nachalnik::Kernel| {
+        let call = ToolCall::new("c1", "read", Arc::new(json!({ "path": "big.rs" })));
+        let turn = kernel.push(ContextItem::assistant(
+            Content::text(""),
+            vec![call.clone()],
+        ));
+        let result = kernel.push(ContextItem::tool_result(
+            call.id,
+            "read",
+            "x".repeat(400),
+            false,
+        ));
+        (turn, result)
+    };
+
+    // a pinned result, and a plan taking the turn that asked for it
+    let kernel = kernel();
+    let (turn, result) = pair(&kernel);
+    kernel.set_state([result], ContextState::Pinned, None);
+    let report = kernel.apply_compaction(CompactionPlan {
+        remove: vec![turn],
+        reason: "the turn is old".into(),
+        ..CompactionPlan::default()
+    });
+    assert_eq!(
+        report.refused.iter().map(|r| r.id).collect::<Vec<_>>(),
+        vec![turn]
+    );
+    assert!(report.removed.is_empty());
+    assert!(
+        kernel.project().included.contains(&result),
+        "the pinned result went"
+    );
+
+    // a pinned turn, and a plan taking the only result it has
+    let kernel = crate::kernel();
+    let (turn, result) = pair(&kernel);
+    kernel.set_state([turn], ContextState::Pinned, None);
+    let report = kernel.apply_compaction(CompactionPlan {
+        remove: vec![result],
+        reason: "the result is large".into(),
+        ..CompactionPlan::default()
+    });
+    assert_eq!(
+        report.refused.iter().map(|r| r.id).collect::<Vec<_>>(),
+        vec![result]
+    );
+    assert!(
+        kernel.project().included.contains(&turn),
+        "the pinned turn went"
+    );
+
+    // and eliding the result is still allowed, because an elided result still answers its call
+    let report = kernel.apply_compaction(CompactionPlan {
+        elide: vec![result],
+        reason: "the result is large".into(),
+        ..CompactionPlan::default()
+    });
+    assert_eq!(report.elided.len(), 1);
+    assert!(kernel.project().included.contains(&turn));
+}
+
 /// An elided item is still in the request, as a marker, and its own size is on the withheld side
 /// of the ledger rather than the spent one.
 #[test]

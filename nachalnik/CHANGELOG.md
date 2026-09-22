@@ -9,6 +9,19 @@ minor bump may break you.
 
 ### fixed
 
+- **A compaction plan cannot take a pinned item out of the request through the item beside it.**
+  The kernel refused a plan's removal of a pinned item and nothing else, but a call and its result
+  go out together or not at all - so removing the turn a pinned result answers dropped the result
+  as an orphan, and removing the only result a pinned turn's call asked for dropped the turn, with
+  both still reading `Pinned` and `CompactionReport::refused` empty. A removal of either half of a
+  pinned pair is refused now. Elision is untouched, since an elided item keeps its place in the
+  pair.
+
+- **An item a compaction plan names twice is moved once and reported once.** The report took every
+  entry as it came, so `remove: [5, 5]` listed item 5 twice and counted its tokens twice, and an
+  item in both `remove` and `elide` was excluded, then elided, and reported as both. Removal wins
+  where the two lists overlap, and the report lists only what actually moved.
+
 - **A step refused as `Error::Busy` no longer swallows the interrupt.** `step_once` cleared the
   flag before it took the machine lock, so a second thread calling `step` while a request was in
   flight got `Ok` where the state table promises `Busy`, and took the stop away from the request

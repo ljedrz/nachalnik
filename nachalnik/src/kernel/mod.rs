@@ -22,7 +22,7 @@ use tokio::sync::broadcast;
 use crate::{
     compaction::{Budget, CompactionPlan, CompactionReport, Compactor, Removed},
     config::Config,
-    context::{Context, ContextId, ContextItem, ContextState},
+    context::{Context, ContextId, ContextItem, ContextKind, ContextState},
     error::{Error, Result},
     event::Event,
     model::{
@@ -1146,6 +1146,8 @@ impl Kernel {
     /// Applies a compaction plan, returning (and broadcasting) a report of what it did.
     ///
     /// note: Pinned items in the plan are refused, and listed in [`CompactionReport::refused`].
+    /// So is a removal of the call or the result a pinned item is paired with, because the pair
+    /// goes out together or not at all.
     ///
     /// note: a pass that turns out to move nothing takes no checkpoint, like every other
     /// operation here. That is not a nicety about a hand-written plan: a [`Compactor`] is asked
@@ -1189,10 +1191,22 @@ impl Kernel {
             // contributing nothing: taking it recovers nothing, reports the whole of it as
             // recovered, and moves something that was never being sent
             let carrying: HashSet<ContextId> = before.included.iter().copied().collect();
+            // a call and its result go out together or not at all, so excluding one half of a
+            // pinned pair takes the pinned half out of the request with it - reaching for the pin
+            // through the item beside it. Elision is not in this, because an elided item keeps
+            // its place in the pair
+            let pinned_calls: HashSet<&ToolCallId> = context
+                .items()
+                .iter()
+                .filter(|item| item.state == ContextState::Pinned && carrying.contains(&item.id))
+                .flat_map(|item| paired(item))
+                .collect();
 
             // what the plan comes to is worked out before anything moves, because the checkpoint
             // has to be taken before the first change and must not be taken at all if there is
-            // not going to be one
+            // not going to be one. An id named twice, or in both lists, is moved once and reported
+            // once: removal wins, since it is the larger of the two
+            let mut planned = HashSet::new();
             let mut removing = Vec::new();
             for id in remove {
                 let Some(item) = context.item(id) else {
@@ -1203,9 +1217,11 @@ impl Kernel {
                     label: item.label.clone(),
                     tokens: item.tokens,
                 };
-                if item.state == ContextState::Pinned {
+                if item.state == ContextState::Pinned
+                    || paired(item).any(|call| pinned_calls.contains(call))
+                {
                     refused.push(entry);
-                } else if carrying.contains(&id) {
+                } else if carrying.contains(&id) && planned.insert(id) {
                     removing.push(entry);
                 }
             }
@@ -1225,7 +1241,7 @@ impl Kernel {
                     refused.push(entry);
                     continue;
                 }
-                if !carrying.contains(&id) || item.state.is_elided() {
+                if !carrying.contains(&id) || item.state.is_elided() || !planned.insert(id) {
                     continue;
                 }
                 eliding.push(entry);
@@ -1253,8 +1269,8 @@ impl Kernel {
                         to: ContextState::Excluded,
                         note,
                     });
+                    removed.push(entry);
                 }
-                removed.push(entry);
             }
 
             // note: the note is set from the pass's reason rather than kept, as the removals
@@ -1275,8 +1291,8 @@ impl Kernel {
                         to: ContextState::Elided,
                         note,
                     });
+                    elided.push(entry);
                 }
-                elided.push(entry);
             }
 
             if let Some(item) = summary.filter(|_| moved) {
@@ -1670,4 +1686,15 @@ impl Kernel {
 
         Some(from)
     }
+}
+
+/// The calls an item is one half of a pair with: the ones an assistant turn asked for, or the one
+/// a tool result answers.
+fn paired(item: &ContextItem) -> impl Iterator<Item = &ToolCallId> {
+    let answers = match &item.kind {
+        ContextKind::ToolResult { call, .. } => Some(call),
+        _ => None,
+    };
+
+    item.calls().map(|call| &call.id).chain(answers)
 }
