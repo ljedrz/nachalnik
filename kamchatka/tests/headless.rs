@@ -1210,7 +1210,7 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
             "-m",
             "nothing",
             "--allow",
-            "shell",
+            "exec:run",
             "go",
         ])
         .env("KAMCHATKA_BASE_URL", &base)
@@ -1246,6 +1246,12 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
         "`sleep 30` outlived the interrupt, so the command was waited for rather than stopped"
     );
     let said = said.lock().clone();
+    // and it was running: a call refused for want of anybody to ask leaves nothing to stop, and
+    // passes everything above. `--allow shell` did exactly that, being a domain no tool declares
+    assert!(
+        !said.contains("because nobody is here to be asked"),
+        "the command was refused rather than run: {said}"
+    );
     assert!(said.contains("what has arrived is kept"), "{said}");
     // the result of the call it was in the middle of is on the record, which is the whole of what
     // "what has arrived is kept" means
