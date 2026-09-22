@@ -249,6 +249,13 @@ for, so there is nothing for it to agree with.
   The question to ask is not "is this an output" but **"does anything outside this crate build
   one"**, and `grep` answers it.
 
+  **The rule is the workspace's rather than `nachalnik`'s**, and the crate it was last applied to
+  is `nachalnik-providers`, which had it nowhere: `system1::Question` and `system1::Answer` name
+  the shapes a System One engine answers in, which are the engine's to add and not this crate's;
+  `system1::Answers` and `openai::Attribution` are built here and nowhere else. `kamchatka` is
+  held to it more loosely - its library is a terminal agent's insides rather than a runtime - but
+  the same question decides.
+
   The attribute on an enum does *not* cover its variants: a struct-like variant gaining a field
   breaks every caller who wrote the pattern out, which is what `Event::ModelFailed` gaining
   `overrun` did. Marking the variants would fix that and cost more than it is worth - measured,

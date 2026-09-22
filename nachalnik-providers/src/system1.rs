@@ -168,7 +168,15 @@ const PATIENCE: Duration = Duration::from_secs(30);
 /// [`Question::Score`] is a position on an ordered rubric. What decides between them is the shape
 /// of the answer a program needs, and the documentation's own advice is to ask several small ones
 /// rather than one that needs reasoning to unpack.
+///
+/// note: `#[non_exhaustive]`, with [`Answer`] beside it. Three is what the engines answer today
+/// and not what a question can be - a fourth primitive is the upstream's to add, and this crate
+/// exists to speak whatever it grows. Matching is what the attribute costs, and nothing outside
+/// here does: a caller builds these through [`Question::noul`], [`Question::choice`] and
+/// [`Question::score`], and reads the answers back through the accessors on [`Answers`], which
+/// already answer `None` for a variant they were not asked about.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Question {
     /// A claim, answered with how true it is.
     Noul {
@@ -355,7 +363,11 @@ impl Question {
 /// and the accessors on [`Answers`] return `None` for a mismatch instead of a default. A `choice`
 /// answered as a `noul` is a change at the other end, and a program that quietly read `0.0` out
 /// of it would act on a number nobody sent.
+///
+/// note: `#[non_exhaustive]` for the reason [`Question`] is - an answer shape arrives because a
+/// question shape did.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Answer {
     /// How true the claim is, from 0 to 1.
     Noul {
@@ -442,7 +454,13 @@ impl Answer {
 }
 
 /// Everything one request came back with.
+///
+/// note: `#[non_exhaustive]` on the same question the enums above answer, put to a struct:
+/// nothing outside this crate builds one. [`Answers::read`] is where they come from, so the
+/// attribute costs a caller nothing and makes the next field a patch rather than a break - which
+/// matters here, because what a response carries is the other end's to widen.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Answers {
     /// The version that actually answered - `jev-1.13.0` for a request naming `jev-latest`.
     pub model: String,

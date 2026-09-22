@@ -116,7 +116,12 @@ pub struct OpenAiCompatible {
 ///
 /// note: the URL is an identifier rather than a link anybody follows - OpenRouter keeps the app's
 /// page against it - so it wants to be the project's own address and to stay the same.
+///
+/// note: `#[non_exhaustive]` because nothing outside this crate builds one.
+/// [`OpenAiCompatible::on_behalf_of`] takes the two parts and assembles it, which is the only
+/// way one is made, and a third header the ranking wants should not be a break.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct Attribution {
     /// The app's own URL, which is what the ranking is kept against.
     pub url: String,

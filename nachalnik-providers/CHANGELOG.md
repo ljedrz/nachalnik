@@ -5,6 +5,25 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### breaking
+
+- **`system1::Question`, `system1::Answer`, `system1::Answers` and `openai::Attribution` are
+  `#[non_exhaustive]`.** This crate had the attribute nowhere and wants it in four places, which
+  is the rule the workspace holds itself to: a public enum the world can add to carries it, and so
+  does a struct nothing outside the crate builds. A `match` on `Question` or `Answer` written
+  elsewhere now needs a wildcard arm, and a struct literal naming every field of `Answers` or
+  `Attribution` is no longer how one is made.
+
+  It is worth a break now because it will not get cheaper. Three question types is what the
+  engines answer today rather than what a question can be - the shapes are the upstream's to add,
+  and this crate exists to speak whatever it grows - and what a response carries is the other
+  end's to widen. Nothing in this workspace had to change: the accessors on `Answers` already
+  match with a `_` arm, `kamchatka` builds its questions through `Question::noul`,
+  `Question::choice` and `Question::score`, and `Attribution` is assembled by
+  `OpenAiCompatible::on_behalf_of` and read by nobody.
+
 ## [0.5.0] - 2026-09-21
 
 ### added
