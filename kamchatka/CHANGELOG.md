@@ -72,6 +72,12 @@ minor bump may break you.
   same question five times each way, the untyped shape stringified five times out of five and the
   typed one none.
 
+- **A call whose arguments never parsed says what is wrong with them and shows that part.** It
+  said `the arguments were not JSON` and quoted the first 200 characters, which is the wrong two
+  hundred: of twelve such calls in one session, four had the fault past the cut, so the message
+  quoted the part that was fine and left out the part that was not. It now carries the parser's
+  own account - where the text stops, or where an escape went wrong - and a window around that
+  rather than the opening.
 
 ## [0.14.0] - 2026-09-21
 

@@ -260,6 +260,85 @@ fn branch(op: &Op) -> Value {
 /// needs is the one thing the provider already knew and nobody passed on.
 const UNPARSED: &str = "_unparsed";
 
+/// How much of a payload to quote back: enough to see the fault in its sentence, and not so much
+/// that a long command is copied into the context twice over.
+const SHOWN: usize = 200;
+
+/// What is wrong with arguments that never parsed, and the part of them to look at.
+///
+/// note: the parse is done again here because the answer was thrown away. `nachalnik-providers`
+/// tries it, keeps the text under [`UNPARSED`] when it fails, and drops the error - so the one
+/// thing that knew *what* was wrong knew it in another crate. Reading it again costs a parse of a
+/// string that is already known not to parse, which is the cheapest thing in the exchange.
+///
+/// note: and the window is around the fault rather than the first [`SHOWN`] characters, which is
+/// the half that was actually costing something. Of twelve of these in one session, four had the
+/// fault past the cut - so the message quoting the payload quoted the part that was fine and left
+/// out the part that was not, which is the failure `_unparsed` exists to end, one level further
+/// out.
+///
+/// note: what it does not do is repair. `inclusionai/ling-3.0-flash-vl` ends every call but the
+/// last of a multi-call turn one `}` short - reproducibly, streamed and whole alike, so it is the
+/// model rather than anything in the way - and closing it here would be this program deciding what
+/// a half-written call meant. Saying where it stops is the part that is known.
+fn unreadable(written: &str) -> String {
+    let Err(why) = serde_json::from_str::<Value>(written) else {
+        return format!(
+            "the arguments arrived as text rather than as an object, so nothing was read and \
+             nothing was done. What arrived was `{}`. Send the call again, as one JSON object.",
+            around(written, 0, SHOWN)
+        );
+    };
+
+    format!(
+        "the arguments were not JSON, so nothing was read and nothing was done: {why}. What \
+         arrived there was `{}`. Send the call again, as one JSON object.",
+        around(written, at(written, why.line(), why.column()), SHOWN)
+    )
+}
+
+/// Where in the text a line and column land, both counted from one; the end of it when they name
+/// nowhere, which is what a payload that simply stopped reports.
+fn at(written: &str, line: usize, column: usize) -> usize {
+    if line == 0 {
+        return written.len();
+    }
+
+    let mut start = 0;
+    for (n, text) in written.split_inclusive('\n').enumerate() {
+        if n + 1 == line {
+            return start
+                + text
+                    .char_indices()
+                    .nth(column.saturating_sub(1))
+                    .map_or(text.len(), |(at, _)| at);
+        }
+        start += text.len();
+    }
+
+    written.len()
+}
+
+/// A window of the text around a position, saying on which side there is more.
+fn around(written: &str, at: usize, width: usize) -> String {
+    let chars: Vec<(usize, char)> = written.char_indices().collect();
+    let here = chars
+        .iter()
+        .position(|(byte, _)| *byte >= at)
+        .unwrap_or(chars.len());
+
+    let from = here.saturating_sub(width / 2).min(chars.len());
+    let to = (from + width).min(chars.len());
+    let from = to.saturating_sub(width);
+
+    format!(
+        "{}{}{}",
+        if from > 0 { "…" } else { "" },
+        chars[from..to].iter().map(|(_, it)| it).collect::<String>(),
+        if to < chars.len() { "…" } else { "" },
+    )
+}
+
 /// The object a call's arguments are really in, or what is wrong with where they are.
 ///
 /// note: four readings, and two of them are refused. Arguments under [`WRAPPER`] is what the
@@ -271,11 +350,7 @@ const UNPARSED: &str = "_unparsed";
 /// see [`UNPARSED`].
 pub(crate) fn inner(args: &Value) -> Result<&Value, String> {
     if let Some(written) = args.get(UNPARSED).and_then(Value::as_str) {
-        return Err(format!(
-            "the arguments were not JSON, so nothing was read and nothing was done. What arrived \
-             was `{}`. Send the call again, as one JSON object.",
-            written.chars().take(200).collect::<String>()
-        ));
+        return Err(unreadable(written));
     }
 
     let Some(inside) = args.get(WRAPPER).filter(|it| it.is_object()) else {
@@ -698,6 +773,54 @@ mod tests {
         assert!(
             refusal.contains("</arg_key>"),
             "and it says what arrived, because that is the part to look at: {refusal}"
+        );
+    }
+
+    /// A payload that never parsed says what is wrong with it and shows that part.
+    ///
+    /// note: both texts are what live calls actually arrived as, from one session of
+    /// `inclusionai/ling-3.0-flash-vl`. The first is the shape that model produces for every call
+    /// but the last of a multi-call turn: complete, and one `}` short. The second is the other
+    /// fault in the same session, an unescaped `"` inside the command - and it is past the two
+    /// hundredth character, which is the whole reason the window moved.
+    #[test]
+    fn a_payload_that_never_parsed_says_where_it_stops() {
+        let short = "{\"call\": {\"action\": \"run\", \"cmd\": \"curl -sL \
+                     'https://api.github.com/repos/ljedrz/nac' | python3 -m json.tool\"}";
+        let said = unreadable(short);
+        assert!(said.contains("not JSON"), "{said}");
+        assert!(said.contains("nothing was done"), "{said}");
+        assert!(
+            said.contains("EOF") || said.contains("end"),
+            "a payload that simply stops says so, rather than leaving the model to count \
+             braces: {said}"
+        );
+        assert!(
+            said.contains("json.tool"),
+            "and shows where it stopped: {said}"
+        );
+
+        let escaped = format!(
+            "{{\"call\": {{\"action\": \"run\", \"cmd\": \"curl -sL '{}' 2>/dev/null \
+             | python3 -c \"import sys,json; print(json.load(sys.stdin))\"}}}}",
+            "https://api.github.com/repos/contributor-covenant/contributor-covenant/git/trees/\
+             main?recursive=1&per_page=100&page=1&ref=refs/heads/main&filter=blobs"
+        );
+        assert!(
+            escaped
+                .find("python3 -c \"import")
+                .expect("the fault is in there")
+                > SHOWN,
+            "the case is a fault past the first {SHOWN} characters"
+        );
+        let said = unreadable(&escaped);
+        assert!(
+            said.contains("import sys,json"),
+            "the window follows the fault rather than quoting the start: {said}"
+        );
+        assert!(
+            said.contains('…'),
+            "and says there is more either side: {said}"
         );
     }
 
