@@ -282,8 +282,16 @@ impl Provider for OpenAiCompatible {
         // endpoint that was asked for a whole answer it is a 400 about a field nobody set; left
         // off a request whose parameters turned streaming *on* it costs the usage report, and a
         // turn whose cost is unknown is the one thing this workspace will not have
+        //
+        // note: added to options somebody set rather than put in place of them, since the rest of
+        // what they asked for is theirs
         match body["stream"] == json!(true) {
-            true => body["stream_options"] = json!({ "include_usage": true }),
+            true => match body["stream_options"].as_object_mut() {
+                Some(options) => {
+                    options.insert("include_usage".to_owned(), json!(true));
+                }
+                None => body["stream_options"] = json!({ "include_usage": true }),
+            },
             false => {
                 if let Some(body) = body.as_object_mut() {
                     body.remove("stream_options");
@@ -828,7 +836,9 @@ impl Gathering {
             .filter(|fragment| !fragment.is_empty());
         let call = &mut self.calls[at];
 
-        if let Some(id) = requested["id"].as_str() {
+        // an empty identifier names nothing, which is how the lookup above already reads one - so
+        // it does not get to write over the one the call was opened with either
+        if let Some(id) = requested["id"].as_str().filter(|id| !id.is_empty()) {
             call.id = id.to_owned();
         }
         if let Some(name) = requested["function"]["name"].as_str() {
@@ -1185,6 +1195,47 @@ mod tests {
                 "a whole answer must not be handed a stream's options: {streaming} {asked:?}"
             );
         }
+
+        // and options somebody set for a stream are added to rather than replaced
+        let provider = OpenAiCompatible::new("m", "https://example.invalid/v1", "k");
+        let mut params = Params::new();
+        params.insert(
+            "stream_options".to_owned(),
+            json!({ "continuous_usage_stats": true }),
+        );
+        let body = provider
+            .render(&ModelRequest {
+                messages: Vec::new(),
+                tools: Vec::new(),
+                params,
+            })
+            .expect("this provider renders");
+        assert_eq!(
+            body["stream_options"],
+            json!({ "continuous_usage_stats": true, "include_usage": true })
+        );
+    }
+
+    /// An empty identifier on a later fragment does not write over the one the call opened with.
+    ///
+    /// note: the lookup already read an empty identifier as naming nothing, and the write did not -
+    /// so the call ended up with none, and its early argument fragments were filed under a different
+    /// identifier from its late ones.
+    #[test]
+    fn an_empty_identifier_does_not_unname_a_call() {
+        let mut gathering = Gathering::default();
+        let deltas = DeltaSink::disconnected();
+        gathering.fold(
+            &json!({ "index": 0, "id": "call_1", "function": { "name": "look", "arguments": "{" } }),
+            &deltas,
+        );
+        gathering.fold(
+            &json!({ "index": 0, "id": "", "function": { "arguments": "}" } }),
+            &deltas,
+        );
+
+        assert_eq!(gathering.calls[0].id, "call_1");
+        assert_eq!(gathering.calls[0].args, "{}");
     }
 
     /// The two shapes a rate limit actually arrived in, copied out of a real session.

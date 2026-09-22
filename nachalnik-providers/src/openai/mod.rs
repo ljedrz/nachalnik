@@ -404,6 +404,10 @@ impl OpenAiCompatible {
             *self.model.lock() = model;
         }
         *self.context_limit.lock() = self.configured;
+        // what the last address said its model takes is not something this one said, and `probe`
+        // only overwrites the list where the new listing has one of its own
+        self.parameters.lock().clear();
+        *self.every_parameter.lock() = true;
         self.probe().await;
         self.say_if_the_model_is_not_there().await;
     }
@@ -451,9 +455,12 @@ impl OpenAiCompatible {
 
     /// The identifiers in a listing, however that listing spells them.
     async fn listed_names(&self, url: &str, bearer: bool) -> Vec<String> {
+        // note: a header rather than `?key=`, which is also what Google's native API takes. A key
+        // in a URL is a key in every log a proxy keeps, and what sends it here is only a base
+        // ending in `/openai` - which is not only Google's
         let request = match bearer {
             true => self.client.get(url).bearer_auth(&self.api_key),
-            false => self.client.get(format!("{url}?key={}", self.api_key)),
+            false => self.client.get(url).header("x-goog-api-key", &self.api_key),
         };
         let Ok(response) = request.send().await else {
             return Vec::new();
@@ -579,9 +586,12 @@ impl OpenAiCompatible {
     /// Looks the model up in a listing and returns whatever context limit it advertises.
     async fn listed_limit(&self, url: &str, bearer: bool) -> Option<usize> {
         let model = self.model.lock().clone();
+        // note: a header rather than `?key=`, which is also what Google's native API takes. A key
+        // in a URL is a key in every log a proxy keeps, and what sends it here is only a base
+        // ending in `/openai` - which is not only Google's
         let request = match bearer {
             true => self.client.get(url).bearer_auth(&self.api_key),
-            false => self.client.get(format!("{url}?key={}", self.api_key)),
+            false => self.client.get(url).header("x-goog-api-key", &self.api_key),
         };
         let body = request.send().await.ok()?.json::<Value>().await.ok()?;
 

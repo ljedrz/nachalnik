@@ -26,6 +26,23 @@ minor bump may break you.
 
 ### fixed
 
+- **`OpenAiCompatible::set_endpoint` forgets the last address's parameter list.** `set_model` put
+  it down and `set_endpoint` did not, and a probe only writes one where the new listing has one of
+  its own - so a session moved from an endpoint that publishes its parameters to one that does not
+  went on checking `/params` against the first server's list.
+
+- **The key is never put in a URL.** The listing reads for a base ending in `/openai` - Google's
+  compatible endpoint, and also any gateway laid out that way - asked the native listing one path
+  up with `?key=` on the end, which is a secret in every log a proxy keeps. It goes in the
+  `x-goog-api-key` header, which the native API takes and the Gemini dialect already used.
+
+- **A caller's `stream_options` are added to, not replaced.** Streaming needs `include_usage`, and
+  it was put in place of whatever options the parameters carried rather than beside them.
+
+- **An empty identifier on a later tool-call fragment does not unname the call.** The lookup read
+  one as naming nothing and the write took it anyway, so the call ended up with an empty identifier
+  and its argument fragments were filed under two.
+
 - **A request's retries are its own.** The count of how many times a request had backed off was
   one counter on the provider, shared by every request made through it and reset by any one that
   succeeded or gave up. Eight abreast against a busy endpoint - `nachalnik-eval`'s `bench -j 8`

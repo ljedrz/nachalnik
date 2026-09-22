@@ -116,3 +116,33 @@ async fn an_endpoint_that_lists_nothing_is_not_saying_the_model_is_absent() {
     }
     let _ = silent;
 }
+
+/// What one address said its model takes does not follow the session to the next.
+///
+/// note: `set_model` put the list down and `set_endpoint` did not, and the probe only writes one
+/// where the new listing has one of its own - so a session moved from an endpoint that publishes
+/// its parameters to one that publishes none went on checking `/params` against the first
+/// server's list, for a model that server was not serving any more.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn an_address_that_lists_no_parameters_does_not_inherit_the_last_ones() {
+    use nachalnik::Provider as _;
+    use nachalnik_providers::Dialect as _;
+
+    const LISTS: &str =
+        r#"{"data":[{"id":"resident","supported_sampling_parameters":["temperature"]}]}"#;
+    let provider =
+        nachalnik_providers::OpenAiCompatible::new("resident", "http://127.0.0.1:1", "not-a-key");
+
+    provider.set_endpoint(serving(LISTS).await, None).await;
+    assert_eq!(provider.info().parameters, ["temperature"]);
+    assert!(!provider.lists_every_parameter());
+
+    provider.set_endpoint(serving(SERVES).await, None).await;
+    assert!(
+        provider.info().parameters.is_empty(),
+        "the last address's list: {:?}",
+        provider.info().parameters
+    );
+    assert!(provider.lists_every_parameter());
+}
