@@ -380,6 +380,21 @@ fn thinking_is_asked_for_and_can_be_turned_off() {
         false
     );
     assert_eq!(body["generationConfig"]["temperature"], 0);
+
+    // and merged all the way down: a budget for the thinking says nothing about whether to be
+    // told it, and does not take the default with it
+    let mut params = nachalnik::Params::new();
+    params.insert(
+        "generationConfig".into(),
+        json!({ "thinkingConfig": { "thinkingBudget": 1024 } }),
+    );
+    kernel.set_params(params);
+
+    let body = provider.render(&kernel.preview_request().unwrap()).unwrap();
+    assert_eq!(
+        body["generationConfig"]["thinkingConfig"],
+        json!({ "includeThoughts": true, "thinkingBudget": 1024 })
+    );
 }
 
 // ------------------------------------------------------------------------------ the round trip

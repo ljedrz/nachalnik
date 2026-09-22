@@ -19,12 +19,9 @@
 //! belong to - [`Part::extra`] and [`ToolCall::extra`] - and go back out attached to the same
 //! part, uninterpreted.
 
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-    time::Duration,
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use nachalnik::{
@@ -35,15 +32,11 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Dialect, Endpoint, install_crypto, refused, same_model,
-    waiting::{
-        PATIENCE, RETRIES, Silence, Unsent, Vigil, backed_off, gone_quiet, interrupted, watched,
-    },
+    Dialect, Endpoint, install_crypto,
+    reading::{Events, Read, Stopped, not_a_stream, read},
+    same_model,
+    waiting::{Asking, Sent, interrupted, sent},
 };
-
-/// How long a stream may say nothing before the provider looks up to check whether it has been
-/// asked to stop.
-const HEARTBEAT: Duration = Duration::from_millis(200);
 
 /// Where Google's own API lives, unless told otherwise.
 pub const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -451,14 +444,13 @@ impl Provider for Gemini {
         // a decision: `generationConfig` in the parameters is merged over this, so
         // `{"thinkingConfig": {"includeThoughts": false}}` turns it off and says so on the
         // `/params` line where somebody can read it back
+        //
+        // note: merged all the way down, so that `{"thinkingConfig": {"thinkingBudget": 1024}}`
+        // sets a budget without also taking away the thoughts it is a budget for
         body["generationConfig"] = json!({ "thinkingConfig": { "includeThoughts": true } });
         for (key, value) in &request.params {
-            match (key.as_str(), value.as_object()) {
-                ("generationConfig", Some(set)) => {
-                    for (key, value) in set {
-                        body["generationConfig"][key] = value.clone();
-                    }
-                }
+            match key.as_str() {
+                "generationConfig" => merge(&mut body["generationConfig"], value),
                 _ => body[key] = value.clone(),
             }
         }
@@ -472,35 +464,44 @@ impl Provider for Gemini {
         deltas: DeltaSink,
     ) -> Result<ModelResponse, BoxError> {
         let body = self.render(&request).expect("this provider always renders");
-        let (base, model) = (self.endpoint(), self.model.lock().clone());
-
-        let mut response = match self.sent(&body, &base, &model, &deltas).await? {
-            // nobody is owed an error for being obeyed
-            Sent::Answered(answer) => return Ok(answer),
-            Sent::Streaming(response) => response,
+        let (base, model, limit) = (
+            self.endpoint(),
+            self.model.lock().clone(),
+            *self.context_limit.lock(),
+        );
+        let asking = Asking {
+            model: &model,
+            deltas: &deltas,
+            notice: &self.notice,
         };
-        let streamed = self.read(&mut response, &model, &deltas).await?;
 
-        answer(streamed, &deltas)
+        let url = format!("{base}/models/{model}:streamGenerateContent?alt=sse");
+        let sending = || {
+            self.client
+                .post(&url)
+                .header("x-goog-api-key", &self.api_key)
+                .json(&body)
+        };
+        let mut streamed = Streamed::default();
+        let mut response = match sent(&asking, &self.attempts, limit, true, sending).await? {
+            Sent::Interrupted => return Ok(interrupted()),
+            Sent::Streaming(response) => response,
+            // never asked for here, and read as what it would be if it came
+            Sent::Whole(payload) => return unstreamed(payload.to_string(), streamed, &deltas),
+        };
+
+        match read(&mut response, &asking, limit, &mut streamed).await? {
+            Read::Events(events, stopped) => Ok(answer(streamed, events, stopped)),
+            Read::Interrupted => Ok(interrupted()),
+            Read::Unstreamed(body) => unstreamed(body, streamed, &deltas),
+        }
     }
-}
-
-/// A request that is over, one way or the other: a stream to read, or an answer already in hand.
-///
-/// note: the only answer this dialect hands back without reading a stream is an interrupt,
-/// there being no whole-answer path here - `alt=sse` is on every request. It is the shape the
-/// other dialect's is because it means the same thing: the turn is over.
-enum Sent {
-    /// The turn, whole: nothing was waited for.
-    Answered(ModelResponse),
-    /// A response whose body is still arriving.
-    Streaming(reqwest::Response),
 }
 
 /// A stream, read: the turn as the parts left it.
 ///
-/// note: `partial` is the turn in the order it was produced, which is this dialect's whole
-/// point and the reason it gathers parts where the other one gathers three slots.
+/// note: `partial` is the turn in the order it was produced, which is this dialect's whole point
+/// and the reason it gathers parts where the other one gathers three slots.
 #[derive(Default)]
 struct Streamed {
     /// The turn so far, in the order the model produced it.
@@ -509,285 +510,100 @@ struct Streamed {
     finish: Option<String>,
     /// What the request cost, where the server reported it.
     usage: Option<Usage>,
-    /// Every payload the server sent, verbatim.
-    chunks: Vec<Value>,
-    /// What arrived after the last whole line: nothing, in an answer that ended tidily, and the
-    /// whole of a response that was never a stream at all.
-    buffer: Vec<u8>,
 }
 
-impl Gemini {
-    /// Sends the request, waiting out an upstream that is merely busy, and hands back whichever
-    /// of the two things arrived.
-    async fn sent(
-        &self,
-        body: &Value,
-        base: &str,
-        model: &str,
-        deltas: &DeltaSink,
-    ) -> Result<Sent, BoxError> {
-        // the count is this request's and nobody else's; see `RETRIES`
-        let mut backoff = 0;
-        Ok(loop {
-            self.attempts.fetch_add(1, Ordering::SeqCst);
-            let response = match watched(
-                self.client
-                    .post(format!(
-                        "{base}/models/{model}:streamGenerateContent?alt=sse"
-                    ))
-                    .header("x-goog-api-key", &self.api_key)
-                    .json(&body)
-                    .send(),
-                deltas,
-                model,
-                &self.notice,
-                PATIENCE,
-            )
-            .await
-            {
-                Ok(response) => response,
-                // this used to be a bare `?`: a stall got neither the doubling a 429 gets nor
-                // any of the watching the stream gets, so a server that took the connection and
-                // went away ended the turn whenever the operating system noticed - and said
-                // nothing at all in the meantime
-                Err(reason) if reason.worth_waiting_out() => {
-                    backoff += 1;
-                    let wait = Duration::from_secs(1 << backoff);
-                    if backoff >= RETRIES {
-                        return Err(reason.giving_up(model));
+impl Events for Streamed {
+    fn event(&mut self, chunk: &Value, deltas: &DeltaSink) {
+        if let Some(reported) = chunk.get("usageMetadata").filter(|u| !u.is_null()) {
+            // note: the thoughts are added in, because `Usage::output_tokens` is everything
+            // generated and this dialect reports the two apart. Google's own `totalTokenCount` is
+            // defined as the prompt plus the thoughts plus the candidates, so the sum is that
+            // definition rather than this crate's invention - and without it a thinking turn's
+            // cost is the answer alone. `thoughtsTokenCount` still says how much of it was
+            // thinking, one field along
+            let thoughts = reported["thoughtsTokenCount"].as_u64();
+            let candidates = reported["candidatesTokenCount"].as_u64();
+            self.usage = Some(Usage {
+                input_tokens: reported["promptTokenCount"].as_u64(),
+                // note: `None` only where the dialect said neither, so that "it did not say" stays
+                // distinguishable from "it generated nothing"
+                output_tokens: match (candidates, thoughts) {
+                    (None, None) => None,
+                    (candidates, thoughts) => {
+                        Some(candidates.unwrap_or_default() + thoughts.unwrap_or_default())
                     }
-
-                    *self.notice.lock() = Some(format!(
-                        "{model} {}; trying again in {}s",
-                        reason.what_happened(),
-                        wait.as_secs()
-                    ));
-                    if !backed_off(wait, deltas).await {
-                        return Ok(Sent::Answered(interrupted()));
-                    }
-                    continue;
-                }
-                // nobody is owed an error for being obeyed
-                Err(Unsent::Interrupted) => return Ok(Sent::Answered(interrupted())),
-                Err(reason) => return Err(reason.giving_up(model)),
-            };
-
-            let status = response.status();
-            if status.is_success() {
-                break Sent::Streaming(response);
-            }
-
-            let transient = status.as_u16() == 429 || status.is_server_error();
-            backoff += 1;
-            if !transient || backoff >= RETRIES {
-                let body = response.text().await.unwrap_or_default();
-                return Err(refused(
-                    format!("{status}: {body}"),
-                    self.info().context_limit,
-                ));
-            }
-
-            let wait = Duration::from_secs(1 << backoff);
-            *self.notice.lock() = Some(format!(
-                "{model} answered {}; trying again in {}s",
-                status.as_u16(),
-                wait.as_secs()
-            ));
-            if !backed_off(wait, deltas).await {
-                return Ok(Sent::Answered(interrupted()));
-            }
-        })
-    }
-
-    /// Reads the response to its end, handing the parts to `deltas` as they arrive.
-    ///
-    /// note: what stops this is the server, an interrupt, or the stall watch - and the first two
-    /// of those are answers rather than failures, which is why what comes back is what had
-    /// arrived rather than an error.
-    async fn read(
-        &self,
-        response: &mut reqwest::Response,
-        model: &str,
-        deltas: &DeltaSink,
-    ) -> Result<Streamed, BoxError> {
-        // bytes rather than a `String`, because a chunk boundary is not a character boundary. A
-        // multi-byte character split across two reads used to be decoded twice, lossily, and
-        // arrived as two replacement characters that then went into the context, the transcript
-        // and the session log: `zażółć` came back `za\u{fffd}\u{fffd}ółć`. Held as bytes, the tail of
-        // a split character waits in here for the rest of itself, and only whole lines are decoded
-        let mut buffer: Vec<u8> = Vec::new();
-        let mut partial: Vec<Partial> = Vec::new();
-        let mut finish = None;
-        let mut usage = None;
-        let mut chunks = Vec::new();
-        let mut vigil = Vigil::new();
-
-        loop {
-            // without the timeout this sits in `chunk` until the server feels like talking, and a
-            // request that stalls before its first byte leaves an interrupt doing nothing at all
-            let bytes = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
-                Ok(Ok(Some(bytes))) => {
-                    if vigil.heard() {
-                        *self.notice.lock() = Some(format!("{model} is answering again"));
-                    }
-                    bytes
-                }
-                Ok(Ok(None)) => break,
-                // the body stopped arriving in the middle of an answer. Everything parsed so far
-                // is kept and the socket is abandoned, which is what the interrupt below already
-                // does for the other way a stream ends early - this is that case without the
-                // consent, so it is marked with a name of its own instead of `interrupted`.
-                //
-                // note: it used to return the error, which failed the turn and threw away every
-                // token the model had produced *and been billed for*: one session spent 148
-                // seconds on an answer and kept none of it. Retrying is the other candidate and
-                // is worse, because every attempt is billed too - an answer that reliably outruns
-                // an upstream's patience would be paid for four times and fail anyway - and the
-                // loop above retries only where nothing was generated
-                Ok(Err(e)) => {
-                    // nothing arrived at all, so there is nothing to keep and no answer to
-                    // report; the transport's own account is the most useful thing there is
-                    if chunks.is_empty() {
-                        return Err(e.into());
-                    }
-                    // a turn whose finish reason already arrived is a complete answer that lost
-                    // its trailing bytes, and calling that cut off would be inventing a fault
-                    if finish.is_none() {
-                        *self.notice.lock() = Some(format!(
-                            "{model} was cut off mid-answer ({e}); what had arrived is kept"
-                        ));
-                        finish = Some("cut off".to_owned());
-                    }
-                    break;
-                }
-                Err(_) => {
-                    if deltas.is_interrupted() {
-                        finish = Some("interrupted".to_owned());
-                        break;
-                    }
-                    // note: a turn that asks for a tool makes two requests rather than one, which
-                    // is twice the chance of meeting a server in this state - and it is the shape
-                    // "it hangs whenever it uses a tool" really has
-                    match vigil.waited() {
-                        Silence::Enough => {
-                            return Err(format!(
-                                "{model} answered and then said nothing for {}s; giving up",
-                                PATIENCE.as_secs()
-                            )
-                            .into());
-                        }
-                        Silence::Worth(seconds) => {
-                            *self.notice.lock() = Some(gone_quiet(model, seconds));
-                        }
-                        Silence::Ordinary => {}
-                    }
-                    continue;
-                }
-            };
-            buffer.extend_from_slice(&bytes);
-
-            while let Some(end) = buffer.iter().position(|byte| *byte == b'\n') {
-                if deltas.is_interrupted() {
-                    finish = Some("interrupted".to_owned());
-                    break;
-                }
-
-                // a whole line, so whatever multi-byte characters it holds are all here
-                let line = String::from_utf8_lossy(&buffer[..end]).trim().to_owned();
-                buffer.drain(..=end);
-
-                let Some(data) = line.strip_prefix("data:") else {
-                    continue;
-                };
-                let Ok(chunk) = serde_json::from_str::<Value>(data.trim()) else {
-                    continue;
-                };
-                if let Some(error) = chunk.get("error").filter(|e| !e.is_null()) {
-                    return Err(format!("{error}").into());
-                }
-
-                if let Some(reported) = chunk.get("usageMetadata").filter(|u| !u.is_null()) {
-                    // note: the thoughts are added in, because `Usage::output_tokens` is
-                    // everything generated and this dialect reports the two apart. Google's own
-                    // `totalTokenCount` is defined as the prompt plus the thoughts plus the
-                    // candidates, so the sum is that definition rather than this crate's
-                    // invention - and without it a thinking turn's cost is the answer alone,
-                    // which on a model that thinks for a thousand tokens and replies in twenty
-                    // is a bill understated by fifty to one. `thoughtsTokenCount` still says how
-                    // much of it was thinking, one field along
-                    let thoughts = reported["thoughtsTokenCount"].as_u64();
-                    let candidates = reported["candidatesTokenCount"].as_u64();
-                    usage = Some(Usage {
-                        input_tokens: reported["promptTokenCount"].as_u64(),
-                        // note: `None` only where the dialect said neither, so that "it did not
-                        // say" stays distinguishable from "it generated nothing"
-                        output_tokens: match (candidates, thoughts) {
-                            (None, None) => None,
-                            (candidates, thoughts) => {
-                                Some(candidates.unwrap_or_default() + thoughts.unwrap_or_default())
-                            }
-                        },
-                        reasoning_tokens: thoughts,
-                        cached_input_tokens: reported["cachedContentTokenCount"].as_u64(),
-                    });
-                }
-
-                // a prompt the API will not answer at all comes back with no candidate and the reason
-                // beside it - which is a refusal whatever it names, and was an empty turn with a
-                // stop nobody had reported
-                if let Some(reason) = chunk["promptFeedback"]["blockReason"].as_str() {
-                    finish = Some(format!("blocked: {reason}"));
-                }
-                let candidate = &chunk["candidates"][0];
-                if let Some(reason) = candidate["finishReason"].as_str() {
-                    finish = Some(reason.to_owned());
-                }
-                for part in candidate["content"]["parts"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                {
-                    Self::absorb(part, &mut partial, deltas);
-                }
-
-                chunks.push(chunk);
-            }
-            if finish.as_deref() == Some("interrupted") {
-                break;
-            }
+                },
+                reasoning_tokens: thoughts,
+                cached_input_tokens: reported["cachedContentTokenCount"].as_u64(),
+            });
         }
 
-        Ok(Streamed {
-            partial,
-            finish,
-            usage,
-            chunks,
-            buffer,
-        })
+        // a prompt the API will not answer at all comes back with no candidate and the reason
+        // beside it - which is a refusal whatever it names
+        if let Some(reason) = chunk["promptFeedback"]["blockReason"].as_str() {
+            self.finish = Some(format!("blocked: {reason}"));
+        }
+        let candidate = &chunk["candidates"][0];
+        if let Some(reason) = candidate["finishReason"].as_str() {
+            self.finish = Some(reason.to_owned());
+        }
+        for part in candidate["content"]["parts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            Gemini::absorb(part, &mut self.partial, deltas);
+        }
     }
+
+    fn finished(&self) -> bool {
+        self.finish.is_some()
+    }
+}
+
+/// A body that was not a stream, read as the events it would have been streamed as - or, where
+/// it is not those, the error that says so.
+///
+/// note: this API's unstreamed answer is exactly those events, in a list, which is what
+/// `streamGenerateContent` sends where `alt=sse` did not reach it - a proxy that dropped the query
+/// string is enough. A single event is a list of one.
+fn unstreamed(
+    body: String,
+    mut streamed: Streamed,
+    deltas: &DeltaSink,
+) -> Result<ModelResponse, BoxError> {
+    let events = match serde_json::from_str::<Value>(&body) {
+        Ok(Value::Array(events)) => events,
+        Ok(event @ Value::Object(_)) => vec![event],
+        _ => Vec::new(),
+    };
+    let answers = !events.is_empty()
+        && events.iter().all(|event| {
+            ["candidates", "promptFeedback", "usageMetadata"]
+                .iter()
+                .any(|field| event.get(field).is_some())
+        });
+    if !answers {
+        return Err(not_a_stream(&body));
+    }
+
+    for event in &events {
+        streamed.event(event, deltas);
+    }
+    Ok(answer(streamed, events, Stopped::Ended))
 }
 
 /// The turn the stream came to: the parts in the order they were produced, and what ended it.
-fn answer(streamed: Streamed, deltas: &DeltaSink) -> Result<ModelResponse, BoxError> {
+fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResponse {
     let Streamed {
         partial,
-        finish,
+        mut finish,
         usage,
-        chunks,
-        buffer,
     } = streamed;
-
-    if chunks.is_empty() {
-        if finish.as_deref() == Some("interrupted") || deltas.is_interrupted() {
-            return Ok(interrupted());
-        }
-
-        let buffer = String::from_utf8_lossy(&buffer);
-        let payload: Value = serde_json::from_str(&buffer).unwrap_or(Value::Null);
-        return match payload.get("error").filter(|e| !e.is_null()) {
-            Some(error) => Err(format!("{error}").into()),
-            None => Err(format!("the stream carried no data: {buffer}").into()),
-        };
+    match stopped {
+        Stopped::Ended => {}
+        Stopped::Interrupted => finish = Some("interrupted".to_owned()),
+        Stopped::CutOff => finish = Some("cut off".to_owned()),
     }
 
     let blocks: Vec<Block> = partial
@@ -800,7 +616,7 @@ fn answer(streamed: Streamed, deltas: &DeltaSink) -> Result<ModelResponse, BoxEr
         .collect();
     let asked = blocks.iter().any(|block| block.call().is_some());
 
-    Ok(ModelResponse {
+    ModelResponse {
         // the whole turn in one slot, in the order it was produced. `reasoning` and
         // `tool_calls` stay empty: they are the other way of recording the same turn, and a
         // response carrying both would be two accounts of it
@@ -826,8 +642,21 @@ fn answer(streamed: Streamed, deltas: &DeltaSink) -> Result<ModelResponse, BoxEr
             None => StopReason::Other("unreported".to_owned()),
         },
         usage,
-        raw: Some(json!({ "stream": chunks })),
-    })
+        raw: Some(json!({ "stream": events })),
+    }
+}
+
+/// Merges one JSON value over another: objects key by key, all the way down, and anything else by
+/// replacing it.
+fn merge(into: &mut Value, over: &Value) {
+    match (into.as_object_mut(), over.as_object()) {
+        (Some(into), Some(over)) => {
+            for (key, value) in over {
+                merge(into.entry(key.clone()).or_insert(Value::Null), value);
+            }
+        }
+        _ => *into = over.clone(),
+    }
 }
 
 #[async_trait]

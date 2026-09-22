@@ -6,11 +6,8 @@
 //! when one does. Every function in here is private: what a caller gets is
 //! [`Provider::respond`].
 //!
-//! note: each of the readers below is a shape some server actually sent. A refusal arrives as an
-//! error object, as a list of failed candidates, or midway through a stream that had already
-//! started, and all three have to come out as the same sentence.
-
-use std::{sync::atomic::Ordering, time::Duration};
+//! note: what is in here is what this dialect's events *say*. Sending, waiting and getting events
+//! off the socket are the same for both dialects, and are `waiting` and `reading`.
 
 use nachalnik::{
     Blob, Block, BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse,
@@ -20,11 +17,8 @@ use serde_json::{Value, json};
 
 use crate::{
     openai::OpenAiCompatible,
-    out_of_quota, refused,
-    waiting::{
-        HEARTBEAT, LINGER, PATIENCE, RETRIES, Silence, Unsent, Vigil, WHOLE_ANSWER, backed_off,
-        gone_quiet, interrupted, watched,
-    },
+    reading::{Events, Read, Stopped, not_a_stream, read},
+    waiting::{Asking, Sent, interrupted, sent},
 };
 
 /// A tool call being assembled from streamed fragments.
@@ -38,113 +32,6 @@ struct PartialCall {
     /// The number the provider filed this call under, if it used one. Not a position: see the
     /// note where the fragments are gathered.
     slot: Option<u64>,
-}
-
-/// What to say about a request the server refused: its own sentence, rather than its envelope.
-///
-/// note: a spent quota came back as six hundred characters of JSON - the message, the remedy, the
-/// rate-limit headers, and the account's `user_id` - and all of it went into the transcript and
-/// into the session log, which is a file people send each other. What a reader needs is the
-/// sentence. Nobody needs an identifier for their account written into it.
-fn complaint(status: reqwest::StatusCode, body: &str) -> String {
-    match serde_json::from_str::<Value>(body)
-        .ok()
-        .as_ref()
-        .and_then(said)
-    {
-        Some(said) => format!("{status}: {said}"),
-        None => {
-            let short: String = unmarked(body).chars().take(300).collect();
-            match short.is_empty() {
-                true => format!("{status}"),
-                false => format!("{status}: {short}"),
-            }
-        }
-    }
-}
-
-/// The words out of a body that is not JSON, with any markup around them taken off.
-///
-/// note: for the address that is a web page rather than an API, which is what a mistyped
-/// `base_url` produces and is common enough to be worth handling well. `https://example.com/v1`
-/// answers 405 with a whole HTML document, and the first three hundred characters of it are a
-/// doctype, a `<link rel=icon>` and the opening of a stylesheet - four lines of CSS in the
-/// conversation, the session log and the file somebody sends on. That is the same noise as the
-/// rate-limit headers this function already exists to strip, arriving through the one branch
-/// that was quoting its input.
-///
-/// note: the *words* rather than a refusal to show any, because a short page is often the only
-/// account there is - `<html>gateway timeout</html>` from a proxy that speaks no JSON says the
-/// one thing worth knowing. What goes is the tags, and the contents of `<style>` and `<script>`,
-/// which are markup wearing the shape of text.
-///
-/// note: not an HTML parser and not trying to be. A body that is not markup passes through with
-/// its whitespace collapsed, which is what a plain-text error wants anyway.
-fn unmarked(body: &str) -> String {
-    let mut out = String::new();
-    let mut rest = body.trim();
-
-    while let Some(at) = rest.find('<') {
-        out.push_str(&rest[..at]);
-        out.push(' ');
-        rest = &rest[at..];
-
-        // a `<style>` or `<script>` is skipped whole: its contents are not prose, and taking
-        // only the tags off would leave the stylesheet behind as if it were
-        let skip = ["style", "script"].into_iter().find(|element| {
-            rest[1..]
-                .trim_start()
-                .to_ascii_lowercase()
-                .starts_with(*element)
-        });
-        rest = match skip {
-            Some(element) => match rest.to_ascii_lowercase().find(&format!("</{element}")) {
-                Some(end) => &rest[end..],
-                // an unclosed one runs to the end, and the end is where this stops
-                None => "",
-            },
-            None => rest,
-        };
-        // and past the tag itself, or - for a `<` that never closes - past the `<`
-        rest = match rest.find('>') {
-            Some(end) => &rest[end + 1..],
-            None => "",
-        };
-    }
-    out.push_str(rest);
-
-    out.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// The sentence inside an error object, wherever the server put it.
-///
-/// note: two shapes, both seen on the same endpoint in the same afternoon. A refused request
-/// nests it under `error`; a stream that fails halfway sends the object on its own, with `message`
-/// at the top. Reading only the first left the second one printing its whole envelope, which is
-/// the thing this function exists to stop.
-fn said(value: &Value) -> Option<String> {
-    let error = match value.get("error").filter(|error| !error.is_null()) {
-        Some(nested) => nested,
-        None => value,
-    };
-    let message = match error["message"].as_str() {
-        Some(message) => message.trim().to_owned(),
-        // a third shape, and the one where reading a sentence mattered most: see `refusals`
-        None => refusals(&error["message"])?,
-    };
-
-    let mut said = message.chars().take(400).collect::<String>();
-    // the upstream's own words, where the wrapper is only reporting that something upstream
-    // failed - "Provider returned error" on its own names neither the provider nor the problem
-    if let Some(raw) = error["metadata"]["raw"]
-        .as_str()
-        .map(str::trim)
-        .filter(|raw| !raw.is_empty() && !message.contains(*raw))
-    {
-        said.push_str(" - ");
-        said.push_str(&raw.chars().take(300).collect::<String>());
-    }
-    Some(said)
 }
 
 /// Reads a whole summary of the thinking off a chunk, where the endpoint sends one that way.
@@ -187,45 +74,6 @@ fn summarised(chunk: &Value, reasoning: &mut String, deltas: &DeltaSink) {
     }
     deltas.reasoning(summary);
     reasoning.push_str(summary);
-}
-
-/// The sentences inside a rejected request's list of what was wrong with it, each named by the
-/// parameter it is about.
-///
-/// note: a validated endpoint answers a bad parameter with a *list* rather than a sentence -
-/// Inception's `message` is the pydantic shape, `[{"type": "value_error", "loc": ["body",
-/// "reasoning_effort"], "msg": "...", "input": "banana", "ctx": {...}}]` - and until this read it,
-/// `message` was not a string, [`said`] gave up, and the three hundred characters of envelope the
-/// clip left went into the transcript and into the session log. The sentence was in there, forty
-/// characters in, wrapped in the machinery. That is the failure [`said`] exists to stop, arriving
-/// in the one place where the words are most worth having: the answer to what a request got wrong
-/// says which parameter and what it takes.
-///
-/// note: `loc` is prepended only where the message does not already name the field. Pydantic's
-/// own wording varies on exactly that point - a `value_error` raised by a validator usually names
-/// it, a type failure says "Input should be a valid boolean" and names nothing - and a message
-/// that does not say which of eight parameters it means is a message somebody has to guess at.
-fn refusals(message: &Value) -> Option<String> {
-    let listed = message.as_array().filter(|listed| !listed.is_empty())?;
-
-    let said: Vec<String> = listed
-        .iter()
-        .filter_map(|wrong| {
-            let msg = wrong["msg"].as_str()?.trim();
-            let field = wrong["loc"]
-                .as_array()
-                .and_then(|loc| loc.last())
-                .and_then(Value::as_str)
-                .filter(|field| !msg.contains(*field));
-
-            Some(match field {
-                Some(field) => format!("{field}: {msg}"),
-                None => msg.to_owned(),
-            })
-        })
-        .collect();
-
-    (!said.is_empty()).then(|| said.join("; "))
 }
 
 #[async_trait]
@@ -314,50 +162,51 @@ impl Provider for OpenAiCompatible {
         // read off the body rather than off the field, so that a caller who set `stream` in its
         // own parameters gets the path it asked for: `render` puts those on last, deliberately
         let streaming = body["stream"] == json!(true);
-        // nothing arrives until the whole answer does, when it is not a stream, so the silence
-        // that means "this has stalled" is a much longer one
-        let patience = match streaming {
-            true => PATIENCE,
-            false => WHOLE_ANSWER,
+
+        let (endpoint, model, limit) = (
+            self.endpoint(),
+            self.model.lock().clone(),
+            *self.context_limit.lock(),
+        );
+        let asking = Asking {
+            model: &model,
+            deltas: &deltas,
+            notice: &self.notice,
         };
 
-        // read once, and used for every line said about this request: a name that changed halfway
-        // through would make one wait look like two
-        let model = self.model.lock().clone();
-
-        let mut response = match self
-            .sent(&body, streaming, patience, &model, &deltas)
-            .await?
-        {
-            // a whole answer is an answer; so is a request nobody was still waiting for
-            Sent::Answered(answer) => return Ok(answer),
+        let sending = || {
+            self.attributed(
+                self.client
+                    .post(format!("{endpoint}/chat/completions"))
+                    .bearer_auth(&self.api_key),
+            )
+            .json(&body)
+        };
+        let mut response = match sent(&asking, &self.attempts, limit, streaming, sending).await? {
+            Sent::Interrupted => return Ok(interrupted()),
+            Sent::Whole(payload) => return Ok(whole(&payload, self.thinking_in_content)),
             Sent::Streaming(response) => response,
         };
 
-        let streamed = self.read(&mut response, &deltas).await?;
-
-        self.answer(streamed, &deltas)
+        let mut streamed = Streamed::default();
+        match read(&mut response, &asking, limit, &mut streamed).await? {
+            Read::Events(events, stopped) => Ok(self.answer(streamed, events, stopped)),
+            Read::Interrupted => Ok(interrupted()),
+            // a server that ignored `stream: true` and answered whole has still answered
+            Read::Unstreamed(body) => match serde_json::from_str::<Value>(&body) {
+                Ok(payload) if payload["choices"].is_array() => {
+                    Ok(whole(&payload, self.thinking_in_content))
+                }
+                _ => Err(not_a_stream(&body)),
+            },
+        }
     }
-}
-
-/// A request that is over, one way or the other: a stream to read, or an answer already in hand.
-///
-/// note: the whole-answer path and an interrupt both end here with a [`ModelResponse`], because
-/// both are a turn that is finished and there is nothing left to watch arrive. A stream is the
-/// only one of the three with reading still to do.
-enum Sent {
-    /// The turn, whole: nothing was streamed, or nothing was waited for.
-    Answered(ModelResponse),
-    /// A response whose body is still arriving.
-    Streaming(reqwest::Response),
 }
 
 /// A stream, read: the turn as the fragments left it.
 ///
-/// note: the whole of what one pass over a response produces, so that reading it and making sense
-/// of it are two functions rather than two halves of one. Nothing here is the answer yet - `text`
-/// still holds whatever thinking the model wrote into it, and a call's arguments are still the
-/// string they arrived in.
+/// note: nothing here is the answer yet - `text` still holds whatever thinking the model wrote
+/// into it, and a call's arguments are still the string they arrived in.
 #[derive(Default)]
 struct Streamed {
     /// What the model said, as it was streamed.
@@ -365,216 +214,60 @@ struct Streamed {
     /// What it thought, where the server sent that in a slot of its own.
     reasoning: String,
     /// The calls, each gathered out of the fragments that carry it.
-    calls: Vec<PartialCall>,
+    gathering: Gathering,
     /// Why the turn ended, once something has said.
     finish: Option<String>,
     /// What the request cost, where the server reported it.
     usage: Option<Usage>,
-    /// Every payload the server sent, verbatim.
-    chunks: Vec<Value>,
-    /// What arrived after the last whole line: nothing, in an answer that ended tidily, and the
-    /// whole of a response that was never a stream at all.
-    buffer: Vec<u8>,
+}
+
+impl Events for Streamed {
+    fn event(&mut self, chunk: &Value, deltas: &DeltaSink) {
+        if let Some(reported) = chunk.get("usage").filter(|u| !u.is_null()) {
+            self.usage = Some(usage_of(reported));
+        }
+
+        let choice = &chunk["choices"][0];
+        if let Some(reason) = choice["finish_reason"].as_str() {
+            self.finish = Some(reason.to_owned());
+        }
+
+        let delta = &choice["delta"];
+        if let Some(fragment) = delta["content"].as_str().filter(|f| !f.is_empty()) {
+            deltas.text(fragment);
+            self.text.push_str(fragment);
+        }
+        if let Some(fragment) = delta["reasoning"].as_str().filter(|f| !f.is_empty()) {
+            deltas.reasoning(fragment);
+            self.reasoning.push_str(fragment);
+        }
+        summarised(chunk, &mut self.reasoning, deltas);
+
+        for requested in delta["tool_calls"].as_array().into_iter().flatten() {
+            self.gathering.fold(requested, deltas);
+        }
+    }
+
+    fn finished(&self) -> bool {
+        self.finish.is_some()
+    }
 }
 
 impl OpenAiCompatible {
-    /// Reads the response to its end, handing the fragments to `deltas` as they arrive.
-    ///
-    /// note: what stops this is the server, an interrupt, or the stall watch - and the first
-    /// two of those are answers rather than failures, which is why what comes back is what had
-    /// arrived rather than an error. A turn that was cut off mid-answer has been generated and
-    /// billed for; throwing it away is the one thing worse than reporting it short.
-    async fn read(
-        &self,
-        response: &mut reqwest::Response,
-        deltas: &DeltaSink,
-    ) -> Result<Streamed, BoxError> {
-        // bytes rather than a `String`, because a chunk boundary is not a character boundary. A
-        // multi-byte character split across two reads used to be decoded twice, lossily, and
-        // arrived as two replacement characters that then went into the context, the transcript
-        // and the session log: `zażółć` came back `za\u{fffd}\u{fffd}ółć`. Held as bytes, the tail of
-        // a split character waits in here for the rest of itself, and only whole lines are decoded
-        let mut buffer: Vec<u8> = Vec::new();
-        let mut text = String::new();
-        let mut reasoning = String::new();
-        let mut gathering = Gathering::default();
-        let mut finish = None;
-        let mut usage = None;
-        // every payload the server sent, verbatim
-        let mut chunks = Vec::new();
-        let mut vigil = Vigil::new();
-
-        loop {
-            // the timeout is what makes a model that says nothing at all interruptible; without
-            // it this sits in `chunk` until the server feels like talking, and a request that
-            // stalls before its first byte leaves an interrupt doing nothing at all. The same
-            // reason the shell tool has one
-            let bytes = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
-                Ok(Ok(Some(bytes))) => {
-                    if vigil.heard() {
-                        *self.notice.lock() =
-                            Some(format!("{} is answering again", self.model.lock()));
-                    }
-                    bytes
-                }
-                Ok(Ok(None)) => break,
-                // the body stopped arriving in the middle of an answer. Everything parsed so far
-                // is kept and the socket is abandoned, which is what the interrupt below already
-                // does for the other way a stream ends early - this is that case without the
-                // consent, so it is marked with a name of its own instead of `interrupted`.
-                //
-                // note: it used to return the error, which failed the turn and threw away every
-                // token the model had produced *and been billed for*: one session spent 148
-                // seconds on an answer and kept none of it. Retrying is the other candidate and
-                // is worse, because every attempt is billed too - an answer that reliably outruns
-                // an upstream's patience would be paid for four times and fail anyway - and the
-                // loop above retries only where nothing was generated
-                Ok(Err(e)) => {
-                    // nothing arrived at all, so there is nothing to keep and no answer to
-                    // report; the transport's own account is the most useful thing there is
-                    if chunks.is_empty() {
-                        return Err(e.into());
-                    }
-                    // a turn whose `finish_reason` already arrived is a complete answer that lost
-                    // its trailing bytes, and calling that cut off would be inventing a fault
-                    if finish.is_none() {
-                        *self.notice.lock() = Some(format!(
-                            "{} was cut off mid-answer ({e}); what had arrived is kept",
-                            self.model.lock()
-                        ));
-                        finish = Some("cut off".to_owned());
-                    }
-                    break;
-                }
-                Err(_) => {
-                    if deltas.is_interrupted() {
-                        finish = Some("interrupted".to_owned());
-                        break;
-                    }
-                    match vigil.waited() {
-                        Silence::Enough => {
-                            return Err(format!(
-                                "{} answered and then said nothing for {}s; giving up",
-                                self.model.lock(),
-                                PATIENCE.as_secs()
-                            )
-                            .into());
-                        }
-                        Silence::Worth(seconds) => {
-                            *self.notice.lock() = Some(gone_quiet(&self.model.lock(), seconds));
-                        }
-                        Silence::Ordinary => {}
-                    }
-                    continue;
-                }
-            };
-            buffer.extend_from_slice(&bytes);
-
-            while let Some(end) = buffer.iter().position(|byte| *byte == b'\n') {
-                // somebody pressed escape. Whatever has been parsed is kept and the rest of the
-                // socket is abandoned; the check is here, before the next fragment, so that a
-                // fragment is never read and then thrown away
-                if deltas.is_interrupted() {
-                    finish = Some("interrupted".to_owned());
-                    break;
-                }
-
-                // a whole line, so whatever multi-byte characters it holds are all here
-                let line = String::from_utf8_lossy(&buffer[..end]).trim().to_owned();
-                buffer.drain(..=end);
-
-                let Some(data) = line.strip_prefix("data:") else {
-                    continue;
-                };
-                let data = data.trim();
-                if data == "[DONE]" {
-                    continue;
-                }
-                let Ok(chunk) = serde_json::from_str::<Value>(data) else {
-                    continue;
-                };
-                // these APIs report an upstream failure - a rate limit, a dead provider - as an
-                // error object rather than an HTTP status, sometimes mid-stream
-                if let Some(error) = chunk.get("error").filter(|e| !e.is_null()) {
-                    // the same treatment the refused-request path gets: this one arrives as a
-                    // bare object with `message` at the top rather than nested under `error`, and
-                    // printing it whole put the provider's entire envelope on the screen
-                    return Err(match said(error) {
-                        Some(said) => said,
-                        None => format!("{error}").chars().take(300).collect(),
-                    }
-                    .into());
-                }
-
-                if let Some(reported) = chunk.get("usage").filter(|u| !u.is_null()) {
-                    usage = Some(usage_of(reported));
-                }
-
-                let choice = &chunk["choices"][0];
-                if let Some(reason) = choice["finish_reason"].as_str() {
-                    finish = Some(reason.to_owned());
-                }
-
-                let delta = &choice["delta"];
-                if let Some(fragment) = delta["content"].as_str().filter(|f| !f.is_empty()) {
-                    deltas.text(fragment);
-                    text.push_str(fragment);
-                }
-                if let Some(fragment) = delta["reasoning"].as_str().filter(|f| !f.is_empty()) {
-                    deltas.reasoning(fragment);
-                    reasoning.push_str(fragment);
-                }
-                summarised(&chunk, &mut reasoning, deltas);
-
-                for requested in delta["tool_calls"].as_array().into_iter().flatten() {
-                    gathering.fold(requested, deltas);
-                }
-
-                chunks.push(chunk);
-            }
-            if finish.as_deref() == Some("interrupted") {
-                break;
-            }
-        }
-
-        Ok(Streamed {
-            text,
-            reasoning,
-            calls: gathering.calls,
-            finish,
-            usage,
-            chunks,
-            buffer,
-        })
-    }
-
     /// The turn the stream came to: the thinking taken out of what was said, the arguments
     /// parsed, and the whole of it kept as it arrived.
-    fn answer(&self, streamed: Streamed, deltas: &DeltaSink) -> Result<ModelResponse, BoxError> {
+    fn answer(&self, streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResponse {
         let Streamed {
             text,
             reasoning,
-            calls,
-            finish,
+            gathering,
+            mut finish,
             usage,
-            chunks,
-            buffer,
         } = streamed;
-
-        if chunks.is_empty() {
-            // a request stopped before the server had said anything is not a broken response, and
-            // reporting it as one would put a red line on the screen for doing what was asked
-            if finish.as_deref() == Some("interrupted") || deltas.is_interrupted() {
-                return Ok(interrupted());
-            }
-
-            // the response was not a stream at all; an error body is the usual reason
-            let buffer = String::from_utf8_lossy(&buffer);
-            let payload: Value = serde_json::from_str(&buffer).unwrap_or(Value::Null);
-            return match payload.get("error").filter(|e| !e.is_null()) {
-                Some(error) => Err(format!("{error}").into()),
-                None => Err(format!("the stream carried no data: {buffer}").into()),
-            };
+        match stopped {
+            Stopped::Ended => {}
+            Stopped::Interrupted => finish = Some("interrupted".to_owned()),
+            Stopped::CutOff => finish = Some("cut off".to_owned()),
         }
 
         // note: the fragments have already gone out as `Delta::Text`, thinking and all, because
@@ -588,10 +281,11 @@ impl OpenAiCompatible {
             self.thinking_in_content,
         );
 
-        Ok(ModelResponse {
+        ModelResponse {
             content,
             reasoning,
-            tool_calls: calls
+            tool_calls: gathering
+                .calls
                 .into_iter()
                 .map(|call| {
                     // a model that produces invalid JSON gets to see that it did
@@ -605,160 +299,8 @@ impl OpenAiCompatible {
                 .collect(),
             stop: stop_reason(finish.as_deref()),
             usage,
-            raw: Some(json!({ "stream": chunks })),
-        })
-    }
-    /// Sends the request, waiting out an upstream that is merely busy, and hands back whichever
-    /// of the two things arrived.
-    ///
-    /// note: a whole answer is read *here* rather than by the caller, because this dialect's
-    /// other way of saying 429 is an `error` object inside a perfectly good 200 - and a limit
-    /// reported that way is exactly as worth waiting out as one reported as a status. Reading it
-    /// out here is what lets one loop wait for both.
-    async fn sent(
-        &self,
-        body: &Value,
-        streaming: bool,
-        patience: Duration,
-        model: &str,
-        deltas: &DeltaSink,
-    ) -> Result<Sent, BoxError> {
-        // a free tier answers "busy" often enough that not retrying makes the whole thing look
-        // broken when it is not. Waiting and trying again is the *provider's* business: the
-        // kernel must not silently send a request twice behind a caller's back
-        //
-        // note: the count is this request's and nobody else's; see `RETRIES`
-        let mut backoff = 0;
-        Ok(loop {
-            self.attempts.fetch_add(1, Ordering::SeqCst);
-            let response = match watched(
-                self.attributed(
-                    self.client
-                        .post(format!("{}/chat/completions", self.endpoint()))
-                        .bearer_auth(&self.api_key),
-                )
-                .json(&body)
-                .send(),
-                deltas,
-                model,
-                &self.notice,
-                patience,
-            )
-            .await
-            {
-                Ok(response) => response,
-                // a connection that timed out is a busy server wearing different clothes, and it
-                // used to be the one thing here that was not waited out: a 429 got four tries and
-                // a doubling, a stall got none. Eleven of fourteen runs against one upstream died
-                // this way while the same model answered a single request in six seconds. A
-                // refused connection is *not* this - it is a definite answer, usually an address
-                // with nothing behind it, and making a typo take four doublings to report helps
-                // nobody
-                Err(reason) if reason.worth_waiting_out() => {
-                    backoff += 1;
-                    let wait = Duration::from_secs(1 << backoff);
-                    if backoff >= RETRIES {
-                        return Err(reason.giving_up(model));
-                    }
-
-                    *self.notice.lock() = Some(format!(
-                        "{model} {}; trying again in {}s",
-                        reason.what_happened(),
-                        wait.as_secs()
-                    ));
-                    if !backed_off(wait, deltas).await {
-                        return Ok(Sent::Answered(interrupted()));
-                    }
-                    continue;
-                }
-                // nobody is owed an error for being obeyed
-                Err(Unsent::Interrupted) => return Ok(Sent::Answered(interrupted())),
-                Err(reason) => return Err(reason.giving_up(model)),
-            };
-
-            let status = response.status();
-            if status.is_success() {
-                // a whole answer is read here rather than after the loop, because this dialect's
-                // other way of saying 429 is an `error` object inside a perfectly good 200 - and
-                // an upstream limit reported that way is exactly as worth waiting out as one
-                // reported as a status. There is nothing to watch arrive and nothing to
-                // interrupt: by the time this reads it the model has finished and been billed
-                if !streaming {
-                    let text = response.text().await?;
-                    let payload: Value = serde_json::from_str(&text)
-                        .map_err(|e| format!("the answer was not JSON ({e}): {text}"))?;
-                    let Some(error) = payload.get("error").filter(|e| !e.is_null()) else {
-                        return Ok(Sent::Answered(whole(&payload, self.thinking_in_content)));
-                    };
-
-                    let code = error["code"].as_u64().unwrap_or_default();
-                    // a spent daily quota is a 429 that will still be one in a minute, so it is
-                    // told apart here rather than waited out four times over
-                    let transient =
-                        (code == 429 || (500..600).contains(&code)) && !out_of_quota(&text);
-                    backoff += 1;
-                    let wait = Duration::from_secs(1 << backoff);
-                    if !transient || backoff >= RETRIES {
-                        return Err(refused(
-                            match said(error) {
-                                Some(said) => said,
-                                None => format!("{error}").chars().take(300).collect(),
-                            },
-                            self.info().context_limit,
-                        ));
-                    }
-
-                    *self.notice.lock() = Some(format!(
-                        "{model} answered {code}; trying again in {}s",
-                        wait.as_secs()
-                    ));
-                    if !backed_off(wait, deltas).await {
-                        return Ok(Sent::Answered(interrupted()));
-                    }
-                    continue;
-                }
-
-                break Sent::Streaming(response);
-            }
-
-            // the server's own answer to "when?", where it gives one. Guessing at a doubling is
-            // for a server that did not say
-            let asked = response
-                .headers()
-                .get(reqwest::header::RETRY_AFTER)
-                .and_then(|value| value.to_str().ok())
-                .and_then(|value| value.trim().parse::<u64>().ok())
-                .map(Duration::from_secs);
-
-            // read before deciding, because a spent daily quota is a 429 that will still be one in
-            // a minute - which the whole-answer branch above already tells apart, and this one
-            // retried three times over
-            let body = response.text().await.unwrap_or_default();
-            let transient =
-                (status.as_u16() == 429 || status.is_server_error()) && !out_of_quota(&body);
-            backoff += 1;
-            let wait = asked.unwrap_or(Duration::from_secs(1 << backoff));
-            if !transient || backoff >= RETRIES || wait > LINGER {
-                let mut said = complaint(status, &body);
-                if transient && wait > LINGER {
-                    said.push_str(&format!(
-                        " - it asked to be left for {}s, which is longer than this waits",
-                        wait.as_secs()
-                    ));
-                }
-                return Err(refused(said, self.info().context_limit));
-            }
-
-            *self.notice.lock() = Some(format!(
-                "{} answered {}; trying again in {}s",
-                self.model.lock(),
-                status.as_u16(),
-                wait.as_secs()
-            ));
-            if !backed_off(wait, deltas).await {
-                return Ok(Sent::Answered(interrupted()));
-            }
-        })
+            raw: Some(json!({ "stream": events })),
+        }
     }
 }
 
@@ -1236,212 +778,6 @@ mod tests {
 
         assert_eq!(gathering.calls[0].id, "call_1");
         assert_eq!(gathering.calls[0].args, "{}");
-    }
-
-    /// The two shapes a rate limit actually arrived in, copied out of a real session.
-    ///
-    /// note: `concat!` rather than a raw string over several lines. A raw string keeps the
-    /// backslash *and* the newline, so a fixture written that way is not JSON, `complaint` falls
-    /// through to clipping it, and the test passes without ever reaching the code it is about.
-    #[test]
-    fn a_refused_request_is_reported_in_the_server_s_own_words_and_no_more() {
-        let status = reqwest::StatusCode::TOO_MANY_REQUESTS;
-
-        // a spent daily quota: one useful sentence, wrapped in the rate-limit headers and the
-        // account's identifier, neither of which belongs in a file somebody will send on
-        let daily = concat!(
-            r#"{"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits"#,
-            r#" to unlock 1000 free model requests per day","code":429,"metadata":{"headers":"#,
-            r#"{"X-RateLimit-Remaining":"0"},"limit_source":"openrouter_free_tier_daily"}},"#,
-            r#""user_id":"user_3GBJq3JdBGGCK0OiVeXg1v8GYfW"}"#,
-        );
-        assert!(
-            serde_json::from_str::<Value>(daily).is_ok(),
-            "the fixture has to be the shape the server actually sends"
-        );
-        let said = complaint(status, daily);
-        assert!(said.contains("free-models-per-day"), "{said}");
-        assert!(
-            !said.contains("user_"),
-            "the account is nobody's business: {said}"
-        );
-        assert!(!said.contains("X-RateLimit"), "{said}");
-        assert!(said.len() < daily.len() / 2, "and it is shorter: {said}");
-
-        // an upstream one, where the wrapper's own message names neither the provider nor the
-        // problem, and the sentence worth reading is underneath it
-        let upstream = concat!(
-            r#"{"error":{"message":"Provider returned error","code":429,"metadata":{"raw":"#,
-            r#""z-ai/glm-5.2:free is temporarily rate-limited upstream.","provider_name":"#,
-            r#""Decart"}}}"#,
-        );
-        assert!(serde_json::from_str::<Value>(upstream).is_ok());
-        let said = complaint(status, upstream);
-        assert!(said.contains("Provider returned error"), "{said}");
-        assert!(said.contains("temporarily rate-limited upstream"), "{said}");
-
-        // something that is not JSON at all still says what happened
-        let plain = complaint(status, "<html>gateway timeout</html>");
-        assert!(
-            plain.contains("429") && plain.contains("gateway timeout"),
-            "{plain}"
-        );
-        assert!(
-            !plain.contains('<'),
-            "and without the markup round it: {plain}"
-        );
-
-        // a whole web page, which is what a base URL pointing at a site answers with. Its words
-        // are the useful part and its stylesheet is not: the 405 from `https://example.com/v1`
-        // used to put four lines of CSS in the conversation and the session log
-        let page = concat!(
-            r#"<!doctype html><html lang="en"><head><title>Example Domain</title>"#,
-            r#"<link rel="icon" href="data:,"><style>body{background:#eee;width:60vw;"#,
-            r#"font-family:system-ui,sans-serif}h1{font-size:1.5em}</style></head><body>"#,
-            r#"<h1>Example Domain</h1><p>This domain is for use in illustrative examples.</p>"#,
-            r#"</body></html>"#,
-        );
-        let said = complaint(reqwest::StatusCode::METHOD_NOT_ALLOWED, page);
-        assert!(said.contains("This domain is for use"), "{said}");
-        assert!(
-            !said.contains("font-family"),
-            "the stylesheet is not prose: {said}"
-        );
-        assert!(!said.contains('<'), "nor are the tags: {said}");
-        assert!(said.len() < page.len() / 2, "and it is shorter: {said}");
-
-        // and so does nothing at all
-        assert!(complaint(status, "").contains("429"));
-    }
-
-    /// A refusal for length comes back as the numbers in it, not only as the sentence.
-    ///
-    /// note: the whole seam, because the reading has to survive what this crate does to a body
-    /// on the way - and what it does is put the status in front of it, which is a number in the
-    /// message that is not a token count. Both fixtures are what `openrouter.ai` answered within
-    /// a minute of each other: the same complaint as a status and as an error object inside a
-    /// perfectly good 200.
-    #[test]
-    fn a_refusal_for_length_keeps_the_numbers_that_say_what_to_do_about_it() {
-        let refused_as = |said: String| {
-            let error = crate::refused(said, Some(262_144));
-            nachalnik::TooLong::of(&*error).map(|too_long| too_long.overrun)
-        };
-
-        let body = concat!(
-            r#"{"error":{"message":"The request is 286315 tokens long and exceeds this model's "#,
-            r#"context length of 262144 tokens.","type":"invalid_request_error","param":"","#,
-            r#""code":"context_length_exceeded"}}"#,
-        );
-        assert!(
-            serde_json::from_str::<Value>(body).is_ok(),
-            "the fixture has to be the shape the server actually sends"
-        );
-
-        let overrun = refused_as(complaint(reqwest::StatusCode::BAD_REQUEST, body))
-            .expect("a refusal for length");
-        assert_eq!(overrun.tokens, 286_315);
-        assert_eq!(overrun.limit, Some(262_144));
-
-        // the same complaint arriving as an error object rather than as a status, which is the
-        // other seam and the other reader
-        let object: Value = serde_json::from_str(body).unwrap();
-        let overrun = refused_as(said(&object["error"]).expect("a sentence"))
-            .expect("a refusal for length, wherever the server put it");
-        assert_eq!(overrun.tokens, 286_315);
-
-        // and everything else is still a sentence
-        assert_eq!(
-            refused_as(complaint(
-                reqwest::StatusCode::TOO_MANY_REQUESTS,
-                r#"{"error":{"message":"rate-limited upstream"}}"#
-            )),
-            None
-        );
-    }
-
-    /// note: the two wordings pydantic gives the same kind of failure, which is why `loc` is read.
-    /// A validator that raised the error usually names the parameter in the message; a type
-    /// failure says "Input should be a valid boolean" and names nothing, and a refusal that does
-    /// not say which of eight parameters it is about is one somebody has to guess at. Both are
-    /// quoted from what `api.inceptionlabs.ai` answers.
-    #[test]
-    fn a_request_refused_by_a_list_of_failures_is_reported_by_the_sentences_in_it() {
-        let status = reqwest::StatusCode::BAD_REQUEST;
-
-        let named = concat!(
-            r#"{"error":{"message":[{"type":"value_error","loc":["body","reasoning_effort"],"#,
-            r#""msg":"Value error, reasoning_effort must be one of: 'instant', 'low', "#,
-            r#"'medium', 'high'","input":"banana","ctx":{"error":"reasoning_effort must be "#,
-            r#"one of: 'instant', 'low', 'medium', 'high'"}}],"#,
-            r#""type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
-        );
-        assert!(
-            serde_json::from_str::<Value>(named).is_ok(),
-            "the fixture has to be the shape the server actually sends"
-        );
-        let said = complaint(status, named);
-        assert!(said.contains("reasoning_effort must be one of"), "{said}");
-        for envelope in ["loc", "value_error", "ctx", "invalid_request_error"] {
-            assert!(!said.contains(envelope), "{envelope} is machinery: {said}");
-        }
-
-        // the same shape, for a failure whose own message names nothing. `loc` is the only thing
-        // that says what it was about
-        let unnamed = concat!(
-            r#"{"error":{"message":[{"type":"bool_parsing","loc":["body","reasoning_summary"],"#,
-            r#""msg":"Input should be a valid boolean, unable to interpret input","#,
-            r#""input":"banana"}],"type":"invalid_request_error"}}"#,
-        );
-        let said = complaint(status, unnamed);
-        assert!(
-            said.contains("reasoning_summary") && said.contains("valid boolean"),
-            "the parameter it is about is named: {said}"
-        );
-
-        // two at once are two sentences, and a list with nothing readable in it falls through to
-        // the clip rather than reporting an empty refusal
-        let two = concat!(
-            r#"{"error":{"message":[{"loc":["body","a"],"msg":"first"},"#,
-            r#"{"loc":["body","b"],"msg":"second"}]}}"#,
-        );
-        let said = complaint(status, two);
-        assert!(
-            said.contains("a: first") && said.contains("b: second"),
-            "{said}"
-        );
-        assert!(complaint(status, r#"{"error":{"message":[]}}"#).contains("message"));
-    }
-
-    /// The shape a stream that fails halfway sends, which is not the shape a refused request
-    /// sends. Copied out of a live session against `inception/mercury-2.5-preview`.
-    #[test]
-    fn an_error_that_arrives_mid_stream_is_read_the_same_way() {
-        let midstream = concat!(
-            r#"{"code":502,"message":"Upstream error from Inception: I'm sorry, but I can't"#,
-            r#" share details of my architecture or training process.","metadata":"#,
-            r#"{"error_type":"provider_unavailable"}}"#,
-        );
-        let value: Value =
-            serde_json::from_str(midstream).expect("the shape it actually arrives in");
-
-        // `message` at the top, with no `error` around it - read only the nested one and this
-        // whole envelope went to the screen
-        let sentence = said(&value).expect("there is a sentence in there");
-        assert!(
-            sentence.starts_with("Upstream error from Inception"),
-            "{sentence}"
-        );
-        assert!(!sentence.contains("error_type"), "{sentence}");
-        assert!(!sentence.contains('{'), "no envelope: {sentence}");
-
-        // and the nested shape still reads, so one function serves both paths
-        let nested: Value = serde_json::from_str(r#"{"error":{"message":"nested"}}"#).unwrap();
-        assert_eq!(said(&nested).as_deref(), Some("nested"));
-
-        // something with no sentence in it at all has nothing to hand back
-        let empty: Value = serde_json::from_str(r#"{"code":502}"#).unwrap();
-        assert_eq!(said(&empty), None);
     }
 
     /// The shape that is actually seen: no opener, because the template supplied it, and the

@@ -164,6 +164,63 @@ async fn the_other_dialect_is_watched_the_same_way() {
         .expect("an interrupted request is not a failed one");
 }
 
+/// Accepts one request and sends the headers of a whole answer, and then nothing of its body.
+#[cfg(feature = "openai")]
+async fn headers_only() -> String {
+    use tokio::io::AsyncWriteExt as _;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("the request");
+        let mut discard = [0u8; 4096];
+        let _ = socket.read(&mut discard).await;
+        let _ = socket
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                  Content-Length: 4096\r\n\r\n",
+            )
+            .await;
+        let _ = socket.flush().await;
+
+        tokio::time::sleep(Duration::from_secs(600)).await;
+    });
+
+    format!("http://{address}")
+}
+
+/// A whole answer whose headers arrived and whose body has not can still be stopped.
+///
+/// note: the body was read in one `text()`, with nothing watching it - so the wait for an answer
+/// that is written before it is sent, which is minutes, could not be interrupted, and a server
+/// that stopped after its headers held the turn for as long as the client's own timeout, which
+/// the default client does not have.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_whole_answer_that_never_arrives_can_still_be_stopped() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(
+        nachalnik_providers::OpenAiCompatible::new("slow", headers_only().await, "no key needed")
+            .streaming(false),
+    ));
+    kernel.push(ContextItem::user("are you there?"));
+
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.turn().await }
+    });
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    kernel.interrupt();
+
+    tokio::time::timeout(Duration::from_secs(5), running)
+        .await
+        .expect("the interrupt should reach a body that has not arrived")
+        .expect("the turn is not a panic")
+        .expect("an interrupted request is not a failed one");
+}
+
 /// Answers every request with a `429` asking to be left for half a minute, and counts them.
 #[cfg(feature = "openai")]
 async fn busy_server(requests: Arc<std::sync::atomic::AtomicUsize>) -> String {

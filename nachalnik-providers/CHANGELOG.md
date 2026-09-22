@@ -63,6 +63,27 @@ minor bump may break you.
   it apart from a momentary limit and the streaming path, which is the default, did not, so a quota
   that would still be spent tomorrow was sent three more times over fourteen seconds first.
 
+- **Both dialects send, wait and read through one copy of the code.** Each had its own retry loop
+  and its own stream reader, and they had drifted: `Gemini` read no `Retry-After`, refused nothing
+  for asking to be left longer than a minute, and put a refusal's whole body into the error where
+  the other dialect gave the server's sentence. They share `waiting` and a new `reading` now, and
+  what follows was wrong in both and is fixed once:
+
+  - the last event of a stream is read when no newline follows it, rather than dropped with the
+    end of the body;
+  - a good status whose body is not a stream is reported by what the whole body says, rather than
+    by what followed its last newline - which for a page of HTML was its closing tag;
+  - a server that ignored the request for a stream and answered whole has answered: a completion
+    in the OpenAI dialect is read as one, and Google's unstreamed list of events as those events;
+  - an error object inside a stream, or in a body that was not one, is reported by its sentence and
+    read for a refusal over length, as a refused status already was;
+  - a whole answer's body is watched as a stream is - interruptible, its silence reported, and
+    given up on after `WHOLE_ANSWER` - where it was one `text()` that nothing could stop.
+
+- **`generationConfig` is merged all the way down.** Merged one level deep over the default that
+  asks for thoughts, a caller's `{"thinkingConfig": {"thinkingBudget": 1024}}` replaced the whole
+  of `thinkingConfig` and turned the thoughts off without saying anything about them.
+
 ## [0.5.0] - 2026-09-21
 
 ### added

@@ -169,10 +169,12 @@ of that too and is headless in it, so `--no-default-features` is a program rathe
 `nachalnik-providers/src`: `openai/mod.rs` (`OpenAiCompatible`, where the requests go and what the
 endpoint says it serves), `openai/wire.rs` (one request sent and read back, streamed or whole),
 `gemini.rs` (Google's own, the one that keeps the order of a turn), `endpoint.rs` (the `Endpoint`
-trait both answer), `waiting.rs` (the stall watch and the retry rules, `pub(crate)` because both
-dialects use them), `conformance.rs` (the suite, behind its own feature), `system1.rs` (feature
-`system1`: `Jev`, TypeSafe's engine for typed questions answered with numbers, and the one thing
-here that is not a `Dialect` - it drives no turn). Each dialect is a feature; `waiting.rs` is what
+trait both answer), `waiting.rs` (the send loop, the stall watch and the retry rules),
+`reading.rs` (a stream read an event at a time, and a server's sentence out of its error object),
+`conformance.rs` (the suite, behind its own feature), `system1.rs` (feature `system1`: `Jev`,
+TypeSafe's engine for typed questions answered with numbers, and the one thing here that is not a
+`Dialect` - it drives no turn). Each dialect is a feature, and what it owns is what its events
+*say*; `waiting.rs` and `reading.rs` are everything else, `pub(crate)` and shared, which is what
 makes them one crate rather than two.
 
 This crate **reads no environment**. Where the requests go, which key pays for them and what limit

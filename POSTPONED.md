@@ -439,17 +439,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   ceiling is reached - which one is a decision about whether a draft is part of the session's
   spend, and it is money either way.
 
-- **The two dialects' read and retry loops, which have drifted apart.** Each has its own send loop
-  and SSE reader, and they no longer agree: Gemini reads no `Retry-After`, applies no `LINGER`,
-  puts the raw body into an error rather than going through `complaint`, and keeps a `HEARTBEAT` of
-  its own. Several faults live in both copies: a whole answer's body is read with no stall watch
-  after the headers arrive; a 200 that is not a stream keeps only what followed its last newline
-  for the error, and a one-line completion from a server that ignored `stream: true` is reported as
-  one; and a final event with no blank line after it is dropped. Gemini also merges
-  `generationConfig` one level deep, so a caller's `thinkingConfig` replaces the default that asks
-  for thoughts. The shared reader and loop belong in `waiting.rs`, and fixing each fault once there
-  is cheaper than fixing it twice here.
-
 - **The `fs` boundary checks a path and then opens it.** A directory swapped for a link between the
   two is not caught; SECURITY.md says so. And `write` and `edit` truncate before they write, so a
   full disk mid-edit leaves a truncated file. The first wants opens component by component with

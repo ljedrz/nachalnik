@@ -7,11 +7,19 @@
 
 use std::{
     future::Future,
+    sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, Instant},
 };
 
 use nachalnik::{BoxError, DeltaSink, ModelResponse, StopReason};
 use parking_lot::Mutex;
+use serde_json::Value;
+
+use crate::{
+    out_of_quota,
+    reading::{complaint, failure},
+    refused,
+};
 
 /// How many times a request is sent when the server keeps saying it is busy, the first included.
 ///
@@ -25,10 +33,6 @@ pub(crate) const RETRIES: usize = 4;
 /// note: for the difference between a busy server and one that has said no until tomorrow. A
 /// per-minute limit answers `Retry-After: 5`; a spent daily quota answers with the seconds until
 /// midnight, and sitting through four doublings to discover that wastes the turn and the wait.
-///
-/// note: only the OpenAI dialect reports a `Retry-After`, which is why this is the one constant
-/// in here that belongs to a feature.
-#[cfg(feature = "openai")]
 pub(crate) const LINGER: Duration = Duration::from_secs(60);
 
 /// How long a stream may say nothing before the provider looks up to check whether it has been
@@ -48,10 +52,8 @@ pub(crate) const PATIENCE: Duration = Duration::from_secs(150);
 ///
 /// note: ten minutes, and it has to be minutes rather than the two and a half above, because
 /// nothing arrives until the whole answer does: a model asked for a long answer says nothing for
-/// as long as it takes to write one, and there is no fragment to reset the watch. Measured on a
-/// reasoning model through OpenRouter that spent 16,754 output tokens on one question. A stream
-/// is different, and 150s of silence in the middle of one really is a stall.
-#[cfg(feature = "openai")]
+/// as long as it takes to write one, and there is no fragment to reset the watch. A stream is
+/// different, and 150s of silence in the middle of one really is a stall.
 pub(crate) const WHOLE_ANSWER: Duration = Duration::from_secs(600);
 
 /// What a stream's silence has come to mean.
@@ -221,23 +223,248 @@ pub(crate) fn gone_quiet(model: &str, seconds: u64) -> String {
     format!("{model} has said nothing for {seconds}s; {GIVES_UP}")
 }
 
+/// Whose answer is being waited for, and where to say how the wait is going.
+///
+/// note: the model is read once per request and used for every line said about it: a name that
+/// changed halfway through would make one wait look like two.
+pub(crate) struct Asking<'a> {
+    /// The model being asked, as every notice about this request names it.
+    pub(crate) model: &'a str,
+    /// Where the answer goes as it arrives, and where an interrupt is asked about.
+    pub(crate) deltas: &'a DeltaSink,
+    /// Where a notice goes, for [`Endpoint::take_notice`](crate::Endpoint::take_notice).
+    pub(crate) notice: &'a Mutex<Option<String>>,
+}
+
+impl Asking<'_> {
+    /// Puts a notice up, in place of any nobody has taken yet.
+    pub(crate) fn say(&self, said: String) {
+        *self.notice.lock() = Some(said);
+    }
+}
+
+/// What a request came to, once the server stopped being busy.
+pub(crate) enum Sent {
+    /// Somebody asked to stop before there was an answer to read.
+    Interrupted,
+    /// A whole answer, read.
+    Whole(Value),
+    /// A response whose body is still arriving.
+    Streaming(reqwest::Response),
+}
+
+/// Why an attempt is worth making again, if the retry rules agree.
+enum Busy {
+    /// Nothing came back, in a way that a busy server produces.
+    Unsent(Unsent),
+    /// The server answered, and the answer was a refusal.
+    Refused {
+        /// The status, or the code inside an error object that came with a good one.
+        code: u64,
+        /// What to say about it if it is not waited out.
+        said: String,
+        /// Whether it is the kind of refusal that goes away.
+        transient: bool,
+        /// How long the server asked to be left, where it said.
+        asked: Option<Duration>,
+    },
+}
+
+/// Sends a request, waiting out a server that is merely busy, and hands back what came of it.
+///
+/// note: waiting and trying again is the *provider's* business. A free tier answers "busy" often
+/// enough that not retrying makes the whole thing look broken when it is not - and the kernel
+/// must not silently send a request twice behind a caller's back. The count is this request's
+/// and nobody else's; see [`RETRIES`].
+///
+/// note: `request` builds the request afresh for each attempt, because a sent one is spent, and
+/// it is the whole of what the dialects do differently here: a path, a header, a body.
+///
+/// note: a whole answer is read *here* rather than by the caller, because the OpenAI dialect's
+/// other way of saying 429 is an `error` object inside a perfectly good 200 - and a limit
+/// reported that way is exactly as worth waiting out as one reported as a status.
+pub(crate) async fn sent(
+    asking: &Asking<'_>,
+    attempts: &AtomicUsize,
+    limit: Option<usize>,
+    streaming: bool,
+    request: impl Fn() -> reqwest::RequestBuilder,
+) -> Result<Sent, BoxError> {
+    // nothing arrives until the whole answer does, when it is not a stream, so the silence that
+    // means "this has stalled" is a much longer one
+    let patience = match streaming {
+        true => PATIENCE,
+        false => WHOLE_ANSWER,
+    };
+    let mut tried = 0;
+
+    loop {
+        attempts.fetch_add(1, Ordering::SeqCst);
+        tried += 1;
+
+        let busy = match watched(request().send(), asking, patience).await {
+            // nobody is owed an error for being obeyed
+            Err(Unsent::Interrupted) => return Ok(Sent::Interrupted),
+            // a connection that timed out is a busy server wearing different clothes. A refused
+            // connection is *not* this - it is a definite answer, usually an address with nothing
+            // behind it, and making a typo take four doublings to report helps nobody
+            Err(reason) if reason.worth_waiting_out() => Busy::Unsent(reason),
+            Err(reason) => return Err(reason.giving_up(asking.model)),
+            Ok(response) if streaming && response.status().is_success() => {
+                return Ok(Sent::Streaming(response));
+            }
+            Ok(response) => {
+                let status = response.status();
+                // the server's own answer to "when?", where it gives one. Guessing at a doubling
+                // is for a server that did not say
+                let asked = response
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|value| value.trim().parse::<u64>().ok())
+                    .map(Duration::from_secs);
+                let body = match body(response, asking, patience).await {
+                    Ok(Some(body)) => body,
+                    Ok(None) => return Ok(Sent::Interrupted),
+                    Err(e) if status.is_success() => return Err(e),
+                    // a refusal whose body never arrived is still a refusal, and its status says
+                    // which kind
+                    Err(_) => String::new(),
+                };
+
+                match status.is_success() {
+                    true => {
+                        let payload: Value = serde_json::from_str(&body).map_err(|e| {
+                            let short: String = body.chars().take(300).collect();
+                            format!("the answer was not JSON ({e}): {short}")
+                        })?;
+                        let Some(error) = payload.get("error").filter(|error| !error.is_null())
+                        else {
+                            return Ok(Sent::Whole(payload));
+                        };
+                        let code = error["code"].as_u64().unwrap_or_default();
+                        Busy::Refused {
+                            code,
+                            said: failure(error),
+                            transient: passing(code) && !out_of_quota(&body),
+                            asked,
+                        }
+                    }
+                    // read before deciding, because a spent daily quota is a 429 that will still be
+                    // one in a minute
+                    false => Busy::Refused {
+                        code: status.as_u16().into(),
+                        said: complaint(status, &body),
+                        transient: passing(status.as_u16().into()) && !out_of_quota(&body),
+                        asked,
+                    },
+                }
+            }
+        };
+
+        let doubling = Duration::from_secs(1 << tried);
+        let (wait, what) = match busy {
+            Busy::Unsent(reason) if tried >= RETRIES => {
+                return Err(reason.giving_up(asking.model));
+            }
+            Busy::Unsent(reason) => (doubling, reason.what_happened().to_owned()),
+            Busy::Refused {
+                code,
+                said,
+                transient,
+                asked,
+            } => {
+                let wait = asked.unwrap_or(doubling);
+                if !transient || tried >= RETRIES || wait > LINGER {
+                    let mut said = said;
+                    if transient && wait > LINGER {
+                        said.push_str(&format!(
+                            " - it asked to be left for {}s, which is longer than this waits",
+                            wait.as_secs()
+                        ));
+                    }
+                    return Err(refused(said, limit));
+                }
+                (wait, format!("answered {code}"))
+            }
+        };
+
+        asking.say(format!(
+            "{} {what}; trying again in {}s",
+            asking.model,
+            wait.as_secs()
+        ));
+        if !backed_off(wait, asking.deltas).await {
+            return Ok(Sent::Interrupted);
+        }
+    }
+}
+
+/// Whether a status - or the code in an error object - is one that goes away by itself.
+fn passing(code: u64) -> bool {
+    code == 429 || (500..600).contains(&code)
+}
+
+/// Reads a whole body, watching the wait the way a stream is watched; `None` if somebody asked to
+/// stop first.
+///
+/// note: the headers arriving is not the end of the wait. An endpoint may send them at once and
+/// the answer when it is written, which for a whole answer is minutes - and one that sends them
+/// and then nothing is the stall [`WHOLE_ANSWER`] is for. Read in one `text()`, neither could be
+/// interrupted, and the second held the turn until the transport's own timeout, which the default
+/// client does not have.
+async fn body(
+    mut response: reqwest::Response,
+    asking: &Asking<'_>,
+    patience: Duration,
+) -> Result<Option<String>, BoxError> {
+    let mut body = Vec::new();
+    let mut vigil = Vigil::waiting(patience);
+
+    loop {
+        match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
+            Ok(Ok(Some(bytes))) => {
+                vigil.heard();
+                body.extend_from_slice(&bytes);
+            }
+            Ok(Ok(None)) => return Ok(Some(String::from_utf8_lossy(&body).into_owned())),
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => {
+                if asking.deltas.is_interrupted() {
+                    return Ok(None);
+                }
+                match vigil.waited() {
+                    Silence::Enough => return Err(stalled(asking.model, patience)),
+                    Silence::Worth(seconds) => asking.say(not_answered(asking.model, seconds)),
+                    Silence::Ordinary => {}
+                }
+            }
+        }
+    }
+}
+
+/// The error for a response that started and then said nothing for as long as it was given.
+///
+/// note: not retried, unlike a request that never answered at all. The model may well have been
+/// generating, and every attempt is billed.
+pub(crate) fn stalled(model: &str, waited: Duration) -> BoxError {
+    format!(
+        "{model} answered and then said nothing for {}s; giving up",
+        waited.as_secs()
+    )
+    .into()
+}
+
 /// Waits for a request to be answered, watching the wait the way the stream itself is watched.
 ///
 /// note: `&mut sending` rather than `sending`. Handing `timeout` the future itself would drop it
 /// 120ms later and cancel the request that had just been made; borrowing it stops polling for
 /// that round and leaves the connection standing. The loop is the one the stream runs, for the
 /// same three reasons - an interrupt is heard, the silence is said out loud, and it ends - and it
-/// is here because everything before the first byte had none of them. A server that accepted the
-/// connection and then went away held the terminal for eighteen minutes with `asking` on the
-/// status line and no way to take it back.
-///
-/// note: free rather than a method, because [`Gemini`](crate::gemini::Gemini) sends its requests
-/// down a different URL with a different header and needs exactly this in front of them.
-pub(crate) async fn watched(
+/// is here because everything before the first byte had none of them.
+async fn watched(
     sending: impl Future<Output = reqwest::Result<reqwest::Response>>,
-    deltas: &DeltaSink,
-    model: &str,
-    notice: &Mutex<Option<String>>,
+    asking: &Asking<'_>,
     patience: Duration,
 ) -> Result<reqwest::Response, Unsent> {
     let mut sending = std::pin::pin!(sending);
@@ -248,13 +475,13 @@ pub(crate) async fn watched(
             return sent.map_err(Unsent::Transport);
         }
 
-        if deltas.is_interrupted() {
+        if asking.deltas.is_interrupted() {
             return Err(Unsent::Interrupted);
         }
 
         match vigil.waited() {
             Silence::Enough => return Err(Unsent::Silent(patience)),
-            Silence::Worth(seconds) => *notice.lock() = Some(not_answered(model, seconds)),
+            Silence::Worth(seconds) => asking.say(not_answered(asking.model, seconds)),
             Silence::Ordinary => {}
         }
     }
@@ -265,7 +492,7 @@ pub(crate) async fn watched(
 /// note: in heartbeats rather than one sleep, because a request somebody has asked to stop is not
 /// one to send again. A single sleep kept a stopped turn waiting for as long as the server asked -
 /// a minute, for a `Retry-After: 60` - and then sent the request anyway, to be answered and billed.
-pub(crate) async fn backed_off(wait: Duration, deltas: &DeltaSink) -> bool {
+async fn backed_off(wait: Duration, deltas: &DeltaSink) -> bool {
     let until = Instant::now() + wait;
     loop {
         if deltas.is_interrupted() {

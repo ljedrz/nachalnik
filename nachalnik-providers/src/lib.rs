@@ -71,6 +71,8 @@ pub mod conformance;
 pub mod gemini;
 #[cfg(feature = "openai")]
 pub mod openai;
+#[cfg(any(feature = "gemini", feature = "openai"))]
+pub(crate) mod reading;
 #[cfg(feature = "system1")]
 pub mod system1;
 #[cfg(any(feature = "gemini", feature = "openai"))]
