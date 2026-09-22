@@ -57,6 +57,14 @@ minor bump may break you.
   write is made of. A loop that leaves the ending to `relaunch`, as the drawn one with no socket
   does, is unchanged.
 
+- **The `call` wrapper says it is an object.** A tool with several operations declared the
+  property as a bare `anyOf`, with the `type` only on each branch inside it - so the one thing a
+  model reads to decide what to write there said nothing. `xiaomi/mimo-v2.6-flash` answered by
+  writing the whole call as a *string* of JSON, on every call to `fs` and `context` and on none at
+  all to `shell`, `log` or `setup`, whose single branch carries a `type` of its own. Asked the
+  same question five times each way, the untyped shape stringified five times out of five and the
+  typed one none.
+
 ## [0.14.0] - 2026-09-21
 
 ### breaking
