@@ -45,6 +45,10 @@ jobs:
         run: cargo doc --workspace --all-features --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
+      # and the prose rustdoc does not read: a file or a test named in a comment or a document
+      # that is no longer there
+      - name: references
+        run: scripts/references.sh
 
   # note: three platforms because the crates claim to work on three. `nachalnik` and
   # `nachalnik-mcp` are pure Rust and ought to build anywhere; `kamchatka` says in its own readme

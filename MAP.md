@@ -93,21 +93,20 @@ in-process tools will open, and `Confinement` for every way the first of those c
 there - see [SECURITY.md](SECURITY.md) before changing any of it), `attach.rs` (one file into the
 context: the short table of media types this program is prepared to name, and text for everything
 else),
-`endpoint.rs` (where the requests go: the environment variables this program reads, and the
-two `connect` functions that turn them into a provider - it was `provider.rs` while the dialects
-were files in this crate), `advisor.rs` (feature `advise`: a System One engine running on *this*
-machine, spoken to over a pipe in the body `Jev` already sends - one long-lived child rather than
-one per question, because the open engines load a checkpoint that costs seconds and answers in
-milliseconds. It is here rather than in `nachalnik-providers` because that crate opens sockets and
-does not spawn processes, which is the line `nachalnik-mcp` is on the other side of; and it exists
-because `laya` ships no interface to point a base URL at, so `contrib/laya_advisor.py` is the
-script `SYSTEM1_ADVISOR_COMMAND` names. Every failure closes the pipe, because the next read off a
-doubtful stream is the answer to the question before it - and both of the child's streams are
-held rather than inherited, because a child sharing the terminal writes over the frame, while a
-pipe nobody reads fills and blocks the child writing to it), `main.rs` (which loop drives the
-session, the loop that draws, and where the record went). It is
-a library plus a binary so the screen can be drawn against a `TestBackend` in tests, and because
-the screen is not the program.
+`endpoint.rs` (where the requests go: the environment variables this program reads, and the two
+`connect` functions that turn them into a provider), `advisor.rs` (feature `advise`: a System One
+engine running on *this* machine, spoken to over a pipe in the body `Jev` already sends - one
+long-lived child rather than one per question, because the open engines load a checkpoint that costs
+seconds and answers in milliseconds. It is here rather than in `nachalnik-providers` because that
+crate opens sockets and does not spawn processes, which is the line `nachalnik-mcp` is on the other
+side of; and it exists because `laya` ships no interface to point a base URL at, so
+`contrib/laya_advisor.py` is the script `SYSTEM1_ADVISOR_COMMAND` names. Every failure closes the
+pipe, because the next read off a doubtful stream is the answer to the question before it - and both
+of the child's streams are held rather than inherited, because a child sharing the terminal writes
+over the frame, while a pipe nobody reads fills and blocks the child writing to it), `main.rs`
+(which loop drives the session, the loop that draws, and where the record went). It is a library
+plus a binary so the screen can be drawn against a `TestBackend` in tests, and because the screen is
+not the program.
 
 **`main.rs` is a choice of loop, and that is the shape to keep it in.** Everything it used to
 assemble is `wiring::Setup`, because it was assembled twice - here and in `examples/recorded.rs` -

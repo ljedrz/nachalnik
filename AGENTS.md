@@ -102,6 +102,7 @@ cargo test --workspace --all-features       # everything; the live suites skip t
 cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets -- -D warnings
 cargo doc --workspace --all-features --no-deps   # with RUSTDOCFLAGS=-D warnings, as CI does
+scripts/references.sh                       # every file and test the prose names still exists
 ```
 
 CI (`.github/workflows/ci.yml`) also builds with **default** features, checks `nachalnik`,
@@ -214,15 +215,16 @@ the mistake it came from - which is the half that makes them stick.
 ## before you commit
 
 `cargo fmt --all --check`, `cargo clippy --workspace --all-features --all-targets -- -D warnings`,
-`cargo test --workspace --all-features`, the documentation build below, and the changelog entry. If
-the change touches the request path, run one of the networked examples or the live suite against a
-real endpoint - a mock cannot tell you that an API accepts what was built.
+`cargo test --workspace --all-features`, `scripts/references.sh`, the documentation build below,
+and the changelog entry. If the change touches the request path, run one of the networked examples
+or the live suite against a real endpoint - a mock cannot tell you that an API accepts what was
+built.
 
 ```console
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps
 ```
 
-That is the one that gets skipped, and the only one of the four that says nothing when it is run
+That is the one that gets skipped, and the only one of them that says nothing when it is run
 wrong: the flags are not in the environment, and without them it exits `0` on the warnings CI
 denies. Nothing else in the toolchain reads a doc comment, so a broken link is caught there or not
 at all - [CONTRIBUTING.md](CONTRIBUTING.md) has the two shapes it takes.

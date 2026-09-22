@@ -20,9 +20,11 @@ cargo test -p kamchatka --no-default-features          # the program with no scr
 cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets -- -D warnings
 cargo doc --workspace --all-features --no-deps   # with RUSTDOCFLAGS=-D warnings, as CI does
+scripts/references.sh                       # every file and test the prose names still exists
 ```
 
-These are pre-commit checks and not just CI steps, and the last one is the one that gets skipped.
+These are pre-commit checks and not just CI steps, and the `cargo doc` one is the one that gets
+skipped.
 `RUSTDOCFLAGS` is not in the environment the way `RUSTFLAGS: -D warnings` is in CI's, so without it
 the command prints its warnings, exits `0` and reads as a pass; the `docs` job sets it and does not.
 It is worth running, because nothing else in the toolchain reads a doc comment - neither `clippy`
@@ -32,6 +34,14 @@ name it never had - `Shell::call`, where the method is `invoke` and arrives thro
 there is nothing on the type to read the name off and nothing but rustdoc to say so. And a public
 comment linking to a `pub(super)` item, which resolves for everyone in the module and for nobody on
 docs.rs.
+
+`scripts/references.sh` is the same net for the prose rustdoc does not read: a plain backticked
+name in a comment or a document. A file has to be in the repository, and a test's name, or a path
+into the workspace's own items, has to be something the code declares - looked up by name rather
+than resolved, which is enough for the usual case of a rename that left a sentence pointing at
+nothing. Changelogs are skipped, since what they name was true when they say, and a name mentioned
+on purpose - the layout a test directory was chosen over, a file an example writes - is listed in
+`scripts/references.allow` beside the file that mentions it.
 
 CI (`.github/workflows/ci.yml`) also builds with **default** features (the tests turn both on, so
 nothing else exercises that configuration), checks `nachalnik`, `nachalnik-mcp`,
@@ -307,7 +317,7 @@ for, so there is nothing for it to agree with.
   failing tests reports as a green suite - so build first, and treat "nothing failed" as three
   possibilities rather than one.
 
-  `scripts/mutate.sh <patch> [pattern]` is the mechanics, and the only script in here: it refuses
+  `scripts/mutate.sh <patch> [pattern]` is the mechanics: it refuses
   a dirty tree (a mutation goes into the working tree and comes back out of it), builds before it
   tests, takes a patch so that `git apply -R` reverts exactly what went in, and splits the
   failures into the tests being measured and everything else. The mutations themselves are not

@@ -35,7 +35,7 @@
 //! [`confines_unix_sockets`] is where that is asked.
 //!
 //! note: it is applied by re-executing *this program* in a mode that confines itself and then runs
-//! the command. The alternative is `Command::pre_exec`, which is `unsafe`, and this workspace does
+//! the command. The alternative is `CommandExt::pre_exec`, which is `unsafe`, and this workspace does
 //! not have any. The child is deliberately not a `tokio` program: Landlock restricts the calling
 //! thread, and a single-threaded helper is the one shape where that needs no thought.
 

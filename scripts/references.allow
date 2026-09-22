@@ -1,0 +1,17 @@
+# Names `scripts/references.sh` would take for stale references, mentioned on purpose. One per
+# line: the file that mentions it, then the name as it is written there.
+
+# a test directory is one binary; these are the layouts each was chosen over
+kamchatka/tests/introspect/main.rs tests/introspect.rs
+kamchatka/tests/remote/main.rs tests/remote.rs
+kamchatka/tests/screen/main.rs tests/screen.rs
+kamchatka/tests/screen/main.rs tests/chat.rs
+nachalnik/tests/context/main.rs tests/context.rs
+nachalnik/tests/kernel/main.rs tests/kernel.rs
+
+# files a program, a test or a person makes, rather than files in here
+kamchatka/examples/recorded.rs session.md
+kamchatka/src/tools/advice.rs notes.md
+kamchatka/src/tools/search.rs w/src/a.rs
+kamchatka/tests/files.rs notes/new.md
+kamchatka/tests/introspect/context.rs big.rs
