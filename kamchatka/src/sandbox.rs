@@ -20,10 +20,19 @@
 //! `#[non_exhaustive]` over a sealed trait, and so those two bits cannot be handed to a ruleset
 //! from out here at all. What is left is the raw syscall, which is `unsafe`, and this workspace
 //! does not have any. So until the crate grows them, a confined command can still send a UDP
-//! datagram, which is enough to put bytes in a DNS query, and AF_UNIX is only reachable at all
-//! from a kernel that has ABI 9. `no network` here means no TCP, and it is written that way
-//! everywhere it is shown rather than rounded up to something this cannot do. What still holds
-//! against the rest is the filesystem: a command that cannot read a file has nothing to send.
+//! datagram, which is enough to put bytes in a DNS query. `no network` here means no TCP, and it
+//! is written that way everywhere it is shown rather than rounded up to something this cannot do.
+//! What still holds against the rest is the filesystem: a command that cannot read a file has
+//! nothing to send.
+//!
+//! note: a unix socket is the filesystem's rather than the network's, and Linux 7.1 is where the
+//! kernel grew the right for it - `AccessFs::ResolveUnix`, which the crate does expose. A command
+//! may connect to one it could have written to, and to no other. Below that kernel a `connect` is
+//! governed by nothing whatever, which leaves the session bus, the compositor and the container
+//! daemon reachable; each of those runs a command outside the domain on the caller's behalf, so
+//! the hole is worth more than the UDP one - a datagram carries bytes out, where `systemd-run
+//! --user` carries a command out and hands back the whole filesystem.
+//! [`confines_unix_sockets`] is where that is asked.
 //!
 //! note: it is applied by re-executing *this program* in a mode that confines itself and then runs
 //! the command. The alternative is `Command::pre_exec`, which is `unsafe`, and this workspace does
@@ -601,6 +610,37 @@ const SYSTEM: &[&str] = &[
     "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/proc", "/sys", "/run",
 ];
 
+/// Whether this kernel refuses a confined command a connection to a unix socket outside what it
+/// may write.
+///
+/// note: Landlock governs a pathname unix socket from ABI 9, which is Linux 7.1. Below that a
+/// `connect` is not an access right at all, so the socket answers whatever its own permissions say
+/// and the ruleset is not consulted - which is how a confined command reaches the session bus, the
+/// compositor and the container daemon. Each of those is a process outside the domain that will
+/// read and write a filesystem on its behalf, so a boundary that stops at `open` stops short:
+/// under a confinement that refused a home directory outright, `systemd-run --user` listed it and
+/// made a file in it.
+///
+/// note: the question is put to the kernel, and put to it through the crate rather than by reading
+/// a version number. `HardRequirement` is the level at which a right the kernel does not have is an
+/// error instead of something quietly dropped, and a `Ruleset` that is only built restricts
+/// nothing: this applies no ruleset and confines no process.
+#[cfg(target_os = "linux")]
+pub fn confines_unix_sockets() -> bool {
+    use landlock::{AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr};
+
+    Ruleset::default()
+        .set_compatibility(CompatLevel::HardRequirement)
+        .handle_access(AccessFs::ResolveUnix)
+        .is_ok()
+}
+
+/// The same, where there is no Landlock.
+#[cfg(not(target_os = "linux"))]
+pub fn confines_unix_sockets() -> bool {
+    false
+}
+
 /// Applies the sandbox to *this* process, returning how much of it the kernel took.
 ///
 /// note: `scratch` is a directory of this run's own, handed over as `TMPDIR`, rather than the
@@ -637,11 +677,23 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     //
     // note: not V5's `IoctlDev` - `/dev` is granted reading and writing rather than the whole of
     // `from_all`, so handling it would deny ioctls on `/dev/null` and on a terminal to every
-    // ordinary command - and not V9's `ResolveUnix`, which is the one that would close AF_UNIX
-    // and needs a kernel from 2026. On a kernel older than 6.2 the rights below V3 still apply
-    // and the status comes back `Partial`, which is said out loud rather than rounded up.
+    // ordinary command. On a kernel older than 6.2 the rights below V3 still apply and the status
+    // comes back `Partial`, which is said out loud rather than rounded up.
+    //
+    // note: V9's `ResolveUnix` is handled beside them where the kernel has it, and asked for
+    // nowhere else. It is the one right here that a kernel in ordinary use may not have, and
+    // handling a right that is not there costs the whole ruleset its `Full` status: best-effort
+    // drops it and reports `Partial`, so every kernel below 7.1 would start calling itself
+    // partially confined over a right it was never going to enforce - and `tests/sandbox.rs`
+    // skips on anything short of `Full`, which would quietly stop testing the sandbox where most
+    // of it is run. Granted again on every writable path below, the same way `Truncate` is: a
+    // command may connect to a socket it could have written to, and to no other.
     let abi = ABI::V3;
-    let Ok(mut ruleset) = Ruleset::default().handle_access(AccessFs::from_all(abi)) else {
+    let rights = match confines_unix_sockets() {
+        true => AccessFs::from_all(abi) | AccessFs::ResolveUnix,
+        false => AccessFs::from_all(abi),
+    };
+    let Ok(mut ruleset) = Ruleset::default().handle_access(rights) else {
         return Confinement::Unavailable;
     };
     if !sandbox.network {
@@ -681,9 +733,7 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
                 AccessFs::ReadFile | AccessFs::WriteFile,
             ))
         })
-        .and_then(|created| {
-            created.add_rules(path_beneath_rules(&writable, AccessFs::from_all(abi)))
-        })
+        .and_then(|created| created.add_rules(path_beneath_rules(&writable, rights)))
         .and_then(|created| created.restrict_self());
 
     match restricted {

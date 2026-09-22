@@ -35,6 +35,15 @@ Referenced from [AGENTS.md](AGENTS.md).
   weaker in kind and said to be.
   `#![deny(unsafe_code)]` is why it is a re-exec rather than `Command::pre_exec` - and why the UDP
   rights stay out of reach until the crate exposes them.
+- **A boundary that stops at `open` stops short.** A command that can reach a unix socket can have
+  the process behind it act for it, and that process is not in the domain: `systemd-run --user`
+  over the session bus read and wrote a home directory the same command was refused directly, and
+  the compositor and a container daemon are the same door. Landlock got an access right for it in
+  ABI 9, which is Linux 7.1, and `kamchatka` handles that right where the kernel has it - so a
+  command may connect to a socket it could have written to, and to no other. Below that kernel
+  nothing governs a `connect` at all; `sandbox::confines_unix_sockets` is what says which of the
+  two a machine is, and it is asked rather than assumed, because handling a right that is not
+  there would cost the ruleset its `Full` status and quietly stop the suite that tests it.
 - **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it
   can fail and the permissions tab draws it. Never let it degrade silently.
 - **A boundary the refused party cannot see is a boundary it will walk into repeatedly.** Landlock

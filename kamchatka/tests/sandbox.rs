@@ -12,6 +12,7 @@
 
 use std::{
     net::UdpSocket,
+    os::unix::net::UnixListener,
     path::{Path, PathBuf},
     process::Command,
     sync::Arc,
@@ -79,6 +80,18 @@ fn sandbox(workdir: PathBuf, writable: bool, network: bool) -> Sandbox {
         readable: Vec::new(),
         writable,
         network,
+    }
+}
+
+/// Whether this kernel has the one right in the ruleset that is newer than the rest; the socket
+/// tests say so and stop, the way `enforced` does, rather than failing on a kernel that cannot.
+fn sockets() -> bool {
+    match kamchatka::sandbox::confines_unix_sockets() {
+        true => true,
+        false => {
+            eprintln!("skipped: no Landlock right for a unix socket here, which is ABI 9");
+            false
+        }
     }
 }
 
@@ -413,6 +426,90 @@ fn a_udp_datagram_still_goes_out_and_every_sentence_about_it_says_so() {
         "no datagram arrived. If the crate has grown ABI 10's rights and this is now refused, \
          that is good news and every sentence promising only TCP wants rewriting"
     );
+}
+
+/// What a confined command connects to, in the one spelling every one of these tests uses.
+fn connect_to(socket: &Path) -> String {
+    format!(
+        "python3 -c \"import socket; socket.socket(socket.AF_UNIX).connect('{}')\" 2>&1",
+        socket.display()
+    )
+}
+
+/// The hole the UDP one is measured against, and the one that was worth closing: a datagram
+/// carries bytes out, where a socket carries a *command* out.
+///
+/// note: this was live. Under a confinement that refused it the home directory directly,
+/// `systemd-run --user` over `/run/user/<uid>/bus` read and wrote there anyway, because the work
+/// was done by a process that was never in the domain. The session bus, the compositor and the
+/// container daemon are each a pathname socket under `/run`, which is readable because the system
+/// directories are - and below Linux 7.1 a `connect` was governed by no access right at all, so
+/// the ruleset was not consulted about any of them.
+#[test]
+fn a_command_cannot_connect_to_a_unix_socket_it_could_not_write_to() {
+    if !enforced() || !sockets() {
+        return;
+    }
+    let outside = common::scratch("connect-outside").join("s.sock");
+    let listening = UnixListener::bind(&outside).expect("a socket outside the working directory");
+
+    let (ok, said) = run(
+        &sandbox(workdir("connect"), true, false),
+        &connect_to(&outside),
+    );
+
+    assert!(
+        !ok,
+        "a socket outside the working directory was connected to: {said}"
+    );
+    assert!(said.contains("Permission denied"), "{said}");
+    drop(listening);
+}
+
+/// And it still works where the command may write, which is what the rule costs: the socket a
+/// session listens on is in a directory somebody handed it read-write, and a confinement that
+/// refused that would take the session with it.
+#[test]
+fn a_command_can_connect_to_one_it_could_have_written() {
+    if !enforced() || !sockets() {
+        return;
+    }
+    let dir = workdir("connect-inside");
+    let inside = dir.join("s.sock");
+    let listening = UnixListener::bind(&inside).expect("a socket in the working directory");
+
+    let (ok, said) = run(&sandbox(dir, true, false), &connect_to(&inside));
+
+    assert!(ok, "{said}");
+    drop(listening);
+}
+
+/// A read-only working directory is read-only for this too, and a path opened up for reading
+/// alone stays that way.
+///
+/// note: connecting is the writing half of the rule rather than the reading half, because what
+/// comes back from a socket is whatever the process behind it was willing to do. A `--sandbox-read`
+/// path that let a command drive a daemon would be the one flag in here that does not mean what
+/// it says.
+#[test]
+fn reading_a_path_is_not_connecting_to_a_socket_in_it() {
+    if !enforced() || !sockets() {
+        return;
+    }
+    let opened = common::scratch("connect-readable");
+    let socket = opened.join("s.sock");
+    let listening = UnixListener::bind(&socket).expect("a socket in the readable directory");
+
+    let mut readable = sandbox(workdir("connect-read"), true, false);
+    readable.readable = vec![opened];
+    let (ok, said) = run(&readable, &connect_to(&socket));
+
+    assert!(
+        !ok,
+        "a socket in a path opened for reading alone was connected to: {said}"
+    );
+    assert!(said.contains("Permission denied"), "{said}");
+    drop(listening);
 }
 
 #[test]
