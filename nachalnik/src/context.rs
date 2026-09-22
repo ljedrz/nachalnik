@@ -659,6 +659,11 @@ impl Context {
     }
 
     /// Replaces an item's metadata, returning whether it changed.
+    ///
+    /// note: no checkpoint, because metadata rides with the operation it describes - a client
+    /// that rewrites an item and records who did it wants one `undo` for the two. But it is new
+    /// work all the same, so the redone future goes: a redo that reached across it would put the
+    /// old metadata back.
     pub(crate) fn annotate(&mut self, id: ContextId, meta: Value) -> bool {
         let Some(index) = self.index_of(id) else {
             return false;
@@ -667,6 +672,7 @@ impl Context {
             return false;
         }
         Arc::make_mut(&mut self.items[index]).meta = meta;
+        self.redo.clear();
 
         true
     }

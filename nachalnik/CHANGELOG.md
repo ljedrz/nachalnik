@@ -9,6 +9,23 @@ minor bump may break you.
 
 ### fixed
 
+- **The results of a turn's calls are one undo.** Every result a batch produced took a checkpoint
+  of its own, so one `undo` after a turn that ran three tools took back the last result and left
+  the model looking at a turn where two calls were answered and one never mentioned -
+  `cancel_pending_calls` already refused that shape, and running the calls is the same thing
+  happening. The first result takes the checkpoint and the rest join it, and the kernel's answer
+  to a call naming no tool joins the turn it answers, which is recorded in the same step. A model
+  asking for sixteen tools no longer spends the whole undo history.
+
+- **An interrupt no longer outlives a request that failed.** Only reaching `Finished` put the flag
+  down, so a provider that met the stop with an error, or a step future dropped after it, left it
+  set - and the next `turn` was spent acknowledging it, sending nothing, and returning the state it
+  started in. The flag is cleared wherever the machine is put back after a transition that did
+  not finish.
+
+- **`Kernel::annotate` discards the redo stack.** It takes no checkpoint, on purpose, but it is
+  new work, and a redo that reached across it restored the old metadata over the new.
+
 - **A compaction plan cannot take a pinned item out of the request through the item beside it.**
   The kernel refused a plan's removal of a pinned item and nothing else, but a call and its result
   go out together or not at all - so removing the turn a pinned result answers dropped the result

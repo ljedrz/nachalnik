@@ -278,6 +278,74 @@ async fn cancelling_a_turn_s_calls_is_one_thing_the_user_did() {
     );
 }
 
+/// And so is running them. The calls that run are one checkpoint, taken by the first result and
+/// joined by the rest; the kernel's answer to a call nobody can run joins the turn it answers,
+/// which is recorded in the same step. A checkpoint a result would let one `undo` leave some of a
+/// turn's calls answered and one never mentioned - the shape the test above is about.
+#[tokio::test]
+async fn running_a_turn_s_calls_is_one_thing_that_happened() {
+    let kernel = kernel();
+    kernel.set_policy(Arc::new(AllowAll));
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![
+            call("c1", "shell", json!({ "cmd": "a" })),
+            call("c2", "nothing", json!({})),
+            call("c3", "shell", json!({ "cmd": "c" })),
+        ]),
+    ])));
+    kernel.add_tool(Arc::new(ConstTool::new("shell", "it ran!")));
+    kernel.push(ContextItem::user("do three things"));
+    let depth = kernel.with_context(|c| c.undo_len());
+    let results = |kernel: &nachalnik::Kernel| {
+        kernel
+            .items()
+            .iter()
+            .filter(|item| item.kind.name() == "tool_result")
+            .count()
+    };
+
+    kernel.step().await.unwrap();
+    assert_eq!(
+        kernel.with_context(|c| c.undo_len()),
+        depth + 1,
+        "the turn and the answer to the call nobody can run are one checkpoint"
+    );
+    kernel.step().await.unwrap();
+    assert_eq!(results(&kernel), 3);
+    assert_eq!(
+        kernel.with_context(|c| c.undo_len()),
+        depth + 2,
+        "two results would have spent two of the sixteen the user has"
+    );
+
+    assert!(kernel.undo());
+    assert_eq!(
+        results(&kernel),
+        1,
+        "one undo left part of the batch behind"
+    );
+    assert!(kernel.undo());
+    assert_eq!(
+        kernel.items().len(),
+        1,
+        "the turn went without the answer to its unknown call"
+    );
+}
+
+/// Metadata rides with the operation it describes and takes no checkpoint of its own, but it is
+/// new work: a redo that reached across it would put the old metadata back.
+#[test]
+fn an_annotation_is_not_overwritten_by_a_redo() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+    kernel.push(ContextItem::file("src/b.rs", "b"));
+    assert!(kernel.undo());
+
+    kernel.annotate(a, json!({ "expendable": true })).unwrap();
+    assert!(!kernel.redo(), "the redone future outlived an annotation");
+    assert_eq!(kernel.item(a).unwrap().meta, json!({ "expendable": true }));
+}
+
 #[test]
 fn a_replacement_is_the_one_thing_that_would_otherwise_be_lost() {
     let kernel = kernel();

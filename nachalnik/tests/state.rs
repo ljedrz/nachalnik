@@ -306,6 +306,51 @@ async fn a_failed_request_leaves_the_context_alone() {
     assert_eq!(transitions(&events), ["requesting", "idle"]);
 }
 
+/// A provider that is asked to stop and fails rather than handing back what it had - a dropped
+/// connection racing the stop, or a provider that reports a cancelled request as an error.
+struct GivesUp(std::sync::OnceLock<Kernel>, Mutex<usize>);
+
+#[async_trait]
+impl Provider for GivesUp {
+    fn info(&self) -> ModelInfo {
+        ModelInfo::new("gives-up", "gives-up")
+    }
+
+    async fn respond(
+        &self,
+        _request: ModelRequest,
+        _deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        *self.1.lock() += 1;
+        if *self.1.lock() == 1 {
+            self.0.get().expect("the kernel was set").interrupt();
+            return Err("the connection dropped".into());
+        }
+
+        Ok(ModelResponse::text("answered"))
+    }
+}
+
+/// An interrupt is for the request in flight, and a request that failed is over. Left set, the
+/// flag was spent on the next turn instead: that turn transitioned nothing, and the message
+/// somebody typed after the failure went unanswered.
+#[tokio::test]
+async fn an_interrupt_does_not_outlive_a_request_that_failed() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(GivesUp(std::sync::OnceLock::new(), Mutex::new(0)));
+    provider.0.set(kernel.clone()).expect("set once");
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("hi"));
+
+    assert!(matches!(kernel.turn().await, Err(Error::Provider(_))));
+    assert!(!kernel.is_interrupted(), "the stop outlived the request");
+
+    kernel.push(ContextItem::user("hi again"));
+    let state = kernel.turn().await.expect("a turn of its own");
+    assert!(matches!(state, State::Finished { .. }), "{state:?}");
+    assert_eq!(*provider.1.lock(), 2, "the second message was never sent");
+}
+
 #[tokio::test]
 async fn the_request_budget_ends_a_turn_without_losing_the_thread() {
     let kernel = Kernel::new(Config {
