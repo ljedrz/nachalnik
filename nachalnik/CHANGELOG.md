@@ -28,6 +28,17 @@ minor bump may break you.
   asked from, and the operation somebody wanted reverted needed a second one. `set_state` has had
   the rule since it was written; this is the same rule, in the other place that needed it.
 
+- **The component setters announce themselves under the lock that made the change.**
+  `set_provider`, `clear_provider`, `add_tool`, `remove_tool`, `set_policy`, `set_projector`,
+  `set_counter`, `set_compactor`, `set_params` and `reserve_calls` each took their lock as a
+  temporary and emitted after it had been released - the shape the note on `Kernel::emit` calls
+  out as wrong. Two clients swapping the same component could apply in one order and be logged in
+  the other, leaving the log's last word on the provider naming the one that is not installed.
+
+  What this asks of a component is that `Provider::info`, and the `name` of a policy, projector,
+  counter or compactor, do not call back into the kernel: each is asked what was replaced while
+  the lock holding it is held.
+
 ## [0.6.2] - 2026-09-21
 
 ### fixed

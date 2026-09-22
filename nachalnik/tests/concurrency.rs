@@ -385,3 +385,93 @@ async fn run_together_there_is_no_queue_left_for_an_interrupt_to_empty() {
         "every call had already started: {results:?}"
     );
 }
+
+/// A provider whose `info` waits the second time it is asked, so that a second setter can be let
+/// in while the first is still describing what it replaced.
+///
+/// note: the second time, because the first is the install: `set_provider` asks the incoming
+/// provider what it is before it takes the lock. What has to wait is the call describing the
+/// provider being replaced, which is the one made under it.
+struct SlowInfo {
+    name: &'static str,
+    asked: std::sync::atomic::AtomicUsize,
+    gate: parking_lot::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+}
+
+impl SlowInfo {
+    fn new(name: &'static str, gate: Option<std::sync::mpsc::Receiver<()>>) -> Arc<Self> {
+        Arc::new(Self {
+            name,
+            asked: std::sync::atomic::AtomicUsize::new(0),
+            gate: parking_lot::Mutex::new(gate),
+        })
+    }
+}
+
+#[nachalnik::async_trait]
+impl nachalnik::Provider for SlowInfo {
+    fn info(&self) -> nachalnik::ModelInfo {
+        if self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 1
+            && let Some(gate) = self.gate.lock().take()
+        {
+            let _ = gate.recv();
+        }
+
+        nachalnik::ModelInfo::new(self.name, self.name)
+    }
+
+    async fn respond(
+        &self,
+        _request: nachalnik::ModelRequest,
+        _deltas: nachalnik::DeltaSink,
+    ) -> std::result::Result<ModelResponse, nachalnik::BoxError> {
+        Ok(ModelResponse::text("never asked"))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn two_clients_swapping_a_component_are_logged_in_the_order_they_applied() {
+    let (open, gate) = std::sync::mpsc::channel();
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(SlowInfo::new("first", Some(gate)));
+    let mut events = kernel.subscribe();
+
+    // the swap that replaces `first` waits inside the call describing it, which is made under the
+    // lock. Announcing after the lock is let go would let the next swap in here: it would apply
+    // second and be logged first, and the log's last word on the provider would name the one that
+    // is not installed
+    let second = {
+        let kernel = kernel.clone();
+        std::thread::spawn(move || kernel.set_provider(SlowInfo::new("second", None)))
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+
+    let third = {
+        let kernel = kernel.clone();
+        std::thread::spawn(move || kernel.set_provider(SlowInfo::new("third", None)))
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+    open.send(()).unwrap();
+
+    second.join().unwrap();
+    third.join().unwrap();
+
+    let named: Vec<(String, String)> = std::iter::from_fn(|| events.try_recv().ok())
+        .filter_map(|event| match event {
+            Event::ModelChanged { from, to } => Some((
+                from.map(|it| it.model).unwrap_or_default(),
+                to.map(|it| it.model).unwrap_or_default(),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        named,
+        [
+            ("first".to_owned(), "second".to_owned()),
+            ("second".to_owned(), "third".to_owned())
+        ],
+        "the log follows the swaps, not the other way about"
+    );
+    assert_eq!(kernel.model_info().unwrap().model, "third");
+}

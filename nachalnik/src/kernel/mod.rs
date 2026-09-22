@@ -396,13 +396,10 @@ impl Kernel {
     /// and one reserved for an item that is later pruned stays reserved, because an identifier is
     /// never reused - not even by an item [`Kernel::undo`] took away.
     pub fn reserve_calls(&self, calls: impl IntoIterator<Item = ToolCallId>) -> usize {
-        let reserved = {
-            let mut seen = self.0.seen_calls.lock();
-            let before = seen.len();
-            seen.extend(calls);
-
-            seen.len() - before
-        };
+        let mut seen = self.0.seen_calls.lock();
+        let before = seen.len();
+        seen.extend(calls);
+        let reserved = seen.len() - before;
 
         if reserved != 0 {
             self.emit(Event::ToolCallsReserved { reserved });
@@ -609,6 +606,13 @@ impl Kernel {
     /// back up it - `emit` takes the session lock and nothing else, and `send` on a broadcast
     /// channel runs no subscriber code, so holding a lock across it costs a memcpy and blocks
     /// nobody.
+    ///
+    /// note: the component setters hold their own lock the same way, which is what stops two
+    /// clients swapping the same component from applying in one order and being logged in the
+    /// other - and the log's last word on the provider naming the one that is not installed. What
+    /// it asks of a component is that [`Provider::info`] and the `name` of a policy, projector,
+    /// counter or compactor do not reach back into the kernel: each is called while the lock
+    /// holding that component is held, to say what was replaced.
     pub(crate) fn emit(&self, event: Event) {
         let mut session = self.0.session.lock();
 
@@ -625,7 +629,9 @@ impl Kernel {
     /// Sets the provider, returning the previous one.
     pub fn set_provider(&self, provider: Arc<dyn Provider>) -> Option<Arc<dyn Provider>> {
         let to = provider.info();
-        let previous = self.0.provider.write().replace(provider);
+        let mut held = self.0.provider.write();
+        let previous = held.replace(provider);
+        // still under the lock: see the note on `Kernel::emit`
         self.emit(Event::ModelChanged {
             from: previous.as_ref().map(|p| p.info()),
             to: Some(to),
@@ -636,7 +642,8 @@ impl Kernel {
 
     /// Removes the provider, returning it.
     pub fn clear_provider(&self) -> Option<Arc<dyn Provider>> {
-        let previous = self.0.provider.write().take();
+        let mut held = self.0.provider.write();
+        let previous = held.take();
         self.emit(Event::ModelChanged {
             from: previous.as_ref().map(|p| p.info()),
             to: None,
@@ -658,9 +665,12 @@ impl Kernel {
     /// Registers a tool, returning the one it replaced, if any.
     pub fn add_tool(&self, tool: Arc<dyn Tool>) -> Option<Arc<dyn Tool>> {
         let id = tool.spec().id;
-        let previous = self.0.tools.write().insert(id, tool);
+        let mut held = self.0.tools.write();
+        let previous = held.insert(id, tool);
+        // the list is read off the guard rather than through `tool_ids`, which would take the
+        // read lock this one is holding
         self.emit(Event::ToolsChanged {
-            tools: self.tool_ids(),
+            tools: held.keys().cloned().collect(),
         });
 
         previous
@@ -668,10 +678,11 @@ impl Kernel {
 
     /// Unregisters a tool, returning it.
     pub fn remove_tool(&self, id: &str) -> Option<Arc<dyn Tool>> {
-        let previous = self.0.tools.write().remove(id);
+        let mut held = self.0.tools.write();
+        let previous = held.remove(id);
         if previous.is_some() {
             self.emit(Event::ToolsChanged {
-                tools: self.tool_ids(),
+                tools: held.keys().cloned().collect(),
             });
         }
 
@@ -696,10 +707,13 @@ impl Kernel {
 
     /// Sets the permission policy, returning the previous one.
     pub fn set_policy(&self, policy: Arc<dyn PermissionPolicy>) -> Arc<dyn PermissionPolicy> {
-        let from = self.0.policy.read().name().to_owned();
         let to = policy.name().to_owned();
-        let previous = std::mem::replace(&mut *self.0.policy.write(), policy);
-        self.emit(Event::PolicyChanged { from, to });
+        let mut held = self.0.policy.write();
+        let previous = std::mem::replace(&mut *held, policy);
+        self.emit(Event::PolicyChanged {
+            from: previous.name().to_owned(),
+            to,
+        });
 
         previous
     }
@@ -712,7 +726,8 @@ impl Kernel {
     /// Sets the projector, returning the previous one.
     pub fn set_projector(&self, projector: Arc<dyn Projector>) -> Arc<dyn Projector> {
         let to = projector.name().to_owned();
-        let previous = std::mem::replace(&mut *self.0.projector.write(), projector);
+        let mut held = self.0.projector.write();
+        let previous = std::mem::replace(&mut *held, projector);
         self.emit(Event::ProjectorChanged {
             from: previous.name().to_owned(),
             to,
@@ -729,11 +744,19 @@ impl Kernel {
     /// Sets the token counter and recounts the context, returning the previous counter.
     pub fn set_counter(&self, counter: Arc<dyn TokenCounter>) -> Arc<dyn TokenCounter> {
         let to = counter.name().to_owned();
-        let previous = std::mem::replace(&mut *self.0.counter.write(), counter);
-        self.emit(Event::CounterChanged {
-            from: previous.name().to_owned(),
-            to,
-        });
+        let previous = {
+            let mut held = self.0.counter.write();
+            let previous = std::mem::replace(&mut *held, counter);
+            self.emit(Event::CounterChanged {
+                from: previous.name().to_owned(),
+                to,
+            });
+
+            previous
+        };
+        // and the recount after the lock is let go, because it reads the counter it is counting
+        // with. What has to be under one lock is the change and the announcement of it; the
+        // figures it brings into line are announced as an event of their own
         self.recount();
 
         previous
@@ -788,7 +811,8 @@ impl Kernel {
         compactor: Option<Arc<dyn Compactor>>,
     ) -> Option<Arc<dyn Compactor>> {
         let to = compactor.as_ref().map(|c| c.name().to_owned());
-        let previous = std::mem::replace(&mut *self.0.compactor.write(), compactor);
+        let mut held = self.0.compactor.write();
+        let previous = std::mem::replace(&mut *held, compactor);
         self.emit(Event::CompactorChanged {
             from: previous.as_ref().map(|c| c.name().to_owned()),
             to,
@@ -809,7 +833,8 @@ impl Kernel {
 
     /// Sets the parameters sent with every request, returning the previous ones.
     pub fn set_params(&self, params: Params) -> Params {
-        let previous = std::mem::replace(&mut *self.0.params.write(), params.clone());
+        let mut held = self.0.params.write();
+        let previous = std::mem::replace(&mut *held, params.clone());
         self.emit(Event::ModelParamsChanged { params });
 
         previous
