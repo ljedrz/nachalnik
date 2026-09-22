@@ -339,6 +339,23 @@ async fn a_step_with_a_message_waits_for_the_turn_the_way_a_message_does() {
         screen.contains("this message is not going in"),
         "and it says so rather than declining in silence: {screen}"
     );
+
+    // note: read off `App::loose` rather than the screen, because the screen wraps and a wrapped
+    // line cannot say what the sentence is. What it was: a string continuation written without
+    // the `\`, so twenty-six spaces of source indentation sat in the middle of what somebody
+    // reads. `cargo fmt` does not rewrap the inside of a literal and the assertion above passes
+    // either way, so nothing here had an opinion about it
+    let said = harness
+        .app
+        .loose
+        .iter()
+        .find(|entry| entry.text.contains("this message is not going in"))
+        .expect("the line is in the conversation");
+    assert!(
+        !said.text.contains("  "),
+        "the sentence has a hole in it: {:?}",
+        said.text
+    );
 }
 
 #[tokio::test]

@@ -180,7 +180,8 @@ impl App {
                 match (rest.is_empty(), self.busy || self.asked().is_some()) {
                     (false, true) => self.say(
                         Speaker::Note,
-                        "a turn is running, so this message is not going in - send it on its own                          and it waits for the end of the turn, or `/stop` first",
+                        "a turn is running, so this message is not going in - send it on its own \
+                         and it waits for the end of the turn, or `/stop` first",
                     ),
                     (empty, _) => {
                         if !empty {

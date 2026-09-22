@@ -25,6 +25,12 @@ minor bump may break you.
 
 ### fixed
 
+- **`/step` with a message, refused, said it in a sentence with a hole in the middle.** The
+  refusal was written as a two-line string literal without the `\` that joins them, so twenty-six
+  spaces of source indentation sat between `send it on its own` and `and it waits`. `cargo fmt`
+  does not rewrap the inside of a literal and the test asserted on the first half, so nothing had
+  an opinion about it; the test reads the line off `App::loose` now, where it is not wrapped.
+
 - **The published crate no longer carries a compiled Python file.**
   `contrib/__pycache__/laya_advisor.cpython-314.pyc` was committed by accident and `cargo package`
   takes what `git` tracks, so 29 KB of bytecode for one interpreter version went out inside 0.14.0.
