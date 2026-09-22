@@ -32,6 +32,14 @@ minor bump may break you.
 
 ### changed
 
+- **What a tool keeps of one call has a ceiling: 8 MiB, `tools::KEPT`.** The output limit decides
+  what the model is shown and the whole is archived beside it, so the whole was whatever arrived -
+  a `yes` nobody stopped grew the process, the archive and every save after it without end, and so
+  did the chat tab showing it stream in. Past the ceiling `shell` goes on reading each stream to
+  its end and lets it go, a line that never ends included, and the result says how many bytes
+  went under the status line, where no output limit cuts it; `fs` refuses a file past it with a
+  sentence pointing at `grep` and at `head`, `tail` and `sed -n`.
+
 - **A command the model runs is not handed this program's keys.** `KAMCHATKA_API_KEY`,
   `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `KAMCHATKA_SYSTEM1_API_KEY` and `TYPESAFE_API_KEY` are
   taken out of the `shell` tool's environment, confined or not, so `printenv` no longer puts the

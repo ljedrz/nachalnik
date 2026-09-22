@@ -100,7 +100,9 @@ number is one the command takes, so `/limit fs:read 64000` and the same line wit
 number in its place are the same instruction — and either changes one from its next call onward. The result that has *already* been
 cut is recovered a different way: its whole is archived beside the copy the model was given, and
 <kbd>space</kbd> on it sends that instead — the projector answers one call with one result, so the
-whole takes the call and the short copy drops out.
+whole takes the call and the short copy drops out. The whole has a ceiling of its own, 8 MiB: past
+it a command's output is read and let go and the result says how much, and `fs` refuses a larger
+file with a sentence saying how to read a part of it.
 
 ## 🐢 one transition at a time
 

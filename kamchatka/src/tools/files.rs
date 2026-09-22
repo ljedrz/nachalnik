@@ -17,7 +17,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::sandbox::{Access, Reach};
 
-use crate::tools::arg;
+use crate::tools::{KEPT, arg};
 
 /// What every tool here says about the path it takes.
 ///
@@ -59,14 +59,36 @@ impl Read {
     }
 }
 
-/// The whole of a file `allows` answered for, as text.
+/// The whole of a file `allows` answered for, as text - or, past [`KEPT`], a refusal saying how
+/// to read a part of it.
+///
+/// note: one byte past the ceiling is read rather than the size asked for first, because a size is
+/// what a file says about itself: `/proc` reports nothing, and a log is larger by the time it has
+/// been read.
 async fn read(reach: &Reach, path: &Path) -> std::io::Result<String> {
-    let mut content = String::new();
-    tokio::fs::File::from_std(reach.open(path, Access::Reading)?)
-        .read_to_string(&mut content)
+    let mut file = tokio::fs::File::from_std(reach.open(path, Access::Reading)?);
+    let mut bytes = Vec::new();
+    (&mut file)
+        .take(KEPT as u64 + 1)
+        .read_to_end(&mut bytes)
         .await?;
+    if bytes.len() > KEPT {
+        let size = match file.metadata().await.map(|meta| meta.len()) {
+            Ok(size) if size > KEPT as u64 => format!("{size} bytes"),
+            _ => "larger".to_owned(),
+        };
+        return Err(std::io::Error::other(format!(
+            "{size}, more than `fs` reads at once ({KEPT} bytes), so it was not read. Search it \
+             with `grep`, or read a part of it through `shell` - `head`, `tail`, `sed -n`."
+        )));
+    }
 
-    Ok(content)
+    String::from_utf8(bytes).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "stream did not contain valid UTF-8",
+        )
+    })
 }
 
 /// Replaces the whole of a file `allows` answered for, creating it if it is not there.

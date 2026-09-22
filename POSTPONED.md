@@ -392,16 +392,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   measures. What would unblock any of them is the decision, then a new instrument digest and a
   changelog line saying which runs it separates.
 
-- **A tool's output is held whole, however large.** `fs read` reads the entire file and `shell`
-  collects everything a command writes; the output limit trims only the copy the model is shown,
-  and the whole is archived beside it by default. A 2 GB log or a `yes` that nobody stops grows
-  the process, and every snapshot after it.
-
-  It waits because the fix collides with an invariant: *nothing is destroyed* is written as "the
-  whole of a truncated tool result is archived", and a ceiling on collection means the archive is
-  no longer the whole. Unblocking it is deciding what the archive promises - the whole up to a
-  size, said in the item - and changing INVARIANTS.md to match before the code.
-
 - **Changes that wait for the next minor of `nachalnik`.** `Snapshot` and `SelectorError` want
   `#[non_exhaustive]`: nothing outside the crate builds either, which is the convention's test.
   And a resumed kernel starts its record sequence and its `PermissionId`s at 1 again, so a client

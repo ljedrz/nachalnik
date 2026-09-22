@@ -15,7 +15,7 @@ use crate::sandbox::Sandbox;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::tools::{
-    Careful, Limits, arg,
+    Careful, KEPT, Limits, arg,
     ops::{self, Arg, Op, inner, schema},
 };
 
@@ -436,17 +436,19 @@ impl Tool for Shell {
         let mut stderr = child.stderr.take().expect("stderr was piped");
         // note: into a buffer this end keeps, rather than one the task hands back when it is done,
         // because it may never be done - see below - and what had arrived by then is still worth
-        // telling the model
-        let heard = Arc::new(std::sync::Mutex::new(Vec::new()));
+        // telling the model. Up to `KEPT`, and past that read and counted, so that a command that
+        // writes without end fills neither this process nor the pipe it writes to
+        let heard = Arc::new(std::sync::Mutex::new((Vec::new(), 0)));
         let mut collecting_stderr = tokio::spawn({
             let heard = heard.clone();
             async move {
                 let mut chunk = [0u8; 4096];
                 while let Ok(read @ 1..) = stderr.read(&mut chunk).await {
-                    heard
-                        .lock()
-                        .expect("nothing panics holding it")
-                        .extend_from_slice(&chunk[..read]);
+                    let mut heard = heard.lock().expect("nothing panics holding it");
+                    let (kept, dropped) = &mut *heard;
+                    let room = KEPT.saturating_sub(kept.len()).min(read);
+                    kept.extend_from_slice(&chunk[..room]);
+                    *dropped += read - room;
                 }
             }
         });
@@ -458,6 +460,9 @@ impl Tool for Shell {
         let mut stdout = BufReader::new(stdout);
         let mut line = Vec::new();
         let mut collected = String::new();
+        // what was read past `KEPT` and let go; once one line does not fit, none after it is kept
+        // either, so that what is kept is the start of the output with no hole in it
+        let (mut dropped, mut full) = (0, false);
         let mut interrupted = false;
         loop {
             // the timeout is what makes a command that says nothing at all interruptible; without
@@ -465,6 +470,11 @@ impl Tool for Shell {
             // read keeps what it had in `line`, and the next one carries on from there
             match tokio::time::timeout(HEARTBEAT, stdout.read_until(b'\n', &mut line)).await {
                 Ok(Ok(0)) => break,
+                Ok(Ok(_)) if full || collected.len() + line.len() > KEPT => {
+                    full = true;
+                    dropped += line.len();
+                    line.clear();
+                }
                 Ok(Ok(_)) => {
                     let text = String::from_utf8_lossy(&line);
                     let text = text.strip_suffix('\n').unwrap_or(&text);
@@ -477,6 +487,13 @@ impl Tool for Shell {
                 Ok(Err(e)) => {
                     collected.push_str(&format!("\n[could not read the output: {e}]\n"));
                     break;
+                }
+                // a line that never ends is held to the ceiling as well, or it would be the way
+                // round it
+                Err(_) if line.len() > KEPT => {
+                    full = true;
+                    dropped += line.len();
+                    line.clear();
                 }
                 Err(_) => {}
             }
@@ -519,8 +536,13 @@ impl Tool for Shell {
         if held {
             collecting_stderr.abort();
         }
-        let mut errors =
-            String::from_utf8_lossy(&heard.lock().expect("nothing panics holding it")).into_owned();
+        let (mut errors, dropped) = {
+            let heard = heard.lock().expect("nothing panics holding it");
+            (
+                String::from_utf8_lossy(&heard.0).into_owned(),
+                dropped + heard.1,
+            )
+        };
         if held && !interrupted {
             errors.push_str("\n[standard error is still open: something this command started is still running]\n");
         }
@@ -582,7 +604,17 @@ impl Tool for Shell {
             Some(note) => format!("{note}\n"),
             None => String::new(),
         };
-        let text = format!("{status}\n{note}--- stdout ---\n{collected}\n--- stderr ---\n{errors}");
+        // and what was not kept, under it for the same reason
+        let unkept = match dropped {
+            0 => String::new(),
+            dropped => format!(
+                "[{dropped} more bytes of output were read and not kept: a stream is kept up to \
+                 {KEPT} bytes]\n"
+            ),
+        };
+        let text = format!(
+            "{status}\n{note}{unkept}--- stdout ---\n{collected}\n--- stderr ---\n{errors}"
+        );
 
         Ok(ToolOutput::new(text))
     }
@@ -681,6 +713,37 @@ mod tests {
             said.contains("refused"),
             "one byte that is not text cost the whole of standard error"
         );
+    }
+
+    /// Output past the ceiling is read to the end and let go, on either stream and in a line that
+    /// never ends, and the answer says how much at the top.
+    ///
+    /// note: read to the end rather than stopped at, which the exit status shows: `head` finishes
+    /// and the command succeeds, where a reader that stopped reading would leave it blocked on a
+    /// full pipe.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn output_past_the_ceiling_is_read_and_not_kept() {
+        let past = KEPT + 1_000_000;
+        for command in [
+            format!("yes | head -c {past}"),
+            format!("yes | head -c {past} >&2"),
+            format!("head -c {past} /dev/zero | tr '\\0' a"),
+        ] {
+            let said = ran(&command).await;
+
+            assert!(said.starts_with("exit: 0"), "{command}");
+            assert!(
+                said.len() <= KEPT + 1_000,
+                "{command}: {} bytes",
+                said.len()
+            );
+            let unkept = said.lines().nth(1).unwrap_or_default();
+            assert!(
+                unkept.contains("not kept"),
+                "{command}: said under the status line, not after the output: {unkept}"
+            );
+        }
     }
 
     /// A command that finishes and leaves something running still answers.

@@ -191,3 +191,31 @@ async fn what_write_put_there_is_what_read_hands_back() {
         "the directory above a file is not made for it"
     );
 }
+
+/// A file past the ceiling is refused with a way to read a part of it, rather than read into the
+/// session whole; one at the ceiling is read.
+#[tokio::test]
+async fn a_file_past_what_is_kept_is_refused_with_a_way_to_read_part_of_it() {
+    let dir = scratch("files-ceiling");
+    std::fs::write(dir.join("at.txt"), "a".repeat(kamchatka::tools::KEPT)).expect("a file");
+    std::fs::write(dir.join("past.txt"), "a".repeat(kamchatka::tools::KEPT + 1)).expect("a file");
+
+    let read = ask(&dir, "read", json!({ "path": "at.txt" })).await;
+    assert_eq!(
+        read.len(),
+        kamchatka::tools::KEPT,
+        "{}",
+        &read[..read.len().min(200)]
+    );
+
+    let refused = ask(&dir, "read", json!({ "path": "past.txt" })).await;
+    assert!(
+        refused.len() < 1_000,
+        "nothing of it was read: {} bytes",
+        refused.len()
+    );
+    assert!(
+        refused.contains("was not read") && refused.contains("grep"),
+        "{refused}"
+    );
+}

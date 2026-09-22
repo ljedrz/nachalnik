@@ -143,6 +143,16 @@ fn truth(args: &Value, name: &str) -> Result<bool, String> {
 /// [`Config::default_tool_output_limit`](nachalnik::Config), set to this in `wiring`.
 pub(crate) const CEILING: usize = 32_000;
 
+/// The most of one call's output a tool here keeps, in bytes: what a command writes to each of its
+/// two streams, and the largest file `fs` reads.
+///
+/// note: a limit decides what the model is shown, and the kernel archives the whole of what a tool
+/// returned - so without this the whole was whatever arrived: a `yes` nobody stopped, or a 2 GB
+/// log, held in this process, in the archive and in every save after it. Past this a command's
+/// output is read and let go, and the answer says how much at the top, where no limit cuts it; a
+/// file is refused with a sentence saying how to read a part of it.
+pub const KEPT: usize = 8 * 1024 * 1024;
+
 /// And what one is cut at whose answer is a report of a fixed shape rather than a piece of the
 /// session, in bytes.
 ///
