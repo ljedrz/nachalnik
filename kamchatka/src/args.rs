@@ -307,7 +307,11 @@ impl Args {
         if self.model.is_none() {
             self.model = settings.model;
         }
-        if self.system.is_none() {
+        // note: and not at all into a resumed session, whose context already holds the one the
+        // snapshot's first run was given, pinned. Pushed again on every `-r`, it stacked a copy per
+        // resume, each beyond compaction's reach; a typed `-s` beside `-r` is somebody asking for
+        // one, and is still honoured
+        if self.system.is_none() && self.resume.is_none() {
             self.system = settings.system;
         }
         // read here rather than where it is drawn, so that a colour nobody can parse is a startup
@@ -377,6 +381,16 @@ impl Args {
         let mut args = Self::from_arg_matches(&matches)
             .map_err(|e| e.exit())
             .unwrap();
+        // note: before anything is looked for, because what this flag is for is
+        // `--print-config > kamchatka.json` - and the shell has emptied that file before this runs,
+        // so reading it first is a parse error about the file this was about to write
+        if args.print_config {
+            return Ok(Given {
+                args,
+                matches,
+                found: None,
+            });
+        }
         let found = args
             .config_file
             .is_none()

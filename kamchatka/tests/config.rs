@@ -626,4 +626,45 @@ fn print_config_hands_over_a_file_this_program_would_accept() {
     let (ok, said) = run_from(&dir, &[], "/spend\n");
     assert!(ok, "{said}");
     assert!(said.contains("settings read from kamchatka.json"), "{said}");
+
+    // and redirected where the documentation says to put it, which the shell empties before the
+    // program starts - so a program that looked for a settings file first read an empty one
+    let empty = common::scratch("print-into");
+    std::fs::write(empty.join("kamchatka.json"), "").expect("the file the shell truncated");
+    let out = Command::new(program())
+        .current_dir(&empty)
+        .arg("--print-config")
+        .output()
+        .expect("the binary under test is built");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout), printed);
+}
+
+/// A settings file's `system` is for a session starting, not for one carrying on.
+///
+/// note: the resumed context already holds it, pinned, from the run that wrote the snapshot - so
+/// pushing it again on every `-r` stacked a copy per resume, each beyond compaction's reach.
+#[test]
+fn a_settings_files_system_instruction_is_not_pushed_again_on_resume() {
+    let dir = common::scratch("resumed-system");
+    std::fs::write(dir.join("kamchatka.json"), r#"{"system": "BE BRIEF"}"#).expect("written");
+
+    let (ok, said) = run_from(&dir, &[], "/save first.json\n");
+    assert!(ok, "{said}");
+    let first = std::fs::read_to_string(dir.join("first.json")).expect("the session was saved");
+    assert_eq!(first.matches("BE BRIEF").count(), 1, "{first}");
+
+    let (ok, said) = run_from(&dir, &["-r", "first.json"], "/save second.json\n");
+    assert!(ok, "{said}");
+    let second =
+        std::fs::read_to_string(dir.join("second.json")).expect("the resumed session was saved");
+    assert_eq!(
+        second.matches("BE BRIEF").count(),
+        1,
+        "the instruction was pushed into the session again: {second}"
+    );
 }

@@ -49,6 +49,14 @@ minor bump may break you.
 
 ### fixed
 
+- **`kamchatka --print-config > kamchatka.json` works.** The settings file was looked for and read
+  before the flag was, and the shell had already emptied the file being redirected into - so the
+  one documented use of the flag failed with a parse error and left an empty file behind.
+
+- **A settings file's `system` is not pushed again into a resumed session.** The resumed context
+  already holds the instruction its first run was given, pinned, and every `-r` added another copy
+  beyond compaction's reach. A typed `-s` beside `-r` is still honoured.
+
 - **Two panics on text somebody else wrote.** A tool's output streaming in wide characters was
   shortened by a count of characters taken from a length in bytes, which went below zero once the
   output passed the bound in bytes while short of half of it in characters - a panic inside the

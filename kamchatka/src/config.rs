@@ -49,7 +49,8 @@ pub struct Settings {
     /// anywhere else in this file, because what it would silently not be doing is checking
     /// permissions.
     pub advise: Option<bool>,
-    /// A system instruction, pinned.
+    /// A system instruction, pinned, for a session that is starting - a resumed one already has
+    /// the one it started with.
     pub system: Option<String>,
     /// MCP servers to run, as `[name=]command`.
     ///
