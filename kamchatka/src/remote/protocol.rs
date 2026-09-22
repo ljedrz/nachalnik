@@ -446,9 +446,10 @@ pub struct Attached {
     pub session: String,
     /// The last record this reflects. Everything after it arrives as a [`Message::Record`].
     ///
-    /// note: taken in the same breath as the rest of this, while nothing else can be driving the
-    /// session, so there is no window in which a change is in neither the projection nor the
-    /// stream that follows it.
+    /// note: taken before the rest of this, because a running turn goes on changing the session
+    /// while the projection is read. So nothing is in neither the projection nor the stream after
+    /// it, and a record just after `seq` may already be reflected here: a client applies records
+    /// by the identifiers in them rather than by counting.
     pub seq: u64,
     /// What the runtime is doing.
     pub state: State,

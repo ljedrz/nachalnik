@@ -1277,6 +1277,23 @@ async fn a_record_too_long_to_send_is_named_rather_than_locking_everybody_out() 
     peer.until(|message| matches!(message, Message::Record(record) if record.seq > seq))
         .await;
 
+    // and the way past the record the protocol points at - asking for the version it replaced - is
+    // answered in words rather than with a frame the client cannot read, which closed the
+    // connection. Waited for as an answer, so that anything else in its place fails as a timeout
+    peer.send(Command::Inspect {
+        id,
+        raw: true,
+        version: Some(1),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Failed { about, .. } if about == "inspect"))
+        .await;
+    let Some(Message::Failed { error, .. }) = heard.last() else {
+        unreachable!("the loop above only ends on one");
+    };
+    assert!(error.contains("bytes"), "{error}");
+
     peer.send(Command::Submit {
         line: "/quit".to_owned(),
     })

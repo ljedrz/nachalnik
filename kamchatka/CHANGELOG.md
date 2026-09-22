@@ -49,6 +49,27 @@ minor bump may break you.
 
 ### fixed
 
+- **A client attaching mid-turn no longer loses the records written while it attached.** The
+  projection read the items and the questions waiting and only then the sequence it reflects, while
+  the turn went on writing on a task of its own - so a record landing in between was in neither the
+  projection nor the stream after it. When that record was `permission.requested`, a piped
+  `--connect` saw no question, detached, and left it unanswered. The sequence is read first now; a
+  record in that window arrives in both, and the protocol's docs say to apply records by identifier.
+
+- **`--connect`'s minute of reconnecting is a minute per drop.** The time spent waiting was never
+  reset after a connection was picked back up, so enough short outages over a day added up to the
+  minute, and the next drop gave up without an attempt, saying the session had not answered for
+  sixty seconds. It starts again once the session answers on a connection.
+
+- **An `inspect` too large to send is answered in words.** Asking for an item's earlier version is
+  how the protocol tells a client to get past an oversized record, and the answer went out as the
+  same oversized frame, which the client refused by closing the connection. A command's answer is
+  held to the record's rule now: a `failed` naming its size.
+
+- **A socket that cannot be made private is not left behind.** Failing to set its permissions after
+  the bind returned without removing the file, so the next `--serve` at that path was refused as a
+  stale socket.
+
 - **The model's `context revise` refuses what a person's edit refuses.** A picture, a turn recorded
   as blocks, and a turn that is a call and nothing else are refused by `App::revise`, because text
   written over them destroys what the text was never the whole of - and the model's way in skipped

@@ -98,6 +98,14 @@ pub struct Client<'a> {
     /// what it was asked. `session.finished` is a record like any other, so this is the session
     /// saying so rather than this client inferring it from a silence.
     over: bool,
+    /// Whether the session has said anything on this connection.
+    ///
+    /// note: what makes [`GIVE_UP`] a minute from the last drop rather than a minute across the
+    /// whole of a run. A connection the session answered on was picked back up, and the next time
+    /// it goes is a drop of its own: fifteen short outages over a day used to add up to the minute,
+    /// and the sixteenth gave up without a single attempt, saying the session had not answered for
+    /// sixty seconds.
+    reached: bool,
 }
 
 /// Why a connection ended.
@@ -125,6 +133,7 @@ impl<'a> Client<'a> {
             outstanding: 0,
             detaching: false,
             over: false,
+            reached: false,
         }
     }
 
@@ -162,6 +171,9 @@ impl<'a> Client<'a> {
                     ));
                 }
                 Left::Dropped => {
+                    if self.reached {
+                        (waited, wait) = (Duration::ZERO, FIRST_WAIT);
+                    }
                     self.fresh_line()?;
                     self.tell(&format!(
                         "the connection went; attaching again from record {} in {:.1}s",
@@ -202,6 +214,7 @@ impl<'a> Client<'a> {
         // rather than decremented on the way out, because a client cannot tell which of what it
         // sent the session had already read
         self.outstanding = 0;
+        self.reached = false;
         // whether `ctrl+c` has already asked the turn to stop on this connection
         let mut stopping = false;
         // subscribed once, because a second press arriving while the first is being handled is the
@@ -330,6 +343,7 @@ impl<'a> Client<'a> {
 
     /// Takes in one message from the session.
     fn heard(&mut self, message: Message) -> Result<(), String> {
+        self.reached = true;
         match message {
             Message::Attached(attached) => self.arrived(&attached),
             Message::Record(record) => {

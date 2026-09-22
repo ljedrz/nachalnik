@@ -160,8 +160,12 @@ impl Server {
         // itself, under whatever the umask says. The window is one syscall wide, and what closes it
         // properly is the directory the socket is in, which is why the refusal above names the path
         // rather than quietly taking it over
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-            .map_err(|e| format!("could not make {} private: {e}", path.display()))?;
+        // and a socket that cannot be made private is not left behind to be refused as stale next
+        // time: the listener is dropped on the way out without the `Drop` that would remove it
+        if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)) {
+            let _ = std::fs::remove_file(&path);
+            return Err(format!("could not make {} private: {e}", path.display()));
+        }
 
         Ok(Self {
             listener: Listener::Unix(listener),
@@ -820,6 +824,13 @@ fn rated(_: &App, _: &[nachalnik::PermissionRequest]) -> Vec<Judged> {
 
 /// Where the session stands, in the form a client can start rendering from.
 fn project(app: &App) -> Attached {
+    // note: first, before anything it is the watermark for. A turn runs on a task of its own and
+    // goes on changing the kernel while this reads it, so a record written between reading the
+    // items and reading the number would be in neither the projection nor the stream after it -
+    // and one of those is a permission question, which a client that never sees it cannot answer.
+    // Taken first, such a record is in both instead, which every client here reads as the same
+    // thing twice
+    let seq = app.kernel.last_seq();
     let items = app.kernel.items();
     let going = app.going();
     let asking = app.kernel.pending_permissions();
@@ -827,12 +838,7 @@ fn project(app: &App) -> Attached {
     Attached {
         rated: rated(app, &asking),
         version: protocol::VERSION,
-        // note: taken here, in the same synchronous stretch as everything below it, and that is
-        // what makes the seam airtight rather than nearly so. Nothing else can be driving the
-        // session while this runs, so every record up to this number is described by what follows
-        // and every record after it arrives on the stream. There is no window in which a change is
-        // in neither
-        seq: app.kernel.last_seq(),
+        seq,
         session: app.kernel.session_name(),
         state: app.kernel.state(),
         busy: app.busy,
@@ -1005,12 +1011,12 @@ where
                             error: format!("there is no item {id} in the context"),
                         },
                     };
-                    protocol::write(write, &message).await?;
+                    answer(write, &message, "inspect").await?;
                 }
                 Some(command) => {
                     let about = name(&command);
                     match ask(asks, client, command).await.map(|it| it.message) {
-                        Ok(Some(message)) => protocol::write(write, &message).await?,
+                        Ok(Some(message)) => answer(write, &message, about).await?,
                         Ok(None) => {}
                         Err(error) => {
                             protocol::write(write, &Message::Failed {
@@ -1298,6 +1304,36 @@ async fn caught_up<W: AsyncWrite + Unpin>(
     }
 }
 
+/// Writes the answer to a command, or says why it cannot be sent.
+///
+/// note: the rule [`flush`] holds records to, for the answers that carry content. An `inspect` of
+/// an item past `MAX_LINE` is a frame the client refuses, and refusing one closes the connection -
+/// and asking for an earlier version by number is how the protocol tells a client to get past an
+/// `Oversized` record, so that way out was a way off the session.
+async fn answer<W: AsyncWrite + Unpin>(
+    write: &mut W,
+    message: &Message,
+    about: &str,
+) -> Result<(), String> {
+    let line = protocol::framed(message)?;
+    match protocol::overlong(&line) {
+        Some(bytes) => {
+            protocol::write(
+                write,
+                &Message::Failed {
+                    about: about.to_owned(),
+                    error: format!(
+                        "the answer is {bytes} bytes, more than a client reads in one line ({})",
+                        protocol::MAX_LINE
+                    ),
+                },
+            )
+            .await
+        }
+        None => protocol::write_frame(write, &line).await,
+    }
+}
+
 /// Writes out every record the session has grown since this client last saw one.
 ///
 /// note: the log rather than the subscription, and that is the whole of why a client cannot lose
@@ -1310,6 +1346,13 @@ async fn flush<W: AsyncWrite + Unpin>(
     last: &mut u64,
     write: &mut W,
 ) -> Result<(), String> {
+    // note: asked first because it is a read of one number, and `history_since` is a walk of the
+    // whole log under the lock every emit waits on. This runs for every event, `model.delta`
+    // included, for every connection - and most of those events add no record this connection
+    // has not already been sent
+    if kernel.last_seq() <= *last {
+        return Ok(());
+    }
     for record in kernel.history_since(*last) {
         let seq = record.seq;
         let line = protocol::framed(&Message::Record(record))?;
