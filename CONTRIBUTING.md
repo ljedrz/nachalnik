@@ -52,7 +52,8 @@ losses list whether anything had been moved: it answers `[]` for ever, and the f
 for three days and a release, invisible to everybody without a key. When a change brings the
 offline suites along, grep `tests/live.rs` for the same name before believing it is done.
 
-It reads `OPENROUTER_API_KEY` or `NACHALNIK_API_KEY` (never a stray `OPENAI_API_KEY`), with
+It reads `OPENROUTER_API_KEY` or `NACHALNIK_API_KEY` (never a stray `OPENAI_API_KEY`, and the first
+only when the base URL is OpenRouter's), with
 `NACHALNIK_BASE_URL`, `NACHALNIK_TEST_MODEL` and `NACHALNIK_CONTEXT_LIMIT` to point it elsewhere -
 Google AI Studio's OpenAI-compatible endpoint and a local ollama both work, and the whole of it
 passes against the first (27 tests, `NACHALNIK_VISION_MODEL` included). One endpoint difference

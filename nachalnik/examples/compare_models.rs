@@ -57,7 +57,7 @@ usage: compare [-m MODEL].. [-f FILE].. [-s SYSTEM] [options] [prompt...]
       --save DIR       write every session's log and snapshot there
 
 environment:
-  NACHALNIK_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY
+  NACHALNIK_API_KEY / OPENROUTER_API_KEY (the second for OpenRouter only)
   NACHALNIK_BASE_URL   e.g. https://generativelanguage.googleapis.com/v1beta/openai
                        or   http://localhost:11434/v1  (ollama; any key will do)";
 

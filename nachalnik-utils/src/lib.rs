@@ -26,10 +26,19 @@ use nachalnik_providers::OpenAiCompatible;
 /// note: Deliberately not `OPENAI_API_KEY`, which plenty of people have exported for other
 /// reasons. Spending somebody's credits as a side effect of `cargo test` would be a poor way to
 /// demonstrate a crate about not doing things behind the user's back.
+///
+/// note: and `OPENROUTER_API_KEY` only for OpenRouter. It used to win wherever the base URL
+/// pointed, so somebody with one exported who followed the recipe for Google or a local ollama
+/// sent their OpenRouter key there as the bearer, and the key they had set for it was never read.
 pub fn api_key() -> Result<String, BoxError> {
-    env::var("OPENROUTER_API_KEY")
-        .or_else(|_| env::var("NACHALNIK_API_KEY"))
-        .map_err(|_| "set OPENROUTER_API_KEY or NACHALNIK_API_KEY".into())
+    let base = base_url();
+    match nachalnik_providers::is_openrouter(&base) {
+        true => env::var("OPENROUTER_API_KEY")
+            .or_else(|_| env::var("NACHALNIK_API_KEY"))
+            .map_err(|_| "set OPENROUTER_API_KEY or NACHALNIK_API_KEY".into()),
+        false => env::var("NACHALNIK_API_KEY")
+            .map_err(|_| format!("set NACHALNIK_API_KEY for {base}").into()),
+    }
 }
 
 /// The endpoint to talk to; OpenRouter unless told otherwise.
