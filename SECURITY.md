@@ -32,7 +32,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   The `exec` is load-bearing rather than tidy: a helper standing in front of the command is what a
   stopped call would kill instead of the command. The `fs` tool, which is not a process - it opens a
   file, or walks a directory of them - is held to the same boundary by its own code, which is
-  weaker in kind and said to be.
+  weaker in kind and said to be: a path is resolved, links followed, and checked before it is
+  opened, so a component swapped for a link in between those two moments is not caught.
   `#![deny(unsafe_code)]` is why it is a re-exec rather than `Command::pre_exec` - and why the UDP
   rights stay out of reach until the crate exposes them.
 - **A boundary that stops at `open` stops short.** A command that can reach a unix socket can have

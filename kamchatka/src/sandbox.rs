@@ -288,16 +288,45 @@ impl Sandbox {
 ///
 /// note: one function rather than two, so that [`Reach::allows`] and [`Sandbox::reaches`] cannot
 /// come to different answers about the same path - which is the whole substance of both.
+///
+/// note: a symlink to something that is not there has no canonical form either, and it is *not* a
+/// file about to be created: writing through it creates its target, wherever that is. So it is
+/// followed, the way the open will follow it, rather than stepped past as though it were a name
+/// with nothing behind it - which is what let `write` create a file outside the directory through
+/// a link made inside it. `LINKS` bounds the following, because two links can point at each other.
 fn resolve(path: &Path) -> PathBuf {
-    let mut existing = path;
+    const LINKS: usize = 40;
+
+    let mut existing = path.to_path_buf();
     let mut rest = PathBuf::new();
+    let mut followed = 0;
+    let joined = |base: PathBuf, rest: &Path| match rest.as_os_str().is_empty() {
+        // note: joined only when there is something to join. `Path::join("")` appends a
+        // separator, and `/w/local.txt/` is a directory that is not there - which is how a
+        // plain `./local.txt` came back `Not a directory` the first time this ran
+        true => base,
+        false => base.join(rest),
+    };
     loop {
         match existing.canonicalize() {
-            // note: joined only when there is something to join. `Path::join("")` appends a
-            // separator, and `/w/local.txt/` is a directory that is not there - which is how a
-            // plain `./local.txt` came back `Not a directory` the first time this ran
-            Ok(resolved) if rest.as_os_str().is_empty() => break resolved,
-            Ok(resolved) => break resolved.join(&rest),
+            Ok(resolved) => break joined(resolved, &rest),
+            Err(_)
+                if followed < LINKS
+                    && existing
+                        .symlink_metadata()
+                        .is_ok_and(|meta| meta.file_type().is_symlink()) =>
+            {
+                let Ok(target) = existing.read_link() else {
+                    break joined(existing, &rest);
+                };
+                followed += 1;
+                // a relative target is relative to the directory the link is in, and an absolute
+                // one replaces the lot, which is what `join` does with each
+                existing = match existing.parent() {
+                    Some(parent) => parent.join(target),
+                    None => target,
+                };
+            }
             Err(_) => match (existing.file_name(), existing.parent()) {
                 (Some(name), Some(parent)) => {
                     // note: and the same guard here, for the same reason. Without it every path
@@ -309,9 +338,11 @@ fn resolve(path: &Path) -> PathBuf {
                         true => PathBuf::from(name),
                         false => Path::new(name).join(&rest),
                     };
-                    existing = parent;
+                    existing = parent.to_path_buf();
                 }
-                _ => break path.to_path_buf(),
+                // what is left, rather than the path as it was handed in: after a link has been
+                // followed those are different paths, and only this one is where the open goes
+                _ => break joined(existing, &rest),
             },
         }
     }

@@ -49,6 +49,14 @@ minor bump may break you.
 
 ### fixed
 
+- **`fs write` no longer follows a dangling symlink out of the working directory.** A link to
+  something that did not exist could not be canonicalized, so the boundary check took it for a
+  file about to be created, resolved its parent, and approved the link's own path - and the write
+  then created the link's *target*, wherever it pointed. A confined command may make links in the
+  working directory, and a cloned repository may carry one. The check follows a link it cannot
+  canonicalize now, the way the open will, and `Sandbox::reaches` gets the same answer since the
+  two share the function.
+
 - **`/step` with a message, refused, said it in a sentence with a hole in the middle.** The
   refusal was written as a two-line string literal without the `\` that joins them, so twenty-six
   spaces of source indentation sat between `send it on its own` and `and it waits`. `cargo fmt`

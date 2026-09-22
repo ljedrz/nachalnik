@@ -106,6 +106,33 @@ fn the_file_tools_are_held_to_the_same_boundary() {
             .is_err(),
         "a symlink out is still out"
     );
+    // ... and through one to something that is not there, which cannot be canonicalized and is not
+    // a file about to be created either: writing through it creates its target
+    let outside = std::env::temp_dir().join(format!("kamchatka-not-there-{}", std::process::id()));
+    let dangling = dir.join("dangling");
+    std::os::unix::fs::symlink(&outside, &dangling).expect("a symlink");
+    assert!(
+        reach.allows("dangling", Access::Writing).is_err(),
+        "a link to a file that does not exist yet let a write out"
+    );
+    let relative = dir.join("relative");
+    std::os::unix::fs::symlink("../../../../../../../../tmp/kamchatka-nowhere", &relative)
+        .expect("a symlink");
+    assert!(reach.allows("relative", Access::Writing).is_err());
+    let (one, two) = (dir.join("one"), dir.join("two"));
+    std::os::unix::fs::symlink(&two, &one).expect("a symlink");
+    std::os::unix::fs::symlink(&one, &two).expect("a symlink");
+    assert!(
+        reach.allows("one", Access::Writing).is_ok(),
+        "a loop inside is still inside, and the open is what refuses it"
+    );
+    // a link inside to something inside that is not there yet is a file about to be created
+    std::os::unix::fs::symlink(dir.join("later.txt"), dir.join("soon")).expect("a symlink");
+    assert_eq!(
+        name("soon"),
+        Ok(dir.join("later.txt").into_os_string()),
+        "a link inside to a file about to be created"
+    );
 
     // what was opened up on purpose
     assert!(reach.allows("/usr/share/anything", Access::Reading).is_ok());
