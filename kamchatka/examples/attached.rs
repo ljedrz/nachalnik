@@ -9,7 +9,6 @@
 //! $ cargo run --example attached -- tcp:127.0.0.1:7878 "what is 2+2"
 //! --- 2026-09-12T16-25-31Z, 9 records, 0 items, ~526 tokens, mercury-2 ---
 //! · serving on tcp:127.0.0.1:7878: the session is this program's rather than any client's …
-//! · client 1 attached
 //! ask: what is 2+2
 //! --- the session took it: Asked(ContextId(1)) ---
 //! 4
@@ -67,8 +66,8 @@ async fn main() -> Result<(), String> {
     let stream = TcpStream::connect(host)
         .await
         .map_err(|e| format!("could not reach {host}: {e}"))?;
-    // the two options a port wants and a socket file does not: send small frames when they are
-    // written rather than when the last one is acknowledged, and find out when the peer is gone
+    // the option a port wants and a socket file does not: send small frames when they are written
+    // rather than when the last one is acknowledged
     let _ = stream.set_nodelay(true);
     let (read, mut write) = tokio::io::split(stream);
     let mut lines = protocol::Frames::new(BufReader::new(read));

@@ -9,9 +9,9 @@
 //! note: what a connection needs from this loop is much less than it looks, and that is what keeps
 //! the fan-out honest. A [`Kernel`] is a cheap `Arc` handle, so every connection has one of its
 //! own and reads the session log directly - which means the numbered half of the stream is not
-//! something this loop hands out, queues, or is able to drop. Only the four things that need
-//! `&mut App` - a fresh client's projection, a submitted line, an interrupt and a decision - come
-//! through the channel at all.
+//! something this loop hands out, queues, or is able to drop. Only the commands that need `&mut App`
+//! come through the channel at all - a projection, a line, an interrupt, a decision, an edit, an
+//! earlier version of an item - and `apply` says which one does not.
 //!
 //! note: and the consequence worth stating, because it is the whole of the backpressure design:
 //! there is **no outbound queue per client anywhere in here**. A connection that stops reading
@@ -646,9 +646,10 @@ impl Drop for Server {
 
 /// Does one of the things that need the session itself, and says what it did.
 ///
-/// note: six, where the protocol has seven. `Inspect` is answered by the connection that asked it,
-/// out of a `Kernel` handle of its own, because reading what an item says needs no `App` - and a
-/// client reading a four-megabyte tool result should not be something the session stops to do.
+/// note: every command but one. `Inspect` of what an item says *now* is answered by the connection
+/// that asked it, out of a `Kernel` handle of its own, because reading it needs no `App` - and a
+/// client reading a four-megabyte tool result should not be something the session stops to do. An
+/// earlier version is `App`'s to remember, so that one comes here.
 async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> {
     match command {
         // note: a resume is answered with a `done` rather than with nothing, and the reason is the

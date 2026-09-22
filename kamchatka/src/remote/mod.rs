@@ -74,7 +74,8 @@
 //! which is the first thing any answer to this would need. What several people driving one agent
 //! should *mean* is undecided rather than unbuilt; `POSTPONED.md` has it, along with the two other
 //! things this module is knowingly without - a command that awaits the endpoint holding the whole
-//! loop, and a record too large for [`protocol::MAX_LINE`] locking every client out.
+//! loop, and a projection too large for [`protocol::MAX_LINE`], which no client can attach past. A
+//! single record that large is named rather than sent; see [`protocol::Message::Oversized`].
 //!
 //! **Nothing in [`nachalnik`] knows any of this exists**, and that is the test this module was
 //! held to rather than a remark about it. `nachalnik-mcp`, `kamchatka`'s introspection tools and
