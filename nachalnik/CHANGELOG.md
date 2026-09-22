@@ -39,6 +39,16 @@ minor bump may break you.
   counter or compactor, do not call back into the kernel: each is asked what was replaced while
   the lock holding it is held.
 
+### changed
+
+- Three doc notes that said what the code does not. `Blob::wire_len` said `meta` never reaches a
+  provider, where the field's own note says one reads `name` out of it and
+  `nachalnik-providers` does. `Session::last_seq` said `0` when there is no record, where a
+  drained log has none and it answers the last number handed out - which is what makes it a
+  cursor. And `Capability::of` now says that neither half may hold a colon and that nothing
+  enforces it: a capability built with one serializes to text `Capability::parse` refuses, so the
+  log record carrying it cannot be read back.
+
 ## [0.6.2] - 2026-09-21
 
 ### fixed

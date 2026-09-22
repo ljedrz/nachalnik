@@ -134,8 +134,11 @@ impl Blob {
 
     /// How large the whole blob is on the wire: the payload and the media type naming it.
     ///
-    /// note: [`Blob::meta`] is not in it, because meta does not go on the wire at all - it is for
-    /// whoever is counting, and a provider never sees it.
+    /// note: [`Blob::meta`] is not in it, because it is not sent: what a dialect may do is *read*
+    /// one of its keys and derive a field of its own, which `nachalnik-providers` does with
+    /// `name` to fill the filename an attachment part will not go out without. So this is the
+    /// payload and the type, and what a dialect wraps around them is the dialect's to count -
+    /// which is the same reason the envelope of the message carrying it is not in here either.
     pub fn wire_len(&self) -> usize {
         self.byte_len() + self.media_type.len()
     }

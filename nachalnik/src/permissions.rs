@@ -98,6 +98,13 @@ pub struct Capability {
 
 impl Capability {
     /// One, from a domain and an operation in it.
+    ///
+    /// note: neither half may hold a colon, and nothing here enforces it. A capability is written
+    /// as `domain:op` - by [`fmt::Display`], and by serde, which is declared `into = "String"` -
+    /// and [`Capability::parse`] reads exactly one colon back, so `Capability::of(Domain::Fs,
+    /// "read:all")` serializes to text that its own deserializer refuses and a log record carrying
+    /// it cannot be read back. The operation is a client's own vocabulary and the constructor does
+    /// not police it; a name with a colon in it is naming two things.
     pub fn of(domain: Domain, op: impl Into<String>) -> Self {
         Self {
             domain,
