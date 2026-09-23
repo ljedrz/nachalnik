@@ -75,7 +75,7 @@ pub(crate) async fn read(
     loop {
         // the timeout is what makes a model that says nothing at all interruptible; without it
         // this sits in `chunk` until the server feels like talking
-        let ended = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
+        let mut ended = match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
             Ok(Ok(Some(bytes))) => {
                 if vigil.heard() {
                     asking.say(format!("{} is answering again", asking.model));
@@ -141,7 +141,15 @@ pub(crate) async fn read(
             let line = String::from_utf8_lossy(&buffer[..end]).trim().to_owned();
             buffer.drain(..=end);
 
-            // `[DONE]` and comments are not JSON, and are skipped with everything else that is not
+            // the OpenAI dialect's own end of the stream, which a server may send and then keep
+            // the connection open after. Waited past, a finished answer sat out the whole of
+            // `PATIENCE` and was then reported as a stall; nothing after it belongs to the answer
+            if line.strip_prefix("data:").map(str::trim) == Some("[DONE]") {
+                ended = true;
+                break;
+            }
+
+            // comments are not JSON, and are skipped with everything else that is not
             let Some(event) = line
                 .strip_prefix("data:")
                 .and_then(|data| serde_json::from_str::<Value>(data.trim()).ok())

@@ -7,6 +7,12 @@ minor bump may break you.
 
 ## [unreleased]
 
+### fixed
+
+- **`[DONE]` ends a stream.** It was skipped as a line that is not JSON, so a server that sent it
+  and kept the connection open had a finished answer wait out the whole stall bound and then
+  reported as a stall.
+
 ### changed
 
 - **The conformance check for a body that is not a stream wants the page in the error.** It passed

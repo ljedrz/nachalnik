@@ -246,3 +246,45 @@ async fn a_refusal_that_asks_for_a_long_wait_is_reported_rather_than_sat_through
         assert_eq!(requests.load(Ordering::SeqCst), 1, "{dialect}");
     }
 }
+
+/// `[DONE]` ends the stream, whether or not the server closes the connection after it.
+///
+/// note: the connection here stays open once the answer is out. Read past `[DONE]` as a line that
+/// is not JSON, a finished answer waited out the whole of the stall bound and was then reported as
+/// a stall rather than as the answer it was.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn done_ends_the_stream_while_the_connection_stays_open() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut discard = [0u8; 16384];
+                let _ = socket.read(&mut discard).await;
+                let _ = socket
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n\
+                          data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},\
+                          \"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+                    )
+                    .await;
+                // and nothing more: not a byte, and not a close
+                tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+                drop(socket);
+            });
+        }
+    });
+    let provider = Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "m",
+        format!("http://{address}"),
+        "",
+    ));
+
+    let response = tokio::time::timeout(std::time::Duration::from_secs(10), asked(provider))
+        .await
+        .expect("the answer was over and the read went on waiting")
+        .expect("the question failed");
+
+    assert_eq!(said(&response), "ok");
+}
