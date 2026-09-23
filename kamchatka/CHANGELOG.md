@@ -101,6 +101,11 @@ minor bump may break you.
 
 ### fixed
 
+- **The empty permissions tab says which answer puts a row there.** It named `a` and `n`, and only
+  `a` records anything; `y` and `n` answer the one call. It also said the path rules bind `read`,
+  `write` and `edit`, where they bind every `fs` operation handed a path, `grep` and `glob`
+  included.
+
 - **A chain's destructive link is underlined when the whole command reads as destructive too.**
   The fold kept the first reading to reach the worst band, and the whole command's comes first, so
   a tie - which is what `cargo build && rm -rf ~/.ssh` is, since a destructive link makes the whole
