@@ -2,24 +2,24 @@
 //!
 //! ```text
 //! export NACHALNIK_API_KEY=...
-//! cargo run --example bench -- -m google/gemini-3.5-flash -r 2 --json out.json
+//! cargo run -p nachalnik-eval --example bench -- -m google/gemini-3.5-flash -r 2 --json out.json
 //! ```
 //!
 //! A local model works too, and costs nothing:
 //!
 //! ```text
 //! NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
-//!   cargo run --example bench -- -m granite4.2:3b
+//!   cargo run -p nachalnik-eval --example bench -- -m granite4.2:3b
 //! ```
 //!
 //! note: The provider is not in the crate, and cannot be: `nachalnik-eval` ships no HTTP client
-//! for the same reason `nachalnik` does not, and the one this example uses lives in
-//! `nachalnik-utils`, which is a dev-dependency and never published. Any [`Provider`] does -
-//! that is the whole of what makes the suite model-agnostic.
+//! for the same reason `nachalnik` does not. This example talks through `nachalnik-providers`'
+//! OpenAI-compatible provider, built from the environment by `nachalnik-utils`, and both are
+//! dev-dependencies. Any [`Provider`] does, which is what makes the suite model-agnostic.
 //!
 //! note: `--temperature 0` is the default and does not make anything deterministic. It narrows
-//! the sampling and nothing more, which is exactly why replicates exist and why a run at `-r 1`
-//! reports an instability of zero rather than a stability of one.
+//! the sampling and nothing more, which is why replicates exist. At `-r 1` the instability
+//! reported is zero because nothing was measured, not because the answers were stable.
 
 use std::{
     env,
@@ -33,15 +33,15 @@ use nachalnik_utils::base_url;
 use serde_json::json;
 
 const USAGE: &str = "\
-usage: bench [-m MODEL] [-r N] [-l N] [-e NAME].. [--temperature T] [--max-tokens N]
-             [--json FILE]
+usage: bench [-m MODEL] [-r N] [-l N] [-j N] [--per-minute N] [--swap] [-e NAME]..
+             [--temperature T] [--max-tokens N] [--json FILE | --no-json]
 
   -m, --model MODEL      the model to measure; or NACHALNIK_TEST_MODEL
   -r, --replicates N     how many copies each condition gets (default 1)
   -l, --ladders N        how many times `repair` runs its ladder per dossier
   -j, --at-once N        how many requests may be in flight at once (default 1)
       --per-minute N     and how many may be started in any sixty seconds (default none)
-      --swap             run `privilege` with its two dossiers the other way round
+      --swap             run only `privilege`, with its two dossiers the other way round
   -e, --experiment NAME  only these: attribution, recursion, lie, conflict,
                          provenance, privilege, instrumented, repair, feedback
       --temperature T    sent verbatim as a model parameter (default 0)
@@ -55,7 +55,7 @@ environment:
   NACHALNIK_BASE_URL     e.g. http://localhost:11434/v1  (ollama; any key will do)
   NACHALNIK_TEST_MODEL   the model, if -m is not given
   NACHALNIK_APP_URL      name the app the run is on behalf of, where the endpoint ranks
-  NACHALNIK_APP_TITLE    them; both or neither, and no claim is made unless both are set";
+  NACHALNIK_APP_TITLE    apps; no claim is made unless both are set";
 
 /// A small, free, widely available model.
 const DEFAULT_MODEL: &str = "google/gemini-3.5-flash-lite";
@@ -67,10 +67,9 @@ const DEFAULT_MODEL: &str = "google/gemini-3.5-flash-lite";
 /// a reasoning model cannot quietly truncate mid-thought and return an answer with no last line
 /// for the reading to find.
 ///
-/// note: 8,192 was the first guess and it was not enough. `deepseek/deepseek-v4-flash-0731` spent
-/// 15,374 reasoning tokens on one question about repairing its own context and returned an empty
-/// message, twice. The figure has to clear the *thinking*, not the answer, and on these models
-/// thinking is where nearly all the tokens go.
+/// note: the figure has to clear the *thinking*, not the answer, and on a reasoning model thinking
+/// is where nearly all the tokens go. A cap a quarter of this size is enough for one to spend on a
+/// single question and return an empty message.
 const MAX_TOKENS: u32 = 32_768;
 
 #[tokio::main]
@@ -130,8 +129,7 @@ async fn main() -> Result<(), nachalnik::BoxError> {
     // output budget mid-thought returns no content at all - `finish_reason: length` and a null
     // message - and every probe here is read off the *last line* of an answer. That arrives as
     // `Answer::Unreadable`, which is scored honestly as untested, so the failure is quiet: a
-    // report full of untested claims and no indication that the cause was a token cap. Measured
-    // on `inception/mercury-2.5-preview`, which spent 802 reasoning tokens on one division.
+    // report full of untested claims and no indication that the cause was a token cap.
     if max_tokens > 0 {
         params.insert("max_tokens".to_owned(), json!(max_tokens));
     }
@@ -168,11 +166,11 @@ async fn main() -> Result<(), nachalnik::BoxError> {
     }
     println!();
 
-    // note: one `Pace` for the whole run, built once and handed to every experiment, because a
-    // rate is only obeyed if the window is shared - a limit of twenty a minute applied afresh per
-    // experiment is nine times the limit. At `-j 1` that is only half true: each experiment is
-    // evaluated on its own below, `evaluate_with` builds its window from the pace each time, and
-    // the boundary between two experiments can see the rate twice over.
+    // note: one `Pace` for the whole run, because a rate is only obeyed if its window is shared - a
+    // limit of twenty a minute applied afresh per experiment is nine times the limit. The window
+    // itself is built inside `evaluate_with`, so at `-j 1`, where each experiment is evaluated on
+    // its own below, each one starts a fresh window and the boundary between two can see up to
+    // twice the rate.
     let pace = match per_minute {
         0 => Pace::at_once(at_once),
         n => Pace::at_once(at_once).per_minute(n),
@@ -189,10 +187,10 @@ async fn main() -> Result<(), nachalnik::BoxError> {
         Ok(Subject::new(kernel))
     };
 
-    // note: on by default, and named after the model and the hour if nobody said where. A run is
-    // hours long and the console output is a summary - the scores, not the questions and answers
-    // they were computed from - so a run whose terminal is closed used to leave nothing that
-    // could be scored again. Opting out is `--no-json`, which is the rarer thing to want.
+    // note: on by default, and named after the model and the time it started if nobody said where.
+    // A run is hours long and the console output is a summary - the scores, not the questions and
+    // answers they were computed from - so without the file, a run whose terminal is closed leaves
+    // nothing that can be scored again. Opting out is `--no-json`, the rarer thing to want.
     let started = SystemTime::now();
     let json = match (json, no_json) {
         (_, true) => None,
@@ -212,7 +210,7 @@ async fn main() -> Result<(), nachalnik::BoxError> {
     // that survives a run being killed
     //
     // note: printing is this example's job and not the library's. `evaluate_with` prints nothing -
-    // a library has no business writing to somebody's terminal - so `landed` is what lets a run
+    // a library has no business writing to somebody's terminal - so `tell` is what lets a run
     // that fans its experiments out still show progress as they finish, and a run of hundreds of
     // requests that shows nothing until the last one is a run nobody can tell from a hung one
     let landed: Mutex<Vec<Outcome>> = Mutex::new(Vec::new());
@@ -225,9 +223,8 @@ async fn main() -> Result<(), nachalnik::BoxError> {
         landed.push(outcome.clone());
 
         // written as each experiment finishes rather than once at the end. A suite is hours long
-        // and any of it can hang - measured, one experiment against a free endpoint sat on a
-        // single probe for over an hour - and a run killed at that point used to leave nothing at
-        // all, however many experiments had already finished.
+        // and any of it can hang, and a run killed then keeps every experiment that had already
+        // finished.
         if let Some(path) = &json {
             let so_far = Report {
                 at,
@@ -242,7 +239,7 @@ async fn main() -> Result<(), nachalnik::BoxError> {
     };
 
     // note: fanned out only when the pace leaves room for it. At one request in flight there is
-    // no room by definition, and starting all nine anyway would interleave nine sessions through
+    // no room by definition, and starting them all anyway would interleave every session through
     // a single-file queue - the same total time, but every experiment finishing near the end
     // instead of one after another, which is the progress a long run is read by and the partial
     // record a killed one is left with. Above one, they overlap and the ceiling decides how much.
@@ -306,8 +303,8 @@ fn default_path(model: &str, started: &SystemTime) -> String {
 /// disk is truncated JSON, which is a worse record than the one this exists to replace.
 ///
 /// note: the temporary is in the same directory, because a rename across filesystems is not a
-/// rename. `/tmp` would be the usual place for it and would silently turn this back into a
-/// copy-and-truncate on anyone whose working directory is a different mount.
+/// rename. `/tmp` would be the usual place for it, and on anyone whose working directory is a
+/// different mount every checkpoint would fail to land.
 fn checkpoint(path: &str, report: &Report) -> Result<(), nachalnik::BoxError> {
     let partial = format!("{path}.partial");
     std::fs::write(&partial, serde_json::to_string_pretty(report)?)?;

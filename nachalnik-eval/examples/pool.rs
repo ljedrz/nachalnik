@@ -1,7 +1,7 @@
 //! Reads the reports a sweep produced and computes the figures that are about *models*.
 //!
 //! ```text
-//! cargo run --example pool -- eval-runs/*/*/report.json
+//! cargo run -p nachalnik-eval --example pool -- eval-runs/*/*/report.json
 //! ```
 //!
 //! note: separate from `bench` because it answers a different question. `bench` measures one
@@ -11,9 +11,9 @@
 //! other in a way that items never are.
 //!
 //! note: it reads the saved reports rather than re-running anything, so the analysis of a sweep
-//! costs nothing and can be repeated after the fact. That is the point of `--json` holding every
-//! question and every answer: a figure in a paper should be recomputable from the record by
-//! somebody who was not there.
+//! costs nothing and can be repeated after the fact. That is what `--json` holding every question
+//! and every answer is for: a figure in a paper should be recomputable from the record by somebody
+//! who was not there.
 
 use std::{env, fs};
 
@@ -57,8 +57,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // one report per model. The rule - a report that measured nothing never displaces one that
-    // did - lives in the crate rather than here, because it silently cost a model once and a rule
-    // that can do that belongs somewhere with a test on it
+    // did - lives in the crate rather than here, because getting it wrong silently drops a model
+    // from the table, and a rule that can do that belongs somewhere with a test on it
     let mut loaded: Vec<(Report, String)> = Vec::new();
     for path in &paths {
         let text = fs::read_to_string(path)?;
@@ -95,9 +95,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // a report from before the claims carried their material cannot be read for this endpoint,
-    // and saying so beats printing a dash. Such runs are non-comparable for other reasons too, but
-    // a reader looking at a column of dashes deserves to know whether the model said nothing or
-    // the file cannot answer
+    // and it is said rather than left as a dash. Such runs are not comparable for other reasons
+    // too, but a reader looking at a column of dashes needs to know whether the model said nothing
+    // or the file cannot answer
     let stale: Vec<&str> = runs
         .iter()
         .zip(&surfaces)
@@ -146,8 +146,8 @@ fn run_of(path: &str) -> &str {
 /// Whether a report asked the question the endpoint is read from at all.
 ///
 /// note: it did if it resolved a counterfactual claim; whether that claim says which note it was
-/// about is a different matter, and the difference between "this model was not asked" and "this
-/// file cannot be read for it".
+/// about is a different matter. The two together tell "this model was not asked" from "this file
+/// cannot be read for it".
 fn asks_it(report: &Report) -> bool {
     report.outcomes.iter().any(|outcome| {
         outcome

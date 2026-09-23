@@ -5,16 +5,15 @@
 //! cargo run -p nachalnik-eval --example compare -- eval-runs/*/*/report.json
 //! ```
 //!
-//! note: The refusal is the feature. Everything else here is arithmetic anybody could do in a
-//! spreadsheet; what a spreadsheet will not do is notice that one of the files was produced by an
-//! instrument whose questions had a word changed in them. Runs are grouped by
-//! [`Instrument::digest`], the groups are reported separately, and a comparison across groups is
-//! printed only under a heading saying what is wrong with it. The one table that pools is the
-//! dissociation, which adds a model's family counts across every instrument it was run under and
-//! says `pooled` in its heading.
+//! note: Most of this is arithmetic anybody could do in a spreadsheet; what a spreadsheet will not
+//! do is notice that one of the files was produced by an instrument whose questions had a word
+//! changed in them. Runs are grouped by [`Instrument::digest`], and where one experiment's rows
+//! come from more than one instrument they are printed under a line saying they are not
+//! comparable. The one table that pools is the dissociation, which adds a model's family counts
+//! across every instrument it was run under and says `pooled` in its heading.
 //!
-//! note: It reads the crate's own `Report` back through `serde`, which is the point of the record
-//! being a value rather than a log: a run can be re-read, re-scored and re-tabulated months later
+//! note: It reads the crate's own `Report` back through `serde`, which is what the record being a
+//! value rather than a log is for: a run can be re-read, re-scored and re-tabulated months later
 //! without the model that produced it being asked anything again.
 
 use std::{collections::BTreeMap, env, fs};
@@ -133,8 +132,7 @@ struct Instrumented<'a> {
 /// the thing is.
 ///
 /// note: worth its own table because it is the one place two families measured on the same
-/// subject, in the same session, about the same item, can be read against each other - and the
-/// order they come out in is the opposite of what anybody expects.
+/// subject, in the same session, about the same item, can be read against each other.
 fn dissociation(runs: &[Instrumented]) {
     println!("\n=== what against where, pooled per model");
     println!(
