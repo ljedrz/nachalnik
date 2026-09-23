@@ -1303,9 +1303,15 @@ async fn watermark<W: AsyncWrite + Unpin>(
             .to_owned()
             .into());
     };
+    // note: what was missed before the answer, because the answer carries `busy` and a client
+    // whose input has closed leaves on `busy: false` - the rule `Message::Busy` and a command's
+    // reply are held to. Written after, a client coming back to collect the end of an answer was
+    // told the session was resting and left before the records it had come back for
+    let mut last = since;
+    flush(kernel, &mut last, write).await?;
     protocol::write(write, &message).await?;
 
-    Ok((since, voice))
+    Ok((last, voice))
 }
 
 /// Says a command could not be done, and ends the connection on it.

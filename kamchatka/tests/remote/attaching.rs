@@ -186,6 +186,42 @@ async fn resuming_sends_what_was_missed_and_no_projection() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// What a resume missed arrives before the answer saying whether the session is busy.
+///
+/// note: a client whose input has closed leaves on `busy: false`, and a resume is how such a
+/// client comes back for the end of an answer - so the records it missed have to be in front of
+/// that answer, or it is told the session is resting and leaves without them.
+#[tokio::test]
+async fn a_resume_is_sent_what_it_missed_before_it_is_told_the_session_rests() {
+    let session = served(vec![ModelResponse::text("first")], |_| {}).await;
+
+    let (mut first, attached) = Peer::attached(&session.at).await;
+    first
+        .send(Command::Submit {
+            line: "one".to_owned(),
+        })
+        .await;
+    first.until_record("model.finished").await;
+    first.drop_it().await;
+
+    let mut again = Peer::connect(&session.at).await;
+    again.send(attaching(Some(attached.seq), None)).await;
+    let heard = again
+        .until(|message| matches!(message, Message::Done { .. }))
+        .await;
+    assert!(
+        records(&heard).contains(&"model.finished".to_owned()),
+        "the resume was answered before what it missed: {heard:?}"
+    );
+
+    again
+        .send(Command::Submit {
+            line: "/quit".to_owned(),
+        })
+        .await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A client claiming to have seen more than happened is refused rather than quietly humoured.
 #[tokio::test]
 async fn a_watermark_from_the_future_is_refused() {
