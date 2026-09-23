@@ -3,15 +3,14 @@
 //! note: written here rather than taken from `futures-util`, which is where a combinator like
 //! [`together`] normally comes from. Every crate this one depends on is one `nachalnik` already
 //! pulled in, and a suite that measures models has no business breaking that to poll two futures
-//! at once. What `futures-util` would buy over what is below is an intrusive linked list, so that
-//! waking one future costs O(1) instead of re-polling all of them. At the sizes here - a few dozen
-//! requests in flight, each of them a round trip over a network - that is an optimisation of the
-//! cheapest thing in the run.
+//! at once. What `futures-util` would add is an intrusive linked list, so that waking one future
+//! costs O(1) instead of re-polling all of them. At a few dozen requests in flight, each a round
+//! trip over a network, that optimises the cheapest thing in the run.
 //!
-//! note: nothing in here spawns. [`together`] is a future like any other - it makes progress when
+//! note: nothing in here spawns. [`together`] is a future like any other: it makes progress when
 //! the caller polls it, and the concurrency comes from the child futures having their I/O
-//! registered with the caller's reactor rather than from anything here. Which means one task, one
-//! stack, and no question about what happens to a spawned request when a run is dropped halfway.
+//! registered with the caller's reactor. So there is one task, one stack, and no question about
+//! what happens to a spawned request when a run is dropped halfway.
 //!
 //! note: two limits, because endpoints publish two kinds and neither implies the other.
 //! [`Permits`] caps how many requests are *in flight*; [`Rate`] caps how many are *started* in a
@@ -59,10 +58,9 @@ pub struct Permits {
 #[derive(Debug)]
 struct Inner {
     free: usize,
-    /// note: a queue rather than a set, so that a future that has been waiting longest is woken
-    /// first. Not for fairness between requests, which nobody would notice, but because the
-    /// alternative can starve one indefinitely and a run that never finishes is the failure this
-    /// module is supposed to prevent rather than cause.
+    /// note: a queue, so that `Permits::release` wakes waiters in the order they arrived. It
+    /// wakes every one of them - see the note there - so the order decides who looks again first
+    /// rather than who is given the permit.
     waiting: VecDeque<Waker>,
 }
 
@@ -100,7 +98,7 @@ impl Permits {
         inner.free += 1;
         // note: every waiter rather than the first. A waker stays queued when the future that left
         // it takes a permit on a later poll or is dropped, so the first in line can be somebody who
-        // no longer wants one - and waking only them left a real waiter asleep beside a free
+        // no longer wants one, and waking only them leaves a real waiter asleep beside a free
         // permit. Everyone woken looks again, and whoever finds none puts itself back
         let waiting = std::mem::take(&mut inner.waiting);
         // dropped before waking, so that a woken future does not immediately block on the lock
@@ -114,12 +112,10 @@ impl Permits {
 
 /// The future [`Permits::acquire`] hands back.
 ///
-/// note: exported rather than left `pub` inside a private module, which is what it was. Nothing
-/// could name it from outside the crate, so `acquire` could only ever be awaited where it was
-/// called - a caller wanting to hold one, put it in a struct or select over it had a type it was
-/// not allowed to write down. Every other `pub` item in here is re-exported and this one was
-/// missed, which is a thing a compiler has no reason to mention: an unnameable return type is
-/// legal and only shows up as a page that is not in the documentation.
+/// note: re-exported with everything else here, so that a caller can hold one, put it in a struct
+/// or select over it rather than only await it where it was called. Keep it that way when adding
+/// to this module: an unnameable return type is legal, so the compiler says nothing, and it only
+/// shows up as a page missing from the documentation.
 #[derive(Debug)]
 pub struct Acquiring<'a> {
     permits: &'a Permits,
@@ -235,8 +231,7 @@ impl Pace {
 ///
 /// note: what is recorded is when a request was *admitted*, not when it finished. A limit on how
 /// many may be started in a minute is not a limit on how many may be outstanding, and the two
-/// come apart badly on an endpoint that sometimes takes ten minutes to answer - which is the case
-/// this was written after.
+/// come apart badly on an endpoint that sometimes takes minutes to answer.
 #[derive(Debug)]
 struct Rate {
     allowed: usize,
@@ -257,10 +252,8 @@ impl Rate {
     ///
     /// note: what makes the limit a pace rather than a quota. A window alone is obeyed perfectly
     /// by firing every request it allows in the window's first instant and then sitting out the
-    /// rest, which is exactly the burst an endpoint's own limiter sees and rejects - measured, a
-    /// run at eight in flight took a small free endpoint down inside a minute while staying well
-    /// inside eighteen a minute. Spacing them is the difference between not exceeding a limit on
-    /// average and not exceeding it at any moment.
+    /// rest, which is exactly the burst an endpoint's own limiter sees and rejects. Spacing them is
+    /// the difference between not exceeding a limit on average and not exceeding it at any moment.
     fn spacing(&self) -> Duration {
         self.window / self.allowed as u32
     }
@@ -315,11 +308,10 @@ impl Rate {
 ///
 /// note: the ceiling goes here rather than around the loops that fan out, because this is the one
 /// place every request in a run passes through. A ceiling applied at a loop only governs that
-/// loop: the first version of this governed the ablation sweep, and a run of nine experiments
-/// promptly put nine live probes on the wire underneath it, which the test
-/// `a_paced_run_goes_abreast_but_no_wider_than_it_was_told` caught. Wrapping the provider means an
-/// experiment cannot exceed the ceiling by making a request some other way, including an
-/// experiment this crate has never seen.
+/// loop: one around the ablation sweep still lets every experiment put its live probes on the wire
+/// beside it. Wrapping the provider means an experiment cannot exceed the ceiling by making a
+/// request some other way, including an experiment this crate has never seen, and
+/// `a_paced_run_goes_abreast_but_no_wider_than_it_was_told` holds it to that.
 ///
 /// note: it wraps rather than replaces, and forwards [`Provider::info`] untouched, so a subject
 /// still reports the model it is actually talking to. The copies an
@@ -352,8 +344,8 @@ impl Paced {
 /// The shared state one run's ceiling and rate are enforced through.
 ///
 /// note: built once by [`evaluate_with`](crate::evaluate_with) and cloned onto every subject, so
-/// that nine experiments share one window and one count rather than nine of each. This is the
-/// whole reason the type exists instead of each caller assembling the parts.
+/// that nine experiments share one window and one count rather than nine of each. That is why it
+/// is a type rather than parts each caller assembles.
 #[derive(Debug, Clone)]
 pub struct Governor {
     permits: Arc<Permits>,
@@ -437,10 +429,10 @@ struct All<F: Future> {
     done: Vec<Option<F::Output>>,
 }
 
-// note: sound because nothing here projects a pin into a field, which is also why this can be
-// written safely rather than reached for with `get_unchecked_mut` - the crate denies unsafe. Each
-// child future is already pinned in its own box and stays there for its whole life; what moving
-// an `All` moves is two `Vec` headers. Stated rather than derived because `F::Output` is not
+// note: sound because nothing here projects a pin into a field. Each child future is already
+// pinned in its own box and stays there for its whole life; moving an `All` moves two `Vec`
+// headers. It is also what lets `poll` use `get_mut` rather than `get_unchecked_mut`, which the
+// crate's `deny(unsafe_code)` would refuse. Stated rather than derived because `F::Output` is not
 // known to be `Unpin`, and an output this combinator only ever stores and hands back does not
 // need to be.
 impl<F: Future> Unpin for All<F> {}

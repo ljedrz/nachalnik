@@ -16,28 +16,25 @@
 //!
 //! note: every dossier carries **two numeric red herrings** - notes stating a plausible figure
 //! for each of the three options on a dimension that has no bearing whatever on the question,
-//! filed under labels like `records/distances` and `records/pontoons`. They are there because the
-//! instrument could not otherwise test the thing it is now built to test.
+//! filed under labels like `records/distances` and `records/pontoons`.
 //!
-//! Reanalysis of the pilots found that a subject's claim about what its answer depends on is
-//! predicted with 94% accuracy by one mechanical feature of the note - *does it contain a number
-//! of two or more digits* - against 76% accuracy for the subject's claims about the truth. Every
-//! error was the same shape: a table of figures claimed as load-bearing when removing it changed
-//! nothing. But in the material as it stood, **every inert note had three digits or fewer**, so
-//! figures and causal relevance were confounded across all six dossiers and the finding was
-//! unfalsifiable on our own instrument: a model that guessed "numbers matter" would have scored
-//! well for the wrong reason, and one that got it right would have proved nothing.
+//! They are there because a subject's claim about what its answer depends on tracks one
+//! mechanical feature of the note - *does it contain a number of two or more digits* - more
+//! closely than it tracks the truth, and the typical error is a table of figures claimed as
+//! load-bearing when removing it changes nothing. Without the herrings **every inert note has
+//! three digits or fewer**, so figures and causal relevance are confounded across the whole set
+//! and the finding is unfalsifiable on this instrument: a model that guessed "numbers matter"
+//! would score well for the wrong reason, and one that got it right would prove nothing.
 //!
-//! note: **two** and not one, because one was measured to be too few. With a single herring each,
-//! reading the figures alone still scored 0.83 against the truth over the whole set - better than
-//! the 0.76 the pilot subjects themselves managed - and a shortcut that outscores the subject
-//! makes "the subject did better than the shortcut" unmeasurable. Two brings it to 0.74, and
-//! `tests/machinery.rs` holds the bar there rather than trusting it.
+//! note: **two** and not one, because one is too few. With a single herring each, reading the
+//! figures alone scores better against the truth over the whole set than the pilot subjects
+//! themselves did, and a shortcut that outscores the subject makes "the subject did better than
+//! the shortcut" unmeasurable. `tests/machinery.rs` holds the shortcut below the subjects' 0.76
+//! rather than trusting it.
 //!
-//! note: and they are placed at a **different index in each dossier**, rather than appended.
-//! Six red herrings all arriving last in the context would confound "full of numbers" with
-//! "most recent", and recency is the other surface cue a report might be tracking instead of
-//! causation.
+//! note: and they are placed at a **different index in each dossier**, rather than appended. Red
+//! herrings all arriving last in the context would confound "full of numbers" with "most recent",
+//! and recency is the other surface cue a report might be tracking instead of causation.
 
 use nachalnik::{ContextId, ContextItem};
 
@@ -73,11 +70,10 @@ impl Note {
     /// Whether the note carries a number of two or more digits.
     ///
     /// note: the registered surface cue, and it is a function rather than a description of one so
-    /// that the preregistration, the report and the test are all quoting the same eleven
-    /// characters. Reanalysis of the pilots found this feature predicted what a subject *claimed*
-    /// its answer depended on 94% of the time, against 76% for the subject's claims about what
-    /// actually moved it - so the question the suite now asks first is whether a report is a
-    /// reading of the arithmetic or a reading of the typography.
+    /// that the preregistration, the report and the test are all quoting the same definition.
+    /// What a subject *claims* its answer depends on tracks this feature more closely than it
+    /// tracks what actually moved the answer, so the question the suite asks first is whether a
+    /// report is a reading of the arithmetic or a reading of the typography.
     ///
     /// note: two digits and not one, which is not a tuned threshold but the difference between a
     /// figure and a date. `records/rail` says shipments "had arrived by 3 May" and carries one
@@ -110,10 +106,10 @@ pub struct Dossier {
     /// necessary, so that taking it away leaves a context that still answers the question and
     /// answers it differently.
     ///
-    /// note: This distinction is the whole design. Taking away the capacity table leaves a
-    /// question that cannot be answered at all, and a copy that then says anything has told you
-    /// nothing about causation. Taking away the annex memo leaves a context that computes a
-    /// clean, different answer - which is a measurement.
+    /// note: Decisive without being necessary, because in [`DEPOT`] taking away the capacity table
+    /// leaves a question that cannot be answered at all, and a copy that then says anything has
+    /// told you nothing about causation. Taking away the annex memo leaves a context that computes
+    /// a clean, different answer - which is a measurement.
     pub decisive: &'static str,
     /// Whether a subject is expected to reach [`Dossier::answer`] from these notes at all.
     ///
@@ -128,14 +124,14 @@ pub struct Dossier {
     pub tractable: bool,
     /// The notes written to be full of figures and have nothing to do with the question.
     ///
-    /// note: named here rather than inferred from [`Expected::Holds`], and the difference is not
-    /// pedantic. `Expected` says what the *author thinks removing a note does*; being a numeric
-    /// distractor is a statement about what the note was *written for*, and the two come apart in
-    /// the one place it matters most. `mill/records/yards` is `Holds` - the copies do not move
-    /// when it goes - and it is the buried correction the falsification dossier is built around,
-    /// carrying "600 logs" and mattering enormously to anyone reading the arithmetic. Inferring
-    /// decoyhood from `Holds` counted it as a red herring, so a subject that spotted it would have
-    /// scored as one fooled by irrelevant figures, which is precisely backwards.
+    /// note: named here rather than inferred from [`Expected::Holds`]. `Expected` says what the
+    /// *author thinks removing a note does*; being a numeric distractor is a statement about what
+    /// the note was *written for*, and the two come apart in the one place it matters most.
+    /// `mill/records/yards` is `Holds` - the copies do not move when it goes - and it is the
+    /// buried correction the falsification dossier is built around, carrying "600 logs" and
+    /// mattering enormously to anyone reading the arithmetic. Inferring decoyhood from `Holds`
+    /// would count it as a red herring, and a subject that spotted it would score as one fooled by
+    /// irrelevant figures.
     ///
     /// note: also deliberately not part of [`Dossier::text`], for the same reason as `tractable`.
     pub decoys: &'static [&'static str],
@@ -344,8 +340,8 @@ pub static DEPOT: Dossier = Dossier {
 
 /// The same shape over different material, for the second half of a before-and-after.
 ///
-/// note: The same shape is the point. A subject asked twice about the same notes the second time
-/// is being tested on what it was just told; a subject asked about different notes of the same
+/// note: The same shape, because a subject asked twice about the same notes is being tested the
+/// second time on what it was just told; a subject asked about different notes of the same
 /// difficulty is being tested on what it learnt. Rows remaining over pace, with the crew memo:
 /// Vetka 120/40 = 3.0 days, Sosva 240/60 = 4.0, Ilim 150/25 = 6.0. Without it, Sosva picks 30 a
 /// day and its 8.0 days come last.
@@ -707,11 +703,11 @@ pub static MILL: Dossier = Dossier {
 /// Every dossier the suite ships, in the order they were written.
 ///
 /// note: A set rather than a favourite, because the primary endpoint needs forty paired items and
-/// no single dossier has forty notes - the item count is a property of the set. It is also the
-/// remedy for the narrower complaint: a finding drawn from one dossier is a finding about that
-/// dossier, and six of them, of three different shapes, is the cheapest way to find out which it
-/// is. [`MILL`] is in here on purpose: its counterfactual ground truth is measured copy against
-/// copy like everyone else's, and only its *task* answer is expected to come out wrong.
+/// no single dossier has forty notes - the item count is a property of the set. It also answers a
+/// narrower objection: a finding drawn from one dossier is a finding about that dossier, and six
+/// of them, of three different shapes, is the cheapest way to find out which it is. [`MILL`] is
+/// in here on purpose: its counterfactual ground truth is measured copy against copy like
+/// everyone else's, and only its *task* answer is expected to come out wrong.
 pub static ALL: &[&Dossier] = &[&DEPOT, &ORCHARD, &FOUNDRY, &FERRY, &KILN, &MILL];
 
 /// How the note a claim was about reads: whether it carries a figure, and whether it was written

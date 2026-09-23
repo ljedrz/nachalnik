@@ -16,9 +16,9 @@ use serde::{Deserialize, Serialize};
 pub enum Intervention {
     /// Nothing at all: the control condition.
     ///
-    /// note: The most important variant in this enum. A copy with nothing moved is what every
-    /// other one is measured against - see [`Change`](crate::Change) - and running several of
-    /// them is the only way to find out how much of a difference the same context gives twice.
+    /// note: A copy with nothing moved is what every other variant is measured against - see
+    /// [`Change`](crate::Change) - and running several of them is the only way to find out how
+    /// much the answer differs when the same context is given twice.
     Nothing,
     /// The named items are excluded from the copy's projection.
     Without(Vec<ContextId>),
@@ -37,9 +37,10 @@ pub enum Intervention {
     /// `[... left out of this copy ...]` where the control reads nothing of the kind. That is a
     /// difference between the two arms besides the one being tested, and a model that notices it
     /// knows it is being measured. Use it when the shape of the turn is what has to be held
-    /// constant, and know what it costs; [`Intervention::Without`] leaves no trace in the request
-    /// at all, which is why it is what the supplied experiments use and what
-    /// [`Ablation::blind_to`](crate::Ablation::blind_to) applies.
+    /// constant, and know what it costs. [`Intervention::Without`] leaves no trace in the request
+    /// at all, which is why it is what the supplied experiments ablate with and what
+    /// [`Ablation::blind_to`](crate::Ablation::blind_to) applies. `provenance` is the exception,
+    /// because what the marker costs is part of what it measures.
     Elided(Vec<ContextId>),
     /// One item says something else.
     Revised {
@@ -90,7 +91,7 @@ impl Intervention {
     /// a pin is a promise the kernel makes on the user's behalf against its own automatic
     /// machinery. This is not that machinery. An experimenter ablating an item they pinned
     /// themselves is the user, and the answer to "is that system instruction load-bearing?"
-    /// cannot be reached any other way; what must not happen is its happening quietly, so it is
+    /// cannot be reached any other way. What must not happen is that it happens quietly, so it is
     /// on the record.
     pub fn apply(&self, snapshot: &mut Snapshot) -> Applied {
         let mut applied = Applied::default();
@@ -148,7 +149,7 @@ impl Intervention {
                         item.content = Content::text(content.clone());
                         item.note = Some("revised for this copy".to_owned());
                         // whatever it was estimated at was an estimate of what it used to say;
-                        // `Kernel::resume` recounts every item with the counter it is resuming under
+                        // `Kernel::resume` recounts every item with the counter it resumes under
                         item.tokens = 0;
                         applied.touched.push(*id);
                     }

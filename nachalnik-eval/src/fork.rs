@@ -17,8 +17,8 @@ use crate::{
 ///
 /// note: Said out loud, because the copy cannot work it out. It inherits a conversation full of
 /// tool calls and their results and no tool definitions at all, and a model reading that asks for
-/// a tool - which nothing here can run, so the answer comes back as a call and no words. Measured
-/// against a real model that is not a corner case; it is what happens every time.
+/// a tool - which nothing here can run, so the answer comes back as a call and no words. With a
+/// real model that is not a corner case; it is what happens every time.
 pub const PREAMBLE: &str = "You are a copy of this session, made to think and not to act. You \
                             have no tools here, and nothing you ask for can be run: answer in \
                             words, from what is already in front of you.";
@@ -148,12 +148,11 @@ impl Ablation {
     /// is collected in the order the replicates were asked for rather than the order they came
     /// back, so two runs of this produce the same [`Observation`] either way.
     ///
-    /// note: it used to run them one after another, on the reasoning that a fan-out of identical
-    /// requests is what a rate limiter is for. That reasoning was right and is now somebody
-    /// else's job: [`evaluate`](crate::evaluate) and
+    /// note: nothing here paces them. A fan-out of identical requests is what a rate limiter is
+    /// for, and that is somebody else's job: [`evaluate`](crate::evaluate) and
     /// [`evaluate_with`](crate::evaluate_with) put the subject's provider under a shared ceiling
     /// and a shared rate, so nothing here can exceed what the caller allowed however wide it
-    /// fans. Which is what lets this be the one place the fanning is written - an experiment gets
+    /// fans. That is what lets this be the one place the fanning is written - an experiment gets
     /// it by calling `observe`, including an experiment this crate has never seen.
     pub async fn observe(
         &self,
@@ -182,7 +181,7 @@ impl Ablation {
             spend: Spend::default(),
         };
         // folded in the order they were asked for, so `applied`, `items` and `repairs` end up
-        // holding what the last replicate found exactly as they did when this was a loop
+        // holding what the last replicate found
         for copy in copies {
             let copy = copy?;
             observation.applied = copy.applied;
@@ -207,7 +206,7 @@ impl Ablation {
     ///
     /// note: a `Vec` of results rather than a result of a `Vec`, because an experiment records
     /// what it got before it stops on what it did not - and one copy going silent should not
-    /// discard the eleven beside it that answered.
+    /// discard the ones beside it that answered.
     pub async fn observe_each(
         &self,
         origin: &Origin,

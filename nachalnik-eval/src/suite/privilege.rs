@@ -70,7 +70,7 @@ impl Privilege {
     /// note: the counterbalance. The two dossiers are built to one design and are still two
     /// different sets of numbers, so a difference between the arms of a single run is confounded
     /// with a difference between the materials. Running both orders and pooling is what separates
-    /// them, and it is the only reason this method exists.
+    /// them.
     #[must_use]
     pub fn swapped(mut self) -> Self {
         std::mem::swap(&mut self.own, &mut self.foreign);

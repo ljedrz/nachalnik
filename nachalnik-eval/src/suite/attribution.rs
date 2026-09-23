@@ -21,18 +21,17 @@ use crate::{
 /// Elicits an attribution, an item number and a counterfactual, then ablates every note in the
 /// context one at a time and scores all three against what the ablations did.
 ///
-/// note: This is the experiment the other three are variations on, and the order of it is the
+/// note: This is the experiment the others are variations on, and the order of it is the
 /// methodology: **every claim is elicited before any copy is run**. A subject that had seen one
 /// ablation before making its next claim would be reasoning from evidence rather than from
 /// itself, which is a different and much easier thing to be right about.
 ///
 /// note: over every dossier by default, and that is why it costs what it costs. It is the
 /// cheapest experiment that produces the primary endpoint - no tools, no stages, no ladder - and
-/// the endpoint's denominator is *inert items*, of which one dossier yields about seven. Measured
-/// on `deepseek/deepseek-v4-flash-0731`, `depot` alone gave four numeric and three plain and a
-/// difference with an interval a hundred points wide. Six dossiers give roughly forty, which is
-/// what a preregistered item count needs; it is a property of the material rather than of any
-/// one study, which is why the default lives here.
+/// the endpoint's denominator is *inert items*, of which one dossier yields about seven: too few
+/// to put a usable interval on a difference between numeric and plain notes. Six dossiers give
+/// roughly forty, which is what a preregistered item count needs; it is a property of the
+/// material rather than of any one study, which is why the default lives here.
 ///
 /// note: It ablates *every* note rather than only the ones it asked about, and that is most of
 /// what the experiment costs. It is not optional: "was the note it named the most influential
@@ -64,22 +63,22 @@ impl Attribution {
 
     /// Whether to ask the subject what number a note is in its own context.
     ///
-    /// note: off by default, and it was on for v4. The probe asks for the kernel's item id, which
-    /// appears nowhere in what the subject reads - the projector renders an item as its label and
-    /// then its content - and this experiment installs no handles, so there is no `look` either.
-    /// Six models answered it 2 times in 108, an order of magnitude *below* the majority baseline
-    /// for the row, which is what an unanswerable question scores rather than what an absent
-    /// faculty does. The count is real and its reading was withdrawn; see the study write-up.
+    /// note: off by default, because the question cannot be answered from where the subject sits.
+    /// The probe asks for the kernel's item id, which appears nowhere in what the subject reads -
+    /// the projector renders an item as its label and then its content - and this experiment
+    /// installs no handles, so there is no `look` either. A score *below* the majority baseline
+    /// for the row is what an unanswerable question gets, and says nothing about an absent
+    /// faculty.
     ///
     /// note: kept rather than deleted, because the question becomes a fair one the moment the
     /// subject can see the numbering - and finding out whether a model can locate an item when it
     /// is allowed to look is worth an experiment. Anything turning this on should install
-    /// [`handles`](crate::suite::handles) as well, which is the rule
-    /// `tests/machinery.rs` holds the suite to.
+    /// [`handles`](crate::suite::handles) as well, which is the rule `tests/machinery.rs` holds the
+    /// suite to.
     ///
-    /// note: it also ran *before* the counterfactual battery, so every claim v4 measured was made
-    /// in a context where the subject had just invented three item numbers. Turning this off
-    /// removes that as well, which is the point of the re-run.
+    /// note: when on, it runs *before* the counterfactual battery, so every counterfactual claim
+    /// is made in a context where the subject has just invented three item numbers. That is a
+    /// second reason for the default.
     #[must_use]
     pub fn locating(mut self, locating: bool) -> Self {
         self.locating = locating;
@@ -89,9 +88,8 @@ impl Attribution {
     /// Runs it on one dossier only.
     ///
     /// note: for a probe. One dossier is nine items, of which the seven or so that turn out to be
-    /// inert are the whole denominator of the primary endpoint - measured, `depot` on
-    /// `deepseek/deepseek-v4-flash-0731` gave four numeric and three plain, and a difference over
-    /// seven items carries an interval a hundred points wide.
+    /// inert are the whole denominator of the primary endpoint, and a difference over seven items
+    /// carries an interval too wide to quote.
     #[must_use]
     pub fn on(mut self, dossier: &'static Dossier) -> Self {
         self.dossiers = vec![dossier];
@@ -222,8 +220,8 @@ impl Attribution {
         // note: the one loop in this battery that is not a conversation. Every copy here is made
         // from `origin`, which was frozen before any claim was made, so no ablation can see
         // another's - which is what makes a sweep safe to run at once where the two loops above
-        // are not. How wide it actually goes is not decided here and not decided by this
-        // experiment: `observe_each` fans them out and the run's `Pace` bounds them.
+        // are not. How wide it goes is not decided by this experiment: `observe_each` fans them
+        // out and the run's `Pace` bounds them.
         let sweep: Vec<Intervention> = notes
             .iter()
             .map(|note| Intervention::without([note.id]))

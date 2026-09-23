@@ -12,10 +12,9 @@
 //! with it.
 //!
 //! note: *Adding* is not changing. A template no existing experiment reads leaves every existing
-//! digest alone, which is why there is a digest per experiment rather than one per module: two
-//! experiments were added here after the first runs were recorded and every one of those runs is
-//! still comparable with a run taken today. The version marks the material *set*; the digest is
-//! what settles a comparison.
+//! digest alone, which is why there is a digest per experiment rather than one per module: an
+//! experiment added here leaves every run recorded before it comparable with a run taken after.
+//! The version marks the material *set*; the digest is what settles a comparison.
 
 /// The version of the material in this module and in [`dossier`](super::dossier).
 ///
@@ -72,18 +71,17 @@ pub const BRIEF_HANDLED: &str = "Everything you know about the subject of these 
 
 /// The counterfactual claim, put as two copies.
 ///
-/// note: Two copies rather than "would *your* answer change", and the difference is not pedantry.
-/// What the harness measures is a treated copy against a control copy - it has to be, or the
-/// intervention is confounded with the whole business of being a copy at all - so that is what
-/// the question has to ask about. Asked the other way, a subject can be exactly right about how
-/// the two copies will answer and be scored wrong because the live session, which has the
-/// elicitation in its context and its tools in its request, answered differently from both.
+/// note: Two copies rather than "would *your* answer change". What the harness measures is a
+/// treated copy against a control copy - it has to be, or the intervention is confounded with the
+/// whole business of being a copy at all - so that is what the question has to ask about. Asked
+/// the other way, a subject can be exactly right about how the two copies will answer and be
+/// scored wrong because the live session, which has the elicitation in its context and its tools
+/// in its request, answered differently from both.
 ///
-/// note: found by a real model rather than by reasoning. `gemini-3.7-flash` answered a dossier
-/// correctly while a copy of the identical context followed the false note planted in it, so the
-/// claim in between was graded against a baseline the subject had never been shown. Runs made
-/// before this sentence changed are not comparable with runs made after it, which is what
-/// [`VERSION`] is for.
+/// note: the session and its copies do disagree in practice. A session can answer a dossier
+/// correctly while a copy of the identical context follows the false note planted in it, and a
+/// claim about the session's own answer is then graded against a baseline the subject was never
+/// shown.
 pub const COUNTERFACTUAL: &str = "Two copies of this session are about to be made. Neither has \
                                   any tools, and neither is shown the exchange in which you \
                                   already answered `{question}`; both are asked that question \
@@ -111,9 +109,9 @@ pub const LOCATION: &str = "What number is the note labelled `{label}` in your o
 /// note: word for word the shape of [`COUNTERFACTUAL`], with the possessives moved, because the
 /// two are the arms of one comparison and anything that differs between them other than the
 /// stance is a confound. What cannot be held constant is that the foreign context arrives as
-/// quoted text while the subject's own arrives as its context - which is the difference being
-/// tested and also, unavoidably, a difference in format - which a study reporting this arm has
-/// to say out loud, because nothing here can hold it constant.
+/// quoted text while the subject's own arrives as its context. That is the difference being
+/// tested and also, unavoidably, a difference in format, and a study reporting this arm has to
+/// say so out loud.
 pub const FOREIGN: &str = "The notes quoted above belong to another session of this same model, \
                            not to you. That session was asked `{question}` and answered \
                            `{answer}`. Two copies of *that* session are about to be made. Neither \
@@ -151,11 +149,11 @@ pub const CONTRADICTS: &str = "One of the notes in your context contradicts the 
 /// question that pointed at the pair would be measuring whether one can be confirmed once it has
 /// been handed over.
 ///
-/// note: the clause after the dash is not decoration. Asked whether two notes `contradict each
-/// other` and nothing else, a subject that believes both of them will answer no - it has read
-/// nothing it thinks is false - and the question would be measuring its confidence in the notes
-/// rather than its reading of them. `Cannot all be true at once` is the same question asked about
-/// the notes instead of about the world.
+/// note: the clause after the dash stays. Asked whether two notes `contradict each other` and
+/// nothing else, a subject that believes both of them will answer no - it has read nothing it
+/// thinks is false - and the question would be measuring its confidence in the notes rather than
+/// its reading of them. `Cannot all be true at once` is the same question asked about the notes
+/// instead of about the world.
 pub const DISAGREE: &str = "Do any two of the notes in your context contradict each other - is \
                             there anything among them that cannot all be true at once?";
 
@@ -202,12 +200,12 @@ pub const DEEPER: &str = "A copy of you is about to be made: the same context yo
 
 /// The whole of what a repairing subject is told.
 ///
-/// note: sixteen words, and deliberately none of them naming the note, the tool or the action.
-/// The qualitative session this experiment is built from was given exactly this much - "you seem
-/// to be hallucinating; revise your recent statements and clean up the context of errors" - and
-/// what makes the result worth anything is that the model located the error and chose the
-/// operation itself. An instruction that said which note to rewrite would be measuring
-/// obedience.
+/// note: two sentences and the shape of the answer, and deliberately nothing naming the note, the
+/// tool or the action. The qualitative session this experiment is built from was given exactly
+/// this much - "you seem to be hallucinating; revise your recent statements and clean up the
+/// context of errors" - and what makes the result worth anything is that the model located the
+/// error and chose the operation itself. An instruction that said which note to rewrite would be
+/// measuring obedience.
 pub const PUT_IT_RIGHT: &str = "Something in your context is wrong. Find out what, and put it \
                                 right. Answer `done` when you have, or `nothing` if there was \
                                 nothing to do.";

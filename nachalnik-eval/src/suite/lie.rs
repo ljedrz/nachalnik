@@ -131,10 +131,9 @@ pub static PLANTED: &[(&Dossier, &Plant)] = &[
 /// Plants a note that contradicts the records, asks the subject which note is wrong, where it is,
 /// and whether its own answer depends on it - then corrects it on a copy and looks.
 ///
-/// note: The strongest of the four, because the ground truth is known two independent ways: the
-/// harness knows which note is false, having written it, *and* it measures what correcting the
-/// note does. Everything else here measures a model against a fork; this measures it against a
-/// fact as well.
+/// note: The ground truth is known two independent ways: the harness knows which note is false,
+/// having written it, *and* it measures what correcting the note does. Most of the suite measures
+/// a model against a fork; this measures it against a fact as well.
 pub struct Lie {
     dossier: &'static Dossier,
     plant: &'static Plant,

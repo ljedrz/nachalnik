@@ -22,9 +22,9 @@ use crate::{
 /// What identifies the material an experiment used, so that two runs are known to be comparable
 /// or known not to be.
 ///
-/// note: The thing a benchmark of this kind most easily gets wrong, and the reason it is a field
-/// on every [`Outcome`] rather than a line in somebody's notes: a question edited between two
-/// runs makes them two measurements, and nothing in a score shows it. The [`Instrument::digest`]
+/// note: A question edited between two runs makes them two measurements, and nothing in a score
+/// shows it. That is the thing a benchmark of this kind most easily gets wrong, and why this is a
+/// field on every [`Outcome`] rather than a line in somebody's notes. The [`Instrument::digest`]
 /// is computed from the exact text the experiment says, so a bumped version is a claim anybody can
 /// check and a *forgotten* bump is caught anyway.
 ///
@@ -43,6 +43,12 @@ pub struct Instrument {
 
 impl Instrument {
     /// Names a version and the material, and fingerprints every sentence of it.
+    ///
+    /// note: FNV-1a, which is neither cryptographic nor meant to be: what is wanted is that a
+    /// changed question changes the number, deterministically, on every platform and every
+    /// compiler, forever. `DefaultHasher` is documented as giving none of those guarantees across
+    /// Rust versions, which would make a digest incomparable with one taken last year - the exact
+    /// failure the digest exists to prevent.
     pub fn of<'a>(
         version: impl Into<String>,
         material: impl IntoIterator<Item = &'a str>,
@@ -72,12 +78,6 @@ impl Instrument {
     /// still be read back - see the `serde(default)` on [`Outcome::instrument`]. A record that
     /// cannot be re-read is not a record, and that includes records written by an older version
     /// of the thing reading them.
-    ///
-    /// note: FNV-1a, which is neither cryptographic nor meant to be: what is wanted is that a
-    /// changed question changes the number, deterministically, on every platform and every
-    /// compiler, forever. `DefaultHasher` is documented as giving none of those guarantees across
-    /// Rust versions, which would make a digest incomparable with one taken last year - the exact
-    /// failure this field exists to prevent.
     pub fn unstated() -> Self {
         Self::default()
     }
@@ -90,9 +90,9 @@ impl Instrument {
 
 /// A count with its thousands marked, because these run to seven figures.
 ///
-/// note: a whole run against one model came to `1380348 in / 791210 out`, which is a number
-/// nobody reads at a glance and two nobody compares. The same figures are in the JSON for
-/// anything that wants to compute with them; this side of it is for a person.
+/// note: an unmarked seven-figure count is a number nobody reads at a glance, and two of them are
+/// two nobody compares. The same figures are in the JSON for anything that wants to compute with
+/// them; this side of it is for a person.
 fn thousands(n: impl fmt::Display) -> String {
     let digits = n.to_string();
     let mut out = String::new();
@@ -168,7 +168,7 @@ pub struct Outcome {
     /// What it asked with.
     ///
     /// note: `serde(default)` so that a report written before instruments were recorded still
-    /// reads back, as an unstated one. Which is the honest answer for it: nobody wrote down what
+    /// reads back, as an unstated one. That is the honest answer for it: nobody wrote down what
     /// that run was asked, and a tool that guessed would be inventing the comparability this
     /// field exists to establish.
     #[serde(default)]
@@ -366,8 +366,8 @@ impl Report {
     /// experiments are only different ways of putting the same counterfactual to it. `attribution`
     /// asks about one dossier's notes, `feedback` about two, `privilege` about its own and someone
     /// else's - and every one of those claims is about an item whose ablation either moved the
-    /// answer or did not. Reading them apart would leave the endpoint computed over forty items in
-    /// one column and nine in another, when the model is the unit.
+    /// answer or did not. Reading them apart would leave the endpoint computed over many items in
+    /// one column and a handful in another, when the model is the unit.
     pub fn surface(&self) -> Surface {
         let resolutions: Vec<_> = self
             .outcomes
@@ -436,12 +436,11 @@ impl fmt::Display for Report {
 /// note: the rule that matters is not recency, it is that **a report which measured nothing never
 /// displaces one that did**. Recency only breaks ties among reports that did produce the endpoint.
 ///
-/// note: written after the naive version cost a model. A re-run of `x-ai/grok-4.6` stopped after
-/// nine requests on a provider budget limit, and being that model's newest report it replaced a
-/// completed run of two hundred and fifty-eight - so the model left the pooled table as a dash,
-/// the cohort silently became five, and the only sign of it was a parenthesis reading "1 not
-/// measured". A sweep exists to be re-run in pieces when cells fail, which makes a failed re-run
-/// the *expected* case rather than an odd one, and the analysis has to survive it.
+/// note: a sweep exists to be re-run in pieces when cells fail, which makes a failed re-run the
+/// *expected* case rather than an odd one, and the analysis has to survive it. Chosen by recency
+/// alone, a re-run stopped early by a provider's budget limit would replace a completed run as
+/// that model's newest report, and the model would drop out of the pooled table with only a "not
+/// measured" to show for it.
 pub fn per_model<T>(reports: impl IntoIterator<Item = (Report, T)>) -> Vec<(String, Report, T)> {
     let mut best: BTreeMap<String, (Report, T, bool)> = BTreeMap::new();
     for (report, tag) in reports {
@@ -492,8 +491,8 @@ pub async fn evaluate(
         };
 
         // one at a time, which is what this function promises. An experiment that fans its
-        // independent work out gets a ceiling of one here and so makes exactly the requests, in
-        // exactly the order, that it made when that work was a `for` loop
+        // independent work out gets a ceiling of one here, and so makes exactly the requests, in
+        // exactly the order, that a `for` loop over that work would
         under(&subject, &governor);
 
         let trial = Trial::new(experiment.name(), &subject).asking(experiment.instrument());
@@ -524,29 +523,28 @@ pub async fn evaluate(
 /// note: the scores are the scores either way. Every copy is still made from a frozen
 /// [`Origin`](crate::Origin) and still answers one question, so nothing a figure is computed from
 /// depends on what else happened to be in flight beside it. What concurrency can do is make a run
-/// *fail* where a sequential one would have trickled through - a burst collects `429`s, the
+/// *fail* where a sequential one would have trickled through. A burst collects `429`s, the
 /// retries behind them eat the budget, and probes come back
-/// [`Unreadable`](crate::Answer::Unreadable), which is scored honestly as untested and quietly
-/// turns a report into a page of nothing. That, rather than any threat to a score, is what
+/// [`Unreadable`](crate::Answer::Unreadable); that is scored honestly as untested, and quietly
+/// turns a report into a page of nothing. This, rather than any threat to a score, is what
 /// [`evaluate`]'s note is about, and [`Pace`] is the knob that answers it: set it under what the
 /// endpoint allows and the failure does not arise.
 ///
 /// note: a count is not a rate, and [`Pace`] carries both because endpoints publish both.
 /// [`Pace::at_once`] bounds what is in flight; [`Pace::per_minute`] bounds what is *started*, and
-/// spaces them out rather than letting the whole minute's allowance go in its first instant.
-/// Neither substitutes for the other - eight in flight against a one-second endpoint is about
-/// eight a second, and against a fast one it is eighty - which is why a run that stayed inside
-/// eighteen a minute on the average could still take an endpoint down by arriving all at once.
-/// What catches whatever gets past both is the `Retry-After` handling in whichever
-/// [`Provider`](nachalnik::Provider) the caller supplied.
+/// spaces them out rather than letting the whole minute's allowance go in its first instant,
+/// because a run inside its rate on average can still take an endpoint down by arriving all at
+/// once. Neither substitutes for the other: eight in flight against a one-second endpoint is about
+/// eight a second, and against a fast one it is eighty. What catches whatever gets past both is
+/// the `Retry-After` handling in whichever [`Provider`](nachalnik::Provider) the caller supplied.
 ///
 /// note: `landed` is handed each outcome the moment that experiment finishes, in the order they
 /// finish rather than the order they were given. It is what lets a caller run the whole suite at
-/// once and still show progress - and, more to the point, still write the record of an experiment
-/// that has finished before the ones beside it have. Without it a concurrent run is all-or-nothing:
-/// nothing at all until the last experiment returns, which is the failure the checkpointing in the
-/// `bench` example exists to prevent. The [`Report`] this returns still lists them in the order
-/// they were given.
+/// once and still show progress, and, more to the point, still write the record of an experiment
+/// that has finished before the ones beside it have. Without it a concurrent run is
+/// all-or-nothing: nothing at all until the last experiment returns, which is the failure the
+/// checkpointing in the `bench` example exists to prevent. The [`Report`] this returns still lists
+/// them in the order they were given.
 pub async fn evaluate_with(
     experiments: impl IntoIterator<Item = Arc<dyn Experiment>>,
     make: impl Fn(&str) -> Result<Subject>,
@@ -646,8 +644,7 @@ fn unrun(experiment: &Arc<dyn Experiment>, failed: String) -> Outcome {
 mod thousands_tests {
     use super::thousands;
 
-    /// note: a whole run came to `1380348 in / 791210 out`, which is a number nobody reads at a
-    /// glance and two nobody compares.
+    /// note: an unmarked seven-figure count is a number nobody reads at a glance.
     #[test]
     fn a_seven_figure_count_is_readable() {
         assert_eq!(thousands(0u64), "0");

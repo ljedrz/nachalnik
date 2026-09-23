@@ -1,9 +1,7 @@
 //! What can stop a measurement, which is not the same as what a measurement can find.
 //!
-//! note: none of this is a *finding*. A subject that answers unreadably, a copy that says
-//! nothing, a claim that turns out to be false - those are results, and they are recorded as
-//! results. Here are only the conditions under which there is nothing to record, and even those
-//! do not end a run: the runner keeps the steps an experiment had already taken.
+//! note: none of this is a *finding*; [`Error`] says what is instead, and why even these do not
+//! end a run.
 
 use std::fmt;
 
@@ -18,8 +16,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// note: Deliberately short, and none of it is a *finding*. A subject that answers unreadably, a
 /// copy that says nothing, a claim that turns out to be false: those are results, and they are
 /// recorded as results. What is here is only the conditions under which there is nothing to
-/// record - and even those do not end a run, because [`evaluate`] catches an
-/// [`Experiment`]'s error and keeps the steps it had already taken.
+/// record. Even those do not end a run, because [`evaluate`] catches an [`Experiment`]'s error
+/// and keeps the steps it had already taken.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {

@@ -3,7 +3,7 @@
 //!
 //! note: This module is the difference between measuring introspection and measuring
 //! instrumentation. Everything else in this crate asks a model what its answer rests on and scores
-//! the answer; nothing else can, because on every other runtime a context is a wall of text that
+//! the answer, which is all a harness can do on a runtime where a context is a wall of text that
 //! arrives and is gone. Here it is a list of values with identities, it can be snapshotted, and a
 //! copy of it can be run - so a model can stop guessing and go and look. What that is worth is a
 //! number, and these two tools are how it is obtained.
@@ -14,11 +14,11 @@
 //! its own memory?". Looking and changing are separately grantable here, and [`Granted`] grants
 //! exactly the two and nothing else.
 //!
-//! note: `kamchatka` split the same pair and then put it back together, and its reason for doing
-//! so does not reach here. There a call declares which operation it is - `Tool::needs` reads the
-//! `action` and answers `context:look` or `context:revise` - so one tool is twelve separately
-//! grantable subjects. These two answer for every call alike, which is the whole difference: a
-//! tool that cannot say which of its operations a call is has only its own name to be granted by.
+//! note: `kamchatka` has the same pair as one tool, for a reason that does not reach here. There
+//! a call declares which operation it is - `Tool::needs` reads the `action` and answers
+//! `context:look` or `context:revise` - so one tool is twelve separately grantable subjects. These
+//! two answer for every call alike, and a tool that cannot say which of its operations a call is
+//! has only its own name to be granted by.
 //!
 //! note: `test` forks from an [`Origin`] frozen when the handles were installed, not from the
 //! live context. That is deliberate and it is what makes the model's measurement and the
@@ -66,7 +66,7 @@ pub const AMEND: &str = "changes your own context. `exclude` takes items out of 
                          back. Say why in `reason`, because somebody reads it. A pinned item, a \
                          system instruction, and the turn you are speaking in are refused.";
 
-/// The item numbers and labels a subject may be asked to name, as `look` renders them.
+/// How many characters of an item's content `look` shows beside its number and label.
 const GLIMPSE: usize = 44;
 
 /// A [`PermissionPolicy`] that allows exactly the handles this module installs.
@@ -85,9 +85,9 @@ impl PermissionPolicy for Granted {
 
         // note: the emptiness is checked as well as the contents, because `all` over an empty
         // list is `true`. A tool that declares nothing - which is what `ToolSpec::new` leaves
-        // you with until you say otherwise - would otherwise be *granted* by the policy whose
-        // whole point is that it grants exactly two things. A capability list is a claim, and
-        // this one says nothing at all, so it is not one of the two
+        // you with until you say otherwise - would otherwise be *granted* by a policy that is
+        // meant to grant exactly two things. A capability list is a claim, and this one says
+        // nothing at all, so it is not one of the two
         match !request.capabilities.is_empty() && request.capabilities.iter().all(mine) {
             true => Verdict::Allow,
             false => Verdict::Deny,
@@ -407,8 +407,8 @@ impl Tool for Amend {
 /// Installs the handles on a kernel, and hands back the anchor that keeps their reach alive
 /// together with the journal of what they get used for.
 ///
-/// note: the return value is load-bearing rather than informational: the tools hold a [`Weak`] to
-/// it, and dropping it is how they are switched off. An [`Arc<Kernel>`] stored inside a tool the
+/// note: the return value has to be held, not merely read: the tools hold a [`Weak`] to it, and
+/// dropping it is how they are switched off. An [`Arc<Kernel>`] stored inside a tool the
 /// same kernel holds is a cycle that outlives the last handle to the session, which is the shape
 /// `kamchatka` documents and this copies.
 pub fn install(
@@ -502,8 +502,8 @@ fn resolve(named: &[Value], items: &[(ContextId, String)]) -> (Vec<ContextId>, V
     let mut unknown = Vec::new();
     for name in named {
         // note: a number is taken as the number it is, which is what `look` shows and what the
-        // schema says an item may be named by. Skipped, `"without": [12]` read as naming nothing
-        // at all, and the refusal said so with an empty list
+        // schema says an item may be named by. Skipped, `"without": [12]` would name nothing at
+        // all, and the refusal would say so with an empty list
         let name = match name {
             Value::String(name) => name.trim().to_owned(),
             Value::Number(number) => number.to_string(),
@@ -582,8 +582,8 @@ mod tests {
     /// An item named by its number as a JSON number is the item with that number.
     ///
     /// note: `look` shows numbers and the schema says an item may be named by one, so a model will
-    /// send `[12]` as often as `["12"]`. The number was skipped: `test` answered that it needed
-    /// `without`, and `amend` refused with an empty list of reasons.
+    /// send `[12]` as often as `["12"]`. Skipping the number would have `test` answer that it
+    /// needs `without`, and `amend` refuse with an empty list of reasons.
     #[test]
     fn a_number_names_the_item_it_numbers() {
         let items = vec![

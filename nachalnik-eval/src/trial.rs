@@ -291,8 +291,8 @@ pub enum Step {
     Checked(Check),
     /// The subject used one of the handles it was given.
     ///
-    /// note: what it *did*, which is a different record from what it said and is the whole of
-    /// what separates a subject that reached for evidence from one that reasoned in the dark.
+    /// note: what it *did*, which is a different record from what it said, and what separates a
+    /// subject that reached for evidence from one that reasoned in the dark.
     Acted(Act),
     /// The subject's own experiment bore on a claim it had already made.
     ///
@@ -425,11 +425,10 @@ pub enum Kind {
     Attribution,
     /// Where in its own context something is.
     ///
-    /// note: Its own family, because it turns out to come apart from the rest. The claim "my
-    /// answer does not depend on that note" and the claim "that note is item 5" are both claims
-    /// about the same item, and a model can be right about the first and wrong about the second -
-    /// which is the opposite way round from what anybody expects, and is only visible if the two
-    /// are not averaged together.
+    /// note: Its own family, because it comes apart from the rest. The claim "my answer does not
+    /// depend on that note" and the claim "that note is item 5" are both claims about the same
+    /// item, and a model can be right about the first and wrong about the second. That is only
+    /// visible if the two are not averaged together.
     Location,
     /// What a copy of itself would say.
     Recursive,
@@ -457,8 +456,8 @@ pub enum Kind {
     ///
     /// note: Here because the point of being able to repair a context is a better *answer*, not a
     /// better report about one. An experiment that improved a subject's self-model and left its
-    /// output exactly as wrong would have demonstrated something much less interesting than it
-    /// looks, and this is the family that says so.
+    /// output exactly as wrong would have shown much less than it seems to, and this is the
+    /// family that says so.
     Task,
     /// The same claim, about a session that is not its own.
     ///

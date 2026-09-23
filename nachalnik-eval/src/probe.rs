@@ -192,12 +192,11 @@ pub enum Answer {
     Item(ContextId),
     /// No answer arrived: the turn was cut off before the subject said anything.
     ///
-    /// note: A third kind of non-answer, and it exists because conflating it with the second one
-    /// scores a truncated request as a wrong claim. Measured on
-    /// `deepseek/deepseek-v4-flash-0731`, which spent 15,374 reasoning tokens on one question
-    /// under an 8,192-token ceiling and returned `finish_reason: length` with an empty message.
-    /// Nothing was asserted, so there is nothing to be right or wrong about: a claim that arrives
-    /// this way is [`Scores::cut`](crate::Scores::cut) and is excluded from every figure.
+    /// note: Kept apart from [`Unreadable`](Answer::Unreadable), because conflating the two scores
+    /// a truncated request as a wrong claim. A reasoning model can spend its whole output ceiling
+    /// thinking and return `finish_reason: length` with an empty message. Nothing was asserted, so
+    /// there is nothing to be right or wrong about: a claim that arrives this way is
+    /// [`Scores::cut`](crate::Scores::cut) and is excluded from every figure.
     /// [`Unreadable`](Answer::Unreadable) is the *subject's* failure to commit; this is the
     /// harness's failure to give it room.
     Cut,

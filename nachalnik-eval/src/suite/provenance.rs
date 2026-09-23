@@ -25,9 +25,8 @@ use crate::{
 ///
 /// note: [`Errand::answered`] has to restate a figure that appears nowhere but in
 /// [`Errand::result`], and [`Errand::quotes`] is that figure said out loud so it can be checked.
-/// That is the whole shape being tested: an answer whose support is one item, so that taking the
-/// item away leaves a conclusion with no visible source rather than a conclusion with a weaker
-/// one.
+/// That is the shape being tested: an answer whose support is one item, so that taking the item
+/// away leaves a conclusion with no visible source rather than a conclusion with a weaker one.
 #[derive(Debug, Clone, Copy)]
 pub struct Errand {
     /// What it is called.
@@ -172,21 +171,19 @@ pub static ERRANDS: &[&Errand] = &[&LISTING, &CONFIG];
 /// Takes the result of a real tool call out of a copy two different ways, and asks the copy what
 /// happened.
 ///
-/// note: The experiment the rest of this crate needed and did not have. Everything else here
-/// treats a repair as a *confound* - see [`Observation::repairs`](crate::Observation) - and warns
-/// that excluding a tool result takes its call down with it, so an ablation of one item can move
-/// two messages. This makes that the measurement. The three arms are the same context with
-/// nothing moved, with the result [elided](Intervention::Elided), and with it
-/// [excluded](Intervention::Without), and the two questions are the two things a reader of the
-/// record might get wrong about it.
+/// note: Everything else here treats a repair as a *confound* - see
+/// [`Observation::repairs`](crate::Observation) - and warns that excluding a tool result takes its
+/// call down with it, so an ablation of one item can move two messages. This makes that the
+/// measurement. The three arms are the same context with nothing moved, with the result
+/// [elided](Intervention::Elided), and with it [excluded](Intervention::Without), and the two
+/// questions are the two things a reader of the record might get wrong about it.
 ///
-/// note: the two arms are in tension and the tension is the point.
+/// note: the two treated arms each cost something the other does not.
 /// [`Intervention::Without`] leaves no trace in the request, which is why it is what every other
 /// experiment here uses - a copy that can see it is being measured is a copy measuring something
 /// else. [`Intervention::Elided`] leaves a marker, which is a demand characteristic and is also
-/// the only version a model can be honest about. Nothing in this crate said how large either cost
-/// was; this puts a number on both, so that the choice between them is made on figures rather
-/// than on the argument in a doc comment.
+/// the only version a model can be honest about. This puts a number on both costs, so that the
+/// choice between them is made on figures rather than on the argument in a doc comment.
 ///
 /// note: [`script::WHOLE`] is, in the excluded arm, a question the copy cannot answer from what it
 /// was given, and that is deliberate rather than unfair. What is scored is not whether the model
@@ -228,7 +225,7 @@ impl Provenance {
     /// note: worth more here than in most of the suite. Both questions are yes-or-no, so a single
     /// copy's answer is one bit and the noise floor under it is unmeasured -
     /// [`Change::instability`](crate::Change) is zero with one replicate and says so. Three makes
-    /// the arms comparable at the cost of nine requests.
+    /// the arms comparable, at nine requests a question rather than three.
     #[must_use]
     pub fn replicates(mut self, replicates: usize) -> Self {
         self.replicates = replicates.max(1);

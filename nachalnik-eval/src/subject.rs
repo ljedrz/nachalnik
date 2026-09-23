@@ -38,8 +38,8 @@ impl Subject {
     ///
     /// note: a turn that ends because the request budget ran out is not an answer, and calling
     /// `Kernel::turn` again resumes it. This is how many times that is worth doing before
-    /// [`Error::Exhausted`]: a subject that spends nine requests' worth of tool calls and still
-    /// has not answered is not going to.
+    /// [`Error::Exhausted`]: a subject that spends three whole budgets on tool calls and still has
+    /// not answered is not going to.
     #[must_use]
     pub fn rounds(mut self, rounds: usize) -> Self {
         self.rounds = rounds.max(1);
@@ -66,8 +66,7 @@ impl Subject {
     /// models rather than two conditions.
     ///
     /// note: tools and policy are deliberately *not* carried across. A sibling starts with the
-    /// context it is given and the handles the experiment chooses to grant it, which is the point
-    /// of having one.
+    /// context it is given and the handles the experiment chooses to grant it.
     pub fn sibling(&self, tag: &str) -> Result<Self> {
         let provider = self
             .kernel

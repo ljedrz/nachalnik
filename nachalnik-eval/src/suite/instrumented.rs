@@ -25,15 +25,13 @@ use crate::{
 /// How many notes each battery asks about, per dossier.
 ///
 /// note: every note, which is what the preregistered item count needs. Nine notes over six
-/// dossiers is fifty-four paired items, against the four the pilots ran - and four items put a
-/// 3/4 result somewhere between thirty and ninety-five percent, which cannot distinguish any
-/// hypothesis here from chance.
+/// dossiers is fifty-four paired items; a battery of four puts a 3/4 result somewhere between
+/// thirty and ninety-five percent, which cannot distinguish any hypothesis here from chance.
 ///
-/// note: nine and not seven since the numeric red herrings landed. Asking about fewer notes than
-/// a dossier has is a *sampling* decision, and the pilots' four-item batteries show what it costs:
-/// they happened to draw a set in which every note that mattered was one that contained figures,
-/// which is the confound the red herrings exist to break. Asking about all of them cannot draw a
-/// biased sample.
+/// note: all nine rather than a sample. Asking about fewer notes than a dossier has is a
+/// *sampling* decision, and a sample can draw a set in which every note that matters is one that
+/// contains figures, which is the confound the red herrings exist to break. Asking about all of
+/// them cannot draw a biased sample.
 const BATTERY: usize = 9;
 
 /// How many experiments a subject may run on itself per question.
@@ -101,9 +99,9 @@ impl Instrumented {
 
     /// Runs it on one dossier only.
     ///
-    /// note: for a cheap probe rather than for a result. One dossier is seven items, which is
-    /// below the preregistered floor of thirty-two, and it is the right thing to run first to
-    /// find out whether a model calls the handles at all before paying for six.
+    /// note: for a cheap probe rather than for a result. One dossier is nine items, which is below
+    /// the preregistered floor of thirty-two, and it is the right thing to run first to find out
+    /// whether a model calls the handles at all before paying for six.
     #[must_use]
     pub fn on(mut self, dossier: &'static Dossier) -> Self {
         self.dossiers = vec![dossier];
@@ -141,9 +139,9 @@ impl Instrumented {
     /// How many copies each condition gets.
     ///
     /// note: one by default, and the preregistration justifies it: measured answer instability
-    /// across replicates was zero in every pilot condition, so replicates were buying no variance
-    /// reduction while taking two thirds of the request budget. That budget goes to items, which
-    /// is where the power is.
+    /// across replicates was zero in every pilot condition, so a replicate buys no variance
+    /// reduction for the requests it costs. Those requests go to items, which is where the power
+    /// is.
     #[must_use]
     pub fn replicates(mut self, replicates: usize) -> Self {
         self.replicates = replicates.max(1);
@@ -281,7 +279,7 @@ impl Instrumented {
         // from an origin frozen before a claim was made, so none can see another's; the labels
         // that name nothing in a session are dropped here rather than skipped inside the loop, so
         // what comes back lines up with what went in. The record is written below in the order
-        // the battery is in, exactly as it was when these were two `await`s inside one loop.
+        // the battery is in, whatever order the copies come back in.
         let here: Vec<(&&'static str, ContextId)> = battery
             .iter()
             .filter_map(|label| id_of(&notes, label).map(|id| (label, id)))

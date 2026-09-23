@@ -4,22 +4,22 @@
 //! any. Everything above it is machinery that does not know what a question is about; everything
 //! in here is a question, a planted note, or a sentence explaining to a copy that it has no
 //! tools. The line between them is worth keeping: a benchmark is its questions, and questions go
-//! stale - a model that has seen [`DEPOT`] in a training set is a model this
-//! suite can no longer measure, and replacing the suite should not mean replacing the harness.
+//! stale - a model that has seen [`DEPOT`] in a training set is a model this suite can no longer
+//! measure, and replacing the suite should not mean replacing the harness.
 //!
-//! note: They are in the order they are worth reading rather than in the order they cost.
-//! [`Attribution`] is the one the others are variations on; [`Recursion`] is the one that goes
-//! deeper; [`Lie`] and [`Provenance`] are the two whose ground truth does not depend on a fork at
-//! all, the first because the harness wrote the falsehood and the second because it wrote the
-//! record; [`Conflict`] is [`Lie`] with the tiebreak taken out, so that the contradiction has no
-//! right answer and only reporting it does; [`Privilege`] is the control that decides whether any
-//! of it is metacognition; and [`Feedback`] is the only one that asks whether any of this can be
-//! learnt, and costs about as much as several of the others together.
+//! note: [`all`] lists the experiments in the order they are worth reading rather than the order
+//! they cost. [`Attribution`] is the one the others are variations on; [`Recursion`] is the one
+//! that goes deeper; [`Lie`] and [`Provenance`] are the two whose ground truth does not depend on
+//! a fork at all, the first because the harness wrote the falsehood and the second because it
+//! wrote the record; [`Conflict`] is [`Lie`] with the tiebreak taken out, so that the
+//! contradiction has no right answer and only reporting it does; [`Privilege`] is the control that
+//! decides whether any of it is metacognition; and [`Feedback`] is the only one that asks whether
+//! any of this can be learnt, and costs about as much as several of the others together.
 //!
 //! note: [`Provenance`] is also the only one that asks the subject nothing. It measures what
 //! copies say about a record the harness has doctored, which needs no claim to score it against -
-//! and being the cheapest thing here by some distance, it is the one to run first when a new model
-//! is being tried out.
+//! and being the cheapest thing here, it is the one to run first when a new model is being tried
+//! out.
 
 use std::sync::Arc;
 
@@ -62,17 +62,17 @@ pub use crate::suite::{
 /// The question every counterfactual claim in the suite is put as: two copies, and whether they
 /// will answer differently.
 ///
-/// note: Two copies rather than "would *your* answer change", and the difference is not pedantry.
-/// What the harness measures is a treated copy against a control copy - it has to be, or the
-/// intervention is confounded with the whole business of being a copy at all - so that is what
-/// the question has to ask about. Asked the other way, a subject can be exactly right about how
-/// the two copies will answer and be scored wrong because the live session, which has the
-/// elicitation in its context and its tools in its request, answered differently from both.
+/// note: Two copies rather than "would *your* answer change". What the harness measures is a
+/// treated copy against a control copy - it has to be, or the intervention is confounded with the
+/// whole business of being a copy at all - so that is what the question has to ask about. Asked
+/// the other way, a subject can be exactly right about how the two copies will answer and be
+/// scored wrong because the live session, which has the elicitation in its context and its tools
+/// in its request, answered differently from both.
 ///
-/// note: found by a real model rather than by reasoning: `gemini-3.7-flash` answered a dossier
-/// correctly, a copy of the same context answered it wrongly, and the claim in between was
-/// graded against a baseline it had never been shown. See the saved runs of any study, or run
-/// the `lie` experiment and read `it answered X, and a copy of it answered Y` in the record.
+/// note: the session and its copies do disagree in practice: a session can answer a dossier
+/// correctly while a copy of the same context answers it wrongly, and a claim about the session's
+/// own answer would then be graded against a baseline the subject was never shown. Every record
+/// says which happened, in the line [`note_drift`] writes, which begins `the session answered`.
 pub(crate) fn counterfactual(question: &str, difference: &str) -> Probe {
     Probe::claim(script::fill(
         script::COUNTERFACTUAL,
@@ -159,12 +159,12 @@ pub fn all() -> Vec<Arc<dyn Experiment>> {
 ///
 /// note: two numbers, because they buy different things and only one of them is cheap. A
 /// *replicate* is another copy of an [`Ablation`](crate::Ablation) - the harness re-running its
-/// own measurement to put a noise floor under it - and the preregistration justifies one, because
-/// measured instability across copies was zero. A *ladder* is another pass over the same dossier
-/// by a fresh subject, which is the only way [`Repair`] gets more than one observation per rung,
-/// and the [`AGAIN`] control has already shown that a subject asked the same question twice does
-/// not always answer it the same way. Conflating them would either replicate the copies three
-/// times for nothing or leave the rungs with five observations each.
+/// own measurement to put a noise floor under it - and one is enough where measured instability
+/// across copies is zero. A *ladder* is another pass over the same dossier by a fresh subject,
+/// which is the only way [`Repair`] gets more than one observation per rung, and the [`AGAIN`]
+/// control is there because a subject asked the same question twice does not always answer it
+/// the same way. Conflating them would either replicate the copies for nothing or leave the rungs
+/// with one observation per dossier.
 pub fn all_with(replicates: usize, ladders: usize) -> Vec<Arc<dyn Experiment>> {
     vec![
         Arc::new(Attribution::new().replicates(replicates)),

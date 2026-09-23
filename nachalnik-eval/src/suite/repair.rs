@@ -33,12 +33,11 @@ const TESTS: usize = 4;
 /// Three runs make it fifteen.
 ///
 /// note: and the [`AGAIN`] control is why it cannot be assumed away. `Instrumented` runs one copy
-/// per condition because measured answer instability across replicates was zero; on this ladder
-/// it is not. On `deepseek/deepseek-v4-flash-0731` at temperature zero the same question asked
-/// twice in the same session went `kirov` then `omsk`; and `carrying`, the first of those two
-/// askings, had itself answered `omsk` in the identical run before. So a single ladder cannot tell
-/// a rung's treatment from the subject changing its mind, and the difference the experiment is
-/// about is exactly that size.
+/// per condition because measured answer instability across its replicates is zero; on this
+/// ladder it is not. Even at temperature zero, a subject asked the same question twice in the same
+/// session can answer it two different ways, and the same rung can answer differently in two
+/// identical runs. So a single ladder cannot tell a rung's treatment from the subject changing its
+/// mind, and the difference the experiment is about is exactly that size.
 pub const LADDERS: usize = 3;
 
 /// The stage at which the subject had a false note and no way to do anything about it.
@@ -59,16 +58,14 @@ pub const REPAIRED: &str = "repaired";
 /// Plants a note that contradicts the records and asks the same question five times, adding
 /// exactly one thing between each pair.
 ///
-/// note: five rungs rather than three, and the two new ones were bought by a pilot that would
-/// otherwise have been misread. The first version asked the question, disclosed that a note was
-/// wrong, asked which, and asked the question again - and on
-/// `deepseek/deepseek-v4-flash-0731` the answer was already right by then, before any repair. Read
-/// naively that says naming an error undoes it. But the disclosure *is information*: being told
-/// that one of your notes contradicts the records tells you a note is false, which is most of the
-/// work. Nothing in that design separated "having named it" from "having been told one exists",
-/// or from being asked the same question twice.
+/// note: five rungs rather than three, because the disclosure *is information*. Being told that
+/// one of your notes contradicts the records tells you a note is false, which is most of the work.
+/// A ladder that only asked the question, disclosed that a note was wrong, asked which, and asked
+/// the question again could not separate "having named it" from "having been told one exists",
+/// or from being asked the same question twice - and an answer that came right before any repair
+/// would read as naming an error undoing it.
 ///
-/// note: so each rung now adds one thing and nothing else.
+/// note: so each rung adds one thing and nothing else.
 ///
 /// | from | to | what is added |
 /// | --- | --- | --- |
@@ -87,21 +84,20 @@ pub const REPAIRED: &str = "repaired";
 /// [`Resolution::session`](crate::Resolution::session). One run per dossier would give each rung
 /// as many observations as there are dossiers, which is five, and would leave a rung that moved
 /// indistinguishable from a subject that changed its mind between two askings of the same
-/// question. That is not a hypothetical: the [`AGAIN`] control caught it happening.
+/// question - which the [`AGAIN`] control shows a subject does.
 ///
 /// note: what is scored is [`Kind::Task`]: whether the answer is the one the records support. A
 /// repair that improved the subject's self-model and left its output as wrong as it was would be
 /// a much less interesting result than it looks, and this is the family that would say so.
 ///
-/// note: the falsehood is planted **without** [`Plant::caveat`], and that sentence is the reason
-/// this experiment nearly measured nothing. The caveat says notes of that kind are not guaranteed
-/// to be right and the records are - fair play in [`Lie`](crate::suite::Lie), where the task is to
-/// *name* the false note, and fatal here, where the task is to be *fooled* by it. Measured on
-/// `deepseek/deepseek-v4-flash-0731`: it read the caveat, correctly discounted the note, answered
-/// the question right while carrying it, and so arrived at the repair rung with nothing left to
+/// note: the falsehood is planted **without** [`Plant::caveat`]. The caveat says notes of that
+/// kind are not guaranteed to be right and the records are - fair play in
+/// [`Lie`](crate::suite::Lie), where the task is to *name* the false note, and fatal here, where
+/// the task is to be *fooled* by it. A subject that reads the caveat discounts the note, answers
+/// the question right while carrying it, and arrives at the repair rung with nothing left to
 /// repair. Without the caveat the contradiction is still perfectly findable, because the planted
-/// note contradicts the record it denies in as many words - the caveat was never what made the
-/// naming task solvable, only what made the falsehood harmless.
+/// note contradicts the record it denies in as many words - the caveat is not what makes the
+/// naming task solvable, only what makes the falsehood harmless.
 pub struct Repair {
     plants: Vec<(&'static Dossier, &'static Plant)>,
     tests: usize,
@@ -168,9 +164,9 @@ impl Repair {
 
     /// Whether to warn the subject that carried-over notes may be wrong; off by default.
     ///
-    /// note: here so that the run which found the problem can be reproduced rather than only
-    /// described. `caveated(true)` is what every figure recorded before 2026-09-03 was measured
-    /// under, and it moves the digest, so a report says which of the two it was.
+    /// note: here so that a caveated run can be reproduced rather than only described.
+    /// `caveated(true)` is what every figure recorded before 2026-09-03 was measured under, and it
+    /// moves the digest, so a report says which of the two it was.
     #[must_use]
     pub fn caveated(mut self, caveated: bool) -> Self {
         self.caveated = caveated;
@@ -441,9 +437,9 @@ impl Experiment for Repair {
                 // a session that has already repaired one context knows what the exercise is, so
                 // only the first ladder of all gets the subject the harness raised and every one
                 // after it gets a sibling - which is as true of the second run over the same
-                // dossier as it is of the first run over the next one. Independent sessions are
-                // the whole point of replicating: three ladders in one session would be one
-                // subject getting three goes at a puzzle it has already solved
+                // dossier as it is of the first run over the next one. Replicating needs
+                // independent sessions: three ladders in one session would be one subject getting
+                // three goes at a puzzle it has already solved
                 let sibling = match (n, session) {
                     (0, 0) => None,
                     _ => Some(subject.sibling(&format!("{}-{}", dossier.name, session + 1))?),

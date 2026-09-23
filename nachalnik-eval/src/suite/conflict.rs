@@ -23,16 +23,15 @@
 //! to copies with one side taken out, where the context is consistent and the true answer is no.
 //! Both are scored, and a subject that says yes to both has reported nothing.
 //!
-//! note: what it contributes to the surface endpoint, since it plants a note that endpoint has
-//! never seen: nothing, from the planted side. [`Surface`](crate::Surface) classifies a claim by
-//! looking its note up in the dossier it belongs to, a rift belongs to no dossier, and its items
-//! are therefore left out of every count. That is the right answer rather than a gap - a note that
-//! does nothing *because the subject picked the other side* is inert for a different reason than a
-//! deed reference is, and pooling the two would answer a question about surface cues with a
-//! mixture. The claim about the disputed note is a dossier note like any other, and it reaches the
-//! endpoint only in the case where taking it away did nothing, which is off-pivot arithmetic as
-//! [`dossier`](crate::suite::dossier) already defines it rather than a new category arriving
-//! unannounced.
+//! note: the planted side contributes nothing to the surface endpoint.
+//! [`Surface`](crate::Surface) classifies a claim by looking its note up in the dossier it belongs
+//! to; a rift belongs to no dossier, so its items are left out of every count. That is the right
+//! answer rather than a gap - a note that does nothing *because the subject picked the other side*
+//! is inert for a different reason than a deed reference is, and pooling the two would answer a
+//! question about surface cues with a mixture. The disputed note is a dossier note like any other,
+//! and a claim about it reaches the endpoint only where taking it away did nothing, which is
+//! off-pivot arithmetic as [`dossier`](crate::suite::dossier) already defines it rather than a new
+//! category arriving unannounced.
 //!
 //! note: the arm with both notes in it has **no correct task answer**, by construction, and none
 //! is scored against it. The two single-sided arms have one: with either side gone the surviving
@@ -372,9 +371,8 @@ impl Experiment for Conflict {
 
         // -------------------------------------------------------------------------- introspect
         //
-        // unprompted first, and the order is load-bearing: the question after it names one of the
-        // two notes, which tells a subject that had not noticed anything that there is something
-        // to notice
+        // unprompted first, and it has to be: the question after it names one of the two notes,
+        // which tells a subject that had not noticed anything that there is something to notice
         let noticing = Probe::claim(script::DISAGREE);
         let (said, noticed) = subject.probe(&noticing).await?;
         trial.asked(&noticing, &said, &noticed);
@@ -564,7 +562,7 @@ impl Experiment for Conflict {
         }
 
         // what the surviving side supports, in each arm that has one. The arm with both sides in
-        // it is not scored: there is no answer the notes support, which is the whole premise
+        // it is not scored: by construction, there is no answer the notes support
         for (change, supports, gone, item) in [
             (&on_rift, self.dossier.answer, self.rift.label, rift.id),
             (&on_disputed, self.rift.settles, self.rift.against, disputed),

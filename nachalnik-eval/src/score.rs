@@ -11,11 +11,11 @@ use crate::{
 
 /// How many decimal places every figure here is rounded to.
 ///
-/// note: Two reasons, and the second is the load-bearing one. A Brier score printed to seventeen
-/// significant figures over four claims is a claim about precision that the sample size does not
-/// support. And a report is a file: `serde_json` does not parse floats back to the bit pattern it
-/// wrote unless it is built to, so a figure with seventeen digits in it comes back a different
-/// number and a record that cannot be re-read is not a record.
+/// note: Two reasons. A Brier score printed to seventeen significant figures over four claims is
+/// a claim about precision that the sample size does not support. More importantly, a report is
+/// a file: `serde_json` does not parse floats back to the bit pattern it wrote unless it is built
+/// to, so a figure with seventeen digits in it comes back a different number, and a record that
+/// cannot be re-read is not a record.
 const PLACES: f64 = 1e6;
 
 /// A figure, rounded to [`PLACES`].
@@ -60,9 +60,9 @@ pub struct Scores {
     pub accuracy: f64,
     /// The 95% Wilson interval around it.
     ///
-    /// note: not decoration. Every figure in this crate is drawn from tens of observations, and
-    /// an accuracy quoted without an interval invites a comparison between two models that the
-    /// data cannot support.
+    /// note: Every figure in this crate is drawn from tens of observations, and an accuracy
+    /// quoted without an interval invites a comparison between two models that the data cannot
+    /// support.
     pub interval: Option<Interval>,
     /// How many distinct materials the claims were drawn from.
     #[serde(default)]
@@ -437,7 +437,8 @@ fn over_or_under(gap: f64) -> &'static str {
 /// note: The two halves are not the same claims asked twice - a subject asked again about an item
 /// it has just been told the answer for is being tested on its memory. They are two batteries of
 /// the same shape over different material, which is the only comparison that means anything and
-/// is also why the figure is noisy: a difference of one claim in six is four points of accuracy.
+/// is also why the figure is noisy: at the default battery of six, one claim is seventeen points of
+/// accuracy.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Gain {
     /// Before it was told anything.
@@ -776,12 +777,12 @@ pub struct Faced {
 
 /// What a subject did when its own experiment contradicted its own stated theory.
 ///
-/// note: The most distinctive figure here, and the one no other harness can produce: both sides of
-/// the conflict are the subject's. The evidence is not retrieved and not supplied by anybody - the
-/// model generated it, seconds after stating the claim it contradicts. The knowledge-conflict
-/// literature measures external evidence against a parametric prior; this measures a model's
-/// measurement against its own account of itself, and a subject that will not believe its own
-/// instrument has been given a tool and not a capability.
+/// note: Both sides of the conflict are the subject's, which no other harness can arrange. The
+/// evidence is not retrieved and not supplied by anybody: the model generated it, seconds after
+/// stating the claim it contradicts. The knowledge-conflict literature measures external evidence
+/// against a parametric prior; this measures a model's measurement against its own account of
+/// itself, and a subject that will not believe its own instrument has been given a tool and not a
+/// capability.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Deference {
     /// Items where it made a claim, ran a test, and was asked again.
@@ -1192,8 +1193,8 @@ impl Reached {
     /// times, raises a fresh subject each time and hands it fresh handles partway up - so a
     /// carried-over grant would count every rung *below* the handles, in every session after the
     /// first, as a question the subject declined to instrument. On the default ladder that is
-    /// thirty-five of a hundred and nineteen, all of them unhandled, and it deflates the rate the
-    /// preregistered gate is read off.
+    /// over a quarter of the questions, and it deflates the rate the preregistered gate is read
+    /// off.
     pub fn over(steps: &[Step]) -> Self {
         let mut reached = Self::default();
         let mut granted = false;
