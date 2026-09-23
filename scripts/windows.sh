@@ -18,8 +18,10 @@ if ! cargo xwin --version > /dev/null 2>&1; then
     exit 2
 fi
 
-# the same denial CI builds under, so that a warning fails here as it does there
-export RUSTFLAGS="${RUSTFLAGS:--D warnings}"
+# the same denial CI builds under, so that a warning fails here as it does there - added to
+# whatever is already set rather than standing in for it, or a `-C target-cpu=native` in somebody's
+# environment would quietly let every warning through
+export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-D warnings"
 
 target=x86_64-pc-windows-msvc
 failed=()
