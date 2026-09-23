@@ -6,10 +6,9 @@
 //! README, and one place that turns them into a provider. A dialect each, because the address
 //! they default to is the one thing the two do not share.
 //!
-//! note: named for what it settles rather than for what it hands back. It was `provider`, which
-//! was the truth while the dialects were files in this crate and stopped being it the day they
-//! became [`nachalnik_providers`] - and a module called `provider` next to a crate of providers
-//! reads as the place one is implemented rather than the place one is addressed.
+//! note: named for what it settles rather than for what it hands back. A module called
+//! `provider` next to [`nachalnik_providers`] would read as the place one is implemented rather
+//! than the place one is addressed.
 
 use std::{env, sync::Arc};
 
@@ -26,8 +25,8 @@ use nachalnik_providers::{Gemini, OpenAiCompatible, gemini::DEFAULT_BASE_URL};
 ///
 /// note: `HEAD` rather than a branch name. This is a primary key: OpenRouter builds the app's
 /// page against it, so changing it later does not rename the app, it starts a new one and orphans
-/// what the old one had. `tree/master/...` would have been that change waiting to happen the day
-/// the default branch is renamed.
+/// what the old one had. `tree/master/...` would be that change, waiting for the day the default
+/// branch is renamed.
 ///
 /// note: what goes out is the name of the program and what kind of program it is - not the key,
 /// not the model, not a word of what was asked - and it goes only to OpenRouter.
@@ -96,8 +95,8 @@ pub fn base_url() -> String {
 /// two defaults behind it are different services - so a `--gemini` session that never set the
 /// variable would otherwise report OpenRouter's address and Google's key.
 ///
-/// note: what asks is the advisor, and what it is asking is whose key [`api_key`] just handed it.
-/// A key is an OpenRouter key because it is being sent to OpenRouter, not because of the variable
+/// note: the advisor is what asks, and the question is whose key [`api_key`] just handed it. A key
+/// is an OpenRouter key because it is being sent to OpenRouter, not because of the variable
 /// it was read from: all three names are ordinary things to export, and `KAMCHATKA_API_KEY` is
 /// whatever the endpoint this points at issued.
 pub fn session_endpoint(gemini: bool) -> String {
@@ -138,8 +137,7 @@ pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxEr
 /// of what makes the fallback safe, because a key is an OpenRouter key by virtue of being sent to
 /// OpenRouter and not by virtue of the variable it was read from. A session pointed at ollama, at
 /// Google with `--gemini`, or at any gateway of somebody's own holds a key that service issued,
-/// and borrowing it here would hand a third party a credential that has no business with them -
-/// which is the thing the old refusal to fall back was protecting, pointing the other way.
+/// and borrowing it here would hand a third party a credential that has no business with them.
 ///
 /// note: so `--advise` still asks for a dedicated key everywhere except the one configuration
 /// where there is nothing to disclose: the requests already go to OpenRouter, and the advice goes
@@ -169,16 +167,14 @@ pub mod advise {
     /// decides which of the two shapes the request even has. So the choice is made once - is
     /// there a key of the service's own - and the endpoint and the model follow from it.
     ///
-    /// note: named for *whose key it is* rather than for which company issued it, which is what
-    /// the variables underneath were renamed for. `KAMCHATKA_SYSTEM1_BASE_URL` may point at
-    /// anything that answers a System One question, so a variant called `TypeSafe` would have
-    /// been naming the default rather than the case. What the two cases actually are is a key
-    /// held for this and a key borrowed from the conversation, and only the second one carries a
-    /// rule about where it may go.
+    /// note: named for *whose key it is* rather than for which company issued it, as the variables
+    /// underneath are. `KAMCHATKA_SYSTEM1_BASE_URL` may point at anything that answers a System
+    /// One question, so a variant called `TypeSafe` would name the default rather than the case.
+    /// The two cases are a key held for this and a key borrowed from the conversation, and only
+    /// the second one carries a rule about where it may go.
     ///
     /// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries. A
-    /// third service serving the same model is exactly the kind of thing that happened once
-    /// already, and it should be a patch rather than a break.
+    /// third service serving the same model should be a patch rather than a break.
     #[non_exhaustive]
     pub enum Account {
         /// A key held for the decision service itself, under either of the documented names.
@@ -217,15 +213,14 @@ pub mod advise {
         ///
         /// note: `KAMCHATKA_SYSTEM1_BASE_URL` moves the address and does not move the account.
         /// It is for a proxy in front of one of the two, and somebody pointing it at the *other*
-        /// service is setting the model by hand as well - which is the same bargain the variable
-        /// made before there were two.
+        /// service is setting the model by hand as well.
         ///
         /// note: and it is the whole of what a *third* service takes, which is why the variables
         /// are named for the kind of model rather than for the company that sells one. Anything
-        /// answering a `state` and a map of typed questions at the path
-        /// [`Jev`] posts to is reachable from here with these
-        /// two set and no code at all - an address this program does not recognise is read as
-        /// keeping TypeSafe's paths, because that is the shape a self-hosted thing has. What it
+        /// answering a `state` and a map of typed questions at the path [`Jev`] posts to is
+        /// reachable from here with these two set and no code at all - an address this program
+        /// does not recognise is read as keeping TypeSafe's paths, because that is the shape a
+        /// self-hosted thing has. What it
         /// does not buy is a *different* wire format; see POSTPONED.md on `laya`.
         pub fn base_url(&self) -> String {
             env::var("KAMCHATKA_SYSTEM1_BASE_URL").unwrap_or_else(|_| {
@@ -272,8 +267,8 @@ pub mod advise {
     /// Which of the two keys may pay, and whether either may.
     ///
     /// note: split out from [`account`] so the rule can be checked without the environment, the
-    /// way `tools::advice::advised` is split out of `evaluate` - what is left above is three
-    /// `env::var` calls and no decision. The rule is the one thing here that can leak a
+    /// way `tools::advice::advised` is split out of `evaluate` - what is left above reads the
+    /// environment and decides nothing. The rule is the one thing here that can leak a
     /// credential, so it is the one thing that wants a test with no key in it.
     fn chosen(
         dedicated: Option<String>,
@@ -306,12 +301,12 @@ pub mod advise {
     /// and the moment to find that out is before a session is running rather than the first time
     /// a permission question depends on it. OpenRouter publishes no listing for this model, so a
     /// session paying through it gets no such warning - which is why the identifier this program
-    /// sends there is a constant rather than something a person types.
+    /// sends there by default is a constant rather than something a person types.
     pub async fn connect(session_endpoint: &str) -> Result<Arc<dyn SystemOne>, BoxError> {
         // note: before the key, which is what `SYSTEM1_ADVISOR_COMMAND` taking precedence means.
         // A machine with an engine of its own running and a key it would otherwise spend should
-        // use the engine: it is faster, it costs nothing, and - the part that actually matters -
-        // no tool's arguments leave it. Somebody who wants the remote one anyway unsets the
+        // use the engine: it is faster, it costs nothing, and - above all - no tool's arguments
+        // leave it. Somebody who wants the remote one anyway unsets the
         // variable, which is a decision they can see themselves making
         if let Some(local) = crate::advisor::configured() {
             return local;
@@ -335,10 +330,9 @@ pub mod advise {
         /// The rule that decides whether somebody's credential leaves for a service that did not
         /// issue it.
         ///
-        /// note: the most important test in this file, and the one the fallback needed before it
-        /// was written. A key is an OpenRouter key because it is being *sent* to OpenRouter, not
-        /// because of the variable it was read from - `KAMCHATKA_API_KEY` is whatever the endpoint
-        /// it points at issued, and every address below is one this program documents somebody
+        /// note: a key is an OpenRouter key because it is being *sent* to OpenRouter, not because
+        /// of the variable it was read from - `KAMCHATKA_API_KEY` is whatever the endpoint it
+        /// points at issued, and every address below is one this program documents somebody
         /// pointing it at.
         #[test]
         fn a_session_key_is_only_borrowed_where_it_was_already_going() {

@@ -278,7 +278,7 @@ pub(super) fn fold(body: &str, room: usize) -> Vec<String> {
 
     let mut out = Vec::new();
     let mut line = String::new();
-    // a word can now be the empty string - that is what a run of spaces is made of - so "have I
+    // a word can be the empty string - that is what a run of spaces is made of - so "have I
     // put anything on this line yet" is its own question rather than `line.is_empty()`
     let mut fresh = true;
 
@@ -352,12 +352,12 @@ pub(super) fn compact(n: usize) -> String {
 ///
 /// note: `held` is where an unbounded number can land. What is being *sent* is bounded by the
 /// window it is being sent to; what is being *held* is whatever a tool actually produced, since
-/// `keep_truncated_output` archives the whole of it - and a `grep` that wandered into a build
-/// directory holds millions. Seven columns stop at `999,999`, and a wider figure did not widen the
-/// column - `{:>7}` pads and never truncates, so it took the columns it needed from its
-/// neighbours: `0` and `1,400,000` arrived as `01,400,000`, and the row lost its last two
-/// characters to the clip. Precision is the right thing to give up instead, because nobody acts on
-/// the last three digits of something that is not going anywhere.
+/// `keep_truncated_output` archives the whole of it - and a `grep` that wanders into a build
+/// directory holds millions. Seven columns stop at `999,999`, and a wider figure does not widen
+/// the column - `{:>7}` pads and never truncates, so it takes the columns it needs from its
+/// neighbours: `0` and `1,400,000` would arrive as `01,400,000`, and the row would lose its last
+/// two characters to the clip. Precision is the right thing to give up instead, because nobody
+/// acts on the last three digits of something that is not going anywhere.
 pub(super) fn fitted(n: usize, width: usize) -> String {
     match thousands(n) {
         exact if exact.len() <= width => exact,

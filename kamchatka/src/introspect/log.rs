@@ -62,17 +62,16 @@ fn ops() -> Vec<Op> {
                 "only the records naming these context items",
             ),
             // note: `0` said out loud, because it is not guessable and the guess is costly. This
-            // is exclusive - `since: 1` means *after* record 1 - and a live session reaching for
-            // "everything" wrote `since: 1`, which in a resumed session drops exactly one record:
-            // `session.resumed`, which is always the first. It then answered the question that
-            // record was the answer to, wrongly
+            // is exclusive - `since: 1` means *after* record 1 - and a model reaching for
+            // "everything" writes `since: 1`, which in a resumed session drops exactly one record:
+            // `session.resumed`, which is always the first and is often the answer to the question
             Arg::whole(
                 "since",
                 "only the records after this sequence number, which is the first column; `0` is \
                  all of them",
             ),
-            // note: two of them written out, because "spelled as the summary spells them" is the
-            // vocabulary behind the thing you need the vocabulary to ask for. The summary is
+            // note: two of them written out, because "spelled as the summary spells them" sends a
+            // model to the summary for the vocabulary it needs before it can ask. The summary is
             // still where the list is - it is this session's kinds rather than every kind there
             // is - and a model that has not read one now knows the shape of a name
             Arg::list(
@@ -212,9 +211,9 @@ struct Read {
     ///
     /// note: per record rather than one string, because `take` is "the most recent N of whatever
     /// matched" and a record is not a line: `whole` prints a replaced item's old text entire, so
-    /// one record can be forty of them. Counting lines took the last N *lines*, which is the tail
-    /// of somebody's old file with no sequence number and no event name in front of it, and the
-    /// header called that a count of records.
+    /// one record can be forty of them. Counted in lines, the last N would be the tail of
+    /// somebody's old file with no sequence number and no event name in front of it, under a
+    /// header calling that a count of records.
     matched: Vec<String>,
     /// How many those were.
     hits: usize,
@@ -236,9 +235,9 @@ struct Read {
 /// What a call asked for, and how to say it back.
 ///
 /// note: the filters are read and validated before the log is touched, so a malformed one comes
-/// back as something to correct rather than as an empty result. That distinction is the whole of
-/// the care this tool needs: an empty result reads as *nothing happened*, and for a session log
-/// that is the one answer that can be wrong in a way nobody catches.
+/// back as something to correct rather than as an empty result. An empty result reads as *nothing
+/// happened*, and for a session log that is the one answer that can be wrong in a way nobody
+/// catches.
 #[derive(Default)]
 struct Query {
     take: Option<usize>,
@@ -281,9 +280,9 @@ impl Query {
                 );
             };
             // note: an *empty* array constrains nothing and is how a model spells "no id filter"
-            // while passing every argument the schema lists - which a live one did, and was
-            // refused, and spent a turn on it. An array with entries in it that are not numbers
-            // is a different thing and is still a mistake worth reporting.
+            // while passing every argument the schema lists, so refusing it would spend a turn.
+            // An array with entries in it none of which is a number is a different thing and is
+            // still a mistake worth reporting.
             query.ids = ids
                 .iter()
                 .filter_map(|id| id.as_u64())
@@ -330,10 +329,10 @@ impl Query {
 
     /// Whether anything changes which records *count*, as against how many are shown.
     ///
-    /// note: the two are not the same question and the header used to answer them as though they
-    /// were, so a call carrying only `take` reported "15 match , ~205 tokens" - a match count that
-    /// is really the total, and a filter description that was empty because there was no filter.
-    /// `take` shortens an answer; these three decide what the answer is of.
+    /// note: the two are not the same question. Answered as one, a call carrying only `take` would
+    /// report a match count that is really the total, beside a filter description that is empty
+    /// because there is no filter. `take` shortens an answer; these three decide what the answer
+    /// is of.
     fn narrowed(&self) -> bool {
         !self.ids.is_empty() || self.since.is_some() || !self.kinds.is_empty()
     }
@@ -386,8 +385,7 @@ impl Query {
             // being asked. Nothing has happened yet, or everything that happened has been taken
             // out and written somewhere else - `Kernel::drain_history` is a supported thing to do
             // with a long session and it leaves the sequence counter alone, which is how this can
-            // tell. Reporting the second as the first is the one mistake this tool must not make,
-            // and the sentence that used to be here made it in so many words.
+            // tell. Reporting the second as the first is the one mistake this tool must not make.
             return match read.last_seq {
                 0 => "nothing has been recorded yet: this session's log is empty because nothing \
                       has happened, not because you are being kept from it.\n"
@@ -483,11 +481,11 @@ impl Query {
 
     /// What an `ids` filter found no beginning for, which is usually what it was really asking.
     ///
-    /// note: an *absence*, and the one answer a list of matching records cannot give. A live
-    /// session, resumed under a second model, asked the log where an inherited item had come from.
-    /// It got five `model.requested` rows naming that item - every one of them true, because the
-    /// item had been in every request since - and read them as proof it had written the item
-    /// itself. What decided the question was the record that was not there.
+    /// note: an *absence*, and the one answer a list of matching records cannot give. A session
+    /// resumed under a second model that asks the log where an inherited item came from gets
+    /// `model.requested` rows naming that item - every one of them true, because the item has been
+    /// in every request since - and can read them as proof it wrote the item itself. What decides
+    /// the question is the record that is not there.
     fn inherited(&self, kernel: &Kernel, read: &Read) -> String {
         let unborn: Vec<&ContextId> = self
             .ids
@@ -630,8 +628,8 @@ mod tests {
 
     /// The schema and the permission subjects are one vocabulary.
     ///
-    /// note: what the two-list check became. There is one table now, so an argument the schema
-    /// offers that no operation reads cannot happen - it is the same `Vec<Op>`. What can still
+    /// note: there is one table, so an argument the schema offers that no operation reads cannot
+    /// happen - it is the same `Vec<Op>`. What can still
     /// drift is this: a tool declaring a subject it offers no way to reach, or offering an
     /// operation the policy was never told about, which is a call that cannot be refused by name.
     #[test]

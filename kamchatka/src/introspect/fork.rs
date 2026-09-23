@@ -3,9 +3,9 @@
 //! note: its own tool rather than two more actions on the context, because it is the one thing in
 //! here that neither reads nor changes a context - it makes a second session and pays a provider
 //! for an answer. Letting something read its own items should not be letting it buy another
-//! request, and while these were actions of `context` that is exactly what allowing `context`
-//! meant. The subjects said so first: `fork:draft` and `fork:ask` were in a domain of their own
-//! before the tool was, and a tool that declares two domains is a tool that is two things.
+//! request, which is what allowing `context` would mean if these were actions of it. The subjects
+//! say so too: `fork:draft` and `fork:ask` are a domain of their own, and a tool that declares two
+//! domains is a tool that is two things.
 //!
 //! note: nothing in the runtime knows what a fork is. It is `snapshot` and `resume`, which the
 //! runtime documents as the way to carry a session on somewhere else, pointed at a copy that is
@@ -195,15 +195,15 @@ async fn branch(
     fork.set_provider(provider);
     fork.set_projector(kernel.projector());
     // whose items the count is about: what follows adds a system instruction of this tool's own,
-    // and `ask` adds the question - neither of them the caller's, and both of them counted as
-    // theirs until now. A fork is worth having because two runs are comparable, and a number that
-    // moves with which of the two operations asked for it is not
+    // and `ask` adds the question - neither of them the caller's, so neither is counted. A fork is
+    // worth having because two runs are comparable, and a number that moves with which of the two
+    // operations asked for it is not
     let theirs: std::collections::BTreeSet<ContextId> =
         fork.items().iter().map(|item| item.id).collect();
     // note: said out loud, because the copy cannot work it out. It inherits a conversation full of
     // tool calls and their results and no tool definitions at all, and a model reading that asks
     // for a tool - which nothing here can run, so the answer comes back as a call and no words.
-    // Measured against a real model that is not a corner case, it is what happens every time
+    // Without being told, a model does this as a rule rather than as a corner case
     fork.push(
         ContextItem::system(
             "You are a copy of this session, made to think and not to act. You have no tools \
@@ -267,12 +267,11 @@ async fn branch(
         Some(question) => format!("a copy of you, asked `{question}`, on {items} of your items"),
         None => format!("what you would say if you answered now, drafted on {items} of your items"),
     };
-    // note: said either way, because "on 9 of your items" cannot be read as "on all of them" and a
-    // fork's whole worth is which items the copy did not get. A live session asked a copy what it
-    // would conclude "without knowing my earlier statement", passed no `without` at all, and
-    // reported the matching answer as an ablation - it had asked the copy to pretend rather than
-    // taken the item away, and nothing in the reply distinguished the two. The copy really did see
-    // everything, so the reply says so.
+    // note: said either way, because "on 9 of your items" does not say whether that is all of them,
+    // and a fork's worth is which items the copy did not get. A model can ask a copy to disregard
+    // something rather than take it away with `without`, and report the matching answer as an
+    // ablation - the copy was asked to pretend, and nothing in the reply would distinguish the
+    // two. Where the copy really did see everything, the reply says so.
     match left_out.is_empty() {
         true => out.push_str(
             ". Nothing of yours was taken away, so this is the same context answering again \
@@ -324,11 +323,10 @@ async fn branch(
 
     // note: the answer before the thinking, which is the opposite of the order it was produced
     // in and the right way round for the one thing that happens to this output: an output limit
-    // cuts from the end. On a reasoning model the thinking is the bulk of a fork - measured on one
-    // real fork, 68% of 34,287 bytes against the answer's 30% - so with the thinking first the
-    // limit ate the answer and left the deliberation about how to answer. That session lost
-    // exactly the three paragraphs it had asked for. Nothing about this order is a claim about
-    // what the copy did; the two sections are labelled and the reasoning says it is reasoning
+    // cuts from the end. On a reasoning model the thinking is the bulk of a fork, so with the
+    // thinking first the limit eats the answer and leaves the deliberation about how to answer.
+    // Nothing about this order is a claim about what the copy did; the two sections are labelled
+    // and the reasoning says it is reasoning
     if let Some(reasoning) = &response.reasoning {
         out.push_str(&format!(
             "\n--- its reasoning, which it produced before the answer above ---\n{}\n",

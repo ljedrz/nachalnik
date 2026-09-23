@@ -1,6 +1,6 @@
 //! The two tools, the permission policy and the compactor - all of it ordinary user code.
 //!
-//! note: The runtime ships none of this. It has no idea what a file is, it spawns no processes,
+//! note: the runtime ships none of this. It has no idea what a file is, it spawns no processes,
 //! and it never decides that something may run. What it provides is the shape: a [`Tool`] that
 //! declares what it needs, a [`nachalnik::PermissionPolicy`] that is asked before anything
 //! happens, and a [`nachalnik::Compactor`] whose plan is applied in the open and can be undone.
@@ -91,9 +91,9 @@ fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, BoxError> {
 /// word is not, because the answer a bare `as_u64().unwrap_or(..)` gives is the *default*, which
 /// reads as a tool that did what it was asked.
 ///
-/// note: the same lesson `introspect::log`'s `counted` is named after, where `take: "3"` became
-/// `None`, which is what leaving `take` out does - so a model that asked for three lines got a
-/// summary and nothing saying its argument had not been read. The message is this side's rather
+/// note: the same rule `introspect::log`'s `counted` holds to, where `take: "3"` read as `None`
+/// would be what leaving `take` out does - a summary where three lines were asked for, and
+/// nothing saying the argument had not been read. The message is this side's rather
 /// than shared, because what a swallowed argument costs is different here: not an empty answer
 /// that reads as an empty log, but an expensive one that reads as the only one available.
 fn whole(args: &Value, name: &str, default: u64) -> Result<u64, String> {
@@ -156,19 +156,18 @@ pub const KEPT: usize = 8 * 1024 * 1024;
 /// And what one is cut at whose answer is a report of a fixed shape rather than a piece of the
 /// session, in bytes.
 ///
-/// note: the distinction is measured rather than guessed. Between a session of ten items and one
-/// of a thousand, with two hundred more tools registered, seven answers do not move: `fs:write`
-/// and `fs:edit` are a line each, `context:revise` says what it replaced without quoting it,
-/// `context:note` and `setup:model` and `setup:policy` are a short paragraph, and
-/// `context:budget` is a fixed report with the four most expensive rows under it. Everything else
-/// grows with what the session holds - `context:look` went from 10kB to 119kB over that pair, and
-/// `log`'s records from 30kB to 517kB.
+/// note: the distinction is measured rather than guessed. Seven answers do not move between a
+/// small session and a large one with many more tools registered: `fs:write` and `fs:edit` are a
+/// line each, `context:revise` says what it replaced without quoting it, `context:note` and
+/// `setup:model` and `setup:policy` are a short paragraph, and `context:budget` is a fixed report
+/// with the four most expensive rows under it. Everything else grows with what the session holds,
+/// `context:look` and `log`'s records most of all.
 ///
 /// note: what a lower number buys where a limit never fires anyway. It is a tripwire: the seven
 /// are bounded because of how each answer is built, so one of them arriving here cut is that
 /// having quietly stopped being true - a `budget` that listed every item, a `revise` that echoed
-/// what it wrote. `tests/introspect/shared.rs` holds the seven to it at the size, which is where such a
-/// change should be caught; this is what happens if it is not.
+/// what it wrote. `tests/introspect/shared.rs` holds the seven to it at the size, which is where
+/// such a change should be caught; this is what happens if it is not.
 pub(crate) const REPORT: usize = 8_000;
 
 /// How much of a call's output the model is shown, by subject, which a person can change
@@ -179,11 +178,10 @@ pub(crate) const REPORT: usize = 8_000;
 /// there is one vocabulary in this program and not two: `--allow fs:grep` and `/limit fs:grep`
 /// name the same thing, and a person who has read either table can read the other.
 ///
-/// note: it was keyed by tool id, which stopped working the day a tool did several things. `fs`
-/// is one tool over five operations whose answers are nothing like the same size - a whole file
-/// and a repo-wide search - and `context` is one over twelve, from a listing of forty items to
-/// a line confirming a pin. A number per tool is a number for whichever of those somebody thought
-/// of first.
+/// note: not keyed by tool id, because a tool can do several things. `fs` is one tool over five
+/// operations whose answers are nothing like the same size - a whole file and a repo-wide search -
+/// and `context` is one over twelve, from a listing of forty items to a line confirming a pin. A
+/// number per tool is a number for whichever of those somebody thought of first.
 ///
 /// note: a shared handle rather than a number beside each `spec`, because the thing that changes
 /// them (`/limit`) is in another file from the tools that declare them - and because `/limit`
@@ -210,12 +208,12 @@ impl Limits {
     ///
     /// note: 32,000 bytes is about a screenful of a large file or the tail of a long build, and it
     /// is what an answer made of what the session holds is worth being cut at. Two numbers rather
-    /// than twenty-four: a number per row would be a set of opinions nobody asked for, and one
+    /// than one per row: a number per row would be a set of opinions nobody asked for, and one
     /// number for every row says that a line confirming a write and the whole of a log are the
     /// same kind of answer. Which tier a subject is in is a measured fact about its answer rather
-    /// than a view about its importance: seven of them do not move between a session of ten items
-    /// and one of a thousand, and every other one does. The table is there so that somebody can
-    /// hold the one that matters to them to something else.
+    /// than a view about its importance: seven of them do not grow with the session, and every
+    /// other one does. The table is there so that somebody can hold the one that matters to them
+    /// to something else.
     ///
     /// note: `fs:grep` and `fs:glob` are in here for `/limit` to list and to raise, and neither is
     /// normally what shapes their answer: both cut themselves at a number of *matches* or *paths*
@@ -268,11 +266,10 @@ impl Limits {
 
     /// The limit for a call, found by the subject that call needs.
     ///
-    /// note: every tool's [`Tool::limit`] is this and nothing else, which is the whole of the
-    /// rule: what a call may return is decided by the same subject that decided whether it could
-    /// run. A call that needs more than one subject - which is what a tool says about a call it
-    /// cannot place - gets no limit from here, because there is no one row it is about; it is
-    /// about to be refused by name anyway.
+    /// note: every tool's [`Tool::limit`] is this and nothing else: what a call may return is
+    /// decided by the same subject that decided whether it could run. A call that needs more than
+    /// one subject - which is what a tool says about a call it cannot place - gets no limit from
+    /// here, because there is no one row it is about; it is about to be refused by name anyway.
     pub fn for_call(&self, needs: &[Capability]) -> Option<usize> {
         match needs {
             [subject] => self.of(&subject.to_string()),

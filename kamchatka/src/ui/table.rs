@@ -42,10 +42,11 @@ pub(super) fn table(block: &str) -> Option<Table> {
     /// The cells of one row, without the pipes that are only there to hold them.
     ///
     /// note: one delimiter off each end rather than every pipe there, and a split that knows what
-    /// `\|` is. Trimming them all took the empty first cell of `|| a |` away with the delimiter,
-    /// and splitting on every pipe read an escaped one as a column - so a row with a pipe in a
-    /// cell moved every value after it one column left, and `resize` dropped whatever fell off
-    /// the end. A table drawn from the model's own answer has to say what the answer said.
+    /// `\|` is. Trimming them all would take the empty first cell of `|| a |` away with the
+    /// delimiter, and splitting on every pipe would read an escaped one as a column - so a row
+    /// with a pipe in a cell would move every value after it one column left, and `resize` would
+    /// drop whatever fell off the end. A table drawn from the model's own answer has to say what
+    /// the answer said.
     ///
     /// note: a trailing `\|` is a pipe in the last cell rather than the delimiter, so the end is
     /// only stripped where the pipe is not escaped.
@@ -129,8 +130,8 @@ pub(super) fn is_delimiter(line: &str) -> bool {
 ///
 /// note: this is why tables are chunked out rather than left to the markdown renderer. That one
 /// lays a table out at whatever width its contents want and hands back rows of box characters,
-/// and a row wider than the window was then wrapped like a sentence - so half a border arrived on
-/// the next line and the table came apart. A table is a fixed shape; the thing that has to give
+/// and a row wider than the window would then be wrapped like a sentence - half a border on the
+/// next line, and the table come apart. A table is a fixed shape; the thing that has to give
 /// when it does not fit is the columns, and only this end knows what they have to fit into.
 ///
 /// note: the cells go through the markdown renderer first, so `\`Tool\`` is measured and drawn as

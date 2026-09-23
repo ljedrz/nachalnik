@@ -1,13 +1,12 @@
 //! What a tool that does several things declares: one table of operations, and the schema, the
 //! refusal and the vocabulary all made out of it.
 //!
-//! note: it was three declarations held together by a test. `OPS` was the `action` enum a model
-//! chooses from, `TAKES` was what each of those reads, and the schema was a flat bag of every
-//! argument any of them takes - with each description opening `for \`grep\`:` to say which rows it
-//! belonged to. The three could not drift, because a unit test in each file compared them. What no
-//! test could fix is that the *model* was only ever shown the flat one: `{"action": "read", "old":
-//! "x"}` is valid against it, gets as far as `invoke`, and is refused there. A round trip spent
-//! telling a model what the schema could have told it for nothing.
+//! note: one table rather than three declarations held together by a test - the `action` enum a
+//! model chooses from, what each of those reads, and a flat schema of every argument any of them
+//! takes. A test can keep three lists from drifting; what it cannot fix is that the *model* is
+//! shown only the flat one: `{"action": "read", "old": "x"}` is valid against it, gets as far as
+//! `invoke`, and is refused there - a round trip spent telling a model what the schema could have
+//! told it for nothing.
 //!
 //! note: so the table is the declaration and the schema is made from it. An operation is a branch
 //! of an `anyOf`, carrying its own arguments and its own `required`, which is what makes the call
@@ -25,10 +24,11 @@ use serde_json::{Map, Value, json};
 /// note: a wrapper because the root of a schema may not itself be an `anyOf` - OpenAI says so
 /// outright ("the root level object of a schema must be an object, and not use `anyOf`") and it is
 /// the one rule that decides the shape here. A union has to live under a property, so there is a
-/// property. Everything else about the call is unchanged: `action` names the operation, inside.
+/// property. Everything else about the call is as it would be without one: `action` names the
+/// operation, inside.
 ///
-/// note: read forgivingly. A model that passes the arguments flat, the way the old schema asked
-/// for them, is understood rather than refused - the call is unambiguous and refusing it costs a
+/// note: read forgivingly. A model that passes the arguments flat is understood rather than
+/// refused - the call is unambiguous and refusing it costs a
 /// turn. What is refused is arguments in both places at once, which is the only reading that could
 /// silently do something nobody asked for; see [`inner`].
 pub(crate) const WRAPPER: &str = "call";
@@ -87,7 +87,7 @@ impl Arg {
     /// An argument the operation reads but does not offer.
     ///
     /// note: for the one case that is neither. `context`'s four moves read `label` so that a call
-    /// giving one instead of `ids` can be answered with the spelling it meant - a live run reached
+    /// giving one instead of `ids` can be answered with the spelling it meant - a model may reach
     /// for it that way, and `Changes::moved` says `select: "label:<text>"` back. It is not a way to
     /// name the items to move, so advertising it would teach exactly the mistake the answer exists
     /// to correct; and leaving it out of the table altogether would have [`unread`] refuse the call
@@ -102,9 +102,9 @@ impl Arg {
 
     /// Says this operation refuses a call that leaves the argument out.
     ///
-    /// note: optional by default, because most of these are. What it buys over the old schema is
-    /// that the ones which are not can finally say so: `required` was `["action"]` on five of the
-    /// six tools, so `edit` with no `old` was a well-formed call right up until it ran.
+    /// note: optional by default, because most of these are. The ones that are not say so in
+    /// their branch's `required`, rather than `edit` with no `old` being a well-formed call right
+    /// up until it runs.
     pub(crate) fn needed(mut self) -> Self {
         self.required = true;
         self
@@ -122,11 +122,9 @@ impl Arg {
 /// One *shape* a call may take: the operations that share it, and what they read.
 ///
 /// note: several operations rather than one, because a branch per operation is only worth its
-/// scaffolding where the operations differ. `context`'s four moves take one argument list - which
-/// the `MOVES` constant they replace said outright, "one list because they are one function" - so
-/// they are one branch under an `action` of four words, and the arguments are written once. Those
-/// arguments are 525 bytes, so three more copies of them would cost 1,575 on every request to say
-/// a thing that was already true.
+/// scaffolding where the operations differ. `context`'s four moves take one argument list,
+/// because they are one function - so they are one branch under an `action` of four words, and
+/// the arguments are written once rather than paid for four times on every request.
 pub(crate) struct Op {
     actions: Vec<&'static str>,
     does: String,
@@ -155,10 +153,10 @@ impl Op {
 
 /// The `action` of every operation, in the order they were declared.
 ///
-/// note: what `OPS` was, derived rather than written down beside the table that repeats it. It is
-/// the `enum` a model chooses from, the operation half of `<domain>:<operation>`, and the row
-/// `/limit` is keyed on - three uses of one list, which is why having two of it was a standing
-/// invitation for one to be renamed.
+/// note: derived from the table rather than written down beside it. It is the `enum` a model
+/// chooses from, the operation half of `<domain>:<operation>`, and the row `/limit` is keyed on -
+/// three uses of one list, and a second copy of it would be a standing invitation for one to be
+/// renamed.
 pub(crate) fn actions(ops: &[Op]) -> Vec<&'static str> {
     ops.iter()
         .flat_map(|op| op.actions.iter().copied())
@@ -189,8 +187,8 @@ pub(crate) fn schema(ops: &[Op]) -> Value {
             let mut one = branch(only);
             // note: the branch's own words where it has any, and the wrapper's where it has not,
             // so that a tool with one shape is never silent about what `call` is. Writing ABOUT
-            // over the top unconditionally is what this used to do, and it threw away `setup`'s
-            // account of its four operations - the only description that lived on a lone branch
+            // over the top unconditionally would throw away the description a lone branch carries,
+            // such as `setup`'s account of its four operations
             if one["description"].is_null() {
                 one["description"] = json!(ABOUT);
             }
@@ -198,13 +196,12 @@ pub(crate) fn schema(ops: &[Op]) -> Value {
         }
         // note: `type` beside `anyOf`, though every branch already says `object` and a reader
         // that resolves the union learns it there. It is the property's own declaration that
-        // decides what a model writes into it, and without one `xiaomi/mimo-v2.6-flash` wrote the
-        // arguments as a *string* of JSON - `{"call": "{\"action\": ...}"}` - on every call to
-        // `fs` and `context`, and on none at all to `shell`, `log` or `setup`, whose single
-        // branch is the wrapper and carries a `type` of its own. Asked the same question five
-        // times each way, the untyped shape stringified five times out of five and the typed one
-        // none. The two assertions cannot disagree - a branch is an object either way - so this
-        // costs a keyword and settles a question the model should not have had to guess at
+        // decides what a model writes into it: without one, `xiaomi/mimo-v2.6-flash` writes the
+        // arguments as a *string* of JSON - `{"call": "{\"action\": ...}"}` - on every call to a
+        // tool with several branches, and on none to a tool whose single branch is the wrapper
+        // and carries a `type` of its own. The two assertions cannot disagree - a branch is an
+        // object either way - so this costs a keyword and settles a question the model should not
+        // have had to guess at
         several => json!({
             "type": "object",
             "description": ABOUT,
@@ -255,11 +252,10 @@ fn branch(op: &Op) -> Value {
 /// The key a provider puts a call's arguments under when they would not parse as JSON.
 ///
 /// note: `nachalnik-providers` plants it so that "a model that produces invalid JSON gets to see
-/// that it did", and until now nothing read it: the tool went looking for `action`, did not find
-/// one, and answered `the \`action\` argument is required` - about a call whose text held an
-/// `action` and a brace that was never closed. Watched live, on a call whose arguments came back
-/// with an XML tag inside the JSON. The model is sent to fix the wrong thing, and the one fact it
-/// needs is the one thing the provider already knew and nobody passed on.
+/// that it did". Unread, the tool goes looking for `action`, does not find one, and answers
+/// `the \`action\` argument is required` - about a call whose text holds an `action` and a brace
+/// that was never closed. The model is sent to fix the wrong thing, when the one fact it needs is
+/// one the provider already knew.
 const UNPARSED: &str = "_unparsed";
 
 /// How much of a payload to quote back: enough to see the fault in its sentence, and not so much
@@ -268,16 +264,16 @@ const SHOWN: usize = 200;
 
 /// What is wrong with arguments that never parsed, and the part of them to look at.
 ///
-/// note: the parse is done again here because the answer was thrown away. `nachalnik-providers`
-/// tries it, keeps the text under [`UNPARSED`] when it fails, and drops the error - so the one
-/// thing that knew *what* was wrong knew it in another crate. Reading it again costs a parse of a
-/// string that is already known not to parse, which is the cheapest thing in the exchange.
+/// note: the parse is done again here because the provider throws the answer away.
+/// `nachalnik-providers` tries it, keeps the text under [`UNPARSED`] when it fails, and drops the
+/// error - so the one thing that knows *what* was wrong knows it in another crate. Reading it
+/// again costs a parse of a string that is already known not to parse, which is the cheapest
+/// thing in the exchange.
 ///
-/// note: and the window is around the fault rather than the first [`SHOWN`] characters, which is
-/// the half that was actually costing something. Of twelve of these in one session, four had the
-/// fault past the cut - so the message quoting the payload quoted the part that was fine and left
-/// out the part that was not, which is the failure `_unparsed` exists to end, one level further
-/// out.
+/// note: and the window is around the fault rather than the first [`SHOWN`] characters. A fault
+/// past the cut is common, and a message quoting the start of the payload then quotes the part
+/// that is fine and leaves out the part that is not - the failure `_unparsed` exists to end, one
+/// level further out.
 ///
 /// note: what it does not do is repair. `inclusionai/ling-3.0-flash-vl` ends every call but the
 /// last of a multi-call turn one `}` short - reproducibly, streamed and whole alike, so it is the
@@ -343,22 +339,21 @@ fn around(written: &str, at: usize, width: usize) -> String {
 
 /// The object a call's arguments are really in, or what is wrong with where they are.
 ///
-/// note: five readings, and two of them are refused. Arguments under [`WRAPPER`] is what the
-/// schema asks for. Arguments flat is what the schema used to ask for, and it is unambiguous, so
-/// it is taken - a model that has learnt the old shape loses nothing. Arguments in both places is
-/// the one that cannot be read charitably: picking either would drop the other half, and a call
-/// that ignored an argument answers as though it had never been given one, which is the failure
-/// [`unread`] exists for one step further in. And arguments that never parsed are not arguments;
-/// see [`UNPARSED`].
+/// note: arguments under [`WRAPPER`] are what the schema asks for. Arguments flat are
+/// unambiguous, so they are taken - a model that has learnt a flat shape loses nothing. Arguments
+/// in both places are the one reading that cannot be charitable: picking either would drop the
+/// other half, and a call that ignored an argument answers as though it had never been given one,
+/// which is the failure [`unread`] exists for one step further in. And arguments that never parsed
+/// are not arguments; see [`UNPARSED`].
 ///
-/// note: the fifth is a [`WRAPPER`] holding a *string* of JSON rather than an object, which some
-/// models produce for every call they make - the whole session's worth, not the occasional one.
-/// What invited it is in [`schema`], where the property said `anyOf` and not what type it was, and
-/// that is the fix; this is the backstop for a model that does it anyway, since nothing here can
-/// make a schema binding. One that parses to an object is as unambiguous as the flat shape and is
-/// taken for the same reason. One that does not is refused here, saying so, rather than falling
-/// through to `the \`action\` argument is required` - which is the [`UNPARSED`] failure again: a
-/// model sent to fix an argument it did write.
+/// note: a [`WRAPPER`] holding a *string* of JSON rather than an object is what some models
+/// produce for every call they make - the whole session's worth, not the occasional one. What
+/// invites it is a property that says `anyOf` and not what type it is, which [`schema`] fixes;
+/// this is the backstop for a model that does it anyway, since nothing here can make a schema
+/// binding. One that parses to an object is as unambiguous as the flat shape and is taken for the
+/// same reason. One that does not is refused here, saying so, rather than falling through to
+/// `the \`action\` argument is required` - which is the [`UNPARSED`] failure again: a model sent
+/// to fix an argument it did write.
 pub(crate) fn inner(args: &Value) -> Result<Cow<'_, Value>, String> {
     if let Some(written) = args.get(UNPARSED).and_then(Value::as_str) {
         return Err(unreadable(written));
@@ -413,11 +408,11 @@ pub(crate) fn action_of(call: &ToolCall, ops: &[Op]) -> Option<String> {
 ///
 /// note: [`action_of`] answering `None` is not a quiet fallback - it widens what the call declares
 /// to every capability the tool has, which is the strictest reading of a call nobody can place and
-/// the right one. What was missing is anybody saying so. A session started with `--allow fs:read`
+/// the right one. What this adds is somebody saying so. A session started with `--allow fs:read`
 /// is then asked about `fs:write` as well, the rule it was given matches nothing, and in a run
 /// with nobody at the prompt the refusal reads `this call was refused when it was asked about` -
 /// which sends a model looking for a different *approach* when what is wrong is the shape of the
-/// call it just made. Watched live, for twenty calls.
+/// call it just made.
 ///
 /// note: only for a tool whose schema puts its arguments under [`WRAPPER`], because that is the
 /// convention the sentence is about. Read off the tool's own schema rather than off a list of
@@ -471,8 +466,7 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
 /// narrowed arrives as the whole file looking like the thing that was asked for.
 ///
 /// note: kept, though the schema now says the same thing. The schema is not sent `strict`, so it
-/// is advice; this is the part that holds. What changed is that the two cannot disagree any more -
-/// they are one table - which is what the per-file unit tests were doing by hand.
+/// is advice; this is the part that holds. The two cannot disagree, because they are one table.
 pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
     let mine = ops.iter().find(|it| it.actions.contains(&op))?;
     let given = args.as_object()?;
@@ -483,7 +477,7 @@ pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
 
     // note: named only when one operation has it, because the sentence is a *pointer* and there is
     // nowhere to point otherwise. `old` is `edit`'s and saying so is the whole answer; `ids` is
-    // seven of `context`'s twelve, and "that one is `look`'s" - the first row that has it - is
+    // several of `context`'s, and "that one is `look`'s" - the first row that has it - is
     // a fact about this table's order being read as a fact about the argument. A model that has
     // just been told its call was wrong is in no position to discount what it is told next
     let others: Vec<&str> = ops
@@ -520,9 +514,8 @@ pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
 /// The operations a built schema offers, in the order it offers them.
 ///
 /// note: for the test every one of these tools keeps - that the vocabulary the schema is written
-/// in and the vocabulary the permissions are written in are one list. They come off the same table
-/// now, so this is a regression guard rather than the load-bearing check it replaced: what each
-/// tool used to assert was that two hand-written lists agreed, and there are no longer two.
+/// in and the vocabulary the permissions are written in are one list. Both come off the same
+/// table, so this guards against that ceasing to be true.
 #[cfg(test)]
 pub(crate) fn offered(schema: &Value) -> Vec<&str> {
     let inside = &schema["properties"][WRAPPER];
@@ -572,9 +565,9 @@ mod tests {
 
     /// Every branch is its own operation, and carries its own arguments and nobody else's.
     ///
-    /// note: this is the whole of what the change bought, so it is the thing to pin. Under the old
-    /// schema `read` and `grep` shared one property bag, and the only thing saying `ignore_case`
-    /// was not `read`'s was the word "for `grep`:" at the front of its description.
+    /// note: a flat schema would have `read` and `grep` share one property bag, with only a
+    /// description saying `ignore_case` is not `read`'s. The branch says it, so this pins the
+    /// branch.
     #[test]
     fn an_operation_declares_its_own_arguments() {
         let schema = schema(&ops());
@@ -676,7 +669,7 @@ mod tests {
 
     /// The wrapper says it is an object, whether it holds one shape or several.
     ///
-    /// note: the one that was missing is the `anyOf` case, and what it cost was a model writing
+    /// note: the case that matters is the `anyOf` one: without a `type` there, a model can write
     /// the whole call as a string into a property that never said what it was. Both arms are
     /// asserted because the single-branch arm gets its `type` from `branch` by accident of
     /// construction rather than on purpose, and an accident is a thing to pin.
@@ -792,10 +785,9 @@ mod tests {
     /// A wrapper holding a string of JSON is read, and one holding anything else is refused as
     /// that rather than as an argument nobody gave.
     ///
-    /// note: the text is what a live session actually arrived as, every call of it - some models
-    /// write a nested object as a string and do it consistently. Unread, `action` is not found,
-    /// the call declares every operation the tool has, and a session granted `fs:read` cannot read
-    /// a file.
+    /// note: some models write a nested object as a string, and do it on every call. Unread,
+    /// `action` is not found, the call declares every operation the tool has, and a session
+    /// granted `fs:read` cannot read a file.
     #[test]
     fn a_wrapper_written_as_text_is_still_a_call() {
         let written = json!({ WRAPPER: "{\"action\": \"read\", \"path\": \"x\"}" });
@@ -810,10 +802,10 @@ mod tests {
 
     /// Arguments that never parsed are answered as that, not as an argument nobody gave.
     ///
-    /// note: the text is what a live call actually arrived as - a model closed a JSON string with
-    /// an XML tag. The provider hands it over under `_unparsed` precisely so it can be reported,
-    /// and the report was `the \`action\` argument is required`, about a call whose text says
-    /// `"action": "note"` in the first twenty characters.
+    /// note: the text is a JSON string closed with an XML tag, the way a model can end one. The
+    /// provider hands it over under `_unparsed` precisely so it can be reported, and read as
+    /// missing arguments the report would be `the \`action\` argument is required`, about a call
+    /// whose text says `"action": "note"` near its start.
     #[test]
     fn arguments_that_never_parsed_are_not_a_missing_argument() {
         let broken = json!({
@@ -831,11 +823,10 @@ mod tests {
 
     /// A payload that never parsed says what is wrong with it and shows that part.
     ///
-    /// note: both texts are what live calls actually arrived as, from one session of
-    /// `inclusionai/ling-3.0-flash-vl`. The first is the shape that model produces for every call
-    /// but the last of a multi-call turn: complete, and one `}` short. The second is the other
-    /// fault in the same session, an unescaped `"` inside the command - and it is past the two
-    /// hundredth character, which is the whole reason the window moved.
+    /// note: both texts are shapes `inclusionai/ling-3.0-flash-vl` produces. The first is what
+    /// that model sends for every call but the last of a multi-call turn: complete, and one `}`
+    /// short. The second is an unescaped `"` inside the command, past the two hundredth
+    /// character, which is why the window follows the fault.
     #[test]
     fn a_payload_that_never_parsed_says_where_it_stops() {
         let short = "{\"call\": {\"action\": \"run\", \"cmd\": \"curl -sL \

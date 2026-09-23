@@ -59,7 +59,7 @@ mod tests {
     #[test]
     fn it_is_the_sequence_a_terminal_reads() {
         // the shape, and that the payload is the encoding rather than the text: a newline inside
-        // an escape sequence would end it, which is the whole reason this is base64 at all
+        // an escape sequence would end it, which is why this is base64 at all
         assert_eq!(sequence("hi"), "\x1b]52;c;aGk=\x07");
         assert_eq!(sequence("two\nlines"), "\x1b]52;c;dHdvCmxpbmVz\x07");
         assert!(!sequence("two\nlines").contains('\n'));

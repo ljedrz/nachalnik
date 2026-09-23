@@ -1,18 +1,18 @@
 //! `fs`: one tool for the filesystem, and the five things it does to one.
 //!
 //! note: one tool per *object* rather than per verb. Reading a file, listing files, searching
-//! them, writing one and changing part of one are five operations on one thing, and a model choosing
-//! between five tools has to know which of them is the filesystem before it can choose at all.
-//! The permission subjects come out of the same decision - `fs:read` and `fs:write` are what this
-//! declares, so a rule is about the filesystem and an operation on it rather than about whichever
-//! happened to serve it.
+//! them, writing one and changing part of one are five operations on one thing, and a model
+//! choosing between five tools has to know which of them is the filesystem before it can choose
+//! at all.
+//! The permission subjects come out of the same decision - `fs:read`, `fs:write` and the rest are
+//! what this declares, so a rule is about the filesystem and an operation on it rather than about
+//! whichever happened to serve it.
 //!
 //! note: it dispatches to the five implementations rather than reimplementing them. Each of them
 //! already knows how to ask [`Reach`](crate::sandbox::Reach) for a path, how to walk a directory
-//! and what to say when it will not fit; a merge that rewrote any of that would be a merge that
-//! could change behaviour without meaning to. What is new here is the schema, the dispatch and
-//! the two things only this level can answer: which subject a call needs, and how much of its
-//! answer the model is shown.
+//! and what to say when it will not fit, and rewriting any of that here could change behaviour
+//! without meaning to. What lives here is the schema, the dispatch and the two things only this
+//! level can answer: which subject a call needs, and how much of its answer the model is shown.
 
 use std::sync::Arc;
 
@@ -33,16 +33,14 @@ use crate::{
 
 /// The five things this tool does, what each is for, and what each reads.
 ///
-/// note: one table where there were three - the `action` enum, the `TAKES` list [`unread`] holds a
-/// call to, and a flat schema listing every argument any operation takes. Four things have to
-/// agree about this vocabulary: the enum a model chooses from, the subject each call declares, the
-/// row `/limit` keys on, and what the model is actually allowed to pass. Three of them were
-/// derived from a list and the fourth was written out by hand beside it.
+/// note: one table rather than three - the `action` enum, the list [`unread`] holds a call to,
+/// and a flat schema listing every argument any operation takes. Four things have to agree about
+/// this vocabulary: the enum a model chooses from, the subject each call declares, the row
+/// `/limit` keys on, and what the model is actually allowed to pass. All four come off this.
 ///
-/// note: what the arguments no longer have to say is which operation they belong to. `for
-/// \`grep\`:` opened eight of the nine descriptions here, because a flat bag is the only place a
-/// reader could be told - and it was advice, not a rule. Inside a branch there is nobody else to
-/// be confused with, so each one says what it is and stops.
+/// note: an argument's description does not say which operation it belongs to. In a flat schema
+/// that could only be advice, not a rule; inside a branch there is nobody else to be confused
+/// with, so each one says what it is and stops.
 fn ops() -> Vec<Op> {
     vec![
         Op::new(
@@ -130,9 +128,8 @@ pub(super) struct Fs {
     edit: Edit,
     limits: Limits,
     ops: Vec<Op>,
-    /// note: built once rather than per `spec`, which is called afresh for every request. It was
-    /// one `json!` before and cost the same; a branch per operation is enough more work to be
-    /// worth not doing sixty times a session.
+    /// note: built once rather than per `spec`, which is called afresh for every request, and a
+    /// branch per operation is enough work to be worth not repeating on every one.
     schema: Arc<Value>,
 }
 
@@ -234,11 +231,10 @@ mod tests {
 
     /// The schema and the permission subjects are one vocabulary.
     ///
-    /// note: what the two-list check became. It used to assert that `OPS`, `TAKES` and a flat
-    /// schema agreed about every argument, which they had to be made to do by hand; they are one
-    /// `Vec<Op>` now, and the branch an argument appears in *is* the operation that reads it. What
-    /// can still drift is this: a subject with no branch to reach it by, or a branch the policy
-    /// was never told about, which is a call that cannot be refused by name.
+    /// note: the operations and their arguments are one `Vec<Op>`, and the branch an argument
+    /// appears in *is* the operation that reads it. What can still drift is this: a subject with
+    /// no branch to reach it by, or a branch the policy was never told about, which is a call
+    /// that cannot be refused by name.
     #[test]
     fn the_schema_and_the_subjects_are_one_vocabulary() {
         let reach = || {
@@ -275,10 +271,9 @@ mod tests {
 
     /// An argument belongs to the operations that read it, and to no others.
     ///
-    /// note: the half of the old check that was about the model rather than about the code. `old`
-    /// was a well-formed argument to `fs: read` under the flat schema and the only thing saying
-    /// otherwise was the phrase "for `edit`:" at the front of its description. Now the branch says
-    /// it, so this asserts on the branch.
+    /// note: this is about what the model is offered rather than about the code. Under a flat
+    /// schema `old` would be a well-formed argument to `fs: read`, with only its description
+    /// saying otherwise; the branch says it, so this asserts on the branch.
     #[test]
     fn an_argument_is_offered_by_the_operations_that_read_it() {
         let wanted = [

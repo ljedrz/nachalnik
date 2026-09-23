@@ -1,5 +1,5 @@
-//! The three `fs` operations that touch one file, and the argument description every tool with a path
-//! shares.
+//! The three `fs` operations that touch one file, and the argument description every tool with a
+//! path shares.
 //!
 //! note: they run in this process with no shell in front of them, so what keeps them inside the
 //! working directory is their own code asking [`Reach`] rather than a kernel refusing an `open`.
@@ -29,11 +29,11 @@ use crate::tools::{KEPT, arg};
 /// working directory. `Reach::allows` says it again at the point of failure, which is the half
 /// that actually lands - a description is what makes the refusal legible when it arrives.
 ///
-/// note: and the literal-`~` spelling is here rather than in that refusal, which is where it used
-/// to be. A refusal is read under pressure to try something else, so every concrete path in one is
-/// read as a path to try: two models answered a refusal about `~/notes.txt` by reading `./~`, a
-/// file neither of them wanted and neither of them had. A schema is read while choosing, which is
-/// when a rare spelling is worth knowing and nobody is about to act on it.
+/// note: and the literal-`~` spelling is here rather than in that refusal. A refusal is read
+/// under pressure to try something else, so every concrete path in one is read as a path to try:
+/// offered `./~` beside a refusal about `~/notes.txt`, a model reads `./~`, a file it neither
+/// wanted nor had. A schema is read while choosing, which is when a rare spelling is worth knowing
+/// and nobody is about to act on it.
 pub(super) const PATH_ARG: &str = "absolute, or relative to the working directory. `~` is not \
                         expanded - there is no shell here - and a path starting with one is \
                         refused; a file whose name really is `~` is `./~`";
@@ -141,13 +141,13 @@ impl Edit {
             Ok(before) => before,
             Err(e) => return Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         };
-        // note: the argument asks for enough of the surrounding lines to name one place, and
-        // nothing checked that it did. `find` takes the first of however many there are, so an
-        // `old` occurring twice edited one of them and answered `replaced one occurrence`, which
-        // is true of the file and reads as the edit being done. What it costs is the half nobody
-        // goes back for: a model that has been told its change landed does not read the file
-        // again. An empty `old` is the same failure at the other end - it names position zero and
-        // puts `new` at the front of the file.
+        // note: the argument asks for enough of the surrounding lines to name one place, and this
+        // checks that it does. `find` takes the first of however many there are, so unchecked, an
+        // `old` occurring twice would edit one of them and answer `replaced one occurrence`,
+        // which is true of the file and reads as the edit being done. What it costs is the half
+        // nobody goes back for: a model that has been told its change landed does not read the
+        // file again. An empty `old` is the same failure at the other end - it names position
+        // zero and would put `new` at the front of the file.
         if old.is_empty() {
             return Ok(ToolOutput::error(format!(
                 "`old` is empty, so it names no text in {}; give the text to replace, or use \
@@ -156,7 +156,7 @@ impl Edit {
             )));
         }
         // note: overlapping, which `matches` does not count - `\n\n` is in `a\n\n\nb` twice, and
-        // counted as once the edit went ahead on the first and said it had replaced the one
+        // counted as once, the edit would go ahead on the first and say it had replaced the one
         let occurrences = {
             let (mut count, mut from) = (0, 0);
             while let Some(found) = before[from..].find(old) {

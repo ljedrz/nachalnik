@@ -29,7 +29,7 @@ const HEARTBEAT: Duration = Duration::from_millis(120);
 /// note: here rather than where it is drawn, because the line is written here - see the `status`
 /// match in [`Shell::invoke`], which is the only thing that produces one. A colour worked out at
 /// the other end from a string it does not own is a second opinion about what a result means,
-/// and the two drift the first time the wording changes. This is one opinion with two readers.
+/// and the two drift the first time the wording changes.
 ///
 /// note: three, and not one per shape, because the question a colour answers is coarse: did the
 /// command say it worked, did it say it failed, or did it never get to say. The fourth thing
@@ -76,23 +76,20 @@ impl Exit {
 /// Where a command line's own top-level joints are - `|`, `||`, `&&`, `;` - as byte ranges into
 /// it; empty when there are none, or when the scan could not be trusted.
 ///
-/// note: here rather than beside the panel that colours them, which is where this was written and
-/// where its only caller was. Where one stage of a command ends and the next begins is a fact
-/// about the command rather than about drawing it, and `ui` is behind feature `tui` - so anything
-/// wanting it without a screen could not ask, which is every headless session and everything in
-/// `tools` that reads a command before it runs.
+/// note: here rather than beside the panel that colours them. Where one stage of a command ends
+/// and the next begins is a fact about the command rather than about drawing it, and `ui` is
+/// behind feature `tui` - so anything wanting it without a screen could not ask, which is every
+/// headless session and everything in `tools` that reads a command before it runs.
 ///
-/// note: ranges rather than a rewritten command. This started out breaking the line at each of
-/// them, one stage to a row, which read well and cost a row per stage on a panel whose rows are
-/// its scarcest thing - and a broken command is not something `sh` would take back, so the panel
-/// was showing a spelling nobody could act on. Colouring the joints in place says the same thing:
-/// where one stage ends and the next begins, at a glance, in a command still written the way the
-/// model wrote it.
+/// note: ranges rather than a rewritten command. Breaking the line at each joint, one stage to a
+/// row, costs a row per stage on a panel whose rows are its scarcest thing - and a broken command
+/// is not something `sh` would take back, so the panel would show a spelling nobody could act on.
+/// Colouring the joints in place says the same thing: where one stage ends and the next begins,
+/// at a glance, in a command still written the way the model wrote it.
 ///
-/// note: worked out here rather than taken from the highlighter, which is the obvious free option
-/// and is wrong twice over. `synoptic`'s `sh` mode calls every flag's hyphen an operator - `-n`,
-/// `-u`, `-5` - and does not tokenise `|` or `;` at all, so painting its operators would colour
-/// the noise and miss the joints. These are the joints.
+/// note: worked out here rather than taken from the highlighter. `synoptic`'s `sh` mode calls
+/// every flag's hyphen an operator - `-n`, `-u`, `-5` - and does not tokenise `|` or `;` at all,
+/// so painting its operators would colour the noise and miss the joints.
 ///
 /// note: quote-aware, and it gives up rather than guessing.
 /// [`reaches_the_network`](crate::tools::reaches_the_network) splits a command on these same
@@ -208,13 +205,13 @@ pub fn joints(cmd: &str) -> Vec<(usize, usize)> {
     }
 }
 
-/// Runs a command, reporting its output as it arrives and stopping when asked to.
+/// Runs a command, reporting its output as it arrives and stopping when asked to, under whatever
+/// confinement the policy's stances add up to.
 ///
-/// note: This is the tool that shows what an [`OutputSink`] is for. Every line goes to the sink
+/// note: this is the tool that shows what an [`OutputSink`] is for. Every line goes to the sink
 /// the moment it is read, so a command that takes a minute is visible for that minute rather
 /// than appearing all at once at the end; and between lines it asks whether somebody has pressed
 /// escape, in which case the child is killed and the call still answers - with what it got.
-/// Runs a command, under whatever confinement the policy's stances add up to.
 ///
 /// note: it holds the policy rather than being handed a verdict, because the kernel's answer is
 /// only whether the call may run at all. What it may *reach* is a second question, and the policy
@@ -296,7 +293,7 @@ impl Tool for Shell {
         // note: the working directory being read-only is said here rather than at the point of
         // failure, where the rest of the confinement is accounted for. `Sandbox::note_for` says
         // nothing about a refusal naming a path this session reaches, on the grounds that such a
-        // refusal is the file's own permissions - which is right until `fs:write` is refused, and
+        // refusal is the file's own permissions. That is right until `fs:write` is refused, and
         // then every write inside the working directory is the boundary and reads the same way.
         // Standard error does not say whether a refusal was a read or a write, so the sentence
         // that can be certain is this one, before anything is run
@@ -454,9 +451,9 @@ impl Tool for Shell {
         });
 
         // note: bytes rather than `lines()`, which refuses a line that is not UTF-8 - and stopping
-        // there left the pipe full and nobody reading it, so `cat` of a picture blocked writing and
-        // the call waited for it for ever. A command's output is whatever it wrote; what is not
-        // text is shown the way `from_utf8_lossy` shows it
+        // there would leave the pipe full and nobody reading it, so `cat` of a picture would block
+        // writing and the call would wait for it for ever. A command's output is whatever it
+        // wrote; what is not text is shown the way `from_utf8_lossy` shows it
         let mut stdout = BufReader::new(stdout);
         let mut line = Vec::new();
         let mut collected = String::new();
@@ -546,15 +543,15 @@ impl Tool for Shell {
         if held && !interrupted {
             errors.push_str("\n[standard error is still open: something this command started is still running]\n");
         }
-        // note: not `ExitStatus`'s own `Display`, which renders `exit status: 0` and made the
-        // first line of every result read `exit: exit status: 0`. What a reader wants from this
-        // line is the number, and whether it means the command worked
+        // note: not `ExitStatus`'s own `Display`, which renders `exit status: 0` and would make
+        // the first line of every result read `exit: exit status: 0`. What a reader wants from
+        // this line is the number, and whether it means the command worked
         //
-        // note: and whether it was stopped, which used to be a bracketed line after the standard
-        // error instead. An output limit cuts from the end, so a stopped command that had said
-        // more than the limit lost the one line explaining why its output stops mid-sentence -
-        // the truncation marker took its place, and the model was told the wrong thing about
-        // what it was reading. The first line survives anything
+        // note: and whether it was stopped, which is said here rather than in a line after the
+        // standard error. An output limit cuts from the end, so a stopped command that had said
+        // more than the limit would lose the one line explaining why its output stops
+        // mid-sentence - the truncation marker takes its place, and the model is told the wrong
+        // thing about what it is reading. The first line survives anything
         let waited = match waited {
             Some(waited) => waited,
             None => child.wait().await,
@@ -692,9 +689,9 @@ mod tests {
 
     /// Output that is not text is shown rather than stopped at, and what follows it arrives.
     ///
-    /// note: more than a pipe holds follows the byte that is not UTF-8, because that is what made
-    /// this a hang rather than a loss: the reading stopped at the first such line, and the command
-    /// behind it blocked writing into a full pipe that nobody was reading.
+    /// note: more than a pipe holds follows the byte that is not UTF-8, because that is what makes
+    /// this a hang rather than a loss: a reader that stops at the first such line leaves the
+    /// command behind it blocked writing into a full pipe that nobody is reading.
     #[cfg(unix)]
     #[tokio::test]
     async fn output_that_is_not_text_is_read_to_the_end() {
@@ -753,8 +750,8 @@ mod tests {
     /// A command that finishes and leaves something running still answers.
     ///
     /// note: the background job inherits standard error, so the pipe stays open for as long as it
-    /// runs. The call waited for the end of it, and a server started with `&` was a call that
-    /// never answered and an `esc` that did nothing.
+    /// runs. A call that waits for the end of it never answers for a server started with `&`, and
+    /// an `esc` does nothing.
     #[cfg(unix)]
     #[tokio::test]
     async fn a_command_that_leaves_something_running_still_answers() {
@@ -777,7 +774,7 @@ mod tests {
     ///
     /// note: and unix-only, because that status does not exist elsewhere. The `sh` on a Windows
     /// runner is git's, and it reports a signalled child to a native parent as an ordinary exit
-    /// code - `kill -9 $$` came back `2304`, which is `9 << 8` - so `ExitStatus::code` is `Some`
+    /// code - `kill -9 $$` comes back `2304`, which is `9 << 8` - so `ExitStatus::code` is `Some`
     /// there and the tool reads a failure. It is not wrong to: telling a signal wearing an exit
     /// code from a command that really exited `2304` means knowing what the command was, which is
     /// the reason `grep`'s `1` is not a fourth `Exit` either. So this case asserts something true

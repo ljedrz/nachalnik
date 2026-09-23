@@ -1,9 +1,9 @@
 //! What the keys do.
 //!
 //! note: one handler per tab rather than one `match` over every key, because the same key means
-//! different things on different tabs and a single table of them was the file's worst argument
-//! with itself. [`super::App::on_key`] is the dispatcher, and it is next door with the rest of
-//! the public surface.
+//! different things on different tabs and a single table of them would argue with itself.
+//! [`super::App::on_key`] is the dispatcher, and it is next door with the rest of the public
+//! surface.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use nachalnik::{ContextItem, ContextState, Grant, Verdict};
@@ -67,9 +67,9 @@ impl App {
                 self.input.insert_newline();
             }
             // an empty prompt has nothing to move a cursor around in and nothing to lose, so
-            // `up` there is the one that puts the last line back. Anywhere else it is still the
-            // key that moves the cursor and scrolls at the top, which is what stops this from
-            // taking a gesture away: nothing that used to do something does something else now
+            // `up` there puts the last line back rather than scrolling the conversation by one.
+            // Anywhere else it is still the key that moves the cursor and scrolls at the top, and
+            // `pgup` scrolls from an empty prompt as it does from any other
             KeyCode::Up if self.input.lines().iter().all(|line| line.is_empty()) => self.put_back(),
             // and `down` undoes it, while the prompt still holds exactly what `up` put there.
             // Typed over, it is a message somebody is writing and not a recall any more, so the
@@ -142,21 +142,22 @@ impl App {
     /// note: [`Kernel::replace`](nachalnik::Kernel::replace) rather than
     /// [`Kernel::supersede`](nachalnik::Kernel::supersede), so the item keeps its identifier, its
     /// kind, its state and its place in the conversation, and what it said before becomes a
-    /// version page like every other rewrite. It used to supersede, which left a second row
-    /// marked `~` saying what the `v1` page already says - and cost three things to keep upright.
-    /// A state to carry over by hand, because a new item starts Active: an edit to a pruned one
-    /// quietly came back into the request, and an archived one promoted the whole of an oversized
-    /// output into it. A kind to rebuild whole, because an assistant turn carries its tool calls
-    /// inside it and rebuilding it without them orphans their results. And a `replaces` hint, so
-    /// the conversation could read the new words back into the old place. Replacing has none of
-    /// those: there is nothing to carry over, because nothing moved.
+    /// version page like every other rewrite. Superseding would leave a second row marked `~`
+    /// saying what the `v1` page already says, and would need three things kept upright. A state
+    /// carried over by hand, because a new item starts Active: an edit to a pruned one would
+    /// quietly come back into the request, and an archived one would promote the whole of an
+    /// oversized output into it. A kind rebuilt whole, because an assistant turn carries its tool
+    /// calls inside it and rebuilding it without them orphans their results. And a `replaces`
+    /// hint, so the conversation could read the new words back into the old place. Replacing needs
+    /// none of those: there is nothing to carry over, because nothing moved.
     ///
-    /// note: [`Kernel::supersede`](nachalnik::Kernel::supersede) is not the loser here. It is the
-    /// right shape for a caller whose next round replaces the last while the earlier ones stay
-    /// readable - `examples/panel.rs` in the runtime is exactly that - which is why
+    /// note: [`Kernel::supersede`](nachalnik::Kernel::supersede) is the right shape for a caller
+    /// whose next round replaces the last while the earlier ones stay readable -
+    /// `examples/panel.rs` in the runtime is exactly that - which is why
     /// [`super::App::in_order`] still places an item that carries the hint, and why a session
-    /// saved before this changed still draws in the order the request has. It is not the shape of
-    /// a person fixing a sentence.
+    /// saved by an older build that superseded still draws in the order the request has. It is not
+    /// the shape of a person fixing a sentence.
+    ///
     /// note: the whole of the act is [`App::revise`], which a client over [`crate::remote`] also
     /// commits through. What is left here is the half that belongs to the keys: taking the item
     /// out of `editing`, giving the focus back, and saying what happened on the chat - because a
@@ -183,8 +184,7 @@ impl App {
             // there is nothing to pick, and the keys that are not about a row still have to work.
             // `f` puts the rows back; `u` and `U` are the way back from whatever emptied the pane,
             // which with `f` on is one keystroke away - hide the last row being sent and the row
-            // goes, taking the key that would undo it. The way out was to press `f` first, which
-            // nothing says anywhere
+            // goes, and without these arms the key that would undo it goes with it
             match key.code {
                 KeyCode::Char('f') => self.sending_only = false,
                 KeyCode::Char('u') => {
@@ -254,17 +254,17 @@ impl App {
             //
             // note: what it reads, and only that. An item whose substance the prompt cannot hold
             // is refused here rather than opened - a tool call is on the item's kind and not in
-            // its content, so a turn that is nothing but calls used to open an empty box titled
-            // `editing [3]` over a row visibly holding one, and committing anything into it wrote
-            // a sentence beside a call it had not touched. `beyond_a_prompt` is the whole of the
-            // question; `enter` is still the way to read every face of an item this cannot rewrite
+            // its content, so a turn that is nothing but calls would open an empty box over a row
+            // visibly holding one, and committing anything into it would write a sentence beside a
+            // call it had not touched. `beyond_a_prompt` decides; `enter` is still the way to read
+            // every face of an item this cannot rewrite
             KeyCode::Char('e') => match beyond_a_prompt(&picked) {
                 // note: a panel over this tab rather than a line on the chat. Every other note
                 // the pane raises goes to the conversation, which is right for something worth
                 // finding later and wrong for the answer to a key just pressed: the tab it
-                // appears on is not the tab somebody is looking at, so an `e` that refused read
-                // as an `e` that did nothing at all. This one is about the row under it and is
-                // gone on the next key
+                // appears on is not the tab somebody is looking at, so an `e` that refused would
+                // read as an `e` that did nothing at all. This one is about the row under it and
+                // is gone on the next key
                 Some(why) => self.preview(
                     format!("[{}] cannot be edited", picked.id),
                     format!(
@@ -474,8 +474,8 @@ impl App {
     ///
     /// note: `left` and `right` *are* taken, because neither pane uses them - the one place they
     /// mean something on the context tab is an open item, and an overlay takes the keys above
-    /// this. So a query could only be amended by rubbing out everything back to the mistake, which
-    /// is a poor trade for two keys that were doing nothing.
+    /// this. Without them a query could only be amended by rubbing out everything back to the
+    /// mistake.
     pub(super) fn search_key(&mut self, key: KeyEvent) -> bool {
         let Some(search) = &mut self.search else {
             return false;
@@ -503,9 +503,9 @@ impl App {
                 true
             }
             // a modifier means it is somebody reaching past the box for one of the keys that work
-            // everywhere, not a character - `alt` as well as `ctrl`, which this said and did not
-            // do: with a search open, `alt+2` typed a `2` into the query instead of going to the
-            // context tab, and `/help` promises those four everywhere
+            // everywhere, not a character - `alt` as well as `ctrl`, because `/help` promises
+            // `alt+1` to `alt+4` everywhere, and without it `alt+2` would type a `2` into the
+            // query instead of going to the context tab
             KeyCode::Char(c)
                 if !key
                     .modifiers
@@ -565,9 +565,8 @@ impl App {
                     *page = (*page + step) % pages.len();
                     *scroll = 0;
                 }
-                // note: it used to go back to a permission overlay rather than close, because a
-                // question was an overlay too and `[i]` had covered it over. A question is pinned
-                // above the prompt now and was never covered, so there is nothing to go back to
+                // note: every other key closes it. A question is pinned in the prompt's place
+                // rather than being an overlay, so there is nothing underneath to go back to
                 _ => self.overlay = None,
             },
         }
@@ -578,9 +577,10 @@ impl App {
     /// note: this is the guard, and it is a guard rather than a consequence of the layout. The
     /// question has the prompt's place, so there is nothing to type into and nothing for `enter`
     /// to send - and both of those matter. The answers are bare letters, and a question that took
-    /// the keys on arrival read the `a` of "what" as `always, for shell` and kept it for the rest
-    /// of a live session; an `enter` that still reached the prompt would send the half-written
-    /// message the question interrupted, starting a turn nobody asked for on the way to answering.
+    /// the keys on arrival would read the `a` of a word being typed as `always`, and keep that for
+    /// the rest of the session; an `enter` that still reached the prompt would send the
+    /// half-written message the question interrupted, starting a turn nobody asked for on the way
+    /// to answering.
     /// `tab` is the one gesture that gets past this, and the panel's title says so.
     ///
     /// note: what is left working is what moves the conversation, because reading is not
@@ -599,9 +599,9 @@ impl App {
 
     /// Answers the question a tool is waiting on.
     ///
-    /// note: reached only with the keys deliberately moved to it, which is the whole of what a
-    /// settling timer used to be for. See the note on [`App::locked_key`] for what that is
-    /// protecting against and why a timer could not do it.
+    /// note: reached only with the keys deliberately moved to it, rather than after a settling
+    /// timer, which only moves the moment a stray letter lands. See the note on
+    /// [`App::locked_key`] for what that is protecting against.
     pub(super) async fn question_key(&mut self, key: KeyEvent) {
         // the compaction's own answers, where that is what is standing there. It scrolls with the
         // same keys, because it is the same panel showing a longer list than it has room for
@@ -680,11 +680,9 @@ impl App {
                 self.drop_pending();
                 return;
             }
-            // a key that is not one of the answers does nothing, and that is the point. It used to
-            // fall through to the prompt, because a question took every key whether or not anybody
-            // had given it one - so it had to hand back the ones that were not answers. The keys
-            // are here because somebody put them here, and letting a stray one type into a message
-            // would put the answers back into the middle of a sentence
+            // a key that is not one of the answers does nothing. The keys are here because
+            // somebody put them here, and letting a stray one type into a message would put the
+            // answers back into the middle of a sentence
             _ => return,
         };
 
@@ -692,8 +690,7 @@ impl App {
         // `always` over what the policy really consulted rather than over what the tool declared,
         // sweeping the questions already queued behind this one, and driving the turn on once none
         // are left - is [`App::decide`]. It is there rather than here because the keys are one of
-        // three ways to answer, and the two that are not keys were each missing a different one of
-        // those four
+        // three ways to answer, and each of the three needs all four
         if let Err(e) = self.decide(request.id, grant, remembered) {
             self.say(Speaker::Error, e);
         }
@@ -707,7 +704,7 @@ impl App {
 
     /// Drops every call the model is waiting on an answer for, and tells it so.
     ///
-    /// note: Denying them one at a time says no to each; this says no to all of them with one
+    /// note: denying them one at a time says no to each; this says no to all of them with one
     /// reason, which is the answer when the model has gone off down the wrong path entirely.
     /// Either way the model is told - a call that simply vanished would leave it waiting.
     fn drop_pending(&mut self) {
@@ -719,8 +716,9 @@ impl App {
         );
 
         // and then the model gets to say something about it. Answering `n` to every request ends
-        // up at `start_turn`; dropping them all left the kernel idle with the refusals recorded
-        // and nobody driving, so the session simply stopped until somebody typed `/continue`
+        // up at `start_turn`; dropping them all leaves the kernel idle with the refusals recorded
+        // and nobody driving, and without this the session would stop until somebody typed
+        // `/continue`
         match self.stepping {
             true => self.say(Speaker::Note, "/step or /continue when you are ready"),
             false => self.start_turn(),

@@ -50,11 +50,11 @@ fn extension(language: &str) -> &str {
 
 /// The colour a token of that name is drawn in.
 ///
-/// note: by name rather than by theme, which is the whole reason the highlighting is done here
-/// instead of by the markdown renderer. A theme is a set of 24-bit colours chosen against a known
-/// background, and this program does not know the background - the same argument that put a rule
-/// down the left of a code block instead of a slab behind it. Named colours are the terminal's
-/// own, so they are legible in whatever the user has set up.
+/// note: by name rather than by theme, which is why the highlighting is done here instead of by the
+/// markdown renderer. A theme is a set of 24-bit colours chosen against a known background, and
+/// this program does not know the background - the same argument that put a rule down the left of a
+/// code block instead of a slab behind it. Named colours are the terminal's own, so they are
+/// legible in whatever the user has set up.
 fn token(name: &str) -> Style {
     let colour = match name {
         "comment" => Color::Gray,
@@ -181,11 +181,11 @@ pub(super) fn command(
         // note: `refit` rather than `fit`, which is the one place this parts company with a fenced
         // block. `fit` cuts where the room runs out, because reflowing a block of code would be
         // showing something the model did not write - and a command is one logical line, so
-        // breaking it at a space is wrapping rather than reflowing. Cut, `cargo build` arrived as
-        // `carg` at the end of one row and `o build` at the start of the next, which is a worse
-        // thing to put in front of somebody deciding whether to run it than any argument for
-        // fidelity supports. The rule down the left is what makes this safe: it says the second
-        // row is a continuation, which is exactly what the margin could not say
+        // breaking it at a space is wrapping rather than reflowing. Cut, `cargo build` would
+        // arrive as `carg` at the end of one row and `o build` at the start of the next, which is
+        // a worse thing to put in front of somebody deciding whether to run it than any argument
+        // for fidelity supports. The rule down the left is what makes this safe: it says the
+        // second row is a continuation, which the margin cannot say
         let styled = Line::from(
             accented(spans, &picked, worst)
                 .into_iter()
@@ -210,11 +210,11 @@ pub(super) fn command(
 /// range takes [`joint`]'s style whatever the highlighter made of it, because the highlighter's
 /// opinion of `|` is that it is not a token at all.
 ///
-/// note: three readings now, and the third is cut at the same time as the other two rather than
-/// in a pass of its own. A stage is a run *between* joints, so its edges fall where no joint's
+/// note: the worst stage is a third reading, and it is cut at the same time as the other two rather
+/// than in a pass of its own. A stage is a run *between* joints, so its edges fall where no joint's
 /// do, and two passes would each split pieces the other had already split - the offsets are what
-/// everything here is keyed on, and re-walking them is where they would come apart. So every
-/// offset a style can change at is collected first and one walk honours all of them.
+/// everything here is keyed on, and re-walking them is where they would come apart. So every offset
+/// a style can change at is collected first and one walk honours all of them.
 ///
 /// note: the worst stage takes an underline on top of whatever it already had rather than instead
 /// of it. What it marks is a *run* of the command, several tokens long, and a run repainted in
@@ -280,10 +280,9 @@ fn accented(
 /// showing something the model did not write.
 ///
 /// note: the room is columns and the cut is between graphemes, so a row of CJK holds half as many
-/// characters as a row of Latin and every one of them arrives. Cutting by character count instead
-/// built rows twice as wide as the pane, and what a `Paragraph` that does not wrap does with those
-/// is drop the right-hand end - out of a block whose whole claim is that it is what the model
-/// wrote.
+/// characters as a row of Latin and every one of them arrives. Cut by character count instead,
+/// the rows would be twice as wide as the pane, and a `Paragraph` that does not wrap drops the
+/// right-hand end - out of a block whose whole claim is that it is what the model wrote.
 fn fit(spans: Vec<(String, Style)>, room: usize) -> Vec<Vec<Span<'static>>> {
     let mut rows = vec![Vec::new()];
     let mut used = 0;

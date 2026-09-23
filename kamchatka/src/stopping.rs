@@ -21,11 +21,10 @@ pub struct Stopping(Inner);
 type Inner = tokio::signal::unix::Signal;
 #[cfg(windows)]
 type Inner = tokio::signal::windows::CtrlC;
-/// Anywhere else, the old behaviour: a fresh subscription per press, and the window with it.
+/// Anywhere else, a fresh subscription per press, and the window with it.
 ///
-/// note: neither of the two above exists off its own platform, and this crate is built for three
-/// operating systems. What is left is a target nobody ships this to, and refusing to compile there
-/// would be a worse answer than the one it has today.
+/// note: neither of the two above exists off its own platform. What is left is a target nobody
+/// ships this to, and refusing to compile there would be a worse answer than this one.
 #[cfg(not(any(unix, windows)))]
 type Inner = ();
 
@@ -44,8 +43,8 @@ impl Stopping {
 
     /// Waits for the next one.
     ///
-    /// note: cancel-safe, which is the whole reason this is a value rather than a call: the
-    /// subscription is in `self` and survives a `select!` choosing another branch.
+    /// note: cancel-safe, which is why this is a value rather than a call: the subscription is in
+    /// `self` and survives a `select!` choosing another branch.
     pub async fn pressed(&mut self) {
         #[cfg(any(unix, windows))]
         {

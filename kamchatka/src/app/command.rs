@@ -20,17 +20,16 @@ impl App {
     ///
     /// note: `pub` because the prompt is not the only thing entitled to say a line. Every verb
     /// this program has - `/model`, `/exclude`, `/limit`, `/step`, `/save`, `/load`, `/tools
-    /// toggle` - is reachable only through here, and while this was `pub(super)` the only way in
-    /// was to synthesize a key press. That is why `examples/recorded.rs` re-wires a kernel from
-    /// this crate's parts instead of driving an [`App`]: to drive one, it would have had to type.
-    /// A caller that is not a person at a terminal hands the same line to the same function.
+    /// toggle` - is reachable only through here, and without it the only way in would be to
+    /// synthesize a key press. A caller that is not a person at a terminal hands the same line to
+    /// the same function.
     ///
     /// note: what it says still goes where the screen reads it - [`App::say`] for a line and
     /// `App::preview` for a page - *and* comes back in the [`Reply`], because those are two
     /// different questions. A screen re-reads [`App::loose`] and [`App::overlay`] every frame and
     /// wants the whole of both; a caller answering one line wants what that line produced, and
-    /// was reduced to watching the two of them change to find out. The copy is cheap and the
-    /// alternative was a watermark kept by every caller.
+    /// should not have to watch the two of them change to find out. The copy is cheap, and the
+    /// alternative is a watermark kept by every caller.
     pub async fn submit(&mut self, line: &str) -> Reply {
         // a switch still in flight is finished before this line is read, so that nothing acts on
         // a session part-way through changing model. See `App::settling`
@@ -62,9 +61,9 @@ impl App {
         // a model turn are not supported`, and which every other provider answers by replying to
         // itself. Pushed mid-tool-loop it is worse still: it lands between an assistant's call and
         // that call's result, which is a shape most of these APIs reject. What it costs is that a
-        // message typed to steer a turn does not reach it - it is answered after, not during
-        // ... and the same holds while a question is open: the turn is paused rather than over,
-        // and the call it is waiting on still has a result to come
+        // message typed to steer a turn does not reach it - it is answered after, not during.
+        // The same holds while a question is open: the turn is paused rather than over, and the
+        // call it is waiting on still has a result to come
         //
         // note: checked before the line is said rather than after, so that the one path which
         // says a message *without* an item to tie it to is the one path that has no item yet.
@@ -81,8 +80,8 @@ impl App {
             // note: and the one it replaced is accounted for. The slot holds one and the newest
             // wins, which is a decision; what it cannot be is silent, because the waiting message
             // is *drawn* at the end of the conversation - so a second one sent into the same turn
-            // took that row away and put its own there, with nothing said. `up` reaches what is
-            // waiting now, which is this one and never the one it replaced
+            // takes that row away and puts its own there, and nothing else says so. `up` reaches
+            // what is waiting now, which is this one and never the one it replaced
             if replaced.is_some() {
                 self.say(
                     Speaker::Note,
@@ -130,15 +129,15 @@ impl App {
             // note: the same act as `esc` and `ctrl+c`, reached by typing, which is the only way
             // to reach it from a browser: a page has no keys to send and `Command::Interrupt` is
             // a button nothing was obliged to draw. Two loops here have a line and nothing else,
-            // and `/step` has been pointing at this name since before it existed.
+            // and `/step` points at this name when it declines.
             //
             // note: three answers, because a session has three states here and only one of them
             // is a turn this can stop. A turn resting on a question is not `busy` - resting is
             // what lets anybody answer it - and an interrupt does not reach it either: there is
             // nothing running to notice one, so the question is still there afterwards. What ends
             // that turn is answering, which is `n` at a terminal and the deny button on a page.
-            // Saying so is the whole of what this branch is for; `nothing is running` was the
-            // answer before, and it was false in the one state somebody plainly had something.
+            // Saying so is what this branch is for: `nothing is running` would be false in the one
+            // state where somebody plainly has something.
             //
             // note: silent where it worked, which is what `esc` is. What says a turn stopped is
             // the turn stopping - the records, the state, the spinner going out - and a line
@@ -161,22 +160,21 @@ impl App {
             // `clear_notices`' own rule and the one place this program is deliberately silent: a
             // line reporting that the lines are gone is the first line of the pile it just cleared
             //
-            // note: **not** `/clear`, which is what it was called. Everywhere else that word is
-            // typed at an agent it means the conversation, and this takes away the program's own
-            // lines and deliberately leaves the conversation alone - so the one thing somebody
-            // would be typing it for is the one thing it does not do. It is the same trap `/load`
-            // declines to set by not calling itself `/resume`, and what the old name is answered
-            // with now is `no_such_command`
+            // note: **not** `/clear`. Everywhere else that word is typed at an agent it means the
+            // conversation, and this takes away the program's own lines and deliberately leaves
+            // the conversation alone - so the one thing somebody would be typing it for is the one
+            // thing it does not do. It is the same trap `/load` declines to set by not calling
+            // itself `/resume`, and `/clear` is answered by `no_such_command`
             "cleanup" => self.clear_notices(),
             // with a message, because otherwise the only way to reach the first transition is to
             // send one - which runs the whole turn, and there is nothing left to step through
             "step" => {
                 // note: the guard `App::submit` puts on a message, for the reason its note gives -
                 // an item pushed into a running turn lands between a call and its result, which
-                // most of these APIs refuse outright. The text went in here before `start_step`
-                // had said whether it could step at all, so `/step something` typed into a running
-                // turn put the something in the context and then declined the step in silence.
-                // A bare `/step` is left alone: advancing a paused turn is what it is for
+                // most of these APIs refuse outright. Without it, `/step something` typed into a
+                // running turn would put the something in the context before `start_step` had
+                // said whether it could step at all, and then decline the step in silence. A bare
+                // `/step` is left alone: advancing a paused turn is what it is for
                 match (rest.is_empty(), self.busy || self.asked().is_some()) {
                     (false, true) => self.say(
                         Speaker::Note,
@@ -233,9 +231,9 @@ impl App {
             "copy" => self.copy_command(rest),
             "compact" => self.compact().await,
             "seams" => self.seams(),
-            // it used to print a line naming the allowed capabilities. The tab is that line, plus
-            // the ones that are refused, plus the ones nobody has decided about yet, plus what
-            // each of them covers - and every row can be changed where it is read
+            // the tab rather than a line naming the allowed capabilities: it has the ones that are
+            // refused as well, the ones nobody has decided about yet, and what each of them covers
+            // - and every row can be changed where it is read
             "policy" | "permissions" => self.show(Tab::Permissions),
             // note: the same function `-f` goes through. Putting a file in the context at startup
             // and putting one there at the prompt are the same act at two moments, and a second
@@ -244,11 +242,11 @@ impl App {
             // the same act as `/attach` with nothing to open: something the model should have,
             // put where it will read it, without asking it to say anything back
             "note" => self.note(rest),
-            // note: one word per mechanism, and the mechanism here is a state. `/prune` moved an
-            // item to `excluded` and every place the result is read back said `excluded`, so the
-            // command is named for that now - and `context`'s own moves are named the same way,
-            // so the person and the model reach for the same word. The old spellings still work:
-            // accepting a word somebody typed costs nothing
+            // note: one word per mechanism, and the mechanism here is a state. The command moves
+            // an item to `excluded` and every place the result is read back says `excluded`, so it
+            // is named for that - and `context`'s own moves are named the same way, so the person
+            // and the model reach for the same word. The old spellings still work: accepting a
+            // word somebody typed costs nothing
             "exclude" | "prune" => self.by_selector("exclude", rest),
             "pin" | "keep" => self.by_selector("pin", rest),
             "restore" => self.by_selector("restore", rest),
@@ -299,12 +297,12 @@ impl App {
                 }
             }
             // the ids an endpoint serves are its own - `google/gemini-3.5-flash` at one address
-            // and `gemini-3.5-flash` at another - so after `/provider` there was no way to find
-            // out what to hand `/model` except to guess it. The provider has always fetched this
-            // list, to say when a model is not on it; this is the same call with the answer shown
-            // rather than checked.
+            // and `gemini-3.5-flash` at another - so after `/provider` this is how to find out what
+            // to hand `/model` rather than guess it. The provider already fetches this list, to
+            // say when a model is not on it; this is the same call with the answer shown rather
+            // than checked.
             //
-            // note: awaited here rather than spawned, unlike the switches below. Those are told to
+            // note: awaited here rather than spawned, unlike the two switches. Those are told to
             // go and do something and the screen carries on; this one *is* the answer, and a
             // person who asked for a list is waiting for it either way
             "models" => {
@@ -451,7 +449,7 @@ impl App {
                 if !ignored.is_empty() {
                     // note: two messages, because the list supports two different claims. Where it
                     // is everything the model takes, a parameter missing from it is sent and
-                    // ignored and saying so is the point. Where the endpoint published its
+                    // ignored, and that is what the error says. Where the endpoint published its
                     // *sampling* parameters only, the same absence settles nothing:
                     // `reasoning_effort` is not among `mercury-2.5`'s and is read anyway, so
                     // reporting it as ignored would be this program inventing a restriction out of
@@ -503,19 +501,17 @@ impl App {
             "load" => self.load(rest),
             // note: `/help` and not `F1`, which is the same panel and is the key for it on a
             // screen. A line typed at a headless run that is not a command is answered here too,
-            // and there is no function key down a pipe - so the one answer that pointed anywhere
-            // pointed somewhere that run could not go
+            // and there is no function key down a pipe - so an answer naming `F1` would point
+            // somewhere that run cannot go
             other => self.say(Speaker::Error, no_such_command(other)),
         }
     }
 
     /// Stops offering one of the tools, or offers it again.
     ///
-    /// note: this is the whole of what `--introspect`, `/introspect` and `/tools drop` used to
-    /// be, and the program is smaller for it. The first two were a flag and a command for one
-    /// group of four tools, and the third was the only word for every other tool and had no way
-    /// back: a session that dropped `fs` had dropped it. One word covers both directions and
-    /// every tool there is, including the ones an MCP server brought - see [`App::toggle`].
+    /// note: one word covers both directions and every tool there is, including the ones an MCP
+    /// server brought - see [`App::toggle`]. A command that could only drop a tool would have no
+    /// way back: a session that dropped `fs` would have dropped it.
     ///
     /// note: it names what it did in terms of the *next request*, because that is when it takes
     /// effect and because it is the thing a person is usually doing this for. Nothing about the
@@ -605,9 +601,9 @@ impl App {
     /// ordinary as a message, and it should get old and be compacted like one. `p` pins it if
     /// this one is meant to last.
     ///
-    /// note: it was pinned, and the argument for it was wrong twice over. A pin here protects
-    /// against nothing: `Trim` only ever considers a `ContextKind::ToolResult`, so an attachment
-    /// is a `Reference` it was never going to take, pinned or not. And where a compactor *could*
+    /// note: a pin would be wrong twice over. It protects against nothing: `Trim` only ever
+    /// considers a `ContextKind::ToolResult`, so an attachment is a `Reference` it will never
+    /// take, pinned or not. And where a compactor *could*
     /// take one, silently making it the one thing in the context that cannot be compacted is the
     /// decision least likely to be what somebody attaching a 200-page PDF wanted.
     fn attach(&mut self, rest: &str) {
@@ -664,16 +660,14 @@ impl App {
     ///
     /// note: the anchor is what the provider charged for the last request, and carrying it across
     /// is the corner reporting what the *last* model would have charged for a request going to a
-    /// different one. `App::anchored` has always said it falls back after a change of model; this
-    /// is the line that makes that true.
+    /// different one. `App::anchored` says it falls back after a change of model; this is the line
+    /// that makes that true.
     ///
-    /// note: and the correction, for exactly the same reason one word further in. `Calibrating` is
-    /// the ratio between what this counter guessed and what a provider billed, cumulative over
-    /// every observation - so a scale learnt from one tokenizer goes on correcting the next one's
-    /// figures, and a fresh observation from the new model is averaged into the old model's totals
-    /// rather than replacing them. `Calibrating::reset` is documented as being for precisely this
-    /// and had no caller anywhere: a session that read `7` off one model and then switched carried
-    /// a scale of 1.152 across and settled at 1.017, which is neither model's number. Through
+    /// note: and the correction, for the same reason. `Calibrating` is the ratio between what this
+    /// counter guessed and what a provider billed, cumulative over every observation - so a scale
+    /// learnt from one tokenizer goes on correcting the next one's figures, and a fresh
+    /// observation from the new model is averaged into the old model's totals rather than
+    /// replacing them, settling on a scale that is neither model's. It is reset through
     /// `Kernel::recalibrate` because that recounts the items as well, which is the half that keeps
     /// the `sending` column and the budget on one scale.
     fn forget_the_last_model(&mut self) {
@@ -683,11 +677,10 @@ impl App {
 
     /// Puts something into the context that the model should have and does not have to answer.
     ///
-    /// note: the gap this fills is a shape rather than a feature. Everything a person could say to
-    /// a model went in as a message, and a message starts a turn - so telling it a fact it will
-    /// need in four turns' time cost a request, an answer, and an "understood" nobody wanted. The
-    /// alternatives were worse: saying it *with* the next question buries it, and saying it
-    /// afterwards is too late.
+    /// note: the gap this fills is a shape rather than a feature. A message starts a turn, so
+    /// telling a model as a message a fact it will need in four turns' time costs a request, an
+    /// answer, and an "understood" nobody wanted. Saying it *with* the next question buries it,
+    /// and saying it afterwards is too late.
     ///
     /// note: a [`ContextItem::memory`] - a `Reference` whose source is `memory` - rather than a
     /// user message. The difference is *not* the wire: a reference projects as a user-role message
@@ -728,11 +721,11 @@ impl App {
             .push(ContextItem::memory("note", rest.to_owned()).because("written at the prompt"));
     }
 
-    /// Prunes, pins or restores whatever a selector names.
+    /// Excludes, pins or restores whatever a selector names.
     ///
-    /// note: With nothing to act on, this shows the language rather than reporting that the empty
-    /// string is not a selector. The grammar has ten forms and the terminal used to advertise two
-    /// of them in a help line, so the only way to find the rest was the crate documentation.
+    /// note: with nothing to act on, this shows the language rather than reporting that the empty
+    /// string is not a selector. Otherwise the only place to find the grammar is the crate
+    /// documentation.
     fn by_selector(&mut self, command: &str, input: &str) {
         if input.is_empty() {
             self.preview(
@@ -771,11 +764,10 @@ impl App {
 
     /// What is plugged into each of the runtime's six seams, right now.
     ///
-    /// note: The crate's headline claim is six replaceable parts, and until this there was no way
-    /// to see any of them from here - `Kernel::policy`, `projector`, `counter` and `compactor`
-    /// hand back trait objects, and a trait object you cannot name is not worth asking for. Each
-    /// of those traits now names itself, so this is the claim, checked against the kernel rather
-    /// than restated from what this program set up at startup.
+    /// note: the crate's headline claim is six replaceable parts. `Kernel::policy`, `projector`,
+    /// `counter` and `compactor` hand back trait objects, and a trait object you cannot name is not
+    /// worth asking for, so each of those traits names itself. This is the claim, checked against
+    /// the kernel rather than restated from what this program set up at startup.
     fn seams(&mut self) {
         let kernel = &self.kernel;
         let tools = kernel.tool_specs();
@@ -879,11 +871,10 @@ impl App {
 
     /// Shows the output limits, or changes one.
     ///
-    /// note: this exists because of a session that asked a copy of itself three questions and got
-    /// back the copy's deliberation with all three answers cut off the end. The limit was right
-    /// for the other things that tool does and wrong for that one, and there was no way to say so
-    /// without restarting - so a person watching a result come back shortened had the choice of
-    /// living with it or losing the session.
+    /// note: a limit can be right for the other things a tool does and wrong for one call - a
+    /// copy of the session asked three questions answers at the end of its deliberation, which is
+    /// the part a limit cuts off. Without this, a person watching a result come back shortened
+    /// can live with it or lose the session.
     ///
     /// note: it changes the next call, not the one already shortened, and the message says which.
     /// Nothing is lost either way: the whole of a shortened result is archived beside the copy the
@@ -891,14 +882,13 @@ impl App {
     ///
     /// note: a row is a **subject** - `fs:read`, `context:look` - which is the same string the
     /// permissions tab is keyed on, so a person who has read one table can read the other and
-    /// `--allow fs:grep` and `/limit fs:grep` name the same thing. It was keyed by tool id, which
-    /// stopped meaning anything the day one tool did five things of five different sizes.
+    /// `--allow fs:grep` and `/limit fs:grep` name the same thing. A tool id is not enough once
+    /// one tool does five things of five different sizes.
     ///
     /// note: the table is the `Limits` map rather than the registry, and it holds a row for every
     /// subject this program's tools declare, whether or not this session offers them. That is
-    /// right, because a limit set before a tool arrives is in force when it does; what was wrong
-    /// was saying it under "how much of each tool's output the model is shown", over a session
-    /// offering six tools and listing eight. A row nobody has is marked, for the reason
+    /// right, because a limit set before a tool arrives is in force when it does. A row nobody has
+    /// is marked, for the reason
     /// `introspect::if_offered` exists on the other side of the screen: a name in an answer reads
     /// as a thing that is there.
     ///
@@ -941,7 +931,7 @@ impl App {
                 self.say(
                     Speaker::Error,
                     // `<subject>`, which is what the rows are and what the table two lines down
-                    // calls them. A limit stopped being a tool's the day one tool did five things
+                    // calls them. A limit is not a tool's, because one tool does five things
                     "`/limit <subject> <bytes>`, or `/limit` on its own to see them",
                 );
                 return;
@@ -1031,14 +1021,14 @@ impl App {
     ///
     /// note: the compactor the kernel runs before a request is the same object, asked by hand.
     /// What this adds is the half an automatic pass cannot have: the list, before anything
-    /// happens, with the identifiers to pin from. A pass that announces itself afterwards is
-    /// already an improvement on one that does not, but it leaves somebody reading what they have
-    /// lost; this is the same information one step earlier, where it is still a decision.
+    /// happens, with the identifiers to pin from. A pass that announces itself afterwards leaves
+    /// somebody reading what they have lost; this is the same information one step earlier, where
+    /// it is still a decision.
     ///
     /// note: it exists for the session that cannot ask the model to tidy up, which is the one
     /// most likely to need tidying. `context` is the model's tool for this, and reaching it costs
-    /// a request - the request that is failing. A context too big to send is a context whose only
-    /// way out was through the thing that no longer works.
+    /// a request - the request that is failing. Without this, a context too big to send has only
+    /// one way out, and it is through the thing that no longer works.
     ///
     /// note: the question stands in the prompt's place like a tool's, and for the same reason it
     /// is pinned rather than modal: the context tab is a keystroke away while it waits, `p` there
@@ -1183,7 +1173,7 @@ impl App {
 
     /// What the next request is estimated to cost, beside what the last one actually did.
     ///
-    /// note: The status line can only afford one number, and it shows the estimate - which is
+    /// note: the status line can only afford one number, and it shows the estimate - which is
     /// produced by a counter that does not have the model's tokenizer and is therefore wrong.
     /// This is where the two numbers sit side by side, along with the correction the counter has
     /// worked out for itself from the difference. A budget nobody can check is a decoration.
@@ -1268,11 +1258,10 @@ impl App {
         // way to tell that from a context that is genuinely small - both look like a low
         // percentage.
         //
-        // note: it used to name the counter, and `TokenCounter::name` defaults to the type path -
-        // so the sentence read "of content
-        // `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` would not put a
-        // number on", sixty-two characters of Rust in the middle of a line meant to be read.
-        // `/seams` answers which counter, in a table where a full path is the useful form
+        // note: the counter is not named either. `TokenCounter::name` defaults to the type path,
+        // which would put `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` in
+        // the middle of a line meant to be read. `/seams` answers which counter, in a table where
+        // a full path is the useful form
         if !budget.fully_counted() {
             lines.push(format!(
                 "unpriced: {} piece(s) of content the counter would not put a number on, so \
@@ -1282,12 +1271,12 @@ impl App {
         }
         if withheld != 0 {
             // note: "tokens the next request does not carry", rather than "tokens in N items the
-            // model is not being shown", which is what this said. Two of the four ways of being
-            // held back leave the item in the request: an elided one is there as a line saying it
-            // used to be something else, and an assistant turn whose thinking this endpoint will
-            // not take back is there in full apart from the thinking. Saying it the old way of a
-            // turn that is mostly what it thought would be telling somebody they are not being
-            // shown a turn they can read on the chat tab
+            // model is not being shown". Two of the four ways of being held back leave the item in
+            // the request: an elided one is there as a line saying it used to be something else,
+            // and an assistant turn whose thinking this endpoint will not take back is there in
+            // full apart from the thinking. The second wording, about a turn that is mostly what
+            // it thought, would tell somebody they are not being shown a turn they can read on the
+            // chat tab
             lines.push(format!(
                 "held back: {} tokens the next request does not carry, in {out} item(s) - \
                  excluded, archived, elided to a marker, or thinking the endpoint will not take \
@@ -1303,12 +1292,11 @@ impl App {
                     thousands(reported as usize)
                 );
                 // note: the one figure here that says what a *change* costs rather than what the
-                // request cost. Both dialects have always reported it - `prompt_tokens_details`
-                // and `cachedContentTokenCount` - and nothing read it out to anybody. It belongs
-                // beside the real cost because it is the same sentence: the front of a request is
-                // the tool definitions and the oldest messages, so anything that rewrites them is
-                // paid for in full on the next request, and this is the number saying how much
-                // that would be
+                // request cost. Both dialects report it - `prompt_tokens_details` and
+                // `cachedContentTokenCount`. It belongs beside the real cost because it is the
+                // same sentence: the front of a request is the tool definitions and the oldest
+                // messages, so anything that rewrites them is paid for in full on the next
+                // request, and this is the number saying how much that would be
                 if let Some(cached) = budget.reported.and_then(|usage| usage.cached_input_tokens) {
                     line.push_str(&match (cached, reported) {
                         (0, _) => ", none of it from the provider's cache".to_owned(),
@@ -1324,8 +1312,8 @@ impl App {
                 lines.push(line);
 
                 // note: the output side belongs here for the same reason the cached figure above
-                // does - it was reported, nothing read it out, and on a reasoning model it is most
-                // of what the turn cost. A budget that accounts for the request and stays silent
+                // does - it is reported, and on a reasoning model it is most of what the turn
+                // cost. A budget that accounts for the request and stays silent
                 // about the answer is half a budget
                 if let Some(usage) = budget.reported {
                     lines.push(format!(
@@ -1342,7 +1330,7 @@ impl App {
         // to report, and is a sentence rather than a missing line
         //
         // note: small requests teach it nothing and are not counted here, which is why this can
-        // say "2" in a session that has sent six things
+        // be lower than the number of requests a session has sent
         lines.push(match self.kernel.counter().calibration() {
             None => "the counter installed here does not correct itself, so every figure above \
                      is whatever it estimates and nothing has told it otherwise"
@@ -1352,12 +1340,11 @@ impl App {
                  and no request so far has been big enough to learn anything from"
                     .to_owned()
             }
-            // note: the two figures and the scale, and no percentage. There was one, and it read
-            // "so it was reading 54.3% low" off `scale - 1` - which is the error as a fraction of
-            // the *estimate*, where "reading 54.3% low" is read as a fraction of the truth. Those
-            // are 54.3% and 35.2% of the same pair of numbers. Both are true and the sentence
-            // could only assert one of them, so it asserts neither: the guess and the charge are
-            // what somebody wants, and the scale between them is already on the line
+            // note: the two figures and the scale, and no percentage. `scale - 1` is the error as a
+            // fraction of the *estimate*, where "reading N% low" is read as a fraction of the
+            // truth, and the two are far apart for the same pair of numbers. Both are true and a
+            // sentence could only assert one of them, so it asserts neither: the guess and the
+            // charge are what somebody wants, and the scale between them is already on the line
             Some(learned) => format!(
                 "the counter has learned from {} request(s) and scaled itself by {:.3}: its own \
                  guesses came to {} tokens where the provider counted {}",
@@ -1395,7 +1382,7 @@ impl App {
 
         // the same spellings `/save` takes, because a pair of commands that accept different ones
         // is a pair that does not round-trip: `/save notes.jsonl` writes `notes.json` beside the
-        // log, and `/load notes.jsonl` used to go looking for `notes.jsonl.json`
+        // log, and `/load notes.jsonl` would otherwise go looking for `notes.jsonl.json`
         let file = match path {
             "" => "session.json".to_owned(),
             given => format!("{}.json", without_suffix(given)),
@@ -1439,11 +1426,11 @@ impl App {
         // already knows.
         //
         // note: `Kernel::recalibrate` rather than reaching through to the counter, and before the
-        // items are counted rather than after. Counting first and correcting afterwards gave every
-        // loaded item a figure from the scale this session happened to be on, while the budget
-        // beside it is projected live and so was already on the loaded one: a context that really
-        // came to 3,998 tokens read 2,002, and the `held` column disagreed with the `sending`
-        // column on the same row by exactly the correction. The front door also recounts, which is
+        // items are counted rather than after. Counting first and correcting afterwards would give
+        // every loaded item a figure from the scale this session happened to be on, while the
+        // budget beside it is projected live and so is already on the loaded one - and the `held`
+        // column would disagree with the `sending` column on the same row by exactly the
+        // correction. The front door also recounts, which is
         // what brings the items already here - the ones the load is about to set aside, and which
         // `held back` adds to the loaded ones - onto the same scale
         if let Some(calibration) = snapshot.calibration {
@@ -1478,7 +1465,7 @@ impl App {
 
     /// Writes the session log and a snapshot that can be resumed from, at a path somebody gave.
     ///
-    /// note: Two files, because they answer different questions: the log says what happened, and
+    /// note: two files, because they answer different questions: the log says what happened, and
     /// the snapshot is what can be picked back up. An event names an item rather than carrying
     /// it, so the log alone cannot rebuild a context - keeping only one of them means losing
     /// either the story or the state.
@@ -1490,10 +1477,10 @@ impl App {
             "" => "session",
             given => without_suffix(given),
         };
-        // note: a directory is a place to put it rather than a name for it. `/save sessions/`
-        // took the whole argument as the stem and wrote `sessions/.json` and `sessions/.jsonl` -
-        // two dotfiles, invisible to `ls`, under a confirmation that prints the path and so reads
-        // as though it had worked. The session's own name is what goes in a directory, which is
+        // note: a directory is a place to put it rather than a name for it. Taken whole as the
+        // stem, `/save sessions/` would write `sessions/.json` and `sessions/.jsonl` - two
+        // dotfiles, invisible to `ls`, under a confirmation that prints the path and so reads as
+        // though it had worked. The session's own name is what goes in a directory, which is
         // what this program already does when it writes a session out on its own.
         let stem = match stem.ends_with(std::path::MAIN_SEPARATOR)
             || std::path::Path::new(stem).is_dir()
@@ -1543,9 +1530,8 @@ impl App {
 ///
 /// note: here rather than an arm of its own in the dispatch above, because `/clear` is not a
 /// command and an arm would make it one - `every_command_that_exists_is_in_the_help` reads those
-/// arms and is right to: a name the prompt answers to and `/help` does not list is the shape
-/// `/help` itself was in. These are names the prompt *refuses*, and the whole of the refusal is
-/// saying where the thing went.
+/// arms and is right to: a name the prompt answers to is one `/help` has to list. These are names
+/// the prompt *refuses*, and the refusal says where the thing went.
 ///
 /// note: `/clear` is the one there is, and it is worth a sentence because it is what somebody
 /// arriving from any other agent types. There the word means the conversation; here the thing
@@ -1567,12 +1553,12 @@ fn no_such_command(name: &str) -> String {
 /// note: shared by `/save` and `/load` because a pair of commands that accept different spellings
 /// is a pair that does not round-trip. A session is two files - the snapshot and the log - so
 /// `/save notes.jsonl` writes `notes.json` beside `notes.jsonl`, and `/load` taking that same
-/// argument at its word went looking for `notes.jsonl.json`.
+/// argument at its word would go looking for `notes.jsonl.json`.
 ///
 /// note: the suffix is matched without regard to case, the way `attach::media_type` reads an
 /// extension - and the stem is left exactly as it was typed, because that half really does name a
 /// different file wherever the filesystem cares. What it buys is `notes.JSON` on a filesystem that
-/// does not, which is every one outside Linux.
+/// does not, which is the default on macOS and Windows.
 fn without_suffix(path: &str) -> &str {
     for suffix in [".jsonl", ".json"] {
         let Some(at) = path.len().checked_sub(suffix.len()) else {

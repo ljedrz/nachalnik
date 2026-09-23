@@ -1,9 +1,9 @@
-//! The half of `context` that changes it: prune, rewrite, write something down, and walk any of
-//! it back.
+//! The half of `context` that changes it: move items, rewrite one, write something down, and walk
+//! any of it back.
 //!
-//! note: a file of its own and not a tool of its own. It was both until the two were merged, and
-//! what stayed behind is everything that is really about *changing* a context - the journal
-//! `undo` walks, the refusals, and the accounting that says what a change cost. The schema and
+//! note: a file of its own and not a tool of its own. What is here is everything that is really
+//! about *changing* a context - the journal `undo` walks, the refusals, and the accounting that
+//! says what a change cost. The schema and
 //! the dispatch are next door with the reading half, because that is what a model sees.
 //!
 //! note: what it will not do is undo a person's decisions - a pinned item, a system instruction
@@ -30,25 +30,25 @@ use super::{CHANGES, Pinned};
 /// How many of its own changes one call may walk back or forward.
 ///
 /// note: a bound at all, because `undo` is a loop over a journal and a model that means "all of
-/// it" writes a big number. Said in the schema and refused above it rather than clamped, which is
-/// how a call asking for a hundred used to get sixty-four and read as though it had got a hundred.
+/// it" writes a big number. Said in the schema and refused above it rather than clamped: clamped,
+/// a call asking for a hundred would get sixty-four and read as though it had got a hundred.
 const WALK: u64 = 64;
 
 /// Changes the context: prunes it, rewrites an item, writes something down, walks its own
 /// changes back.
 ///
-/// note: it keeps the set of items it pinned itself, which is the whole of the mechanism that
-/// stops a model quietly unpinning what a person pinned. A pin is a promise, and the promise was
-/// not made to the model.
+/// note: it keeps the set of items it pinned itself, which is the mechanism that stops a model
+/// quietly unpinning what a person pinned. A pin is a promise, and the promise was not made to the
+/// model.
 ///
 /// note: it also keeps a journal of what it has done, which is what `undo` walks - deliberately
-/// *not* [`Kernel::undo`]. Two reasons, and either would be enough. The kernel's undo stack is the
-/// person's, bound to the `u` key in the terminal, and a model walking it back would be undoing
-/// their work rather than its own. And the top of that stack, at the moment a tool is running, is
-/// always the assistant turn that asked for the call: one step would erase the model's own
-/// question, orphan the answer it is waiting for, and leave the loop rebuilding a request from
-/// before it asked. A journal of this tool's own changes has neither problem, and it is the
-/// honest scope of "undo my mistakes" - the mistakes being the ones it made.
+/// *not* [`Kernel::undo`]. The kernel's undo stack is the person's, bound to the `u` key in the
+/// terminal, and a model walking it back would be undoing their work rather than its own. And the
+/// top of that stack, at the moment a tool is running, is always the assistant turn that asked for
+/// the call: one step would erase the model's own question, orphan the answer it is waiting for,
+/// and leave the loop rebuilding a request from before it asked. A journal of this tool's own
+/// changes has neither problem, and it is the honest scope of "undo my mistakes" - the mistakes
+/// being the ones it made.
 pub(super) struct Changes {
     pinned: Pinned,
     journal: Mutex<Journal>,
@@ -105,14 +105,14 @@ struct Applied {
 impl Undoing {
     /// Applies it, and hands back the way from where that leaves things to where they were.
     ///
-    /// note: `protected` is asked here too, which is the question every other move in this tool
-    /// asks and this one did not. A person who pins an item after the model elided it has made a
-    /// decision about that item; `undo` went straight to `set_state` and took the pin off again,
-    /// silently, which is the one thing the word pin promises not to happen.
+    /// note: `protected` is asked here too, as every other move in this tool asks it. A person who
+    /// pins an item after the model elided it has made a decision about that item, and an `undo`
+    /// that went straight to `set_state` would take the pin off again, silently - the one thing
+    /// the word pin promises will not happen.
     ///
     /// note: grouped by the state they land in, rather than an item at a time. One operation is
-    /// one undo, and walking back a move of three items left three checkpoints on the person's
-    /// stack - so undoing what the model called one change took them three.
+    /// one undo, and an item at a time, walking back a move of three items would leave three
+    /// checkpoints on the person's stack - three undos for what the model called one change.
     ///
     /// note: `own_turn` is `None` because a change recorded earlier cannot be about the turn this
     /// call is speaking in: that item did not exist when the change was made, and identifiers are
@@ -204,20 +204,17 @@ impl Changes {
             "note" => self.note(kernel, args, reason),
             "undo" => self.walk(kernel, args, reason, true),
             "redo" => self.walk(kernel, args, reason, false),
-            // note: the four moves are operations of their own, named for what they do. They were
-            // one `prune` action with a `state` argument once, which put the word for *one* of
-            // them over all four - including `pin` and `restore`, which are its opposite, so
-            // "prune to pin it" was the documented spelling of protecting something. It also
-            // disagreed with every place the result is read back, all of which name the state.
-            // Two models in a row spent a call each asking for `restore` and being told it was a
-            // state and not an action; the answer was that they were right and the levels were
-            // wrong.
+            // note: the four moves are operations of their own, named for what they do, rather
+            // than one `prune` action with a `state` argument. That would put the word for *one*
+            // of them over all four - including `pin` and `restore`, which are its opposite, so
+            // "prune to pin it" would be the spelling of protecting something - and disagree with
+            // every place the result is read back, all of which name the state. A model asks for
+            // `restore` as an action, and it is right to.
             //
-            // note: the state is read here, where the four are named, rather than inside the move.
-            // It used to be read in there and answered with a listing of what to say instead - a
-            // listing that went on offering `archive` after `archive` stopped being an action, in
-            // a branch nothing can reach: `CHANGES` is what gets a call this far and the four
-            // above are the rest of it.
+            // note: the state is read here, where the four are named, rather than inside the move,
+            // where a word it did not know would want a listing of what to say instead - a listing
+            // to keep current in a branch nothing can reach: `CHANGES` is what gets a call this
+            // far and the four above are the rest of it.
             other => match state_of(other) {
                 Some(state) => self.moved(kernel, call, args, reason, other, state),
                 None => ToolOutput::error(unknown(other, &CHANGES)),
@@ -228,18 +225,15 @@ impl Changes {
 
 /// What to say about the items already carrying the name a new note was just given, if any are.
 ///
-/// note: bought by a live run, and the second time this tool's `label` has taught a model the
-/// wrong thing. A session wrote five notes under one name - `in_progress`, then `step 2`, `step
-/// 3`, `step 4`, `complete` - each plainly meant to replace the last, and pinned four of them, so
-/// the context ended up asserting four different steps at once and compaction could clear none of
-/// them. `note` appends: a label is how an item is found again, not a key that stands for one.
-/// What the result said was `[17] experiment_status is in your context now`, five times, with a
-/// different number each time and nothing to read the number against.
+/// note: `note` appends: a label is how an item is found again, not a key that stands for one. A
+/// model that reads it as a key writes a run of notes under one name, each meant to replace the
+/// last, and pins them - so the context asserts several different steps at once and compaction
+/// can clear none of them. Without this, all the result says is `[17] <label> is in your context
+/// now`, each time, with a different number and nothing to read the number against.
 ///
-/// note: so the clash is said where the mistake is made, and `revise` is named, because the action
-/// for what that session was actually doing was already in this tool's own enum. The `[id]` was
-/// the only signal before this, and it is a constant-shaped one in a template that reads the same
-/// every time - which is the shape a model learns to skim.
+/// note: so the clash is said where the mistake is made, and `revise` is named, because it is the
+/// action for what such a model is actually doing. The `[id]` alone is a constant-shaped signal in
+/// a template that reads the same every time, which is the shape a model learns to skim.
 ///
 /// note: what still goes into the request, rather than everything with the name. An archived note
 /// costs nothing and contradicts nothing, and a warning about one is a warning about nothing.
@@ -311,9 +305,9 @@ impl Changes {
                     "`{input}` is a selector, and nothing in your context matches it; \
                      `context` with `look` lists what there is"
                 ),
-                // the mistake a live run actually made: `label` is in this schema, for naming a
-                // `note`, and a model reaching for a way to say *which item* took it. The label
-                // was a fine way to name one - `select` reads a bare word as a label - so the
+                // the mistake a model actually makes: `label` is in this schema, for naming a
+                // `note`, and a model reaching for a way to say *which item* takes it. The label
+                // is a fine way to name one - `select` reads a bare word as a label - so the
                 // useful answer is the spelling of what it meant rather than a list of arguments
                 None => match args["label"].as_str() {
                     Some(label) => format!(
@@ -352,11 +346,11 @@ impl Changes {
         }
         // note: `StateChange::unchanged` is "already in that state *with that note*", so an item
         // that was pinned and is being pinned again for a different reason comes back as changed -
-        // which is true of the note and false of the item. The report was reading it as a move:
-        // `pin [2]` on something already pinned said "1 item(s) are now pinned: 2" over figures
-        // that had not moved, and put a step in the journal that `undo` then described as "2 back
-        // to pinned" about an item that is still pinned. What actually happened is that the reason
-        // was rewritten, so that is what it says. `was` is read before the change and already
+        // which is true of the note and false of the item. Read as a move, `pin [2]` on something
+        // already pinned would say "1 item(s) are now pinned: 2" over figures that had not moved,
+        // and put a step in the journal that `undo` would describe as "2 back to pinned" about an
+        // item that is still pinned. What actually happened is that the reason was rewritten, so
+        // that is what it says. `was` is read before the change and already
         // holds the state each item had, so telling the two apart costs nothing.
         let (moved, restated): (Vec<_>, Vec<_>) = was
             .into_iter()
@@ -403,36 +397,31 @@ impl Changes {
                 ),
             });
         }
-        // the way back, at the moment it becomes worth knowing. A session that elided twenty-two
-        // items spent its next two calls guessing at how to put them back and then gave up; six
-        // words here are cheaper than that
+        // the way back, at the moment it becomes worth knowing. A model that has just put a batch
+        // of items away otherwise spends calls guessing at how to put them back; a line here is
+        // cheaper than that
         //
-        // note: `action`, which is what `restore` is. It said `state: "restore"` from when the
-        // four moves were a `state` argument, and went on saying it after they became four
-        // actions of their own - so a model following the sentence sent an argument nothing
-        // reads, which is now refused by name. The way back cost the call it was there to save
+        // note: `action`, which is what `restore` is. A `state` argument is one nothing reads and
+        // is refused by name, so a sentence that named one would cost the call it is there to save
         if !moved.is_empty() && !state.sends_content() {
             out.push_str(
                 "back: the same ids with `action: \"restore\"`, or `undo` for all of it\n",
             );
-            // the failure this closes: a run gathered nineteen thousand tokens of evidence across
-            // seventeen tool results, said nothing in its own turns, elided all seventeen at once,
-            // and then answered all ten questions from nothing - confidently, and wrong on every
-            // one. The tool told it what it had saved and nothing about what it had just spent
-            // note: what this used to say was "what those items said survives only in what you
-            // have already said", which was true when it was written and stopped being true the
-            // day `context: search` arrived - an elided item keeps every byte and only projects
-            // as a marker. A live model read the old sentence and told its user the content was
-            // gone and no longer retrievable. The warning is still worth making; the claim under
-            // it was not, and a warning that overstates its case is how a tool teaches a model
-            // something false about its own context.
+            // the failure this closes: a model can gather its evidence in tool results, say
+            // nothing about it in its own turns, put all of it away at once, and then answer from
+            // nothing - confidently, and wrong. Without this the tool tells it what it saved and
+            // nothing about what it just spent
+            //
+            // note: the warning does not say the content is gone, because it is not: an elided
+            // item keeps every byte and only projects as a marker, and `search` reads it. A model
+            // told the content is gone tells its user so, and a warning that overstates its case
+            // is how a tool teaches a model something false about its own context.
             if !wrote_anything_down(kernel) {
                 out.push_str(
                     "you have no notes: nothing you are carrying says what those items said.\n",
                 );
-                // note: said outright rather than through `if_offered`, which is what this was
-                // while `search` belonged to a tool next door that a session might not have.
-                // The tool naming it is the tool that has it now
+                // note: said outright rather than through `if_offered`, because the tool naming
+                // `search` is the tool that has it
                 out.push_str(
                     "The text is still in them - `search` reads a line of one without putting it \
                      back, and `restore` returns the whole - but a finding you have to go and look \
@@ -537,20 +526,17 @@ impl Changes {
     /// in here?" has an answer on the context pane. It is the item's own field for exactly this,
     /// and a tool that attributed its writing to somebody else would be the one dishonest thing
     /// in a program built to show where everything came from.
-    /// Writes something the agent decided into its own context, as an item of its own.
     ///
-    /// note: worth being clear about what this is *for*, because the obvious objection is that a
-    /// model can already think, and thinking is free. Four differences, and each of them is the
-    /// reason somebody reaches for this rather than a reasoning block. Reasoning belongs to the
-    /// turn that produced it, so pruning that turn prunes the thought - deliberately, since for a
-    /// signed thinking block nothing else is safe. Reasoning is not addressable: it has no
-    /// identifier, cannot be revised, cannot be pinned, and a compactor cannot be told to leave
-    /// it alone. Reasoning is not reliably carried back either - this program's own
-    /// OpenAI-compatible dialect has never put it on the wire and cannot, so on that endpoint a
-    /// conclusion a model reached by thinking is gone by the next request. And reasoning is not
-    /// on the context tab as a row of its own with a reason beside it, which is the difference
-    /// between a person being able to see what the agent decided to keep and having to read a
-    /// transcript for it.
+    /// note: a note rather than a reasoning block, although a model can already think and thinking
+    /// is free. Reasoning belongs to the turn that produced it, so pruning that turn prunes the
+    /// thought - deliberately, since for a signed thinking block nothing else is safe. Reasoning is
+    /// not addressable: it has no identifier, cannot be revised, cannot be pinned, and a compactor
+    /// cannot be told to leave it alone. Reasoning is not reliably carried back either - this
+    /// program's own OpenAI-compatible dialect does not put it on the wire and cannot, so on that
+    /// endpoint a conclusion a model reached by thinking is gone by the next request. And
+    /// reasoning is not on the context tab as a row of its own with a reason beside it, which is
+    /// the difference between a person being able to see what the agent decided to keep and having
+    /// to read a transcript for it.
     ///
     /// note: so a note is the one item in a context that is there because the agent judged a
     /// finding worth keeping, which is why [`wrote_anything_down`] asks about exactly this and
@@ -621,10 +607,9 @@ impl Changes {
     /// back the way from where that left things to where they were. There is no separate "redo"
     /// representation to be written, or to fall out of step with the first one.
     fn walk(&self, kernel: &Kernel, args: &Value, reason: &str, back: bool) -> ToolOutput {
-        // note: read rather than clamped. It took `as_u64().unwrap_or(1).clamp(1, 64)`, so a
-        // `steps` of nought walked one change back, a negative number walked one back, a word
-        // walked one back, and a hundred walked sixty-four - each of them a call that did
-        // something other than what it said, and the schema advertised none of it
+        // note: read rather than clamped. Clamped, a `steps` of nought, a negative number or a
+        // word would each walk one change back, and a hundred would walk sixty-four - each of
+        // them a call that did something other than what it said
         let steps = match &args["steps"] {
             Value::Null => 1,
             Value::Number(given) if given.as_u64().is_some_and(|it| (1..=WALK).contains(&it)) => {
@@ -739,13 +724,11 @@ impl Changes {
 
 /// The state each of the four moves leaves an item in.
 ///
-/// note: four words for four states, and no second spelling of any of them. It took `excluded`,
-/// `unpin`, `unelide`, `active` and `include` too, on the reasoning that accepting a word
-/// somebody reached for costs nothing - which was true of the word and not of the program. The
-/// schema advertises twelve operations; every place that had to answer "which operation is
-/// this call" then needed a table of the words that are not in it, and `needs` was reduced to
-/// declaring all twelve for a call it could not place. One list, in the schema, is the whole
-/// of the vocabulary now.
+/// note: four words for four states, and no second spelling of any of them. Accepting a synonym
+/// somebody reached for costs nothing for the word and something for the program: the schema
+/// advertises twelve operations, so every place that answers "which operation is this call" would
+/// need a table of the words that are not in it, and `needs` would be reduced to declaring all
+/// twelve for a call it could not place. One list, in the schema, is the whole of the vocabulary.
 fn state_of(word: &str) -> Option<ContextState> {
     Some(match word {
         "exclude" => ContextState::Excluded,
@@ -775,11 +758,10 @@ pub(super) fn own_turn(kernel: &Kernel, call: &ToolCallId) -> Option<ContextId> 
 /// are worth saying beside.
 ///
 /// note: named, and passed by the caller that made the change, because one explanation cannot
-/// serve all four of them. It used to: every action reported growth as a marker left behind by an
-/// elision, so a live run that wrote a *note* was told its ten extra tokens were the marker of an
-/// elision it had not performed. A wrong account of a number is worse than the bare number - the
-/// only reason this sentence exists is that models read the two figures and did not work out which
-/// way they had gone.
+/// serve all four of them: a single one would tell a model that wrote a *note* that its extra
+/// tokens were the marker of an elision it had not performed. A wrong account of a number is worse
+/// than the bare number, and the sentence is there at all because models read the two figures and
+/// do not work out which way they went.
 #[derive(Debug, Clone, Copy)]
 enum Grew {
     /// An elision replaced content with a marker carrying the reason given for it.
@@ -794,9 +776,8 @@ impl Grew {
     /// The sentence to put after the figures, once it is known that they went up.
     fn by(self, more: usize) -> String {
         match self {
-            // an elision on a short item costs more than the content did: a live session elided
-            // twenty-two items and added 162 tokens doing it, then went on to elide everything
-            // else it had
+            // an elision on a short item costs more than the content did, and a model not told so
+            // goes on eliding to save tokens it is spending
             Self::Marker => format!(
                 " That is {} more than before, not less: what an elided item leaves behind is a \
                  marker carrying your reason for eliding it, and on a short item that costs more \
@@ -818,15 +799,12 @@ impl Grew {
 
 /// What the next request costs now, beside what it cost before the change.
 ///
-/// note: it says which way the figures went in *both* directions, which it did not used to. Growth
-/// was accounted for and a drop was left as two numbers to subtract, on the reasoning that a drop
-/// is what the caller asked for and needs no explaining. It does. A live session pruned three times
-/// running, was told `~9,679, from ~10,273`, then `~9,810, from ~9,840`, then `~10,521, from
-/// ~11,137` - three drops - and read all three as growth, because it was comparing each one against
-/// a figure it remembered from a `budget` call several turns earlier rather than against the
-/// `from ~` in the sentence it had just been handed. It concluded that pruning *adds* cost, acted
-/// on the conclusion with `undo steps: 6`, and bought itself 8,619 tokens. Hence both halves of
-/// what follows: the direction in words, and where the number it is measured against comes from.
+/// note: it says which way the figures went in *both* directions. A drop is what the caller asked
+/// for and still needs explaining: a model compares the new figure against one it remembers from a
+/// `budget` call several turns earlier rather than against the `from ~` in the sentence it has
+/// just been handed, reads a drop as growth, concludes that pruning *adds* cost, and walks its
+/// work back. Hence both halves of what follows: the direction in words, and where the number it
+/// is measured against comes from.
 fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
     let budget = kernel.budget();
     let now = budget.used();
@@ -846,10 +824,9 @@ fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
                  landed since is in the figure too.",
                 thousands(before - now)
             ),
-            // note: said rather than left as two figures that happen to match. A live session
-            // pinned an item, was told `now ~6,097 tokens, from ~6,097`, and answered "huh, pinning
-            // increased the cost slightly?" - the same misreading as the one above, off two numbers
-            // that were not even different. It says nothing about *why* it did not move, because
+            // note: said rather than left as two figures that happen to match, because a model
+            // reads growth even into two numbers that are not different - the same misreading as
+            // the one above. It says nothing about *why* it did not move, because
             // that differs by action and this arm serves all of them - a pin changes what
             // compaction may take rather than what the request carries, and a prune on something
             // already held back has nothing left to take out. What it does rule out is the other

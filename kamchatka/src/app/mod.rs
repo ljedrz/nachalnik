@@ -1,7 +1,7 @@
 //! Everything the terminal knows: what is on the screen, what the keys do, and what to make of
 //! the events the kernel broadcasts.
 //!
-//! note: The kernel is driven from a task of its own, and this loop never blocks on it. What
+//! note: the kernel is driven from a task of its own, and this loop never blocks on it. What
 //! arrives here is [`Event`]s - the same ones the session log is made of - so the screen is a
 //! rendering of the record rather than a second account of it. When a turn stops for a decision,
 //! the task ends and hands control back; nothing is waiting on a channel for an answer.
@@ -82,13 +82,13 @@ pub enum Focus {
 
 /// What the window is showing.
 ///
-/// note: Whole-window tabs rather than panes side by side. Three things want the screen - the
-/// conversation, the context and the event stream - and splitting it between them meant all three
-/// were cramped: the trace was cut off mid-sentence, the context could only afford a label and a
-/// number, and a long answer was reading in sixty columns. Only one of them is being read at a
-/// time. The status line is under all of them, because the budget is always worth seeing; the
-/// prompt is not, because three of the four are read and operated rather than typed into, and a
-/// prompt there was a mode - every letter on those tabs meant one of two things depending on where
+/// note: whole-window tabs rather than panes side by side. Three things want the screen - the
+/// conversation, the context and the event stream - and split between them all three are
+/// cramped: the trace is cut off mid-sentence, the context can only afford a label and a number,
+/// and a long answer reads in sixty columns. Only one of them is being read at a time. The status
+/// line is under all of them, because the budget is always worth seeing; the prompt is not,
+/// because three of the four are read and operated rather than typed into, and a prompt there
+/// would be a mode - every letter on those tabs would mean one of two things depending on where
 /// the focus had got to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -147,10 +147,10 @@ pub struct Traced {
     /// note: the pane draws no gap where this is set, however long the gap was. The column exists
     /// to answer *which step was slow*, and a session spends most of its wall time in two places
     /// where nothing is stepping at all: a permission question nobody has answered yet, and the
-    /// wait between one turn and the next message. `+11.0s` beside `permission.decided` is not the
-    /// runtime taking eleven seconds - it is a person reading the question - and it was the
-    /// largest figure in the column, which made the one number nobody should act on the one the
-    /// eye goes to first.
+    /// wait between one turn and the next message. The gap beside `permission.decided` is not the
+    /// runtime working - it is a person reading the question - and it is usually the largest
+    /// figure in the column, which would make the one number nobody should act on the one the eye
+    /// goes to first.
     ///
     /// note: set on the line that *ends* the wait rather than the one that begins it, because the
     /// gap belongs to the line it is drawn beside. `App::trace` takes it, so it marks exactly one
@@ -178,8 +178,8 @@ pub enum Overlay {
 /// One face of whatever an overlay is showing.
 ///
 /// note: a context item has more than one honest answer to "what is this?" - what the request
-/// will contain, what the item says, and what it said before somebody rewrote it - and picking
-/// one of them to show was how the viewer came to be quietly wrong about the other two.
+/// will contain, what the item says, and what it said before somebody rewrote it - and a viewer
+/// that picked one of them to show would be quietly wrong about the other two.
 ///
 /// note: serializable because a page is what a command answers with, and a caller answering a
 /// line is not always in this process - see [`crate::remote`]. The two fields are what a page
@@ -196,9 +196,9 @@ pub struct Page {
 /// A compaction pass, listed and waiting to be told whether to take what it listed.
 ///
 /// note: what it holds is the *list*, not the plan. Answering `y` works the pass out again, so
-/// a pin made while reading this is honoured rather than refused after the fact - which is the
-/// whole reason the question is pinned rather than modal: the context tab is a keystroke away
-/// while it waits, and `p` there is the answer to "not that one".
+/// a pin made while reading this is honoured rather than refused after the fact - which is why
+/// the question is pinned rather than modal: the context tab is a keystroke away while it waits,
+/// and `p` there is the answer to "not that one".
 #[derive(Clone)]
 pub struct Proposed {
     /// One line per item, in the order the compactor chose them.
@@ -212,13 +212,11 @@ pub struct Proposed {
 
 /// What a provider actually charged for a request, and what that request was made of.
 ///
-/// note: the one exact number in this program's accounting, and the point of keeping it is that
-/// an estimate does not have to carry the whole context any more. A counter without the model's
-/// tokenizer is out by a few percent of *everything it is asked about*; measured here, a third
-/// low on a short request with tool definitions and about 7% low on a long one, and
-/// `Calibrating` brings the second to within 1%. One percent of a hundred thousand tokens is a
-/// thousand tokens, which is a poor thing to be reading while deciding whether the next message
-/// fits.
+/// note: the one exact number in this program's accounting, kept so that an estimate does not
+/// have to carry the whole context. A counter without the model's tokenizer is out by a few
+/// percent of *everything it is asked about*, even calibrated, and one percent of a hundred
+/// thousand tokens is a thousand tokens, which is a poor thing to be reading while deciding
+/// whether the next message fits.
 ///
 /// note: so the figures on screen are this plus what has changed since, and the error is a few
 /// percent of *the change* rather than of the context. It also absorbs, exactly and for free,
@@ -232,8 +230,8 @@ pub struct Anchor {
     /// note: whose content, which is not the same as which items were in it. An elided one is in
     /// a request as a marker, and recording it here would have the arithmetic below take the
     /// whole of what it *holds* back out of a figure that only ever had a line of text in it.
-    /// That is not a rounding error: it made the corner read `~0` for the rest of a session
-    /// after one 12,278-token attachment was elided and one request went out without it.
+    /// That is not a rounding error: once a large attachment is elided and one request goes out
+    /// without it, the corner would read `~0` for the rest of the session.
     pub sent: Vec<ContextId>,
     /// What everything else in it came to - the markers standing where an elided item was.
     ///
@@ -241,8 +239,8 @@ pub struct Anchor {
     /// the exception is deliberate. Re-estimating is what makes an unchanged item cancel exactly
     /// against itself, but it needs the *text* that was sent, and the text of a marker is gone
     /// as soon as the item stops being elided. A marker is one line, so what is lost by storing
-    /// it in older money is a fraction of twenty tokens - against the twelve thousand that
-    /// getting it wrong costs.
+    /// it in older money is a fraction of twenty tokens - against the whole of an elided item
+    /// that getting it wrong costs.
     pub markers: usize,
     /// The provider's own figure for the whole of it, tool definitions and framing included.
     pub reported: usize,
@@ -277,7 +275,7 @@ pub enum Did {
 
 /// What came back from one line: what it did, what was said about it, and any page it opened.
 ///
-/// note: this is the half of `submit` that used to be readable only by watching [`App::loose`]
+/// note: this is the half of `submit` that is otherwise readable only by watching [`App::loose`]
 /// and [`App::overlay`] change - which is what a *screen* does, because a screen re-reads both
 /// every frame. A caller that is not a screen is answering a line rather than redrawing a
 /// window, and it asked a question: this is the answer to it.
@@ -330,7 +328,7 @@ pub struct App {
     /// note: `advise` rather than `shell-advisor`, though the rating is the older reason to hold
     /// one. Whether the advisor is *working* is not a rating concern - a build that only folds
     /// verdicts still has an engine that can be starting, backing off or gone - and gating the
-    /// field on the rubric left that build with no way to say so.
+    /// field on the rubric would leave that build with no way to say so.
     #[cfg(feature = "advise")]
     pub advisor: Option<Arc<crate::tools::Advised>>,
     /// The provider, for switching models - whichever dialect it speaks.
@@ -340,10 +338,10 @@ pub struct App {
     /// note: both commands hand the switch to a task rather than standing there while it happens,
     /// because finding out what the new model holds and whether the new address serves it is two
     /// round trips and a screen should not stop for them. What the *next line* may not do is read
-    /// a session that has not finished changing: `/provider URL ID` followed by `/model` reported
-    /// the old model, and a message on the line after a switch could be asked of whichever of the
-    /// two won the race. Down a pipe there is no gap between the lines at all, so what is a race
-    /// at a keyboard is the ordinary case in a script.
+    /// a session that has not finished changing: `/provider URL ID` followed by `/model` would
+    /// report the old model, and a message on the line after a switch could be asked of whichever
+    /// of the two won the race. Down a pipe there is no gap between the lines at all, so what is a
+    /// race at a keyboard is the ordinary case in a script.
     ///
     /// note: awaited in [`App::submit`] rather than anywhere the provider is read, which is the
     /// narrower door and the right one: a frame drawn mid-switch showing the old name for a
@@ -361,11 +359,11 @@ pub struct App {
     /// note: kept here rather than in the kernel because the kernel deliberately does not keep
     /// it. A replacement is the one context operation that overwrites something, which is why
     /// [`nachalnik::Event::ContextReplaced`] is the one event that carries content - so that a
-    /// client which wants the history can have it, and one that does not pays nothing. Before
-    /// this, a `context` that rewrote a tool result left the old text nowhere a person could read
-    /// it: on the trace as a line of JSON, and in an undo window that closes.
+    /// client which wants the history can have it, and one that does not pays nothing. Without
+    /// this, a `context` that rewrote a tool result would leave the old text nowhere a person can
+    /// read it: on the trace as a line of JSON, and in an undo window that closes.
     ///
-    /// note: both hands land here now. A terminal edit replaces in place as `context: revise`
+    /// note: both hands land here. A terminal edit replaces in place as `context: revise`
     /// does, so this is where the words it changed are, and the reason it needs no second
     /// mechanism of its own.
     versions: BTreeMap<ContextId, Vec<Content>>,
@@ -377,18 +375,17 @@ pub struct App {
     /// weak handle to it, and dropping it is what takes their reach away. See
     /// [`crate::introspect::install`].
     ///
-    /// note: it used to be what `/introspect` moved - the four tools were switched off by dropping
-    /// this, which also threw away what `context` was remembering. Turning a tool off is
-    /// [`App::toggle`] now, and a shelved tool is still the same tool: what it pinned is still
-    /// pinned, and what it could still walk back it still can.
+    /// note: dropping it is not how the tools are switched off, because it would also throw away
+    /// what `context` is remembering. Turning a tool off is [`App::toggle`], and a shelved tool is
+    /// still the same tool: what it pinned is still pinned, and what it could still walk back it
+    /// still can.
     pub introspect: Option<Arc<Kernel>>,
     /// The tools this session is not offering, by id, kept so that they can be offered again.
     ///
     /// note: the tool itself rather than its id, which is what makes this work for a tool nobody
     /// here wrote. A list of names would mean rebuilding whatever was named, and there is no way
-    /// to rebuild an MCP server's tool or an embedder's - so turning one off would have been
-    /// turning it off for good. What [`Kernel::remove_tool`] hands back is the tool; keeping it is
-    /// the whole mechanism.
+    /// to rebuild an MCP server's tool or an embedder's - so turning one off would be turning it
+    /// off for good. What [`Kernel::remove_tool`] hands back is the tool, and this keeps it.
     pub shelved: BTreeMap<String, Arc<dyn Tool>>,
     /// How much of the shell's sandbox the kernel agreed to, asked once at startup.
     ///
@@ -464,11 +461,11 @@ pub struct App {
     ///
     /// note: scoped to a turn, because one failure being reported twice is a fact about a turn -
     /// the kernel emits the event and then the turn comes to the same end, the second wrapping
-    /// the first. What this replaced compared against the last line in [`App::loose`], which
-    /// outlives every turn: nothing said between two turns goes in there, because a message and
-    /// an answer are both drawn from the context, so the first red line stayed the last loose
-    /// line for the rest of the session and every later failure with the same words was
-    /// swallowed. A model with one canned refusal fails silently from its second refusal on.
+    /// the first. Comparing against the last line in [`App::loose`] would not do, because that
+    /// outlives every turn: nothing said between two turns goes in there, since a message and an
+    /// answer are both drawn from the context. The first red line would stay the last loose line
+    /// for the rest of the session and swallow every later failure with the same words, so a
+    /// model with one canned refusal would fail silently from its second refusal on.
     failed: Option<String>,
     /// Whether a person has just done something the trace has not drawn a line for yet.
     ///
@@ -480,7 +477,7 @@ pub struct App {
     /// note: set where the program learns a person acted rather than where the waiting begins.
     /// A question opens and `state.changed`, a recount and the question itself all arrive in the
     /// same millisecond, so a flag set at the opening would be spent on one of those and the
-    /// eleven seconds would still be drawn beside `permission.decided`.
+    /// person's wait would still be drawn beside `permission.decided`.
     acted: bool,
     /// Whether it is time to leave.
     pub quit: bool,
@@ -508,8 +505,8 @@ pub struct App {
     /// How many tokens the provider may charge for this session before it stops; `None` never
     /// stops. [`App::set_spend`] is how it is changed, and [`App::spend`] reads it.
     ///
-    /// note: here rather than in the loop that drives the session, which is where it started, and
-    /// the move is the whole of what makes it a ceiling rather than a headless flag. Every caller
+    /// note: here rather than in the loop that drives the session, which is what makes it a
+    /// ceiling rather than a headless flag. Every caller
     /// hands events to [`App::on_event`] - the screen, the headless driver, and an embedder with a
     /// loop of its own - so this is the one place where counting them reaches all three. A guard
     /// that only the program's own loop applied would be no guard for the embedder who most needs
@@ -539,8 +536,8 @@ pub struct App {
     ///
     /// note: what `/help` turns on, and it is a fact about the *caller* rather than about the
     /// session - which is why the loop sets it and `App` cannot work it out. A run down a pipe and
-    /// a browser attached over a socket both have no `ctrl+p` to press, and both were being handed
-    /// six pages about one.
+    /// a browser attached over a socket both have no `ctrl+p` to press, and neither should be
+    /// handed pages about one.
     ///
     /// note: `true` by default, and the direction is deliberate rather than convenient. This type
     /// is the terminal's state - it holds a prompt, a focus, a tab and two scroll positions - so
@@ -566,14 +563,14 @@ pub struct App {
     ///
     /// note: a repair is a property of the context rather than news about a turn. The projection
     /// is built afresh for every request, so the projector re-does the repair and honestly
-    /// re-reports it - which put a line about item 4's dropped call in the conversation after
+    /// re-reports it, and saying it each time would put the same line in the conversation after
     /// every message for the rest of a session, for one tool result excluded once. All four kinds
     /// behave this way: an orphaned call, an orphaned result, a flattened turn and a result held
     /// back all last as long as the state that caused them.
     ///
     /// note: the *conversation* only. The trace keeps every one, because it is the event log and a
     /// log that hid a repeated entry would be the wrong thing entirely - `model.requested` really
-    /// did carry that repair, every time.
+    /// does carry that repair, every time.
     reported_repairs: Vec<String>,
     /// How far down the pinned question's arguments are scrolled.
     ///
@@ -760,7 +757,7 @@ impl App {
 
     /// Performs exactly one transition of the state machine, and stops.
     ///
-    /// note: This is the runtime's own shape, made visible. A turn is a loop over `step`, and
+    /// note: this is the runtime's own shape, made visible. A turn is a loop over `step`, and
     /// running it a transition at a time is the only way to stand in [`State::Ready`] and look at
     /// what the model has asked for *before* any of it runs - which the kernel documents as a
     /// resting state on purpose, and which a whole turn walks straight through.
@@ -787,8 +784,8 @@ impl App {
     /// What one transition landed in, in a form somebody can act on.
     fn stepped(&mut self, state: State) {
         let told = match &state {
-            // the whole point of stepping: the calls are decided and about to run, and nothing
-            // has happened yet
+            // what stepping is for: the calls are decided and about to run, and nothing has
+            // happened yet
             State::Ready { calls } => {
                 let waiting: Vec<String> = self
                     .kernel
@@ -823,15 +820,13 @@ impl App {
         // belong to no turn at all, and taking it twice costs nothing.
         //
         // note: here rather than only in that loop, so that a notice is not something only the
-        // program's own `main` receives. A cut-off answer that says so to nobody is the failure
-        // this was written to close, and it took a test driving `App` directly to see that it
-        // could still happen.
+        // program's own `main` receives: an embedder driving `App` directly would otherwise never
+        // hear that an answer was cut off.
         if let Some(notice) = self.provider.take_notice() {
             self.say(Speaker::Note, notice);
         }
         // note: the advisor's beside the provider's, for the same reason and in the same place.
-        // It is a second thing this session depends on and cannot see, and until this was here
-        // the only moment anything asked it was startup
+        // It is a second thing this session depends on and cannot see
         #[cfg(feature = "advise")]
         if let Some(notice) = self.advisor.as_ref().and_then(|advised| advised.notice()) {
             self.say(Speaker::Note, notice);
@@ -839,8 +834,7 @@ impl App {
 
         // note: a turn that stopped to ask a question has not ended - the call it is asking about
         // still has a result to come - and a message pushed now would land between the call and
-        // that result, which is a place a request cannot have one. A live run put "what is the
-        // capital of Peru" exactly there
+        // that result, which is a place a request cannot have one
         let ended = matches!(outcome, Outcome::Stopped(ref state) if !matches!(state, State::Deciding { .. }));
         // a `Stepped` outcome is somebody driving this a transition at a time, and a failure is
         // not the moment to start something else; either way what was typed waits for `/continue`
@@ -849,18 +843,16 @@ impl App {
             Outcome::Failed(e) => self.say_error(e),
             // note: a turn stopping to ask says nothing here, and opens nothing. The question is
             // drawn from `pending_permissions()` every frame, so there is no moment at which it
-            // has to be put on the screen and none at which it has to be taken off - which is
-            // also the end of a class of bug this had: an overlay left standing over a question
-            // that had been answered somewhere else, until the next key closed it
+            // has to be put on the screen and none at which it has to be taken off, so nothing
+            // can be left standing over a question that was answered somewhere else
             //
             // note: unless every question was answered while this outcome was on its way, in which
             // case the turn is carried on here. `permission.requested` is broadcast while the turn
             // that raised it is still unwinding, so an answer inside that window is recorded and
             // then goes nowhere: `App::decide` calls `start_turn`, `start_turn` refuses because the
             // old turn is still marked as running, and the session stops for good with every
-            // question answered and nothing to answer. The window is narrow and it is not
-            // theoretical - it is whatever the gap is between a client's socket and this loop - and
-            // what it costs when it opens is a session that never moves again. `headless.rs` stays
+            // question answered and nothing to answer. The window is narrow but real - it is
+            // whatever the gap is between a client's socket and this loop. `headless.rs` stays
             // out of it by only answering while the kernel rests; the keys and a socket cannot,
             // because a person answers when they answer, so it is closed here instead, once, for
             // all three
@@ -891,6 +883,7 @@ impl App {
 
         // a message somebody sent into this turn has waited for it to end; now it goes in, and
         // unless the turn was stopped or stepped it gets a turn of its own
+        //
         // note: `caught_up` because the line saying it was waiting is a live one - it was said
         // when there was no item to say it from - and pushing is what gives it one. The item is
         // drawn in its place, at the end of the conversation, which is where the request has it
@@ -912,8 +905,8 @@ impl App {
     /// Takes in one event from the runtime.
     pub fn on_event(&mut self, event: Event) {
         // a line per streamed fragment would push everything else out of the trace before it could
-        // be read - and a `cat` of a thousand lines really did erase the whole of it, one
-        // `tool.output` at a time. The fragments themselves are on the chat tab; the session log
+        // be read - a long `cat` would erase the whole of it, one `tool.output` at a time. The
+        // fragments themselves are on the chat tab; the session log
         // has them if `record_progress` is on
         match &event {
             Event::ModelDelta { .. } => {}
@@ -974,8 +967,7 @@ impl App {
                 //
                 // note: and only when they change. See `App::reported_repairs` - a repair lasts as
                 // long as the state that caused it, so the projector re-does it for every request
-                // and honestly reports it again, which put this line in the conversation after
-                // every message for the rest of a session over one tool result taken out once
+                // and honestly reports it again
                 //
                 // note: the count is everything being repaired rather than what is newly so,
                 // because it is the number the preview will show. And the wording says the repair
@@ -986,8 +978,8 @@ impl App {
                 // note: `/request` and not `ctrl+p`, which is the same page and is the key for it
                 // on a screen. Everything this program says goes out of a headless run too, where
                 // there is no keyboard and the trace holding the list is not printed - so a run
-                // driven down a pipe was told to press a key that does not exist there, about a
-                // list it had no other way to see. The command works in both
+                // driven down a pipe would be told to press a key that does not exist there, about
+                // a list it has no other way to see. The command works in both
                 if repairs != self.reported_repairs {
                     match repairs.len() {
                         0 => {}
@@ -1020,11 +1012,10 @@ impl App {
             }
             Event::ModelFinished { item, usage, .. } => {
                 // note: the tokens are real and the words are gone. Some endpoints bill for
-                // reasoning and return none of it - `mercury-2.5` answered one question with 1,139
-                // reasoning tokens and 273 of answer, and its stream carries no reasoning field at
-                // all - so the context tab shows a turn with nothing in it where the thinking was,
-                // and the only trace of where the money went is a number in `/budget`. Said once,
-                // because it is true of the endpoint rather than of this turn
+                // reasoning and return none of it - `mercury-2.5`'s stream carries no reasoning
+                // field at all - so the context tab shows a turn with nothing in it where the
+                // thinking was, and the only trace of where the money went is a number in
+                // `/budget`. Said once, because it is true of the endpoint rather than of this turn
                 if !self.thought_unseen
                     && usage.is_some_and(|it| it.reasoning_tokens.is_some_and(|n| n > 0))
                     && self
@@ -1056,8 +1047,8 @@ impl App {
                 // gets drawn either way
                 self.caught_up(item);
             }
-            // the same fact from the two places that can know it, and the difference between them
-            // is the whole of what the second line says: one is a count and the other is a guess
+            // the same fact from the two places that can know it, and the second line says which
+            // of them it is: one is a count and the other is a guess
             Event::ModelFailed { error, overrun } => {
                 self.close();
                 self.say_error(error);
@@ -1120,11 +1111,10 @@ impl App {
                 Speaker::Error,
                 format!("the model asked for `{tool}`, which is not a tool here"),
             ),
-            // note: a file added to the context used to be said out loud here, and the chat then
-            // drew it twice - `[1] notes.md (file), 10 tokens` off the item, and
-            // `[1] notes.md is in the context, 10 tokens` off this event, one above the other,
-            // for every `-f` and every `/attach`. The derived line is the one that cannot go out
-            // of date, so it is the one that stays. See `App::as_conversation`
+            // note: a file added to the context is not said out loud here. The chat already draws
+            // a line for it off the item, and a second one off this event would say it twice, one
+            // above the other, for every `-f` and every `/attach`. The derived line is the one
+            // that cannot go out of date, so it is the one that stays. See `App::as_conversation`
             _ => {}
         }
     }
@@ -1153,9 +1143,9 @@ impl App {
     ///
     /// note: an undo is why this is not `Vec::len`. Putting an old content back makes the newest
     /// remembered version the current one as well, and two identical faces side by side say the
-    /// same thing twice - so the last is dropped when it matches. The terminal's strip of faces
-    /// drew that rule and this is where it lives now, because a client counting versions for a
-    /// button and a terminal counting them for a page have to reach the same number.
+    /// same thing twice - so the last is dropped when it matches. The rule lives here rather than
+    /// in the terminal's strip of faces, because a client counting versions for a button and a
+    /// terminal counting them for a page have to reach the same number.
     pub fn versions(&self, id: ContextId) -> usize {
         let history = self.versions.get(&id).map(Vec::as_slice).unwrap_or(&[]);
         let same = self
@@ -1211,10 +1201,9 @@ impl App {
             return;
         };
 
-        // counted whether or not anything is watching the figure, which is not where this started:
-        // it was added up only under a ceiling, so a session that set one half way through began
-        // from zero and `/spend` answered `0 tokens spent` after a turn that plainly cost some.
-        // Found by reading what a live run printed
+        // counted whether or not anything is watching the figure. Added up only under a ceiling,
+        // a session that set one half way through would begin from zero, and `/spend` would
+        // answer `0 tokens spent` after a turn that plainly cost some
         self.spent += usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0);
         let Some(limit) = self.spend else {
             return;
@@ -1346,11 +1335,11 @@ impl App {
 
     /// Asks for this session to be written out and a fresh one put in its place.
     ///
-    /// note: it stops a running turn on the way rather than refusing while one is running. The
-    /// alternative was a command that works most of the time and says *not while busy* the rest,
-    /// which is the shape somebody types `/restart` to get out of - a turn that has found a loop
-    /// is the commonest reason to want one. What the kernel is asked for is the same stop `esc`
-    /// asks for, so the turn ends the way an interrupted turn ends and the record has it.
+    /// note: it stops a running turn on the way rather than refusing while one is running.
+    /// Refusing would make a command that works most of the time and says *not while busy* the
+    /// rest, which is the shape somebody types `/restart` to get out of - a turn that has found a
+    /// loop is the commonest reason to want one. What the kernel is asked for is the same stop
+    /// `esc` asks for, so the turn ends the way an interrupted turn ends and the record has it.
     ///
     /// note: what actually happens is the loop's, not this object's - see [`App::restart`] the
     /// field. This sets the flag and says nothing: the line worth reading is the one naming the
@@ -1376,10 +1365,9 @@ impl App {
     /// that changed anything.
     ///
     /// note: `pub` and not gated on `tui` for the reason [`App::submit`] and [`App::interrupt`]
-    /// are. The terminal's `e` was the only way to rewrite an item for as long as the only editor
-    /// was a prompt; a browser has a box on the screen that is already showing what the item says,
-    /// and what it was missing was somewhere to commit it to. Both go through here, so neither
-    /// invents a second account of what an edit is.
+    /// are. The terminal's `e` is one editor; a browser has a box on the screen that is already
+    /// showing what the item says, and needs somewhere to commit it to. Both go through here, so
+    /// neither invents a second account of what an edit is.
     ///
     /// note: it asks `text::beyond_a_prompt` itself rather than trusting the caller to have
     /// asked. Both callers do ask first, because refusing after somebody has typed is worse than
@@ -1431,14 +1419,13 @@ impl App {
     /// Answers one of the questions the kernel is waiting on, and carries the turn on if that was
     /// the last of them.
     ///
-    /// note: here rather than in `keys.rs`, where the rest of it was, because three loops answer
-    /// questions and while it lived with the keys each of them did it in its own words. An answer
-    /// is four things: telling the sandbox about a granted command that reaches the network, which
-    /// is [`App::answer`] and was already shared for it; honouring `always` over what the policy
-    /// consulted; sweeping the questions queued behind this one; and driving the turn on, because
-    /// a decision leaves the kernel resting with nobody driving it. The last three were the keys'
-    /// alone, so a headless run answered and then sat there. A third caller reached the same fork
-    /// and that is what made it a function - see [`crate::remote`].
+    /// note: here rather than in `keys.rs`, because three loops answer questions - the keys,
+    /// `headless.rs` and [`crate::remote`] - and each doing it in its own words would leave each
+    /// missing a different part. An answer is four things: telling the sandbox about a granted
+    /// command that reaches the network, which is [`App::answer`]; honouring `always` over what
+    /// the policy consulted; sweeping the questions queued behind this one; and driving the turn
+    /// on, because a decision leaves the kernel resting with nobody driving it. Without the last,
+    /// a headless run answers and then sits there.
     ///
     /// note: `remember` is what the `a` key means - *always* - and what it remembers is everything
     /// the policy actually consulted rather than what the tool declared, so a `yes, always` to a
@@ -1475,8 +1462,8 @@ impl App {
                 // answered rather than merely decided. A model that asks for `ls` and `curl` in one
                 // breath produces two questions, and `a` on the first is what lets the second
                 // through - so the second has to be let through the same door, network grant and
-                // all. Decided straight into the kernel, it ran with the network cut and nothing
-                // anywhere said why
+                // all. Decided straight into the kernel, it would run with the network cut and
+                // nothing anywhere saying why
                 if self.policy.verdict(&waiting) == Verdict::Allow
                     && let Err(e) = self.answer(&waiting, Grant::Allow)
                 {
@@ -1507,14 +1494,13 @@ impl App {
     /// twice.
     ///
     /// note: `said` is how many of *these* have been taken rather than how far down
-    /// [`App::loose`] the caller had got, and the difference is a bug only a live run can find.
-    /// The list is not append-only - a turn being recorded takes every line that streamed out of
-    /// it, because the context says those now - so a mark against the whole list slides backwards
-    /// under its own watermark, and everything said between one shrink and the next is skipped. A
-    /// scripted model answers between two looks, so nothing shrinks in between and no test sees
-    /// it; a live run lost `spent 1,106 tokens of 500; stopping`, which was decided, recorded,
-    /// and acted on, and whose only missing reader was the person. What the filtered sequence
-    /// *is* is append-only: a note is not something that streams.
+    /// [`App::loose`] the caller had got. The list is not append-only - a turn being recorded
+    /// takes every line that streamed out of it, because the context says those now - so a mark
+    /// against the whole list slides backwards under its own watermark, and everything said
+    /// between one shrink and the next is skipped: a line saying the ceiling was reached can be
+    /// decided, recorded and acted on and still never reach the person. A scripted model answers
+    /// between two looks, so nothing shrinks in between and a test driving one does not see it.
+    /// What the filtered sequence *is* is append-only: a note is not something that streams.
     ///
     /// note: with one exception, and it is `/cleanup`. [`App::clear_notices`] empties this sequence
     /// rather than shortening it, so a watermark against it is stale in the one direction that is
@@ -1597,9 +1583,9 @@ impl App {
             })
             .collect();
 
-        // note: and what it is *called* follows the same rule. A caller with no keys was being
-        // handed a page of slash commands under the title `the keys`, which is the panel telling
-        // it that what it is reading is the thing it has not got
+        // note: and what it is *called* follows the same rule. A caller with no keys is handed a
+        // page of slash commands, and titled `the keys` the panel would be telling it that what it
+        // is reading is the thing it has not got
         let title = match self.keys {
             true => "the keys",
             false => "the commands",
@@ -1632,8 +1618,8 @@ impl App {
 
         // before anything else, including whatever is on top: these two mean the same thing
         // wherever they are pressed, and an overlay that took them for its own would be answering
-        // a question nobody asked. `ctrl+d` at a permission prompt used to drop every pending
-        // call, because `d` is a key there and nothing was looking at the modifiers
+        // a question nobody asked: `d` is a key at a permission question, and `ctrl+d` reaching it
+        // would drop every pending call
         if ctrl && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')) {
             match self.busy && key.code == KeyCode::Char('c') {
                 true => self.interrupt(),
@@ -1658,8 +1644,8 @@ impl App {
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         // taken rather than read, so that a count lives for exactly one key wherever that key is
         // handled: only the digit arm below puts it back. Cleared at the end of `context_key`
-        // instead, a `4` followed by `tab` or `F1` - neither of which gets that far - survived to
-        // send the next `G` to item 4
+        // instead, a `4` followed by `tab` or `F1` - neither of which gets that far - would survive
+        // to send the next `G` to item 4
         let count = std::mem::take(&mut self.count);
 
         match (key.code, ctrl) {
@@ -1694,7 +1680,7 @@ impl App {
             (KeyCode::F(1), _) => self.help(),
             // `?` is what F1 is on the three tabs with no prompt for a letter to be typed into,
             // and it is answered here rather than in each of their handlers because two of the
-            // three were swallowing it: `context_key` and `permissions_key` return early when
+            // three would swallow it: `context_key` and `permissions_key` return early when
             // their list is empty, which is exactly the moment somebody is most likely to ask what
             // the keys are. `Focus::Body` is the guard rather than the tab alone, so that the `?`
             // of a sentence typed into an item being edited is still a `?`
@@ -1752,6 +1738,7 @@ impl App {
     /// streamed answer is ever open, and it is a turn rather than a notice - but the guard is
     /// here rather than left to the speaker, since what must never happen is a line vanishing
     /// mid-sentence.
+    ///
     /// note: it counts, and [`App::cleared`] is the count. A loop with no screen reads its lines
     /// through [`App::notes`], which is a watermark over the filtered sequence and is safe only
     /// while that sequence grows - and this is the one thing that empties it. A caller that did
@@ -1765,12 +1752,11 @@ impl App {
     /// Moves one item to the next state in the ring: seen, then a marker where it was, then
     /// nothing at all, then seen again.
     ///
-    /// note: here rather than in `keys.rs`, where it was, for the reason [`App::decide`] is here -
-    /// a second client reached the same fork, and while it lived with the keys it was a ring one
-    /// caller knew the shape of. The two halves that must not be copied are the order and the
-    /// notes: the notes are read by the *model*, in the brackets the projector puts round them, so
-    /// a page writing its own words for the same act would put two accounts of one thing in front
-    /// of it.
+    /// note: here rather than in `keys.rs`, for the reason [`App::decide`] is here: a second
+    /// client turns the same ring, and each would otherwise keep its own copy of its shape. The
+    /// two halves that must not be copied are the order and the notes: the notes are read by the
+    /// *model*, in the brackets the projector puts round them, so a page writing its own words for
+    /// the same act would put two accounts of one thing in front of it.
     ///
     /// note: a cycle rather than three buttons, and the middle step is the one that earns it.
     /// Taking a tool result out makes the projector drop the call that asked for it, so the model
@@ -1808,8 +1794,8 @@ impl App {
 
     /// How many times the program's own lines have been taken off the chat.
     ///
-    /// note: for a caller holding a watermark into [`App::notes`], and it is the whole of what
-    /// such a caller has to do about `/cleanup`: keep this beside `said`, and when it moves, set
+    /// note: for a caller holding a watermark into [`App::notes`], and it is all such a caller
+    /// has to do about `/cleanup`: keep this beside `said`, and when it moves, set
     /// `said` back to nothing. There is no arithmetic to do, because what a clear leaves behind
     /// is not a shorter sequence but an empty one - everything it removes is exactly what `notes`
     /// filters *for*, and the only survivor is a line still being streamed, which is a model
@@ -1820,7 +1806,7 @@ impl App {
 
     /// Opens a tab, and puts the keys wherever they are useful on it.
     ///
-    /// note: Switching to the context or the trace is something somebody does in order to work on
+    /// note: switching to the context or the trace is something somebody does in order to work on
     /// it, so the focus follows - and there is nothing else on those tabs for it to be on. On the
     /// conversation the keys go to the prompt, unless something is being asked: coming back to a
     /// waiting question is what somebody does *in order to answer it*, having just been away
@@ -1866,8 +1852,8 @@ impl App {
     /// note: `take` works the pass out again rather than applying what was listed. The list is a
     /// snapshot of a context somebody has just been invited to change, so applying it would take
     /// exactly what they had protected while reading it. The kernel refuses a pinned item and
-    /// says so, which would catch it - afterwards, in a report, which is the shape this whole
-    /// question exists to get away from.
+    /// says so, which would catch it - afterwards, in a report, which is what this question
+    /// exists to avoid.
     ///
     /// note: public because the screen is not the only thing entitled to answer. `--headless` has
     /// no keys and answers this itself; see the note there for why it takes it rather than
@@ -1903,21 +1889,21 @@ impl App {
 
     /// Whether the prompt is on the screen at all.
     ///
-    /// note: it belongs to the conversation, and it used to be under every tab so that a message
-    /// could be sent from anywhere. What that cost was a mode on three tabs that have no use for
-    /// one: every key on them was either a key or a letter depending on where the focus happened
-    /// to be, and the answer was `tab`, and forgetting was a `space` typed into a message instead
-    /// of cycling the row somebody was looking at. The exception is an edit, which is the prompt
-    /// doing a job for the tab underneath it: the item being rewritten is on that tab, and the box
-    /// has to be beside it.
+    /// note: it belongs to the conversation, rather than being under every tab so that a message
+    /// can be sent from anywhere. That would cost a mode on three tabs that have no use for one:
+    /// every key on them would be either a key or a letter depending on where the focus happened
+    /// to be, and forgetting would be a `space` typed into a message instead of cycling the row
+    /// somebody was looking at. The exception is an edit, which is the prompt doing a job for the
+    /// tab underneath it: the item being rewritten is on that tab, and the box has to be beside
+    /// it.
     ///
     /// note: and a waiting question takes its place rather than stacking above it, so that the box
-    /// the keys are in is the box on the screen. Stacked, the two disagreed on any window shorter
-    /// than about fifteen rows: the question needs the room, so the prompt gave way - and went on
-    /// holding the keys and whatever had been typed into it from off the screen, which is a
-    /// session waiting on an answer nobody can give it without first pressing a key nothing
-    /// mentions. What was typed is not lost; the box comes back with it, and `App::locked_key` is
-    /// what stands between a keystroke and a prompt that is not there.
+    /// the keys are in is the box on the screen. Stacked, the two disagree on a short window: the
+    /// question needs the room, so the prompt gives way - and goes on holding the keys and
+    /// whatever had been typed into it from off the screen, which is a session waiting on an
+    /// answer nobody can give it without first pressing a key nothing mentions. What was typed is
+    /// not lost; the box comes back with it, and `App::locked_key` is what stands between a
+    /// keystroke and a prompt that is not there.
     pub fn prompted(&self) -> bool {
         match self.tab {
             Tab::Chat => !self.asking(),
@@ -1929,7 +1915,7 @@ impl App {
     ///
     /// note: the line breaks inside a paste arrive as carriage returns rather than newlines,
     /// because a terminal sends a paste as though it had been typed and that is what the enter key
-    /// sends. The editor underneath splits on newlines, so a pasted stack trace went in as one
+    /// sends. The editor underneath splits on newlines, so a pasted stack trace would go in as one
     /// line with invisible characters where its breaks were and read as its lines run together -
     /// in the one place whose whole job is to show somebody what they are about to send.
     #[cfg(feature = "tui")]
@@ -1959,27 +1945,25 @@ impl App {
 
     /// A name for a session, from the seconds since the epoch it started at.
     ///
-    /// note: this is the session's identity *and* the name of the two files it leaves behind, and
-    /// it was `kamchatka-1788849917`. Those go in a directory called `kamchatka`, so half of every
-    /// filename said what the directory had already said - and the other half said nothing at all
-    /// to anybody reading it. `2026-09-08T06-45-17Z` names the same session, sorts the same way,
-    /// and answers the question somebody is looking at a list of them to ask.
+    /// note: this is the session's identity *and* the name of the two files it leaves behind.
+    /// Those go in a directory called `kamchatka`, so the program's name in a filename would say
+    /// what the directory already says, and a bare count of seconds says nothing to anybody
+    /// reading it. `2026-09-08T06-45-17Z` names the session, sorts the same way, and answers the
+    /// question somebody is looking at a list of them to ask.
     ///
-    /// note: UTC, and it says so, because the alternative is a local time that needs the timezone
-    /// database to work out - a dependency for a filename - and a name that quietly means
+    /// note: UTC, and it says so, because a local time would be a name that quietly means
     /// something different depending on where it was written.
     ///
-    /// note: to the second, which is what it was before: two sessions started inside one second
-    /// would collide, and did before too. The identifier a session gets from the runtime by
-    /// default is a counter that restarts with the process, which is fine as an identity and
-    /// writes over the last session's record.
+    /// note: to the second, so two sessions started inside one second collide. The identifier a
+    /// session gets from the runtime by default is a counter that restarts with the process,
+    /// which is fine as an identity and writes over the last session's record.
     pub fn session_stamp(secs: u64) -> String {
         // days since the epoch, and what is left of the last one
         let (days, rest) = ((secs / 86_400) as i64, secs % 86_400);
-        // note: Howard Hinnant's `civil_from_days`, which is the whole of the calendar in five
-        // lines of integer arithmetic and gets the leap years right for every year rather than
-        // for the ones a test happened to try. The shift is to an era starting in March, so that
-        // a leap day is the last day of a year instead of the sixtieth
+        // note: Howard Hinnant's `civil_from_days`, the calendar in integer arithmetic, which gets
+        // the leap years right for every year rather than for the ones a test happened to try.
+        // The shift is to an era starting in March, so that a leap day is the last day of a year
+        // instead of the sixtieth
         let z = days + 719_468;
         let era = z.div_euclid(146_097);
         let doe = z.rem_euclid(146_097);

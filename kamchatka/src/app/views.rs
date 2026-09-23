@@ -32,16 +32,15 @@ pub struct Stance {
     /// The registered tools the policy judges against it only sometimes, by looking at the call.
     ///
     /// note: `network` and `shell` are the pair this exists for. No tool here declares `network` -
-    /// a model that wants the network writes `curl` - so the row read `nothing registered needs
-    /// it` beside a verdict of `deny`, which is a restriction that was not there. What is there is
-    /// [`crate::tools::Careful`] reading the command, and that is what this says.
+    /// a model that wants the network writes `curl` - so without this the row would read `nothing
+    /// registered needs it` beside a verdict of `deny`, a restriction that is not there. What is
+    /// there is [`crate::tools::Careful`] reading the command, and that is what this says.
     pub sometimes: Vec<String>,
     /// What makes it *that* time, in a clause the pane puts after [`Stance::sometimes`].
     ///
-    /// note: a field rather than the one sentence it used to be, because there are two of these
-    /// now and they are sometimes about different things. `shell` is judged against `net:reach`
-    /// when the command reaches for it; `context` is judged against `context:exclude` when the
-    /// call names that operation. One clause covering both would have to say neither.
+    /// note: a field rather than a sentence fixed in the pane, so that a subject judged only
+    /// sometimes can say what makes it that time. The one case today is `shell`, judged against
+    /// `net:reach` when the command reaches for it.
     pub when: &'static str,
 }
 
@@ -56,9 +55,9 @@ impl App {
     /// What the next request does with each item, for the screen that is about to draw it.
     ///
     /// note: one line, because the answer is the kernel's rather than the session's - see
-    /// [`Going::of`], which is where it used to live and where `context` reads it from too. The
-    /// model's account of its own budget and the person's are now one piece of arithmetic; they
-    /// were two, and they disagreed about every turn holding thinking the endpoint will not take.
+    /// [`Going::of`], which is where it lives and where `context` reads it from too. The model's
+    /// account of its own budget and the person's are one piece of arithmetic; two would disagree
+    /// about every turn holding thinking the endpoint will not take.
     pub fn going(&self) -> Going {
         Going::of(&self.kernel)
     }
@@ -149,12 +148,12 @@ impl App {
     /// the item states, which is the right answer to a question about states and the wrong one
     /// here: it counts an excluded, archived or elided item and misses one the projector repaired
     /// away, because that one's state says it is sending. `/budget` and the context tab have to
-    /// agree about this figure or they are two accounts of one request again.
+    /// agree about this figure or they are two accounts of one request.
     ///
     /// note: and [`Going::held_back`] per item rather than the whole of one that is not going,
-    /// which was the same conflation one level down - "is this item going" answered as though it
-    /// were a yes or a no. A turn whose thinking the endpoint will not take back is going and is
-    /// holding tens of thousands of tokens, and this counted none of it.
+    /// because "is this item going" is not a yes or a no. A turn whose thinking the endpoint will
+    /// not take back is going and is holding tens of thousands of tokens, and a count of the items
+    /// not going would find none of it.
     pub(crate) fn withheld(&self, going: &Going) -> (usize, usize) {
         self.kernel
             .items()
@@ -167,16 +166,16 @@ impl App {
     /// Answers one waiting question, and does the rest of what answering it entails.
     ///
     /// note: here rather than beside the keys, because there are two drivers and only one of them
-    /// has any. Everything answering means beyond `Kernel::decide` lived in the key handler, so a
-    /// headless run answering `allow` to a `curl` decided it and granted nothing - and the command
-    /// then ran with the network cut, which is the exact failure the grant below exists to
-    /// prevent. A driver should not be able to answer a question halfway by forgetting a step it
-    /// never knew about.
+    /// has any. With everything answering means beyond `Kernel::decide` in the key handler, a
+    /// headless run answering `allow` to a `curl` would decide it and grant nothing, and the
+    /// command would run with the network cut - the failure the grant below exists to prevent. A
+    /// driver should not be able to answer a question halfway by forgetting a step it never knew
+    /// about.
     ///
     /// note: the half of an answer that is about the *call*. What is about the session - the
     /// `always` sweep, the questions queued behind this one, the turn nobody is driving, and the
-    /// `acted` flag the trace reads - is [`App::decide`], one level up, which every loop now
-    /// answers through. This stays separate because a caller with a `PermissionRequest` already in
+    /// `acted` flag the trace reads - is [`App::decide`], one level up, which every loop answers
+    /// through. This stays separate because a caller with a `PermissionRequest` already in
     /// hand should not have to find its identifier again to use it.
     pub fn answer(&mut self, request: &PermissionRequest, grant: Grant) -> Result<(), String> {
         // saying yes to a command that reaches for the network is permission for *that* command,
@@ -330,13 +329,13 @@ impl App {
     /// there. The row still shows its preview; the match is allowed to be about more than the row
     /// can show.
     ///
-    /// note: and the kind, which is a column on the screen and was not in here - so `/tool_result`
-    /// filtered on the word appearing in somebody's *content* and called that the answer. It is
-    /// the column most worth filtering on, because it is the one question a pane of eighty rows
-    /// is usually being asked: which of these are the tool results, which are what the model said.
-    /// `ContextKind::name` rather than a second vocabulary, so what is typed is what the column
-    /// shows - and it is matched whether or not that column is drawn, since it is dropped below 84
-    /// columns and a filter that found less on a narrow terminal would be the worse surprise.
+    /// note: and the kind, which is a column on the screen; without it, `/tool_result` would match
+    /// only the word appearing in somebody's *content*. It is the column most worth filtering on,
+    /// because it is the one question a pane of eighty rows is usually being asked: which of these
+    /// are the tool results, which are what the model said. `ContextKind::name` rather than a
+    /// second vocabulary, so what is typed is what the column shows - and it is matched whether or
+    /// not that column is drawn, since it is dropped below 84 columns and a filter that found less
+    /// on a narrow terminal would be the worse surprise.
     ///
     /// note: the state is deliberately not in here. It is on the row as a mark rather than a word,
     /// so there is nothing somebody would be typing to match it, and `/exclude state:excluded` is
@@ -377,8 +376,8 @@ impl App {
 
     /// What a search over the trace matches an event on.
     ///
-    /// note: the clock is in it, which is the whole reason the stamp is built down here rather
-    /// than in the pane. "the hour it broke" is the question somebody brings to a long run, and
+    /// note: the clock is in it, which is why the stamp is built down here rather than in the
+    /// pane. "the hour it broke" is the question somebody brings to a long run, and
     /// `14:` or a date answers it only if the date and the time are among the things being
     /// matched.
     fn event_text(event: &Traced) -> String {
@@ -393,7 +392,7 @@ impl App {
 
     /// Every capability that matters here, and what would happen if a tool asked for it.
     ///
-    /// note: The union of two lists, because either on its own is misleading. What the policy has
+    /// note: the union of two lists, because either on its own is misleading. What the policy has
     /// been told about is not the whole story - a tool can need something nobody has mentioned,
     /// and that is exactly the row worth seeing, since it is the one that will stop and ask. And
     /// what the tools declare is not the whole story either: `network` is refused here and no
@@ -420,10 +419,10 @@ impl App {
     /// Every subject this policy holds an opinion about, decided or not.
     ///
     /// note: the subjects first and what each one covers second, rather than filling the lists
-    /// while walking the tools. Walking filled a row only where a tool declared that exact
-    /// capability, so a rule about a whole domain - which is what `--allow fs` writes - got a row
-    /// saying "nothing registered needs it" while the five `fs:*` rows beside it each named `fs`.
-    /// A domain rule covers every tool with a capability in it; a server rule covers every tool
+    /// while walking the tools. Walking fills a row only where a tool declares that exact
+    /// capability, so a rule about a whole domain - which is what `--allow fs` writes - would get a
+    /// row saying "nothing registered needs it" beside the `fs:*` rows it answers for. A domain
+    /// rule covers every tool with a capability in it; a server rule covers every tool
     /// that came from it; a path rule covers every tool that is handed a path. Asking one question
     /// per subject is how all four get answered instead of one.
     fn all_stances(&self) -> Vec<Stance> {
@@ -437,12 +436,11 @@ impl App {
         let mut subjects: BTreeSet<Subject> = ruled.keys().cloned().collect();
 
         // note: an operation whose answer comes from the domain above it is the same decision a
-        // second time. `--allow log` is one rule and drew two rows - `log` and `log:read`, each
-        // naming the other in the column beside it - and `--allow context` drew fourteen. The
-        // domain row says it and names every operation it answers for, which is what a rule is
-        // read for. One somebody has answered about separately keeps its row, since that is a
-        // decision of its own, and so does one nobody has decided: that is what the count of the
-        // rest is made of
+        // second time. `--allow log` is one rule, and a row each for `log` and `log:read`, each
+        // naming the other in the column beside it, would say it twice. The domain row says it
+        // and names every operation it answers for, which is what a rule is read for. One
+        // somebody has answered about separately keeps its row, since that is a decision of its
+        // own, and so does one nobody has decided: that is what the count of the rest is made of
         let answered_above = |capability: &Capability| {
             !ruled.contains_key(&Subject::Capability(capability.clone()))
                 && ruled
@@ -451,9 +449,9 @@ impl App {
         };
         // note: and a capability nothing here is judged by is not a question either. `mcp:call` is
         // declared by every tool from a server and `judges` puts the server's own name in its
-        // place where this program spawned it, so a session run `--mcp big=...` counted a subject
-        // it will never be asked about among the ones it will. A tool declaring it with nobody
-        // holding the far end is a different matter and still counts.
+        // place where this program spawned it, so counting it would put a subject a session run
+        // `--mcp big=...` will never be asked about among the ones it will. A tool declaring it
+        // with nobody holding the far end is a different matter and still counts.
         let judged = |tool: &str, capability: &Capability| {
             (self.policy).decides(&Subject::Capability(capability.clone()), tool)
         };
@@ -482,9 +480,9 @@ impl App {
         let covers = |subject: &Subject| -> Vec<String> {
             // note: a domain rule answers for a *set of capabilities*, and those are what it is
             // worth naming. Saying which tools it reaches is true and says nothing - `--allow log`
-            // produced a row reading `log  allow  log`, three times the same word - where the
-            // capabilities are the thing somebody wrote the rule to decide and the thing they
-            // would look for to check they got it right.
+            // would read `log  allow  log`, three times the same word - where the capabilities
+            // are the thing somebody wrote the rule to decide and the thing they would look for
+            // to check they got it right.
             if let Subject::Domain(domain) = subject {
                 let mut inside: Vec<String> = specs
                     .iter()
@@ -504,8 +502,8 @@ impl App {
             }
 
             // note: and a rule about one operation answers for that operation and nothing wider.
-            // It named the tools, which with one tool to a domain is the subject's own first half
-            // read back: `fs:glob  allow  fs` puts the narrow rule over the whole tool, the one
+            // Naming the tools, with one tool to a domain, reads back the subject's own first
+            // half: `fs:glob  allow  fs` puts the narrow rule over the whole tool, the one
             // direction it cannot go. What a rule reaches is never broader than the rule.
             //
             // note: an empty list is how the row says nothing here is judged by it, and that is
@@ -598,10 +596,10 @@ impl App {
 
     /// Whether a registered tool can run commands, and the policy has not refused it outright.
     ///
-    /// note: the question the permissions tab has to answer honestly. `Capability::exec("run")` subsumes
-    /// every other capability - a command reads, writes and reaches the network - so while one is
-    /// on the list and not denied, every other row is what a *tool* declares rather than what can
-    /// happen, unless something is actually confining it.
+    /// note: the question the permissions tab has to answer honestly. `Capability::exec("run")`
+    /// subsumes every other capability - a command reads, writes and reaches the network - so
+    /// while one is on the list and not denied, every other row is what a *tool* declares rather
+    /// than what can happen, unless something is actually confining it.
     pub fn shell_is_live(&self) -> bool {
         self.policy
             .stance(&Subject::Capability(Capability::exec("run")))

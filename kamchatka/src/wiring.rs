@@ -1,13 +1,13 @@
 //! Putting one together: a kernel, a policy, the tools, the sandbox and an [`App`] around them.
 //!
-//! note: this is here because it was written twice. `main.rs` and `examples/recorded.rs` each did
-//! the same nine steps in the same order - a kernel, a subscription, a policy, the provider and
-//! the projector it implies, a compactor, the confinement, the tools, the introspection handle,
-//! and an `App` holding the first and the last of those - and anyone embedding this crate would
-//! have written them a third time, out of reading `main.rs` and hoping.
+//! note: one place for the nine steps `main.rs` and `examples/recorded.rs` both take in the same
+//! order - a kernel, a subscription, a policy, the provider and the projector it implies, a
+//! compactor, the confinement, the tools, the introspection handle, and an `App` holding the first
+//! and the last of those - so that anyone embedding this crate does not write them a third time,
+//! out of reading `main.rs` and hoping.
 //!
-//! Two of the steps are not guessable, which is most of the reason this exists. The subscription
-//! has to happen **before** anything is plugged in, or the trace is missing the wiring; and
+//! Two of the steps are not guessable. The subscription has to happen **before** anything is
+//! plugged in, or the trace is missing the wiring; and
 //! [`introspect::install`] hands back a handle that the caller has to keep, because the tools hold
 //! a weak reference to it and stop working the moment it is dropped.
 //!
@@ -16,13 +16,13 @@
 //! pays for them and what dialect they speak are the caller's to decide - `endpoint::connect` is
 //! one line and `tests` hand in a scripted one.
 //!
-//! note: and where a session goes when it is over, because that was private to `main.rs` and an
-//! embedder with a loop of its own had none of it. [`record`] writes a session out where nobody
-//! has to have asked for it, and [`Setup::relaunch`] is `/restart`: the same settings wired a
-//! second time, with the first session written out on the way. `examples/phone.rs` drove a
-//! session with a socket in front of it and neither, so `/quit` and `/restart` from the page each
-//! ended the process with the session in memory and nothing on disk. A loop that ends a session
-//! owes it the same safety net the program's loops give one, and gets it from here.
+//! note: and where a session goes when it is over, so that an embedder with a loop of its own has
+//! it too. [`record`] writes a session out where nobody has to have asked for it, and
+//! [`Setup::relaunch`] is `/restart`: the same settings wired a second time, with the first
+//! session written out on the way. Without them a loop like `examples/phone.rs`, a session with a
+//! socket in front of it, ends the process on `/quit` or `/restart` with the session in memory and
+//! nothing on disk. A loop that ends a session owes it the same safety net the program's loops
+//! give one, and gets it from here.
 
 use std::sync::Arc;
 
@@ -98,8 +98,8 @@ pub struct Setup {
     pub spend: Option<u64>,
     /// Which of this program's own tools to offer, by id; `None` is all of them.
     ///
-    /// note: a list rather than a flag per family, because "which tools" is one question and it
-    /// was being answered in two places that could disagree. What is offered is a property of the
+    /// note: a list rather than a flag per family, because "which tools" is one question, and a
+    /// flag per family answers it in places that can disagree. What is offered is a property of the
     /// session, so it is one field, and the two answers people actually want - all of them, or
     /// these - are the two shapes an `Option<Vec<_>>` has.
     ///
@@ -119,8 +119,8 @@ pub struct Setup {
     pub tools: Option<Vec<String>>,
     /// Whether to confine what the tools can reach.
     ///
-    /// note: *the tools*, not the `shell` alone, which is what this said and is the half that
-    /// matters. It is `Reach::confined` as well as the Landlock ruleset - and an unconfined
+    /// note: *the tools*, not the `shell` alone. It is `Reach::confined` as well as the Landlock
+    /// ruleset - and an unconfined
     /// `Reach` hands back every path untouched, so `read` of `~/.ssh/id_rsa` is a file rather
     /// than a refusal. Somebody turning this off for one command should know they turned it off
     /// for everything `fs` does as well.
@@ -195,8 +195,9 @@ pub struct Wired {
 /// The identifiers of the tools a session starts with.
 ///
 /// note: read off tools built and dropped rather than from a list written out here. A list is a
-/// second thing to forget, and what it would drift from is exactly what the refusal above is
-/// about - a name that is not a tool. Building them costs six schemas and happens once.
+/// second thing to forget, and what it would drift from is exactly what the refusal in
+/// `Setup::check` is about - a name that is not a tool. Building them costs six schemas and
+/// happens once.
 fn offered_ids() -> Vec<String> {
     let kernel = Kernel::new(Config::default());
     let policy = Arc::new(Careful::new());
@@ -274,8 +275,8 @@ impl Setup {
             keep_truncated_output: self.keep_truncated,
             refuse_oversized_requests: self.refuse_oversized,
             // note: the floor under everything without a row in `Limits`, which is every tool
-            // from an MCP server: those hold no handle to that table, so before this a session
-            // started with `--mcp` had no ceiling at all on what somebody else's server could put
+            // from an MCP server: those hold no handle to that table, so without this a session
+            // started with `--mcp` has no ceiling at all on what somebody else's server can put
             // in its context. The runtime's own default is `None`, which is right for a runtime
             // and wrong for a program that offers to run other people's tools.
             //
@@ -340,7 +341,7 @@ impl Setup {
         kernel.set_policy(decides);
         // the projector decides the shape of a turn on the wire, so the provider that owns that
         // wire is the thing asked what it can carry - rather than a caller deciding a second time
-        // from the same flag, which is how the two came apart in the first place
+        // from the same flag, which is how the two come apart
         kernel.set_projector(Arc::new(provider.projection()));
         if let Some(threshold) = self.compact.filter(|it| *it < 1.0) {
             kernel.set_compactor(Some(Arc::new(tools::Trim::under(threshold))));
@@ -455,11 +456,11 @@ impl Setup {
     /// writes, and deliberately: a session somebody restarted is a session that ended, and a run
     /// abandoned halfway is the case that safety net is most for.
     ///
-    /// note: and only where the loop that handed it over has not ended it already, which three of
-    /// the four have - a served loop and a headless one each owe their clients the last record on
-    /// the stream they are writing, so each emits it itself. [`Kernel::finish`] emits every time it
-    /// is called, so a second one here put `session.finished` in the log twice, under a line that
-    /// says nothing more will be recorded. The question is asked of the log because the log is what
+    /// note: and only where the loop that handed it over has not ended it already. A served loop
+    /// and a headless one each owe their clients the last record on the stream they are writing,
+    /// so each emits it itself, and [`Kernel::finish`] emits every time it is called - so a second
+    /// one here would put `session.finished` in the log twice, under a line that says nothing more
+    /// will be recorded. The question is asked of the log because the log is what
     /// this is about: the last line of the record it is going to write.
     ///
     /// note: it hands back the sentence rather than saying it, because the thing to say it to
@@ -572,9 +573,10 @@ pub fn record(app: &App) -> Result<Recorded, String> {
 
         // note: and then looked at, because the temporary directory is everybody's and this name
         // is fixed. One somebody else made there first is one the line above cannot make private
-        // - it fails, and was ignored - so the transcript went into a directory they could read,
-        // and a link they left at a predictable name was followed. A real directory that nobody
-        // but its owner can enter is one this user owns, or one it cannot write in at all
+        // - it fails, and is ignored - so without this the transcript would go into a directory
+        // they can read, and a link they left at a predictable name would be followed. A real
+        // directory that nobody but its owner can enter is one this user owns, or one it cannot
+        // write in at all
         let private = std::fs::symlink_metadata(&dir)
             .is_ok_and(|meta| meta.is_dir() && meta.permissions().mode() & 0o077 == 0);
         if !private {
@@ -598,14 +600,13 @@ pub fn record(app: &App) -> Result<Recorded, String> {
 /// A `.jsonl` and `.json` pair under `stem` that no other session has written.
 ///
 /// note: the name is a session's own, and a session's own name is not unique enough to be a
-/// filename. Two of them collide in two ways, and both were silent. Two runs started inside one
-/// second share a stamp, so the second to finish wrote over the first - the case this was written
-/// for, found by starting two and reading one back. And **a resumed session keeps the name of the
-/// session it resumed**, which is right for what a name is for and means `-r` wrote over the very
-/// file it had just read: a hundred and twelve records of what happened replaced by the twelve of
-/// a sitting that did nothing. The snapshot survived that one by luck, because a resumed context
-/// renders to nearly the same bytes; the log did not, and the log is the half that says what
-/// happened rather than where things ended up.
+/// filename. Two of them collide in two ways, both silently. Two runs started inside one second
+/// share a stamp, so the second to finish would write over the first. And **a resumed session
+/// keeps the name of the session it resumed**, which is right for what a name is for and means
+/// `-r` would write over the very file it had just read: the log of what happened replaced by that
+/// of a sitting that did nothing. The snapshot would come through nearly intact, because a resumed
+/// context renders to nearly the same bytes; the log would not, and the log is the half that says
+/// what happened rather than where things ended up.
 ///
 /// note: so the name stays what it is and the *file* moves - `…Z-2.jsonl` beside `…Z.jsonl`,
 /// which sorts next to its sibling and reads as the second sitting of one session. Renaming the
@@ -653,7 +654,7 @@ mod tests {
     ///
     /// note: the second half is the case that matters, and it is not the exotic one: `-r` is the
     /// line this program prints at the end of every run, and a resumed session keeps the name of
-    /// the session it resumed. Every resume wrote over the log it had just read.
+    /// the session it resumed, so every resume would otherwise write over the log it had just read.
     #[test]
     fn a_record_never_writes_over_one_that_is_already_there() {
         // note: not `tests/common`'s `scratch`, which builds under `CARGO_TARGET_TMPDIR` -
@@ -690,7 +691,7 @@ mod tests {
     /// A link at the snapshot's name is a name that is taken, even when it points at nothing.
     ///
     /// note: `exists` follows a link and answers no for one to a file that is not there, and the
-    /// write after it follows the link too - so a link left at a predictable name was a file
+    /// write after it follows the link too - so a link left at a predictable name would be a file
     /// created wherever it pointed.
     #[cfg(unix)]
     #[test]

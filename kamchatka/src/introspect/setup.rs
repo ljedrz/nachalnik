@@ -12,12 +12,11 @@
 //! was rejected for the same reason, on top of colliding with the file this program's own
 //! `--config-file` reads.
 //!
-//! note: what each action is for is a question the program could not answer before. The model
-//! could not tell which model it was, at what temperature, or that its context had been resumed
-//! from a snapshot taken under somebody else. Nothing anywhere let an agent enumerate its own
-//! tools. The permissions surface was claimed in the readme and demonstrated nowhere. And `look`
-//! says whether an item is going into the next request without exposing the rules that decided -
-//! so a model could read the verdict and never the law.
+//! note: each action answers something a model cannot otherwise find out: which model it is, at
+//! what temperature, and whether its context was resumed from a snapshot taken under somebody
+//! else; what its own tools are; what the permissions will say; and the rules behind whether an
+//! item goes into the next request. `look` says whether it does without exposing the rules that
+//! decided, so without this a model could read the verdict and never the law.
 
 use nachalnik::{
     BoxError, Capability, Kernel, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, Verdict,
@@ -202,10 +201,9 @@ fn model(kernel: &Kernel) -> String {
 ///
 /// note: the limits are a sentence under the table rather than a column in it, because they are
 /// keyed by *subject* and a tool has several. A column would have had one number standing for
-/// `fs:read` and `fs:grep` alike, which is the thing keying them by subject exists to stop - and
-/// twenty-six rows to give each its own would be most of this answer spent on a figure that is
-/// the same everywhere until somebody changes one. So: the number they share, and then whichever
-/// ones do not share it.
+/// `fs:read` and `fs:grep` alike, which is the thing keying them by subject exists to stop - and a
+/// row per subject would spend most of this answer on a figure that is the same everywhere until
+/// somebody changes one. So: the number they share, and then whichever ones do not share it.
 fn tools(kernel: &Kernel, limits: &Limits) -> String {
     let specs = kernel.tool_specs();
     if specs.is_empty() {
@@ -243,10 +241,10 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
         "\n{}",
         shown(&specs, limits, config.default_tool_output_limit)
     ));
-    // note: read off the configuration rather than stated, which `rules` has always done and this
-    // did not - so a session run `--forget-truncated` was told here that the whole of anything cut
-    // is still available and told the opposite two actions away. What it costs is a model going
-    // looking for content this session was told to drop
+    // note: read off the configuration rather than stated, as `rules` does, so that a session run
+    // `--forget-truncated` is not told here that the whole of anything cut is still available and
+    // the opposite two actions away. What that costs is a model going looking for content this
+    // session was told to drop
     out.push_str(match config.keep_truncated_output {
         true => {
             "The whole of anything cut is archived beside what you were shown and can be \
@@ -282,9 +280,9 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -
     held.dedup();
 
     // note: the kernel's own ceiling, which is what cuts a tool with no row in that table - every
-    // tool from an MCP server. Without it a session offering nothing but those read `Nothing here
-    // cuts an answer short` while the kernel was cutting all of them at 32,000 bytes, and a model
-    // reading that has no reason to ask for less
+    // tool from an MCP server. Without it a session offering nothing but those would read
+    // `Nothing here cuts an answer short` while the kernel cuts all of them at 32,000 bytes, and a
+    // model reading that has no reason to ask for less
     let elsewhere = specs.iter().any(|spec| {
         spec.output_limit.is_none()
             && !spec
@@ -320,8 +318,8 @@ fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -
         .unwrap_or_default();
 
     // note: grouped by the figure rather than a clause per row. The table ships with two numbers
-    // - a report of a fixed shape is cut at less than a piece of the session - so five or six
-    // subjects share the second one, and a clause each said `at 8,000` six times to say it once
+    // - a report of a fixed shape is cut at less than a piece of the session - so several subjects
+    // share the second one, and a clause each would say `at 8,000` over and over to say it once
     let mut groups: Vec<(usize, Vec<&str>)> = Vec::new();
     for (subject, bytes) in held.iter().filter(|(_, bytes)| *bytes != common) {
         match groups.iter_mut().find(|(at, _)| at == bytes) {
@@ -366,10 +364,10 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     //
     // note: `Careful::decides` as well as the declaration, because they are not the same list.
     // `mcp:call` is declared by every tool from a server and answered for by the server's own
-    // name where this program spawned it, so a session run `--allow mcp --mcp big=...` read
-    // `mcp:call  allow  big__add, big__spew` here and then refused both of them. A row still
-    // appears - somebody wrote that rule - and it says what is true, which is that nothing here
-    // is judged by it
+    // name where this program spawned it, so read off the declaration alone, a session run
+    // `--allow mcp --mcp big=...` would list that server's tools under an allowed `mcp:call` here
+    // and then refuse them. A row still appears - somebody wrote that rule - and it says what is
+    // true, which is that nothing here is judged by it
     let mut binds: BTreeMap<Capability, Vec<String>> = BTreeMap::new();
     for spec in kernel.tool_specs() {
         for capability in spec.capabilities {
@@ -386,10 +384,10 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     // governs three rows above it. It gets a section of its own below, the way a path rule does.
     //
     // note: the flag says which of the two kinds a row is, because an undecided one means
-    // different things for each and the sentence below used to make one statement about both. A
-    // domain is answered by a row above it that names the same operation - `Careful::stance`
-    // reads the exact stance in front of the domain's - and a server is consulted *beside* those
-    // rows, so an undecided server stops every call from it whatever its tools' rows say.
+    // different things for each, and one sentence below cannot say both. A domain is answered by
+    // a row above it that names the same operation - `Careful::stance` reads the exact stance in
+    // front of the domain's - and a server is consulted *beside* those rows, so an undecided
+    // server stops every call from it whatever its tools' rows say.
     let mut broader: Vec<(String, String, Verdict, bool)> = Vec::new();
     for (subject, verdict) in policy.stances() {
         match subject {
@@ -441,10 +439,10 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
 
     // note: the decided ones listed and the rest counted, which is what the permissions tab does
     // and for the reason its own note gives: a row for a `.aws` rule nobody has thought about is
-    // not information. Eleven of them ship as `ask`, so a session where nobody has said anything
-    // about a path was spending ninety tokens saying "undecided" eleven times. The count still
-    // goes out, because an answer that listed two rules and stood silently for thirteen would be
-    // a different kind of dishonest.
+    // not information. Most of the path rules ship as `ask`, and a row each would spend tokens
+    // saying "undecided" over and over in a session where nobody has said anything about a path.
+    // The count still goes out, because an answer that listed the decided rules and stood
+    // silently for the rest would be a different kind of dishonest.
     let (decided, undecided): (Vec<_>, Vec<_>) = policy
         .paths()
         .into_iter()
@@ -476,10 +474,9 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         .partition(|(_, _, verdict, _)| *verdict != Verdict::Ask);
     if !decided.is_empty() {
         // note: what these cover is the third column, because the two kinds do not cover the same
-        // sort of thing: a domain is a set of operations and a server is a set of tools. The
-        // heading used to read "rules about single actions, which bind the tool they name", which
-        // is the opposite of a domain and not true of either - `--allow log` is every operation in
-        // `log`, and `server big` names no tool at all
+        // sort of thing: a domain is a set of operations and a server is a set of tools. A heading
+        // about single actions binding the tool they name would be true of neither - `--allow
+        // log` is every operation in `log`, and `server big` names no tool at all
         out.push_str("\nand the broader rules, which have no row of their own above:\n");
         for (rule, covers, verdict, _) in &decided {
             out.push_str(&format!("{rule:<28}  {:<8}  {covers}\n", said(*verdict)));
@@ -513,8 +510,8 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     let waiting = kernel.pending_permissions();
     if !waiting.is_empty() {
         // note: shown on purpose. An agent that can see it is blocked on somebody's answer is an
-        // agent that can decide to do something else with the turn, which is the whole argument
-        // for any of this - and the alternative is a call that appears to have hung
+        // agent that can decide to do something else with the turn, where otherwise the call
+        // appears to have hung
         out.push_str(&format!(
             "\n{} call(s) of yours are waiting on somebody to answer: {}\n",
             waiting.len(),
@@ -628,16 +625,15 @@ fn said(verdict: Verdict) -> &'static str {
 
 /// The first sentence of a tool's description, which is the part that says what it is.
 ///
-/// note: the whole sentence, however long. It used to be cut at 56 characters with an ellipsis, to
-/// fit a column - and a column is a terminal's problem, not a reader's. What came back was
-/// `your own context: what is in it, what it costs, and wha…`, which is a tool result that looks
-/// like the answer and is not one: a model has no way to tell a description that ends there from
-/// one that was clipped, and nothing on the line says which it is.
+/// note: the whole sentence, however long, rather than cut to fit a column: a column is a
+/// terminal's problem, not a reader's. A clipped description is a tool result that looks like the
+/// answer and is not one - a model has no way to tell a description that ends there from one that
+/// was clipped, and nothing on the line says which it is.
 ///
 /// note: it costs nothing that is not already being paid. Every one of these descriptions is in
-/// the request in full, in the tool definitions, and the longest first sentence here is a hundred
-/// and ten characters. Cutting it saved fifty characters and spent the one thing this tool exists
-/// to give, which is an account of what is there that can be relied on.
+/// the request in full, in the tool definitions, so cutting one would save a few characters and
+/// spend the one thing this tool exists to give, which is an account of what is there that can be
+/// relied on.
 fn first_clause(description: &str) -> String {
     description
         .split_once(". ")

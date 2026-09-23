@@ -1,7 +1,7 @@
 //! The reference text a person is shown, kept where both the screen and the commands can reach
 //! it.
 //!
-//! note: not in `ui`, where it was, because none of it is drawing: `/help` and `/exclude` print it,
+//! note: not in `ui`, because none of it is drawing: `/help` and `/exclude` print it,
 //! and `context` hands the selector list to a *model*. A build with no screen still answers
 //! both, so text that a command owns cannot live behind the feature that draws.
 //!
@@ -12,12 +12,11 @@
 
 /// One page of the key reference: what it is called on the strip, and what it lists.
 ///
-/// note: a page rather than a heading in one long panel, because most of what the old panel held
-/// did not apply to wherever it was pressed from. Six of its eight sections are about one tab
-/// each, and a person on the trace looking for `g` was reading past four screens of keys that do
-/// nothing there. What the strip buys over simply hiding them is that nothing is lost: the
-/// sections that do not apply are still one `←` away, which is the difference between a shorter
-/// reference and a smaller one.
+/// note: a page rather than a heading in one long panel, because most of the keys do not apply
+/// wherever the panel is opened from. Most sections are about one tab each, and a person on the
+/// trace looking for `g` should not have to read past screens of keys that do nothing there. What
+/// the strip buys over simply hiding them is that nothing is lost: the sections that do not apply
+/// are still one `←` away.
 #[derive(Clone, Copy)]
 pub struct Section {
     /// What to call it on the strip along the top, in the tab strip's own words where it has one.
@@ -35,9 +34,10 @@ pub struct Section {
 /// Every section, in the order they are offered, which is the order the strip draws them in.
 ///
 /// note: the four tabs first and in the tab strip's own order, so that the two strips on the
-/// screen agree about where things are; then the two that belong to no tab. `question` is in here
-/// rather than folded into `chat` because it is only true while a tool is waiting - see
-/// [`Section::applies`] for the one that is left out when nothing is.
+/// screen agree about where things are, with `question` beside the chat tab it appears on; then
+/// the two that belong to no tab. `question` is a section rather than folded into `chat` because
+/// it is only true while a tool is waiting, and [`Section::applies`] leaves it out when nothing
+/// is.
 pub const SECTIONS: &[Section] = &[
     Section {
         name: "chat",
@@ -88,8 +88,8 @@ impl Section {
     /// program it is not using. What is left for such a reader is the commands, which everybody
     /// can type.
     ///
-    /// note: everything else is offered from everywhere, and that is deliberate - a page somebody
-    /// has to go to is not the same as a page that is missing, and a reference that rearranged
+    /// note: everything else is offered from everywhere, deliberately: a page somebody has to go
+    /// to is not the same as a page that is missing, and a reference that rearranged
     /// itself under them would be one nobody could learn the shape of. The rule above is not that:
     /// a caller with no keys is not somewhere else in the same program, it is somewhere the keys
     /// are not.
@@ -104,10 +104,9 @@ impl Section {
 
 /// The whole of it, every section in order, for a reader with no way to turn a page.
 ///
-/// note: every section, `keys` or not, which is why nothing outside the tests reads it any more:
-/// what a caller with no keys is shown for `/help` is decided by [`Section::applies`], and a
-/// run down a pipe used to be handed this. It is kept because a test that checks the words is
-/// checking all of them.
+/// note: every section, `keys` or not, which is why nothing outside the tests reads it: what a
+/// caller with no keys is shown for `/help` is decided by [`Section::applies`]. It is kept because
+/// a test that checks the words is checking all of them.
 pub fn everything() -> String {
     SECTIONS
         .iter()
@@ -226,9 +225,9 @@ pub const QUESTION: &str =
 
 /// Moving between the tabs, and the keys that mean the same thing on all of them.
 ///
-/// note: one section rather than the two it used to be. They were separated by which of them was
-/// about the tab strip, which is a distinction the reader does not have: both answer "what works
-/// no matter where I am", and two headings answering that made the panel look longer than it is.
+/// note: one section, rather than one for the tab strip and one for the rest, which is a
+/// distinction the reader does not have: both answer "what works no matter where I am", and two
+/// headings answering that make the panel look longer than it is.
 pub const EVERYWHERE: &str = "  WHEREVER YOU ARE
     ctrl+t              the next tab
     alt+1 / 2 / 3 / 4   chat / context / trace / permissions

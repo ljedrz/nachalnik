@@ -1,22 +1,16 @@
 //! `context`: what this session is carrying, what it costs, and what is carried into the next
 //! request.
 //!
-//! note: named for what it is about rather than for what it does to it. `introspect` was a name
-//! for the whole family and this tool is one of them - anything else that reads a session from
-//! the inside is introspection too, and would have had to be called something that did not say
-//! so. The id is the noun now, which leaves the family its word and gives each tool the thing it
-//! is about.
+//! note: named for what it is about rather than for what it does to it. `introspect` is the name
+//! of the whole family, and anything else that reads a session from the inside is introspection
+//! too. The id is the noun, which leaves the family its word and gives each tool the thing it is
+//! about.
 //!
-//! note: one tool for reading the context and one for changing it was one tool too many, and the
-//! reason it was two is worth recording as a thing that turned out to be wrong. The argument was
-//! that a tool declares its capabilities once, so `context` and `amend` being one would mean
-//! answering *always* to "may it look at its own items?" also answered "may it rewrite a tool
-//! result?" That is a real hazard and it stopped being this tool's problem the day a subject
-//! became `<domain>:<operation>` and [`Tool::needs`] let a call declare which one it is:
-//! `context:look` and `context:revise` are separate questions with separate rows whether they
-//! arrive under one tool's name or two. What two tools cost was the part nothing was measuring -
-//! two descriptions in every request, most of each spent saying which of the two the other one
-//! was.
+//! note: one tool for reading the context and changing it, because separate permissions do not
+//! need separate tools: [`Tool::needs`] lets a call declare its subject, so `context:look` and
+//! `context:revise` are separate questions with separate rows whether they arrive under one tool's
+//! name or two. Two tools would cost two descriptions in every request, most of each spent saying
+//! which of the two the other one was.
 //!
 //! note: a directory, with the changing half in `changes.rs`: the journal `undo` walks, the
 //! refusals, and the accounting that says what a change cost. What is here is what a model sees -
@@ -56,8 +50,8 @@ const GLIMPSE: usize = 48;
 ///
 /// note: the word for the move is the word the result is reported in - an item you `elide` reads
 /// back as `elided` everywhere it is listed. One level, and the same vocabulary at both ends of
-/// it. They were a `prune` action with a `state` argument once, which put the word for one of them
-/// over all eight.
+/// it, rather than a `prune` action with a `state` argument, which would put the word for one of
+/// the moves over all of them.
 const CHANGES: [&str; 8] = [
     "elide", "exclude", "pin", "restore", "revise", "note", "undo", "redo",
 ];
@@ -68,25 +62,23 @@ const WHY: &str = "why, in your own words; the person you work with reads this, 
 
 /// What a `select` is, said where the four that take one can read it.
 ///
-/// note: "instead of" is the load-bearing half, and it is said in both directions - here and on
-/// each `ids` beside it - because a call giving both is refused and the schema cannot say so. What
-/// would say it is `oneOf`, which is not a keyword either dialect this crate speaks has.
+/// note: "instead of" is said in both directions - here and on each `ids` beside it - because a
+/// call giving both is refused and the schema cannot say so. `oneOf` would say it, and neither
+/// dialect this crate speaks has that keyword.
 const SELECT: &str = "a class of items instead of `ids`, never both in one call, in the selector \
                       grammar this tool's description sets out: `all:tool_results`, \
                       `state:elided`, `tool:shell:latest`";
 
 /// The twelve operations, what each is for, and what each reads.
 ///
-/// note: `reason` is `needed()` wherever a call changes something, which is a thing the schema
-/// could not say before. It was asked for in `invoke` instead, under a note reading "`required` in
-/// a schema is all or nothing" - true of one flat property bag, and the whole reason this is
-/// branches now. Eight operations require it and four do not offer it at all.
+/// note: `reason` is `needed()` wherever a call changes something, which the schema can say
+/// because it is a branch per operation: in one flat property bag, `required` is all or nothing.
+/// Eight operations require it and four do not offer it at all.
 ///
 /// note: twelve operations, eight shapes. The four that move an item read one argument list,
-/// which the `MOVES` constant they replace said outright ("one list because they are one
-/// function"), and so do `undo` and `redo`; each group is therefore one branch under an `action`
-/// of several words. Written out per operation they came to eight copies of `reason` and five of
-/// `select`, 1,200 bytes a request to say a thing that was already true once.
+/// because they are one function, and so do `undo` and `redo`; each group is therefore one branch
+/// under an `action` of several words. Written out per operation they would repeat `reason` and
+/// `select` in branch after branch, on every request, to say a thing that is true once.
 fn ops() -> Vec<Op> {
     let mut ops = vec![
         Op::new(
@@ -134,12 +126,11 @@ fn ops() -> Vec<Op> {
              read by copying them in; it says how many lines match and what they would cost \
              before showing you one",
             vec![
-                // note: what it is *not* is the load-bearing half. `fs`'s `grep` is offered in the
-                // same request and says outright that its `pattern` is a regular expression, so a
-                // model reaching for one here is being consistent - and a live run did, searching
-                // for `pub (fn|const)` in a context holding `pub fn add`. A pattern read as text
-                // matches nothing and the answer is a plain "no matches", which is the one shape
-                // of wrong answer the note on `search` says this must not have
+                // note: it says what it is *not*, because `fs`'s `grep` is offered in the same
+                // request and says outright that its `pattern` is a regular expression, so a model
+                // reaching for one here is being consistent. A pattern read as text matches
+                // nothing and the answer is a plain "no matches", which is the one shape of wrong
+                // answer the note on `search` says this must not have
                 Arg::text(
                     "text",
                     "what to look for: the words themselves, not a pattern - `fs`'s `grep` is the \
@@ -178,10 +169,10 @@ fn ops() -> Vec<Op> {
             ),
             Arg::text("select", SELECT),
             // note: read but not offered, because it is neither a way to move anything nor an
-            // argument to refuse. A live run reached for `label` to say *which item*, and
+            // argument to refuse. A model reaches for `label` to say *which item*, and
             // `Changes::moved` answers that with the spelling it meant - which it cannot do if
-            // `unread` has already refused the call, and should not have to do if the schema has
-            // just advertised `label` as the way to name one
+            // `unread` has already refused the call, and should not have to do if the schema had
+            // advertised `label` as the way to name one
             Arg::tolerated("label"),
             Arg::text("reason", WHY).needed(),
         ],
@@ -204,11 +195,11 @@ fn ops() -> Vec<Op> {
              note is an item of its own that goes into every one and can be pinned",
             vec![
                 Arg::text("content", "what to write down").needed(),
-                // note: what it is *not* is half of this line, and it is the half a live run
-                // needed. `label` reads as a key, five notes went in under one name meaning to
-                // replace each other, and the tool appended every time - which the result now
-                // also says when it happens. This is the same sentence one step earlier, where
-                // the name is being chosen rather than regretted
+                // note: what it is *not* is half of this line. `label` reads as a key, so a model
+                // writes notes under one name meaning each to replace the last, and the tool
+                // appends every time - which the result also says when it happens. This is the
+                // same sentence one step earlier, where the name is being chosen rather than
+                // regretted
                 Arg::text(
                     "label",
                     "a short name for it, so you can find it again. Not a key: a second note \
@@ -257,8 +248,7 @@ impl Context {
     /// Builds one; see [`super::install`], which is the only caller.
     ///
     /// note: the pinned set is made here and shared with the changing half rather than handed in.
-    /// It was handed in while `context` and the tool that changed it were two, and what it is now
-    /// is one tool's memory of which pins are its own - so a second holder of it could only ever
+    /// It is one tool's memory of which pins are its own, so a second holder of it could only ever
     /// be something that would disagree about a promise.
     pub(super) fn new(reach: Reach, limits: Limits) -> Self {
         let ops = ops();
@@ -374,9 +364,8 @@ impl Tool for Context {
                 };
                 Ok(ToolOutput::new(search(&kernel, text, &only, take)))
             }
-            // note: asked for here *as well as* in the schema, which now says it: a branch per
-            // operation means eight of the twelve can require it and four can not offer it at
-            // all, where one flat property bag made `required` all or nothing. Nothing is sent
+            // note: asked for here *as well as* in the schema. A branch per operation lets eight
+            // of the twelve require it and four not offer it at all, but nothing is sent
             // `strict`, so the schema is advice and this is what holds
             op if CHANGES.contains(&op) => {
                 let Some(reason) = args["reason"].as_str().filter(|it| !it.trim().is_empty())
@@ -397,13 +386,11 @@ impl Tool for Context {
 
 /// How many matching lines a `search` was asked for, or what is wrong with the way it asked.
 ///
-/// note: `log` has held its own `take` to this since it was written and `search` read it with a
-/// bare `as_u64`, so the same word meant two things a tool apart. `take: 0` fell through to
-/// `0.min(len)` and printed `the first 0; 1 more match and are not here:` - a heading with a
-/// colon and nothing under it, which is a malformed answer rather than a wrong one. `take: -3`
-/// and `take: "3"` were `None`, which is the summary, which is what leaving `take` out does: the
-/// model asked for lines, was given a count, and nothing said its argument had not been read.
-/// That is the failure `log` names in so many words one file over.
+/// note: a `take` that cannot be read is refused, as `log` refuses its own, so the same word does
+/// not mean two things a tool apart. Read with a bare `as_u64`, `take: 0` would print a heading
+/// with a colon and nothing under it, which is a malformed answer rather than a wrong one; and
+/// `take: -3` and `take: "3"` would be `None`, which is the summary that leaving `take` out gives:
+/// the model asked for lines, was given a count, and nothing said its argument had not been read.
 fn taken(value: &serde_json::Value) -> Result<Option<usize>, String> {
     if value.is_null() {
         return Ok(None);
@@ -431,12 +418,12 @@ fn taken(value: &serde_json::Value) -> Result<Option<usize>, String> {
 /// The context, item by item, or the whole of the named ones.
 ///
 /// note: two columns of figures rather than one headed `tokens`, and they are the two the person's
-/// own pane has shown all along: what an item puts into the next request, and what it is keeping
-/// out of one. One column could only be one of those, and whichever it was would be wrong about
-/// the rows that matter - an elided item, which sends a marker and holds its content, and any turn
-/// whose thinking the endpoint will not take back, which is every turn under an OpenAI-compatible
-/// one. Read as a budget, the held figure invites giving up what the request was not carrying;
-/// read as an inventory, the sending figure hides tens of thousands of tokens the agent really is
+/// own pane shows: what an item puts into the next request, and what it is keeping out of one.
+/// One column could only be one of those, and whichever it was would be wrong about the rows that
+/// matter - an elided item, which sends a marker and holds its content, and any turn whose
+/// thinking the endpoint will not take back, which is every turn under an OpenAI-compatible one.
+/// Read as a budget, the held figure invites giving up what the request was not carrying; read as
+/// an inventory, the sending figure hides tens of thousands of tokens the agent really is
 /// carrying. Both, named, is the only honest answer, and it is what `held` in the next line and
 /// the expensive list under `budget` are counted from.
 fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
@@ -502,12 +489,11 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
         ));
     }
 
-    // note: the second sentence is what a live run bought. The columns were right and a model
-    // read them wrong: asked which item was holding the most and whether it could change that, it
-    // named the turn holding 1,398 tokens of its own thinking and answered "yes, I can elide it" -
-    // which would free the 68 that turn is *sending* and not one token of the 1,398, because the
-    // endpoint was never being sent them. `budget` has said this under its own table all along;
-    // `look` is where an agent actually reads the figure, and it said nothing.
+    // note: the second sentence is there because the columns are easy to read wrong. Asked what
+    // it could free, a model names the turn holding the most of its own thinking and offers to
+    // elide it - which frees what that turn is *sending* and not one token of what it holds,
+    // because the endpoint is never sent those. `budget` says this under its own table, and
+    // `look` is where an agent actually reads the figure
     out.push_str(
         "\n`look` with `ids` reads any of these back, including the reasoning recorded on an \
          assistant turn; a long one arrives as its start and its end unless you ask for the \
@@ -520,9 +506,8 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
 
 /// The rows of the items a class comes to, which is the set a change naming the same class takes.
 ///
-/// note: the one question the reading half could not answer about the changing half's grammar. A
-/// selector is resolved against the context at the moment it is used, and until this there was no
-/// way to use one except by moving something: `elide` with `select: "tool:shell"` said what it had
+/// note: a selector is resolved against the context at the moment it is used, and without this the
+/// only way to use one is to move something: `elide` with `select: "tool:shell"` says what it has
 /// taken *after* taking it. Undoing that is one call, and knowing first is none.
 ///
 /// note: the figures are the matched items' own rather than the session's, because that is the
@@ -612,13 +597,13 @@ fn matched(
 
 /// Which of these items this session did not produce, said before the listing rather than after.
 ///
-/// note: three live runs bought this line. A session resumed under a *second* model was asked
-/// whether it had written an inherited turn. Every time, it reached for `look` - and `look` had
-/// nothing to say, because an item restored from a snapshot is a perfectly ordinary item with no
-/// field that marks it. Every time, the model read the turn, recognised its own voice in it, and
-/// confabulated a first-person account of writing a sentence another model wrote.
+/// note: a session resumed under a *second* model, asked whether it wrote an inherited turn,
+/// reaches for `look` - and without this line `look` has nothing to say, because an item restored
+/// from a snapshot is a perfectly ordinary item with no field that marks it. The model reads the
+/// turn, recognises its own voice in it, and confabulates a first-person account of writing a
+/// sentence another model wrote.
 ///
-/// note: `setup` with `model` has said this since it existed and none of those runs called it. A
+/// note: `setup` with `model` says this too, and a model asking the question does not call it. A
 /// fact that is only reachable by a tool nobody reaches for is a fact the program does not really
 /// have, so it goes where the question is actually asked. It is a count of items in a listing that
 /// already counts items - not a warning, and it says nothing about what the turns are worth.
@@ -693,10 +678,10 @@ fn row(item: &ContextItem, going: &Going) -> String {
     }
     // and why it is not in the request, where the state column cannot say. An item the projector
     // dropped is `active` and not going, so the row reads `0` under `sending` with nothing to
-    // account for it - which a live run put in front of a model about its own latest turn: the
-    // turn carrying the call being answered has no result yet, so it is out of the projection for
-    // as long as the tool runs. The pane has said this on the row all along, in the projector's
-    // own words, and this is the same sentence out of the same place
+    // account for it - which is how a model sees its own latest turn: the turn carrying the call
+    // being answered has no result yet, so it is out of the projection for as long as the tool
+    // runs. The pane says this on the row, in the projector's own words, and this is the same
+    // sentence out of the same place
     if let Some(why) = going.left_out.get(&item.id) {
         said.push_str(&format!(" · not going: {why}"));
     }
@@ -704,15 +689,14 @@ fn row(item: &ContextItem, going: &Going) -> String {
     said
 }
 
-/// The whole of one item, or the fact that there is no such item.
 /// How much of an item's content `look` shows either side of the gap before it is asked for the
 /// whole thing.
 ///
 /// note: reading an item copies that item into the context. So asking to see a 9,000-token tool
-/// result in order to decide whether to keep it costs very nearly what keeping it costs - a live
-/// session did exactly that, twice, and finished an honest clean-up 7,688 tokens heavier than it
-/// started. A head and a tail is enough to tell build noise from something worth keeping, and the
-/// whole thing is still one argument away for the times it is really wanted.
+/// result in order to decide whether to keep it costs very nearly what keeping it costs, and a
+/// clean-up done that way can finish heavier than it started. A head and a tail is enough to tell
+/// build noise from something worth keeping, and the whole thing is still one argument away for
+/// the times it is really wanted.
 const SAMPLE: usize = 1_500;
 
 /// An item's content: whole if it is small or if it was asked for, a head and a tail otherwise.
@@ -740,6 +724,7 @@ fn sampled(text: &str, whole: bool) -> String {
     )
 }
 
+/// The whole of one item, or the fact that there is no such item.
 fn full(items: &[Arc<ContextItem>], id: ContextId, going: &Going, whole: bool) -> String {
     let Some(item) = items.iter().find(|item| item.id == id) else {
         return format!("[{id}] there is no such item\n");
@@ -817,10 +802,10 @@ fn full(items: &[Arc<ContextItem>], id: ContextId, going: &Going, whole: bool) -
 /// Where a piece of text is in the context, and what reading it would cost - the count first.
 ///
 /// note: the thing `look` cannot do. An archived item is kept in full and never sent, and the only
-/// way to see inside one was to read it back, which copies it into the context - so a session
-/// carrying eleven megabytes it had put away could not look at any of it without undoing the
-/// saving. That made the archive write-only from the model's side, which is not what "nothing is
-/// destroyed" is supposed to mean.
+/// other way to see inside one is to read it back, which copies it into the context - so a session
+/// could not look at anything it had put away without undoing the saving. That would make the
+/// archive write-only from the model's side, which is not what "nothing is destroyed" is supposed
+/// to mean.
 ///
 /// note: so the rule is `log`'s rule, for the same reason: the count and its price first, the
 /// lines on request, and never the item. A search that answered with what it found would be a
@@ -1001,14 +986,11 @@ fn around(needle: &str) -> impl Fn(&str) -> String + '_ {
 /// checked is the thing this crate exists not to do quietly.
 ///
 /// note: the four ways of being held back are named and then divided in place, rather than counted
-/// off by an ordinal. It used to end `Only the first three are yours to change`, which meant the
-/// first three of those four causes and was read by a live session as *items 1, 2 and 3* - an
-/// understandable reading, because every other number on this screen is an item id and the table
-/// under it opens with a column of them. The model spent the next four calls hunting for what
-/// items 1-3 were hiding, reached outside the sandbox for `/proc/self/fd/0`, and then dumped the
-/// whole log with `since: 0` - a 2,938-token item that was the most expensive thing it carried for
-/// the next forty turns. An ordinal in a tool whose output is a numbered table has two readings and
-/// costs whatever the wrong one costs.
+/// off by an ordinal. Every other number on this screen is an item id and the table under it opens
+/// with a column of them, so "the first three" of four causes reads as *items 1, 2 and 3* - and a
+/// model hunting for what those items are hiding spends calls, and carries what they fetch. An
+/// ordinal in a tool whose output is a numbered table has two readings and costs whatever the
+/// wrong one costs.
 fn budget(kernel: &Kernel, mine: &super::Mine) -> String {
     let budget = kernel.budget();
     let going = Going::of(kernel);
@@ -1069,10 +1051,11 @@ fn budget(kernel: &Kernel, mine: &super::Mine) -> String {
     // eliding would be advice that buys nothing
     //
     // note: and sorted by what each one *costs the request*, not by what it holds. Those are the
-    // same figure for most rows and not for a turn that thought at length: one held 25,903 tokens
-    // and put 1,035 into the request, so ranked by what it held it stood at the top of a list
-    // headed "the most expensive items actually going into it" - offering the agent 25,903 tokens
-    // for an elision that would free a thousand. The column that decides is the column to rank on.
+    // same figure for most rows and not for a turn that thought at length, which can hold tens of
+    // thousands of tokens and put a thousand into the request. Ranked by what it held, it would
+    // top a list headed "the most expensive items actually going into it", offering the agent
+    // tens of thousands of tokens for an elision that frees a thousand. The column that decides is
+    // the column to rank on.
     let mut costly: Vec<_> = kernel
         .items()
         .into_iter()
@@ -1179,10 +1162,10 @@ fn request(kernel: &Kernel) -> String {
 
     // note: split by *what* dropped it, because the two halves are answered differently and one
     // list could not say which was which. An item left out by its own state is one `restore`
-    // puts straight back. An item the projector dropped is a consequence of something
-    // else in the context, and restoring it does nothing whatever - the thing to move is the
-    // cause. A model reading one undifferentiated list has to guess which it is looking at, and
-    // the cheap guess is `restore`, which is the one that changes nothing and costs a call.
+    // puts straight back. An item the projector dropped is a consequence of something else in
+    // the context, and restoring it does nothing whatever - the thing to move is the cause. A
+    // model reading one undifferentiated list has to guess which it is looking at, and the cheap
+    // guess is `restore`, which is the one that changes nothing and costs a call.
     let (by_state, by_projector): (Vec<_>, Vec<_>) =
         projection
             .skipped
@@ -1251,11 +1234,10 @@ mod tests {
 
     /// The schema and the permission subjects are one vocabulary.
     ///
-    /// note: what the two-list check became. An argument the schema offers that no operation reads
-    /// cannot happen now - they are the same `Vec<Op>`, and the branch an argument appears in is
-    /// the operation that reads it. What can still drift is a subject with no branch to reach it
-    /// by, or a branch the policy was never told about, which is a call that cannot be refused by
-    /// name.
+    /// note: an argument the schema offers that no operation reads cannot happen - they are the
+    /// same `Vec<Op>`, and the branch an argument appears in is the operation that reads it. What
+    /// can still drift is a subject with no branch to reach it by, or a branch the policy was
+    /// never told about, which is a call that cannot be refused by name.
     #[test]
     fn the_schema_and_the_subjects_are_one_vocabulary() {
         let spec = tool().spec();
@@ -1273,11 +1255,9 @@ mod tests {
     /// Everything that changes something requires a `reason`, and nothing that only reads offers
     /// one.
     ///
-    /// note: this used to hold a hand-written table to `CHANGES` and could only ever check that
-    /// the *tool* would ask, because the schema could not say it: `required` was `["action"]` for
-    /// all of them, under a note reading "required in a schema is all or nothing". A branch per
-    /// operation is what made that false, so the assertion is now against the schema a model is
-    /// actually shown - the branches that demand a `reason`, and the four that do not mention one.
+    /// note: the assertion is against the schema a model is actually shown - the branches that
+    /// demand a `reason`, and the four that do not mention one - rather than a table held to
+    /// `CHANGES`, which could only check that the *tool* would ask.
     #[test]
     fn the_eight_that_change_require_a_reason_and_the_four_that_read_do_not() {
         let spec = tool().spec();

@@ -67,18 +67,17 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         // it. `going.sends_content` rather than the state, for the reason it exists: an item the
         // projector repaired away is `Active` and is not in the request. A line that is nobody's
         // item - a note, an error, something still arriving - is left exactly as it is
-        // note: `is_elided` is handled above, on its own terms, so what is left here is the
-        // item a *projector* took out of a request it is otherwise in - a second result for a
-        // call that already has one. That is not a decision anybody made and there is no marker
-        // for it, so it keeps the rule down its left and the line saying why
+        // note: `is_elided` is handled by `App::conversation`, on its own terms, so what is left
+        // here is the item a *projector* took out of a request it is otherwise in - a second result
+        // for a call that already has one. That is not a decision anybody made and there is no
+        // marker for it, so it keeps the rule down its left and the line saying why
         // note: and not one whose call is only waiting to be answered. The projector leaves a
         // turn out while a call of its has no result - it has to, a call with no answer is a
         // request most providers reject - so `sends_content` says no for the whole of the time
-        // the permission prompt is open. The line that produced read
-        // `[2] an assistant turn with no content and no answered calls`, sitting directly above
-        // the call the person was being asked to authorise and describing it as a fault. It is
-        // not left out; it is mid-flight, and answering the question that is already on screen
-        // is what puts it in
+        // the permission prompt is open, and the line saying why would sit directly above the
+        // call the person is being asked to authorise and describe it as a fault. It is not left
+        // out; it is mid-flight, and answering the question that is already on screen is what
+        // puts it in
         let held = item.filter(|item| {
             !going.sends_content(item) && !item.state.is_elided() && !deciding.contains(&item.id)
         });
@@ -86,11 +85,11 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         let speaker = said.speaker;
         // note: an elided item already reads as its marker here - the projector's own words, with
         // the brackets it put round them, which is exactly the text the model reads there. That
-        // substitution was in this loop and is `App::conversation`'s now, because what an elision
-        // *means* is not a rendering decision and a second client was being handed the content of
-        // an item whose whole point is that the model no longer has it. All that is left here is
-        // drawing it with the speaker's own prefix and dimmed, so a `> ` still says whose turn it
-        // was and the dimming says there is nothing of it left to read
+        // substitution is `App::conversation`'s, because what an elision *means* is not a rendering
+        // decision, and a second client must not be handed the content of an item whose whole point
+        // is that the model no longer has it. All that is left here is drawing it with the
+        // speaker's own prefix and dimmed, so a `> ` still says whose turn it was and the dimming
+        // says there is nothing of it left to read
         let said = said.text;
 
         if let Some(item) = held {
@@ -109,8 +108,8 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
             //
             // note: the rule is put on afterwards rather than passed to `wrapped` as a prefix.
             // A prefix is a speaker's, so it belongs to the first row and the rest hang under it -
-            // which is right for `> ` and wrong for this, where a fifteen-line answer came out
-            // with one marked row and fourteen that read as ordinary indented text
+            // which is right for `> ` and wrong for this, where a long answer would come out with
+            // one marked row and the rest reading as ordinary indented text
             for text in wrapped(&said, width.saturating_sub(2), "") {
                 lines.push(Line::from(vec![
                     Span::styled("╎ ", faint()),
@@ -148,8 +147,8 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
                         block
                     }
                     Chunk::Code { language, body } => {
-                        // the markdown renderer put a blank line either side of a block, and it
-                        // is not rendering these any more
+                        // a blank line either side, where the markdown renderer would have put
+                        // one had it drawn the block
                         separate(&mut lines);
                         lines.extend(highlighted(language, body, width));
                         if nth < last {
@@ -239,7 +238,7 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     }
 }
 
-/// The colour of a shell result's first line, which is the whole point of reading one.
+/// The colour of a shell result's first line, which is what somebody reads one for.
 ///
 /// note: the three this program already uses for exactly this question - `allow`/`ask`/`deny` on
 /// the permissions tab, and the budget bar as it fills - rather than a fourth vocabulary for a
@@ -300,9 +299,9 @@ pub(super) fn draw_context(
 
     // the columns give way from the right as the window narrows, so this works in eighty
     //
-    // note: as wide as the widest label there is, rather than a fixed 26. Labels are `user`,
-    // `shell`, `summary` - a session whose longest is `read` was spending twenty columns on
-    // nothing, and the column those twenty belong to is the one saying what an item holds
+    // note: as wide as the widest label there is, rather than always the most it may be. Labels
+    // are `user`, `shell`, `summary` - a session whose longest is `read` would spend twenty columns
+    // on nothing, and the column those twenty belong to is the one saying what an item holds
     let widest = items
         .iter()
         .map(|item| columns(&item.label))
@@ -332,8 +331,8 @@ pub(super) fn draw_context(
                     // property of what is on the screen and it stops being true when the toggle does
                     // note: counted here rather than taken from `held_back`, which is every item
                     // `listed` dropped - both filters added together. With a search running as
-                    // well, that figure blamed `f` for rows the query is what hid, which is the
-                    // miscount the empty pane above has a note about avoiding
+                    // well, that figure would blame `f` for rows the query hid; the empty pane
+                    // above avoids the same miscount
                     (true, true) => format!(
                         "what it says · {} not being sent, hidden by f",
                         app.kernel
@@ -360,10 +359,9 @@ pub(super) fn draw_context(
             //
             // note: `going.sends_content` rather than the state's own, and `left_out` rather than
             // a reason built here out of the state and the note. An item the projector repaired
-            // away is `Active` and is not in the request, so keyed on the state this row showed
-            // the content it was not sending; and the string this used to assemble is the one
-            // `Projection::skipped` already carries, which has an answer for that case and this
-            // did not
+            // away is `Active` and is not in the request, so keyed on the state this row would
+            // show the content it is not sending; and `Projection::skipped` already carries a
+            // reason, one that has an answer for that case too
             let (tail, tail_style) = match going.sends_content(item) {
                 false => (withheld_why(item, going), quiet().italic()),
                 true => (
@@ -423,9 +421,9 @@ pub(super) fn draw_context(
                 // note: what the request does not carry, rather than the whole of an item that is
                 // not in it. The two are the same figure for a row that is wholly out and differ
                 // for the ones that are partly in - an elided item, whose marker is going, and an
-                // assistant turn whose thinking the endpoint will not take back. The second of
-                // those was blank here, so a session whose model thought in tens of thousands of
-                // tokens had them on no row on the pane
+                // assistant turn whose thinking the endpoint will not take back. Counting only the
+                // rows that are wholly out, a model that thought in tens of thousands of tokens
+                // would have them on no row of the pane
                 Span::styled(
                     format!(
                         "{:>7}  ",
@@ -484,10 +482,9 @@ fn verdict_word(verdict: Verdict) -> (&'static str, Style) {
 /// The line a build that can rate commands draws when nothing is rating them.
 ///
 /// note: the feature puts the advisor in the binary and `--advise` is what starts one, so a build
-/// with the first and not the second draws a question exactly as it was before any of this
-/// existed - no rating, and nothing anywhere accounting for the absence. That is the failure this
-/// program is least for, and the tab that answers "what is deciding" is where somebody wondering
-/// will already be.
+/// with the first and not the second draws a question with no rating, and without this nothing
+/// anywhere would account for the absence. That is the failure this program is least for, and the
+/// tab that answers "what is deciding" is where somebody wondering will already be.
 #[cfg(feature = "shell-advisor")]
 fn unrated(app: &App) -> Vec<Line<'static>> {
     match app.advisor.is_none() {
@@ -518,21 +515,18 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
     // which policy is in force and what it does with everything the list does not mention, above
     // the list, always
     //
-    // note: the tab was every answer somebody had given and no account of what was deciding in
-    // between - so "which policy is this, and what is it doing?" was the one question a screen of
-    // permissions raises and the only one it could not answer. Reading `/seams` for the name and
-    // the source for the behaviour is not a screen. Both halves come from the policy itself:
-    // `Careful::untold` is the value `stance` falls back to, so this cannot come to describe a
-    // policy that has since changed its mind
+    // note: without it the tab is every answer somebody has given and no account of what is
+    // deciding in between - and "which policy is this, and what is it doing?" is the one question a
+    // screen of permissions raises. Reading `/seams` for the name and the source for the behaviour
+    // is not a screen. Both halves come from the policy itself: `Careful::untold` is the value
+    // `stance` falls back to, so this cannot come to describe a policy that has since changed its
+    // mind
     // note: at the margin rather than indented under it like a row. It is a statement about the
     // whole tab, and the two columns of indent the rows share put it in the `capability` column -
     // reading as the first and oddest entry in the table rather than as the sentence the table is
-    // underneath. It also sat two columns off the empty-state prose, which starts at the margin
-    // note: and, in a build that has the ratings in it, whether one is actually running. The
-    // feature only puts the advisor in the binary; `--advise` is what starts one, and without it
-    // a question is drawn exactly as it was before any of this existed - no rating, and nothing
-    // anywhere accounting for the absence. That is the failure this program is least for, and the
-    // tab that answers "what is deciding" is where somebody wondering will already be
+    // underneath. It also lines up with the empty-state prose, which starts at the margin
+    // note: and, in a build that has the ratings in it, whether one is actually running; see
+    // `unrated`
     let (untold, untold_style) = verdict_word(Careful::untold());
     let mut said = vec![Line::from(vec![
         Span::styled(format!("{} ", app.policy_name()), Style::default().bold()),
@@ -551,8 +545,8 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
     if rows.is_empty() {
         // note: what is *not* here is a row per thing nobody has answered about yet. The policy
         // asks about everything by default, so listing the defaults is listing the absence of
-        // decisions - and it buried the one or two lines that say what this agent can do without
-        // stopping. What arrives here is what somebody answered `a` or `n` to
+        // decisions - and it would bury the one or two lines that say what this agent can do
+        // without stopping. What arrives here is what somebody answered `a` or `n` to
         frame.render_widget(
             Paragraph::new(
                 "nothing has been decided yet, which is why this list is empty rather than \
@@ -586,10 +580,10 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
                 "capability or path",
                 "answer",
                 match covers >= 8 {
-                    // note: not "the tools it covers", which it was. A capability, a server and a
-                    // path are each about a set of tools; a whole domain is about a set of
-                    // capabilities, and naming its tools instead told somebody who wrote
-                    // `--allow log` that it covered `log`
+                    // note: not "the tools it covers". A capability, a server and a path are
+                    // each about a set of tools; a whole domain is about a set of capabilities,
+                    // and naming its tools instead would tell somebody who wrote `--allow log`
+                    // that it covered `log`
                     true => "what it covers",
                     false => "",
                 }
@@ -636,9 +630,7 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
     app.grants.select(Some(app.chosen));
     let highlight = match app.focus == Focus::Body {
         true => Style::default().add_modifier(Modifier::REVERSED),
-        // note: underlined rather than a dark slab behind it. `Rgb(40, 40, 40)` is a shade of the
-        // background this program does not know it has - it reads as barely-there on a dark theme
-        // and as a black bar on a light one, which is the same mistake the code blocks avoid
+        // underlined, for the reason the context tab's selected row is
         false => Style::default().add_modifier(Modifier::UNDERLINED),
     };
 
@@ -665,14 +657,12 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
 /// column rather than being cut off - a log whose lines end in an ellipsis in the middle of the
 /// interesting part is not a log.
 ///
-/// note: the time of day *and* the gap to the line above, which is a change from showing only the
-/// gap. The argument for the gap alone was that the question somebody brings to a log is which
-/// step was slow, and a column of timestamps makes them do the subtraction - that is right, and
-/// it is why the gap is still here and still the one painted yellow. What it missed is that a
-/// gap answers no question that starts "when": matching the pane against a server log, a
-/// provider's dashboard, a ticket, or a memory of what happened just before lunch all need an
-/// absolute time, and none of them can be reached by adding up a column of deltas. They cost
-/// nine columns together and both drop out on a narrow window, widest-first.
+/// note: the time of day *and* the gap to the line above. The gap is the one painted yellow,
+/// because the question somebody usually brings to a log is which step was slow, and a column of
+/// timestamps makes them do the subtraction. But a gap answers no question that starts "when":
+/// matching the pane against a server log, a provider's dashboard, a ticket, or a memory of what
+/// happened just before lunch all need an absolute time, and none of them can be reached by adding
+/// up a column of deltas. Both drop out on a narrow window, the time first.
 pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrolled {
     const NAMES: usize = 22;
     /// How wide the gap column is, including the space after it.
@@ -698,18 +688,16 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
     let events = app.traced();
     let found = events.len();
     for event in events {
-        // the gap to the line above rather than a wall clock, because the question somebody
-        // brings to a log is which step was slow, and a column of timestamps makes them do the
-        // subtraction. Blank under a tenth of a second, so the few that took real time are the
-        // only ones with anything in the column at all
+        // the gap to the line above, blank under a tenth of a second, so the few that took real
+        // time are the only ones with anything in the column at all
         // note: `replace` runs either way, so the line after a person's still measures from this
         // one. What is skipped is drawing the figure, not keeping the clock
         let gap = match (clock, before.replace(event.at)) {
             // note: and not where the gap is somebody's. `after_a_person` marks the line that ends
             // a wait for a person - an answered question, a message finally typed - and however
-            // long that took it is not a step this program spent any time on. It was also the
-            // biggest number in the column, so the one figure nobody should act on was the one the
-            // eye went to first
+            // long that took it is not a step this program spent any time on. It is also usually
+            // the biggest number in the column, so the one figure nobody should act on would be
+            // the one the eye goes to first
             (true, Some(previous)) if !event.after_a_person => {
                 waited_since(event.at.saturating_duration_since(previous))
             }
@@ -730,12 +718,12 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         // one being looked *up*. A run whose zone could not be determined is shown in UTC and
         // marked, rather than shown as though it were local
         let read = when.then(|| read_off(event.wall)).flatten();
-        // note: the date is a rule across the pane rather than a column, and is drawn only where
-        // it changes. A session can outlast a day - that is the shape of run this clock is for -
-        // and `00:15` against two different Tuesdays says nothing; repeating the date on all
-        // eight hundred lines to disambiguate two of them would spend eleven columns on what is
-        // the same answer almost every time. It carries the zone as well, which is the one place
-        // that is worth saying out loud rather than implying with a colour.
+        // note: the date is a rule across the pane rather than a column, and is drawn only where it
+        // changes. A session can outlast a day - that is the shape of run this clock is for - and
+        // `00:15` against two different Tuesdays says nothing; repeating the date on every line to
+        // disambiguate two of them would spend eleven columns on what is the same answer almost
+        // every time. It carries the zone as well, which is the one place that is worth saying out
+        // loud rather than implying with a colour.
         if let Some(read) = &read
             && day.replace(read.date.clone()).as_ref() != Some(&read.date)
         {
@@ -784,10 +772,9 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         });
         let indent = " ".repeat(column.max(2));
         // note: what is left after the columns in front of it, rather than the width of the pane.
-        // The detail was wrapped against the whole width and the clock and the name were put in
-        // front of every line afterwards, so a long one ran off the right edge and was clipped -
-        // in the one pane whose promise is that a detail wraps rather than being cut. Every line
-        // carries the same prefix here and the wrapping is given what is left
+        // Every line carries the clock and the name in front of it, so a detail wrapped against
+        // the whole width would run off the right edge and be clipped - in the one pane whose
+        // promise is that a detail wraps rather than being cut
         let room = width.saturating_sub(columns(&under) + indent.len());
         let mut detail = wrapped(&event.detail, room, "").into_iter();
         match (event.name.is_empty(), event.detail.is_empty()) {

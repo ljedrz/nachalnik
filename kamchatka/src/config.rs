@@ -25,8 +25,8 @@ use serde::{Deserialize, Serialize};
 /// note: the names are the arguments' own, with `-` where the argument has one, so that reading a
 /// file is reading `--help`. The ones left out are the ones that are not settings: a message, a
 /// session to resume and a file to attach belong to an invocation rather than to a project, and
-/// `--headless` decides itself from whether stdout is a terminal. `border` is the one that goes
-/// the other way - a setting with no argument - and the note on it says why.
+/// `--headless` decides itself from whether stdout is a terminal. `border` and `tools` go the
+/// other way - settings with no argument - and the notes on them say why.
 ///
 /// note: it serializes as well as deserializes, and every field is written even when it is
 /// `null` - which is what makes a settings file something a program can produce rather than only
@@ -65,11 +65,9 @@ pub struct Settings {
     pub parallel: Option<bool>,
     /// Which of this program's tools to offer, by id; left out, all of them are.
     ///
-    /// note: the second key with no argument behind it, and it is here for the reason `border` is:
-    /// which tools a project wants its agent to have is settled once and then not thought about
-    /// again. It replaced `--introspect`, which was a flag for four of the six and could only be
-    /// answered before the session started; `/tools toggle` answers it at any point, and this
-    /// says where the toggles start.
+    /// note: a key with no argument behind it, for the reason `border` is one: which tools a
+    /// project wants its agent to have is settled once and then not thought about again.
+    /// `/tools toggle` changes it at any point in a session, and this says where the toggles start.
     ///
     /// note: an empty list offers none of them, which is a session with whatever an MCP server
     /// brought and nothing else. A name that is not a tool is refused at startup, like an unknown
@@ -104,12 +102,12 @@ pub struct Settings {
     pub no_record: Option<bool>,
     /// The colour the window's frame is drawn in, as `#rrggbb`.
     ///
-    /// note: the one key here with no argument behind it, which is a decision rather than an
-    /// oversight. Every other setting stands in for something somebody would otherwise type, and
-    /// nobody types a colour twice - it is picked once to sit beside a terminal theme and then
-    /// never thought about again, which is exactly the thing a file is for and the command line
-    /// is not. A `--border` would also have to be `tui`-gated, and would put a colour in the
-    /// `--help` of a program half of whose runs have no screen.
+    /// note: a key with no argument behind it, which is a decision rather than an oversight. Nearly
+    /// every setting stands in for something somebody would otherwise type, and nobody types a
+    /// colour twice - it is picked once to sit beside a terminal theme and then never thought about
+    /// again, which is the thing a file is for and the command line is not. A `--border` would also
+    /// have to be `tui`-gated, and would put a colour in the `--help` of a program half of whose
+    /// runs have no screen.
     ///
     /// note: not gated here, for the reason `mcp` is not: one file works for every build. A
     /// headless build reads this and has nothing to draw with it, which costs nothing and grants
@@ -173,14 +171,14 @@ pub const FILE: &str = "kamchatka.json";
 /// The settings file this crate ships, built into the binary so that `--print-config` can hand it
 /// over.
 ///
-/// note: `cargo install` copies no files. Before this, the starting point reached whoever cloned
-/// the repository, unpacked the `.crate` or downloaded a release archive, and nobody who took the
-/// road the readme recommends. Two kilobytes in the binary is the whole cost of closing that.
+/// note: `cargo install` copies no files. Without this, the starting point would reach whoever
+/// cloned the repository, unpacked the `.crate` or downloaded a release archive, and nobody who
+/// took the road the readme recommends.
 ///
 /// note: the same bytes the file has rather than a copy written out from [`Settings::default`],
-/// which would drop every comment-shaped key and every default the file states on purpose. The
-/// suite already holds that file to naming every field of the struct, so this is exactly what the
-/// repository ships and stays so.
+/// which would write `null` over every default the file states on purpose. The suite already holds
+/// that file to naming every field of the struct, so this is exactly what the repository ships and
+/// stays so.
 pub const SHIPPED: &str = include_str!("../kamchatka.json");
 
 /// The settings file to read when the command line named none: the working directory's, then the
@@ -219,8 +217,9 @@ pub fn found() -> Option<PathBuf> {
 /// Where the home directory is, according to the environment and nothing else.
 ///
 /// note: `USERPROFILE` as well, because on Windows that is the variable with the answer in it and
-/// `HOME` is usually not set at all - which made a `~` in a settings file there a directory of
-/// that name, silently, on the one platform where nothing else in the program would have said so.
+/// `HOME` is usually not set at all - without it, a `~` in a settings file there would be a
+/// directory of that name, silently, on the one platform where nothing else in the program would
+/// say so.
 /// `HOME` is still asked first: a shell that sets it on Windows - an MSYS one does - is a shell
 /// somebody is typing paths into, and that home is the one they mean.
 ///
@@ -251,9 +250,8 @@ fn home() -> Option<PathBuf> {
 /// and a path that is quietly not what it says is worse than one that is obviously wrong.
 ///
 /// note: the home is an argument rather than something this reads for itself, which is what lets
-/// the test below say what it is. A test that took the home from the environment was a test that
-/// could only run where the environment has one, and it duly failed on Windows - asserting
-/// nothing about this function on the platform where this function was in fact wrong.
+/// the test below say what it is. A test that took the home from the environment could only run
+/// where the environment has one, which on Windows it usually does not.
 ///
 /// note: `is_separator` rather than a literal `/`, so that `~\.cargo` is expanded on the platform
 /// that spells it that way and stays a path called `~\.cargo` on the platform where a backslash

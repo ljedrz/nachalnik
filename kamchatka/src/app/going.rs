@@ -3,10 +3,10 @@
 //!
 //! note: its own file because four modules read it and only one of them is the screen -
 //! `introspect::context` answers the model's `look` and `budget` out of it, `remote::protocol`
-//! puts the same figures on a wire, and `app::views` and `app::transcript` draw them. It sat in
-//! `app/mod.rs`, which is this terminal's own state, and it is not that: it is a reading of the
-//! kernel, and the model's account of its own budget and the person's are one piece of
-//! arithmetic on purpose.
+//! puts the same figures on a wire, and `app::views` and `app::transcript` draw them. It is not
+//! in `app/mod.rs`, which is this terminal's own state, because it is a reading of the kernel,
+//! and the model's account of its own budget and the person's are one piece of arithmetic on
+//! purpose.
 
 use std::collections::BTreeMap;
 
@@ -18,12 +18,10 @@ use nachalnik::{ContextId, ContextItem, Kernel};
 /// every item is either in the request for some number of tokens or out of it for a reason, and a
 /// screen that worked the two out separately would have rows that are neither.
 ///
-/// note: `#[non_exhaustive]`, and this one earned it: `holds` was added to it after the rest, and
-/// a struct of public fields that anybody may build with a literal cannot gain one without
-/// breaking them. Nothing should build one - it is an answer rather than a request, and
-/// [`Going::of`] is where it comes from - so saying so costs the caller nothing and makes the
-/// next field a patch instead of a major. It was the first struct in this workspace to carry the
-/// attribute and it is not the only one now; `nachalnik`'s own answers took it the day after.
+/// note: `#[non_exhaustive]`, because a struct of public fields that anybody may build with a
+/// literal cannot gain one without breaking them. Nothing should build one - it is an answer
+/// rather than a request, and [`Going::of`] is where it comes from - so saying so costs the
+/// caller nothing and makes the next field a patch instead of a major.
 #[non_exhaustive]
 pub struct Going {
     /// What each item in the request costs it.
@@ -31,16 +29,14 @@ pub struct Going {
     /// What each item holds, counted at the same moment as [`Going::costs`] and with the same
     /// counter.
     ///
-    /// note: not [`ContextItem::tokens`], which is the figure taken when the item arrived - and
-    /// the difference is not pedantry. A `Calibrating` counter learns a new scale from every
-    /// response, and the items already in the context keep the figure they were counted with
-    /// until something recounts them, which `App` does when a *turn* ends. Every reading taken
-    /// inside a turn therefore had a stored figure on one scale and a freshly projected message
-    /// on another, and the few percent between them arrived in the `held` column as tokens held
-    /// back that nothing was holding: a live session against Gemini - whose projector carries
-    /// thinking and ordered blocks back in full, so it holds nothing at all - reported 1,264
-    /// tokens held across eighteen rows. The `context` tool is worse off again, because it is
-    /// only ever called from inside a turn.
+    /// note: not [`ContextItem::tokens`], which is the figure taken when the item arrived. A
+    /// `Calibrating` counter learns a new scale from every response, and the items already in
+    /// the context keep the figure they were counted with until something recounts them, which
+    /// `App` does when a *turn* ends. A reading taken inside a turn would set a stored figure on
+    /// one scale against a freshly projected message on another, and the few percent between
+    /// them would arrive in the `held` column as tokens held back that nothing is holding - even
+    /// under a projector that holds nothing back at all. The `context` tool is worse off again,
+    /// because it is only ever called from inside a turn.
     pub holds: BTreeMap<ContextId, usize>,
     /// Why each item that is not in the request was left out, in the projector's own words.
     pub left_out: BTreeMap<ContextId, String>,
@@ -59,22 +55,21 @@ impl Going {
     ///
     /// note: not [`ContextItem::tokens`], which is what an item *holds*. An elided one holds a
     /// thousand tokens and costs the dozen its marker takes; an archived one holds whatever it
-    /// holds and costs nothing. A pane that showed the held figure under a column headed `tokens`
-    /// was answering a question nobody asked while the status line beside it answered the right
-    /// one, and the two disagreed by exactly the elided items.
+    /// holds and costs nothing. A pane showing the held figure under a column headed `tokens`
+    /// would be answering a question nobody asked, and would disagree with the status line
+    /// beside it by exactly the elided items.
     ///
     /// note: read out of the projection rather than worked out here, because what an elided item
     /// costs is the marker the *projector* writes, in the brackets the projector chooses. A
     /// client that computed it would be keeping a second copy of a decision that is not its own.
     ///
-    /// note: and `left_out` comes from the projection for a sharper reason than tidiness. Whether
-    /// an item is going cannot be read off its *state*: a projector repairs a request to keep it
-    /// valid, and an item it repairs away is `Active`, holding everything it holds, and not in the
-    /// request. Restoring the whole of a truncated output beside the copy the model was shown
-    /// makes one - the pair answer one call, so the whole takes the call and the short copy is
-    /// dropped. A pane keyed on the state then had that row claiming to send its content, showing
-    /// `0` for it, and accounting for none of what it was holding: three wrong answers about one
-    /// item, from asking the item instead of asking the request.
+    /// note: and `left_out` comes from the projection because whether an item is going cannot be
+    /// read off its *state*. A projector repairs a request to keep it valid, and an item it
+    /// repairs away is `Active`, holding everything it holds, and not in the request. Restoring
+    /// the whole of a truncated output beside the copy the model was shown makes one - the pair
+    /// answer one call, so the whole takes the call and the short copy is dropped. A pane keyed
+    /// on the state would have that row claiming to send its content, showing `0` for it, and
+    /// accounting for none of what it holds.
     pub fn of(kernel: &Kernel) -> Going {
         let projection = kernel.project();
         let counter = kernel.counter();
@@ -121,8 +116,8 @@ impl Going {
                 })
                 .collect(),
             // the projector's own words, rather than a second copy of them assembled out here
-            // from the state and the note - which is what this was, and which had no answer at
-            // all for an item the projector had repaired away
+            // from the state and the note, which would have no answer for an item the projector
+            // repaired away
             left_out: projection
                 .skipped
                 .into_iter()
@@ -148,13 +143,12 @@ impl Going {
     /// whole of it would add.
     ///
     /// note: the difference between the two counts rather than the whole of an item that is not
-    /// going, because an item is not in or out any more. Those are the same number for an
+    /// going, because an item is not simply in or out. Those are the same number for an
     /// excluded, archived or repaired-away item, whose message costs nothing; they are not for
     /// the two that are partly there. An elided one holds its content and sends a marker. And an
     /// assistant turn under an endpoint that will not take reasoning back - which is every
     /// OpenAI-compatible one - sends what it said and holds what it thought, which on a reasoning
-    /// model is most of the session: 25,903 tokens of thinking on one turn, reported nowhere,
-    /// with every row on the pane reading under 2k.
+    /// model is most of the session and would otherwise be reported nowhere.
     ///
     /// note: `count_item` and `count_message` count an assistant turn's reasoning and calls the
     /// same way, so the two figures are like for like and the difference is a number rather than
@@ -163,7 +157,7 @@ impl Going {
     /// answer: nothing is being held back.
     ///
     /// note: and [`Going::holds`] rather than [`ContextItem::tokens`], because like for like is
-    /// also about *when*. The field's own note has what a live run made of the difference.
+    /// also about *when*. The field's own note says what goes wrong otherwise.
     pub fn held_back(&self, item: &ContextItem) -> usize {
         self.holds(item)
             .saturating_sub(self.costs.get(&item.id).copied().unwrap_or(0))

@@ -46,9 +46,8 @@ pub struct Headless<'a> {
     ///
     /// note: the model's answer arrives in fragments and is printed as it does, so the last thing
     /// written is nearly always half a sentence with no newline after it. Everything else that
-    /// writes here is a whole line, and without this the two run together - a live run ended
-    /// `42026-09-11T09-46-56Z · 17 events recorded`, which is an answer of `4` with the closing
-    /// line stuck to it.
+    /// writes here is a whole line, and without this the two run together: an answer of `4` would
+    /// have the closing line stuck to the end of it.
     mid_line: bool,
 }
 
@@ -67,19 +66,18 @@ impl<'a> Headless<'a> {
 
     /// Stops the run after this long, however far it has got.
     ///
-    /// note: inside the loop rather than a `timeout` around it, which is where this was and what
-    /// it cost: a dropped future never reaches the end of `run`, so the session was never
-    /// finished and the last records - the turn it was interrupted in among them - were written
-    /// nowhere. A deadline reached here interrupts the turn, lets what arrived be recorded, and
-    /// leaves by the ordinary door.
+    /// note: inside the loop rather than a `timeout` around it. A dropped future never reaches the
+    /// end of `run`, so the session would never be finished and the last records - the turn it was
+    /// interrupted in among them - would be written nowhere. A deadline reached here interrupts
+    /// the turn, lets what arrived be recorded, and leaves by the ordinary door.
     ///
     /// note: what it does not interrupt is a *command* of the operator's own that is waiting on an
     /// endpoint - `/models` fetches a list and `/model` and `/provider` finish a switch before the
     /// next line is read. Those are awaited inside the branch that read the line, so this branch
-    /// and `ctrl+c` cannot be reached until they answer. It is a real hole and a narrow one: the
-    /// model's own turns are interruptible, which is where a run spends its time. Closing it means
-    /// running a command as a task the loop can outlive, and a half-applied `/provider` is a worse
-    /// thing to leave behind than a late deadline - see POSTPONED.md.
+    /// and `ctrl+c` cannot be reached until they answer. The hole is narrow: the model's own turns
+    /// are interruptible, which is where a run spends its time. Closing it means running a command
+    /// as a task the loop can outlive, and a half-applied `/provider` is a worse thing to leave
+    /// behind than a late deadline - see POSTPONED.md.
     pub fn deadline(mut self, after: Duration) -> Self {
         self.deadline = Some(after);
         self
@@ -87,14 +85,13 @@ impl<'a> Headless<'a> {
 
     /// Takes `ctrl+c` as "stop" rather than letting it kill the process.
     ///
-    /// note: off by default, and that is not timidity. This is a library loop, and taking a
-    /// process-wide signal is the caller's decision to make - a host with its own shutdown has
-    /// one already and would find this competing with it. `kamchatka --headless` turns it on,
-    /// because there it *is* the program.
+    /// note: off by default. This is a library loop, and taking a process-wide signal is the
+    /// caller's decision to make - a host with its own shutdown has one already and would find this
+    /// competing with it. `kamchatka --headless` turns it on, because there it *is* the program.
     ///
     /// note: one stop rather than a kill, for the same reason `esc` is: a run interrupted has a
-    /// half-answer, a tool result and a record worth keeping, and the whole point of stopping
-    /// cooperatively is that they survive. A second `ctrl+c` leaves at once.
+    /// half-answer, a tool result and a record worth keeping, and stopping cooperatively is what
+    /// lets them survive. A second `ctrl+c` leaves at once.
     pub fn stops_on_ctrl_c(mut self) -> Self {
         self.ctrl_c = true;
         self
@@ -137,13 +134,12 @@ impl<'a> Headless<'a> {
         // subscribed once, because a second press arriving while the first is being handled is the
         // one that means leave; see `crate::stopping`
         //
-        // note: and only where it was asked for, which is the half `stops_on_ctrl_c` is about.
-        // Subscribing is what installs the process-wide handler, and it installs it for the life of
-        // the process - so a subscription taken beside a branch that is switched off takes SIGINT
-        // away from a caller who never asked for any of it: the handler is in, the branch never
-        // polls it, and the signal goes nowhere at all. It also needs the runtime's signal driver,
-        // which comes with the io driver, so subscribing unasked panics a host that built its
-        // runtime with `enable_time` alone
+        // note: and only where it was asked for. Subscribing is what installs the process-wide
+        // handler, and it installs it for the life of the process - so a subscription taken beside
+        // a branch that is switched off would take SIGINT away from a caller who never asked for
+        // any of it: the handler is in, the branch never polls it, and the signal goes nowhere at
+        // all. It also needs the runtime's signal driver, which comes with the io driver, so
+        // subscribing unasked panics a host that built its runtime with `enable_time` alone
         let mut presses = self
             .ctrl_c
             .then(crate::stopping::Stopping::new)
@@ -163,17 +159,16 @@ impl<'a> Headless<'a> {
 
         loop {
             // before anything else, and wherever the question came from: a turn that stopped to
-            // ask, or a `/step` that reached one. It used to be answered in the branch that
-            // handled the outcome, which left the other way in unanswered - and then the exit
-            // below had to make an exception for a waiting question, so a session whose input had
-            // closed sat in `select!` with nothing left that could ever wake it
+            // ask, or a `/step` that reached one. Answered in the branch that handles the outcome,
+            // a question from `/step` would go unanswered, and a session whose input had closed
+            // would sit in `select!` with nothing left that could ever wake it
             //
-            // note: `!busy` is load-bearing and was bought by three failing tests. The question is
-            // broadcast as `permission.requested` while the turn that raised it is still in
-            // flight, so a loop that answered on sight answered one the kernel had not finished
-            // asking - the decision was recorded, the outcome then arrived with nothing left
-            // waiting, and the turn was never carried on with. Answering only while the kernel
-            // rests is the same rule the keys follow, for the same reason
+            // note: `!busy` is not optional. The question is broadcast as `permission.requested`
+            // while the turn that raised it is still in flight, so a loop that answered on sight
+            // would answer one the kernel had not finished asking - the decision recorded, the
+            // outcome then arriving with nothing left waiting, and the turn never carried on with.
+            // Answering only while the kernel rests is the same rule the keys follow, for the same
+            // reason
             if !app.busy && app.asked().is_some() {
                 self.answer(app)?;
             }
@@ -196,15 +191,16 @@ impl<'a> Headless<'a> {
                 // note: `!busy` is what makes a pipe behave like somebody who waits for the
                 // answer before typing the next thing. Without it a script's lines are all read
                 // the moment they are written, and two things go wrong that a person at a prompt
-                // never sees: a command runs in the middle of the turn before it - a live run put
-                // the whole of `/budget` above the answer it was asked after - and a *message*
-                // sent into a running turn is held in `App::typed_ahead`, which holds one, so the
-                // third line of a three-line script would have quietly replaced the second.
+                // never sees: a command runs in the middle of the turn before it, so `/budget`
+                // lands above the answer it was asked after; and a *message* sent into a running
+                // turn is held in `App::typed_ahead`, which holds one, so the third line of a
+                // three-line script would quietly replace the second.
                 // Nothing here can be typed during a turn, so nothing is lost by reading it after
                 line = lines.next_line(), if reading && !app.busy => match line {
                     // note: what the prompt does with enter on nothing, and with spaces round a
-                    // line. A blank line down a pipe was sent as an empty message and answered -
-                    // a request for nothing - and `  /help` was a message here and a command there
+                    // line. Otherwise a blank line down a pipe is sent as an empty message and
+                    // answered - a request for nothing - and `  /help` is a message here and a
+                    // command there
                     Ok(Some(line)) if line.trim().is_empty() => {}
                     Ok(Some(line)) => {
                         // the lines it said are printed by `echo` below, which is watching
@@ -216,9 +212,8 @@ impl<'a> Headless<'a> {
                             writeln!(self.prose, "--- {title} ---").map_err(|e| e.to_string())?;
                             // note: every page rather than the one it was opened at. A screen
                             // turns them with `←` and `→` and there is no key to press down a
-                            // pipe, so a caller handed one page of seven would be reading a
-                            // reference whose other six it has no way to ask for. `/help` became
-                            // seven the day the panel started opening at the tab somebody was on.
+                            // pipe, so a caller handed one page of several would be reading a
+                            // reference whose others it has no way to ask for.
                             //
                             // note: named only where there is more than one. A page opened by
                             // `App::preview` is deliberately nameless - there is one of it - and a
@@ -357,20 +352,19 @@ impl<'a> Headless<'a> {
         // note: the session is ended here rather than by the caller, and it is the one piece of
         // lifecycle this loop owns. `session.finished` is a record like any other, and a caller
         // that ended the session after this returned would have written every record but the last
-        // one - which a live run against a local model is exactly how this was found: sixteen
-        // records on the stream under a closing line that said seventeen.
+        // one down the stream.
         app.kernel.finish();
         self.flush(app, &mut written)?;
         self.echo(app, &mut said, &mut cleared)?;
         // and the last answer's own line, which nothing else is going to end: a model that stops
-        // mid-sentence - or on a closing fence, which is where this was found - leaves the caller's
-        // parting line stuck to the end of it
+        // mid-sentence, or on a closing fence, leaves the caller's parting line stuck to the end
+        // of it
         self.fresh_line()?;
 
         // note: the reason is not repeated here. It has been on the prose since the moment it
-        // happened, and what the caller wants from this is the exit code - a piped run whose model
-        // could never be reached used to end in a `0`, which is the shape of thing that has a
-        // script reporting a session that never happened as a success
+        // happened, and what the caller wants from this is the exit code. A piped run whose model
+        // could never be reached must not end in a `0`, or a script reports a session that never
+        // happened as a success
         match failed {
             Some(_) => Err("the last turn failed".to_owned()),
             None => Ok(()),
@@ -381,8 +375,8 @@ impl<'a> Headless<'a> {
     ///
     /// note: this is what stops `/budget` from being silent. A command answers through
     /// [`App::say`] for a line and an overlay for a page of text, because the screen is what reads
-    /// both - so a caller with no screen has to read them too, and the alternative was a mode in
-    /// which messages worked and every verb typed at it did nothing visible.
+    /// both - so a caller with no screen has to read them too, or every verb typed at it does
+    /// nothing visible.
     ///
     /// note: only [`Speaker::Note`] and [`Speaker::Error`] - what the *program* said. The model's
     /// own words are printed from the fragments as they arrive, and they land in the same list, so
@@ -393,9 +387,9 @@ impl<'a> Headless<'a> {
     /// taking it would be this loop keeping a screen's state tidy on a screen's behalf.
     ///
     /// note: which lines those are, and why `said` counts the filtered sequence rather than the
-    /// list, are both [`App::notes`]. They moved there when a second loop with no screen - the one
-    /// in [`crate::remote`] - needed the same answer, and a watermark rule stated twice is a
-    /// watermark rule that will eventually be two.
+    /// list, are both [`App::notes`], because the other loop with no screen - the one in
+    /// [`crate::remote`] - needs the same answer, and a watermark rule stated twice will
+    /// eventually be two.
     fn echo(&mut self, app: &App, said: &mut usize, cleared: &mut u64) -> Result<(), String> {
         // `/cleanup` empties the sequence this is a watermark into rather than shortening it, so the
         // mark goes back to nothing with it. Nothing is printed to say so: what a pipe has already
@@ -426,13 +420,13 @@ impl<'a> Headless<'a> {
     /// note: it answers all of them rather than one, because a model that asks for three things at
     /// once produces three questions and the flag is the same answer to each.
     ///
-    /// note: through [`App::decide`] rather than through the kernel, and that is a fix rather than
-    /// tidying. Answering is four things and this had two of them: it never told the sandbox about
-    /// a granted command that reaches the network, so `--on-ask allow` allowed a `curl` and then
-    /// ran it with the network cut and no account of why. Driving the turn on afterwards is the
-    /// other two - a decision leaves the kernel resting with nothing to drive it, unless somebody
-    /// asked to drive it a transition at a time with `/step`, in which case answering must not
-    /// quietly run the rest of the turn - and both now happen once, where every caller gets them.
+    /// note: through [`App::decide`] rather than through the kernel, because answering is more
+    /// than the kernel's decision. The sandbox has to be told about a granted command that reaches
+    /// the network, or `--on-ask allow` allows a `curl` and then runs it with the network cut and
+    /// no account of why. And the turn has to be driven on afterwards - a decision leaves the
+    /// kernel resting with nothing to drive it, unless somebody asked to drive it a transition at
+    /// a time with `/step`, in which case answering must not quietly run the rest of the turn.
+    /// `decide` does all of it once, where every caller gets it.
     fn answer(&mut self, app: &mut App) -> Result<(), String> {
         for pending in app.kernel.pending_permissions() {
             let tool = pending.tool.clone();
@@ -476,13 +470,12 @@ impl<'a> Headless<'a> {
     /// records, and a session that printed all of it would bury the answer somebody is waiting
     /// for under the forty lines it took to get there.
     ///
-    /// note: and three rather than six. `App::on_event` already says something about a stop, a
+    /// note: and no more than three. `App::on_event` already says something about a stop, a
     /// compaction and a failure, and those go out through `echo` - so an arm here for any of them
-    /// printed the same news twice in two wordings. A live run ended `out of time; stopping`,
-    /// `stopped; whatever arrived is kept` and `stopped`, which is one piece of information and
-    /// three lines. What is left is what nothing else says: the model's words, which `App` files
-    /// under a speaker `echo` skips precisely so that this one can stream them, and the two tool
-    /// lines, which the terminal draws from the context and a headless run has no other sight of.
+    /// would print the same news twice in two wordings. What is left is what nothing else says: the
+    /// model's words, which `App` files under a speaker `echo` skips precisely so that this one can
+    /// stream them, and the two tool lines, which the terminal draws from the context and a
+    /// headless run has no other sight of.
     fn say(&mut self, event: &Event) -> Result<(), String> {
         // no newline after a fragment: this arrives in pieces and is a sentence being written.
         // Everything below it is a whole line, so each of them ends that one first

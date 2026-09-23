@@ -18,7 +18,7 @@ use time::{OffsetDateTime, UtcOffset};
 /// asks before it builds the runtime, which is the one moment there is nobody to race.
 ///
 /// note: `None` twice over, and they mean different things that the pane renders the same way.
-/// Not yet set is a headless build or a test that never went through `main`; set to `None` is a
+/// Not yet set is a test or an embedder that never went through `main`; set to `None` is a
 /// platform that would not say. Either way the clock falls back to UTC and says so, because a
 /// column of times that is silently two hours out is worse than one that admits which zone it is
 /// in.
@@ -32,11 +32,10 @@ pub fn note_local_offset(seconds: Option<i32>) {
 /// When something happened, on the clock a person reads: the date, the time of day, and whether
 /// the two are local or UTC.
 ///
-/// note: `time` does the calendar rather than three divisions here, which is a reversal of what
-/// this said when it only had to produce a time of day. Turning seconds into `HH:MM:SS` really is
-/// arithmetic; turning them into a *date* is leap years, and the crate is already compiled for
-/// this build. The date matters because a session can outlast a day, and a pane that showed
-/// `00:15` against two different Tuesdays would be worse than one showing no clock at all.
+/// note: `time` does the calendar rather than three divisions here. Turning seconds into
+/// `HH:MM:SS` is arithmetic; turning them into a *date* is leap years, and the crate is already
+/// compiled for this build. The date matters because a session can outlast a day, and a pane that
+/// showed `00:15` against two different Tuesdays would be worse than one showing no clock at all.
 ///
 /// note: the offset arrives as a plain `i32` so that nothing below the screen has to know about
 /// time zones to record when something happened - `app` keeps a `SystemTime` and no more.

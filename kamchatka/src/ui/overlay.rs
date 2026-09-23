@@ -39,15 +39,15 @@ pub(super) fn draw_overlay(frame: &mut Frame, app: &App) -> usize {
 /// What a waiting question is made of, at the width it will be drawn at.
 ///
 /// note: three regions rather than one paragraph, because the arguments are the only part with no
-/// bound on it. Sized as one block, a `revise` carrying eighty lines of replacement text pushed
-/// the answers off the bottom and left the panel with no way to read the rest and no way to see
-/// that `y` was still a key - the question was unanswerable by anything except a guess. The
-/// answers are pinned to the bottom, and the arguments scroll between them and the header.
+/// bound on it. Sized as one block, a `revise` carrying a long replacement text would push the
+/// answers off the bottom and leave the panel with no way to read the rest and no way to see that
+/// `y` was still a key. The answers are pinned to the bottom, and the arguments scroll between
+/// them and the header.
 ///
-/// note: the header is styled lines and the other two are strings, which is not tidiness but the
-/// difference between them. The header is the one region with a colour in it - the advisor's
-/// rating - and it is also the one that is pinned above the scroll, which is where a rating has to
-/// be: a warning that can be scrolled out of view is a warning nobody is obliged to have seen.
+/// note: the header is styled lines and the other two are strings, because the header is the one
+/// region with a colour in it - the advisor's rating - and it is also the one that is pinned above
+/// the scroll, which is where a rating has to be: a warning that can be scrolled out of view is a
+/// warning nobody is obliged to have seen.
 fn question_parts(
     app: &App,
     columns: usize,
@@ -124,14 +124,11 @@ fn question_parts(
                 .map(|line| Line::from(Span::styled(line, Style::default().fg(Color::Yellow)))),
         );
     }
-    // the blank the `\n` above used to put here, and now the one thing under the header whether or
-    // not there is a rating between the two
+    // the one blank line under the header, whether or not there is a rating in it
     head.push(Line::default());
-    // the arguments, and then what the ones naming context items actually are. This used to be the
-    // only way to know: the question was a box over the middle of the screen, so a question about
-    // eliding item 22 was unanswerable while the thing asking it covered the list saying what 22
-    // is. It is a convenience now - the context tab is a keystroke away and stays that way - and
-    // still worth having, because the answer is usually right here
+    // the arguments, and then what the ones naming context items actually are. The context tab is
+    // a keystroke away and stays that way, and this is still worth having, because the answer is
+    // usually right here
     // note: through the wrapper, because these tools take their arguments inside a `call` object
     // and the outside of one is a single field holding the whole call as a blob. What that costs
     // is exactly what this panel is for: `old` in red and `new` in green, one argument to a line
@@ -163,12 +160,11 @@ fn question_parts(
 
 /// What the advisor made of the command, as a line of the header, or nothing at all.
 ///
-/// note: the colour is the whole feature. Somebody answering a question about a command has to
-/// read the command either way - that is what the panel under this is for - and what a band of
-/// green, yellow or red buys is the half-second before that: whether this is the ordinary `cargo
-/// test` the turn has been full of, or the one call in fifty that is about to send something
-/// somewhere. It is put above the arguments rather than below them because that is the pinned
-/// region, and a warning that can be scrolled out of sight is one nobody has to have seen.
+/// note: the colour is what this adds. Somebody answering a question about a command has to read
+/// the command either way - that is what the panel under this is for - and what a band of green,
+/// yellow or red buys is the half-second before that: whether this is the ordinary `cargo test` the
+/// turn has been full of, or the one call that is about to send something somewhere. It is above
+/// the arguments because that is the pinned region; see `question_parts`.
 ///
 /// note: the band and the words both come from [`Rated::shown`], and the colour is the only thing
 /// decided here. `ui` does not read the score, does not know where the thresholds are, and cannot
@@ -202,7 +198,7 @@ fn rating(app: &App, request: &nachalnik::PermissionRequest, columns: usize) -> 
     )
 }
 
-/// The same where the advisor is not in the build, which is every line of it.
+/// The same where the advisor is not in the build: no line at all.
 #[cfg(not(feature = "shell-advisor"))]
 fn rating(_: &App, _: &nachalnik::PermissionRequest, _: usize) -> Vec<Line<'static>> {
     Vec::new()
@@ -368,8 +364,8 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
     let top = (head.len() as u16).min(inner.height - bottom);
     // a blank row between what the tool was asked to do and the keys that answer for it. Without
     // it `path: /etc/hosts` and `[y] once` sit on consecutive rows and read as one list of six
-    // things rather than as a question and the ways of answering it - and the header is already
-    // separated from the arguments this way, so the answers were the odd ones out
+    // things rather than as a question and the ways of answering it. The header is separated
+    // from the arguments the same way
     //
     // note: a row of the layout rather than a line of the foot, which is what makes it the first
     // thing to go. In the foot it would be the top line of the one region that gets its rows
@@ -424,14 +420,13 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
 /// know what is behind them. The red here is a pair with the green and reads as one; the border's
 /// red is about whether anybody is at the keys, and nothing else in the panel is either colour.
 ///
-/// note: a shell command is drawn as code, through the same [`highlighted`] a fenced ```sh block
-/// in the chat goes through, and broken at its joints by [`joints`](crate::tools::joints) first.
-/// Wrapped as prose it was
-/// folded at whatever space ran out, and the continuation went back to the margin - so the second
-/// half of a pipeline sat under `cmd:` looking exactly like the next argument, on the one screen
-/// whose whole job is saying what is about to run. The rule down the left settles that by itself;
-/// the highlighting is what makes a quoted string legible as one thing rather than as a run of
-/// flags.
+/// note: a shell command is drawn as code, through the same [`highlighted`] a fenced ```sh block in
+/// the chat goes through, and broken at its joints by [`joints`](crate::tools::joints) first.
+/// Wrapped as prose it would be folded at whatever space ran out, with the continuation back at the
+/// margin - so the second half of a pipeline would sit under `cmd:` looking exactly like the next
+/// argument, on the one screen whose whole job is saying what is about to run. The rule down the
+/// left settles that by itself; the highlighting is what makes a quoted string legible as one thing
+/// rather than as a run of flags.
 ///
 /// note: by the tool's name as well as the field's, the way [`App::about`] picks its two out. A
 /// `cmd` is a shell command *here* because `shell` is the tool that takes one, and somebody else's
@@ -496,8 +491,8 @@ fn readable(
 ///
 /// note: something with more than one face gets a strip of them along the top, drawn the way the
 /// window's own tabs are, because it is the same gesture: `←` and `→` move between them and the
-/// open one is the one in yellow. A single-page overlay - which is nearly all of them - looks
-/// exactly as it did before, strip and all absent.
+/// open one is the one in yellow. A single-page overlay - which is nearly all of them - has no
+/// strip.
 fn panel(
     frame: &mut Frame,
     title: &str,
@@ -517,8 +512,8 @@ fn panel(
         false => 0,
     };
 
-    // no taller than it has anything to say: `/budget` is six lines, and a box that took nine
-    // tenths of the screen to show them would be hiding the conversation for no reason
+    // no taller than it has anything to say: `/budget` is a handful of lines, and a box that took
+    // nine tenths of the screen to show them would be hiding the conversation for no reason
     let wanted =
         wrapped(&showing.body, columns.saturating_sub(4) as usize, "").len() as u16 + 2 + strip;
     let area = centred(
@@ -600,8 +595,8 @@ fn tabs(pages: &[Page], page: usize) -> Vec<Span<'static>> {
 /// note: the smallest a box is allowed to be comes *before* the size of the thing it is in, and
 /// the last word is the terminal's. A box has to be about twenty columns and four rows to be worth
 /// drawing at all, but a terminal narrower or shorter than that is not a reason to draw outside the
-/// buffer, which is a panic: `F1` in a one-row window took the whole program down and the session
-/// with it, and a window is one row for as long as somebody is dragging its edge.
+/// buffer, which is a panic: `F1` in a one-row window would take the whole program down and the
+/// session with it, and a window is one row for as long as somebody is dragging its edge.
 fn centred(area: Rect, columns: u16, rows: u16) -> Rect {
     let width = columns
         .min(area.width.saturating_sub(4))

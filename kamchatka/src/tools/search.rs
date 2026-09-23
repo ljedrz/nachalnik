@@ -6,11 +6,11 @@
 //! both tools filter with - so linking them is not implementing a search, and it costs no `rg` on
 //! the machine. The printer is the half this program wants of its own: one that cuts at *matches*
 //! rather than at bytes and says how many it did not show, because a search truncated mid-file
-//! with nothing accounting for the rest is the thing that makes a model run it three times.
+//! with nothing accounting for the rest is the thing that makes a model run it again.
 //!
-//! note: the point of the pair is which capability they ride. Finding a symbol used to mean
-//! `shell`, which subsumes every other capability - so a session that only wanted to be asked
-//! about the repository had to hand over the one permission that answers for everything. These
+//! note: what the pair buys is which capability they ride. Without them, finding a symbol means
+//! `shell`, which subsumes every other capability - so a session that only wants to be asked
+//! about the repository has to hand over the one permission that answers for everything. These
 //! declare `fs:grep` and `fs:glob`, and the path rules that bind a read bind them too: see
 //! [`Looking::barred`], which is the part that had to be built rather than linked.
 
@@ -47,27 +47,26 @@ pub(super) const PATHS: usize = 200;
 
 /// How many lines either side of a match `context` will go to.
 ///
-/// note: said out loud when a call asks for more, rather than clamped quietly. Watched live: a
-/// model asked for 20, got ten either side, asked again for 25 and got the same answer back - a
-/// request spent on a number nothing had told it was a ceiling. The same lesson as the compaction
-/// marker, one tool along: an answer that does not say what it did with your argument reads as an
-/// answer to the argument you gave.
+/// note: said out loud when a call asks for more, rather than clamped quietly. An answer that
+/// does not say what it did with an argument reads as an answer to the argument given, so a model
+/// clamped in silence asks again for more and gets the same answer back - a request spent on a
+/// number nothing had told it was a ceiling.
 const CONTEXT: u64 = 10;
 
 /// How much of one line is shown, in characters.
 ///
-/// note: enough for any line somebody wrote and not enough for a minified one, which is the whole
-/// job. `MATCHES * WIDTH` is deliberately under the byte limit these start with, so the two cuts
-/// do not both fire on an ordinary answer.
+/// note: enough for any line somebody wrote and not enough for a minified one. `MATCHES * WIDTH`
+/// is deliberately under the byte limit these start with, so the two cuts do not both fire on an
+/// ordinary answer.
 pub(super) const WIDTH: usize = 200;
 
 /// What both tools say about a glob.
 ///
 /// note: one string for the same reason [`PATH_ARG`](crate::tools::files) is one: `grep`'s filter
 /// and `glob`'s pattern are the same language, and two descriptions of it are two places for a
-/// model to learn two different rules. The clause that earns its keep is the last one - a model
-/// that reads `*` as "not across a separator", which is what a shell taught it, writes `**/*.rs`
-/// where `*.rs` would have done and `src/*.rs` where it wanted everything under `src`.
+/// model to learn two different rules. The last clause is there because a model that reads `*`
+/// as "not across a separator", which is what a shell taught it, writes `**/*.rs` where `*.rs`
+/// would have done and `src/*.rs` where it wanted everything under `src`.
 pub(super) const GLOB_ARG: &str = "a glob over the whole path, not just the name: `**/*.rs`, `src/**/mod.rs`, \
                         `Cargo.*`. `*` crosses `/`, so `*.rs` finds every Rust file at any depth";
 
@@ -86,13 +85,12 @@ pub(super) struct Looking {
 impl Looking {
     /// The path rules a walk has to honour by not opening things, in the order they are consulted.
     ///
-    /// note: this is the one thing here that had to be thought about rather than linked, and it is
-    /// the reason a search is not simply `read` in a loop. [`Careful::judges`] matches path rules
-    /// against the path *in the call*, and a search names a directory: the nine hundred files
-    /// under it are never judged, so `.env*: ask` would bind `read` and wave a `grep` through. A
-    /// rule that is not `allow` therefore bars the file from the walk, and the answer says how
-    /// many it barred - "ask me first" cannot be honoured nine hundred times, and the nearest
-    /// honest thing to it is not to read them and to say so.
+    /// note: this is the reason a search is not simply `read` in a loop. [`Careful::judges`]
+    /// matches path rules against the path *in the call*, and a search names a directory: the
+    /// files under it are never judged, so `.env*: ask` would bind `read` and wave a `grep`
+    /// through. A rule that is not `allow` therefore bars the file from the walk, and the answer
+    /// says how many it barred - "ask me first" cannot be honoured once for every file in a walk,
+    /// and the nearest honest thing to it is not to read them and to say so.
     ///
     /// note: what this does *not* cover is the path the call itself names. That one goes through
     /// `judges` like any other, so `grep` in `.env` is a question exactly as `read` of it is - and
@@ -146,21 +144,21 @@ impl Skipped {
 
 /// The walk both tools do, which is the same walk with a different question asked of each file.
 ///
-/// note: four decisions in here, and each of them is a thing a model would otherwise conclude
-/// something false from. Sorted, because the parallel walker's order is nondeterministic and two
-/// identical searches answering in two different orders would be two different context items.
-/// Hidden files searched, because a model that cannot find `.github/workflows` concludes the file
-/// does not exist - an absence it cannot account for is worse than a few extra files opened - and
-/// `.git` alone is pruned, because it is a database rather than anything anybody wrote. And the
-/// walker does not follow links: each one is yielded as itself, and [`followed`] decides about it
-/// one at a time, which is where a link is a question about the *reach* rather than about walking.
+/// note: each setting here stops a model concluding something false. Sorted, because the parallel
+/// walker's order is nondeterministic and two identical searches answering in two different
+/// orders would be two different context items. Hidden files searched, because a model that
+/// cannot find `.github/workflows` concludes the file does not exist - an absence it cannot
+/// account for is worse than a few extra files opened - and `.git` alone is pruned, because it is
+/// a database rather than anything anybody wrote. And the walker does not follow links: each one
+/// is yielded as itself, and [`followed`] decides about it one at a time, which is where a link is
+/// a question about the *reach* rather than about walking.
 ///
-/// note: `require_git(false)` is the fourth, and it is what makes the tool's own description true.
-/// The walker honours a `.gitignore` only inside a git repository by default, and `fs` tells the
-/// model it obeys one with no condition attached - so outside a repository a session was handed
-/// build output while its own definition said it had been spared it. What a `.gitignore` says is
-/// what it says wherever it is found; whether the directory around it has been committed to
-/// anything is a fact about a workflow, not about which files somebody meant.
+/// note: `require_git(false)` is what makes the tool's own description true. The walker honours a
+/// `.gitignore` only inside a git repository by default, and `fs` tells the model it obeys one
+/// with no condition attached - so outside a repository a session would be handed build output
+/// while its own definition said it had been spared it. What a `.gitignore` says is what it says
+/// wherever it is found; whether the directory around it has been committed to anything is a fact
+/// about a workflow, not about which files somebody meant.
 fn walk(root: &Path) -> ignore::Walk {
     WalkBuilder::new(root)
         .hidden(false)
@@ -173,11 +171,11 @@ fn walk(root: &Path) -> ignore::Walk {
 
 /// What one symbolic link is: something to read, something to leave alone, or something to count.
 ///
-/// note: refusing every link was the first rule here, and a live run in this repository is what
-/// argued it down: five crates each carry a `LICENSE-MIT` link to the file at the root, so every
-/// answer to every search led with `skipped: 5 symbolic link(s)` - noise on a line whose whole job
-/// is that it is rare, and a claim that something was withheld when nothing was. A link inside the
-/// working directory is an ordinary file with a second name.
+/// note: a link is not refused for being a link. Where every crate in a workspace carries a
+/// `LICENSE-MIT` link to the file at the root, refusing them all would lead every answer to every
+/// search with a count of skipped links - noise on a line whose whole job is that it is rare, and
+/// a claim that something was withheld when nothing was. A link inside the working directory is
+/// an ordinary file with a second name.
 ///
 /// note: the question is answered by [`Reach::allows`], which resolves before it compares - the
 /// same call, with the same answer, that `read` makes about the same path. So "outside the reach"
@@ -211,8 +209,8 @@ fn followed(reach: &Reach, path: &Path) -> Link {
 /// note: resolved rather than taken off `Reach`, and this is a Windows fact with a Unix no-op in
 /// front of it. The walk root came through `Reach::allows`, which canonicalizes - and on Windows
 /// that is an extended-length path, `\\?\C:\…`, whose prefix component is not the one a plain
-/// `C:\…` has. So `strip_prefix` matched nothing, and every path in every answer carried the
-/// whole of `\\?\C:\Users\…` in front of it, on the one platform nobody here runs.
+/// `C:\…` has. So `strip_prefix` would match nothing, and every path in every answer would carry
+/// the whole of `\\?\C:\Users\…` in front of it.
 fn under(workdir: &Path) -> PathBuf {
     workdir
         .canonicalize()
@@ -492,7 +490,7 @@ impl Grep {
                 }
                 // counted here rather than before the search, so that the two numbers in the
                 // answer add up: a file that would not open or turned out to be binary is one of
-                // the skipped, and was also being reported as one of the files read through
+                // the skipped, and not also one of the files read through
                 found.searched += 1;
                 if lines.matched == 0 {
                     continue;
@@ -547,11 +545,10 @@ impl Grep {
         // note: a lines answer that will not fit is answered as the files those lines were in,
         // rather than as the first however-many-thousand bytes of it. Both are less than was
         // found; the difference is that one of them is *true of the whole tree it looked at* and
-        // the other is true of whatever the walk reached before the room ran out - measured on a
-        // broad pattern here, an answer cut at the limit came entirely from `.github/` and never
-        // reached the file the question was about. The advice this tool already gives a capped
-        // answer - ask for `files_only` - is the same move, so taking it rather than printing it
-        // is one round trip saved and several thousand tokens of lines nobody asked for.
+        // the other is true of whatever the walk reached before the room ran out, which can be
+        // one directory that never gets as far as the file the question was about. The advice
+        // this tool already gives a capped answer - ask for `files_only` - is the same move, so
+        // taking it rather than printing it saves a round trip and the lines nobody asked for.
         //
         // note: what is lost is that the lines are not archived beside the shortened copy, the
         // way an output limit's truncation leaves them. They were never handed over: a tool
@@ -608,8 +605,8 @@ fn instead(found: &Found, pattern: &str, path: &str, bytes: usize) -> String {
 
 /// What a search says about itself, above the lines it found.
 ///
-/// note: above them, because an output limit cuts from the end - the same thing `shell` learnt
-/// about its exit line. A summary under a hundred matches is the first thing a limit takes, and
+/// note: above them, because an output limit cuts from the end - the same reason `shell` puts its
+/// exit line first. A summary under a hundred matches is the first thing a limit takes, and
 /// what it leaves is a list of lines with nothing saying how many more there were.
 fn report(found: &Found, pattern: &str, path: &str, files_only: bool, wanted: u64) -> String {
     let files = format!("{} file(s) searched", found.searched);
@@ -629,9 +626,8 @@ fn report(found: &Found, pattern: &str, path: &str, files_only: bool, wanted: u6
         // early - and nothing beyond it
         // note: `files_only` is named first of the four, because it is the one that answers the
         // situation rather than working around it. A capped line answer is filled from the start
-        // of the alphabet - measured here, a broad pattern came back entirely from `.github/`
-        // and never reached the file the question was about - and `files_only` sees the whole
-        // tree for a fraction of the tokens
+        // of the alphabet, and can end before it reaches the file the question was about, where
+        // `files_only` sees the whole tree for a fraction of the tokens
         (false, n) if found.full => format!(
             "{} · {full}, so there may be more: ask for `files_only` to see where they are, or \
              narrow the pattern, give a path, or pass a `glob`",
@@ -658,9 +654,9 @@ fn counted(matches: usize, files: usize, files_only: bool) -> String {
 /// A header, whatever the answer has to account for, and the lines - with nothing left dangling
 /// where one of those is empty.
 ///
-/// note: a function because both tools had the same bug in it: an empty list joined onto the
-/// header left a trailing newline, which is one byte and the difference between two answers a
-/// test can compare and two it cannot.
+/// note: one function for both tools, because an empty list joined onto the header leaves a
+/// trailing newline, which is one byte and the difference between two answers a test can compare
+/// and two it cannot.
 fn said<const N: usize>(head: String, notes: [Option<String>; N], lines: &[String]) -> String {
     std::iter::once(Some(head))
         .chain(notes)
@@ -754,9 +750,9 @@ impl Glob {
         .await?;
 
         let head = match (stopped, all) {
-            // note: the cap belongs in this arm as much as in the one below it. A walk stopped
-            // after its two hundredth path said how many it had found and handed over the first
-            // two hundred, with nothing accounting for the difference
+            // note: the cap belongs in this arm as much as in the one below it. Without it, a walk
+            // stopped after its two hundredth path would say how many it had found and hand over
+            // the first two hundred, with nothing accounting for the difference
             (true, n) if n > paths.len() => format!(
                 "stopped before it finished · {n} path(s) so far · the first {} of them",
                 paths.len()
@@ -779,8 +775,8 @@ mod tests {
     /// A line too wide for the answer is cut where it says it is cut.
     ///
     /// note: over characters rather than bytes, which is what stops a cut landing inside one. The
-    /// third case is the one that panicked before `char_indices`: a line of two-byte characters
-    /// is under the limit in characters and over it in bytes.
+    /// third case is a line of two-byte characters, where a count of bytes and a count of
+    /// characters put the cut in different places.
     #[test]
     fn a_long_line_is_cut_and_says_so() {
         assert_eq!(cut("short", 10), "short");
@@ -812,10 +808,10 @@ mod tests {
 
     /// The resolved working directory is a prefix of the paths the walk hands back.
     ///
-    /// note: windows-only because it is a Windows fact, and it is the one that sent seven tests
-    /// red there while every one of them passed here. `canonicalize` returns `\\?\C:\…`, whose
-    /// prefix component is not the one a plain `C:\…` has, so `strip_prefix` matched nothing and
-    /// every path in every answer carried the whole of somebody's home directory in front of it.
+    /// note: windows-only because it is a Windows fact. `canonicalize` returns `\\?\C:\…`, whose
+    /// prefix component is not the one a plain `C:\…` has, so without resolving both sides
+    /// `strip_prefix` matches nothing and every path in every answer carries the whole of
+    /// somebody's home directory in front of it.
     #[cfg(windows)]
     #[test]
     fn a_resolved_workdir_is_a_prefix_of_what_the_walk_hands_back() {

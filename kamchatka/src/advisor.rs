@@ -1,45 +1,43 @@
 //! A System One engine running on this machine, spoken to over a pipe.
 //!
-//! note: the whole reason this exists is that the open engines are *libraries*. `laya`, the one
-//! this was written against, is `pip install laya` and a `Router` with a `predict` method: no
-//! HTTP interface, no CLI, nothing to point a base URL at. So a local advisor is a process
-//! somebody runs, and the seam it fits is [`SystemOne`](nachalnik_providers::system1::SystemOne) rather
-//! than a second address.
+//! note: this exists because the open engines are *libraries*. `laya`, the one this was written
+//! against, is `pip install laya` and a `Router` with a `predict` method: no HTTP interface, no
+//! CLI, nothing to point a base URL at. So a local advisor is a process somebody runs, and the
+//! seam it fits is [`SystemOne`](nachalnik_providers::system1::SystemOne) rather than a second
+//! address.
 //!
-//! note: **nothing leaves the machine**, and that is not a nicety - it is the whole of what this
-//! changes. Everything `tools::advice` says about disclosure is about a third party reading a
-//! tool's arguments, which for a write is the text being written and for a shell call is the
-//! command line. Pointed at a local engine there is no third party: the arguments go to a
-//! process the person running this started, under their own user, and come back as numbers.
-//! `--advise` still says what it says, because what a flag turns on should not depend on an
-//! environment variable - but the thing it is careful about is not happening.
+//! note: **nothing leaves the machine**, and that is what this changes. Everything `tools::advice`
+//! says about disclosure is about a third party reading a tool's arguments, which for a write is
+//! the text being written and for a shell call is the command line. Pointed at a local engine
+//! there is no third party: the arguments go to a process the person running this started, under
+//! their own user, and come back as numbers. `--advise` still says what it says, because what a
+//! flag turns on should not depend on an environment variable - but the thing it is careful about
+//! is not happening.
 //!
 //! note: **the child's output is this program's to hold, not the terminal's.** Both streams are
 //! piped: stdout because it is the answers, and stderr because a session with a screen is a
 //! session whose terminal is being drawn on. An engine that inherits it writes over the frame -
 //! a checkpoint downloading says so at length, and `laya` pulls one on first use - and what
-//! lands is a session nobody can read. Inheriting it was the first thing tried here and is
-//! exactly that bug.
+//! lands is a session nobody can read.
 //!
-//! note: piped is not enough on its own, which is the other half and the reason inheriting
-//! looked attractive. A pipe nobody reads fills and the child blocks writing to it, so the
-//! advisor stops answering and nothing says why. So stderr is *drained* - a task reads it for
-//! the life of the child - and the last few lines are kept. They are attached to whatever
-//! failure they explain rather than printed, because the moment a traceback is worth reading is
-//! the moment a question comes back with nothing in it.
+//! note: piped is not enough on its own. A pipe nobody reads fills and the child blocks writing
+//! to it, so the advisor stops answering and nothing says why. So stderr is *drained* - a task
+//! reads it for the life of the child - and the last few lines are kept. They are attached to
+//! whatever failure they explain rather than printed, because the moment a traceback is worth
+//! reading is the moment a question comes back with nothing in it.
 //!
-//! note: one long-lived process rather than one per question, which is the only shape that
-//! works. `laya` loads a 421M-parameter checkpoint, and `Router(preload=True)` exists because
-//! that is the cost you pay once. Paying it per permission question would put seconds in front
-//! of somebody waiting to press `y`, on every command, which is the thing the model was chosen
-//! for not doing.
+//! note: one long-lived process rather than one per question. `laya` loads a 421M-parameter
+//! checkpoint, and `Router(preload=True)` exists because that is a cost to pay once. Paying it
+//! per permission question would put seconds in front of somebody waiting to press `y`, on every
+//! command, and not doing that is what the model was chosen for.
 //!
 //! note: the protocol is the body [`Jev`](nachalnik_providers::system1::Jev) already sends, one
-//! JSON object per line, answered by one JSON object per line. Not a new format: `Jev::render`
-//! builds it, [`Answers`](nachalnik_providers::system1::Answers) reads it back, and both are
-//! the code the HTTP path uses - so a shim
-//! is a loop around `predict`, and the two engines cannot drift into two request shapes. What a
-//! local engine does with `model` is its own business; `laya`'s router picks a checkpoint.
+//! JSON object per line, answered by one JSON object per line. Not a new format: each question
+//! goes out through the `Question::to_wire` that `Jev::render` uses, and
+//! [`Answers`](nachalnik_providers::system1::Answers) reads the reply the way the HTTP path does -
+//! so a shim is a loop around `predict`, and the two engines cannot drift into two request
+//! shapes. What a local engine does with `model` is its own business; `laya`'s router picks a
+//! checkpoint.
 
 use std::{collections::VecDeque, process::Stdio, sync::Arc, time::Duration};
 
@@ -122,15 +120,15 @@ pub struct Local {
 /// be reading a magic string out of a program this does not own; answering a question is the
 /// thing itself, and any engine that can be pointed at this can do it.
 ///
-/// note: not awaited, which is the whole reason it is a task. Loading a checkpoint takes seconds
+/// note: not awaited, which is why it is a task. Loading a checkpoint takes seconds
 /// and a session must not wait on an advisor it may never consult - so the warm-up and the first
 /// real question race for the same lock, and whichever arrives second waits for the first. That
 /// is the wait the session was always going to have, spent once.
 ///
 /// note: it goes through `exchange`, so a warm-up that fails closes the pipe exactly as a real
-/// question would - and says so, with whatever the engine wrote on its stderr attached. That is
-/// the startup check `Jev::probe` gets and a local engine had none of: a shim that cannot answer
-/// is found before a permission question depends on it rather than at the first `y`.
+/// question would - and says so, with whatever the engine wrote on its stderr attached. It is the
+/// local engine's counterpart to `Jev::probe` at startup: a shim that cannot answer is found
+/// before a permission question depends on it rather than at the first `y`.
 fn warm(
     pipe: Arc<Mutex<Option<Pipe>>>,
     notice: Arc<Sync<VecDeque<String>>>,
@@ -144,7 +142,7 @@ fn warm(
         });
 
         // note: nothing is done with the answer. What is being checked is that one came back at
-        // all, which is the whole of what readiness means here; a `ready` that also had to be
+        // all, which is what readiness means here; a `ready` that also had to be
         // *correct* would be this program grading an engine on a question it made up
         if exchange(&pipe, &notice, &said, &body).await.is_ok() {
             remark(&notice, "the advisor is ready".to_owned());
@@ -159,9 +157,9 @@ fn warm(
 /// diagnostics, and the symptom would be an advisor that stopped answering for a reason nothing
 /// could report.
 ///
-/// note: kept and not reported. Reporting each line as it arrived was tried and is unreadable:
-/// a downloader draws a progress bar by rewriting one line with carriage returns, so what
-/// arrives is two enormous lines of `0%|    |` and the session fills with them. What somebody
+/// note: kept and not reported. Reporting each line as it arrives is unreadable: a downloader
+/// draws a progress bar by rewriting one line with carriage returns, so what arrives is enormous
+/// lines of `0%|    |` and the session fills with them. What somebody
 /// waiting on a checkpoint wants is that it is loading and that they will be told when it is
 /// done, which is two lines - see [`Local::new`]. These are for the failure they explain.
 ///
@@ -371,7 +369,8 @@ impl SystemOne for Local {
 
         // note: built here rather than by asking `Jev` to render one, because a `Jev` is an HTTP
         // client with a key in it and there may not be one. What keeps the two bodies the same
-        // is that this is the documented request shape and there is a test holding it to `Jev`'s
+        // is that this is the documented request shape, with each question put through the
+        // `to_wire` that `Jev::render` uses
         let body = json!({
             "model": MODEL,
             "state": state,
@@ -436,8 +435,8 @@ mod tests {
 
     /// Everything the advisor has to say, drained, so a test can look for one line among them.
     ///
-    /// note: `notice` is a queue now rather than a slot, and the first thing in it is always the
-    /// engine starting - which is the point of it and is in the way of every assertion below.
+    /// note: `notice` is a queue rather than a slot, and the first thing in it is always the
+    /// engine starting, which is in the way of every assertion below.
     fn everything(local: &Local) -> Vec<String> {
         std::iter::from_fn(|| local.notice()).collect()
     }
@@ -447,9 +446,8 @@ mod tests {
     /// note: `contrib/laya_advisor.py` is the other half of this feature and is the half that
     /// can be wrong on a machine with no checkpoint on it. Its `--selftest` runs the translation
     /// over a recorded laya-shaped answer and needs no `laya` installed, so there is no reason
-    /// for it not to be run here - and the failure it guards against is the one that shipped:
-    /// laya's `confidence` is not the caller's, and passed through it turns every command
-    /// yellow.
+    /// for it not to be run here. The failure it guards against is laya's `confidence` passed
+    /// through as the caller's, which it is not, and which turns every command yellow.
     ///
     /// note: skipped where there is no `python3`, like every other test in this file that needs
     /// one. What the suite loses on such a machine is a check on a file it also cannot run.
@@ -474,13 +472,11 @@ mod tests {
     /// The shim's probe asks the questions the program asks, word for word, of the state the
     /// program sends.
     ///
-    /// note: the trap this closes, which has cost two rounds of guessing. `--probe` first made up
-    /// a short rubric of its own and reported a different number than the running session did for
-    /// the same command. The rubric was then copied and the *state* was not: the probe sent a bare
-    /// command where the program sends the call, which is a different and easier question, and the
-    /// gap between the two answers was large enough to be written down as a fact about the rubric.
-    /// A probe that does not ask what the program asks measures something nobody runs, and reads
-    /// as evidence while doing it.
+    /// note: a probe that does not ask what the program asks measures something nobody runs, and
+    /// reads as evidence while doing it. Copying the rubric is not enough: a bare command is a
+    /// different and easier question than the call the program sends, and the gap between the two
+    /// answers is large enough to be mistaken for a fact about the rubric. So both the texts and
+    /// the *state* are held to the program's.
     ///
     /// note: the texts live in two files and two languages because one of them is a Python script
     /// somebody runs by hand. This is what stops that being a drift: the copy has to contain
@@ -489,8 +485,7 @@ mod tests {
     ///
     /// note: the state is checked by its keys rather than by its rendering, because what the probe
     /// has to get right is which parts of a call the advisor is shown. A key added to
-    /// [`state`](crate::tools::advice::state) and not to the probe is the drift that already
-    /// happened once, and it is what this fails on.
+    /// [`state`](crate::tools::advice::state) and not to the probe is the drift this fails on.
     #[cfg(feature = "shell-advisor")]
     #[test]
     fn the_probe_asks_the_question_the_program_asks() {
@@ -691,10 +686,9 @@ for line in sys.stdin:
 
     /// Two lines and no more: it is not ready, and then it is.
     ///
-    /// note: the whole of what a session is told about a local engine starting. Reporting the
-    /// engine's own output instead was tried and is unreadable - a downloader draws a progress
-    /// bar by rewriting one line, so what arrived was two enormous `0%|    |` lines in the
-    /// middle of the session.
+    /// note: this is all a session is told about a local engine starting. Reporting the engine's
+    /// own output instead is unreadable - a downloader draws a progress bar by rewriting one
+    /// line, so what arrives is enormous `0%|    |` lines in the middle of the session.
     ///
     /// note: and "ready" is something the engine *demonstrated*, which is why the shim here
     /// answers rather than printing a word. A readiness read out of the child's output would be

@@ -3,15 +3,14 @@
 //! note: one function, reached two ways. `-f` at startup and `/attach` at the prompt are the same
 //! act at two moments. The alternative - a flag that reads text and a command that reads bytes -
 //! would mean `-f report.pdf` failing with a decoding error at the one moment a person has the
-//! least idea what this program can do. So `-f` grew the whole of it instead: whatever the file
-//! is, it goes in as what it is.
+//! least idea what this program can do. So `-f` does the whole of it: whatever the file is, it
+//! goes in as what it is.
 //!
 //! note: what decides is the extension, and only for the types listed below. Sniffing the content
-//! was the obvious alternative and it gets the interesting case wrong: an uncompressed PDF is
-//! valid UTF-8 for pages at a time, so "is it text?" answers yes and sends the model PDF source
-//! where a provider has a part that would have carried the document. A short table that says what
-//! this program is prepared to name is the honest shape - a media type is a claim, and guessing
-//! one is building a request the model cannot read.
+//! gets the interesting case wrong: an uncompressed PDF is valid UTF-8 for pages at a time, so "is
+//! it text?" answers yes and sends the model PDF source where a provider has a part that would
+//! have carried the document. So a short table says what this program is prepared to name - a
+//! media type is a claim, and guessing one builds a request the model cannot read.
 
 use std::path::Path;
 
@@ -33,8 +32,8 @@ const MOST: u64 = 16 * 1024 * 1024;
 /// note: short on purpose. Every entry is a claim that this media type is what an endpoint should
 /// be told, and the ones here are the ones the dialects next door actually carry: pictures and
 /// documents everywhere, recordings where Google's own API is being spoken. Anything not named
-/// here is offered to the model as text, which is the right answer for the overwhelming majority
-/// of what a person points this at - source, markdown, logs, CSV, JSON.
+/// here is read as text and refused if it is not, which is the right answer for the overwhelming
+/// majority of what a person points this at - source, markdown, logs, CSV, JSON.
 const TYPES: &[(&str, &str)] = &[
     ("pdf", "application/pdf"),
     ("png", "image/png"),
@@ -63,13 +62,12 @@ fn media_type(path: &str) -> Option<&'static str> {
 /// The item is neither pinned nor given a reason; that is the caller's, because the two callers
 /// have different ones to give.
 ///
-/// note: the bytes case is a [`Content::Blocks`] of two rather than a bare [`Content::Blob`], and
-/// the extra block is not decoration. [`LinearProjector`](nachalnik::LinearProjector) labels a
-/// reference by prepending its label to the *text*, so a reference that is not text loses its
-/// label on the way out: the model would be handed a document with nothing saying which file it
-/// was, in a conversation where the person had just typed the name. Both dialects already carry a
-/// sentence beside a payload - it is the shape a turn takes when it is a question about a
-/// screenshot - so the name travels as one.
+/// note: the bytes case is a [`Content::Blocks`] of two rather than a bare [`Content::Blob`],
+/// because [`LinearProjector`](nachalnik::LinearProjector) labels a reference by prepending its
+/// label to the *text*, so a reference that is not text loses its label on the way out: the model
+/// would be handed a document with nothing saying which file it was, in a conversation where the
+/// person had just typed the name. Both dialects already carry a sentence beside a payload - it is
+/// the shape a turn takes when it is a question about a screenshot - so the name travels as one.
 ///
 /// note: the payload first and the name after it, which is the opposite of the way a person would
 /// caption something and is decided by a different reader. The context pane shows the **first
@@ -92,8 +90,8 @@ pub fn attached(path: &str) -> Result<ContextItem> {
     }
 
     let Some(media_type) = media_type(path) else {
-        // the same read `-f` has always done, and the same error when the file is not text: what
-        // has changed is that there is now a list of things it is not an error for
+        // read as text, and the read's own error when the file is not text: `TYPES` is the list
+        // of things that is not an error for
         let content =
             std::fs::read_to_string(path).with_context(|| format!("could not read {path}"))?;
 
@@ -127,9 +125,8 @@ pub fn attached(path: &str) -> Result<ContextItem> {
 /// note: the blob's own `Display` - `[application/pdf, 292.47kB]` - rather than a size formatted
 /// here. That notation is already what the context pane shows, what a dialect with nowhere to put
 /// a payload sends, and what `nachalnik-mcp` answers with, so a second one would be a second
-/// format to keep in step and a second number to reconcile. It was briefly both: this reported
-/// the length on disk while the pane reported the base64, so one file had two sizes on one
-/// screen.
+/// format to keep in step and a second number to reconcile: a length on disk here beside the
+/// pane's base64 would give one file two sizes on one screen.
 pub fn describe(item: &ContextItem) -> Option<String> {
     let blobs = item.content.blobs();
 

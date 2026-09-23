@@ -2,8 +2,8 @@
 //!
 //! note: a thin wrapper around [`nachalnik_mcp`] and nothing more - it spawns what it was told to
 //! spawn, installs the tools, and hands back the servers. It is in the library rather than in
-//! `main.rs`, where it was, because an embedder that wants somebody else's tools should not have
-//! to re-derive the one part of this that is not obvious: the name.
+//! `main.rs` because an embedder that wants somebody else's tools should not have to re-derive the
+//! one part of this that is not obvious: the name.
 
 use nachalnik::Kernel;
 use nachalnik_mcp::Server;
@@ -22,8 +22,8 @@ use crate::tools::Careful;
 /// only thing that reliably knows where a tool came from is whatever installed it - which is
 /// here.
 ///
-/// note: the servers have to outlive the session. Dropping one takes its child process, and its
-/// tools, with it.
+/// note: the servers have to outlive every session that offers their tools. Dropping one takes its
+/// child process, and its tools, with it.
 pub async fn attach(
     kernel: &Kernel,
     policy: &Careful,

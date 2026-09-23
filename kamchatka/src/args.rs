@@ -1,13 +1,12 @@
 //! The command line: what the program accepts, and what a session made of it looks like.
 //!
-//! note: in the library rather than in `main.rs`, which is where it was. A session assembled from
-//! these arguments is the thing this crate is for, and `examples/phone.rs` builds one too - so a
-//! second, smaller vocabulary in the example was two sets of flags to keep in step and one of them
-//! always behind. The example took a model as a positional word and defaulted it to a model
-//! somebody else picked, which is exactly the thing `--model` stopped doing.
+//! note: in the library rather than in `main.rs`. A session assembled from these arguments is the
+//! thing this crate is for, and `examples/phone.rs` builds one too - so a second, smaller
+//! vocabulary in the example would be two sets of flags to keep in step and one of them always
+//! behind.
 //!
-//! note: what `main.rs` keeps is the part that is genuinely the program's: which loop drives the
-//! session, where the record is written, and the refusal that `--connect` assembles nothing.
+//! note: what `main.rs` keeps is the part that is the program's own: which loop drives the session,
+//! where the record is written, and the refusal that `--connect` assembles nothing.
 
 use std::sync::Arc;
 
@@ -30,9 +29,9 @@ use crate::{
 /// list them the way it lists `KAMCHATKA_MODEL` beside `--model`. A setting nothing on the screen
 /// mentions is a setting nobody finds, and `--help` is where a person looks for the list.
 ///
-/// note: a function rather than the literal it was, so that the advisor's three are listed by a
-/// build that has an `--advise` to use them and by no other. A variable named in the help of a
-/// program that reads it nowhere is the same failure as a settings key nothing consults.
+/// note: a function rather than a literal, so that the advisor's three are listed by a build that
+/// has an `--advise` to use them and by no other. A variable named in the help of a program that
+/// reads it nowhere is the same failure as a settings key nothing consults.
 pub fn environment() -> String {
     /// The advisor's three, listed by a build that has an `--advise` and empty in one that does
     /// not.
@@ -242,12 +241,10 @@ pub struct Args {
 
     /// Which tools to offer at startup, which only a settings file can say; see `Settings::tools`.
     ///
-    /// note: `skip` for the reason above, and for one of its own. This was `--introspect`, a flag
-    /// for four of the tools, and what it was really being used for was a project where those four
-    /// were worth the tokens - which is a fact about the project and belongs in the file beside it
-    /// rather than in front of somebody's hands. What it was *also* used for was turning them off
-    /// for one session, and that is `/tools toggle` now, at the moment somebody wants it rather
-    /// than before the session starts.
+    /// note: `skip` for the reason above, and for one of its own. Which tools are worth their
+    /// tokens is a fact about the project, and belongs in the file beside it rather than in front
+    /// of somebody's hands. Turning one off for one session is `/tools toggle`, at the moment
+    /// somebody wants it rather than before the session starts.
     #[arg(skip)]
     pub tools: Option<Vec<String>>,
 }
@@ -259,7 +256,7 @@ impl Args {
     /// defaults, because those are not the same question: `--requests 8` is the default value and
     /// somebody meant it, and a merge that could not tell them apart would let a file quietly
     /// override what was asked for. `ValueSource::CommandLine` is the only answer that counts, and
-    /// it is why `session` parses the matches as well as the struct.
+    /// it is why [`Args::given`] hands back the matches as well as the struct.
     ///
     /// note: a list from the command line *replaces* the file's rather than adding to it. One rule
     /// for every key is the only kind anybody can predict, and the other way round there is no way
@@ -267,7 +264,7 @@ impl Args {
     pub fn under(mut self, settings: Settings, matches: &clap::ArgMatches) -> Result<Self> {
         let typed =
             |name: &str| matches.value_source(name) == Some(clap::parser::ValueSource::CommandLine);
-        // one macro rather than eighteen `if`s, and it names the argument once: the string clap
+        // one macro rather than an `if` per field, and it names the argument once: the string clap
         // knows it by is the field's own name, so a field renamed without its entry here stops
         // compiling rather than stopping working
         macro_rules! fill {
@@ -308,9 +305,9 @@ impl Args {
             self.model = settings.model;
         }
         // note: and not at all into a resumed session, whose context already holds the one the
-        // snapshot's first run was given, pinned. Pushed again on every `-r`, it stacked a copy per
-        // resume, each beyond compaction's reach; a typed `-s` beside `-r` is somebody asking for
-        // one, and is still honoured
+        // snapshot's first run was given, pinned. Pushed again on every `-r`, it would stack a copy
+        // per resume, each beyond compaction's reach; a typed `-s` beside `-r` is somebody asking
+        // for one, and is still honoured
         if self.system.is_none() && self.resume.is_none() {
             self.system = settings.system;
         }
@@ -334,8 +331,8 @@ impl Args {
             Some(mcp) if !typed("mcp") => self.mcp = mcp,
             // note: a *server* that cannot be run is worth refusing over; an empty list asks for
             // nothing and is honoured by doing nothing. The crate's own `kamchatka.json` carries
-            // every key, `mcp` among them, so the stricter rule made the shipped starting point
-            // unusable in the one build that has no MCP - which is how this was found
+            // every key, `mcp` among them, so a stricter rule would make the shipped starting
+            // point unusable in a build that has no MCP
             #[cfg(not(feature = "mcp"))]
             Some(mcp) if !mcp.is_empty() => anyhow::bail!(
                 "this build has no MCP support, so `mcp` in the settings file cannot be honoured"
@@ -367,11 +364,11 @@ impl Args {
     /// of them were *typed* and the struct cannot say - a value that equals its default and a
     /// value somebody wrote out are the same field.
     ///
-    /// note: a path that was typed is not announced and a path that was found is, which is the
-    /// whole of what the second one costs. Somebody who wrote `--config-file` knows; somebody who
-    /// walked into a directory with one in it does not, and a file that applies because of where
-    /// you are standing has to say so rather than be discovered later by its effects. Saying it is
-    /// the caller's, because there is no session to say it into yet.
+    /// note: a path that was typed is not announced and a path that was found is. Somebody who
+    /// wrote `--config-file` knows; somebody who walked into a directory with one in it does not,
+    /// and a file that applies because of where you are standing has to say so rather than be
+    /// discovered later by its effects. Saying it is the caller's, because there is no session to
+    /// say it into yet.
     ///
     /// note: nothing is looked for under `--connect`, which takes nothing else on principle: the
     /// model, the key, the tools and the sandbox all belong to whoever is serving, and a file
@@ -416,8 +413,8 @@ impl Args {
     /// whoever was handed the path.
     pub fn setup(&self) -> Result<Setup> {
         // note: here rather than in the parser, so that a settings file's `compact` is held to it
-        // too. A fraction, and said so: `80`, meant as a percentage, was no compactor at all, and
-        // anything at or below zero was one that took every tool result
+        // too. A fraction, and said so: `80`, meant as a percentage, would be no compactor at all,
+        // and anything at or below zero one that took every tool result
         anyhow::ensure!(
             self.compact > 0.0 && self.compact <= 1.0,
             "`compact` is how full the context may get, as a fraction above 0 and at most 1 - \
@@ -452,8 +449,8 @@ impl Args {
             parallel: self.parallel,
             // what the runtime keeps is a decision about retention, and retention here is a file
             // somebody has to store: `/save` writes the snapshot, and an archived output goes into
-            // it whole. One `grep` that wandered into `./target/` is 11MB of build noise nobody
-            // will read, and it is in every save of that session from then on
+            // it whole. One `grep` that wanders into `./target/` can be megabytes of build noise
+            // nobody will read, and it is in every save of that session from then on
             keep_truncated: !self.forget_truncated,
             refuse_oversized: !self.send_oversized,
             record: !self.no_record,
@@ -484,21 +481,16 @@ impl Args {
 
     /// The same, with the advisor attached where `--advise` asked for one.
     ///
-    /// note: after [`Setup::check`] and before the provider, and the order is the point. A missing
-    /// advisor key is a fact about the arguments and should not cost a round trip to the *other*
-    /// endpoint to find out about; and a session that was asked for with `--advise` and could not
-    /// reach an advisor is refused rather than quietly run with its permissions decided by the
-    /// heuristic alone. Somebody who turned this on is entitled to have it on or be told it is not.
+    /// note: after [`Setup::check`] and before the provider. A missing advisor key is a fact about
+    /// the arguments and should not cost a round trip to the *other* endpoint to find out about;
+    /// and a session that was asked for with `--advise` and could not reach an advisor is refused
+    /// rather than quietly run with its permissions decided by the heuristic alone. Somebody who
+    /// turned this on is entitled to have it on or be told it is not.
     ///
-    /// note: nothing is drained here, and it used to be. What the probe had to say went to
-    /// stderr on the reasoning that there was no screen yet - but the screen arrives immediately
-    /// and clears it, so the line was printed where nobody could read it *and* taken out of the
-    /// queue the session reports from. A local advisor's first notice is that it is not ready
-    /// yet, which is exactly the line that went missing.
-    ///
-    /// note: so the session reports all of them, through `App::on_event` and the drawn loop's
-    /// tick. That is newer than this drain was and makes it redundant; what it is not is
-    /// harmless, because a queue somebody else popped is a queue missing its first line.
+    /// note: nothing the advisor has to say is drained here. The session reports all of it,
+    /// through `App::on_event` and the drawn loop's tick, and a queue somebody else popped is a
+    /// queue missing its first line - for a local advisor, that it is not ready yet. Printing it
+    /// to stderr here would not help either: the screen arrives immediately and clears it.
     #[cfg(feature = "advise")]
     pub async fn advised(&self, setup: Setup) -> Result<Setup> {
         if !self.advise {
@@ -555,17 +547,17 @@ pub struct Given {
     pub matches: clap::ArgMatches,
     /// The settings file found where somebody was standing, where one was.
     ///
-    /// note: never one named with `--config-file`, which is the whole distinction: this is what
-    /// has to be said out loud, and a path somebody typed does not.
+    /// note: never one named with `--config-file`: this is what has to be said out loud, and a
+    /// path somebody typed does not.
     pub found: Option<std::path::PathBuf>,
 }
 
 /// What an unanswerable question is answered with.
 ///
-/// note: `deny` is the default, and it is the whole of the difference between this and
-/// `examples/recorded.rs`, which grants every question it is asked. That is right for a recording
-/// somebody is watching and wrong for a program: a run nobody is watching should not be able to do
-/// a thing nobody has allowed, and `--allow exec` is one flag away for anyone who means it.
+/// note: `deny` is the default, and that is the difference between this and `examples/recorded.rs`,
+/// which grants every question it is asked. That is right for a recording somebody is watching and
+/// wrong for a program: a run nobody is watching should not be able to do a thing nobody has
+/// allowed, and `--allow exec` is one flag away for anyone who means it.
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum OnAsk {
     /// Refuse it. The model is told, and told that it was this call rather than a standing rule.

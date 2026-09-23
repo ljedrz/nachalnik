@@ -70,9 +70,9 @@ fn main() -> Result<()> {
     // note: the runtime is let go of rather than dropped, and without this the program *hangs*
     // after every early stop there is. `tokio::io::stdin` reads on a blocking thread; a blocking
     // read on a pipe nobody is writing to does not return; and dropping a runtime waits for its
-    // blocking threads. So a headless run that ended by `ctrl+c`, a deadline, a spend ceiling or
-    // `/quit` - anything but the input closing - wrote its session out, printed where it had gone,
-    // and then sat there until somebody killed it.
+    // blocking threads. So a headless run that ends by `ctrl+c`, a deadline, a spend ceiling or
+    // `/quit` - anything but the input closing - would write its session out, print where it had
+    // gone, and then sit there until somebody killed it.
     //
     // note: it is safe here precisely because it is the last statement. The session has been
     // written, the MCP servers were dropped with the scope that held them - which is what kills
@@ -84,17 +84,14 @@ fn main() -> Result<()> {
 
 /// Whether this run is driven by lines rather than by keys.
 ///
-/// note: three ways into it and the third is the one that was missing. Somebody says so; or
-/// stdout is not a terminal, so there is nowhere to draw; or **this build has no screen in it**,
-/// which was written as a notice and not as a decision. `--no-default-features` in a terminal with
-/// no flag therefore printed `built without the tui feature, so this is a headless run` and then
-/// walked into the `unreachable!` below, which is the crate's own headline configuration failing
-/// at the first thing anybody would do with it.
+/// note: three ways into it. Somebody says so; or stdout is not a terminal, so there is nowhere to
+/// draw; or **this build has no screen in it**. The third has to be a decision and not only a
+/// notice: without it, `--no-default-features` in a terminal with no flag says this is a headless
+/// run and then walks into the `unreachable!` below.
 ///
-/// note: no test caught it and none could have, as the suite is written: every test of this
-/// binary pipes its stdout, so `piped` is true in all of them and the missing case is the one
-/// where it is false. It was found by running the thing in a terminal. What is testable is this
-/// decision, which is why it is a function rather than an expression - the four cases are below.
+/// note: a function rather than an expression so that it can be tested. Every test of this binary
+/// pipes its stdout, so `piped` is true in all of them and none can reach the case where it is
+/// false; the four cases are below.
 fn headless(asked: bool, piped: bool) -> bool {
     asked || piped || cfg!(not(feature = "tui"))
 }
@@ -103,8 +100,8 @@ fn headless(asked: bool, piped: bool) -> bool {
 ///
 /// note: refused rather than ignored, and named rather than counted. A client assembles nothing,
 /// so every one of these is an argument that would be dropped on the floor - and `-m "a question"`
-/// beside `--connect` is a natural thing to type, which used to connect and say nothing at all
-/// about the message.
+/// beside `--connect` is a natural thing to type, which would otherwise connect and say nothing at
+/// all about the message.
 ///
 /// note: read off the matches rather than declared as `conflicts_with_all`, because the list would
 /// be every argument this program has and two of them are behind features. `--serve` can say it
@@ -143,11 +140,11 @@ async fn session() -> Result<()> {
         return Ok(());
     }
 
-    // note: before any of the wiring below, and that is the whole reason it is here rather than
-    // beside the three loops at the bottom. A client assembles nothing: the model, the key that
-    // pays for it, the tools, the sandbox and the context all belong to whoever is serving, and a
-    // client that attached to somebody else's session and then failed because *it* could not reach
-    // a provider would be failing about a job that was never its own
+    // note: before any of the wiring below, which is why it is here rather than beside the three
+    // loops at the bottom. A client assembles nothing: the model, the key that pays for it, the
+    // tools, the sandbox and the context all belong to whoever is serving, and a client that
+    // attached to somebody else's session and then failed because *it* could not reach a provider
+    // would be failing about a job that was never its own
     if let Some(address) = args.connect.clone() {
         let ignored = also_typed(&matches);
         if !ignored.is_empty() {
@@ -181,16 +178,13 @@ async fn session() -> Result<()> {
     // what is on the other end of a pipe should say which it decided, and `--headless` is how
     // somebody says it themselves
     //
-    // note: a served session is neither. It has no screen and it is not driven by lines either -
-    // the decision below is about which of the *local* two is running, and asking it of a run that
-    // is neither produced a notice about a pipe nobody had mentioned
+    // note: the notice is not said for a served session. The line driver is never one of its
+    // answers, so a notice about headless runs would be about a pipe nobody had mentioned
     let piped = !std::io::stdout().is_terminal();
-    // note: asked of a served session too, where it used to be skipped. `--serve` is no longer
-    // "instead of a screen": a session with a socket in front of it draws as well, where there is
-    // anything to draw on, so that the person running it can drive it from the desk it is on and
-    // from a phone in the same breath. What the question decides for a served run is only whether
-    // there is a screen, since `--serve` conflicts with `--headless` and the line driver is not one
-    // of its answers
+    // note: asked of a served session too. A session with a socket in front of it draws as well,
+    // where there is anything to draw on, so that the person running it can drive it from the desk
+    // it is on and from a phone in the same breath. What the question decides for a served run is
+    // only whether there is a screen, since `--serve` conflicts with `--headless`
     let headless = headless(args.headless, piped);
     if server.is_none() && headless && !args.headless {
         match piped {
@@ -236,11 +230,11 @@ async fn session() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let on_ask = args.on_ask.grant();
-    // note: one reader for the whole run rather than one per session, which is what `/restart` in
-    // a piped run turns from a detail into a bug. A `BufReader` has read ahead by the time a line
-    // is handed over, so building a second one for the second session drops whatever was already
-    // in the first one's buffer - `do this / restart / do that` ran the restart and then silently
-    // never saw the third line. The reader is the *run's* input; the sessions take turns on it
+    // note: one reader for the whole run rather than one per session, because of `/restart` in a
+    // piped run. A `BufReader` has read ahead by the time a line is handed over, so building a
+    // second one for the second session drops whatever was already in the first one's buffer -
+    // `do this / restart / do that` would run the restart and never see the third line. The
+    // reader is the *run's* input; the sessions take turns on it
     let mut input = tokio::io::BufReader::new(tokio::io::stdin());
 
     if let Some(server) = &server {
@@ -302,12 +296,10 @@ async fn session() -> Result<()> {
             app.replay();
         }
         // note: `server.is_none()` as well as `!headless`, because those are two different
-        // questions and this greeting is about the third answer to neither. `headless` says the
-        // session is driven by lines *here*; a served one is driven by neither lines nor keys, and
-        // told every client that `ctrl+p` shows the next request and `F1` lists the keys - into a
-        // browser, which has no keys of this program's to press. It said it once per session and
-        // then to everybody who ever attached, because the greeting goes into the conversation and
-        // the conversation is in every projection
+        // questions. The greeting tells the reader that `ctrl+p` shows the next request and `F1`
+        // lists the keys, and it goes into the conversation, which is in every projection - so in
+        // a served session it would reach every client that ever attached, none of which has this
+        // program's keys to press
         #[cfg(feature = "tui")]
         if !headless && server.is_none() && !(first && args.resume.is_some()) {
             app.say(Speaker::Note, ui::GREETING);
@@ -333,9 +325,9 @@ async fn session() -> Result<()> {
                 ),
             );
         }
-        // note: the first session only, and this is the one where saying so matters. A `--message`
-        // asked again on every restart would make `/restart` a way of putting the same question
-        // to the model for ever, which is the opposite of what somebody types it to escape
+        // note: the first session only. A `--message` asked again on every restart would make
+        // `/restart` a way of putting the same question to the model for ever, which is the
+        // opposite of what somebody types it to escape
         if first && let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
             app.ask(&message);
             app.start_turn();
@@ -345,9 +337,8 @@ async fn session() -> Result<()> {
         // note: a served session with a screen is the *drawn* loop with a socket beside it, rather
         // than a fourth loop or a precedence somebody has to know. Only one loop can own the
         // `App`, so the one with the keys keeps it and `remote::Serving` is what it answers
-        // clients through - which is the same pair of calls `Server::run` makes, from the other
-        // side. A served session with no screen is unchanged: `Server::run` is the loop, and it is
-        // the one that ends the session
+        // clients through - the same calls `Server::run` makes. A served session with no screen
+        // has `Server::run` as its loop, and that is what ends the session
         let ran = match &mut server {
             Some(server) => {
                 let outcome = match headless {
@@ -464,8 +455,8 @@ enum Ending {
 /// Ends the session if nothing else has, says where it got to, and writes it down.
 ///
 /// note: three loops and one of these, because everything in here is about the run rather than
-/// about how it was driven - and while it was inline at the bottom of `session` a third loop meant
-/// a third copy of the two decisions [`Ending`] names.
+/// about how it was driven. Inline at the bottom of `session`, every loop would need its own copy
+/// of the two decisions [`Ending`] names.
 fn finish(app: &App, record: bool, ending: Ending, outcome: Result<()>) -> Result<()> {
     // note: the headless driver and the server each end the session themselves, so that the record
     // saying so goes down their own stream with the rest rather than being the one nobody was sent.
@@ -493,10 +484,8 @@ fn finish(app: &App, record: bool, ending: Ending, outcome: Result<()>) -> Resul
         app.kernel.session_name(),
         app.kernel.history().len()
     ));
-    // the record was only ever written if somebody thought to type `/save`, which is exactly the
-    // wrong condition: a session that ended badly is the one worth reading afterwards, and it was
-    // the one that left nothing. Nine runs against a provider that timed out left no trace of how
-    // far any of them had got
+    // written whether or not anybody typed `/save`: a session that ended badly is the one worth
+    // reading afterwards, and it is the one nobody thinks to save
     if record {
         match kamchatka::wiring::record(app) {
             Ok(written) => say(&format!(
@@ -513,8 +502,7 @@ fn finish(app: &App, record: bool, ending: Ending, outcome: Result<()>) -> Resul
 /// Takes the terminal, draws until there is nothing left to draw, and gives it back.
 ///
 /// note: the terminal is taken here rather than in `session` so that the headless path never
-/// touches it. It used to be set up before either loop ran, which was harmless only for as long
-/// as there was one loop.
+/// touches it.
 #[cfg(feature = "tui")]
 async fn drawn(
     app: &mut App,
@@ -550,8 +538,7 @@ async fn drawn(
     // note: a drawn session ends itself only where it was also served, and that is the difference
     // `Ending::Served` names. `session.finished` is a record like any other, and the clients still
     // attached are owed it and the lines under it - which `finish` could not send, because the
-    // voice they arrive on is this loop's. A drawn session with no socket leaves it to `finish`,
-    // where it has always been
+    // voice they arrive on is this loop's. A drawn session with no socket leaves it to `finish`
     if let Some(serving) = serving {
         app.kernel.finish();
         serving.last(app).await;
@@ -566,8 +553,7 @@ async fn drawn(
 /// and the socket are two ways into one [`App`], and only one loop can own it - so this one does,
 /// and `remote::Serving` is how the connections reach it: `pump` says what the session has said,
 /// `arrived` and `attend` take on whoever connected, and `asked` and `answer` do what they ask.
-/// `remote::Server::run` makes the same three calls from the other side, which is the point of
-/// their being three calls rather than a loop.
+/// They are calls rather than a loop so that `remote::Server::run` can make the same ones.
 #[cfg(feature = "tui")]
 async fn run(
     terminal: &mut ratatui::DefaultTerminal,
@@ -653,16 +639,15 @@ async fn run(
                     None => std::future::pending().await,
                 }
             } => {
-                // note: the same hole `remote::Server::run` has, in the loop that also draws, and
-                // closed the same way: the command holds the `App` and the loop waits, but the
-                // kernel's broadcast is read meanwhile, because it is the one channel here that
-                // drops what nobody took rather than queueing it. The keys are in a stream, the
-                // outcome in an unbounded channel, a connection in the listen backlog; all of
-                // those arrive late. A lagged subscription is a hole in what the screen shows and
-                // in the trace every later client is handed.
+                // note: the same as in `remote::Server::run`: the command holds the `App` and the
+                // loop waits, but the kernel's broadcast is read meanwhile, because it is the one
+                // channel here that drops what nobody took rather than queueing it. The keys are in
+                // a stream, the outcome in an unbounded channel, a connection in the listen
+                // backlog; all of those arrive late. A lagged subscription is a hole in what the
+                // screen shows and in the trace every later client is handed.
                 //
-                // note: the screen does not redraw while it waits, and that is visible and
-                // explains itself. What was not visible is the losing.
+                // note: the screen does not redraw while it waits, which is visible and explains
+                // itself; losing events would not be.
                 let mut held = Vec::new();
                 if let Some(serving) = &mut serving {
                     let doing = serving.answer(app, ask);
@@ -690,8 +675,8 @@ async fn run(
                     app.say(Speaker::Note, notice);
                 }
                 // note: on the tick as well as on an event, because an advisor has things to say
-                // when nothing is happening - a checkpoint loading is the whole of what a local
-                // one does before the first question, and no event is coming to carry it
+                // when nothing is happening - a local one loads a checkpoint before the first
+                // question, and no event is coming to carry that
                 #[cfg(feature = "advise")]
                 if let Some(notice) = app.advisor.as_ref().and_then(|advised| advised.notice()) {
                     app.say(Speaker::Note, notice);
@@ -707,11 +692,10 @@ mod tests {
 
     /// The four ways a run can end up with or without a screen.
     ///
-    /// note: the third case is a bug that shipped. A build with no `tui` has nothing to draw with,
-    /// so a run of it is headless whatever stdout is - and until this was written that was a
-    /// notice printed beside a decision that had not been made, followed by a panic. The other
-    /// three have been exercised by every piped test in this crate since the mode existed, which
-    /// is exactly why the fourth went unnoticed: a test that pipes stdout cannot reach it.
+    /// note: the third case is the one no other test reaches. A build with no `tui` has nothing
+    /// to draw with, so a run of it is headless whatever stdout is; without that, it panics. Every
+    /// piped test in this crate covers the other three, and a test that pipes stdout cannot reach
+    /// this one.
     #[test]
     fn a_build_with_no_screen_is_headless_wherever_its_output_goes() {
         assert!(headless(true, false), "somebody asked for it");

@@ -19,8 +19,8 @@
 //!
 //! # two streams, and only one of them can be lost
 //!
-//! The runtime already draws the line this protocol needs, and it is worth saying which line,
-//! because the obvious design draws a different one and is wrong.
+//! The runtime already draws the line this protocol needs. The obvious design draws a different
+//! one, and is wrong.
 //!
 //! A [`nachalnik::Record`] is numbered from 1, is never reused, is in the session log, and the log
 //! is unbounded by decision - a capped append-only log is not one. So the numbered half of what a
@@ -35,16 +35,16 @@
 //! fragment would be dominated by them. They are therefore unnumbered, best-effort, and gone once
 //! they have gone past. A client that misses some is told how many.
 //!
-//! That is the whole of the backpressure design, and what it buys is that **there is no outbound
-//! queue per client anywhere in here**. A connection that stops reading stops being written to and
+//! That is the backpressure design, and what it buys is that **there is no outbound queue per
+//! client anywhere in here**. A connection that stops reading stops being written to and
 //! its subscriptions fall behind; it loses live observation, which could not have been recovered,
 //! and loses no record, which could not have been lost.
 //!
 //! # what an event stream cannot do, and what is done instead
 //!
 //! The tempting claim about a protocol like this is that the events are the authoritative stream
-//! and a client renders them however it likes. That is not true of this runtime and it is
-//! important that it is not: **the log names things, it does not copy them.** `context.added`
+//! and a client renders them however it likes. That is not true of this runtime, on purpose:
+//! **the log names things, it does not copy them.** `context.added`
 //! carries an identifier, a kind, a source, a label and a token count, and not one word of
 //! content - which is exactly what keeps a log small enough to keep for ever, and what leaves a
 //! client fed nothing but events able to render a turn as it streams and unable to render a single
@@ -72,13 +72,14 @@
 //! client typing during a turn takes the first one's place, and the session says so to everybody
 //! rather than letting a line disappear quietly. Nothing on the wire carries a client identifier,
 //! which is the first thing any answer to this would need. What several people driving one agent
-//! should *mean* is undecided rather than unbuilt; `POSTPONED.md` has it, along with the two other
-//! things this module is knowingly without - a command that awaits the endpoint holding the whole
-//! loop, and a projection too large for [`protocol::MAX_LINE`], which no client can attach past. A
-//! single record that large is named rather than sent; see [`protocol::Message::Oversized`].
+//! should *mean* is undecided rather than unbuilt; `POSTPONED.md` has it, along with the other
+//! things this module is knowingly without, among them a command that awaits the endpoint holding
+//! the whole loop, and a projection too large for [`protocol::MAX_LINE`], which no client can
+//! attach past. A single record that large is named rather than sent; see
+//! [`protocol::Message::Oversized`].
 //!
 //! **Nothing in [`nachalnik`] knows any of this exists**, and that is the test this module was
-//! held to rather than a remark about it. `nachalnik-mcp`, `kamchatka`'s introspection tools and
+//! held to. `nachalnik-mcp`, `kamchatka`'s introspection tools and
 //! `nachalnik-eval` were each written with no change to the runtime at all; if remote control had
 //! needed one, the seam would have been wrong rather than the protocol.
 //!
@@ -114,13 +115,12 @@ const PROBE: Duration = Duration::from_secs(10);
 
 /// Sets the two things on a port that a socket file never needed.
 ///
-/// note: neither matters on loopback, which is why neither was here to begin with, and both matter
-/// the moment the bytes go near a network.
+/// note: neither matters on loopback, and both matter the moment the bytes go near a network.
 ///
 /// note: **`TCP_NODELAY`**, because Nagle's algorithm holds a small write back until the last one
 /// is acknowledged, and every frame this protocol sends is small: a key somebody pressed, a
-/// fragment of a model's sentence, an answer to a question. Batching those is the exact opposite
-/// of the trade worth making for a stream whose whole value is that it is live.
+/// fragment of a model's sentence, an answer to a question. Batching those is the wrong trade for a
+/// stream whose whole value is that it is live.
 ///
 /// note: **keepalive**, because a half-open connection has no other end to it. A peer that sends a
 /// `FIN` is noticed at once; a peer whose machine slept, lost its wifi or was unplugged sends
@@ -168,11 +168,10 @@ mod tests {
         for stream in [&client, &served] {
             tuned(stream);
             assert!(stream.nodelay().expect("the option was refused"));
-            // note: called again here rather than read back off the socket, and the difference is
-            // what `tuned` does with the answer: it drops it, deliberately, so that a platform
-            // refusing keepalive costs somebody a session rather than a connection. Nothing can
-            // therefore observe it afterwards, and the only way to find out whether this machine
-            // takes the call is to make it
+            // note: called again here rather than read back off the socket, because `tuned` drops
+            // the answer, deliberately, so that a platform refusing keepalive costs the connection
+            // its probes rather than costing somebody a session. Nothing can observe it afterwards,
+            // and the only way to find out whether this machine takes the call is to make it
             assert!(
                 SockRef::from(stream)
                     .set_tcp_keepalive(&TcpKeepalive::new().with_time(IDLE).with_interval(PROBE))

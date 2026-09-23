@@ -6,9 +6,9 @@
 //! worker pool and an injector for streaming millions of candidates into a picker, and what is
 //! being filtered here is a few hundred rows that are already in memory.
 //!
-//! note: the filter only exists while the box is on the screen. Closing it clears it, which is the
-//! one rule that keeps a pane from lying: a filter that outlived its box would leave a window
-//! quietly showing four of eight hundred events with nothing on screen saying why.
+//! note: the filter only exists while the box is on the screen. Closing it clears it, which keeps
+//! a pane from lying: a filter that outlived its box would leave a window quietly showing four of
+//! eight hundred events with nothing on screen saying why.
 
 use nucleo_matcher::{
     Config, Matcher, Utf32Str,
@@ -65,8 +65,8 @@ impl Search {
 
     /// Removes the character under the cursor; at the end of the query, nothing.
     ///
-    /// note: the key that only makes sense once there is a cursor to be behind something. Before
-    /// that, `delete` and `backspace` would have been two names for the same rub-out.
+    /// note: distinct from `backspace` only because there is a cursor for something to be under.
+    /// Without one, the two would be two names for the same rub-out.
     pub fn delete(&mut self) {
         if self.at < self.query.len() {
             self.query.remove(self.at);

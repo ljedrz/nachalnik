@@ -4,14 +4,14 @@
 //! note: this is the part of the workspace where a permission stops being a decision point with a
 //! paper trail and becomes a boundary. The runtime cannot do it - it executes nothing, so it has
 //! nothing to confine - and it is exactly the sort of thing that belongs in the program that
-//! actually spawns the process. That is the whole argument for the seam.
+//! actually spawns the process.
 //!
 //! note: [Landlock](https://landlock.io), which is a Linux LSM a process applies to *itself*: no
 //! privileges, no setuid helper, no container, no daemon. What it buys is that `network: deny` is
 //! refused by the kernel on the `connect` syscall rather than by a policy reading the word `curl`,
 //! which is the difference between a heuristic somebody can walk around and one they cannot. A
-//! live model, refused a `curl`, reached the same page with `python3 -c "import urllib.request"`
-//! on its very next call; under this, that call gets `Permission denied` from the kernel.
+//! model refused a `curl` can reach the same page with `python3 -c "import urllib.request"`;
+//! under this, that call gets `Permission denied` from the kernel.
 //!
 //! note: and it is TCP that it buys, because TCP is what the `landlock` crate has: `ConnectTcp`
 //! and `BindTcp` are the only two network access rights it exposes. The kernel is no longer the
@@ -35,9 +35,9 @@
 //! [`confines_unix_sockets`] is where that is asked.
 //!
 //! note: it is applied by re-executing *this program* in a mode that confines itself and then runs
-//! the command. The alternative is `CommandExt::pre_exec`, which is `unsafe`, and this workspace does
-//! not have any. The child is deliberately not a `tokio` program: Landlock restricts the calling
-//! thread, and a single-threaded helper is the one shape where that needs no thought.
+//! the command. The alternative is `CommandExt::pre_exec`, which is `unsafe`, and this workspace
+//! does not have any. The child is deliberately not a `tokio` program: Landlock restricts the
+//! calling thread, and a single-threaded helper is the one shape where that needs no thought.
 
 use std::{
     ffi::OsString,
@@ -184,19 +184,18 @@ impl Sandbox {
     /// What to add to a confined command's output when a permission error in it was this
     /// confinement rather than the file's own permissions; `None` when nothing suggests it was.
     ///
-    /// note: the whole reason this exists. Landlock refuses an `open` with `EACCES`, which is
-    /// what a command reports when a file is somebody else's - so a model is handed
-    /// `Permission denied (os error 13)` and has no way at all to tell a boundary from a
-    /// protected file. A live session spent six calls hunting for a `cargo` that was never
-    /// missing: it was `~/.rustup` that was out of reach, and nothing in front of the model said
-    /// so. The tool's description says a permission error out here is the confinement; a
-    /// sentence at the point of failure, naming the path, is what that description was for.
+    /// note: Landlock refuses an `open` with `EACCES`, which is what a command reports when a
+    /// file is somebody else's - so a model is handed `Permission denied (os error 13)` and has
+    /// no way at all to tell a boundary from a protected file. It goes hunting for a `cargo` that
+    /// was never missing, when what is out of reach is `~/.rustup`. The tool's description says
+    /// a permission error out here is the confinement, and that is not enough on its own: this
+    /// puts the sentence at the point of failure, naming the path.
     ///
-    /// note: three answers rather than two, and the third one is the point. A refusal that names
-    /// a path *within* reach was the file's own permissions - `/etc/shadow` is refused under this
-    /// and would be refused without it - and saying "this may have been the sandbox" there would
-    /// be a hedge that sends a model looking for a boundary that had nothing to do with it. So a
-    /// refusal whose paths are all reachable gets nothing said about it at all.
+    /// note: three answers rather than two. A refusal that names a path *within* reach was the
+    /// file's own permissions - `/etc/shadow` is refused under this and would be refused without
+    /// it - and saying "this may have been the sandbox" there would be a hedge that sends a model
+    /// looking for a boundary that had nothing to do with it. So a refusal whose paths are all
+    /// reachable gets nothing said about it at all.
     ///
     /// note: the general sentence is for the refusal that names no path this can find. Standard
     /// error is arbitrary text and picking paths out of it is a guess; what is *not* a guess is
@@ -247,12 +246,12 @@ impl Sandbox {
     /// What to hand a confined command as `GIT_CONFIG_GLOBAL`; `None` leaves git its own defaults.
     ///
     /// note: git is the one program where being out of reach is fatal rather than inconvenient,
-    /// and the reason is a trap worth writing down: under Landlock, `access(2)` still answers
-    /// from the file's own permissions. So git asks whether `~/.gitconfig` is readable, is told
-    /// yes, opens it, gets `EACCES`, and takes the *unreadable configuration* branch rather than
-    /// the *no configuration* branch - `fatal: unknown error occurred while reading the
-    /// configuration files`, and every git command in the session is dead. A missing file is
-    /// fine; an unreadable one is not, and a confined command cannot tell git which it has.
+    /// because under Landlock `access(2)` still answers from the file's own permissions. So git
+    /// asks whether `~/.gitconfig` is readable, is told yes, opens it, gets `EACCES`, and takes
+    /// the *unreadable configuration* branch rather than the *no configuration* branch - `fatal:
+    /// unknown error occurred while reading the configuration files`, and every git command in the
+    /// session is dead. A missing file is fine; an unreadable one is not, and a confined command
+    /// cannot tell git which it has.
     ///
     /// note: only when one of them is actually out of reach, and only when nobody set the
     /// variable already. Git reads a person's aliases and identity out of these, and quietly
@@ -287,13 +286,13 @@ impl Sandbox {
 /// cannot be created outside a directory it is not in.
 ///
 /// note: one function rather than two, so that [`Reach::allows`] and [`Sandbox::reaches`] cannot
-/// come to different answers about the same path - which is the whole substance of both.
+/// come to different answers about the same path.
 ///
 /// note: a symlink to something that is not there has no canonical form either, and it is *not* a
 /// file about to be created: writing through it creates its target, wherever that is. So it is
 /// followed, the way the open will follow it, rather than stepped past as though it were a name
-/// with nothing behind it - which is what let `write` create a file outside the directory through
-/// a link made inside it. `LINKS` bounds the following, because two links can point at each other.
+/// with nothing behind it - which would let `write` create a file outside the directory through a
+/// link made inside it. `LINKS` bounds the following, because two links can point at each other.
 fn resolve(path: &Path) -> PathBuf {
     const LINKS: usize = 40;
 
@@ -302,8 +301,8 @@ fn resolve(path: &Path) -> PathBuf {
     let mut followed = 0;
     let joined = |base: PathBuf, rest: &Path| match rest.as_os_str().is_empty() {
         // note: joined only when there is something to join. `Path::join("")` appends a
-        // separator, and `/w/local.txt/` is a directory that is not there - which is how a
-        // plain `./local.txt` came back `Not a directory` the first time this ran
+        // separator, and `/w/local.txt/` is a directory that is not there, so a plain
+        // `./local.txt` would come back `Not a directory`
         true => base,
         false => base.join(rest),
     };
@@ -330,10 +329,10 @@ fn resolve(path: &Path) -> PathBuf {
             Err(_) => match (existing.file_name(), existing.parent()) {
                 (Some(name), Some(parent)) => {
                     // note: and the same guard here, for the same reason. Without it every path
-                    // that does not exist yet came back with a separator on the end, so `write`
-                    // could create no file at all: `notes.txt/` is a directory, and the tool
-                    // reported `Is a directory (os error 21)` for a file it had just been asked
-                    // to make
+                    // that does not exist yet comes back with a separator on the end, so `write`
+                    // can create no file at all: `notes.txt/` is a directory, and the tool
+                    // reports `Is a directory (os error 21)` for a file it has just been asked to
+                    // make
                     rest = match rest.as_os_str().is_empty() {
                         true => PathBuf::from(name),
                         false => Path::new(name).join(&rest),
@@ -359,9 +358,9 @@ fn refused(line: &str) -> bool {
 /// The absolute paths a line of standard error mentions.
 ///
 /// note: a token that is absolute once the punctuation a message wraps one in has been taken off.
-/// Stripped *first* and tested afterwards, because the message that sent anybody here reads
-/// `could not read settings file: '/home/you/.rustup/settings.toml': Permission denied`, where the
-/// token is `'/home/...':` and does not start with a slash at all.
+/// Stripped *first* and tested afterwards, because a message such as `could not read settings
+/// file: '/home/you/.rustup/settings.toml': Permission denied` has the token `'/home/...':`, which
+/// does not start with a slash at all.
 ///
 /// note: it misses a path with a space in it, which is the right way round: a caller that gets
 /// nothing says something general instead, and one that gets a wrong path would say something
@@ -457,13 +456,12 @@ pub enum Access {
 impl Reach {
     /// Everywhere it reaches and what may be done there, in the order the rules are consulted.
     ///
-    /// note: it exists because the refusal below named the working directory and called it "as far
-    /// as this session reaches", which stopped being true the moment anybody passed
-    /// `--sandbox-allow` or `--sandbox-read`. A refusal that under-reports the reach is worse than
-    /// a vague one: a model reads it as the whole boundary and never goes near the path somebody
-    /// opened up for exactly this, and there is nothing in front of it to say otherwise.
-    /// [`Shell`](crate::tools::Shell) has named them in its description since the same thing
-    /// happened to a confined command; the tools that run in process were the half left behind.
+    /// note: a refusal that names only the working directory and calls it as far as this session
+    /// reaches stops being true the moment anybody passes `--sandbox-allow` or `--sandbox-read`.
+    /// A refusal that under-reports the reach is worse than a vague one: a model reads it as the
+    /// whole boundary and never goes near the path somebody opened up for exactly this, and there
+    /// is nothing in front of it to say otherwise. [`Shell`](crate::tools::Shell) names them in
+    /// its description for the same reason.
     ///
     /// note: the spelling is [`Sandbox`]'s, down to the `read-write` after each path, because the
     /// two say the same thing about the same session and a reader should not have to notice which
@@ -498,24 +496,21 @@ impl Reach {
     /// directory it is not in.
     ///
     /// note: a leading `~` is refused with a sentence rather than expanded, and it is refused
-    /// *before* the unconfined early return, which is the half that matters. These tools run in
-    /// process with no shell in front of them, so nothing has ever expanded it - and expanding it
-    /// here would mean `--no-sandbox` handing over `$HOME/.ssh/id_rsa` for real, on a path the
-    /// model wrote. Not expanding it is the safe default and it is kept; what was wrong was
-    /// saying nothing, because `~/.gitconfig` then joins onto the working directory as a
+    /// *before* the unconfined early return. These tools run in process with no shell in front of
+    /// them, so nothing expands it - and expanding it here would mean `--no-sandbox` handing over
+    /// `$HOME/.ssh/id_rsa` for real, on a path the model wrote. Not expanding it is the safe
+    /// default. Saying nothing is not: `~/.gitconfig` then joins onto the working directory as a
     /// directory literally called `~` and comes back `No such file or directory`. That is the
     /// `access(2)` trap in a second form: an error indistinguishable from the file being absent,
     /// which a model believes - so it concludes the home directory is empty rather than that its
     /// path was taken at its word, and nothing in front of it says otherwise.
     ///
-    /// note: two things about how that sentence is *worded*, both of them from watching models
-    /// read it. It says the same path will be refused again, because one that did not say so was
-    /// sent back unchanged six times in a single turn - a refusal that does not close the retry is
-    /// an invitation to retry. And it names no path but the one it was handed: the literal-`~`
-    /// spelling used to be here, and two models answered a refusal about `~/notes.txt` by reading
-    /// `./~`. Every concrete path in a refusal is read as a path to try, because a refusal is read
-    /// under pressure to try something else; that spelling now lives in `PATH_ARG`, which is read
-    /// while choosing instead.
+    /// note: the sentence says the same path will be refused again, because a refusal that does
+    /// not close the retry is an invitation to retry, and the same path comes straight back. And
+    /// it names no path but the one it was handed. Every concrete path in a refusal is read as a
+    /// path to try, because a refusal is read under pressure to try something else: offered
+    /// `./~`, a model refused `~/notes.txt` reads `./~`. That spelling lives in `PATH_ARG`
+    /// instead, which is read while choosing.
     pub fn allows(&self, path: &str, doing: Access) -> Result<PathBuf, String> {
         // the whole string, not any component: `notes.txt~` is a real file and `./~` is how a
         // shell asks for a literal one, so both go through untouched and the message says so
@@ -590,9 +585,9 @@ impl Reach {
     /// note: `allows` resolves a path and checks it, and the open comes after - so a part of the
     /// path swapped for a link in between would be followed wherever the link pointed. On Linux
     /// this opens with `openat2` and `RESOLVE_BENEATH` from the directory the path was allowed
-    /// under, which the kernel will not leave whatever is on disk by then, so a swap is refused
-    /// rather than followed. Elsewhere, and on a kernel that has no `openat2`, it is an ordinary
-    /// open and the window is the one SECURITY.md describes.
+    /// under, and the kernel will not let the open leave that directory whatever is on disk by
+    /// then, so a swap is refused rather than followed. Elsewhere, and on a kernel that has no
+    /// `openat2`, it is an ordinary open and the window is the one SECURITY.md describes.
     ///
     /// note: `path` is what `allows` returned, which is resolved, so a link met on the way is one
     /// that was not there when the path was checked, and refusing it refuses nothing that was
@@ -631,8 +626,9 @@ impl Reach {
 /// Opens `path` without leaving `root`, or `None` where the kernel will not do that.
 ///
 /// note: `None` for `ENOSYS`, a kernel older than 5.6, and for `EPERM`, which is what a container
-/// runtime's seccomp filter answered for `openat2` before it knew the call. The ordinary open that
-/// follows gives the same answer as before this existed, and the real error where there is one.
+/// runtime's seccomp filter answers for `openat2` when it does not know the call. The ordinary open
+/// that follows gives the answer it would have given without this, and the real error where there
+/// is one.
 #[cfg(target_os = "linux")]
 fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<std::fs::File>> {
     use rustix::{
@@ -687,9 +683,9 @@ fn beneath(_: &Path, _: &Path, _: Access) -> Option<std::io::Result<std::fs::Fil
 
 /// How much of a [`Sandbox`] the kernel actually agreed to.
 ///
-/// note: the point of a separate value is that "not confined" must be sayable. A sandbox that
-/// silently did nothing on an old kernel, or on a platform that has no Landlock, would be the
-/// worst thing in this workspace: a promise on the screen and nothing behind it.
+/// note: a separate value, so that "not confined" is sayable. A sandbox that silently did nothing
+/// on an old kernel, or on a platform that has no Landlock, would be a promise on the screen and
+/// nothing behind it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Confinement {
     /// Every restriction asked for is in force.
@@ -751,8 +747,8 @@ const SYSTEM: &[&str] = &[
 /// and the ruleset is not consulted - which is how a confined command reaches the session bus, the
 /// compositor and the container daemon. Each of those is a process outside the domain that will
 /// read and write a filesystem on its behalf, so a boundary that stops at `open` stops short:
-/// under a confinement that refused a home directory outright, `systemd-run --user` listed it and
-/// made a file in it.
+/// under a confinement that refuses a home directory outright, `systemd-run --user` lists it and
+/// makes a file in it.
 ///
 /// note: the question is put to the kernel, and put to it through the crate rather than by reading
 /// a version number. `HardRequirement` is the level at which a right the kernel does not have is an
@@ -779,9 +775,8 @@ pub fn confines_unix_sockets() -> bool {
 /// note: `scratch` is a directory of this run's own, handed over as `TMPDIR`, rather than the
 /// whole of `/tmp`. A command that cannot write a temporary file will not run - a compiler or an
 /// interpreter needs one - but opening up `/tmp` wholesale gives it a shared space to write into,
-/// and, if somebody happened to be working in a directory under `/tmp`, quietly makes a refused
-/// `write` stance mean nothing at all. That last one is not hypothetical: it is what the test for
-/// the read-only case caught on the first run.
+/// and, if somebody happens to be working in a directory under `/tmp`, quietly makes a refused
+/// `write` stance mean nothing at all.
 ///
 /// note: and it is an [`Option`], because [`make_scratch`] is allowed to fail and this must not
 /// paper over it by handing the command a `TMPDIR` that is not there. The rule for it is dropped
@@ -801,12 +796,11 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     // note: V3 rather than V1, for `Truncate`. An access right the ruleset does not *handle* is
     // not restricted at all, and truncation is not covered by V1's `WriteFile`: `truncate(2)`
     // takes a path and never opens the file, so a confined command could zero any file it could
-    // name - `os.truncate('/home/you/.bashrc', 0)` came back with nothing to say and a file of
-    // nought bytes. Handling it costs nothing here, since `from_all` grants it again on every
-    // writable path. V2's `Refer` comes with it and is the more permissive of the two: with it
-    // unhandled the kernel refuses every cross-directory rename outright, and with it granted a
-    // `mv` between two directories of the working directory is allowed, which is what anybody
-    // would expect of a shell in there.
+    // name. Handling it costs nothing here, since `from_all` grants it again on every writable
+    // path. V2's `Refer` comes with it and is the more permissive of the two: with it unhandled
+    // the kernel refuses every cross-directory rename outright, and with it granted a `mv`
+    // between two directories of the working directory is allowed, which is what anybody would
+    // expect of a shell in there.
     //
     // note: not V5's `IoctlDev` - `/dev` is granted reading and writing rather than the whole of
     // `from_all`, so handling it would deny ioctls on `/dev/null` and on a terminal to every
@@ -817,8 +811,8 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     // nowhere else. It is the one right here that a kernel in ordinary use may not have, and
     // handling a right that is not there costs the whole ruleset its `Full` status: best-effort
     // drops it and reports `Partial`, so every kernel below 7.1 would start calling itself
-    // partially confined over a right it was never going to enforce - and `tests/sandbox.rs`
-    // skips on anything short of `Full`, which would quietly stop testing the sandbox where most
+    // partially confined over a right it was never going to enforce. And `tests/sandbox.rs`
+    // skips on anything short of `Full`, so it would quietly stop testing the sandbox where most
     // of it is run. Granted again on every writable path below, the same way `Truncate` is: a
     // command may connect to a socket it could have written to, and to no other.
     let abi = ABI::V3;
@@ -890,7 +884,7 @@ pub fn confine(_sandbox: &Sandbox, _scratch: Option<&Path>) -> Confinement {
 /// note: named after the child rather than made with a random name, so that the process which
 /// *spawned* that child can find it again and remove it. The child cannot: `/tmp` is not writable
 /// under the ruleset and unlinking a directory is a write to the one it sits in, so every command
-/// used to leave an empty `kamchatka-<pid>` behind for good. Removing it is therefore the caller's
+/// would leave an empty `kamchatka-<pid>` behind for good. Removing it is therefore the caller's
 /// job - see [`crate::tools::Shell`] - and this is the one place that spells the name.
 pub fn scratch_for(pid: u32) -> PathBuf {
     std::env::temp_dir().join(format!("kamchatka-{pid}"))
@@ -902,9 +896,9 @@ pub fn scratch_for(pid: u32) -> PathBuf {
 /// note: exclusively, and never through whatever happens to be there already. The name has to be
 /// predictable - it is how the process that spawned this one finds it again - and a predictable
 /// name in a directory anybody can write to is a name somebody else can get to first.
-/// `create_dir_all` was happy with anything it found, a symlink included, and the ruleset grants
+/// `create_dir_all` is happy with anything it finds, a symlink included, and the ruleset grants
 /// the *resolved* path everything a writable root gets: a link left in `/tmp` by another account
-/// would have opened up whatever it pointed at, and `TMPDIR` would have sent the command there.
+/// would open up whatever it pointed at, and `TMPDIR` would send the command there.
 ///
 /// note: what is already there and *ours* is a different matter, and much the commoner one, since
 /// process identifiers come round again. That is removed and remade, so a command does not inherit
@@ -987,8 +981,7 @@ const REPORT: &str = "kamchatka-confinement:";
 ///
 /// note: it is asked for rather than always written, because a confined command's standard error
 /// is collected and put in front of the model. A line of this program's own bookkeeping in there
-/// is context nobody added on purpose, counted against the budget and read by the model - and
-/// this one turned up in a live session doing exactly that.
+/// is context nobody added on purpose, counted against the budget and read by the model.
 const REPORT_VAR: &str = "KAMCHATKA_REPORT_CONFINEMENT";
 
 /// Confines this process and runs the command, if this program was asked to; returns the exit
@@ -1000,7 +993,7 @@ const REPORT_VAR: &str = "KAMCHATKA_REPORT_CONFINEMENT";
 /// a stopped command stop. Two processes deep, the signal a stopped call sends lands on the middle
 /// one and the command carries on - and, still holding the standard error the tool is reading,
 /// keeps that call waiting long after somebody asked it to stop. Leaving costs nothing: a Landlock
-/// domain is inherited across `execve`, which is the point of an LSM a process applies to itself.
+/// domain is inherited across `execve`.
 pub fn run_if_asked() -> Option<i32> {
     let argv: Vec<OsString> = std::env::args_os().skip(1).collect();
     let (sandbox, cmd) = Sandbox::from_argv(&argv)?;
@@ -1024,12 +1017,12 @@ pub fn run_if_asked() -> Option<i32> {
     }
 
     // note: asked to confine *and* to run, in that order, so a ruleset that did not take leaves
-    // nothing to do. It used to run the command anyway - unconfined, with the whole filesystem and
-    // the network, and with nothing saying so, which is the one thing `Confinement` exists to make
-    // sayable. What the permissions tab draws is the startup probe, which is a different call in a
-    // different process: `main` only hands `shell` a confiner where that probe held, but `Setup`
-    // is public and an embedder can hand it one anywhere, and this is the half that makes the
-    // guarantee the child's rather than the caller's.
+    // nothing to do. Running the command anyway would run it unconfined, with the whole
+    // filesystem and the network, and with nothing saying so, which is the one thing
+    // `Confinement` exists to make sayable. What the permissions tab draws is the startup probe,
+    // which is a different call in a different process: `Setup::wire` only hands `shell` a
+    // confiner where that probe held, but `Shell` is public and an embedder can hand it one
+    // anywhere. This is the half that makes the guarantee the child's rather than the caller's.
     //
     // note: no test reaches this on a machine whose kernel confines, which is where the suite
     // runs - what decides it is `create` failing, and Landlock is either there or it is not.

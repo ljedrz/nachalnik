@@ -5,8 +5,8 @@
 //! line - and `draw`, which is the one entry point. What goes inside is next door: `tabs` draws
 //! the four bodies, `overlay` the panel that floats over one of them, `markdown` and `table` turn
 //! what a model wrote into styled lines, and `text` measures and fits all of it. Everything but
-//! [`GREETING`], [`SECTIONS`], [`everything`], [`wrapped_rows`] and `draw` itself is private to
-//! this module, because a screen is not an API.
+//! [`GREETING`], [`SECTIONS`], [`Section`], [`everything`], [`wrapped_rows`] and `draw` itself is
+//! private to this module, because a screen is not an API.
 //!
 //! note: this whole module is behind the `tui` feature, and the key reference lives in `help`
 //! rather than here for that reason: `/help` is answered by a build with no screen, so the text a
@@ -46,11 +46,9 @@ use crate::ui::{
 /// The first line of a session that is not being resumed.
 ///
 /// note: `pub` for the same reason [`SECTIONS`] is: so that a test can check that what somebody is
-/// told on their first screen is what the keys actually do. It used to open with `tab moves to
-/// the context`, which tab has never done - on the chat tab it moves the keys onto a waiting
-/// question, and there is nothing else there to move them to - and it went on to offer `ctrl+t`
-/// for the trace, which is two presses away rather than one. The first sentence anybody reads was
-/// wrong in both halves.
+/// told on their first screen is what the keys actually do. `tab` does not move to the context -
+/// on the chat tab it moves the keys onto a waiting question - and the trace is two presses of
+/// `ctrl+t` away rather than one.
 pub const GREETING: &str = "ctrl+t opens the context, and again the trace · alt+1 comes back · \
                             ctrl+p shows the next request · F1 lists the keys";
 
@@ -109,8 +107,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // what it may have is everything except the status line and enough of the conversation to see
     // what the question is about - and if that is not enough to answer with, the conversation
     // gives way too. There is no prompt left to bargain with: `App::prompted` is false while a
-    // question waits, so `input_height` is already nought here. It used to be the first thing
-    // asked to give way, which meant the box holding the keys was the box that went
+    // question waits, so `input_height` is already nought here, and the box holding the keys is
+    // never the one that goes
     let mut question = 0;
     if wanted != 0 {
         question = wanted.min(height.saturating_sub(1 + MIN_CHAT));
@@ -161,11 +159,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 /// Text that is secondary but still meant to be read.
 ///
-/// note: `Gray`, not `DarkGray`. Nearly everything on these screens that is not the answer itself
-/// used to be `DarkGray` - why an item is not being sent, what an event says, the whole of the
-/// trace - and `DarkGray` is the terminal's bright *black*: on a good half of the themes people
-/// actually use it sits a shade off the background. That is the wrong thing to do to the column
-/// this program exists for. Anything a person is meant to read is this.
+/// note: `Gray`, not `DarkGray`. `DarkGray` is the terminal's bright *black*: on a good half of the
+/// themes people actually use it sits a shade off the background, and nearly everything on these
+/// screens that is not the answer itself - why an item is not being sent, what an event says, the
+/// whole of the trace - is meant to be read. Anything a person is meant to read is this.
 pub(super) fn quiet() -> Style {
     Style::default().fg(Color::Gray)
 }
@@ -180,18 +177,17 @@ pub(super) fn faint() -> Style {
 
 /// The window: a strip of tabs, and whichever one is open filling everything under it.
 ///
-/// note: the border is the frame of the open window and says so - the same yellow the open tab's
-/// name is written in on the strip above it, which is the one thing it is agreeing with. It used to
-/// go faint whenever the keys were not on the tab's body, and on the chat tab they never are:
-/// `Focus::Body` there means the pinned question, which has a box of its own. So the tab a session
-/// is mostly spent on was the one window that could never look open, while the other three lit up,
-/// and "unfocused window" reads as "this is not where you are".
+/// note: the border is the frame of the open window and says so, in the same colour the open
+/// tab's name is written in on the strip above it. It does not go faint when the keys are off the
+/// tab's body, because on the chat tab they never are on it: `Focus::Body` there means the pinned
+/// question, which has a box of its own. The tab a session is mostly spent on would be the one
+/// window that could never look open, and "unfocused window" reads as "this is not where you are".
 ///
 /// note: what has the keys *within* the window is said by the box that has them - the prompt and
-/// the question go yellow, and grey or red when the keys are elsewhere - and, on the two list
-/// tabs, by the selected row, which is reversed under the keys and underlined without them. Both
-/// of those sit next to the thing they are describing, which a border a whole window away does
-/// not.
+/// the question take the accent colour, and grey or red when the keys are elsewhere - and, on the
+/// two list tabs, by the selected row, which is reversed under the keys and underlined without
+/// them. Both of those sit next to the thing they are describing, which a border a whole window
+/// away does not.
 fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, budget: &Budget, area: Rect) {
     // the chat tab has a second thing the keys can be on, and only while a question is pinned
     // there; on the other three, `Focus::Body` is the only place they ever are
@@ -267,13 +263,12 @@ pub(super) fn scrollbar(frame: &mut Frame, window: Rect, border: Style, scrolled
         width: 1,
         height: scrolled.area.height,
     };
-    // note: `content_length` is the number of *scroll positions*, not the number of rows, and the
-    // difference is the whole reason the thumb used to stop short of the bottom. Ratatui places
-    // the thumb over `0..content_length` and adds the viewport back on at the far end, so passing
-    // the row count says the last position is "the final row alone at the top" - a page further
-    // down than anything here scrolls to. Every tab stops at the last full page, so the positions
-    // it can be in are `total - viewport + 1`, and with that the thumb reaches the last row when
-    // the content does.
+    // note: `content_length` is the number of *scroll positions*, not the number of rows. Ratatui
+    // places the thumb over `0..content_length` and adds the viewport back on at the far end, so
+    // passing the row count says the last position is "the final row alone at the top" - a page
+    // further down than anything here scrolls to, and the thumb stops short of the bottom. Every
+    // tab stops at the last full page, so the positions it can be in are `total - viewport + 1`,
+    // and with that the thumb reaches the last row when the content does.
     let mut state = ScrollbarState::new(scrolled.total - viewport + 1)
         .position(scrolled.position)
         .viewport_content_length(viewport);
@@ -366,11 +361,9 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> String {
                 0 => {}
                 n => parts.push(format!("{n} more it will ask about")),
             }
-            // note: the same keys whatever else is on the line. Which of them were named used to
-            // depend on whether there was a sandbox line to fit in beside them, so `r` was
-            // advertised only on a tab with no shell on it - and with nothing decided yet the
-            // footer offered three keys that do nothing whatever, because there is no row for
-            // them to act on
+            // note: the same keys whatever else is on the line, whether or not there is a sandbox
+            // line beside them. Not named with nothing decided yet, when there is no row for them
+            // to act on
             if !app.permissions().is_empty() {
                 parts.push("space cycles · a allow · n never · r ask again".to_owned());
             }
@@ -386,14 +379,14 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> String {
 ///
 /// note: yellow when the keys are on it, which is the same yellow the pinned question wears for
 /// the same reason - the two are the boxes that can hold them, and one of them holding them is
-/// what the colour says. It used to be white, which against grey is a difference in brightness
-/// rather than in hue: the weaker of the two signals, the first to go on a pale theme, and the
-/// answer to the only question anybody asks of a prompt.
+/// what the colour says. Not white: against grey that is a difference in brightness rather than
+/// in hue, the weaker of the two signals and the first to go on a pale theme.
 ///
-/// note: an edit was yellow whether the keys were on it or not, which was the same colour doing a
-/// second job - and left two yellow boxes on the screen at once with the item being edited on the
-/// tab underneath. What says this box is not composing a message is its title, which spells the
-/// whole of it out; the colour is left to say the one thing it says everywhere else.
+/// note: an edit is yellow only while the keys are on it, like a message. Yellow either way would
+/// be the same colour doing a second job, and would leave two yellow boxes on the screen at once
+/// with the item being edited on the tab underneath. What says this box is not composing a message
+/// is its title, which spells the whole of it out; the colour is left to say the one thing it says
+/// everywhere else.
 fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Focus::Input;
     // the same box does two jobs, so it has to say which one it is doing: typing into it
@@ -453,7 +446,7 @@ fn draw_search(frame: &mut Frame, app: &mut App, area: Rect) {
         Paragraph::new(Line::from(vec![
             Span::styled("/", Style::default().fg(Color::Yellow)),
             Span::raw(before.to_owned()),
-            // the block is a cursor: the box has the keys, and nothing else on the screen should
+            // the bar is a cursor: the box has the keys, and nothing else on the screen should
             // look like it does
             Span::styled("▏", Style::default().fg(Color::Yellow)),
             Span::raw(after.to_owned()),
@@ -486,9 +479,9 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
     };
 
     // the address as well as the name, because the same name at a different address is a different
-    // model - `/model` and `/seams` have said so all along, but only when asked, so a session
-    // pointed at a local ollama looked exactly like one talking to OpenRouter. The host alone:
-    // the rest of the URL is `/provider`'s to show, and there is no room for it here
+    // model: without it a session pointed at a local ollama looks exactly like one talking to
+    // OpenRouter. The host alone: the rest of the URL is `/provider`'s to show, and there is no
+    // room for it here
     //
     // note: a session with no model gets a placeholder in the model's place rather than a corner
     // with one fewer thing in it, because the gap is the one thing nobody can act on - a corner
@@ -535,11 +528,11 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
             None => dim,
         },
     );
-    // note: past the limit the figure above stops describing the next request, and until this
-    // said so it read as a catastrophe that resolved itself on the next keystroke. A tool loop
-    // leaves the context fat - compaction runs when a request is *built*, not when a turn ends -
-    // so the corner sat at `~16,254 tokens, 270.9% (6.0k)` in red while the request that
-    // followed cost 1,100. What was missing is not a number, it is the mechanism between them.
+    // note: past the limit the figure above stops describing the next request, and without this
+    // it reads as a catastrophe that resolves itself on the next keystroke. A tool loop leaves the
+    // context fat - compaction runs when a request is *built*, not when a turn ends - so the corner
+    // can be red and far over the limit while the request that follows is well under it. What this
+    // adds is not a number but the mechanism between the two.
     //
     // note: "runs", not "will fix it". Whether the pass finds anything it may take is its own
     // business - everything it wants may be pinned - so this says what is certain and leaves
@@ -568,20 +561,17 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
     if withheld != 0 {
         add(format!("{} held back", thousands(withheld)), dim);
     }
-    // note: `esc stops it` and nothing in its place when idle. The idle half used to read `F1 for
-    // the keys`, which is said on the first screen by `GREETING` and again by every `there is no
-    // /x` - three places for one key, on a line whose right-hand end is the first thing a narrow
-    // terminal loses. What a running turn can be stopped with is not said anywhere else, so that
-    // half stays
+    // note: `esc stops it` and nothing in its place when idle. `F1` is said on the first screen by
+    // `GREETING` and again by every `there is no /x`, and this line's right-hand end is the first
+    // thing a narrow terminal loses. What a running turn can be stopped with is said nowhere else
+    // on three of the four tabs, so that half stays
     if app.busy {
         add("esc stops it".to_owned(), dim);
     }
 
     // the line is drawn without wrapping, so anything past the right edge is simply gone - and
     // what sits at that end is the figures, which are worth more than the address. The address is
-    // what gives way: `openrouter.ai` costs 16 columns and `generativelanguage.googleapis.com`
-    // costs 36, which is the difference between a line that fits at 100 columns and one that
-    // loses its last two facts
+    // what gives way, and `generativelanguage.googleapis.com` is a third of a 100-column line
     let line = Line::from(spans);
     let over = line.width().saturating_sub(area.width as usize);
     let line = match over {
@@ -605,9 +595,9 @@ const MODEL_FLOOR: usize = 12;
 /// note: a ladder, because there is more than one thing here that can give way and they are not
 /// worth the same. The host goes first, then the model's vendor prefix, then the model itself from
 /// the left - and the figures at the right end, which is what all of this is protecting, never do.
-/// It used to stop after the host: `dots-studio/dots-3-note-preview:free` is 36 columns on
-/// OpenRouter, which is this program's default endpoint, and a line carrying one lost its last
-/// figure off the right edge at 100 columns with the address already gone.
+/// The host alone is not enough: a name like `dots-studio/dots-3-note-preview:free` is ordinary on
+/// OpenRouter, this program's default endpoint, and a line carrying one can lose its last figure
+/// off the right edge with the address already gone.
 fn shrink_address(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> {
     spans
         .into_iter()
@@ -673,8 +663,8 @@ const AT_LENGTH: Duration = Duration::from_secs(5);
 ///
 /// note: which dot is lit comes from the clock rather than from a frame counter, so it moves at
 /// the same speed whatever the screen is doing - and stops where it is if the screen stops being
-/// drawn at all. That is the point of it: `asking` on its own is the same word whether a request
-/// is in flight or the program is wedged, and the two were indistinguishable.
+/// drawn at all. `asking` on its own is the same word whether a request is in flight or the
+/// program is wedged, and a dot that moves is what tells the two apart.
 ///
 /// note: the seconds only after five of them. A turn that answers in two should not leave a
 /// number flickering on the line, and one that has been going for ninety should not make somebody

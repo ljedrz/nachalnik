@@ -11,8 +11,8 @@
 //! already allow, and its answer is folded with `strictest`, so there is no path from anything it
 //! says to a call running that would not have run anyway. A refusal, a timeout, an unparseable
 //! answer and a model that has never heard of the tool all leave the standing verdict exactly
-//! where it was. That is the whole safety argument, and it is why the failure mode of this file
-//! is "no second opinion" rather than "an open gate".
+//! where it was, which is why the failure mode of this file is "no second opinion" rather than
+//! "an open gate".
 //!
 //! note: **what leaves the machine.** The tool's id, the capabilities it declared, and its
 //! arguments - which for a write is the text being written and for a shell call is the command
@@ -36,9 +36,9 @@
 //! [`Exit`](crate::tools::Exit), one flight up: a coarse question, answered at a glance, beside
 //! the exact thing it is about.
 //!
-//! note: the invariant *nothing in a model's output reaches the policy* still holds, and is worth
-//! being precise about. What reaches this is the tool name and the arguments, both as data, which
-//! is what reached [`Careful`] before. The agent under judgement cannot address the judge: there
+//! note: the invariant *nothing in a model's output reaches the policy* still holds. What reaches
+//! this is the tool name and the arguments, both as data, which is what reaches [`Careful`]. The
+//! agent under judgement cannot address the judge: there
 //! is no path for it to add a sentence to this request, and a tool call that *says* it has been
 //! approved is a string in `args` like any other.
 
@@ -68,12 +68,11 @@ const REMEMBERED: usize = 32;
 /// replaced by a marker rather than dropped silently, so the model is not told a truncated
 /// command is the whole of it.
 ///
-/// note: **per argument, and not over the serialised whole**, which is the way it was written
-/// first and was wrong. `serde_json` renders an object's keys in sorted order, so `contents`
-/// comes before `path` - and cutting the rendered JSON at a byte count took the path away and
-/// left two kilobytes of file. The one field the decision actually turns on was the first thing
-/// to go. Capping each value keeps every key, so a write of a large file arrives as the path it
-/// is writing to and a marker saying how much text came with it.
+/// note: **per argument, and not over the serialised whole**. `serde_json` renders an object's
+/// keys in sorted order, so `contents` comes before `path` - and cutting the rendered JSON at a
+/// byte count takes the path away and leaves two kilobytes of file, so the one field the decision
+/// turns on is the first thing to go. Capping each value keeps every key, so a write of a large
+/// file arrives as the path it is writing to and a marker saying how much text came with it.
 const ROOM: usize = 2_048;
 
 /// How sure the model has to be before a refusal is taken as one.
@@ -96,10 +95,9 @@ const IRREVERSIBLE: &str = "irreversible";
 /// note: it names `arguments`, and so does every other question here. A System One engine is
 /// handed the state as one object and the question as another; nothing tells it which part of the
 /// state the question is about unless the question says so, and the open engines' own presets all
-/// name the field they are asking about. Measured against `laya`, which is the one that needs it:
-/// on thirty destructive commands the answer went from 7 `deny` to 15, and from one clearing
-/// [`SURE`] to three, with ordinary work answered exactly as before. `jev` was already reading it
-/// right and is unmoved.
+/// name the field they are asking about. `laya` is the engine that needs it: without the name it
+/// answers `deny` to far fewer destructive commands, and clears [`SURE`] on fewer still, while
+/// ordinary work is answered the same either way. `jev` reads the call right without it.
 pub(crate) const DECIDE: &str = "A tool is about to run on the user's machine. What should a permission gate \
                       do with the call shown in `arguments`?";
 
@@ -118,15 +116,15 @@ const STAGE: &str = "stage";
 /// The top of that rubric, asked again as a claim rather than as a position on it.
 ///
 /// note: both, and folded, because the two engines are good at different halves of it. An ordinal
-/// `score` is the primitive laya's own card calls its weakest, and asking the same reading as a
-/// `noul` finds four more of thirty destructive commands with one fewer false alarm; `jev` reads
-/// the rubric almost perfectly and loses four of them when the rubric is taken away. Folded with
+/// `score` is the primitive laya's own card calls its weakest, and asked the same reading as a
+/// `noul` it finds destructive commands the rubric misses, with fewer false alarms; `jev` reads
+/// the rubric well and misses some of those commands when the rubric is taken away. Folded with
 /// [`Rated::worst_of`], the one that is right about a command carries it, and neither engine is
 /// asked to answer in the shape it is worse at.
 ///
 /// note: it costs a question and not a round trip. Every question in a call is answered in one
-/// pass at both engines - which is the property that made placing a command stage by stage worth
-/// doing here - so what doubling them buys is measured in milliseconds rather than in waits.
+/// pass at both engines - which is also what makes placing a command stage by stage affordable -
+/// so doubling them costs milliseconds rather than a wait.
 #[cfg(feature = "shell-advisor")]
 const DANGER: &str = "danger";
 
@@ -135,8 +133,8 @@ const DANGER: &str = "danger";
 /// note: a limit rather than a prefix. Placing the first eight of twelve and folding those would
 /// be a rating that silently covers part of a command, which is the failure [`ROOM`]'s marker
 /// exists to prevent one field along - so over this the stages are not asked about at all, and
-/// the whole-command answer stands on its own the way it did before any of this. Eight is past
-/// where a person reads a command line as stages anyway.
+/// the whole-command answer stands on its own. Eight is past where a person reads a command line
+/// as stages anyway.
 #[cfg(feature = "shell-advisor")]
 const STAGES: usize = 8;
 
@@ -176,27 +174,21 @@ pub enum Rating {
 ///
 /// note: the line between the first two levels is what a command **leaves behind**, and not
 /// whether anything changed while it ran. `cd src` changes the working directory, and asked the
-/// second way it lands on the middle level - which made a yellow line mean nothing, since moving
+/// second way it lands on the middle level - which makes a yellow line mean nothing, since moving
 /// about is among the commonest things an agent writes. In this program it does not even change
 /// anything durable: every call is its own `sh -c`, so the next one starts in the working
 /// directory again. So the bottom level names moving about among the things that qualify, and
 /// the middle one asks for something *still* changed once the command has finished.
 ///
-/// note: which matters more since a command is placed stage by stage than it did when one was
-/// placed whole. A `cd` used to be a clause inside a reading of a longer command line and is now
-/// a stage put on the rubric on its own, so a level that misplaces it misplaces it visibly.
+/// note: and a command is placed stage by stage, so a `cd` is put on the rubric on its own rather
+/// than read as a clause of a longer command line. A level that misplaces it does so visibly.
 ///
 /// note: **short, because what a model pays for every request is a toll**, and the levels are the
-/// part of it a small model has to hold in mind while reading a command. These said the same
-/// thing in three long sentences, naming the operations and repeating "once it has finished".
-///
-/// note: the 0.39-against-0.84 that was once written here as the measurement for that is
-/// withdrawn, and it is worth saying why rather than deleting it. The two figures came from two
-/// runs that differed in the *state* as well as the rubric - one through `--probe`, which sent a
-/// bare command, and one through the program, which sends the call - and the state is what moves
-/// that number. So the length is a toll argument and nothing is claimed for it beyond that.
-/// Anything added here should be measured against what the program sends, which is what
-/// `contrib/laya_advisor.py --probe` now does.
+/// part of it a small model has to hold in mind while reading a command. Nothing is claimed for
+/// the length beyond that: what a rubric scores moves with the *state* as much as with the words,
+/// and a bare command is an easier question than the call the program sends. Anything added here
+/// should be measured against what the program sends, which is what
+/// `contrib/laya_advisor.py --probe` does.
 #[cfg(feature = "shell-advisor")]
 pub(crate) const LEVELS: [&str; 3] = [
     "it only looks, or moves about, and leaves nothing changed",
@@ -229,9 +221,9 @@ pub struct Rated {
     /// Where the advisor put it, before [`Rated::shown`] has had its say - or, for a command
     /// taken apart at its joints, the worst of what its stages were shown as.
     ///
-    /// note: one field for both, which [`Rated::shown`] being idempotent is what allows. It only
-    /// ever raises a `Reads` nobody was sure of, so running it again over a band that is already
-    /// a fold of `shown` answers with that band.
+    /// note: one field for both, which works because [`Rated::shown`] is idempotent. It only ever
+    /// raises a `Reads` nobody was sure of, so running it again over a band that is already a fold
+    /// of `shown` answers with that band.
     pub scored: Rating,
     /// How sure it was, from 0 to 1 - about the stage that earned the band, where a stage did.
     pub confidence: f64,
@@ -296,14 +288,13 @@ impl Rated {
 
     /// The worst of what a call is made of, which is what the call is drawn as.
     ///
-    /// note: the fold is over [`Rated::shown`] rather than over the scores, and that order is
-    /// load-bearing rather than incidental. `shown` is what lifts a reading nobody was sure of
-    /// off green: a stage scored `0.4` at 95% and one scored `0.1` at 30% are `Reads` and
-    /// `Changes` once it has run, and `Changes` is the honest answer for the pair. Folding the
-    /// scores first picks the higher one, `0.4`, and draws the whole command green on the
-    /// strength of the other stage's coin toss. That is exactly what
-    /// `an_unsure_rating_is_never_drawn_safer_than_it_scored` holds one stage to, and this is
-    /// that property for a command made of several.
+    /// note: the fold is over [`Rated::shown`] rather than over the scores, and the order matters.
+    /// `shown` is what lifts a reading nobody was sure of off green: a stage scored `0.4` at 95%
+    /// and one scored `0.1` at 30% are `Reads` and `Changes` once it has run, and `Changes` is the
+    /// honest answer for the pair. Folding the scores first picks the higher one, `0.4`, and draws
+    /// the whole command green on the strength of the other stage's coin toss.
+    /// `an_unsure_rating_is_never_drawn_safer_than_it_scored` holds one stage to this, and the
+    /// fold is the same property for a command made of several.
     ///
     /// note: the whole command is one of the parts folded, always, and it is the only one that
     /// can see what the stages cannot - a pipeline whose every link is ordinary and whose
@@ -339,10 +330,9 @@ impl Rated {
     /// yellow because nobody could tell.
     ///
     /// note: idempotent, and the fold behind [`Rated::worst`] leans on it. It only ever raises a
-    /// `Reads`,
-    /// so asking it about a band it has already answered with gives that band back - which is what
-    /// lets `scored` hold either a raw reading or a fold of several without a caller having to
-    /// know which it has.
+    /// `Reads`, so asking it about a band it has already answered with gives that band back -
+    /// which is what lets `scored` hold either a raw reading or a fold of several without a caller
+    /// having to know which it has.
     pub fn shown(self) -> Rating {
         match self.confidence >= SURE {
             true => self.scored,
@@ -388,9 +378,9 @@ impl Advised {
     /// note: passed through rather than kept here, because the thing with something to say is
     /// the engine and this is the only handle a caller has on one. A local engine loads a
     /// checkpoint before it can answer anything and says so as it goes; a hosted one says when
-    /// it is backing off. Neither was reaching a screen, because the only caller asking was
-    /// `Args::advised` at startup - so an advisor that stopped working mid-session stopped
-    /// silently, which is the failure `Advised::said` exists to prevent one call at a time.
+    /// it is backing off. Both have to reach a screen during the session and not only at startup,
+    /// or an advisor that stops working mid-session stops silently - the failure `Advised::said`
+    /// exists to prevent one call at a time.
     pub fn notice(&self) -> Option<String> {
         self.jev.notice()
     }
@@ -429,7 +419,7 @@ impl Advised {
     ///
     /// note: it returns nothing, and every way of failing leaves nothing written down. There is no
     /// branch from here to a verdict - see the module note - so the worst an outage can do is take
-    /// the coloured line off a panel that did not have one a version ago.
+    /// the coloured line off the panel.
     #[cfg(feature = "shell-advisor")]
     async fn rate(&self, request: &PermissionRequest) {
         // note: through `inner`, because some models put every argument inside a wrapper object
@@ -441,10 +431,10 @@ impl Advised {
         let cmd = args.get("cmd").and_then(Value::as_str).unwrap_or_default();
         let stages = stages(cmd);
 
-        // note: all of them in one request, which is the whole reason a command is worth taking
-        // apart at all here. Each is evaluated on its own against the same state, so no stage's
-        // answer can be moved by another's, and a twelve-stage pipeline costs the round trip a
-        // one-stage command costs
+        // note: all of them in one request, which is what makes taking a command apart affordable.
+        // Each is evaluated on its own against the same state, so no stage's answer can be moved
+        // by another's, and a command of `STAGES` stages costs the round trip a one-stage command
+        // costs
         let mut questions = vec![
             (RATING.to_owned(), Question::score(PLACE, LEVELS)),
             (
@@ -475,7 +465,7 @@ impl Advised {
         // with and no half-answer to guard against - see `Rated::claimed`
         let claim = |name: &str| Some(Rated::claimed(answers.noul(name)?));
 
-        // note: the whole command is what decides whether anything was said at all, and it now has
+        // note: the whole command is what decides whether anything was said at all, and it has
         // two ways of saying it. Either will do; neither is half an answer, because each is a
         // reading of the whole command on its own. Nothing at all is still nothing, and the safe
         // reading of that is the same here as it is above
@@ -596,15 +586,15 @@ fn placing(stage: &str) -> Question {
 /// The byte ranges of a command line's own stages, or nothing where this is not a call it can
 /// take apart.
 ///
-/// note: four ways of answering nothing, and each of them leaves the whole-command rating exactly
-/// as it was before any of this. A call whose `cmd` is not a string is not one this program knows
-/// to hold a command line - the rating is asked for on [`Capability::exec`], which somebody
-/// else's tool may declare while taking its command under another name, and guessing which field
-/// that is would be placing a rubric on an argument nobody said was a command. A command with no
-/// joints in it is one stage, and one stage folded with the whole is the whole. Past [`STAGES`]
-/// there are too many to report on honestly - see the note there. And past [`ROOM`] the state the
-/// advisor is shown is a *cut* of this command, so a stage taken from beyond the cut would be
-/// placed against a command the model was never shown the end of.
+/// note: four ways of answering nothing, and each of them leaves the whole-command rating to stand
+/// on its own. A call whose `cmd` is not a string is not one this program knows to hold a command
+/// line - the rating is asked for on [`Capability::exec`], which somebody else's tool may declare
+/// while taking its command under another name, and guessing which field that is would be placing
+/// a rubric on an argument nobody said was a command. A command with no joints in it is one
+/// stage, and one stage folded with the whole is the whole. Past [`STAGES`] there are too many to
+/// report on honestly - see the note there. And past [`ROOM`] the state the advisor is shown is a
+/// *cut* of this command, so a stage taken from beyond the cut would be placed against a command
+/// the model was never shown the end of.
 #[cfg(feature = "shell-advisor")]
 fn stages(cmd: &str) -> Vec<(usize, usize)> {
     if cmd.len() > ROOM {
@@ -698,8 +688,8 @@ fn capped(value: &Value) -> Value {
 /// What to do with a verdict the standing rules were going to allow.
 ///
 /// note: split out from [`Advised::evaluate`] so that the rule can be tested without a network,
-/// the way `waiting::Vigil::judge` is. What is left in `evaluate` is one HTTP request and the
-/// reading of it, which has nothing in it to get wrong twice.
+/// the way `waiting::Vigil::judge` is. What is left in `evaluate` is one request to the engine and
+/// the reading of it, which has nothing in it to get wrong twice.
 ///
 /// note: `allow` returns [`Verdict::Allow`] rather than the standing verdict, and the two are the
 /// same thing here: this is only ever called for a call whose standing verdict was `Allow`.
@@ -868,11 +858,11 @@ mod tests {
 
     /// The safety property: an advisor that is not there changes nothing.
     ///
-    /// note: the most important test in this file. Every way of failing to get an answer - a dead
-    /// endpoint, a refused key, a timeout, an answer that does not parse - lands on the same
-    /// branch, and this is the one that proves the branch keeps the standing verdict instead of
-    /// falling through to something laxer. A session whose permissions quietly loosened when a
-    /// third party had an outage would be worse than one that never asked.
+    /// note: every way of failing to get an answer - a dead endpoint, a refused key, a timeout, an
+    /// answer that does not parse - lands on the same branch, and this is the one that proves the
+    /// branch keeps the standing verdict instead of falling through to something laxer. A session
+    /// whose permissions quietly loosened when a third party had an outage would be worse than one
+    /// that never asked.
     #[tokio::test]
     async fn an_advisor_that_cannot_be_reached_leaves_the_standing_verdict_where_it_was() {
         let careful = Arc::new(Careful::new());
@@ -892,10 +882,10 @@ mod tests {
 
     /// A call the standing rules already refuse is decided here and goes nowhere.
     ///
-    /// note: two things at once, and the second is the one worth having a test for. The verdict is
-    /// unchanged, which `strictest` would have given anyway - and nothing was *sent*, so a refused
-    /// call does not put a network round trip in front of the refusal a person is waiting to see,
-    /// and does not hand a third party the arguments of a call that was never going to run.
+    /// note: the verdict is unchanged, which `strictest` would have given anyway. What this pins is
+    /// that nothing was *sent*, so a refused call does not put a network round trip in front of the
+    /// refusal a person is waiting to see, and does not hand a third party the arguments of a call
+    /// that was never going to run.
     #[tokio::test]
     async fn a_call_the_rules_already_refuse_is_not_sent_anywhere() {
         let careful = Arc::new(Careful::new());
@@ -998,10 +988,10 @@ mod tests {
 
     /// The two readings of one command fold, and either alone is enough to draw a line.
     ///
-    /// note: the property the second question was added for. `jev` reads the rubric and loses four
-    /// destructive commands of thirty when it is taken away; `laya` finds four more by the claim
-    /// than by the rubric. Folding them means a command either is right about carries it, and the
-    /// fold is over `shown` for the reason `worst_of` already documents.
+    /// note: the property the second question is there for. `jev` reads the rubric and misses
+    /// destructive commands when it is taken away; `laya` finds more of them by the claim than by
+    /// the rubric. Folding them means a command either is right about carries it, and the fold is
+    /// over `shown` for the reason `worst_of` documents.
     #[cfg(feature = "shell-advisor")]
     #[test]
     fn a_command_is_drawn_by_whichever_reading_of_it_is_worse() {
@@ -1063,9 +1053,9 @@ mod tests {
     /// And one going to be asked about is rated, which is the only call that is.
     ///
     /// note: the endpoint is not there, so what this pins is that the request was *attempted* -
-    /// the rating itself needs a live model and lives in `tests/advise.rs`. The pair with
-    /// `a_call_already_going_to_be_asked_about_is_not_sent_anywhere` is the point: that one still
-    /// passes, because it asks about `fs:read`, and this one is what `exec:run` changed.
+    /// the rating itself needs a live model and lives in `tests/advise.rs`. It pairs with
+    /// `a_call_already_going_to_be_asked_about_is_not_sent_anywhere`, which passes because it asks
+    /// about `fs:read`; this one is what `exec:run` changes.
     #[cfg(feature = "shell-advisor")]
     #[tokio::test]
     async fn a_command_somebody_is_about_to_be_asked_about_is_rated() {
@@ -1107,17 +1097,16 @@ mod tests {
     /// The fold is over what each stage is *shown* as, and taking the scores first loses the
     /// property the whole rubric rests on.
     ///
-    /// note: the most important test of the fold, and the case is not a corner. A stage scored
-    /// `0.4` at 95% is a confident `Reads`; one scored `0.1` at 30% is a reading nobody could
-    /// make, which `Rated::shown` lifts to `Changes` because green is the one colour that must
-    /// never come out of a coin toss. Fold the *scores* and `0.4` wins, and the command is drawn
-    /// green on the strength of the other stage's uncertainty - a higher number standing for a
-    /// safer command, which is exactly backwards. Fold what each is shown as and the pair is
-    /// `Changes`.
+    /// note: the case is not a corner. A stage scored `0.4` at 95% is a confident `Reads`; one
+    /// scored `0.1` at 30% is a reading nobody could make, which `Rated::shown` lifts to `Changes`
+    /// because green is the one colour that must never come out of a coin toss. Fold the *scores*
+    /// and `0.4` wins, and the command is drawn green on the strength of the other stage's
+    /// uncertainty - a higher number standing for a safer command, which is exactly backwards.
+    /// Fold what each is shown as and the pair is `Changes`.
     ///
     /// note: the pair with `an_unsure_rating_is_never_drawn_safer_than_it_scored`, which holds
-    /// one stage to this. Nothing there survives being composed, which is why this is separate
-    /// rather than another case in it.
+    /// one stage to this. Passing that says nothing about a fold of several, which is why this is
+    /// separate rather than another case in it.
     #[cfg(feature = "shell-advisor")]
     #[test]
     fn the_worst_of_several_stages_is_folded_after_the_unsure_rule_and_not_before() {
@@ -1307,9 +1296,9 @@ mod tests {
             assert!(contents.len() <= ROOM + 64, "{}", contents.len());
             assert!(contents.contains("(cut;"), "the cut is named");
 
-            // and the path survives it, which is the whole reason the cap is per value. Rendering
-            // the arguments and cutting the bytes took this away: `contents` sorts before `path`,
-            // so the one field the decision turns on was the first thing to go
+            // and the path survives it, which is why the cap is per value. Cutting the rendered
+            // arguments would take this away: `contents` sorts before `path`, so the one field the
+            // decision turns on would be the first thing to go
             assert_eq!(state["arguments"]["path"], "notes.md");
         }
 

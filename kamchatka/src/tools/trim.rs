@@ -5,11 +5,11 @@
 //! that costs more than the content did. A compactor that did not check would watch the total
 //! refuse to move and elide everything it had.
 //!
-//! note: with one exception, and it is the whole reason blobs are partitioned out first. A
+//! note: with one exception, which is why blobs are partitioned out first. A
 //! [`Content::Blob`](nachalnik::Content::Blob) is counted at `0` by every counter in this
 //! workspace, because what a picture costs is a formula over its dimensions and no byte length
-//! reaches one - so that same check reads a picture as recovering nothing and skips it, which
-//! made the largest thing in the context the one thing this could never take.
+//! reaches one - so that same check reads a picture as recovering nothing and skips it, and the
+//! largest thing in the context would be the one thing this could never take.
 //!
 //! note: so size decides nothing about a blob, in *either* direction - not which one goes first,
 //! and not whether a small one is worth taking at all. The second half is not an oversight: a
@@ -28,7 +28,7 @@ use nachalnik::{
 /// Elides any tool result carrying a blob, then the oldest of the rest, once the context gets
 /// full - and says so.
 ///
-/// note: It does not summarize what it elided, and the note it leaves behind claims only that
+/// note: it does not summarize what it elided, and the note it leaves behind claims only that
 /// the content existed and is gone - a compactor that invented a paraphrase of output it never
 /// read would be putting words in a tool's mouth. Every elision is reversible: the items keep
 /// what they hold, they stay in the context pane with it counted as held back, and restoring one
@@ -51,14 +51,13 @@ impl Trim {
     /// One that starts at this fraction of the limit and aims below it.
     ///
     /// note: the pair has to be ordered or the pass is a no-op that keeps being asked for, and
-    /// nothing in the two fields says so - which is what this exists to say. Twenty points under
-    /// where it starts bothering, or half of it, whichever leaves more. A flat floor of ten
-    /// percent was the first spelling and it inverted the pair below a third: `--compact 0.15`
-    /// asked to compact at fifteen percent of the limit and aimed at ten, so a context between
-    /// the two was already under the target, so every pass found nothing and said so, before
-    /// every request, for as long as it stayed in that band. Below a fifth the subtraction goes
-    /// negative and the target becomes no context at all, so something has to catch it; a
-    /// fraction of the threshold catches it without ever rising above it.
+    /// nothing in the two fields says so. The target is twenty points under where it starts
+    /// bothering, or half of it, whichever leaves more. With the target at or above the
+    /// threshold, a context between the two is over the threshold and already under the target,
+    /// so every pass finds nothing and says so, before every request, for as long as it stays in
+    /// that band. Below a fifth the subtraction goes negative and the target becomes no context
+    /// at all, so something has to catch it; a fraction of the threshold catches it without ever
+    /// rising above it.
     #[must_use]
     pub fn under(threshold: f64) -> Self {
         Self {
@@ -73,8 +72,8 @@ impl Compactor for Trim {
     /// note: the threshold, *or* anything in the request the counter would not price. The second
     /// half is what makes taking blobs first worth anything: a context that is mostly pictures
     /// reports a handful of tokens, so the fraction never reaches the threshold, so `plan` is
-    /// never called and the pass that would have taken them never runs. The one state in which
-    /// this compactor is most needed was the one state it slept through.
+    /// never called and the pass that would have taken them never runs. Without it, the state in
+    /// which this compactor is most needed is the one state it sleeps through.
     ///
     /// note: it is not a second threshold in disguise. `plan` still takes only what it may, and
     /// still answers `None` when there is nothing worth taking, which is the same answer a
@@ -102,12 +101,10 @@ impl Compactor for Trim {
         // The model reads it too, in the brackets the projector puts round it, so it is written
         // to be read by both - what happened, why, and what not to do about it
         //
-        // note: the second sentence closes a retry, and it is the same lesson `Reach::allows`
-        // learnt one file over: a refusal that does not say the next attempt will end the same
-        // way is read as an invitation to make it. Watched live - a model read a 10,000-token
-        // file into a 9,000-token context, this took it, and the model read the same file again.
-        // Three times, thirty thousand tokens of output, every one of them discarded on arrival.
-        // It had the marker in front of it each time and the marker only said what had happened.
+        // note: the second sentence closes a retry, for the reason `Reach::allows` closes one: a
+        // refusal that does not say the next attempt will end the same way is read as an
+        // invitation to make it. A marker that only says what happened leaves a model reading a
+        // file too big for the context again and again, every read discarded on arrival.
         //
         // note: what it says is what *would* happen rather than what will. Re-reading is not
         // certainly compacted again - the threshold is about the whole context, and something
@@ -131,13 +128,12 @@ impl Compactor for Trim {
         // oldest first, because the results a conversation has moved past are the ones it is
         // least likely to want back.
         //
-        // note: `sends_content` rather than `is_projected`, and the difference is the whole of
-        // this compactor's behaviour once it has been round once. An elided item *is* projected -
-        // as a marker - so with `is_projected` every item this pass had already elided came back
-        // as a candidate on the next one. The plan was never empty, so it was never `None`, so a
-        // summary went into the context before every single request from then on: a compactor
+        // note: `sends_content` rather than `is_projected`. An elided item *is* projected - as a
+        // marker - so with `is_projected` every item a pass had already elided would come back as
+        // a candidate on the next one. The plan would never be empty, so never `None`, so a
+        // summary would go into the context before every request from then on: a compactor
         // growing the context by a line and burning an undo per request, for as long as the
-        // session lasted. It takes only a pinned file bigger than the target to get there
+        // session lasts. It takes only a pinned file bigger than the target to get there
         //
         // note: and not a pinned one, which `sends_content` says yes to. The kernel refuses those
         // - a pin is a promise - so proposing one produces a plan that moves nothing, and a plan
@@ -165,7 +161,7 @@ impl Compactor for Trim {
         let blob_count = blobs.len();
         for item in blobs {
             // the same arithmetic the loop below uses, and it is here for what it will be worth
-            // later rather than for what it is worth now: today a blob is counted at `0`, so this
+            // later rather than for what it is worth now: a blob is counted at `0`, so this
             // credits the pass with nothing, which is the honest figure for a saving nobody can
             // measure. Put a counter that does know what a picture costs behind `set_counter` and
             // the same line starts crediting the real one, without this pass learning a formula.
@@ -196,10 +192,8 @@ impl Compactor for Trim {
         // note: the last pass's summary goes out as this one goes in, and this is the difference
         // between a compactor that manages a context and one that fills it. Every pass leaves a
         // sentence behind; a summary is a `Reference` and this pass only ever takes a tool
-        // result, so nothing was ever going to take one back out. Measured against a real
-        // endpoint at a 6,000-token limit: **twenty-one identical summaries, 67 tokens each** -
-        // 1,407 tokens, a quarter of the budget, all of it the same sentence, in a context the
-        // pass was called on to make room in.
+        // result, so nothing else takes one back out, and a long session would pile up copies
+        // of the same sentence in a context the pass was called on to make room in.
         //
         // note: `remove` and not `elide`, because a marker where a summary was is a line of text
         // saying a line of text has been taken away. The warning on `CompactionPlan::remove` is
@@ -236,17 +230,19 @@ impl Compactor for Trim {
         // Removing them would have the projector take the calls down as well - it has to, a call
         // with no result is a request most providers reject - and the model would then be reading
         // a conversation in which it never asked for any of this, directly above a note saying
-        // the results had been dropped. The two accounts disagreed and the marker is the true one
+        // the results had been dropped. The two accounts would disagree, and the marker is the
+        // true one
         Some(CompactionPlan {
             // note: `elided`, which is the word the pane puts on the row, the word `context`'s own
-            // `elide` takes, and the word the runtime's state is called. It said `shortened to a
-            // marker`, which is a third name for the thing - and a fourth mechanism away from
-            // `truncated`, which is what an output limit does and is not this at all
+            // `elide` takes, and the word the runtime's state is called. Not `shortened to a
+            // marker`, which is another name for the thing, and not `truncated`, which is what an
+            // output limit does and is not this at all
+            //
             // note: the blobs get their own clause, and they need one. What the model is left
             // reading in place of an elided item is the pass's `reason`, which says the context
-            // was full and says nothing about what used to be there - so a picture named
-            // `[image/png, 12.05kB]` a moment ago becomes a sentence about a token limit, and
-            // the model has no way left to know an image was ever in the conversation. A gap
+            // was full and says nothing about what used to be there - so a picture named by its
+            // media type and size a moment ago becomes a sentence about a token limit, and the
+            // model has no way left to know an image was ever in the conversation. A gap
             // where a picture was is worse than a sentence saying there was one; this is the
             // sentence, and it is the only place in the plan there is room for it
             summary: Some(ContextItem::summary(match blobs_now {
@@ -274,11 +270,9 @@ impl Compactor for Trim {
 ///
 /// note: an estimate, and it does not have to be better than one - a counter that has learnt a
 /// different ratio moves the boundary by one small result either way. What it has to be right
-/// about is that a marker costs *something*, because crediting a pass with the whole of what it
-/// elided is how one came to make the context 40% bigger than it found it: twenty `write`
-/// confirmations, seven tokens each, replaced by twenty-one tokens of the same sentence, and the
-/// arithmetic reported 140 tokens recovered while the request went from 852 to 1,190 - through
-/// the 1,000-token limit the pass existed to keep it under.
+/// about is that a marker costs *something*. Credited with the whole of what it elided, a pass
+/// that replaces short results with a longer marker reports tokens recovered while the request
+/// grows - through the limit the pass exists to keep it under.
 ///
 /// note: taken from the reason rather than fixed, because the reason is what the marker says. A
 /// constant here would be a second place to remember when that sentence is reworded.
@@ -289,13 +283,12 @@ fn marker_tokens(reason: &str) -> usize {
 
 /// Whether the content is a blob or has one somewhere inside it.
 ///
-/// note: [`Content::blobs`] does the walking, and it is worth saying why this does not. The
-/// nesting is the hard part - a sentence-and-a-screenshot turn is a blob one level down inside
-/// `Content::Blocks` - and `Content` and `Block` are both `#[non_exhaustive]`, so a walk written
-/// out here would answer `false` for a variant added later and a picture would quietly stop
-/// going first, with no arm this file could have written to catch it. The runtime grew the seam
-/// because its own counter needs the same walk for the same reason; this client should not be
-/// keeping a second copy that goes stale on a day nobody is looking at this file.
+/// note: [`Content::blobs`] does the walking rather than this. The nesting is the hard part - a
+/// sentence-and-a-screenshot turn is a blob one level down inside `Content::Blocks` - and
+/// `Content` and `Block` are both `#[non_exhaustive]`, so a walk written out here would answer
+/// `false` for a variant added later and a picture would quietly stop going first, with no arm
+/// this file could have written to catch it. The runtime's own counter needs the same walk for
+/// the same reason, and a second copy here would go stale without anybody noticing.
 fn carries_blob(content: &Content) -> bool {
     !content.blobs().is_empty()
 }
